@@ -22,7 +22,6 @@ class Laminar:
             request = EndpointRunRequest(inputs = inputs, endpoint = endpoint, env = env, metadata = metadata)
         except Exception as e:
             raise ValueError(f'Invalid request: {e}')
-        print(dict(request))
         response = requests.post(
             self.url, 
             json=json.loads(request.model_dump_json()),
