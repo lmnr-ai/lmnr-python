@@ -1,12 +1,13 @@
 
 import requests
 import pydantic
+from typing import Union
 
 class ChatMessage(pydantic.BaseModel):
     role: str
     content: str
 
-type NodeInput = str | list[ChatMessage]
+NodeInput = Union[str, list[ChatMessage]] # TypeAlias
 
 class EndpointRunRequest(pydantic.BaseModel):
     inputs: dict[str, NodeInput]

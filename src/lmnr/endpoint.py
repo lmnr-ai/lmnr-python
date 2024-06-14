@@ -2,9 +2,10 @@ import json
 from pydantic.alias_generators import to_snake
 import requests
 from .model import EndpointRunError, EndpointRunResponse, NodeInput, EndpointRunRequest
+from typing import Optional
 
 class Laminar:
-    project_api_key: str | None = None
+    project_api_key: Optional[str] = None
     def __init__(self, project_api_key: str):
         self.project_api_key = project_api_key
         self.url = 'https://api.lmnr.ai/v2/endpoint/run'
