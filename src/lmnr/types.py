@@ -50,3 +50,6 @@ class ToolCall(pydantic.BaseModel):
     id: Optional[str]
     type: Optional[str]
     function: ToolCallRequest
+
+class RegisterDebuggerRequest(pydantic.BaseModel):
+    debugger_session_id: str
