@@ -51,5 +51,10 @@ class ToolCall(pydantic.BaseModel):
     type: Optional[str]
     function: ToolCallRequest
 
+# TODO: allow snake_case and manually convert to camelCase
 class RegisterDebuggerRequest(pydantic.BaseModel):
-    debugger_session_id: str
+    debuggerSessionId: str
+
+class DeregisterDebuggerRequest(pydantic.BaseModel):
+    debuggerSessionId: str
+    deregister: bool

@@ -1,6 +1,6 @@
 from typing import Callable, Optional
 from websockets.sync.client import connect
-from lmnr.types import NodeInput, RegisterDebuggerRequest, SDKError, ToolCall
+from lmnr.types import DeregisterDebuggerRequest, NodeInput, RegisterDebuggerRequest, SDKError, ToolCall
 import uuid
 import json
 from threading import Thread
@@ -32,7 +32,7 @@ class RemoteDebugger:
         return self.session
     
     def _run(self):
-        request = RegisterDebuggerRequest(debugger_session_id=self.session)
+        request = RegisterDebuggerRequest(debuggerSessionId=self.session)
         with connect(
             self.url,
             additional_headers={
@@ -71,6 +71,7 @@ class RemoteDebugger:
                         pass
                     response = tool(**arguments)
                     websocket.send(json.dumps(response))
+            websocket.send(DeregisterDebuggerRequest(debuggerSessionId=self.session, deregister=True).model_dump_json())
 
     def _generate_session_id(self) -> str:
         return uuid.uuid4().urn[9:]
@@ -80,7 +81,7 @@ class RemoteDebugger:
 f"""
 ========================================
 Debugger Session ID:
-{self.session_id}
+{self.session}
 ========================================
 """
     
