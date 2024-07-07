@@ -1,7 +1,7 @@
 
 import requests
 import pydantic
-from typing import Union
+from typing import Union, Optional
 
 class ChatMessage(pydantic.BaseModel):
     role: str
@@ -37,3 +37,16 @@ class EndpointRunError(Exception):
             return str({'error_code': self.error_code, 'error_message': self.error_message})
         except:
             return super().__str__()
+        
+class SDKError(Exception):
+    def __init__(self, error_mesasge: str):
+        super().__init__(error_mesasge)
+
+class ToolCallRequest(pydantic.BaseModel):
+    name: str
+    arguments: str
+
+class ToolCall(pydantic.BaseModel):
+    id: Optional[str]
+    type: Optional[str]
+    function: ToolCallRequest

@@ -1,25 +1,42 @@
 [project]
 name = "lmnr"
-version = "0.1.1"
+version = "0.2.0"
 description = "Python SDK for Laminar AI"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
 ]
 readme = "README.md"
 requires-python = "^3.9"
+license = "Apache-2.0"
 
 [tool.poetry]
 name = "lmnr"
-version = "0.1.1"
+version = "0.2.0"
 description = "Python SDK for Laminar AI"
 authors = ["lmnr.ai"]
 readme = "README.md"
+license = "Apache-2.0"
 
 [tool.poetry.dependencies]
 python = "^3.9"
-requests = "^2.32.3"
+black = "^24.4.2"
 pydantic = "^2.7.4"
+click = "^8.1.7"
+requests = "^2.32.3"
+urllib3 = "1.26.6"
+websockets = "^12.0"
+cookiecutter = "^2.6.0"
+python-dotenv = "^1.0.1"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[project.entry-points.console_scripts]
+lmnr = "lmnr.cli.cli:cli"
+
+[tool.poetry.scripts]
+lmnr = "lmnr.cli.cli:cli"
+
+[project.optional-dependencies]
+test = ["pytest"]

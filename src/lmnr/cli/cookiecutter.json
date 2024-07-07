@@ -1,0 +1,9 @@
+{
+    "lmnr_pipelines_dir_name": "lmnr_engine",
+    "pipeline_name": "Laminar Pipeline",
+    "pipeline_dir_name": "{{ cookiecutter['pipeline_name'].lower().replace('-', '_').replace(' ', '_') }}",
+    "class_name": "LaminarPipeline",
+    "pipeline_version_name": "main",
+    "_tasks": {},
+    "_jinja2_env_vars": {"lstrip_blocks": true, "trim_blocks": true}
+}
