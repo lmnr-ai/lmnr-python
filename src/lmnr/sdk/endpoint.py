@@ -21,7 +21,7 @@ class Laminar:
         """        
         self.project_api_key = project_api_key
         self.url = 'https://api.lmnr.ai/v2/endpoint/run'
-        self.ws_url = 'ws://api.lmnr.ai/v2/endpoint/ws'
+        self.ws_url = 'wss://api.lmnr.ai/v2/endpoint/ws'
     
     def run (
         self,
@@ -120,7 +120,7 @@ class Laminar:
             raise ValueError(f'Invalid request: {e}')
 
         with connect(
-            "ws://localhost:8000/v2/endpoint/ws",
+            self.ws_url,
             additional_headers={
                 'Authorization': f'Bearer {self.project_api_key}'
             }
