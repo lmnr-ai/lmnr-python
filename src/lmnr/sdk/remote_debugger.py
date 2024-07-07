@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Optional
 from websockets.sync.client import connect
 from lmnr.types import NodeInput, RegisterDebuggerRequest, SDKError, ToolCall
 import uuid
@@ -14,9 +14,11 @@ class RemoteDebugger:
         self.stop_flag = False
         self.session = None
     
-    def start(self):
+    def start(self) -> Optional[str]:
         self.stop_flag = False
+        self.session = self._generate_session_id()
         self.thread.start()
+        return self.session
     
     def stop(self):
         self.stop_flag = True
@@ -26,8 +28,10 @@ class RemoteDebugger:
         # in case the user wants to start the debugger again
         self.thread = Thread(target=self._run)
     
+    def get_session_id(self) -> str:
+        return self.session
+    
     def _run(self):
-        self.session = self._generate_session_id()
         request = RegisterDebuggerRequest(debugger_session_id=self.session)
         with connect(
             self.url,
@@ -36,6 +40,7 @@ class RemoteDebugger:
             }
         ) as websocket:
             websocket.send(request.model_dump_json())
+            print(self._format_session_id())
             while not self.stop_flag:
                 try:
                     # blocks the thread until a message is received or a timeout (3 seconds) occurs
@@ -66,20 +71,16 @@ class RemoteDebugger:
                         pass
                     response = tool(**arguments)
                     websocket.send(json.dumps(response))
-    
-
-    def get_session_id(self) -> str:
-        return self._format_session_id(self.session)
 
     def _generate_session_id(self) -> str:
         return uuid.uuid4().urn[9:]
 
-    def _format_session_id(self, session_id: str) -> str:
+    def _format_session_id(self) -> str:
         return \
 f"""
 ========================================
 Debugger Session ID:
-{session_id}
+{self.session_id}
 ========================================
 """
     
