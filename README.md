@@ -98,9 +98,8 @@ Example:
 from lmnr import LaminarRemoteDebugger, NodeInput
 
 # adding **kwargs is safer, in case an LLM produces more arguments than needed
-def my_tool(arg1: string, arg2: string, **kwargs) -> NodeInput {
+def my_tool(arg1: string, arg2: string, **kwargs) -> NodeInput:
     return f'{arg1}&{arg2}'
-}
 
 debugger = LaminarRemoteDebugger('<YOUR_PROJECT_API_KEY>', [my_tool])
 session_id = debugger.start()  # the session id will also be printed to console
