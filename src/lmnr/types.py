@@ -39,8 +39,8 @@ class EndpointRunError(Exception):
             return super().__str__()
         
 class SDKError(Exception):
-    def __init__(self, error_mesasge: str):
-        super().__init__(error_mesasge)
+    def __init__(self, error_message: str):
+        super().__init__(error_message)
 
 class ToolCallRequest(pydantic.BaseModel):
     name: str
@@ -50,6 +50,10 @@ class ToolCall(pydantic.BaseModel):
     id: Optional[str]
     type: Optional[str]
     function: ToolCallRequest
+
+ToolCallResponse = NodeInput
+class ToolCallError(pydantic.BaseModel):
+    error: str
 
 # TODO: allow snake_case and manually convert to camelCase
 class RegisterDebuggerRequest(pydantic.BaseModel):
