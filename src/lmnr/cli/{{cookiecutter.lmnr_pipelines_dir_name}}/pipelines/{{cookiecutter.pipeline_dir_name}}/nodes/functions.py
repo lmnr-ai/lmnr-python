@@ -142,14 +142,14 @@ def {{task.function_name}}(query: NodeInput, _env: dict[str, str]) -> RunOutput:
     headers = {
         "Authorization": f"Bearer {_env['LMNR_PROJECT_API_KEY']}",
     }
-    params = {
+    data = {
         "query": query,
         "limit": {{ task.config.limit }},
         "threshold": {{ task.config.threshold }},
-        "datasourceIds": "{{ task.config.concatenated_datasource_ids }}",
+        "datasourceIds": {{ task.config.datasource_ids_list }},
     }
-    # https://api.lmnr.ai/v2/vector-search
-    query_res = requests.get("http://localhost:8000/v2/vector-search", headers=headers, params=params)
+    # https://api.lmnr.ai/v2/semantic-search
+    query_res = requests.post("http://localhost:8000/v2/semantic-search", headers=headers, json=data)
     if query_res.status_code != 200:
         raise NodeRunError(f"Vector search request failed: {query_res.text}")
 

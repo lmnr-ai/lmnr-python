@@ -75,7 +75,7 @@ class SemanticSearchNode(NodeFunctions):
             "threshold": self.threshold,
             "template": self.template,
             "datasource_ids": [str(datasource.id) for datasource in self.datasources],
-            "concatenated_datasource_ids": ",".join(
-                str(datasource.id) for datasource in self.datasources
+            "datasource_ids_list": str(
+                [str(datasource.id) for datasource in self.datasources]
             ),
         }
