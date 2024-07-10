@@ -1,8 +1,14 @@
-from dataclasses import dataclass
-from typing import Any, Optional, Union
+from typing import Any, Union
 import uuid
-from lmnr.cli.parser.nodes import Handle, HandleType, NodeFunctions
-from lmnr.cli.parser.utils import map_handles
+
+from lmnr.cli.parser.nodes import Handle
+from lmnr.cli.parser.nodes.input import InputNode
+from lmnr.cli.parser.nodes.llm import LLMNode
+from lmnr.cli.parser.nodes.output import OutputNode
+from lmnr.cli.parser.nodes.semantic_search import (
+    SemanticSearchDatasource,
+    SemanticSearchNode,
+)
 from lmnr.types import NodeInput, ChatMessage
 
 
@@ -15,97 +21,7 @@ def node_input_from_json(json_val: Any) -> NodeInput:
         raise ValueError(f"Invalid NodeInput value: {json_val}")
 
 
-# TODO: Convert to Pydantic
-@dataclass
-class InputNode(NodeFunctions):
-    id: uuid.UUID
-    name: str
-    outputs: list[Handle]
-    input: Optional[NodeInput]
-    input_type: HandleType
-
-    def handles_mapping(
-        self, output_handle_id_to_node_name: dict[str, str]
-    ) -> list[tuple[str, str]]:
-        return []
-
-    def node_type(self) -> str:
-        return "Input"
-
-    def config(self) -> dict:
-        return {}
-
-
-# TODO: Convert to Pydantic
-@dataclass
-class LLMNode(NodeFunctions):
-    id: uuid.UUID
-    name: str
-    inputs: list[Handle]
-    dynamic_inputs: list[Handle]
-    outputs: list[Handle]
-    inputs_mappings: dict[uuid.UUID, uuid.UUID]
-    prompt: str
-    model: str
-    model_params: Optional[str]
-    stream: bool
-    structured_output_enabled: bool
-    structured_output_max_retries: int
-    structured_output_schema: Optional[str]
-    structured_output_schema_target: Optional[str]
-
-    def handles_mapping(
-        self, output_handle_id_to_node_name: dict[str, str]
-    ) -> list[tuple[str, str]]:
-        combined_inputs = self.inputs + self.dynamic_inputs
-        return map_handles(
-            combined_inputs, self.inputs_mappings, output_handle_id_to_node_name
-        )
-
-    def node_type(self) -> str:
-        return "LLM"
-
-    def config(self) -> dict:
-        # For easier access in the template separate the provider and model here
-        provider, model = self.model.split(":", maxsplit=1)
-
-        return {
-            "prompt": self.prompt,
-            "provider": provider,
-            "model": model,
-            "model_params": self.model_params,
-            "stream": self.stream,
-            "structured_output_enabled": self.structured_output_enabled,
-            "structured_output_max_retries": self.structured_output_max_retries,
-            "structured_output_schema": self.structured_output_schema,
-            "structured_output_schema_target": self.structured_output_schema_target,
-        }
-
-
-# TODO: Convert to Pydantic
-@dataclass
-class OutputNode(NodeFunctions):
-    id: uuid.UUID
-    name: str
-    inputs: list[Handle]
-    outputs: list[Handle]
-    inputs_mappings: dict[uuid.UUID, uuid.UUID]
-
-    def handles_mapping(
-        self, output_handle_id_to_node_name: dict[str, str]
-    ) -> list[tuple[str, str]]:
-        return map_handles(
-            self.inputs, self.inputs_mappings, output_handle_id_to_node_name
-        )
-
-    def node_type(self) -> str:
-        return "Output"
-
-    def config(self) -> dict:
-        return {}
-
-
-Node = Union[InputNode, OutputNode, LLMNode]
+Node = Union[InputNode, OutputNode, LLMNode, SemanticSearchNode]
 
 
 def node_from_dict(node_dict: dict) -> Node:
@@ -152,6 +68,24 @@ def node_from_dict(node_dict: dict) -> Node:
             structured_output_max_retries=3,
             structured_output_schema=None,
             structured_output_schema_target=None,
+        )
+    elif node_dict["type"] == "SemanticSearch":
+        return SemanticSearchNode(
+            id=uuid.UUID(node_dict["id"]),
+            name=node_dict["name"],
+            inputs=[Handle.from_dict(handle) for handle in node_dict["inputs"]],
+            outputs=[Handle.from_dict(handle) for handle in node_dict["outputs"]],
+            inputs_mappings={
+                uuid.UUID(k): uuid.UUID(v)
+                for k, v in node_dict["inputsMappings"].items()
+            },
+            limit=node_dict["limit"],
+            threshold=node_dict["threshold"],
+            template=node_dict["template"],
+            datasources=[
+                SemanticSearchDatasource.from_dict(ds)
+                for ds in node_dict["datasources"]
+            ],
         )
     else:
         raise ValueError(f"Node type {node_dict['type']} not supported")

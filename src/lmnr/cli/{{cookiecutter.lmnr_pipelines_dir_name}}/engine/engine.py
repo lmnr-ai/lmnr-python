@@ -9,7 +9,8 @@ import queue
 from .task import Task
 from .action import NodeRunError, RunOutput
 from .state import State
-from lmnr_engine.types import Message, NodeInput
+from lmnr.types import NodeInput
+from lmnr_engine.types import Message
 
 
 logger = logging.getLogger(__name__)
