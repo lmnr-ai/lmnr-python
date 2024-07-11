@@ -132,6 +132,42 @@ def {{task.function_name}}({{ task.handle_args }}, _env: dict[str, str]) -> RunO
     return RunOutput(status="Success", output=completion_message)
 
 
+{% elif task.node_type == "SemanticSearch" %}
+def {{task.function_name}}(query: NodeInput, _env: dict[str, str]) -> RunOutput:
+    {% set datasources_length=task.config.datasource_ids|length %}
+    {% if datasources_length == 0 %}
+    raise NodeRunError("No datasources provided")
+    {% endif %}
+
+    headers = {
+        "Authorization": f"Bearer {_env['LMNR_PROJECT_API_KEY']}",
+    }
+    data = {
+        "query": query,
+        "limit": {{ task.config.limit }},
+        "threshold": {{ task.config.threshold }},
+        "datasourceIds": {{ task.config.datasource_ids_list }},
+    }
+    query_res = requests.post("https://api.lmnr.ai/v2/semantic-search", headers=headers, json=data)
+    if query_res.status_code != 200:
+        raise NodeRunError(f"Vector search request failed: {query_res.text}")
+
+    results = query_res.json()
+
+    def render_query_res_point(template: str, point: dict, relevance_index: int) -> str:
+        data = point["data"]
+        data["relevance_index"] = relevance_index
+        res = template
+        for key, value in data.items():
+            res = res.replace("{{'{{'}}" + key + "{{'}}'}}", str(value))
+        return res
+
+    rendered_res_points = [render_query_res_point("""{{task.config.template}}""", res_point, index + 1) for (index, res_point) in enumerate(results)]
+    output = "\n".join(rendered_res_points)
+
+    return RunOutput(status="Success", output=output)
+
+
 {% elif task.node_type == "Output" %}
 def {{task.function_name}}(output: NodeInput, _env: dict[str, str]) -> RunOutput:
     return RunOutput(status="Success", output=output)
