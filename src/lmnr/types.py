@@ -1,6 +1,7 @@
 
-import requests
 import pydantic
+import requests
+import uuid
 from typing import Union, Optional
 
 class ChatMessage(pydantic.BaseModel):
@@ -42,20 +43,28 @@ class SDKError(Exception):
     def __init__(self, error_message: str):
         super().__init__(error_message)
 
-class ToolCallRequest(pydantic.BaseModel):
+class ToolCallFunction(pydantic.BaseModel):
     name: str
     arguments: str
 
 class ToolCall(pydantic.BaseModel):
     id: Optional[str]
     type: Optional[str]
-    function: ToolCallRequest
-
-ToolCallResponse = NodeInput
-class ToolCallError(pydantic.BaseModel):
-    error: str
+    function: ToolCallFunction
 
 # TODO: allow snake_case and manually convert to camelCase
+class ToolCallRequest(pydantic.BaseModel):
+    reqId: uuid.UUID
+    toolCall: ToolCall
+
+class ToolCallResponse(pydantic.BaseModel):
+    reqId: uuid.UUID
+    response: NodeInput
+
+class ToolCallError(pydantic.BaseModel):
+    reqId: uuid.UUID
+    error: str
+
 class RegisterDebuggerRequest(pydantic.BaseModel):
     debuggerSessionId: str
 

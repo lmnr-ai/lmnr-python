@@ -4,7 +4,7 @@ import pydantic
 import requests
 from lmnr.types import (
     EndpointRunError, EndpointRunResponse, NodeInput, EndpointRunRequest,
-    ToolCall, SDKError
+    ToolCallError, ToolCallRequest, ToolCallResponse, SDKError
 )
 from typing import Callable, Optional
 from websockets.sync.client import connect
@@ -126,31 +126,44 @@ class Laminar:
             }
         ) as websocket:
             websocket.send(request.model_dump_json())
+            req_id = None
 
             while True:
                 message = websocket.recv()
                 try:
-                    tool_call = ToolCall.model_validate_json(message)
+                    tool_call = ToolCallRequest.model_validate_json(message)
+                    req_id = tool_call.req_id
                     matching_tools = [
                         tool for tool in tools
-                        if tool.__name__ == tool_call.function.name
+                        if tool.__name__ == tool_call.toolCall.function.name
                     ]
                     if not matching_tools:
                         raise SDKError(
-                            f'Tool {tool_call.function.name} not found.'
+                            f'Tool {tool_call.toolCall.function.name} not found.'
                             ' Registered tools: '
                             f'{", ".join([tool.__name__ for tool in tools])}'
                         )
                     tool = matching_tools[0]
-                    if tool.__name__ == tool_call.function.name:
                         # default the arguments to an empty dictionary
+                    if tool.__name__ == tool_call.toolCall.function.name:
                         arguments = {}
                         try:
-                            arguments = json.loads(tool_call.function.arguments)
+                            arguments = json.loads(tool_call.toolCall.function.arguments)
                         except:
                             pass
-                        response = tool(**arguments)
-                        websocket.send(json.dumps(response))
+                        try:
+                            response = tool(**arguments)
+                        except Exception as e:
+                            error_message = 'Error occurred while running tool' +\
+                             f'{tool.__name__}: {e}'
+                            e = ToolCallError(error=error_message, reqId=req_id)
+                            websocket.send(e.model_dump_json())
+                        websocket.send(
+                            ToolCallResponse(
+                                reqId=tool_call.reqId,
+                                response=response
+                            ).model_dump_json()
+                        )
                 except pydantic.ValidationError as e:
                     message_json = json.loads(message)
                     keys = list(message_json.keys())
@@ -161,6 +174,5 @@ class Laminar:
                     result = EndpointRunResponse.model_validate(message_json)
                     websocket.close()
                     return result
-                except Exception:
-                    websocket.close()
-                    raise SDKError('Error communicating to backend through websocket')
+                except Exception as e:
+                    raise SDKError(f'Error communicating to backend through websocket {e}')
