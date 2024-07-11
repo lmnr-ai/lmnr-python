@@ -158,11 +158,19 @@ class Laminar:
                              f'{tool.__name__}: {e}'
                             e = ToolCallError(error=error_message, reqId=req_id)
                             websocket.send(e.model_dump_json())
-                        websocket.send(
-                            ToolCallResponse(
+                        formatted_response = None
+                        try:
+                            formatted_response = ToolCallResponse(
                                 reqId=tool_call.reqId,
                                 response=response
-                            ).model_dump_json()
+                            )
+                        except pydantic.ValidationError as e:
+                            formatted_response = ToolCallResponse(
+                                reqId=tool_call.reqId,
+                                response=str(response)
+                            )
+                        websocket.send(
+                            formatted_response.model_dump_json()
                         )
                 except pydantic.ValidationError as e:
                     message_json = json.loads(message)

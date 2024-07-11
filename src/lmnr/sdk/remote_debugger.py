@@ -1,5 +1,6 @@
 from typing import Callable, Optional
 from websockets.sync.client import connect
+import pydantic
 import websockets
 from lmnr.types import (
     DeregisterDebuggerRequest, NodeInput, RegisterDebuggerRequest,
@@ -89,18 +90,26 @@ class RemoteDebugger:
                     except:
                         pass
                     try:
-                        response = tool(**arguments)  # of type NodeInput
-                        websocket.send(
-                            ToolCallResponse(
-                                reqId=tool_call.reqId,
-                                response=response
-                            ).model_dump_json()
-                        )
+                        response = tool(**arguments)
                     except Exception as e:
                         error_message = 'Error occurred while running tool' +\
-                             f'{tool.__name__}: {e}'
+                            f'{tool.__name__}: {e}'
                         e = ToolCallError(error=error_message, reqId=req_id)
                         websocket.send(e.model_dump_json())
+                    formatted_response = None
+                    try:
+                        formatted_response = ToolCallResponse(
+                            reqId=tool_call.reqId,
+                            response=response
+                        )
+                    except pydantic.ValidationError as e:
+                        formatted_response = ToolCallResponse(
+                            reqId=tool_call.reqId,
+                            response=str(response)
+                        )
+                    websocket.send(
+                        formatted_response.model_dump_json()
+                    )
             websocket.send(
                 DeregisterDebuggerRequest(
                     debuggerSessionId=self.session,
