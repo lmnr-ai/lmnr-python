@@ -1,13 +1,20 @@
 from typing import Callable, Optional
 from websockets.sync.client import connect
 import websockets
-from lmnr.types import DeregisterDebuggerRequest, NodeInput, RegisterDebuggerRequest, SDKError, ToolCall, ToolCallError
+from lmnr.types import (
+    DeregisterDebuggerRequest, NodeInput, RegisterDebuggerRequest,
+    SDKError, ToolCallError, ToolCallRequest, ToolCallResponse
+)
 import uuid
 import json
 from threading import Thread
 
 class RemoteDebugger:
-    def __init__(self, project_api_key: str, tools: list[Callable[..., NodeInput]] = []):
+    def __init__(
+        self,
+        project_api_key: str,
+        tools: list[Callable[..., NodeInput]] = []
+    ):
         self.project_api_key = project_api_key
         self.url = 'wss://api.lmnr.ai/v2/endpoint/ws'
         self.tools = tools
@@ -25,7 +32,8 @@ class RemoteDebugger:
         self.stop_flag = True
         self.thread.join()
         self.session = None
-        # python allows running threads only once, so we need to create a new thread
+        # python allows running threads only once, so we need to create
+        # a new thread
         # in case the user wants to start the debugger again
         self.thread = Thread(target=self._run)
     
@@ -41,10 +49,13 @@ class RemoteDebugger:
             }
         ) as websocket:
             websocket.send(request.model_dump_json())
-            print(self._format_session_id())
+            print(self._format_session_id_and_registerd_functions())
+            req_id = None
+
             while not self.stop_flag:
                 try:
-                    # blocks the thread until a message is received or a timeout (3 seconds) occurs
+                    # blocks the thread until a message 
+                    # is received or a timeout (3 seconds) occurs
                     message = websocket.recv(3)
                 except TimeoutError:
                     continue
@@ -52,45 +63,68 @@ class RemoteDebugger:
                     print("Connection closed. Please restart the debugger.")
                     return
                 try:
-                    tool_call = ToolCall.model_validate_json(message)
+                    tool_call = ToolCallRequest.model_validate_json(message)
+                    req_id = tool_call.reqId
                 except:
                     raise SDKError(f'Invalid message received:\n{message}')
                 matching_tools = [
                     tool for tool in self.tools
-                    if tool.__name__ == tool_call.function.name
+                    if tool.__name__ == tool_call.toolCall.function.name
                 ]
                 if not matching_tools:
-                    error_message = f'Tool {tool_call.function.name} not found.' +\
-                    f' Registered tools: {", ".join([tool.__name__ for tool in self.tools])}'
-                    e = ToolCallError(error=error_message)
+                    error_message = \
+                        f'Tool {tool_call.toolCall.function.name} not found' +\
+                        '. Registered tools: ' +\
+                        {", ".join([tool.__name__ for tool in self.tools])}
+                    e = ToolCallError(error=error_message, reqId=req_id)
                     websocket.send(e.model_dump_json())
                     continue
                 tool = matching_tools[0]
-                if tool.__name__ == tool_call.function.name:
+                if tool.__name__ == tool_call.toolCall.function.name:
                     # default the arguments to an empty dictionary
                     arguments = {}
                     try:
-                        arguments = json.loads(tool_call.function.arguments)
+                        arguments = json.loads(
+                            tool_call.toolCall.function.arguments)
                     except:
                         pass
                     try:
                         response = tool(**arguments)  # of type NodeInput
-                        websocket.send(json.dumps(response))
+                        websocket.send(
+                            ToolCallResponse(
+                                reqId=tool_call.reqId,
+                                response=response
+                            ).model_dump_json()
+                        )
                     except Exception as e:
-                        error_message = f'Error occurred while running tool {tool.__name__}: {e}'
-                        e = ToolCallError(error=error_message)
+                        error_message = 'Error occurred while running tool' +\
+                             f'{tool.__name__}: {e}'
+                        e = ToolCallError(error=error_message, reqId=req_id)
                         websocket.send(e.model_dump_json())
-            websocket.send(DeregisterDebuggerRequest(debuggerSessionId=self.session, deregister=True).model_dump_json())
+            websocket.send(
+                DeregisterDebuggerRequest(
+                    debuggerSessionId=self.session,
+                    deregister=True
+                ).model_dump_json()
+            )
 
     def _generate_session_id(self) -> str:
         return uuid.uuid4().urn[9:]
 
-    def _format_session_id(self) -> str:
+    def _format_session_id_and_registerd_functions(self) -> str:
+        registered_functions = \
+            ',\n'.join(['- ' + tool.__name__ for tool in self.tools])
         return \
 f"""
 ========================================
 Debugger Session ID:
 {self.session}
 ========================================
+
+Registered functions:
+{registered_functions}
+
+========================================
 """
+
     

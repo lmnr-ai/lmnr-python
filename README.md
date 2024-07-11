@@ -1,4 +1,6 @@
-# Python SDK for Laminar AI
+# Laminar AI
+
+This reipo provides core for code generation, Laminar CLI, and Laminar SDK.
 
 ## Quickstart
 ```sh
@@ -115,14 +117,6 @@ Set up `DEBUGGER_SESSION_ID` environment variable in your pipeline.
 #### 4. Run and experiment
 
 You can run as many sessions as you need, experimenting with your flows.
-
-#### 5. Stop the debugger
-
-In order to stop the session, do
-
-```python
-debugger.stop()
-```
 
 ## CLI for code generation
 

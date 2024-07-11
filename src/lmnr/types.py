@@ -1,5 +1,6 @@
 import requests
 import pydantic
+import uuid
 from typing import Union, Optional
 
 
@@ -61,14 +62,22 @@ class ToolCall(pydantic.BaseModel):
     function: ToolCallRequest
 
 
-ToolCallResponse = NodeInput
+# TODO: allow snake_case and manually convert to camelCase
+class ToolCallRequest(pydantic.BaseModel):
+    reqId: uuid.UUID
+    toolCall: ToolCall
+
+
+class ToolCallResponse(pydantic.BaseModel):
+    reqId: uuid.UUID
+    response: NodeInput
 
 
 class ToolCallError(pydantic.BaseModel):
+    reqId: uuid.UUID
     error: str
 
 
-# TODO: allow snake_case and manually convert to camelCase
 class RegisterDebuggerRequest(pydantic.BaseModel):
     debuggerSessionId: str
 
