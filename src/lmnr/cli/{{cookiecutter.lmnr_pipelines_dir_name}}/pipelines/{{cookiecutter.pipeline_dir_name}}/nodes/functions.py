@@ -1,6 +1,7 @@
 import requests
 import json
 
+from lmnr.types import ConditionedValue
 from lmnr_engine.engine.action import NodeRunError, RunOutput
 from lmnr_engine.types import ChatMessage, NodeInput
 
@@ -166,6 +167,37 @@ def {{task.function_name}}(query: NodeInput, _env: dict[str, str]) -> RunOutput:
     output = "\n".join(rendered_res_points)
 
     return RunOutput(status="Success", output=output)
+
+
+{% elif task.node_type == "Router" %}
+def {{task.function_name}}(condition: NodeInput, input: NodeInput, _env: dict[str, str]) -> RunOutput:
+    routes = {{ task.config.routes }}
+    has_default_route = {{ task.config.has_default_route }}
+
+    for route in routes:
+        if route == condition:
+            return RunOutput(status="Success", output=ConditionedValue(condition=route, value=input))
+        
+    if has_default_route:
+        return RunOutput(status="Success", output=ConditionedValue(condition=routes[-1], value=input))
+
+    raise NodeRunError(f"No route found for condition {condition}")
+
+
+{% elif task.node_type == "Condition" %}
+def {{task.function_name}}(input: NodeInput, _env: dict[str, str]) -> RunOutput:
+    condition = "{{task.config.condition}}"
+
+    if input.condition == condition:
+        return RunOutput(status="Success", output=input.value)
+    else:
+        return RunOutput(status="Termination", output=None)
+
+
+{% elif task.node_type == "Code" %}
+def {{task.function_name}}({{ task.handle_args }}, _env: dict[str, str]) -> RunOutput:
+    # Implement any functionality you want here
+    raise NodeRunError("Implement your code here")
 
 
 {% elif task.node_type == "Output" %}
