@@ -170,13 +170,17 @@ class Engine:
                 active_tasks.remove(task_id)
 
             if depth > 0:
-                # propagate reset once we enter the loop
-                # TODO: Implement this for cycles
-                raise NotImplementedError()
+                self.propagate_reset(task_id, task_id, tasks)
 
+            # terminate graph on recursion depth exceeding 10
             if depth == 10:
-                # TODO: Implement this for cycles
-                raise NotImplementedError()
+                logging.error("Max recursion depth exceeded, terminating graph")
+                error = Message(
+                    id=uuid.uuid4(),
+                    value="Max recursion depth exceeded",
+                    start_time=start_time,
+                    end_time=datetime.datetime.now(),
+                )
 
             if not next:
                 # if there are no next tasks, we can terminate the graph
@@ -260,3 +264,30 @@ class Engine:
             task,
             queue,
         )
+
+    def propagate_reset(
+        self, current_task_name: str, start_task_name: str, tasks: dict[str, Task]
+    ) -> None:
+        task = tasks[current_task_name]
+
+        for next_task_name in task.next:
+            if next_task_name == start_task_name:
+                return
+
+            next_task = tasks[next_task_name]
+
+            # in majority of cases there will be only one handle name
+            # however we need to handle the case when single output is mapped
+            # to multiple inputs on the next node
+            handle_names = []
+            for k, v in next_task.handles_mapping:
+                if v == task.name:
+                    handle_names.append(k)
+
+            for handle_name in handle_names:
+                next_state = next_task.input_states[handle_name]
+
+                if next_state.get_state().is_success():
+                    next_state.set_state(State.empty())
+                    next_state.semaphore.release()
+                    self.propagate_reset(next_task_name, start_task_name, tasks)
