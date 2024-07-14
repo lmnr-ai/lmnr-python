@@ -148,8 +148,8 @@ print(f"Pipeline run result:\n{res}")
 ```
 
 ### Current functionality
-- Supports graph generation for graphs with Input, Output, and LLM nodes only
-- For LLM nodes, it only supports OpenAI and Anthropic models and doesn't support structured output
+- Supports graph generation for graphs with the following nodes: Input, Output, LLM, Router, Code.
+- For LLM nodes, it only supports OpenAI and Anthropic models. Structured output in LLM nodes will be supported soon.
 
 ## PROJECT_API_KEY
 
