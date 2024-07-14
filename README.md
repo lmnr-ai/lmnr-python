@@ -144,7 +144,7 @@ res = pipeline.run(
         "OPENAI_API_KEY": <OPENAI_API_KEY>,
     }
 )
-print(f"RESULT:\n{res}")
+print(f"Pipeline run result:\n{res}")
 ```
 
 ### Current functionality
