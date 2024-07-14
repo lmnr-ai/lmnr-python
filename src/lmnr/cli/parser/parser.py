@@ -17,6 +17,9 @@ def runnable_graph_to_template_vars(graph: dict) -> dict:
         node = node_from_dict(node_obj)
         handles_mapping = node.handles_mapping(output_handle_id_to_node_name)
         node_type = node.node_type()
+
+        unique_handles = set([handle_name for (handle_name, _) in handles_mapping])
+
         tasks.append(
             {
                 "name": node.name,
@@ -28,10 +31,7 @@ def runnable_graph_to_template_vars(graph: dict) -> dict:
                     handle_name for (handle_name, _) in handles_mapping
                 ],
                 "handle_args": ", ".join(
-                    [
-                        f"{handle_name}: NodeInput"
-                        for (handle_name, _) in handles_mapping
-                    ]
+                    [f"{handle_name}: NodeInput" for handle_name in unique_handles]
                 ),
                 "prev": [],
                 "next": [],

@@ -3,3 +3,4 @@ dist/
 poetry.lock
 lmnr_engine/
 .vscode
+main.py

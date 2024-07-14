@@ -1,6 +1,7 @@
 import requests
 import json
 
+from lmnr.types import ConditionedValue
 from lmnr_engine.engine.action import NodeRunError, RunOutput
 from lmnr_engine.types import ChatMessage, NodeInput
 
@@ -24,8 +25,8 @@ def {{task.function_name}}({{ task.handle_args }}, _env: dict[str, str]) -> RunO
     rendered_prompt = """{{task.config.prompt}}"""
     {% set prompt_variables = task.input_handle_names|reject("equalto", "chat_messages") %}
     {% for prompt_variable in prompt_variables %}
-    # TODO: Fix this. Using double curly braces in quotes because normal double curly braces
-    # get replaced during rendering by Cookiecutter. This is a hacky solution.
+    {# TODO: Fix this. Using double curly braces in quotes because normal double curly braces
+    # get replaced during rendering by Cookiecutter. This is a hacky solution.#}
     rendered_prompt = rendered_prompt.replace("{{'{{'}}{{prompt_variable}}{{'}}'}}", {{prompt_variable}})  # type: ignore
     {% endfor %}
 
@@ -68,7 +69,8 @@ def {{task.function_name}}({{ task.handle_args }}, _env: dict[str, str]) -> RunO
     completion_message = chat_completion["choices"][0]["message"]["content"]
 
     meta_log = {}
-    meta_log["node_chunk_id"] = None  # TODO: Add node chunk id
+    {# TODO: Add node chunk id #}
+    meta_log["node_chunk_id"] = None
     meta_log["model"] = "{{task.config.model}}"
     meta_log["prompt"] = rendered_prompt
     meta_log["input_message_count"] = len(messages)
@@ -77,7 +79,8 @@ def {{task.function_name}}({{ task.handle_args }}, _env: dict[str, str]) -> RunO
     meta_log["total_token_count"] = (
         chat_completion["usage"]["prompt_tokens"] + chat_completion["usage"]["completion_tokens"]
     )
-    meta_log["approximate_cost"] = None  # TODO: Add approximate cost
+    {# TODO: Add approximate cost #}
+    meta_log["approximate_cost"] = None
     {% elif task.config.provider == "anthropic" %}
     data = {
         "model": "{{task.config.model}}",
@@ -85,7 +88,7 @@ def {{task.function_name}}({{ task.handle_args }}, _env: dict[str, str]) -> RunO
     }
     data.update(params)
 
-    # TODO: Generate appropriate code based on this if-else block
+    {# TODO: Generate appropriate code based on this if-else block #}
     if len(messages) == 1 and messages[0].role == "system":
         messages[0].role = "user"
         message_jsons = [
@@ -116,7 +119,8 @@ def {{task.function_name}}({{ task.handle_args }}, _env: dict[str, str]) -> RunO
     completion_message = chat_completion["content"][0]["text"]
 
     meta_log = {}
-    meta_log["node_chunk_id"] = None  # TODO: Add node chunk id
+    {# TODO: Add node chunk id#}
+    meta_log["node_chunk_id"] = None
     meta_log["model"] = "{{task.config.model}}"
     meta_log["prompt"] = rendered_prompt
     meta_log["input_message_count"] = len(messages)
@@ -125,7 +129,8 @@ def {{task.function_name}}({{ task.handle_args }}, _env: dict[str, str]) -> RunO
     meta_log["total_token_count"] = (
         chat_completion["usage"]["input_tokens"] + chat_completion["usage"]["output_tokens"]
     )
-    meta_log["approximate_cost"] = None  # TODO: Add approximate cost
+    {# TODO: Add approximate cost#}
+    meta_log["approximate_cost"] = None
     {% else %}
     {% endif %}
 
@@ -150,7 +155,7 @@ def {{task.function_name}}(query: NodeInput, _env: dict[str, str]) -> RunOutput:
     }
     query_res = requests.post("https://api.lmnr.ai/v2/semantic-search", headers=headers, json=data)
     if query_res.status_code != 200:
-        raise NodeRunError(f"Vector search request failed: {query_res.text}")
+        raise NodeRunError(f"Vector search request failed:{query_res.status_code}\n{query_res.text}")
 
     results = query_res.json()
 
@@ -166,6 +171,37 @@ def {{task.function_name}}(query: NodeInput, _env: dict[str, str]) -> RunOutput:
     output = "\n".join(rendered_res_points)
 
     return RunOutput(status="Success", output=output)
+
+
+{% elif task.node_type == "Router" %}
+def {{task.function_name}}(condition: NodeInput, input: NodeInput, _env: dict[str, str]) -> RunOutput:
+    routes = {{ task.config.routes }}
+    has_default_route = {{ task.config.has_default_route }}
+
+    for route in routes:
+        if route == condition:
+            return RunOutput(status="Success", output=ConditionedValue(condition=route, value=input))
+        
+    if has_default_route:
+        return RunOutput(status="Success", output=ConditionedValue(condition=routes[-1], value=input))
+
+    raise NodeRunError(f"No route found for condition {condition}")
+
+
+{% elif task.node_type == "Condition" %}
+def {{task.function_name}}(input: NodeInput, _env: dict[str, str]) -> RunOutput:
+    condition = "{{task.config.condition}}"
+
+    if input.condition == condition:
+        return RunOutput(status="Success", output=input.value)
+    else:
+        return RunOutput(status="Termination", output=None)
+
+
+{% elif task.node_type == "Code" %}
+def {{task.function_name}}({{ task.handle_args }}, _env: dict[str, str]) -> RunOutput:
+    # Implement any functionality you want here
+    raise NodeRunError("Implement your code here")
 
 
 {% elif task.node_type == "Output" %}

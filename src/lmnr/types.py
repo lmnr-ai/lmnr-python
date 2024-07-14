@@ -9,7 +9,12 @@ class ChatMessage(pydantic.BaseModel):
     content: str
 
 
-NodeInput = Union[str, list[ChatMessage]]  # TypeAlias
+class ConditionedValue(pydantic.BaseModel):
+    condition: str
+    value: "NodeInput"
+
+
+NodeInput = Union[str, list[ChatMessage], ConditionedValue]  # TypeAlias
 
 
 class EndpointRunRequest(pydantic.BaseModel):
@@ -51,7 +56,7 @@ class SDKError(Exception):
         super().__init__(error_message)
 
 
-class ToolCallRequest(pydantic.BaseModel):
+class ToolCallFunction(pydantic.BaseModel):
     name: str
     arguments: str
 
@@ -59,7 +64,7 @@ class ToolCallRequest(pydantic.BaseModel):
 class ToolCall(pydantic.BaseModel):
     id: Optional[str]
     type: Optional[str]
-    function: ToolCallRequest
+    function: ToolCallFunction
 
 
 # TODO: allow snake_case and manually convert to camelCase

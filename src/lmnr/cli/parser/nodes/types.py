@@ -2,9 +2,12 @@ from typing import Any, Union
 import uuid
 
 from lmnr.cli.parser.nodes import Handle
+from lmnr.cli.parser.nodes.code import CodeNode
+from lmnr.cli.parser.nodes.condition import ConditionNode
 from lmnr.cli.parser.nodes.input import InputNode
 from lmnr.cli.parser.nodes.llm import LLMNode
 from lmnr.cli.parser.nodes.output import OutputNode
+from lmnr.cli.parser.nodes.router import Route, RouterNode
 from lmnr.cli.parser.nodes.semantic_search import (
     SemanticSearchDatasource,
     SemanticSearchNode,
@@ -21,7 +24,15 @@ def node_input_from_json(json_val: Any) -> NodeInput:
         raise ValueError(f"Invalid NodeInput value: {json_val}")
 
 
-Node = Union[InputNode, OutputNode, LLMNode, SemanticSearchNode]
+Node = Union[
+    InputNode,
+    OutputNode,
+    ConditionNode,
+    LLMNode,
+    RouterNode,
+    SemanticSearchNode,
+    CodeNode,
+]
 
 
 def node_from_dict(node_dict: dict) -> Node:
@@ -43,6 +54,18 @@ def node_from_dict(node_dict: dict) -> Node:
                 uuid.UUID(k): uuid.UUID(v)
                 for k, v in node_dict["inputsMappings"].items()
             },
+        )
+    elif node_dict["type"] == "Condition":
+        return ConditionNode(
+            id=uuid.UUID(node_dict["id"]),
+            name=node_dict["name"],
+            inputs=[Handle.from_dict(handle) for handle in node_dict["inputs"]],
+            outputs=[Handle.from_dict(handle) for handle in node_dict["outputs"]],
+            inputs_mappings={
+                uuid.UUID(k): uuid.UUID(v)
+                for k, v in node_dict["inputsMappings"].items()
+            },
+            condition=node_dict["condition"],
         )
     elif node_dict["type"] == "LLM":
         return LLMNode(
@@ -69,6 +92,19 @@ def node_from_dict(node_dict: dict) -> Node:
             structured_output_schema=None,
             structured_output_schema_target=None,
         )
+    elif node_dict["type"] == "Router":
+        return RouterNode(
+            id=uuid.UUID(node_dict["id"]),
+            name=node_dict["name"],
+            inputs=[Handle.from_dict(handle) for handle in node_dict["inputs"]],
+            outputs=[Handle.from_dict(handle) for handle in node_dict["outputs"]],
+            inputs_mappings={
+                uuid.UUID(k): uuid.UUID(v)
+                for k, v in node_dict["inputsMappings"].items()
+            },
+            routes=[Route(name=route["name"]) for route in node_dict["routes"]],
+            has_default_route=node_dict["hasDefaultRoute"],
+        )
     elif node_dict["type"] == "SemanticSearch":
         return SemanticSearchNode(
             id=uuid.UUID(node_dict["id"]),
@@ -86,6 +122,17 @@ def node_from_dict(node_dict: dict) -> Node:
                 SemanticSearchDatasource.from_dict(ds)
                 for ds in node_dict["datasources"]
             ],
+        )
+    elif node_dict["type"] == "Code":
+        return CodeNode(
+            id=uuid.UUID(node_dict["id"]),
+            name=node_dict["name"],
+            inputs=[Handle.from_dict(handle) for handle in node_dict["inputs"]],
+            outputs=[Handle.from_dict(handle) for handle in node_dict["outputs"]],
+            inputs_mappings={
+                uuid.UUID(k): uuid.UUID(v)
+                for k, v in node_dict["inputsMappings"].items()
+            },
         )
     else:
         raise ValueError(f"Node type {node_dict['type']} not supported")
