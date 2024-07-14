@@ -1,6 +1,6 @@
 # Laminar AI
 
-This reipo provides core for code generation, Laminar CLI, and Laminar SDK.
+This repo provides core for code generation, Laminar CLI, and Laminar SDK.
 
 ## Quickstart
 ```sh
