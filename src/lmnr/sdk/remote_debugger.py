@@ -96,6 +96,7 @@ class RemoteDebugger:
                             f'{tool.__name__}: {e}'
                         e = ToolCallError(error=error_message, reqId=req_id)
                         websocket.send(e.model_dump_json())
+                        continue
                     formatted_response = None
                     try:
                         formatted_response = ToolCallResponse(
