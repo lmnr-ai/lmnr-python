@@ -4,11 +4,9 @@ import os
 import click
 import logging
 from cookiecutter.main import cookiecutter
-from importlib import resources as importlib_resources
 from pydantic.alias_generators import to_pascal
 
 from .parser.parser import runnable_graph_to_template_vars
-import lmnr
 
 logger = logging.getLogger(__name__)
 
@@ -87,11 +85,10 @@ def pull(pipeline_name, pipeline_version_name, project_api_key, loglevel):
 
     logger.info(f"Context:\n{context}")
     cookiecutter(
-        str(importlib_resources.files(lmnr)),
+        "https://github.com/lmnr-ai/lmnr-python-engine.git",
         output_dir=".",
         config_file=None,
         extra_context=context,
-        directory="cli/",
         no_input=True,
         overwrite_if_exists=True,
     )
