@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from datetime import datetime
 
 import uuid
 
@@ -8,43 +7,18 @@ from lmnr.cli.parser.utils import map_handles
 
 
 @dataclass
-class FileMetadata:
-    id: uuid.UUID
-    created_at: datetime
-    project_id: uuid.UUID
-    filename: str
-
-
-@dataclass
 class Dataset:
     id: uuid.UUID
-    created_at: datetime
-    project_id: uuid.UUID
-    name: str
-
-
-@dataclass
-class SemanticSearchDatasource:
-    type: str
-    id: uuid.UUID
-    # TODO: Paste other fields here, use Union[FileMetadata, Dataset]
+    # created_at: datetime
+    # project_id: uuid.UUID
+    # name: str
+    # indexed_on: Optional[str]
 
     @classmethod
-    def from_dict(cls, datasource_dict: dict) -> "SemanticSearchDatasource":
-        if datasource_dict["type"] == "File":
-            return cls(
-                type="File",
-                id=uuid.UUID(datasource_dict["id"]),
-            )
-        elif datasource_dict["type"] == "Dataset":
-            return cls(
-                type="Dataset",
-                id=uuid.UUID(datasource_dict["id"]),
-            )
-        else:
-            raise ValueError(
-                f"Invalid SemanticSearchDatasource type: {datasource_dict['type']}"
-            )
+    def from_dict(cls, dataset_dict: dict) -> "Dataset":
+        return cls(
+            id=uuid.UUID(dataset_dict["id"]),
+        )
 
 
 @dataclass
@@ -57,7 +31,7 @@ class SemanticSearchNode(NodeFunctions):
     limit: int
     threshold: float
     template: str
-    datasources: list[SemanticSearchDatasource]
+    datasets: list[Dataset]
 
     def handles_mapping(
         self, output_handle_id_to_node_name: dict[str, str]
@@ -74,8 +48,6 @@ class SemanticSearchNode(NodeFunctions):
             "limit": self.limit,
             "threshold": self.threshold,
             "template": self.template,
-            "datasource_ids": [str(datasource.id) for datasource in self.datasources],
-            "datasource_ids_list": str(
-                [str(datasource.id) for datasource in self.datasources]
-            ),
+            "datasource_ids": [str(dataset.id) for dataset in self.datasets],
+            "datasource_ids_list": str([str(dataset.id) for dataset in self.datasets]),
         }

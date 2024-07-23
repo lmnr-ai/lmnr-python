@@ -9,7 +9,7 @@ from lmnr.cli.parser.nodes.llm import LLMNode
 from lmnr.cli.parser.nodes.output import OutputNode
 from lmnr.cli.parser.nodes.router import Route, RouterNode
 from lmnr.cli.parser.nodes.semantic_search import (
-    SemanticSearchDatasource,
+    Dataset,
     SemanticSearchNode,
 )
 from lmnr.types import NodeInput, ChatMessage
@@ -118,10 +118,7 @@ def node_from_dict(node_dict: dict) -> Node:
             limit=node_dict["limit"],
             threshold=node_dict["threshold"],
             template=node_dict["template"],
-            datasources=[
-                SemanticSearchDatasource.from_dict(ds)
-                for ds in node_dict["datasources"]
-            ],
+            datasets=[Dataset.from_dict(ds) for ds in node_dict["datasets"]],
         )
     elif node_dict["type"] == "Code":
         return CodeNode(
