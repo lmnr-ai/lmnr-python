@@ -5,6 +5,7 @@ from lmnr.cli.parser.nodes import Handle
 from lmnr.cli.parser.nodes.code import CodeNode
 from lmnr.cli.parser.nodes.condition import ConditionNode
 from lmnr.cli.parser.nodes.input import InputNode
+from lmnr.cli.parser.nodes.json_extractor import JsonExtractorNode
 from lmnr.cli.parser.nodes.llm import LLMNode
 from lmnr.cli.parser.nodes.output import OutputNode
 from lmnr.cli.parser.nodes.router import Route, RouterNode
@@ -32,6 +33,7 @@ Node = Union[
     RouterNode,
     SemanticSearchNode,
     CodeNode,
+    JsonExtractorNode,
 ]
 
 
@@ -42,7 +44,6 @@ def node_from_dict(node_dict: dict) -> Node:
             name=node_dict["name"],
             outputs=[Handle.from_dict(handle) for handle in node_dict["outputs"]],
             input=node_input_from_json(node_dict["input"]),
-            input_type=node_dict["inputType"],
         )
     elif node_dict["type"] == "Output":
         return OutputNode(
@@ -130,6 +131,20 @@ def node_from_dict(node_dict: dict) -> Node:
                 uuid.UUID(k): uuid.UUID(v)
                 for k, v in node_dict["inputsMappings"].items()
             },
+            code=node_dict["code"],
+            fn_name=node_dict["fnName"],
+        )
+    elif node_dict["type"] == "JsonExtractor":
+        return JsonExtractorNode(
+            id=uuid.UUID(node_dict["id"]),
+            name=node_dict["name"],
+            inputs=[Handle.from_dict(handle) for handle in node_dict["inputs"]],
+            outputs=[Handle.from_dict(handle) for handle in node_dict["outputs"]],
+            inputs_mappings={
+                uuid.UUID(k): uuid.UUID(v)
+                for k, v in node_dict["inputsMappings"].items()
+            },
+            template=node_dict["template"],
         )
     else:
         raise ValueError(f"Node type {node_dict['type']} not supported")
