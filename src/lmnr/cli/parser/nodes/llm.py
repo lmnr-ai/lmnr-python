@@ -44,8 +44,13 @@ class LLMNode(NodeFunctions):
             "model": model,
             "model_params": self.model_params,
             "stream": self.stream,
-            "structured_output_enabled": self.structured_output_enabled,
+            "enable_structured_output": self.structured_output_enabled
+            and self.structured_output_schema is not None,
             "structured_output_max_retries": self.structured_output_max_retries,
             "structured_output_schema": self.structured_output_schema,
-            "structured_output_schema_target": self.structured_output_schema_target,
+            "structured_output_schema_target_str": (
+                "None"
+                if self.structured_output_schema_target is None
+                else f'"{self.structured_output_schema_target}"'
+            ),
         }

@@ -87,11 +87,14 @@ def node_from_dict(node_dict: dict) -> Node:
                 node_dict["modelParams"] if "modelParams" in node_dict else None
             ),
             stream=False,
-            # TODO: Implement structured output
-            structured_output_enabled=False,
-            structured_output_max_retries=3,
-            structured_output_schema=None,
-            structured_output_schema_target=None,
+            structured_output_enabled=node_dict.get("structuredOutputEnabled", False),
+            structured_output_max_retries=node_dict.get(
+                "structuredOutputMaxRetries", 0
+            ),
+            structured_output_schema=node_dict.get("structuredOutputSchema", None),
+            structured_output_schema_target=node_dict.get(
+                "structuredOutputSchemaTarget", None
+            ),
         )
     elif node_dict["type"] == "Router":
         return RouterNode(
