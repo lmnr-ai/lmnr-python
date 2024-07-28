@@ -85,8 +85,7 @@ def pull(pipeline_name, pipeline_version_name, project_api_key, loglevel):
 
     logger.info(f"Context:\n{context}")
     cookiecutter(
-        "/Users/tmr/lmnr-python-engine",
-        directory=".",
+        "https://github.com/lmnr-ai/lmnr-python-engine.git",
         output_dir=".",
         config_file=None,
         extra_context=context,
