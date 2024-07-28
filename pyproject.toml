@@ -27,7 +27,7 @@ websockets = "^12.0"
 cookiecutter = "^2.6.0"
 python-dotenv = "^1.0.1"
 pystache = "^0.6.5"
-lmnr_baml = {path = "../Downloads/wheels-macos-aarch64/lmnr_baml-0.40.0-cp311-cp311-macosx_11_0_arm64.whl"}
+lmnr-baml = "^0.40.0"
 
 [build-system]
 requires = ["poetry-core"]
