@@ -1,3 +1,4 @@
+from lmnr.cli.parser.utils import replace_spaces_with_underscores
 from .nodes.types import node_from_dict
 
 
@@ -8,6 +9,9 @@ def runnable_graph_to_template_vars(graph: dict) -> dict:
     node_id_to_node_name = {}
     output_handle_id_to_node_name: dict[str, str] = {}
     for node in graph["nodes"].values():
+        # override node names in the graph itself to be safe
+        node["name"] = replace_spaces_with_underscores(node["name"])
+
         node_id_to_node_name[node["id"]] = node["name"]
         for handle in node["outputs"]:
             output_handle_id_to_node_name[handle["id"]] = node["name"]

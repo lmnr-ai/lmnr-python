@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+
 import uuid
 
 from lmnr.cli.parser.nodes import Handle, NodeFunctions
@@ -6,14 +7,13 @@ from lmnr.cli.parser.utils import map_handles
 
 
 @dataclass
-class CodeNode(NodeFunctions):
+class JsonExtractorNode(NodeFunctions):
     id: uuid.UUID
     name: str
     inputs: list[Handle]
     outputs: list[Handle]
     inputs_mappings: dict[uuid.UUID, uuid.UUID]
-    code: str
-    fn_name: str
+    template: str
 
     def handles_mapping(
         self, output_handle_id_to_node_name: dict[str, str]
@@ -23,14 +23,7 @@ class CodeNode(NodeFunctions):
         )
 
     def node_type(self) -> str:
-        return "Code"
+        return "JsonExtractor"
 
     def config(self) -> dict:
-        return {
-            "code": self.code,
-            "fn_name": self.fn_name,
-            "fn_inputs": ", ".join(
-                f"{handle.name}=input_to_code_node_arg({handle.name})"
-                for handle in self.inputs
-            ),
-        }
+        return {"template": self.template}

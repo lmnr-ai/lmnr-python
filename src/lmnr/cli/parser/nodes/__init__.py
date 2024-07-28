@@ -4,21 +4,16 @@ from typing import Optional
 import uuid
 
 
-HandleType = str  # "String" | "ChatMessageList" | "Any"
-
-
 @dataclass
 class Handle:
     id: uuid.UUID
     name: Optional[str]
-    type: HandleType
 
     @classmethod
     def from_dict(cls, dict: dict) -> "Handle":
         return cls(
             id=uuid.UUID(dict["id"]),
             name=(dict["name"] if "name" in dict else None),
-            type=dict["type"],
         )
 
 
