@@ -1,10 +1,11 @@
-from typing import Optional
+from typing import Callable, Optional, Union
 from websockets.sync.client import connect
 import pydantic
 import websockets
 from lmnr.types import (
     DeregisterDebuggerRequest,
     NodeFunction,
+    NodeInput,
     RegisterDebuggerRequest,
     SDKError,
     ToolCallError,
@@ -17,7 +18,15 @@ from threading import Thread
 
 
 class RemoteDebugger:
-    def __init__(self, project_api_key: str, tools: dict[str, NodeFunction]):
+    def __init__(
+        self,
+        project_api_key: str,
+        tools: Union[dict[str, NodeFunction], list[Callable[..., NodeInput]]] = [],
+    ):
+        # for simplicity and backwards compatibility, we allow the user to pass a list
+        if isinstance(tools, list):
+            tools = {f.__name__: NodeFunction(f.__name__, f) for f in tools}
+
         self.project_api_key = project_api_key
         self.url = "wss://api.lmnr.ai/v2/endpoint/ws"
         self.tools = tools
