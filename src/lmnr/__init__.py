@@ -1,8 +1,4 @@
 from .sdk.endpoint import Laminar
-from .types import (
-    ChatMessage,
-    EndpointRunError,
-    EndpointRunResponse,
-    NodeInput
-)
+from .types import ChatMessage, EndpointRunError, EndpointRunResponse, NodeInput
 from .sdk.remote_debugger import RemoteDebugger as LaminarRemoteDebugger
+from .sdk.registry import Registry as Pipeline

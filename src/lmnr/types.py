@@ -1,7 +1,7 @@
 import requests
 import pydantic
 import uuid
-from typing import Union, Optional
+from typing import Callable, Union, Optional
 
 
 class ChatMessage(pydantic.BaseModel):
@@ -90,3 +90,12 @@ class RegisterDebuggerRequest(pydantic.BaseModel):
 class DeregisterDebuggerRequest(pydantic.BaseModel):
     debuggerSessionId: str
     deregister: bool
+
+
+class NodeFunction:
+    node_name: str
+    function: Callable[..., NodeInput]
+
+    def __init__(self, node_name: str, function: Callable[..., NodeInput]):
+        self.node_name = node_name
+        self.function = function

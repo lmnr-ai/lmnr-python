@@ -1,3 +1,4 @@
+from pathlib import Path
 import requests
 from dotenv import load_dotenv
 import os
@@ -5,6 +6,8 @@ import click
 import logging
 from cookiecutter.main import cookiecutter
 from pydantic.alias_generators import to_pascal
+
+from lmnr.cli.zip import zip_directory
 
 from .parser.parser import runnable_graph_to_template_vars
 
@@ -92,3 +95,42 @@ def pull(pipeline_name, pipeline_version_name, project_api_key, loglevel):
         no_input=True,
         overwrite_if_exists=True,
     )
+
+
+@cli.command(name="deploy")
+@click.argument("endpoint_id")
+@click.option(
+    "-p",
+    "--project-api-key",
+    help="Project API key",
+)
+def deploy(endpoint_id, project_api_key):
+    project_api_key = project_api_key or os.environ.get("LMNR_PROJECT_API_KEY")
+    if not project_api_key:
+        load_dotenv()
+        project_api_key = os.environ.get("LMNR_PROJECT_API_KEY")
+    if not project_api_key:
+        raise ValueError("LMNR_PROJECT_API_KEY is not set")
+
+    current_directory = Path.cwd()
+    zip_file_path = current_directory / "archive.zip"
+
+    zip_directory(current_directory, zip_file_path)
+
+    try:
+        url = f"https://api.lmnr.ai/v2/endpoints/{endpoint_id}/deploy-code"
+        with open(zip_file_path, "rb") as f:
+            headers = {
+                "Authorization": f"Bearer {project_api_key}",
+            }
+            files = {"file": f}
+            response = requests.post(url, headers=headers, files=files)
+
+            if response.status_code != 200:
+                raise ValueError(
+                    f"Error in deploying code: {response.status_code}\n{response.text}"
+                )
+    except Exception:
+        logging.exception("Error in deploying code")
+    finally:
+        Path.unlink(zip_file_path, missing_ok=True)
