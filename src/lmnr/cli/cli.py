@@ -1,4 +1,5 @@
 from pathlib import Path
+import sys
 import requests
 from dotenv import load_dotenv
 import os
@@ -8,6 +9,8 @@ from cookiecutter.main import cookiecutter
 from pydantic.alias_generators import to_pascal
 
 from lmnr.cli.zip import zip_directory
+from lmnr.sdk.registry import Registry as Pipeline
+from lmnr.sdk.remote_debugger import RemoteDebugger
 
 from .parser.parser import runnable_graph_to_template_vars
 
@@ -134,3 +137,47 @@ def deploy(endpoint_id, project_api_key):
         logging.exception("Error in deploying code")
     finally:
         Path.unlink(zip_file_path, missing_ok=True)
+
+
+@cli.command(name="dev")
+@click.option(
+    "-p",
+    "--project-api-key",
+    help="Project API key",
+)
+def dev(project_api_key):
+    project_api_key = project_api_key or os.environ.get("LMNR_PROJECT_API_KEY")
+    if not project_api_key:
+        load_dotenv()
+        project_api_key = os.environ.get("LMNR_PROJECT_API_KEY")
+    if not project_api_key:
+        raise ValueError("LMNR_PROJECT_API_KEY is not set")
+
+    print(f"Sys path: {sys.path}")
+
+    cur_dir = os.getcwd()  # e.g. /Users/username/project_name
+    parent_dir, name = os.path.split(cur_dir)  # e.g. /Users/username, project_name
+
+    # Needed to __import__ pipeline.py
+    if sys.path[0] != parent_dir:
+        sys.path.insert(0, parent_dir)
+    # Needed to import src in pipeline.py and other files
+    if cur_dir not in sys.path:
+        sys.path.insert(0, cur_dir)
+
+    print(f"Sys path: {sys.path}")
+
+    module_name = f"{name}.pipeline"
+    __import__(module_name)
+    module = sys.modules[module_name]
+
+    matches = [v for v in module.__dict__.values() if isinstance(v, Pipeline)]
+    if not matches:
+        raise ValueError("No Pipeline found in the module")
+    if len(matches) > 1:
+        raise ValueError("Multiple Pipelines found in the module")
+    pipeline = matches[0]
+
+    tools = pipeline.functions
+    debugger = RemoteDebugger(project_api_key, tools)
+    debugger.start()
