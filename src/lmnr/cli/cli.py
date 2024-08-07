@@ -153,8 +153,6 @@ def dev(project_api_key):
     if not project_api_key:
         raise ValueError("LMNR_PROJECT_API_KEY is not set")
 
-    print(f"Sys path: {sys.path}")
-
     cur_dir = os.getcwd()  # e.g. /Users/username/project_name
     parent_dir, name = os.path.split(cur_dir)  # e.g. /Users/username, project_name
 
@@ -164,8 +162,6 @@ def dev(project_api_key):
     # Needed to import src in pipeline.py and other files
     if cur_dir not in sys.path:
         sys.path.insert(0, cur_dir)
-
-    print(f"Sys path: {sys.path}")
 
     module_name = f"{name}.pipeline"
     __import__(module_name)
