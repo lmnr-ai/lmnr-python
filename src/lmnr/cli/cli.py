@@ -1,7 +1,7 @@
 from pathlib import Path
 import sys
 import requests
-from dotenv import load_dotenv, find_dotenv
+from dotenv import find_dotenv, get_key
 import importlib
 import os
 import click
@@ -15,6 +15,10 @@ from lmnr.sdk.remote_debugger import RemoteDebugger
 from lmnr.types import NodeFunction
 
 from .parser.parser import runnable_graph_to_template_vars
+
+from watchdog.observers import Observer
+from watchdog.events import PatternMatchingEventHandler
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -170,10 +174,6 @@ def _load_functions(cur_dir: str) -> dict[str, NodeFunction]:
 
     return pipeline.functions
 
-from watchdog.observers import Observer
-from watchdog.events import PatternMatchingEventHandler
-import time
-
 class SimpleEventHandler(PatternMatchingEventHandler):
     def __init__(self, project_api_key: str, session_id: str, functions: dict[str, NodeFunction]):
         super().__init__(ignore_patterns=["*.pyc*", "*.pyo", "**/__pycache__"])
@@ -202,21 +202,19 @@ class SimpleEventHandler(PatternMatchingEventHandler):
     help="Dev session ID. If not provided, LMNR_DEV_SESSION_ID from os.environ or .env is used",
 )
 def dev(project_api_key, dev_session_id):
+    cur_dir = os.getcwd()  # e.g. /Users/username/project_name
     env_path = find_dotenv(usecwd=True)
     project_api_key = project_api_key or os.environ.get("LMNR_PROJECT_API_KEY")
     if not project_api_key:
-        load_dotenv(env_path=env_path)
-        project_api_key = os.environ.get("LMNR_PROJECT_API_KEY")
+        project_api_key = get_key(env_path, "LMNR_PROJECT_API_KEY")
     if not project_api_key:
         raise ValueError("LMNR_PROJECT_API_KEY is not set")
     
     session_id = dev_session_id or os.environ.get("LMNR_DEV_SESSION_ID")
     if not session_id:
-        load_dotenv(env_path=env_path)
-        session_id = os.environ.get("LMNR_DEV_SESSION_ID")
+        session_id = get_key(env_path, "LMNR_DEV_SESSION_ID")
     if not session_id:
         raise ValueError("LMNR_DEV_SESSION_ID is not set")
-    cur_dir = os.getcwd()  # e.g. /Users/username/project_name
     functions = _load_functions(cur_dir)
     
     observer = Observer()
