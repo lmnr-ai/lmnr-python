@@ -14,8 +14,7 @@ pip install lmnr
 
 - Make Laminar endpoint calls from your Python code
 - Make Laminar endpoint calls that can run your own functions as tools
-- CLI to generate code from pipelines you build on Laminar
-- `LaminarRemoteDebugger` to execute your own functions while you test your flows in workshop
+- CLI to generate code from pipelines you build on Laminar or execute your own functions while you test your flows in workshop
 
 ## Making Laminar endpoint calls
 
@@ -82,41 +81,47 @@ result = l.run(
 
 ## LaminarRemoteDebugger
 
-If your pipeline contains tool call nodes, they will be able to call your local code.
-If you want to test them from the Laminar workshop in your browser, you can attach to your
-locally running debugger.
+If your pipeline contains local call nodes, they will be able to call code right on your machine.
 
-### Step by step instructions to use `LaminarRemoteDebugger`:
+### Step by step instructions to connect to Laminar:
 
-#### 1. Create your pipeline with tool call nodes
+#### 1. Create your pipeline with function call nodes
 
-Add tool calls to your pipeline; node names must match the functions you want to call.
+Add function calls to your pipeline; these are signature definitions of your functions
 
-#### 2. Start LaminarRemoteDebugger in your code
+#### 2. Implement the functions
+
+At the root level, create a file: `pipeline.py`
+
+Annotate functions with the same name.
 
 Example:
 
 ```python
-from lmnr import LaminarRemoteDebugger, NodeInput
+from lmnr import Pipeline
 
-# adding **kwargs is safer, in case an LLM produces more arguments than needed
-def my_tool(arg1: string, arg2: string, **kwargs) -> NodeInput:
-    return f'{arg1}&{arg2}'
+lmnr = Pipeline()
 
-debugger = LaminarRemoteDebugger('<YOUR_PROJECT_API_KEY>', [my_tool])
-session_id = debugger.start()  # the session id will also be printed to console
+@lmnr.func("foo") # the node in the pipeline is called foo and has one parameter arg
+def custom_logic(arg: str) -> str:
+    return arg * 10
 ```
 
-This will establish a connection with Laminar API and allow for the pipeline execution
-to call your local functions.
+#### 3. Link lmnr.ai workshop to your machine
 
-#### 3. Link lmnr.ai workshop to your debugger
+1. At the root level, create a `.env` file if not already
+1. In project settings, create or copy a project api key.
+1. Add an entry in `.env` with: `LMNR_PROJECT_API_KEY=s0meKey...`
+1. In project settings create or copy a dev session. These are your individual sessions.
+1. Add an entry in `.env` with: `LMNR_DEV_SESSION_ID=01234567-89ab-cdef-0123-4567890ab`
 
-Set up `DEBUGGER_SESSION_ID` environment variable in your pipeline.
+#### 4. Run the dev environment
 
-#### 4. Run and experiment
+```sh
+lmnr dev
+```
 
-You can run as many sessions as you need, experimenting with your flows.
+This will start a session, try to persist it, and reload the session on files change.
 
 ## CLI for code generation
 
