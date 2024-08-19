@@ -30,6 +30,9 @@ pystache = "^0.6.5"
 lmnr-baml = "^0.40.1"
 watchdog = "^4.0.2"
 
+openai = "^1.41.1"
+backoff = "^2.2.1"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
