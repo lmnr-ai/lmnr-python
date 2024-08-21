@@ -55,8 +55,8 @@ def pull(pipeline_name, pipeline_version_name, project_api_key, loglevel):
 
     project_api_key = project_api_key or os.environ.get("LMNR_PROJECT_API_KEY")
     if not project_api_key:
-        load_dotenv()
-        project_api_key = os.environ.get("LMNR_PROJECT_API_KEY")
+        env_path = find_dotenv(usecwd=True)
+        project_api_key = get_key(env_path, "LMNR_PROJECT_API_KEY")
     if not project_api_key:
         raise ValueError("LMNR_PROJECT_API_KEY is not set")
 
@@ -116,8 +116,8 @@ def pull(pipeline_name, pipeline_version_name, project_api_key, loglevel):
 def deploy(endpoint_id, project_api_key):
     project_api_key = project_api_key or os.environ.get("LMNR_PROJECT_API_KEY")
     if not project_api_key:
-        load_dotenv()
-        project_api_key = os.environ.get("LMNR_PROJECT_API_KEY")
+        env_path = find_dotenv(usecwd=True)
+        project_api_key = get_key(env_path, "LMNR_PROJECT_API_KEY")
     if not project_api_key:
         raise ValueError("LMNR_PROJECT_API_KEY is not set")
 
