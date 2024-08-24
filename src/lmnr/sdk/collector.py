@@ -1,4 +1,4 @@
-from .client import APIError, LaminarClient
+from .client import APIError, Laminar
 from .tracing_types import Event, Span, Trace
 
 from queue import Queue, Empty, Full
@@ -14,13 +14,13 @@ import threading
 class Collector(threading.Thread):
     _log = logging.getLogger("laminar.collector")
     _queue: Queue[Union[Span, Trace]]
-    _client: LaminarClient
+    _client: Laminar
     _flush_interval: float
 
     def __init__(
         self,
         queue: Queue[Union[Span, Trace]],
-        client: LaminarClient,
+        client: Laminar,
         flush_interval: float = 5.0,
     ):
         super().__init__()
@@ -77,7 +77,7 @@ class Collector(threading.Thread):
         @backoff.on_exception(backoff.expo, Exception, max_tries=5)
         def execute_task_with_backoff(batch: list[Union[Trace, Span]]):
             try:
-                self._client.batch_post(batch=batch)
+                self._client.batch_post_traces(batch=batch)
             except Exception as e:
                 if (
                     isinstance(e, APIError)
@@ -98,7 +98,7 @@ class Collector(threading.Thread):
 class ThreadManager:
     _log = logging.getLogger("laminar.task_manager")
     _queue: Queue[Union[Span, Trace]]
-    _client: LaminarClient
+    _client: Laminar
     _max_task_queue_size: int
     _flush_interval: float
     _collectors: list[Collector] = []
@@ -106,7 +106,7 @@ class ThreadManager:
 
     def __init__(
         self,
-        client: LaminarClient,
+        client: Laminar,
         flush_interval: float = 2.0,
         max_task_queue_size: int = 1000,
         threads: int = 1,

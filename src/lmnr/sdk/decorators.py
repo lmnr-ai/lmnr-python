@@ -22,12 +22,12 @@ class LaminarDecorator:
         capture_output: bool = True,
         release: Optional[str] = None,
     ):
-        laminar = LaminarSingleton().get()
+        context_manager = LaminarSingleton().get()
 
         def decorator(func: Callable):
             @functools.wraps(func)
             def wrapper(*args, **kwargs):
-                span = laminar.observe_start(
+                span = context_manager.observe_start(
                     name=name or func.__name__,
                     span_type=span_type,
                     input=(
@@ -40,16 +40,16 @@ class LaminarDecorator:
                 try:
                     result = func(*args, **kwargs)
                 except Exception as e:
-                    laminar.observe_end(result=None, span=span, error=e)
+                    context_manager.observe_end(result=None, span=span, error=e)
                     raise e
-                laminar.observe_end(
+                context_manager.observe_end(
                     result=result if capture_output else None, span=span
                 )
                 return result
 
             @functools.wraps(func)
             async def async_wrapper(*args, **kwargs):
-                span = laminar.observe_start(
+                span = context_manager.observe_start(
                     name=name or func.__name__,
                     span_type=span_type,
                     input=(
@@ -62,9 +62,9 @@ class LaminarDecorator:
                 try:
                     result = await func(*args, **kwargs)
                 except Exception as e:
-                    laminar.observe_end(result=None, span=span, error=e)
+                    context_manager.observe_end(result=None, span=span, error=e)
                     raise e
-                laminar.observe_end(
+                context_manager.observe_end(
                     result=result if capture_output else None, span=span
                 )
                 return result
@@ -100,6 +100,17 @@ class LaminarDecorator:
     def check_span_event(self, name: str):
         laminar = LaminarSingleton().get()
         laminar.add_check_event_name(name)
+
+    def run_pipeline(
+        self,
+        pipeline: str,
+        inputs: dict[str, Any],
+        env: dict[str, str] = None,
+        metadata: dict[str, str] = None,
+        stream: bool = False,
+    ):
+        laminar = LaminarSingleton().get()
+        return laminar.run_pipeline(pipeline, inputs, env, metadata, stream)
 
 
 def wrap_llm_call(func: Callable, name: str = None, provider: str = None) -> Callable:

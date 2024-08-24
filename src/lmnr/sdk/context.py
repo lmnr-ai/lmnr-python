@@ -1,8 +1,9 @@
 from .collector import ThreadManager
-from .client import LaminarClient
+from .client import Laminar
 from .providers import Provider
 from .providers.fallback import FallbackProvider
 from .tracing_types import Event, Span, Trace
+from .types import PipelineRunResponse
 from .utils import PROVIDER_NAME_TO_OBJECT, is_async_iterator, is_iterator
 
 from contextvars import ContextVar
@@ -25,8 +26,8 @@ _root_trace_id_context: ContextVar[Optional[str]] = ContextVar(
 )
 
 
-class Laminar:
-    _log = logging.getLogger("laminar")
+class LaminarContextManager:
+    _log = logging.getLogger("laminar.context_manager")
 
     def __init__(
         self,
@@ -40,8 +41,9 @@ class Laminar:
             self.project_api_key = dotenv.get_key(
                 dotenv_path=dotenv_path, key_to_get="LMNR_PROJECT_API_KEY"
             )
+        self.laminar = Laminar(project_api_key=self.project_api_key)
         self.thread_manager = ThreadManager(
-            client=LaminarClient(project_api_key=self.project_api_key),
+            client=self.laminar,
             max_task_queue_size=max_task_queue_size,
             threads=threads,
         )
@@ -302,6 +304,28 @@ class Laminar:
             return
         stack[-1].checkEventNames.append(name)
 
+    def run_pipeline(
+        self,
+        pipeline: str,
+        inputs: dict[str, Any],
+        env: dict[str, str] = {},
+        metadata: dict[str, str] = {},
+        stream: bool = False,
+    ) -> PipelineRunResponse:
+        span = _lmnr_stack_context.get()[-1] if _lmnr_stack_context.get() else None
+        span_id = span.id if isinstance(span, Span) else None
+        trace = _lmnr_stack_context.get()[0] if _lmnr_stack_context.get() else None
+        trace_id = trace.id if isinstance(trace, Trace) else None
+        return self.laminar.run(
+            pipeline=pipeline,
+            inputs=inputs,
+            env=env,
+            metadata=metadata,
+            stream=stream,
+            parent_span_id=span_id,
+            trace_id=trace_id,
+        )
+
     def _force_finalize_trace(self):
         self.update_current_trace(end_time=datetime.datetime.now(datetime.timezone.utc))
 
@@ -418,14 +442,14 @@ class Laminar:
 # TODO: add lock for thread safety
 class LaminarSingleton:
     _instance = None
-    _l: Optional[Laminar] = None
+    _l: Optional[LaminarContextManager] = None
 
     def __new__(cls):
         if not cls._instance:
             cls._instance = super(LaminarSingleton, cls).__new__(cls)
         return cls._instance
 
-    def get(cls, *args, **kwargs):
+    def get(cls, *args, **kwargs) -> LaminarContextManager:
         if not cls._l:
-            cls._l = Laminar(*args, **kwargs)
+            cls._l = LaminarContextManager(*args, **kwargs)
         return cls._l

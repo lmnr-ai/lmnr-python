@@ -3,12 +3,12 @@ import datetime
 import pydantic
 import uuid
 
-from .constants import LATEST_VERSION
+from .constants import CURRENT_TRACING_VERSION
 from .utils import to_dict
 
 
 class Span(pydantic.BaseModel):
-    version: str = LATEST_VERSION
+    version: str = CURRENT_TRACING_VERSION
     spanType: Literal["DEFAULT", "LLM"] = "DEFAULT"
     id: uuid.UUID
     traceId: uuid.UUID
@@ -30,7 +30,7 @@ class Span(pydantic.BaseModel):
         name: str,
         trace_id: uuid.UUID,
         start_time: Optional[datetime.datetime] = None,
-        version: str = LATEST_VERSION,
+        version: str = CURRENT_TRACING_VERSION,
         span_type: Literal["DEFAULT", "LLM"] = "DEFAULT",
         id: Optional[uuid.UUID] = None,
         parent_span_id: Optional[uuid.UUID] = None,
@@ -104,7 +104,7 @@ class Span(pydantic.BaseModel):
 
 class Trace(pydantic.BaseModel):
     id: uuid.UUID
-    version: str = LATEST_VERSION
+    version: str = CURRENT_TRACING_VERSION
     success: bool = True
     startTime: Optional[datetime.datetime] = None
     endTime: Optional[datetime.datetime] = None
