@@ -1,5 +1,5 @@
 from .client import APIError, Laminar
-from .tracing_types import Event, Span, Trace
+from .tracing_types import Span, Trace
 
 from queue import Queue, Empty, Full
 from typing import Union
