@@ -2,7 +2,7 @@ from .collector import ThreadManager
 from .client import Laminar
 from .providers import Provider
 from .providers.fallback import FallbackProvider
-from .tracing_types import Event, Span, Trace
+from .tracing_types import EvaluateEvent, Event, Span, Trace
 from .types import PipelineRunResponse
 from .utils import PROVIDER_NAME_TO_OBJECT, is_async_iterator, is_iterator
 
@@ -175,12 +175,12 @@ class LaminarContextManager:
         new_check_event_names = (
             check_event_names
             if override
-            else span.checkEventNames + (check_event_names or [])
+            else span.evaluateEvents + (check_event_names or [])
         )
         self.update_span(
             span=span,
             metadata=new_metadata,
-            check_event_names=new_check_event_names,
+            evaluate_events=new_check_event_names,
         )
 
     def update_current_trace(
@@ -192,12 +192,13 @@ class LaminarContextManager:
         success: bool = True,
         end_time: Optional[datetime.datetime] = None,
     ):
-        trace_id = _root_trace_id_context.get()
-        if not trace_id:
+        existing_trace = (
+            _lmnr_stack_context.get()[0] if _lmnr_stack_context.get() else None
+        )
+        if not existing_trace:
             return
-        existing_trace = _lmnr_stack_context.get()[0]
         self.update_trace(
-            id=trace_id,
+            id=existing_trace.id,
             start_time=existing_trace.startTime,
             end_time=end_time,
             user_id=user_id or existing_trace.userId,
@@ -254,7 +255,7 @@ class LaminarContextManager:
             metadata=metadata,
             attributes=attributes,
             span_type=span_type,
-            check_event_names=check_event_names or [],
+            evaluate_events=check_event_names or [],
         )
         return span
 
@@ -266,22 +267,23 @@ class LaminarContextManager:
         output: Optional[Any] = None,
         metadata: Optional[dict[str, Any]] = None,
         attributes: Optional[dict[str, Any]] = None,
-        check_event_names: Optional[list[str]] = None,
+        evaluate_events: Optional[list[EvaluateEvent]] = None,
     ) -> Span:
         span.update(
             end_time=end_time,
             output=output,
             metadata=metadata,
             attributes=attributes,
-            check_event_names=check_event_names,
+            evaluate_events=evaluate_events,
         )
         if finalize:
             self._add_observation(span)
         return span
 
-    def add_event(
+    def event(
         self,
         name: str,
+        value: Optional[Union[str, int, float]] = None,
         timestamp: Optional[datetime.datetime] = None,
     ):
         span = _lmnr_stack_context.get()[-1] if _lmnr_stack_context.get() else None
@@ -292,17 +294,18 @@ class LaminarContextManager:
             name=name,
             span_id=span.id,
             timestamp=timestamp,
+            value=value,
         )
         span.add_event(event)
 
-    def add_check_event_name(self, name: str):
+    def evaluate_event(self, name: str, data: str):
         stack = _lmnr_stack_context.get()
         if not stack or not isinstance(stack[-1], Span):
             self._log.warning(
                 f"No active span to add check event. Ignoring event. {name}"
             )
             return
-        stack[-1].checkEventNames.append(name)
+        stack[-1].evaluateEvents.append(EvaluateEvent(name=name, data=data))
 
     def run_pipeline(
         self,
@@ -310,7 +313,6 @@ class LaminarContextManager:
         inputs: dict[str, Any],
         env: dict[str, str] = {},
         metadata: dict[str, str] = {},
-        stream: bool = False,
     ) -> PipelineRunResponse:
         span = _lmnr_stack_context.get()[-1] if _lmnr_stack_context.get() else None
         span_id = span.id if isinstance(span, Span) else None
@@ -321,7 +323,6 @@ class LaminarContextManager:
             inputs=inputs,
             env=env,
             metadata=metadata,
-            stream=stream,
             parent_span_id=span_id,
             trace_id=trace_id,
         )
@@ -329,7 +330,7 @@ class LaminarContextManager:
     def _force_finalize_trace(self):
         self.update_current_trace(end_time=datetime.datetime.now(datetime.timezone.utc))
 
-    def _add_observation(self, observation: Union[Event, Span, Trace]) -> bool:
+    def _add_observation(self, observation: Union[Span, Trace]) -> bool:
         return self.thread_manager.add_task(observation)
 
     def _extract_llm_attributes_from_response(

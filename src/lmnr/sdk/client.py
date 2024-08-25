@@ -29,10 +29,9 @@ class APIError(Exception):
 
 
 class Laminar:
-    # _base_url = "https://api.lmnr.ai"
-    _base_url = "http://localhost:8000"
+    _base_url = "https://api.lmnr.ai"
 
-    def __init__(self, project_api_key: str):
+    def __init__(self, project_api_key: Optional[str] = None):
         self.project_api_key = project_api_key or os.environ.get("LMNR_PROJECT_API_KEY")
         if not self.project_api_key:
             dotenv_path = dotenv.find_dotenv(usecwd=True)
@@ -46,7 +45,6 @@ class Laminar:
         inputs: dict[str, NodeInput],
         env: dict[str, str] = {},
         metadata: dict[str, str] = {},
-        stream: bool = False,
         parent_span_id: Optional[uuid.UUID] = None,
         trace_id: Optional[uuid.UUID] = None,
     ) -> PipelineRunResponse:
@@ -63,8 +61,6 @@ class Laminar:
             metadata (dict[str, str], optional):
                 any custom metadata to be stored
                 with execution trace. Defaults to {}.
-            stream (bool, optional):
-                whether to stream the response. Defaults to False.
 
         Returns:
             PipelineRunResponse: response object containing the outputs
@@ -84,7 +80,6 @@ class Laminar:
                 pipeline=pipeline,
                 env=env,
                 metadata=metadata,
-                stream=stream,
                 parent_span_id=parent_span_id,
                 trace_id=trace_id,
             )

@@ -1,6 +1,6 @@
 import datetime
 import functools
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union
 
 from .context import LaminarSingleton
 from .providers.fallback import FallbackProvider
@@ -93,13 +93,18 @@ class LaminarDecorator:
             user_id=user_id, session_id=session_id, release=release, metadata=metadata
         )
 
-    def event(self, name: str, timestamp: Optional[datetime.datetime] = None):
+    def event(
+        self,
+        name: str,
+        value: Optional[Union[str, int, float]] = None,
+        timestamp: Optional[datetime.datetime] = None,
+    ):
         laminar = LaminarSingleton().get()
-        laminar.add_event(name)
+        laminar.event(name, value=value, timestamp=timestamp)
 
-    def check_span_event(self, name: str):
+    def evaluate_event(self, name: str, data: str):
         laminar = LaminarSingleton().get()
-        laminar.add_check_event_name(name)
+        laminar.evaluate_event(name, data)
 
     def run_pipeline(
         self,
@@ -107,10 +112,9 @@ class LaminarDecorator:
         inputs: dict[str, Any],
         env: dict[str, str] = None,
         metadata: dict[str, str] = None,
-        stream: bool = False,
     ):
         laminar = LaminarSingleton().get()
-        return laminar.run_pipeline(pipeline, inputs, env, metadata, stream)
+        return laminar.run_pipeline(pipeline, inputs, env, metadata)
 
 
 def wrap_llm_call(func: Callable, name: str = None, provider: str = None) -> Callable:

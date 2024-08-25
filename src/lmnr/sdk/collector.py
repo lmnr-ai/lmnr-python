@@ -126,12 +126,12 @@ class ThreadManager:
             collector.start()
         atexit.register(self.join)
 
-    def add_task(self, event: Union[Event, Span, Trace]) -> bool:
+    def add_task(self, event: Union[Span, Trace]) -> bool:
         try:
             self._queue.put(event, block=False)
             return True
         except Full:
-            self._log.warning("analytics-python queue is full")
+            self._log.warning("queue is full")
             return False
         except Exception as e:
             self._log.exception(f"Exception in adding task {e}")

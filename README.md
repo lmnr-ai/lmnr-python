@@ -139,7 +139,7 @@ from lmnr import Laminar
 
 l = Laminar('<YOUR_PROJECT_API_KEY>')
 result = l.run(  # lmnr_context.run( for decorator instrumentation
-    pipeline = 'my_endpoint_name',
+    pipeline = 'my_pipeline_name',
     inputs = {'input_node_name': 'some_value'},
     # all environment variables
     env = {'OPENAI_API_KEY': 'sk-some-key'},

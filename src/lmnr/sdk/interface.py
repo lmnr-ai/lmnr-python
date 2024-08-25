@@ -1,5 +1,5 @@
 from .context import LaminarSingleton
-from .tracing_types import Span, Trace
+from .tracing_types import EvaluateEvent, Span, Trace, Event
 
 from typing import Any, Literal, Optional, Union
 import datetime
@@ -60,6 +60,9 @@ class ObservationContext:
         self._children[span.id] = span_context
         return span_context
 
+    def id(self) -> uuid.UUID:
+        return self.observation.id
+
 
 class SpanContext(ObservationContext):
     def _get_parent(self) -> ObservationContext:
@@ -82,7 +85,7 @@ class SpanContext(ObservationContext):
         return self._update(
             output=output,
             metadata=metadata,
-            check_event_names=check_event_names,
+            evaluate_events=check_event_names,
             override=override,
             finalize=True,
         )
@@ -97,32 +100,41 @@ class SpanContext(ObservationContext):
         return self._update(
             output=output or self.observation.output,
             metadata=metadata or self.observation.metadata,
-            check_event_names=check_event_names or self.observation.checkEventNames,
+            evaluate_events=check_event_names or self.observation.evaluateEvents,
             override=override,
             finalize=False,
         )
 
     def event(
-        self, name: str, timestamp: Optional[datetime.datetime] = None
+        self,
+        name: str,
+        value: Optional[Union[str, int, float]] = None,
+        timestamp: Optional[datetime.datetime] = None,
     ) -> "SpanContext":
-        laminar.add_event(name, timestamp)
+        event = Event(
+            name=name,
+            span_id=self.observation.id,
+            timestamp=timestamp,
+            value=value,
+        )
+        self.observation.add_event(event)
         return self
 
-    def check_span_event(self, name: str) -> "SpanContext":
-        existing_check_event_names = self.observation.checkEventNames
+    def evaluate_event(self, name: str, data: str) -> "SpanContext":
+        existing_evaluate_events = self.observation.evaluateEvents
         output = self.observation.output
-        if name not in existing_check_event_names:
-            self._update(
-                output=output,
-                check_event_names=existing_check_event_names + [name],
-                override=False,
-            )
+        self._update(
+            output=output,
+            evaluate_events=existing_evaluate_events
+            + [EvaluateEvent(name=name, data=data)],
+            override=False,
+        )
 
     def _update(
         self,
         output: Optional[Any] = None,
         metadata: Optional[dict[str, Any]] = None,
-        check_event_names: Optional[list[str]] = None,
+        evaluate_events: Optional[list[EvaluateEvent]] = None,
         override: bool = False,
         finalize: bool = False,
     ) -> "SpanContext":
@@ -131,17 +143,17 @@ class SpanContext(ObservationContext):
             if override
             else {**(self.observation.metadata or {}), **(metadata or {})}
         )
-        new_check_event_names = (
-            check_event_names
+        new_evaluate_events = (
+            evaluate_events
             if override
-            else self.observation.checkEventNames + (check_event_names or [])
+            else self.observation.evaluateEvents + (evaluate_events or [])
         )
         self.observation = laminar.update_span(
             span=self.observation,
             end_time=datetime.datetime.now(datetime.timezone.utc),
             output=output,
             metadata=new_metadata,
-            check_event_names=new_check_event_names,
+            evaluate_events=new_evaluate_events,
             finalize=finalize,
         )
         return self

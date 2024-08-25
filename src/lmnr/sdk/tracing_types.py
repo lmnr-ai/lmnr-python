@@ -1,10 +1,15 @@
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, Union
 import datetime
 import pydantic
 import uuid
 
 from .constants import CURRENT_TRACING_VERSION
 from .utils import to_dict
+
+
+class EvaluateEvent(pydantic.BaseModel):
+    name: str
+    data: str
 
 
 class Span(pydantic.BaseModel):
@@ -22,7 +27,7 @@ class Span(pydantic.BaseModel):
     input: Optional[Any] = None
     output: Optional[Any] = None
     metadata: Optional[dict[str, Any]] = None
-    checkEventNames: list[str] = None
+    evaluateEvents: list[EvaluateEvent] = []
     events: list["Event"] = None
 
     def __init__(
@@ -37,7 +42,7 @@ class Span(pydantic.BaseModel):
         input: Optional[Any] = None,
         metadata: Optional[dict[str, Any]] = {},
         attributes: Optional[dict[str, Any]] = {},
-        check_event_names: list[str] = [],
+        evaluate_events: list[EvaluateEvent] = [],
     ):
         super().__init__(
             version=version,
@@ -50,7 +55,7 @@ class Span(pydantic.BaseModel):
             input=input,
             metadata=metadata or {},
             attributes=attributes or {},
-            checkEventNames=check_event_names,
+            evaluateEvents=evaluate_events,
             events=[],
         )
 
@@ -60,7 +65,7 @@ class Span(pydantic.BaseModel):
         output: Optional[Any] = None,
         metadata: Optional[dict[str, Any]] = None,
         attributes: Optional[dict[str, Any]] = None,
-        check_event_names: Optional[list[str]] = None,
+        evaluate_events: Optional[list[EvaluateEvent]] = None,
         override: bool = False,
     ):
         self.endTime = end_time or datetime.datetime.now(datetime.timezone.utc)
@@ -73,14 +78,14 @@ class Span(pydantic.BaseModel):
             if override
             else {**(self.attributes or {}), **(attributes or {})}
         )
-        new_check_event_names = (
-            check_event_names or {}
+        new_evaluate_events = (
+            evaluate_events or []
             if override
-            else self.checkEventNames + (check_event_names or [])
+            else self.evaluateEvents + (evaluate_events or [])
         )
         self.metadata = new_metadata
         self.attributes = new_attributes
-        self.checkEventNames = new_check_event_names
+        self.evaluateEvents = new_evaluate_events
 
     def add_event(self, event: "Event"):
         self.events.append(event)
@@ -164,12 +169,14 @@ class Event(pydantic.BaseModel):
         name: str,
         span_id: uuid.UUID,
         timestamp: Optional[datetime.datetime] = None,
+        value: Optional[Union[int, str, float]] = None,
     ):
         super().__init__(
             id=uuid.uuid4(),
             typeName=name,
             spanId=span_id,
             timestamp=timestamp or datetime.datetime.now(datetime.timezone.utc),
+            value=value,
         )
 
     def to_dict(self) -> dict[str, Any]:
