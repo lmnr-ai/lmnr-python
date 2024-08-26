@@ -38,6 +38,11 @@ class Laminar:
             self.project_api_key = dotenv.get_key(
                 dotenv_path=dotenv_path, key_to_get="LMNR_PROJECT_API_KEY"
             )
+        if not self.project_api_key:
+            raise ValueError(
+                "Please initialize the Laminar object with your project API key or set "
+                "the LMNR_PROJECT_API_KEY environment variable in your environment or .env file"
+            )
 
     def run(
         self,
