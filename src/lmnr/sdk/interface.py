@@ -108,7 +108,7 @@ class SpanContext(ObservationContext):
     def event(
         self,
         name: str,
-        value: Optional[Union[str, int, float]] = None,
+        value: Optional[Union[str, int]] = None,
         timestamp: Optional[datetime.datetime] = None,
     ) -> "SpanContext":
         event = Event(

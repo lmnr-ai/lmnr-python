@@ -96,7 +96,7 @@ class LaminarDecorator:
     def event(
         self,
         name: str,
-        value: Optional[Union[str, int, float]] = None,
+        value: Optional[Union[str, int]] = None,
         timestamp: Optional[datetime.datetime] = None,
     ):
         laminar = LaminarSingleton().get()

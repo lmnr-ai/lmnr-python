@@ -160,20 +160,21 @@ class Trace(pydantic.BaseModel):
 
 class Event(pydantic.BaseModel):
     id: uuid.UUID
-    typeName: str
+    templateName: str
     timestamp: datetime.datetime
     spanId: uuid.UUID
+    value: Optional[Union[int, str]] = None
 
     def __init__(
         self,
         name: str,
         span_id: uuid.UUID,
         timestamp: Optional[datetime.datetime] = None,
-        value: Optional[Union[int, str, float]] = None,
+        value: Optional[Union[int, str]] = None,
     ):
         super().__init__(
             id=uuid.uuid4(),
-            typeName=name,
+            templateName=name,
             spanId=span_id,
             timestamp=timestamp or datetime.datetime.now(datetime.timezone.utc),
             value=value,
