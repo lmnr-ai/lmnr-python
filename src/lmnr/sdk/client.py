@@ -48,10 +48,10 @@ class Laminar:
         parent_span_id: Optional[uuid.UUID] = None,
         trace_id: Optional[uuid.UUID] = None,
     ) -> PipelineRunResponse:
-        """Runs the endpoint with the given inputs
+        """Runs the pipeline with the given inputs
 
         Args:
-            pipeline (str): name of the Laminar endpoint
+            pipeline (str): name of the Laminar pipeline
             inputs (dict[str, NodeInput]):
                 inputs to the endpoint's target pipeline.
                 Keys in the dictionary must match input node names
@@ -61,6 +61,14 @@ class Laminar:
             metadata (dict[str, str], optional):
                 any custom metadata to be stored
                 with execution trace. Defaults to {}.
+            parent_span_id (Optional[uuid.UUID], optional):
+                parent span id for the resulting span.
+                Must usually be SpanContext.id()
+                Defaults to None.
+            trace_id (Optional[uuid.UUID], optional):
+                trace id for the resulting trace.
+                Must usually be TraceContext.id()
+                Defaults to None.
 
         Returns:
             PipelineRunResponse: response object containing the outputs

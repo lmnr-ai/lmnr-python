@@ -55,8 +55,8 @@ if __name__ == "__main__":
     print(poem_writer(topic="laminar flow"))
 ```
 
-This gives an advantage of super quick instrumentation, but is somewhat limited in flexibility + doesn't really work as expected with threading.
-This is due to the fact that we use `contextvars.ContextVar` for this and how Python manages them between threads.
+This gives an advantage of quick instrumentation, but is somewhat limited in flexibility + doesn't really work as expected with threading.
+This is due to the fact that we use `contextvars.ContextVar` for this, and how Python manages them between threads.
 
 If you want to instrument your code manually, follow on to the next section
 
@@ -73,8 +73,8 @@ Both `TraceContext` and `SpanContext` expose the following interfaces:
 - `end(**kwargs)` – update the current span, and terminate it
 
 In addition, `SpanContext` allows you to:
-- `event()` - emit a custom event at any point
-- `check_span_event()` - register a possible event for automatic checking by Laminar.
+- `event(name: str, value: str | int = None)` - emit a custom event at any point
+- `evaluate_event(name: str, data: str)` - register a possible event for automatic checking by Laminar.
 
 Example:
 
