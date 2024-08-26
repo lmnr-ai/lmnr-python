@@ -10,6 +10,24 @@ source .myenv/bin/activate  # or use your favorite env management tool
 pip install lmnr
 ```
 
+Create .env file at the root and add `LMNR_PROJECT_API_KEY` value to it.
+
+Read more [here](https://docs.lmnr.ai/api-reference/introduction#authentication) on how to get `LMNR_PROJECT_API_KEY`.
+
+## Sending events
+
+You can send events in two ways:
+- `.event(name, value)` – for a pre-defined event with one of possible values.
+- `.evaluate_event(name, data)` – for an event that our agent checks for and assigns a value from possible values.
+
+There are 3 types of events:
+- SCORE - this is an integer score where you specify inclusive minimum and maximum.
+- CLASS - this is a classifier with one of the possible values.
+- TAG - this event has no value and can be assigned to a span.
+
+Important notes:
+- If event name does not match anything pre-defined in the UI, the event won't be saved.
+- If event value (when sent with `.event()`) is not in the domain, the event won't be saved.
 
 ## Decorator instrumentation example
 
@@ -44,10 +62,11 @@ def poem_writer(topic="turbulence"):
     poem = response.choices[0].message.content
 
     if topic in poem:
-        lmnr_context.event("topic_alignment")  # send an event with a pre-defined name
+        # send an event with a pre-defined name
+        lmnr_context.event("topic_alignment", "good")
     
     # to trigger an automatic check for a possible event do:
-    lmnr_context.check_span_event("excessive_wordiness")
+    lmnr_context.evaluate_event("excessive_wordiness", poem)
 
     return poem
 
@@ -73,7 +92,7 @@ Both `TraceContext` and `SpanContext` expose the following interfaces:
 - `end(**kwargs)` – update the current span, and terminate it
 
 In addition, `SpanContext` allows you to:
-- `event(name: str, value: str | int = None)` - emit a custom event at any point
+- `event(name: str, value: str | int)` - emit a custom event at any point
 - `evaluate_event(name: str, data: str)` - register a possible event for automatic checking by Laminar.
 
 Example:
@@ -82,11 +101,11 @@ Example:
 import os
 from openai import OpenAI
 
-from lmnr import trace, TraceContext, SpanContext
+from lmnr import trace, TraceContext, SpanContext, EvaluateEvent
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 def poem_writer(t: TraceContext, topic = "turbulence"):
-    span: SpanContext = t.span(name="poem_writer", input=None)
+    span: SpanContext = t.span(name="poem_writer", input=topic)
 
     prompt = f"write a poem about {topic}"
     messages = [
@@ -105,15 +124,19 @@ def poem_writer(t: TraceContext, topic = "turbulence"):
     )
     poem = response.choices[0].message.content
     if topic in poem:
-        llm_span.event("topic_alignment")  # send an event with a pre-defined name
+        llm_span.event("topic_alignment", "good")  # send an event with a pre-defined name
 
-    # note that you can register possible events here as well, not only `llm_span.check_span_event()`
-    llm_span.end(output=poem, check_event_names=["excessive_wordiness"])
+    # note that you can register possible events here as well,
+    # not only `llm_span.evaluate_event()`
+    llm_span.end(
+        output=poem,
+        evaluate_events=[EvaluateEvent(name="excessive_wordines", data=poem)]
+    )
     span.end(output=poem)
     return poem
 
 
-t: TraceContext = trace(user_id="user", session_id="session", release="release")
+t: TraceContext = trace(user_id="user123", session_id="session123", release="release")
 main(t, topic="laminar flow")
 t.end(success=True)
 ```
@@ -159,6 +182,3 @@ PipelineRunResponse(
 )
 ```
 
-## PROJECT_API_KEY
-
-Read more [here](https://docs.lmnr.ai/api-reference/introduction#authentication) on how to get `PROJECT_API_KEY`.
