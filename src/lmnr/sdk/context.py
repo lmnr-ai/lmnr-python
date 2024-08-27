@@ -124,9 +124,7 @@ class LaminarContextManager:
             _lmnr_stack_context.set([])
 
         if error is not None:
-            self.update_current_trace(
-                success=False, end_time=datetime.datetime.now(datetime.timezone.utc)
-            )
+            self.update_current_trace(success=False)
 
         if inspect.isgenerator(result) or is_iterator(result):
             return self._collect_generator_result(
