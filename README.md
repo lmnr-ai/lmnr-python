@@ -184,7 +184,9 @@ response = client.chat.completions.create(
 
 Semantics:
 
-You can specify the cost with `LMNR_SEMANTIC_CONVENTIONS.COST`. Otherwise, the cost will be calculated 
+Check for available semantic conventions in `lmnr.semantic_conventions.gen_ai_spans`.
+
+You can specify the cost with `COST`. Otherwise, the cost will be calculated 
 on the Laminar servers, given the following are specified:
 
 - span_type is `"LLM"`
