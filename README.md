@@ -109,7 +109,7 @@ Example:
 import os
 from openai import OpenAI
 
-from lmnr import trace, TraceContext, SpanContext, EvaluateEvent
+from lmnr import trace, TraceContext, SpanContext, EvaluateEvent, LMNR_SEMANTIC_CONVENTIONS
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 def poem_writer(t: TraceContext, topic = "turbulence"):
@@ -138,7 +138,14 @@ def poem_writer(t: TraceContext, topic = "turbulence"):
     # not only `llm_span.evaluate_event()`
     llm_span.end(
         output=poem,
-        evaluate_events=[EvaluateEvent(name="excessive_wordines", data=poem)]
+        evaluate_events=[EvaluateEvent(name="excessive_wordines", data=poem)],
+        attributes={
+            LMNR_SEMANTIC_CONVENTIONS.INPUT_TOKEN_COUNT=response.usage.prompt_tokens,
+            LMNR_SEMANTIC_CONVENTIONS.OUTPUT_TOKEN_COUNT=response.usage.completion_tokens,
+            LMNR_SEMANTIC_CONVENTIONS.RESPONSE_MODEL=response.model,
+            LMNR_SEMANTIC_CONVENTIONS.PROVIDER='openai',
+            LMNR_SEMANTIC_CONVENTIONS.STREAM=False
+        }
     )
     span.end(output=poem)
     return poem
@@ -148,6 +155,49 @@ t: TraceContext = trace(user_id="user123", session_id="session123", release="rel
 main(t, topic="laminar flow")
 t.end(success=True)
 ```
+
+## Manual attributes
+
+You can specify span attributes when creating/updating/ending spans.
+
+If you use [decorator instrumentation](#decorator-instrumentation-example), `wrap_llm_call` handles all of this for you.
+
+Example usage:
+
+```python
+from lmnr import LMNR_SEMANTIC_CONVENTIONS
+
+# span_type = LLM 
+llm_span = span.span(name="OpenAI completion", input=messages, span_type="LLM")
+llm_span.update(
+    attributes={LMNR_SEMANTIC_CONVENTIONS.REQUEST_MODEL = "gpt-4o-mini"}
+)
+response = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Hello. What is the capital of France?"},
+    ],
+)
+```
+
+Semantics:
+
+You can specify the cost with `LMNR_SEMANTIC_CONVENTIONS.COST`. Otherwise, the cost will be calculated 
+on the Laminar servers, given the following are specified:
+
+- span_type is `"LLM"`
+- Model provider: `PROVIDER`, e.g. 'openai', 'anthropic'
+- Output tokens: `OUTPUT_TOKEN_COUNT`
+- Input tokens: `INPUT_TOKEN_COUNT`*
+- Model. We look at `RESPONSE_MODEL` first, and then, if it is not present, we take the value of `REQUEST_MODEL`
+
+\* Also, for the case when `PROVIDER` is `"openai"`, the `STREAM` is set to `True`, and `INPUT_TOKEN_COUNT` is not set, we will calculate
+the number of input tokens, and the cost on the server using [tiktoken](https://github.com/zurawiki/tiktoken-rs) and 
+use it in cost calculation.
+This is done because OpenAI does not stream the usage back
+when streaming is enabled. Output token count is (approximately) equal to the number of streaming
+events sent by OpenAI, but there is no way to calculate the input token count, other than re-tokenizing.
 
 ## Making Laminar pipeline calls
 
@@ -183,46 +233,3 @@ PipelineRunResponse(
     run_id='53b012d5-5759-48a6-a9c5-0011610e3669'
 )
 ```
-
-## Manual attributes
-
-You can specify span attributes when creating/updating/ending spans. We support LLM-specific OpenTelemetry span attributes.
-
-If you use [decorator instrumentation](#decorator-instrumentation-example), `wrap_llm_call` handles all of this for you.
-
-Example usage:
-
-```python
-from lmnr import LMNR_SEMANTIC_CONVENTIONS
-
-# span_type = LLM 
-llm_span = span.span(name="OpenAI completion", input=messages, span_type="LLM")
-llm_span.update(
-    attributes={LMNR_SEMANTIC_CONVENTIONS.REQUEST_MODEL = "gpt-4o-mini"}
-)
-response = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "Hello. What is the capital of France?"},
-    ],
-)
-```
-
-Semantics:
-
-You can specify the cost with `LMNR_SEMANTIC_CONVENTIONS.COST`. Otherwise, the cost will be calculated 
-on the Laminar servers, given the following are specified:
-
-- span_type is `"LLM"`
-- Model provider: `PROVIDER`, e.g. 'openai', 'anthropic'
-- Output tokens: `OUTPUT_TOKEN_COUNT`
-- Input tokens: `INPUT_TOKEN_COUNT`*
-- Model. We look at `RESPONSE_MODEL` first, and then, if it is not present, we take the value of `REQUEST_MODEL`
-
-\* if the `PROVIDER` is `"openai"`, the `STREAM` is set to `True`, and `INPUT_TOKEN_COUNT` is not set, we will calculate
-the number of input tokens, and the cost on the server using [tiktoken](https://github.com/zurawiki/tiktoken-rs) and 
-use it in cost calculation.
-This is done because OpenAI does not stream the usage back
-when streaming is enabled. Output token count is (approximately) equal to the number of streaming
-events sent by OpenAI, but there is no way to calculate the input token count, other than re-tokenizing
