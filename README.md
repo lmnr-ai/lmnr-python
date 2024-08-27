@@ -109,7 +109,8 @@ Example:
 import os
 from openai import OpenAI
 
-from lmnr import trace, TraceContext, SpanContext, EvaluateEvent, LMNR_SEMANTIC_CONVENTIONS
+from lmnr import trace, TraceContext, SpanContext, EvaluateEvent
+from lmnr.semantic_conventions.gen_ai_spans import INPUT_TOKEN_COUNT, OUTPUT_TOKEN_COUNT, RESPONSE_MODEL, PROVIDER, STREAM
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 def poem_writer(t: TraceContext, topic = "turbulence"):
@@ -140,11 +141,11 @@ def poem_writer(t: TraceContext, topic = "turbulence"):
         output=poem,
         evaluate_events=[EvaluateEvent(name="excessive_wordines", data=poem)],
         attributes={
-            LMNR_SEMANTIC_CONVENTIONS.INPUT_TOKEN_COUNT=response.usage.prompt_tokens,
-            LMNR_SEMANTIC_CONVENTIONS.OUTPUT_TOKEN_COUNT=response.usage.completion_tokens,
-            LMNR_SEMANTIC_CONVENTIONS.RESPONSE_MODEL=response.model,
-            LMNR_SEMANTIC_CONVENTIONS.PROVIDER='openai',
-            LMNR_SEMANTIC_CONVENTIONS.STREAM=False
+            INPUT_TOKEN_COUNT=response.usage.prompt_tokens,
+            OUTPUT_TOKEN_COUNT=response.usage.completion_tokens,
+            RESPONSE_MODEL=response.model,
+            PROVIDER='openai',
+            STREAM=False
         }
     )
     span.end(output=poem)
@@ -170,7 +171,7 @@ from lmnr.semantic_conventions.gen_ai_spans import REQUEST_MODEL
 # span_type = LLM is important for correct attribute semantics
 llm_span = span.span(name="OpenAI completion", input=messages, span_type="LLM")
 llm_span.update(
-    attributes={LMNR_SEMANTIC_CONVENTIONS.REQUEST_MODEL = "gpt-4o-mini"}
+    attributes={REQUEST_MODEL = "gpt-4o-mini"}
 )
 response = client.chat.completions.create(
     model="gpt-4o-mini",
