@@ -50,7 +50,7 @@ class ObservationContext:
         Returns:
             SpanContext: The new span context
         """
-        parent = self._get_parent()
+        parent = self
         parent_span_id = (
             parent.observation.id if isinstance(parent.observation, Span) else None
         )
