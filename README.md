@@ -141,11 +141,11 @@ def poem_writer(t: TraceContext, topic = "turbulence"):
         output=poem,
         evaluate_events=[EvaluateEvent(name="excessive_wordines", data=poem)],
         attributes={
-            INPUT_TOKEN_COUNT=response.usage.prompt_tokens,
-            OUTPUT_TOKEN_COUNT=response.usage.completion_tokens,
-            RESPONSE_MODEL=response.model,
-            PROVIDER='openai',
-            STREAM=False
+            INPUT_TOKEN_COUNT: response.usage.prompt_tokens,
+            OUTPUT_TOKEN_COUNT: response.usage.completion_tokens,
+            RESPONSE_MODEL: response.model,
+            PROVIDER: 'openai',
+            STREAM: False
         }
     )
     span.end(output=poem)
@@ -171,7 +171,7 @@ from lmnr.semantic_conventions.gen_ai_spans import REQUEST_MODEL
 # span_type = LLM is important for correct attribute semantics
 llm_span = span.span(name="OpenAI completion", input=messages, span_type="LLM")
 llm_span.update(
-    attributes={REQUEST_MODEL = "gpt-4o-mini"}
+    attributes={REQUEST_MODEL: "gpt-4o-mini"}
 )
 response = client.chat.completions.create(
     model="gpt-4o-mini",
