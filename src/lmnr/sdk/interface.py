@@ -197,7 +197,13 @@ class SpanContext(ObservationContext):
         self._update(
             input=self.observation.input,
             output=self.observation.output,
-            evaluate_events=[EvaluateEvent(name=name, data=data)],
+            evaluate_events=[
+                EvaluateEvent(
+                    name=name,
+                    data=data,
+                    timestamp=datetime.datetime.now(datetime.timezone.utc),
+                )
+            ],
             override=False,
         )
 
