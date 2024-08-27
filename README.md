@@ -97,11 +97,11 @@ For manual instrumetation you will need to import the following:
 Both `TraceContext` and `SpanContext` expose the following interfaces:
 - `span(name: str, **kwargs)` - create a child span within the current context. Returns `SpanContext`
 - `update(**kwargs)` - update the current trace or span and return it. Returns `TraceContext` or `SpanContext`. Useful when some metadata becomes known later during the program execution
-- `end(**kwargs)` – update the current span, and terminate it
 
 In addition, `SpanContext` allows you to:
 - `event(name: str, value: str | int)` - emit a custom event at any point
 - `evaluate_event(name: str, data: str)` - register a possible event for automatic checking by Laminar.
+- `end(**kwargs)` – update the current span, and terminate it
 
 Example:
 
@@ -154,7 +154,6 @@ def poem_writer(t: TraceContext, topic = "turbulence"):
 
 t: TraceContext = trace(user_id="user123", session_id="session123", release="release")
 main(t, topic="laminar flow")
-t.end(success=True)
 ```
 
 ## Manual attributes
