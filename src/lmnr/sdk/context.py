@@ -75,7 +75,6 @@ class LaminarContextManager:
                 user_id=user_id,
                 session_id=session_id,
                 release=release,
-                start_time=datetime.datetime.now(datetime.timezone.utc),
             )
             _root_trace_id_context.set(trace.id)
             _lmnr_stack_context.set([trace])
@@ -116,8 +115,6 @@ class LaminarContextManager:
             trace = stack[0]
             self.update_trace(
                 id=trace.id,
-                start_time=trace.startTime,
-                end_time=datetime.datetime.now(datetime.timezone.utc),
                 user_id=trace.userId,
                 session_id=trace.sessionId,
                 release=trace.release,
@@ -162,7 +159,8 @@ class LaminarContextManager:
     def update_current_span(
         self,
         metadata: Optional[dict[str, Any]] = None,
-        check_event_names: list[str] = None,
+        attributes: Optional[dict[str, Any]] = None,
+        evaluate_events: list[EvaluateEvent] = None,
         override: bool = False,
     ):
         stack = _lmnr_stack_context.get()
@@ -172,15 +170,21 @@ class LaminarContextManager:
         new_metadata = (
             metadata if override else {**(span.metadata or {}), **(metadata or {})}
         )
-        new_check_event_names = (
-            check_event_names
+        new_evaluate_events = (
+            evaluate_events
             if override
-            else span.evaluateEvents + (check_event_names or [])
+            else span.evaluateEvents + (evaluate_events or [])
+        )
+        new_attributes = (
+            attributes
+            if override
+            else {**(span.attributes or {}), **(attributes or {})}
         )
         self.update_span(
             span=span,
             metadata=new_metadata,
-            evaluate_events=new_check_event_names,
+            evaluate_events=new_evaluate_events,
+            attributes=new_attributes,
         )
 
     def update_current_trace(
@@ -190,7 +194,6 @@ class LaminarContextManager:
         release: Optional[str] = None,
         metadata: Optional[dict[str, Any]] = None,
         success: bool = True,
-        end_time: Optional[datetime.datetime] = None,
     ):
         existing_trace = (
             _lmnr_stack_context.get()[0] if _lmnr_stack_context.get() else None
@@ -199,8 +202,6 @@ class LaminarContextManager:
             return
         self.update_trace(
             id=existing_trace.id,
-            start_time=existing_trace.startTime,
-            end_time=end_time,
             user_id=user_id or existing_trace.userId,
             session_id=session_id or existing_trace.sessionId,
             release=release or existing_trace.release,
@@ -211,8 +212,6 @@ class LaminarContextManager:
     def update_trace(
         self,
         id: uuid.UUID,
-        start_time: Optional[datetime.datetime] = None,
-        end_time: Optional[datetime.datetime] = None,
         user_id: Optional[str] = None,
         session_id: Optional[str] = None,
         release: Optional[str] = None,
@@ -220,8 +219,6 @@ class LaminarContextManager:
         success: bool = True,
     ) -> Trace:
         trace = Trace(
-            start_time=start_time,
-            end_time=end_time,
             id=id,
             user_id=user_id,
             session_id=session_id,
@@ -245,6 +242,7 @@ class LaminarContextManager:
         attributes: Optional[dict[str, Any]] = None,
         check_event_names: list[str] = None,
     ) -> Span:
+        """Internal method to create a span object. Use `ObservationContext.span` instead."""
         span = Span(
             name=name,
             trace_id=trace_id,
@@ -263,18 +261,23 @@ class LaminarContextManager:
         self,
         span: Span,
         finalize: bool = False,
+        input: Optional[Any] = None,
         end_time: Optional[datetime.datetime] = None,
         output: Optional[Any] = None,
         metadata: Optional[dict[str, Any]] = None,
         attributes: Optional[dict[str, Any]] = None,
         evaluate_events: Optional[list[EvaluateEvent]] = None,
+        override: bool = False,
     ) -> Span:
+        """Internal method to update a span object. Use `SpanContext.update()` instead."""
         span.update(
+            input=input,
             end_time=end_time,
             output=output,
             metadata=metadata,
             attributes=attributes,
             evaluate_events=evaluate_events,
+            override=override,
         )
         if finalize:
             self._add_observation(span)
@@ -305,7 +308,13 @@ class LaminarContextManager:
                 f"No active span to add check event. Ignoring event. {name}"
             )
             return
-        stack[-1].evaluateEvents.append(EvaluateEvent(name=name, data=data))
+        stack[-1].evaluateEvents.append(
+            EvaluateEvent(
+                name=name,
+                data=data,
+                timestamp=datetime.datetime.now(datetime.timezone.utc),
+            )
+        )
 
     def run_pipeline(
         self,
@@ -328,7 +337,8 @@ class LaminarContextManager:
         )
 
     def _force_finalize_trace(self):
-        self.update_current_trace(end_time=datetime.datetime.now(datetime.timezone.utc))
+        # TODO: flush in progress spans as error?
+        pass
 
     def _add_observation(self, observation: Union[Span, Trace]) -> bool:
         return self.thread_manager.add_task(observation)

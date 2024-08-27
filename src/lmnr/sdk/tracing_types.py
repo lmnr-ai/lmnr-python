@@ -10,6 +10,7 @@ from .utils import to_dict
 class EvaluateEvent(pydantic.BaseModel):
     name: str
     data: str
+    timestamp: Optional[datetime.datetime] = None
 
 
 class Span(pydantic.BaseModel):
@@ -62,6 +63,7 @@ class Span(pydantic.BaseModel):
     def update(
         self,
         end_time: Optional[datetime.datetime],
+        input: Optional[Any] = None,
         output: Optional[Any] = None,
         metadata: Optional[dict[str, Any]] = None,
         attributes: Optional[dict[str, Any]] = None,
@@ -69,6 +71,7 @@ class Span(pydantic.BaseModel):
         override: bool = False,
     ):
         self.endTime = end_time or datetime.datetime.now(datetime.timezone.utc)
+        self.input = input
         self.output = output
         new_metadata = (
             metadata if override else {**(self.metadata or {}), **(metadata or {})}
@@ -111,8 +114,6 @@ class Trace(pydantic.BaseModel):
     id: uuid.UUID
     version: str = CURRENT_TRACING_VERSION
     success: bool = True
-    startTime: Optional[datetime.datetime] = None
-    endTime: Optional[datetime.datetime] = None
     userId: Optional[str] = None  # provided by user or null
     sessionId: Optional[str] = None  # provided by user or uuid()
     release: Optional[str] = None
@@ -121,8 +122,6 @@ class Trace(pydantic.BaseModel):
     def __init__(
         self,
         success: bool = True,
-        start_time: Optional[datetime.datetime] = None,
-        end_time: Optional[datetime.datetime] = None,
         id: Optional[uuid.UUID] = None,
         user_id: Optional[str] = None,
         session_id: Optional[str] = None,
@@ -132,9 +131,7 @@ class Trace(pydantic.BaseModel):
         id_ = id or uuid.uuid4()
         super().__init__(
             id=id_,
-            startTime=start_time,
             success=success,
-            endTime=end_time,
             userId=user_id,
             sessionId=session_id,
             release=release,

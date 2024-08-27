@@ -5,6 +5,7 @@ from typing import Any, Callable, Literal, Optional, Union
 
 from .context import LaminarSingleton
 from .providers.fallback import FallbackProvider
+from ..semantic_conventions.gen_ai_spans import PROVIDER
 from .types import NodeInput, PipelineRunResponse
 from .utils import (
     PROVIDER_NAME_TO_OBJECT,
@@ -103,6 +104,7 @@ class LaminarDecorator:
     def update_current_span(
         self,
         metadata: Optional[dict[str, Any]] = None,
+        attributes: Optional[dict[str, Any]] = None,
         override: bool = False,
     ):
         """Update the current span with any optional metadata.
@@ -112,7 +114,9 @@ class LaminarDecorator:
             override (bool, optional): Whether to override the existing metadata. If False, metadata is merged with the existing metadata. Defaults to False.
         """
         laminar = LaminarSingleton().get()
-        laminar.update_current_span(metadata=metadata, override=override)
+        laminar.update_current_span(
+            metadata=metadata, attributes=attributes, override=override
+        )
 
     def update_current_trace(
         self,
@@ -232,7 +236,7 @@ def wrap_llm_call(func: Callable, name: str = None, provider: str = None) -> Cal
             if provider_module
             else {}
         )
-        attributes["provider"] = provider_name
+        attributes[PROVIDER] = provider_name
         span = laminar.observe_start(
             name=name, span_type="LLM", input=inp, attributes=attributes
         )
@@ -255,7 +259,7 @@ def wrap_llm_call(func: Callable, name: str = None, provider: str = None) -> Cal
             if provider_module
             else {}
         )
-        attributes["provider"] = provider_name
+        attributes[PROVIDER] = provider_name
         span = laminar.observe_start(
             name=name, span_type="LLM", input=inp, attributes=attributes
         )

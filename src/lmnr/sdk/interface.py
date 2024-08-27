@@ -24,9 +24,6 @@ class ObservationContext:
     def _get_parent(self) -> "ObservationContext":
         raise NotImplementedError
 
-    def end(self, *args, **kwargs):
-        raise NotImplementedError
-
     def update(self, *args, **kwargs):
         raise NotImplementedError
 
@@ -50,7 +47,7 @@ class ObservationContext:
         Returns:
             SpanContext: The new span context
         """
-        parent = self._get_parent()
+        parent = self
         parent_span_id = (
             parent.observation.id if isinstance(parent.observation, Span) else None
         )
@@ -87,16 +84,20 @@ class SpanContext(ObservationContext):
 
     def end(
         self,
+        input: Optional[Any] = None,
         output: Optional[Any] = None,
         metadata: Optional[dict[str, Any]] = None,
+        attributes: Optional[dict[str, Any]] = None,
         evaluate_events: Optional[list[EvaluateEvent]] = None,
         override: bool = False,
     ) -> "SpanContext":
         """End the span with the given output and optional metadata and evaluate events.
 
         Args:
+            input (Optional[Any], optional): Inputs to the span. Defaults to None.
             output (Optional[Any], optional): output of the span. Defaults to None.
             metadata (Optional[dict[str, Any]], optional): any additional metadata to the span. Defaults to None.
+            attributes (Optional[dict[str, Any]], optional): pre-defined attributes (see semantic-convention). Defaults to None.
             check_event_names (Optional[list[EvaluateEvent]], optional): List of events to evaluate for and tag. Defaults to None.
             override (bool, optional): override existing metadata fully. If False, metadata is merged. Defaults to False.
 
@@ -111,25 +112,31 @@ class SpanContext(ObservationContext):
             )
         self._get_parent()._children.pop(self.observation.id)
         return self._update(
+            input=input,
             output=output,
             metadata=metadata,
             evaluate_events=evaluate_events,
+            attributes=attributes,
             override=override,
             finalize=True,
         )
 
     def update(
         self,
+        input: Optional[Any] = None,
         output: Optional[Any] = None,
         metadata: Optional[dict[str, Any]] = None,
+        attributes: Optional[dict[str, Any]] = None,
         evaluate_events: Optional[list[EvaluateEvent]] = None,
         override: bool = False,
     ) -> "SpanContext":
         """Update the current span with (optionally) the given output and optional metadata and evaluate events, but don't end it.
 
         Args:
+            input (Optional[Any], optional): Inputs to the span. Defaults to None.
             output (Optional[Any], optional): output of the span. Defaults to None.
             metadata (Optional[dict[str, Any]], optional): any additional metadata to the span. Defaults to None.
+            attributes (Optional[dict[str, Any]], optional): pre-defined attributes (see semantic-convention). Defaults to None.
             check_event_names (Optional[list[EvaluateEvent]], optional): List of events to evaluate for and tag. Defaults to None.
             override (bool, optional): override existing metadata fully. If False, metadata is merged. Defaults to False.
 
@@ -137,9 +144,11 @@ class SpanContext(ObservationContext):
             SpanContext: the finished span context
         """
         return self._update(
+            input=input or self.observation.input,
             output=output or self.observation.output,
-            metadata=metadata or self.observation.metadata,
-            evaluate_events=evaluate_events or self.observation.evaluateEvents,
+            metadata=metadata,
+            evaluate_events=evaluate_events,
+            attributes=attributes,
             override=override,
             finalize=False,
         )
@@ -182,40 +191,39 @@ class SpanContext(ObservationContext):
         Returns:
             SpanContext: the updated span context
         """
-        existing_evaluate_events = self.observation.evaluateEvents
-        output = self.observation.output
         self._update(
-            output=output,
-            evaluate_events=existing_evaluate_events
-            + [EvaluateEvent(name=name, data=data)],
+            input=self.observation.input,
+            output=self.observation.output,
+            evaluate_events=[
+                EvaluateEvent(
+                    name=name,
+                    data=data,
+                    timestamp=datetime.datetime.now(datetime.timezone.utc),
+                )
+            ],
             override=False,
         )
 
     def _update(
         self,
+        input: Optional[Any] = None,
         output: Optional[Any] = None,
         metadata: Optional[dict[str, Any]] = None,
+        attributes: Optional[dict[str, Any]] = None,
         evaluate_events: Optional[list[EvaluateEvent]] = None,
         override: bool = False,
         finalize: bool = False,
     ) -> "SpanContext":
-        new_metadata = (
-            metadata
-            if override
-            else {**(self.observation.metadata or {}), **(metadata or {})}
-        )
-        new_evaluate_events = (
-            evaluate_events
-            if override
-            else self.observation.evaluateEvents + (evaluate_events or [])
-        )
         self.observation = laminar.update_span(
+            input=input,
+            output=output,
             span=self.observation,
             end_time=datetime.datetime.now(datetime.timezone.utc),
-            output=output,
-            metadata=new_metadata,
-            evaluate_events=new_evaluate_events,
+            metadata=metadata,
+            attributes=attributes,
+            evaluate_events=evaluate_events,
             finalize=finalize,
+            override=override,
         )
         return self
 
@@ -253,42 +261,6 @@ class TraceContext(ObservationContext):
             success=success if success is not None else self.observation.success,
         )
 
-    def end(
-        self,
-        user_id: Optional[str] = None,
-        session_id: Optional[str] = None,
-        release: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
-        success: bool = True,
-    ) -> "TraceContext":
-        """End the current trace with the given metadata and success status.
-
-        Args:
-            user_id (Optional[str], optional): Custom user_id of your user. Useful for grouping and further analytics. Defaults to None.
-            session_id (Optional[str], optional): Custom session_id for your session. Random UUID is generated on Laminar side, if not specified.
-                                                  Defaults to None.
-            release (Optional[str], optional): _description_. Release of your application. Useful for grouping and further analytics. Defaults to None.
-            metadata (Optional[dict[str, Any]], optional):  any additional metadata to the trace. Defaults to None.
-            success (bool, optional): whether this trace ran successfully. Defaults to True.
-
-        Returns:
-            TraceContext: context of the ended trace
-        """
-        if self._children:
-            self._log.warning(
-                "Ending trace id: %s, but it has children that have not been finalized. Children: %s",
-                self.observation.id,
-                [child.observation.name for child in self._children.values()],
-            )
-        return self._update(
-            user_id=user_id or self.observation.userId,
-            session_id=session_id or self.observation.sessionId,
-            release=release or self.observation.release,
-            metadata=metadata or self.observation.metadata,
-            success=success if success is not None else self.observation.success,
-            end_time=datetime.datetime.now(datetime.timezone.utc),
-        )
-
     def _update(
         self,
         user_id: Optional[str] = None,
@@ -301,12 +273,10 @@ class TraceContext(ObservationContext):
         self.observation = laminar.update_trace(
             id=self.observation.id,
             user_id=user_id,
-            start_time=self.observation.startTime,
             session_id=session_id,
             release=release,
             metadata=metadata,
             success=success,
-            end_time=end_time,
         )
         return self
 
@@ -320,9 +290,9 @@ def trace(
 
     Args:
         user_id (Optional[str], optional): Custom user_id of your user. Useful for grouping and further analytics. Defaults to None.
-            session_id (Optional[str], optional): Custom session_id for your session. Random UUID is generated on Laminar side, if not specified.
-                                                  Defaults to None.
-            release (Optional[str], optional): _description_. Release of your application. Useful for grouping and further analytics. Defaults to None.
+        session_id (Optional[str], optional): Custom session_id for your session. Random UUID is generated on Laminar side, if not specified.
+                                                Defaults to None.
+        release (Optional[str], optional): _description_. Release of your application. Useful for grouping and further analytics. Defaults to None.
 
     Returns:
         TraceContext: the pointer to the trace context. Use `.span()` to create a new span within this context.
@@ -334,6 +304,5 @@ def trace(
         user_id=user_id,
         session_id=session_id,
         release=release,
-        start_time=datetime.datetime.now(datetime.timezone.utc),
     )
     return TraceContext(trace, None)

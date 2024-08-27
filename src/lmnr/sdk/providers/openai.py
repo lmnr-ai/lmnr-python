@@ -1,4 +1,19 @@
 from .base import Provider
+from ...semantic_conventions.gen_ai_spans import (
+    FINISH_REASONS,
+    FREQUENCY_PENALTY,
+    INPUT_TOKEN_COUNT,
+    MAX_TOKENS,
+    OUTPUT_TOKEN_COUNT,
+    PRESENCE_PENALTY,
+    REQUEST_MODEL,
+    RESPONSE_MODEL,
+    STOP_SEQUENCES,
+    STREAM,
+    TEMPERATURE,
+    TOP_P,
+    TOTAL_TOKEN_COUNT,
+)
 from .utils import parse_or_dump_to_dict
 
 from collections import defaultdict
@@ -92,12 +107,12 @@ class OpenAI(Provider):
                 decisions.append(None)
 
         return {
-            "response_model": obj.get("model"),
-            "input_token_count": obj.get("usage", {}).get("prompt_tokens"),
-            "output_token_count": obj.get("usage", {}).get("completion_tokens"),
-            "total_token_count": obj.get("usage", {}).get("total_tokens"),
-            "finish_reason": obj.get("finish_reason"),
-            "decision": self._from_singleton_list(decisions),
+            RESPONSE_MODEL: obj.get("model"),
+            INPUT_TOKEN_COUNT: obj.get("usage", {}).get("prompt_tokens"),
+            OUTPUT_TOKEN_COUNT: obj.get("usage", {}).get("completion_tokens"),
+            TOTAL_TOKEN_COUNT: obj.get("usage", {}).get("total_tokens"),
+            FINISH_REASONS: obj.get("finish_reason"),
+            # "decision": self._from_singleton_list(decisions),
         }
 
     def extract_llm_output(
@@ -115,10 +130,14 @@ class OpenAI(Provider):
         self, func_args: list[Any], func_kwargs: dict[str, Any]
     ) -> dict[str, Any]:
         return {
-            "request_model": func_kwargs.get("model"),
-            "temperature": func_kwargs.get("temperature"),
-            "top_p": func_kwargs.get("top_p"),
-            "stream": func_kwargs.get("stream", False),
+            REQUEST_MODEL: func_kwargs.get("model"),
+            TEMPERATURE: func_kwargs.get("temperature"),
+            TOP_P: func_kwargs.get("top_p"),
+            FREQUENCY_PENALTY: func_kwargs.get("frequency_penalty"),
+            PRESENCE_PENALTY: func_kwargs.get("presence_penalty"),
+            STOP_SEQUENCES: func_kwargs.get("stop"),
+            MAX_TOKENS: func_kwargs.get("max_tokens"),
+            STREAM: func_kwargs.get("stream", False),
         }
 
     def _message_to_key_and_output(
