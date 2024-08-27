@@ -29,8 +29,7 @@ class APIError(Exception):
 
 
 class Laminar:
-    # _base_url = "https://api.lmnr.ai"
-    _base_url = "http://localhost:8000"
+    _base_url = "https://api.lmnr.ai"
 
     def __init__(self, project_api_key: Optional[str] = None):
         self.project_api_key = project_api_key or os.environ.get("LMNR_PROJECT_API_KEY")
