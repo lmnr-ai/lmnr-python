@@ -318,7 +318,13 @@ class LaminarContextManager:
                 f"No active span to add check event. Ignoring event. {name}"
             )
             return
-        stack[-1].evaluateEvents.append(EvaluateEvent(name=name, data=data))
+        stack[-1].evaluateEvents.append(
+            EvaluateEvent(
+                name=name,
+                data=data,
+                timestamp=datetime.datetime.now(datetime.timezone.utc),
+            )
+        )
 
     def run_pipeline(
         self,
