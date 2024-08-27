@@ -114,8 +114,6 @@ class Trace(pydantic.BaseModel):
     id: uuid.UUID
     version: str = CURRENT_TRACING_VERSION
     success: bool = True
-    startTime: Optional[datetime.datetime] = None
-    endTime: Optional[datetime.datetime] = None
     userId: Optional[str] = None  # provided by user or null
     sessionId: Optional[str] = None  # provided by user or uuid()
     release: Optional[str] = None
@@ -124,8 +122,6 @@ class Trace(pydantic.BaseModel):
     def __init__(
         self,
         success: bool = True,
-        start_time: Optional[datetime.datetime] = None,
-        end_time: Optional[datetime.datetime] = None,
         id: Optional[uuid.UUID] = None,
         user_id: Optional[str] = None,
         session_id: Optional[str] = None,
@@ -135,9 +131,7 @@ class Trace(pydantic.BaseModel):
         id_ = id or uuid.uuid4()
         super().__init__(
             id=id_,
-            startTime=start_time,
             success=success,
-            endTime=end_time,
             userId=user_id,
             sessionId=session_id,
             release=release,

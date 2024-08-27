@@ -24,9 +24,6 @@ class ObservationContext:
     def _get_parent(self) -> "ObservationContext":
         raise NotImplementedError
 
-    def end(self, *args, **kwargs):
-        raise NotImplementedError
-
     def update(self, *args, **kwargs):
         raise NotImplementedError
 
@@ -264,42 +261,6 @@ class TraceContext(ObservationContext):
             success=success if success is not None else self.observation.success,
         )
 
-    def end(
-        self,
-        user_id: Optional[str] = None,
-        session_id: Optional[str] = None,
-        release: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
-        success: bool = True,
-    ) -> "TraceContext":
-        """End the current trace with the given metadata and success status.
-
-        Args:
-            user_id (Optional[str], optional): Custom user_id of your user. Useful for grouping and further analytics. Defaults to None.
-            session_id (Optional[str], optional): Custom session_id for your session. Random UUID is generated on Laminar side, if not specified.
-                                                  Defaults to None.
-            release (Optional[str], optional): _description_. Release of your application. Useful for grouping and further analytics. Defaults to None.
-            metadata (Optional[dict[str, Any]], optional):  any additional metadata to the trace. Defaults to None.
-            success (bool, optional): whether this trace ran successfully. Defaults to True.
-
-        Returns:
-            TraceContext: context of the ended trace
-        """
-        if self._children:
-            self._log.warning(
-                "Ending trace id: %s, but it has children that have not been finalized. Children: %s",
-                self.observation.id,
-                [child.observation.name for child in self._children.values()],
-            )
-        return self._update(
-            user_id=user_id or self.observation.userId,
-            session_id=session_id or self.observation.sessionId,
-            release=release or self.observation.release,
-            metadata=metadata or self.observation.metadata,
-            success=success if success is not None else self.observation.success,
-            end_time=datetime.datetime.now(datetime.timezone.utc),
-        )
-
     def _update(
         self,
         user_id: Optional[str] = None,
@@ -312,12 +273,10 @@ class TraceContext(ObservationContext):
         self.observation = laminar.update_trace(
             id=self.observation.id,
             user_id=user_id,
-            start_time=self.observation.startTime,
             session_id=session_id,
             release=release,
             metadata=metadata,
             success=success,
-            end_time=end_time,
         )
         return self
 
@@ -345,6 +304,5 @@ def trace(
         user_id=user_id,
         session_id=session_id,
         release=release,
-        start_time=datetime.datetime.now(datetime.timezone.utc),
     )
     return TraceContext(trace, None)

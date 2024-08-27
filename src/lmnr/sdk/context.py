@@ -75,7 +75,6 @@ class LaminarContextManager:
                 user_id=user_id,
                 session_id=session_id,
                 release=release,
-                start_time=datetime.datetime.now(datetime.timezone.utc),
             )
             _root_trace_id_context.set(trace.id)
             _lmnr_stack_context.set([trace])
@@ -116,8 +115,6 @@ class LaminarContextManager:
             trace = stack[0]
             self.update_trace(
                 id=trace.id,
-                start_time=trace.startTime,
-                end_time=datetime.datetime.now(datetime.timezone.utc),
                 user_id=trace.userId,
                 session_id=trace.sessionId,
                 release=trace.release,
@@ -197,7 +194,6 @@ class LaminarContextManager:
         release: Optional[str] = None,
         metadata: Optional[dict[str, Any]] = None,
         success: bool = True,
-        end_time: Optional[datetime.datetime] = None,
     ):
         existing_trace = (
             _lmnr_stack_context.get()[0] if _lmnr_stack_context.get() else None
@@ -206,8 +202,6 @@ class LaminarContextManager:
             return
         self.update_trace(
             id=existing_trace.id,
-            start_time=existing_trace.startTime,
-            end_time=end_time,
             user_id=user_id or existing_trace.userId,
             session_id=session_id or existing_trace.sessionId,
             release=release or existing_trace.release,
@@ -218,8 +212,6 @@ class LaminarContextManager:
     def update_trace(
         self,
         id: uuid.UUID,
-        start_time: Optional[datetime.datetime] = None,
-        end_time: Optional[datetime.datetime] = None,
         user_id: Optional[str] = None,
         session_id: Optional[str] = None,
         release: Optional[str] = None,
@@ -227,8 +219,6 @@ class LaminarContextManager:
         success: bool = True,
     ) -> Trace:
         trace = Trace(
-            start_time=start_time,
-            end_time=end_time,
             id=id,
             user_id=user_id,
             session_id=session_id,
@@ -347,7 +337,8 @@ class LaminarContextManager:
         )
 
     def _force_finalize_trace(self):
-        self.update_current_trace(end_time=datetime.datetime.now(datetime.timezone.utc))
+        # TODO: flush in progress spans as error?
+        pass
 
     def _add_observation(self, observation: Union[Span, Trace]) -> bool:
         return self.thread_manager.add_task(observation)
