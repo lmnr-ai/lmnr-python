@@ -165,9 +165,9 @@ If you use [decorator instrumentation](#decorator-instrumentation-example), `wra
 Example usage:
 
 ```python
-from lmnr import LMNR_SEMANTIC_CONVENTIONS
+from lmnr.semantic_conventions.gen_ai_spans import REQUEST_MODEL
 
-# span_type = LLM 
+# span_type = LLM is important for correct attribute semantics
 llm_span = span.span(name="OpenAI completion", input=messages, span_type="LLM")
 llm_span.update(
     attributes={LMNR_SEMANTIC_CONVENTIONS.REQUEST_MODEL = "gpt-4o-mini"}

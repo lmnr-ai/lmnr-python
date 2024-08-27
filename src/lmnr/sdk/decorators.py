@@ -5,7 +5,7 @@ from typing import Any, Callable, Literal, Optional, Union
 
 from .context import LaminarSingleton
 from .providers.fallback import FallbackProvider
-from .semantic_conventions.gen_ai_spans import PROVIDER
+from ..semantic_conventions.gen_ai_spans import PROVIDER
 from .types import NodeInput, PipelineRunResponse
 from .utils import (
     PROVIDER_NAME_TO_OBJECT,

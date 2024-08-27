@@ -277,6 +277,7 @@ class LaminarContextManager:
         metadata: Optional[dict[str, Any]] = None,
         attributes: Optional[dict[str, Any]] = None,
         evaluate_events: Optional[list[EvaluateEvent]] = None,
+        override: bool = False,
     ) -> Span:
         """Internal method to update a span object. Use `SpanContext.update()` instead."""
         span.update(
@@ -286,6 +287,7 @@ class LaminarContextManager:
             metadata=metadata,
             attributes=attributes,
             evaluate_events=evaluate_events,
+            override=override,
         )
         if finalize:
             self._add_observation(span)

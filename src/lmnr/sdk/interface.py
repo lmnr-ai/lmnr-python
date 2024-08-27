@@ -149,9 +149,9 @@ class SpanContext(ObservationContext):
         return self._update(
             input=input or self.observation.input,
             output=output or self.observation.output,
-            metadata=metadata or self.observation.metadata,
-            evaluate_events=evaluate_events or self.observation.evaluateEvents,
-            attributes=attributes or self.observation.attributes,
+            metadata=metadata,
+            evaluate_events=evaluate_events,
+            attributes=attributes,
             override=override,
             finalize=False,
         )
@@ -194,12 +194,10 @@ class SpanContext(ObservationContext):
         Returns:
             SpanContext: the updated span context
         """
-        existing_evaluate_events = self.observation.evaluateEvents
-        output = self.observation.output
         self._update(
-            output=output,
-            evaluate_events=existing_evaluate_events
-            + [EvaluateEvent(name=name, data=data)],
+            input=self.observation.input,
+            output=self.observation.output,
+            evaluate_events=[EvaluateEvent(name=name, data=data)],
             override=False,
         )
 
@@ -213,30 +211,16 @@ class SpanContext(ObservationContext):
         override: bool = False,
         finalize: bool = False,
     ) -> "SpanContext":
-        new_metadata = (
-            metadata
-            if override
-            else {**(self.observation.metadata or {}), **(metadata or {})}
-        )
-        new_evaluate_events = (
-            evaluate_events
-            if override
-            else self.observation.evaluateEvents + (evaluate_events or [])
-        )
-        new_attributes = (
-            attributes
-            if override
-            else {**(self.observation.attributes or {}), **(attributes or {})}
-        )
         self.observation = laminar.update_span(
             input=input,
+            output=output,
             span=self.observation,
             end_time=datetime.datetime.now(datetime.timezone.utc),
-            output=output,
-            metadata=new_metadata,
-            attributes=new_attributes,
-            evaluate_events=new_evaluate_events,
+            metadata=metadata,
+            attributes=attributes,
+            evaluate_events=evaluate_events,
             finalize=finalize,
+            override=override,
         )
         return self
 

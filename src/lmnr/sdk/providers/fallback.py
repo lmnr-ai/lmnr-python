@@ -1,4 +1,4 @@
-from ..semantic_conventions.gen_ai_spans import (
+from ...semantic_conventions.gen_ai_spans import (
     FINISH_REASONS,
     FREQUENCY_PENALTY,
     INPUT_TOKEN_COUNT,
