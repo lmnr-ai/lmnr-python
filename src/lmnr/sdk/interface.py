@@ -87,16 +87,20 @@ class SpanContext(ObservationContext):
 
     def end(
         self,
+        input: Optional[Any] = None,
         output: Optional[Any] = None,
         metadata: Optional[dict[str, Any]] = None,
+        attributes: Optional[dict[str, Any]] = None,
         evaluate_events: Optional[list[EvaluateEvent]] = None,
         override: bool = False,
     ) -> "SpanContext":
         """End the span with the given output and optional metadata and evaluate events.
 
         Args:
+            input (Optional[Any], optional): Inputs to the span. Defaults to None.
             output (Optional[Any], optional): output of the span. Defaults to None.
             metadata (Optional[dict[str, Any]], optional): any additional metadata to the span. Defaults to None.
+            attributes (Optional[dict[str, Any]], optional): pre-defined attributes (see semantic-convention). Defaults to None.
             check_event_names (Optional[list[EvaluateEvent]], optional): List of events to evaluate for and tag. Defaults to None.
             override (bool, optional): override existing metadata fully. If False, metadata is merged. Defaults to False.
 
@@ -111,25 +115,31 @@ class SpanContext(ObservationContext):
             )
         self._get_parent()._children.pop(self.observation.id)
         return self._update(
+            input=input,
             output=output,
             metadata=metadata,
             evaluate_events=evaluate_events,
+            attributes=attributes,
             override=override,
             finalize=True,
         )
 
     def update(
         self,
+        input: Optional[Any] = None,
         output: Optional[Any] = None,
         metadata: Optional[dict[str, Any]] = None,
+        attributes: Optional[dict[str, Any]] = None,
         evaluate_events: Optional[list[EvaluateEvent]] = None,
         override: bool = False,
     ) -> "SpanContext":
         """Update the current span with (optionally) the given output and optional metadata and evaluate events, but don't end it.
 
         Args:
+            input (Optional[Any], optional): Inputs to the span. Defaults to None.
             output (Optional[Any], optional): output of the span. Defaults to None.
             metadata (Optional[dict[str, Any]], optional): any additional metadata to the span. Defaults to None.
+            attributes (Optional[dict[str, Any]], optional): pre-defined attributes (see semantic-convention). Defaults to None.
             check_event_names (Optional[list[EvaluateEvent]], optional): List of events to evaluate for and tag. Defaults to None.
             override (bool, optional): override existing metadata fully. If False, metadata is merged. Defaults to False.
 
@@ -137,9 +147,11 @@ class SpanContext(ObservationContext):
             SpanContext: the finished span context
         """
         return self._update(
+            input=input or self.observation.input,
             output=output or self.observation.output,
             metadata=metadata or self.observation.metadata,
             evaluate_events=evaluate_events or self.observation.evaluateEvents,
+            attributes=attributes or self.observation.attributes,
             override=override,
             finalize=False,
         )
@@ -193,8 +205,10 @@ class SpanContext(ObservationContext):
 
     def _update(
         self,
+        input: Optional[Any] = None,
         output: Optional[Any] = None,
         metadata: Optional[dict[str, Any]] = None,
+        attributes: Optional[dict[str, Any]] = None,
         evaluate_events: Optional[list[EvaluateEvent]] = None,
         override: bool = False,
         finalize: bool = False,
@@ -209,11 +223,18 @@ class SpanContext(ObservationContext):
             if override
             else self.observation.evaluateEvents + (evaluate_events or [])
         )
+        new_attributes = (
+            attributes
+            if override
+            else {**(self.observation.attributes or {}), **(attributes or {})}
+        )
         self.observation = laminar.update_span(
+            input=input,
             span=self.observation,
             end_time=datetime.datetime.now(datetime.timezone.utc),
             output=output,
             metadata=new_metadata,
+            attributes=new_attributes,
             evaluate_events=new_evaluate_events,
             finalize=finalize,
         )
@@ -320,9 +341,9 @@ def trace(
 
     Args:
         user_id (Optional[str], optional): Custom user_id of your user. Useful for grouping and further analytics. Defaults to None.
-            session_id (Optional[str], optional): Custom session_id for your session. Random UUID is generated on Laminar side, if not specified.
-                                                  Defaults to None.
-            release (Optional[str], optional): _description_. Release of your application. Useful for grouping and further analytics. Defaults to None.
+        session_id (Optional[str], optional): Custom session_id for your session. Random UUID is generated on Laminar side, if not specified.
+                                                Defaults to None.
+        release (Optional[str], optional): _description_. Release of your application. Useful for grouping and further analytics. Defaults to None.
 
     Returns:
         TraceContext: the pointer to the trace context. Use `.span()` to create a new span within this context.

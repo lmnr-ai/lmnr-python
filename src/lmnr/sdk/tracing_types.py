@@ -62,6 +62,7 @@ class Span(pydantic.BaseModel):
     def update(
         self,
         end_time: Optional[datetime.datetime],
+        input: Optional[Any] = None,
         output: Optional[Any] = None,
         metadata: Optional[dict[str, Any]] = None,
         attributes: Optional[dict[str, Any]] = None,
@@ -69,6 +70,7 @@ class Span(pydantic.BaseModel):
         override: bool = False,
     ):
         self.endTime = end_time or datetime.datetime.now(datetime.timezone.utc)
+        self.input = input
         self.output = output
         new_metadata = (
             metadata if override else {**(self.metadata or {}), **(metadata or {})}

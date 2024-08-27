@@ -29,6 +29,14 @@ Important notes:
 - If event name does not match anything pre-defined in the UI, the event won't be saved.
 - If event value (when sent with `.event()`) is not in the domain, the event won't be saved.
 
+## Instrumentation
+
+We provide two ways to instrument your python code:
+- With `@observe()` decorators and `wrap_llm_call` helpers
+- Manually
+
+It is important to not mix the two styles of instrumentation, this can lead to unpredictable results.
+
 ## Decorator instrumentation example
 
 For easy automatic instrumentation, we provide you two simple primitives:
@@ -141,12 +149,6 @@ main(t, topic="laminar flow")
 t.end(success=True)
 ```
 
-## Features
-
-- Make Laminar endpoint calls from your Python code
-- Make Laminar endpoint calls that can run your own functions as tools
-- CLI to generate code from pipelines you build on Laminar or execute your own functions while you test your flows in workshop
-
 ## Making Laminar pipeline calls
 
 After you are ready to use your pipeline in your code, deploy it in Laminar by selecting the target version for the pipeline.
@@ -182,3 +184,45 @@ PipelineRunResponse(
 )
 ```
 
+## Manual attributes
+
+You can specify span attributes when creating/updating/ending spans. We support LLM-specific OpenTelemetry span attributes.
+
+If you use [decorator instrumentation](#decorator-instrumentation-example), `wrap_llm_call` handles all of this for you.
+
+Example usage:
+
+```python
+from lmnr import LMNR_SEMANTIC_CONVENTIONS
+
+# span_type = LLM 
+llm_span = span.span(name="OpenAI completion", input=messages, span_type="LLM")
+llm_span.update(
+    attributes={LMNR_SEMANTIC_CONVENTIONS.REQUEST_MODEL = "gpt-4o-mini"}
+)
+response = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Hello. What is the capital of France?"},
+    ],
+)
+```
+
+Semantics:
+
+You can specify the cost with `LMNR_SEMANTIC_CONVENTIONS.COST`. Otherwise, the cost will be calculated 
+on the Laminar servers, given the following are specified:
+
+- span_type is `"LLM"`
+- Model provider: `PROVIDER`, e.g. 'openai', 'anthropic'
+- Output tokens: `OUTPUT_TOKEN_COUNT`
+- Input tokens: `INPUT_TOKEN_COUNT`*
+- Model. We look at `RESPONSE_MODEL` first, and then, if it is not present, we take the value of `REQUEST_MODEL`
+
+\* if the `PROVIDER` is `"openai"`, the `STREAM` is set to `True`, and `INPUT_TOKEN_COUNT` is not set, we will calculate
+the number of input tokens, and the cost on the server using [tiktoken](https://github.com/zurawiki/tiktoken-rs) and 
+use it in cost calculation.
+This is done because OpenAI does not stream the usage back
+when streaming is enabled. Output token count is (approximately) equal to the number of streaming
+events sent by OpenAI, but there is no way to calculate the input token count, other than re-tokenizing

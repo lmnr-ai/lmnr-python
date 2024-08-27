@@ -162,7 +162,8 @@ class LaminarContextManager:
     def update_current_span(
         self,
         metadata: Optional[dict[str, Any]] = None,
-        check_event_names: list[str] = None,
+        attributes: Optional[dict[str, Any]] = None,
+        evaluate_events: list[EvaluateEvent] = None,
         override: bool = False,
     ):
         stack = _lmnr_stack_context.get()
@@ -172,15 +173,21 @@ class LaminarContextManager:
         new_metadata = (
             metadata if override else {**(span.metadata or {}), **(metadata or {})}
         )
-        new_check_event_names = (
-            check_event_names
+        new_evaluate_events = (
+            evaluate_events
             if override
-            else span.evaluateEvents + (check_event_names or [])
+            else span.evaluateEvents + (evaluate_events or [])
+        )
+        new_attributes = (
+            attributes
+            if override
+            else {**(span.attributes or {}), **(attributes or {})}
         )
         self.update_span(
             span=span,
             metadata=new_metadata,
-            evaluate_events=new_check_event_names,
+            evaluate_events=new_evaluate_events,
+            attributes=new_attributes,
         )
 
     def update_current_trace(
@@ -245,6 +252,7 @@ class LaminarContextManager:
         attributes: Optional[dict[str, Any]] = None,
         check_event_names: list[str] = None,
     ) -> Span:
+        """Internal method to create a span object. Use `ObservationContext.span` instead."""
         span = Span(
             name=name,
             trace_id=trace_id,
@@ -263,13 +271,16 @@ class LaminarContextManager:
         self,
         span: Span,
         finalize: bool = False,
+        input: Optional[Any] = None,
         end_time: Optional[datetime.datetime] = None,
         output: Optional[Any] = None,
         metadata: Optional[dict[str, Any]] = None,
         attributes: Optional[dict[str, Any]] = None,
         evaluate_events: Optional[list[EvaluateEvent]] = None,
     ) -> Span:
+        """Internal method to update a span object. Use `SpanContext.update()` instead."""
         span.update(
+            input=input,
             end_time=end_time,
             output=output,
             metadata=metadata,
