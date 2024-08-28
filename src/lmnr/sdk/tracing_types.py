@@ -160,14 +160,14 @@ class Event(pydantic.BaseModel):
     templateName: str
     timestamp: datetime.datetime
     spanId: uuid.UUID
-    value: Optional[Union[int, str | float | bool]] = None
+    value: Optional[Union[int, str, float, bool]] = None
 
     def __init__(
         self,
         name: str,
         span_id: uuid.UUID,
         timestamp: Optional[datetime.datetime] = None,
-        value: Optional[Union[int, str]] = None,
+        value: Optional[Union[int, str, float, bool]] = None,
     ):
         super().__init__(
             id=uuid.uuid4(),
