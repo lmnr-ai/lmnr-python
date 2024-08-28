@@ -76,10 +76,7 @@ def to_dict(obj: typing.Any) -> dict[str, typing.Any]:
 
         return str(o)
 
-    for key in obj.keys():
-        obj[key] = to_dict_inner(obj[key])
-
-    return obj
+    return to_dict_inner(obj)
 
 
 def get_input_from_func_args(
