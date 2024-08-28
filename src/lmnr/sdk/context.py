@@ -284,7 +284,7 @@ class LaminarContextManager:
     def event(
         self,
         name: str,
-        value: Optional[Union[str, int]] = None,
+        value: Optional[Union[str, int, float, bool]] = None,
         timestamp: Optional[datetime.datetime] = None,
     ):
         span = _lmnr_stack_context.get()[-1] if _lmnr_stack_context.get() else None
