@@ -168,7 +168,7 @@ class LaminarDecorator:
         laminar = LaminarSingleton().get()
         laminar.evaluate_event(name, data)
 
-    def run_pipeline(
+    def run(
         self,
         pipeline: str,
         inputs: dict[str, NodeInput],
