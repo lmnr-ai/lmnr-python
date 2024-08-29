@@ -269,9 +269,9 @@ class LaminarContextManager:
     ) -> Span:
         """Internal method to update a span object. Use `SpanContext.update()` instead."""
         span.update(
-            input=input,
+            input=input or span.input,
+            output=output or span.output,
             end_time=end_time,
-            output=output,
             metadata=metadata,
             attributes=attributes,
             evaluate_events=evaluate_events,
@@ -284,7 +284,7 @@ class LaminarContextManager:
     def event(
         self,
         name: str,
-        value: Optional[Union[str, int]] = None,
+        value: Optional[Union[str, int, float, bool]] = None,
         timestamp: Optional[datetime.datetime] = None,
     ):
         span = _lmnr_stack_context.get()[-1] if _lmnr_stack_context.get() else None

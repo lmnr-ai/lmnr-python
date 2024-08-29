@@ -142,14 +142,14 @@ class LaminarDecorator:
     def event(
         self,
         name: str,
-        value: Optional[Union[str, int]] = None,
+        value: Optional[Union[str, int, float, bool]] = None,
         timestamp: Optional[datetime.datetime] = None,
     ):
         """Associate an event with the current span
 
         Args:
             name (str): name of the event. Must be predefined in the Laminar events page.
-            value (Optional[Union[str, int]], optional): value of the event. Must match range definition in Laminar events page. Defaults to None.
+            value (Optional[Union[str, int, float, bool]], optional): value of the event. Must match range definition in Laminar events page. Defaults to None.
             timestamp (Optional[datetime.datetime], optional): If you need custom timestamp. If not specified, current time is used. Defaults to None.
         """
         laminar = LaminarSingleton().get()
@@ -168,7 +168,7 @@ class LaminarDecorator:
         laminar = LaminarSingleton().get()
         laminar.evaluate_event(name, data)
 
-    def run_pipeline(
+    def run(
         self,
         pipeline: str,
         inputs: dict[str, NodeInput],

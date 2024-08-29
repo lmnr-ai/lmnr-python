@@ -3,6 +3,8 @@ import pydantic
 import uuid
 from typing import Optional, Union
 
+from .utils import to_dict
+
 
 class ChatMessage(pydantic.BaseModel):
     role: str
@@ -30,7 +32,7 @@ class PipelineRunRequest(pydantic.BaseModel):
     def to_dict(self):
         return {
             "inputs": {
-                k: v.model_dump() if isinstance(v, pydantic.BaseModel) else v
+                k: v.model_dump() if isinstance(v, pydantic.BaseModel) else to_dict(v)
                 for k, v in self.inputs.items()
             },
             "pipeline": self.pipeline,
