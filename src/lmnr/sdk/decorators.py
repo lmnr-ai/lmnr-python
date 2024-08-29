@@ -172,8 +172,8 @@ class LaminarDecorator:
         self,
         pipeline: str,
         inputs: dict[str, NodeInput],
-        env: dict[str, str] = None,
-        metadata: dict[str, str] = None,
+        env: dict[str, str] = {},
+        metadata: dict[str, str] = {},
     ) -> PipelineRunResponse:
         """Run the laminar pipeline with the given inputs. Pipeline must be defined in the Laminar UI and have a target version.
 
