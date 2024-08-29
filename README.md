@@ -21,13 +21,12 @@ You can send events in two ways:
 - `.evaluate_event(name, data)` – for an event that our agent checks for and assigns a value from possible values.
 
 There are 3 types of events:
-- SCORE - this is an integer score where you specify inclusive minimum and maximum.
-- CLASS - this is a classifier with one of the possible values.
-- TAG - this event has no value and can be assigned to a span.
+- Number - Numeric value.
+- String - Arbitrary string.
+- Boolean - Convenient to classify if something has took place or not.
 
 Important notes:
 - If event name does not match anything pre-defined in the UI, the event won't be saved.
-- If event value (when sent with `.event()`) is not in the domain, the event won't be saved.
 
 ## Instrumentation
 
