@@ -166,7 +166,7 @@ class LaminarDecorator:
         Args:
             name (str): Name of the event.
             evaluator (str): Name of the evaluator pipeline.
-            data (str): Data to be used when evaluating the event.
+            data (dict): Data to be used when evaluating the event.
         """
         laminar = LaminarSingleton().get()
         laminar.evaluate_event(name, evaluator=evaluator, data=data)

@@ -178,9 +178,7 @@ class SpanContext(ObservationContext):
         self.observation.add_event(event)
         return self
 
-    def evaluate_event(
-        self, name: str, evaluator: str, data: dict, env: dict = {}
-    ) -> "SpanContext":
+    def evaluate_event(self, name: str, evaluator: str, data: dict) -> "SpanContext":
         """Evaluate an event with the given name by evaluator based on the given data.
         Evaluator is the Laminar pipeline name.
         Data is passed as an input to the the evaluator pipeline, so you need to specify which data you want to evaluate. The prompt
@@ -191,7 +189,7 @@ class SpanContext(ObservationContext):
         Args:
             name (str): Name of the event.
             evaluator (str): Name of the evaluator pipeline.
-            data (str): Data to be used when evaluating the event.
+            data (dict): Data to be used when evaluating the event.
 
         Returns:
             SpanContext: the updated span context

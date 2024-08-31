@@ -314,6 +314,7 @@ class LaminarContextManager:
                 evaluator=evaluator,
                 data=data,
                 timestamp=datetime.datetime.now(datetime.timezone.utc),
+                env=self.env,
             )
         )
 

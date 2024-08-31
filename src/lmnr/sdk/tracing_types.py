@@ -8,6 +8,15 @@ from .utils import to_dict
 
 
 class EvaluateEvent(pydantic.BaseModel):
+    """
+    EvaluateEvent is an event which need to be evaluated on the server.
+
+    Args:
+        env: dict[str, str]: Environment variables to be used during evaluation.
+            It is optional and can be left empty, because it will be merged with LaminarContextManager's env.
+            So you need to only set it once there.
+    """
+
     name: str
     evaluator: str
     data: dict
