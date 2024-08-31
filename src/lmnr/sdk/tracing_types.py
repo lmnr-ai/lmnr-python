@@ -9,8 +9,10 @@ from .utils import to_dict
 
 class EvaluateEvent(pydantic.BaseModel):
     name: str
-    data: str
+    evaluator: str
+    data: dict
     timestamp: Optional[datetime.datetime] = None
+    env: dict[str, str] = {}
 
 
 class Span(pydantic.BaseModel):

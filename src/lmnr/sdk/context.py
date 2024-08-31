@@ -34,6 +34,7 @@ class LaminarContextManager:
         project_api_key: str = None,
         threads: int = 1,
         max_task_queue_size: int = 1000,
+        env: dict[str, str] = {},
     ):
         self.project_api_key = project_api_key or os.environ.get("LMNR_PROJECT_API_KEY")
         if not self.project_api_key:
@@ -47,6 +48,7 @@ class LaminarContextManager:
             max_task_queue_size=max_task_queue_size,
             threads=threads,
         )
+        self.env = env
         # atexit executes functions last in first out, so we want to make sure
         # that we finalize the trace before thread manager is closed, so the updated
         # trace is sent to the server
@@ -299,7 +301,7 @@ class LaminarContextManager:
         )
         span.add_event(event)
 
-    def evaluate_event(self, name: str, data: str):
+    def evaluate_event(self, name: str, evaluator: str, data: dict):
         stack = _lmnr_stack_context.get()
         if not stack or not isinstance(stack[-1], Span):
             self._log.warning(
@@ -309,6 +311,7 @@ class LaminarContextManager:
         stack[-1].evaluateEvents.append(
             EvaluateEvent(
                 name=name,
+                evaluator=evaluator,
                 data=data,
                 timestamp=datetime.datetime.now(datetime.timezone.utc),
             )
@@ -333,6 +336,9 @@ class LaminarContextManager:
             parent_span_id=span_id,
             trace_id=trace_id,
         )
+
+    def set_env(self, env: dict[str, str]):
+        self.env = env
 
     def _force_finalize_trace(self):
         # TODO: flush in progress spans as error?

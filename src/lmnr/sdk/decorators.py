@@ -155,18 +155,21 @@ class LaminarDecorator:
         laminar = LaminarSingleton().get()
         laminar.event(name, value=value, timestamp=timestamp)
 
-    def evaluate_event(self, name: str, data: str):
-        """Evaluate an event with the given name and data. The event value will be assessed by the Laminar evaluation engine.
-        Data is passed as an input to the agent, so you need to specify which data you want to evaluate. Most of the times,
-        this is an output of the LLM generation, but sometimes, you may want to evaluate the input or both. In the latter case,
-        concatenate the input and output annotating with natural language.
+    def evaluate_event(self, name: str, evaluator: str, data: dict):
+        """Evaluate an event with the given name by evaluator based on the given data.
+        Evaluator is the Laminar pipeline name.
+        Data is passed as an input to the the evaluator pipeline, so you need to specify which data you want to evaluate. The prompt
+        of the evaluator will be templated with the keys of the data dictionary.
+
+        Usually, you would want to pass the output of LLM generation, users' messages, and some other surrounding data to 'data'.
 
         Args:
-            name (str): Name of the event. Must be predefined in the Laminar events page.
-            data (str): Data to be evaluated. Typically the output of the LLM generation.
+            name (str): Name of the event.
+            evaluator (str): Name of the evaluator pipeline.
+            data (str): Data to be used when evaluating the event.
         """
         laminar = LaminarSingleton().get()
-        laminar.evaluate_event(name, data)
+        laminar.evaluate_event(name, evaluator=evaluator, data=data)
 
     def run(
         self,
