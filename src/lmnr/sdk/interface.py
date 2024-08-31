@@ -98,7 +98,6 @@ class SpanContext(ObservationContext):
             output (Optional[Any], optional): output of the span. Defaults to None.
             metadata (Optional[dict[str, Any]], optional): any additional metadata to the span. Defaults to None.
             attributes (Optional[dict[str, Any]], optional): pre-defined attributes (see semantic-convention). Defaults to None.
-            check_event_names (Optional[list[EvaluateEvent]], optional): List of events to evaluate for and tag. Defaults to None.
             override (bool, optional): override existing metadata fully. If False, metadata is merged. Defaults to False.
 
         Returns:
@@ -137,7 +136,6 @@ class SpanContext(ObservationContext):
             output (Optional[Any], optional): output of the span. Defaults to None.
             metadata (Optional[dict[str, Any]], optional): any additional metadata to the span. Defaults to None.
             attributes (Optional[dict[str, Any]], optional): pre-defined attributes (see semantic-convention). Defaults to None.
-            check_event_names (Optional[list[EvaluateEvent]], optional): List of events to evaluate for and tag. Defaults to None.
             override (bool, optional): override existing metadata fully. If False, metadata is merged. Defaults to False.
 
         Returns:
@@ -215,6 +213,7 @@ class SpanContext(ObservationContext):
         metadata: Optional[dict[str, Any]] = None,
         attributes: Optional[dict[str, Any]] = None,
         evaluate_events: Optional[list[EvaluateEvent]] = None,
+        events: Optional[list[Event]] = None,
         override: bool = False,
         finalize: bool = False,
     ) -> "SpanContext":
