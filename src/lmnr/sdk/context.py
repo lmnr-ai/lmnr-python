@@ -34,6 +34,7 @@ class LaminarContextManager:
         project_api_key: str = None,
         threads: int = 1,
         max_task_queue_size: int = 1000,
+        env: dict[str, str] = {},
     ):
         self.project_api_key = project_api_key or os.environ.get("LMNR_PROJECT_API_KEY")
         if not self.project_api_key:
@@ -47,6 +48,7 @@ class LaminarContextManager:
             max_task_queue_size=max_task_queue_size,
             threads=threads,
         )
+        self.env = env
         # atexit executes functions last in first out, so we want to make sure
         # that we finalize the trace before thread manager is closed, so the updated
         # trace is sent to the server
@@ -60,7 +62,6 @@ class LaminarContextManager:
         metadata: Optional[dict[str, Any]] = None,
         attributes: Optional[dict[str, Any]] = None,
         span_type: Literal["DEFAULT", "LLM"] = "DEFAULT",
-        check_event_names: list[str] = None,
         # trace attributes
         user_id: Optional[str] = None,
         session_id: Optional[str] = None,
@@ -89,7 +90,6 @@ class LaminarContextManager:
             attributes=attributes,
             parent_span_id=parent_span_id,
             span_type=span_type,
-            check_event_names=check_event_names,
         )
         stack = _lmnr_stack_context.get()
         _lmnr_stack_context.set(stack + [span])
@@ -146,6 +146,7 @@ class LaminarContextManager:
             attributes = self._extract_llm_attributes_from_response(
                 provider=provider, response=result
             )
+
         return self._finalize_span(
             span,
             provider=provider,
@@ -159,6 +160,7 @@ class LaminarContextManager:
         metadata: Optional[dict[str, Any]] = None,
         attributes: Optional[dict[str, Any]] = None,
         evaluate_events: list[EvaluateEvent] = None,
+        events: list[Event] = None,
         override: bool = False,
     ):
         stack = _lmnr_stack_context.get()
@@ -173,6 +175,7 @@ class LaminarContextManager:
             if override
             else span.evaluateEvents + (evaluate_events or [])
         )
+        new_events = events if override else span.events + (events or [])
         new_attributes = (
             attributes
             if override
@@ -182,6 +185,7 @@ class LaminarContextManager:
             span=span,
             metadata=new_metadata,
             evaluate_events=new_evaluate_events,
+            events=new_events,
             attributes=new_attributes,
         )
 
@@ -238,7 +242,8 @@ class LaminarContextManager:
         input: Optional[Any] = None,
         metadata: Optional[dict[str, Any]] = None,
         attributes: Optional[dict[str, Any]] = None,
-        check_event_names: list[str] = None,
+        evaluate_events: Optional[list[EvaluateEvent]] = None,
+        events: Optional[list[Event]] = None,
     ) -> Span:
         """Internal method to create a span object. Use `ObservationContext.span` instead."""
         span = Span(
@@ -251,7 +256,8 @@ class LaminarContextManager:
             metadata=metadata,
             attributes=attributes,
             span_type=span_type,
-            evaluate_events=check_event_names or [],
+            evaluate_events=evaluate_events or [],
+            events=events or [],
         )
         return span
 
@@ -265,6 +271,7 @@ class LaminarContextManager:
         metadata: Optional[dict[str, Any]] = None,
         attributes: Optional[dict[str, Any]] = None,
         evaluate_events: Optional[list[EvaluateEvent]] = None,
+        events: Optional[list[Event]] = None,
         override: bool = False,
     ) -> Span:
         """Internal method to update a span object. Use `SpanContext.update()` instead."""
@@ -275,6 +282,7 @@ class LaminarContextManager:
             metadata=metadata,
             attributes=attributes,
             evaluate_events=evaluate_events,
+            events=events,
             override=override,
         )
         if finalize:
@@ -287,10 +295,14 @@ class LaminarContextManager:
         value: Optional[Union[str, int, float, bool]] = None,
         timestamp: Optional[datetime.datetime] = None,
     ):
-        span = _lmnr_stack_context.get()[-1] if _lmnr_stack_context.get() else None
-        if not span or not isinstance(span, Span):
-            self._log.warning(f"No active span to send event. Ignoring event. {name}")
+        stack = _lmnr_stack_context.get()
+        if not stack or not isinstance(stack[-1], Span):
+            self._log.warning(
+                f"No active span to add check event. Ignoring event. {name}"
+            )
             return
+
+        span = stack[-1]
         event = Event(
             name=name,
             span_id=span.id,
@@ -298,8 +310,9 @@ class LaminarContextManager:
             value=value,
         )
         span.add_event(event)
+        _lmnr_stack_context.set(stack)
 
-    def evaluate_event(self, name: str, data: str):
+    def evaluate_event(self, name: str, evaluator: str, data: dict):
         stack = _lmnr_stack_context.get()
         if not stack or not isinstance(stack[-1], Span):
             self._log.warning(
@@ -309,10 +322,13 @@ class LaminarContextManager:
         stack[-1].evaluateEvents.append(
             EvaluateEvent(
                 name=name,
+                evaluator=evaluator,
                 data=data,
                 timestamp=datetime.datetime.now(datetime.timezone.utc),
+                env=self.env,
             )
         )
+        _lmnr_stack_context.set(stack)
 
     def run_pipeline(
         self,
@@ -333,6 +349,9 @@ class LaminarContextManager:
             parent_span_id=span_id,
             trace_id=trace_id,
         )
+
+    def set_env(self, env: dict[str, str]):
+        self.env = env
 
     def _force_finalize_trace(self):
         # TODO: flush in progress spans as error?

@@ -8,9 +8,20 @@ from .utils import to_dict
 
 
 class EvaluateEvent(pydantic.BaseModel):
+    """
+    EvaluateEvent is an event which need to be evaluated on the server.
+
+    Args:
+        env: dict[str, str]: Environment variables to be used during evaluation.
+            It is optional and can be left empty, because it will be merged with LaminarContextManager's env.
+            So you need to only set it once there.
+    """
+
     name: str
-    data: str
+    evaluator: str
+    data: dict
     timestamp: Optional[datetime.datetime] = None
+    env: dict[str, str] = {}
 
 
 class Span(pydantic.BaseModel):
@@ -29,7 +40,7 @@ class Span(pydantic.BaseModel):
     output: Optional[Any] = None
     metadata: Optional[dict[str, Any]] = None
     evaluateEvents: list[EvaluateEvent] = []
-    events: list["Event"] = None
+    events: list["Event"] = []
 
     def __init__(
         self,
@@ -44,6 +55,7 @@ class Span(pydantic.BaseModel):
         metadata: Optional[dict[str, Any]] = {},
         attributes: Optional[dict[str, Any]] = {},
         evaluate_events: list[EvaluateEvent] = [],
+        events: list["Event"] = [],
     ):
         super().__init__(
             version=version,
@@ -57,7 +69,7 @@ class Span(pydantic.BaseModel):
             metadata=metadata or {},
             attributes=attributes or {},
             evaluateEvents=evaluate_events,
-            events=[],
+            events=events,
         )
 
     def update(
@@ -68,6 +80,7 @@ class Span(pydantic.BaseModel):
         metadata: Optional[dict[str, Any]] = None,
         attributes: Optional[dict[str, Any]] = None,
         evaluate_events: Optional[list[EvaluateEvent]] = None,
+        events: Optional[list["Event"]] = None,
         override: bool = False,
     ):
         self.endTime = end_time or datetime.datetime.now(datetime.timezone.utc)
@@ -86,9 +99,11 @@ class Span(pydantic.BaseModel):
             if override
             else self.evaluateEvents + (evaluate_events or [])
         )
+        new_events = events or [] if override else self.events + (events or [])
         self.metadata = new_metadata
         self.attributes = new_attributes
         self.evaluateEvents = new_evaluate_events
+        self.events = new_events
 
     def add_event(self, event: "Event"):
         self.events.append(event)
@@ -106,6 +121,7 @@ class Span(pydantic.BaseModel):
                     if isinstance(value, pydantic.BaseModel)
                     else value
                 )
+
         obj = to_dict(obj)
         return obj
 

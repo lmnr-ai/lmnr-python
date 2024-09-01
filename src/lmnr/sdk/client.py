@@ -119,8 +119,8 @@ class Laminar:
 
     def batch_post_traces(self, batch: list[Union[Span, Trace]]):
         log = logging.getLogger("laminar.client")
-        url = self._base_url + "/v1/traces"
-        data = json.dumps({"traces": [item.to_dict() for item in batch]})
+        url = self._base_url + "/v1/observations"
+        data = json.dumps({"observations": [item.to_dict() for item in batch]})
         log.debug(f"making request to {url}")
         headers = self._headers()
         res = requests.post(url, data=data, headers=headers)

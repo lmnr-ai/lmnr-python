@@ -18,15 +18,9 @@ Read more [here](https://docs.lmnr.ai/api-reference/introduction#authentication)
 
 You can send events in two ways:
 - `.event(name, value)` – for a pre-defined event with one of possible values.
-- `.evaluate_event(name, data)` – for an event that our agent checks for and assigns a value from possible values.
+- `.evaluate_event(name, evaluator, data)` – for an event that is evaluated by evaluator pipeline based on the data.
 
-There are 3 types of events:
-- Number - Numeric value.
-- String - Arbitrary string.
-- Boolean - Convenient to classify if something has took place or not.
-
-Important notes:
-- If event name does not match anything pre-defined in the UI, the event won't be saved.
+Read our [docs](https://docs.lmnr.ai) to learn more about event types, how they are created and evaluated, etc.
 
 ## Instrumentation
 
@@ -50,8 +44,16 @@ You can also import `lmnr_context` in order to interact and have more control ov
 import os
 from openai import OpenAI
 
-from lmnr import observe, wrap_llm_call, lmnr_context
+from lmnr import observe, wrap_llm_call, lmnr_context, initialize
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+# add if your online evaluation pipelines need these keys
+initialize(
+    {
+        "OPENAI_API_KEY": "sk-...",
+        "ANTHROPIC_API_KEY": "sk-...",
+    }
+)
 
 @observe()  # annotate all functions you want to trace
 def poem_writer(topic="turbulence"):
@@ -73,7 +75,7 @@ def poem_writer(topic="turbulence"):
         lmnr_context.event("topic_alignment", "good")
     
     # to trigger an automatic check for a possible event do:
-    lmnr_context.evaluate_event("excessive_wordiness", poem)
+    lmnr_context.evaluate_event("excessive_wordiness", "wordiness_evaluator", {"poem": poem})
 
     return poem
 
@@ -99,7 +101,7 @@ Both `TraceContext` and `SpanContext` expose the following interfaces:
 
 In addition, `SpanContext` allows you to:
 - `event(name: str, value: str | int)` - emit a custom event at any point
-- `evaluate_event(name: str, data: str)` - register a possible event for automatic checking by Laminar.
+- `evaluate_event(name: str, evaluator: str, data: dict)` - register a possible event for automatic checking by Laminar's evaluator pipeline.
 - `end(**kwargs)` – update the current span, and terminate it
 
 Example:
@@ -108,9 +110,17 @@ Example:
 import os
 from openai import OpenAI
 
-from lmnr import trace, TraceContext, SpanContext, EvaluateEvent
+from lmnr import trace, TraceContext, SpanContext, EvaluateEvent, initialize
 from lmnr.semantic_conventions.gen_ai_spans import INPUT_TOKEN_COUNT, OUTPUT_TOKEN_COUNT, RESPONSE_MODEL, PROVIDER, STREAM
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+# add if your online evaluation pipelines need these keys
+initialize(
+    {
+        "OPENAI_API_KEY": "sk-...",
+        "ANTHROPIC_API_KEY": "sk-...",
+    }
+)
 
 def poem_writer(t: TraceContext, topic = "turbulence"):
     span: SpanContext = t.span(name="poem_writer", input=topic)
@@ -134,11 +144,10 @@ def poem_writer(t: TraceContext, topic = "turbulence"):
     if topic in poem:
         llm_span.event("topic_alignment", "good")  # send an event with a pre-defined name
 
-    # note that you can register possible events here as well,
-    # not only `llm_span.evaluate_event()`
+    llm_span.evaluate_event("positiveness", "positiveness_evaluator", {"poem": poem})
+
     llm_span.end(
         output=poem,
-        evaluate_events=[EvaluateEvent(name="excessive_wordines", data=poem)],
         attributes={
             INPUT_TOKEN_COUNT: response.usage.prompt_tokens,
             OUTPUT_TOKEN_COUNT: response.usage.completion_tokens,
