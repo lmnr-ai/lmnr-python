@@ -1,10 +1,14 @@
 from .tracing_types import Span, Trace
+from opentelemetry.trace import get_current_span
+from opentelemetry.util.types import AttributeValue
+from traceloop.sdk import Traceloop
 
 from pydantic.alias_generators import to_snake
 from typing import Any, Optional, Union
+
+import datetime
 import dotenv
 import json
-import logging
 import os
 import requests
 import uuid
@@ -29,7 +33,8 @@ class APIError(Exception):
 
 
 class Laminar:
-    _base_url = "https://api.lmnr.ai"
+    # _base_url = "https://api.lmnr.ai"
+    _base_url = "http://localhost:8000"
 
     def __init__(self, project_api_key: Optional[str] = None):
         self.project_api_key = project_api_key or os.environ.get("LMNR_PROJECT_API_KEY")
@@ -43,6 +48,10 @@ class Laminar:
                 "Please initialize the Laminar object with your project API key or set "
                 "the LMNR_PROJECT_API_KEY environment variable in your environment or .env file"
             )
+        Traceloop.init(
+            api_endpoint=self._base_url,
+            api_key=self.project_api_key,
+        )
 
     def run(
         self,
@@ -117,42 +126,37 @@ class Laminar:
         except Exception:
             raise PipelineRunError(response)
 
-    def batch_post_traces(self, batch: list[Union[Span, Trace]]):
-        log = logging.getLogger("laminar.client")
-        url = self._base_url + "/v1/observations"
-        data = json.dumps({"observations": [item.to_dict() for item in batch]})
-        log.debug(f"making request to {url}")
-        headers = self._headers()
-        res = requests.post(url, data=data, headers=headers)
+    def event(
+        self,
+        name: str,
+        value: AttributeValue,
+        timestamp: Optional[Union[datetime.datetime, int]] = None,
+    ):
+        if timestamp and isinstance(timestamp, datetime.datetime):
+            timestamp = int(timestamp.timestamp())
 
-        if res.status_code == 200:
-            log.debug("data uploaded successfully")
+        event = {
+            "__lmnr_event_type": "default",
+            "value": value,
+        }
 
-        return self._process_response(
-            res, success_message="data uploaded successfully", return_json=False
-        )
+        get_current_span().add_event(name, event, timestamp)
 
-    def _process_response(
-        self, res: requests.Response, success_message: str, return_json: bool = True
-    ) -> Union[requests.Response, Any]:
-        log = logging.getLogger("laminar.client")
-        log.debug("received response: %s", res.text)
-        if res.status_code in (200, 201):
-            log.debug(success_message)
-            if return_json:
-                try:
-                    return res.json()
-                except json.JSONDecodeError:
-                    log.error("Response is not valid JSON.")
-                    raise APIError(res.status_code, "Invalid JSON response received")
-            else:
-                return res
-        try:
-            payload = res.json()
-            log.error("received error response: %s", payload)
-            raise APIError(res.status_code, payload)
-        except (KeyError, ValueError):
-            raise APIError(res.status_code, res.text)
+    def evaluate_event(
+        self,
+        name: str,
+        evaluator: str,
+        data: dict[str, AttributeValue],
+        env: dict[str, str] = {},
+    ):
+        event = {
+            "__lmnr_event_type": "evaluate",
+            "evaluator": evaluator,
+            "data": json.dumps(data),
+            "env": json.dumps(env),
+        }
+
+        get_current_span().add_event(name, event)
 
     def _headers(self):
         return {

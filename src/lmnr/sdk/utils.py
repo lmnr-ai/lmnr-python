@@ -9,8 +9,6 @@ import queue
 import typing
 import uuid
 
-from .providers import Provider, OpenAI
-
 
 def is_method(func: typing.Callable) -> bool:
     # inspect.ismethod is True for bound methods only, but in the decorator,
@@ -94,8 +92,3 @@ def get_input_from_func_args(
         if len(func_args) > i:
             res[k] = func_args[i]
     return res
-
-
-PROVIDER_NAME_TO_OBJECT: dict[str, Provider] = {
-    "openai": OpenAI(),
-}
