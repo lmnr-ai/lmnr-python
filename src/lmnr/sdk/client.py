@@ -1,5 +1,4 @@
-from .tracing_types import Span, Trace
-from opentelemetry.trace import get_current_span
+from opentelemetry.trace import get_current_span, NonRecordingSpan
 from opentelemetry.util.types import AttributeValue
 from traceloop.sdk import Traceloop
 
@@ -9,6 +8,7 @@ from typing import Any, Optional, Union
 import datetime
 import dotenv
 import json
+import logging
 import os
 import requests
 import uuid
@@ -35,6 +35,7 @@ class APIError(Exception):
 class Laminar:
     # _base_url = "https://api.lmnr.ai"
     _base_url = "http://localhost:8000"
+    logger = logging.getLogger(__name__)
 
     def __init__(self, project_api_key: Optional[str] = None):
         self.project_api_key = project_api_key or os.environ.get("LMNR_PROJECT_API_KEY")
@@ -136,11 +137,18 @@ class Laminar:
             timestamp = int(timestamp.timestamp())
 
         event = {
-            "__lmnr_event_type": "default",
-            "value": value,
+            "lmnr.event.type": "default",
+            "lmnr.event.value": value,
         }
 
-        get_current_span().add_event(name, event, timestamp)
+        current_span = get_current_span()
+        if isinstance(current_span, NonRecordingSpan):
+            self.logger.warning(
+                f"No active span found. Event '{name}' will not be recorded in the trace"
+            )
+            return
+
+        current_span.add_event(name, event, timestamp)
 
     def evaluate_event(
         self,
@@ -150,13 +158,19 @@ class Laminar:
         env: dict[str, str] = {},
     ):
         event = {
-            "__lmnr_event_type": "evaluate",
-            "evaluator": evaluator,
-            "data": json.dumps(data),
-            "env": json.dumps(env),
+            "lmnr.event_type": "evaluate",
+            "lmnr.evaluator": evaluator,
+            "lmnr.data": json.dumps(data),
+            "lmnr.env": json.dumps(env),
         }
+        current_span = get_current_span()
+        if isinstance(current_span, NonRecordingSpan):
+            self.logger.warning(
+                f"No active span found. Evaluate event '{name}' will not be recorded in the trace"
+            )
+            return
 
-        get_current_span().add_event(name, event)
+        current_span.add_event(name, event)
 
     def _headers(self):
         return {
