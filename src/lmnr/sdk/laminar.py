@@ -20,7 +20,6 @@ import json
 import logging
 import os
 import requests
-import time
 import uuid
 
 from .log import VerboseColorfulFormatter
@@ -93,11 +92,9 @@ class Laminar:
                 with execution trace. Defaults to {}.
             parent_span_id (Optional[uuid.UUID], optional):
                 parent span id for the resulting span.
-                Must usually be SpanContext.id()
                 Defaults to None.
             trace_id (Optional[uuid.UUID], optional):
                 trace id for the resulting trace.
-                Must usually be TraceContext.id()
                 Defaults to None.
 
         Returns:
@@ -113,6 +110,14 @@ class Laminar:
                 "the LMNR_PROJECT_API_KEY environment variable"
             )
         try:
+            current_span = get_current_span()
+            if current_span != INVALID_SPAN:
+                parent_span_id = parent_span_id or uuid.UUID(
+                    int=current_span.get_span_context().span_id
+                )
+                trace_id = trace_id or uuid.UUID(
+                    int=current_span.get_span_context().trace_id
+                )
             request = PipelineRunRequest(
                 inputs=inputs,
                 pipeline=pipeline,
