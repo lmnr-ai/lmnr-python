@@ -1,17 +1,29 @@
-from opentelemetry.trace import get_current_span, NonRecordingSpan
+from opentelemetry import context
+from opentelemetry.trace import (
+    INVALID_SPAN,
+    get_current_span,
+    set_span_in_context,
+    Span,
+)
+from opentelemetry.semconv_ai import SpanAttributes
 from opentelemetry.util.types import AttributeValue
 from traceloop.sdk import Traceloop
+from traceloop.sdk.tracing import get_tracer
 
 from pydantic.alias_generators import to_snake
-from typing import Any, Optional, Union
+from typing import Any, Optional, Tuple, Union
 
+import copy
 import datetime
 import dotenv
 import json
 import logging
 import os
 import requests
+import time
 import uuid
+
+from .log import VerboseColorfulFormatter
 
 from .types import (
     PipelineRunError,
@@ -36,6 +48,9 @@ class Laminar:
     # _base_url = "https://api.lmnr.ai"
     _base_url = "http://localhost:8000"
     logger = logging.getLogger(__name__)
+    console_log_handler = logging.StreamHandler()
+    console_log_handler.setFormatter(VerboseColorfulFormatter())
+    logger.addHandler(console_log_handler)
 
     def __init__(self, project_api_key: Optional[str] = None):
         self.project_api_key = project_api_key or os.environ.get("LMNR_PROJECT_API_KEY")
@@ -133,8 +148,16 @@ class Laminar:
         value: AttributeValue,
         timestamp: Optional[Union[datetime.datetime, int]] = None,
     ):
+        """Associate an event with the current span
+
+        Args:
+            name (str): event name
+            value (AttributeValue): event value. Must be a primitive type
+            timestamp (Optional[Union[datetime.datetime, int]], optional): If int, must be epoch nanoseconds.
+                If not specified, relies on the underlying otel implementation. Defaults to None.
+        """
         if timestamp and isinstance(timestamp, datetime.datetime):
-            timestamp = int(timestamp.timestamp())
+            timestamp = int(timestamp.timestamp() * 1e9)
 
         event = {
             "lmnr.event.type": "default",
@@ -142,9 +165,10 @@ class Laminar:
         }
 
         current_span = get_current_span()
-        if isinstance(current_span, NonRecordingSpan):
+        if current_span == INVALID_SPAN:
             self.logger.warning(
-                f"No active span found. Event '{name}' will not be recorded in the trace"
+                f"`Laminar().event()` called outside of span context. Event '{name}' will not be recorded in the trace. "
+                "Make sure to annotate the function with a decorator"
             )
             return
 
@@ -156,21 +180,90 @@ class Laminar:
         evaluator: str,
         data: dict[str, AttributeValue],
         env: dict[str, str] = {},
+        timestamp: Optional[Union[datetime.datetime, int]] = None,
     ):
+        """Send an event for evaluation to the Laminar backend
+
+        Args:
+            name (str): name of the event
+            evaluator (str): name of the pipeline that evaluates the event
+            data (dict[str, AttributeValue]): map from input node name to node value in the evaluator pipeline
+            env (dict[str, str], optional): environment variables required to run the pipeline. Defaults to {}.
+            timestamp (Optional[Union[datetime.datetime, int]], optional): If int, must be epoch nanoseconds.
+                If not specified, relies on the underlying otel implementation. Defaults to None.
+        """
+        if timestamp and isinstance(timestamp, datetime.datetime):
+            timestamp = int(timestamp.timestamp() * 1e9)
         event = {
-            "lmnr.event_type": "evaluate",
-            "lmnr.evaluator": evaluator,
-            "lmnr.data": json.dumps(data),
-            "lmnr.env": json.dumps(env),
+            "lmnr.event.type": "evaluate",
+            "lmnr.event.evaluator": evaluator,
+            "lmnr.event.data": json.dumps(data),
+            "lmnr.event.env": json.dumps(env),
         }
         current_span = get_current_span()
-        if isinstance(current_span, NonRecordingSpan):
+        if current_span == INVALID_SPAN:
             self.logger.warning(
-                f"No active span found. Evaluate event '{name}' will not be recorded in the trace"
+                f"`Laminar().evaluate_event()` called outside of span context. Event '{name}' will not be recorded in the trace. "
+                "Make sure to annotate the function with a decorator"
             )
             return
 
         current_span.add_event(name, event)
+
+    def start_span(
+        self,
+        name: str,
+        input: Any = None,
+    ) -> Tuple[Span, object]:
+        with get_tracer() as tracer:
+            span = tracer.start_span(name)
+            ctx = set_span_in_context(span)
+            token = context.attach(ctx)
+            span.set_attribute(SpanAttributes.TRACELOOP_ENTITY_NAME, name)
+            if input is not None:
+                span.set_attribute(
+                    SpanAttributes.TRACELOOP_ENTITY_INPUT, json.dumps({"input": input})
+                )
+            return (span, token)
+
+    def end_span(self, span: Span, token: object, output: Any = None):
+        if output is not None:
+            span.set_attribute(
+                SpanAttributes.TRACELOOP_ENTITY_OUTPUT, json.dumps({"output": output})
+            )
+        span.end()
+        context.detach(token)
+
+    def set_session(
+        self,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ):
+        current_span = get_current_span()
+        if current_span != INVALID_SPAN:
+            self.logger.debug(
+                "Laminar().set_session() called outside of span context. Setting it manually in the current span."
+            )
+            if session_id is not None:
+                current_span.set_attribute(
+                    "traceloop.association.properties.session_id", session_id
+                )
+            if user_id is not None:
+                current_span.set_attribute(
+                    "traceloop.association.properties.user_id", user_id
+                )
+        Traceloop.set_association_properties(
+            {
+                "session_id": session_id,
+                "user_id": user_id,
+            }
+        )
+
+    def clear_session(self):
+        props: dict = copy.copy(context.get_value("association_properties"))
+        props.pop("session_id", None)
+        props.pop("user_id", None)
+        Traceloop.set_association_properties(props)
 
     def _headers(self):
         return {
