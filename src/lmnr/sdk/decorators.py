@@ -20,22 +20,32 @@ def observe(
     user_id: Optional[str] = None,
     session_id: Optional[str] = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    """The main decorator entrypoint for Laminar. This is used to wrap functions and methods to create spans.
+    """The main decorator entrypoint for Laminar. This is used to wrap
+    functions and methods to create spans.
 
     Args:
-        name (Optional[str], optional): Name of the span. Function name is used if not specified. Defaults to None.
+        name (Optional[str], optional): Name of the span. Function
+                        name is used if not specified.
+                        Defaults to None.
+        user_id (Optional[str], optional): User ID to associate
+                        with the span and the following context.
+                        Defaults to None.
+        session_id (Optional[str], optional): Session ID to associate with the
+                        span and the following context. Defaults to None.
 
     Raises:
-        Exception: re-raises the exception if the wrapped function raises an exception
+        Exception: re-raises the exception if the wrapped function raises
+                   an exception
 
     Returns:
-        Any: Returns the result of the wrapped function
+        R: Returns the result of the wrapped function
     """
 
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
         if not L.is_initialized():
             raise Exception(
-                "Laminar is not initialized. Please call Laminar.initialize() first."
+                "Laminar is not initialized. Please "
+                + "call Laminar.initialize() first."
             )
         current_span = get_current_span()
         if current_span != INVALID_SPAN:

@@ -1,6 +1,6 @@
 [project]
 name = "lmnr"
-version = "0.3.7"
+version = "0.4.0"
 description = "Python SDK for Laminar AI"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -11,7 +11,7 @@ license = "Apache-2.0"
 
 [tool.poetry]
 name = "lmnr"
-version = "0.3.7"
+version = "0.4.0"
 description = "Python SDK for Laminar AI"
 authors = ["lmnr.ai"]
 readme = "README.md"
@@ -22,11 +22,9 @@ python = "^3.9"
 pydantic = "^2.7.4"
 requests = "^2.32.3"
 python-dotenv = "^1.0.1"
-
-openai = "^1.41.1"
 backoff = "^2.2.1"
-
 traceloop-sdk = "^0.29.2"
+
 [tool.poetry.group.dev.dependencies]
 black = "^24.8.0"
 

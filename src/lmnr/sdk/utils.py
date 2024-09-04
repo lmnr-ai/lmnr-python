@@ -22,19 +22,22 @@ def is_method(func: typing.Callable) -> bool:
 
 
 def is_async(func: typing.Callable) -> bool:
-    # `__wrapped__` is set automatically by `functools.wraps` and `functools.update_wrapper`
+    # `__wrapped__` is set automatically by `functools.wraps` and
+    # `functools.update_wrapper`
     # so we can use it to get the original function
     while hasattr(func, "__wrapped__"):
         func = func.__wrapped__
+
+    if not inspect.isfunction(func):
+        return False
 
     # Check if the function is asynchronous
     if asyncio.iscoroutinefunction(func):
         return True
 
-    # Fallback: check if the function's code object contains 'async'. This is for
-    # cases when the decorator did not properly use `functools.wraps` or `functools.update_wrapper`
-    if not inspect.isfunction(func):
-        return False
+    # Fallback: check if the function's code object contains 'async'.
+    # This is for cases when a decorator did not properly use
+    # `functools.wraps` or `functools.update_wrapper`
     CO_COROUTINE = inspect.CO_COROUTINE
     return (func.__code__.co_flags & CO_COROUTINE) != 0
 
@@ -85,7 +88,8 @@ def get_input_from_func_args(
     func_args: list[typing.Any] = [],
     func_kwargs: dict[str, typing.Any] = {},
 ) -> dict[str, typing.Any]:
-    # Remove implicitly passed "self" or "cls" argument for instance or class methods
+    # Remove implicitly passed "self" or "cls" argument for
+    # instance or class methods
     res = copy.deepcopy(func_kwargs)
     for i, k in enumerate(inspect.signature(func).parameters.keys()):
         if is_method and k in ["self", "cls"]:

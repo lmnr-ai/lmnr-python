@@ -32,22 +32,11 @@ from .types import (
 )
 
 
-class APIError(Exception):
-    def __init__(self, status: Union[int, str], message: str, details: Any = None):
-        self.message = message
-        self.status = status
-        self.details = details
-
-    def __str__(self):
-        msg = "{0} ({1}): {2}"
-        return msg.format(self.message, self.status, self.details)
-
-
 class Laminar:
-    __base_url = "https://api.lmnr.ai"
-    __project_api_key = None
-    __env = {}
-    __initialized = False
+    __base_url: str = "https://api.lmnr.ai"
+    __project_api_key: Optional[str] = None
+    __env: dict[str, str] = {}
+    __initialized: bool = False
 
     @classmethod
     def initialize(
@@ -56,6 +45,33 @@ class Laminar:
         env: dict[str, str] = {},
         base_url: Optional[str] = None,
     ):
+        """Initialize Laminar context across the application.
+        This method must be called before using any other Laminar methods or
+        decorators.
+
+        Args:
+            project_api_key (Optional[str], optional): Laminar project api key.
+                            You can generate one by going to the projects
+                            settings page on the Laminar dashboard.
+                            If not specified, it will try to read from the
+                            LMNR_PROJECT_API_KEY environment variable.
+                            Defaults to None.
+            env (dict[str, str], optional): Default environment passed to
+                            `run` and `evaluate_event` requests, unless
+                            overriden at request time. Usually, model
+                            provider keys are stored here.
+                            Defaults to {}.
+            base_url (Optional[str], optional): Url of Laminar endpoint,
+                            or the open telemetry ingester.
+                            If not specified, defaults to
+                            https://api.lmnr.ai.
+                            For local options of Laminar, default setting
+                            must be http://localhost:8000
+                            Defaults to None.
+
+        Raises:
+            ValueError: If project API key is not set
+        """
         cls.__project_api_key = project_api_key or os.environ.get(
             "LMNR_PROJECT_API_KEY"
         )
@@ -66,8 +82,9 @@ class Laminar:
             )
         if not cls.__project_api_key:
             raise ValueError(
-                "Please initialize the Laminar object with your project API key or set "
-                "the LMNR_PROJECT_API_KEY environment variable in your environment or .env file"
+                "Please initialize the Laminar object with"
+                " your project API key or set the LMNR_PROJECT_API_KEY"
+                " environment variable in your environment or .env file"
             )
         if base_url is not None:
             cls.__base_url = base_url
@@ -82,6 +99,12 @@ class Laminar:
 
     @classmethod
     def is_initialized(cls):
+        """Check if Laminar is initialized. A utility to make sure other
+        methods are called after initialization.
+
+        Returns:
+            bool: True if Laminar is initialized, False otherwise
+        """
         return cls.__initialized
 
     @classmethod
@@ -130,8 +153,8 @@ class Laminar:
         """
         if cls.__project_api_key is None:
             raise ValueError(
-                "Please initialize the Laminar object with your project API key or set "
-                "the LMNR_PROJECT_API_KEY environment variable"
+                "Please initialize the Laminar object with your project "
+                "API key or set the LMNR_PROJECT_API_KEY environment variable"
             )
         try:
             current_span = get_current_span()
@@ -183,8 +206,10 @@ class Laminar:
         Args:
             name (str): event name
             value (AttributeValue): event value. Must be a primitive type
-            timestamp (Optional[Union[datetime.datetime, int]], optional): If int, must be epoch nanoseconds.
-                If not specified, relies on the underlying otel implementation. Defaults to None.
+            timestamp (Optional[Union[datetime.datetime, int]], optional):
+                            If int, must be epoch nanoseconds. If not
+                            specified, relies on the underlying otel
+                            implementation. Defaults to None.
         """
         if timestamp and isinstance(timestamp, datetime.datetime):
             timestamp = int(timestamp.timestamp() * 1e9)
@@ -197,7 +222,8 @@ class Laminar:
         current_span = get_current_span()
         if current_span == INVALID_SPAN:
             cls.__logger.warning(
-                f"`Laminar().event()` called outside of span context. Event '{name}' will not be recorded in the trace. "
+                "`Laminar().event()` called outside of span context. "
+                f"Event '{name}' will not be recorded in the trace. "
                 "Make sure to annotate the function with a decorator"
             )
             return
@@ -218,10 +244,14 @@ class Laminar:
         Args:
             name (str): name of the event
             evaluator (str): name of the pipeline that evaluates the event
-            data (dict[str, AttributeValue]): map from input node name to node value in the evaluator pipeline
-            env (dict[str, str], optional): environment variables required to run the pipeline. Defaults to {}.
-            timestamp (Optional[Union[datetime.datetime, int]], optional): If int, must be epoch nanoseconds.
-                If not specified, relies on the underlying otel implementation. Defaults to None.
+            data (dict[str, AttributeValue]): map from input node name to
+                        its value in the evaluator pipeline
+            env (dict[str, str], optional): environment variables required
+                        to run the pipeline. Defaults to {}.
+            timestamp (Optional[Union[datetime.datetime, int]], optional):
+                        If int, must be epoch nanoseconds.
+                        If not specified, relies on the underlying
+                        OpenTelemetry implementation. Defaults to None.
         """
         if timestamp and isinstance(timestamp, datetime.datetime):
             timestamp = int(timestamp.timestamp() * 1e9)
@@ -234,7 +264,8 @@ class Laminar:
         current_span = get_current_span()
         if current_span == INVALID_SPAN:
             cls.__logger.warning(
-                f"`Laminar().evaluate_event()` called outside of span context. Event '{name}' will not be recorded in the trace. "
+                "`Laminar().evaluate_event()` called outside of span context."
+                f"Event '{name}' will not be recorded in the trace. "
                 "Make sure to annotate the function with a decorator"
             )
             return
@@ -247,6 +278,20 @@ class Laminar:
         name: str,
         input: Any = None,
     ) -> Tuple[Span, object]:
+        """Start a new span with the given name. Useful for manual
+        instrumentation.
+
+        Args:
+            name (str): name of the span
+            input (Any, optional): input to the span. Will be sent as an
+                attribute, so must be json serializable. Defaults to None.
+
+        Returns:
+            Tuple[Span, object]: Span - the started span, object -
+                    context token
+                    that must be passed to `end_span` to end the span.
+
+        """
         with get_tracer() as tracer:
             span = tracer.start_span(name)
             ctx = set_span_in_context(span)
@@ -260,6 +305,14 @@ class Laminar:
 
     @classmethod
     def end_span(cls, span: Span, token: object, output: Any = None):
+        """End the span started with `start_span`
+
+        Args:
+            span (Span): span returned by `start_span`
+            token (object): context token returned by `start_span`
+            output (Any, optional): output of the span. Will be sent as an
+                attribute, so must be json serializable. Defaults to None.
+        """
         if output is not None:
             span.set_attribute(
                 SpanAttributes.TRACELOOP_ENTITY_OUTPUT, json.dumps({"output": output})
@@ -273,10 +326,24 @@ class Laminar:
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
     ):
+        """Set the session and user id for the current span and the context
+        (i.e. any children spans created from the current span in the current
+        thread).
+
+        Args:
+            session_id (Optional[str], optional): Custom session id.
+                            Useful to debug and group long-running
+                            sessions/conversations.
+                            Defaults to None.
+            user_id (Optional[str], optional): Custom user id.
+                            Useful for grouping spans or traces by user.
+                            Defaults to None.
+        """
         current_span = get_current_span()
         if current_span != INVALID_SPAN:
             cls.__logger.debug(
-                "Laminar().set_session() called inside a span context. Setting it manually in the current span."
+                "Laminar().set_session() called inside a span context. Setting"
+                " it manually in the current span."
             )
             if session_id is not None:
                 current_span.set_attribute(
@@ -295,6 +362,7 @@ class Laminar:
 
     @classmethod
     def clear_session(cls):
+        """Clear the session and user id from  the context"""
         props: dict = copy.copy(context.get_value("association_properties"))
         props.pop("session_id", None)
         props.pop("user_id", None)
