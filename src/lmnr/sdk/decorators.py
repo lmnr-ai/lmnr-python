@@ -5,9 +5,12 @@ from traceloop.sdk.decorators.base import (
 from opentelemetry.trace import INVALID_SPAN, get_current_span
 from traceloop.sdk import Traceloop
 
-from typing import Callable, Optional
+from typing import Callable, Optional, ParamSpec, TypeVar, cast
 
 from .utils import is_async
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 def observe(
@@ -15,7 +18,7 @@ def observe(
     name: Optional[str] = None,
     user_id: Optional[str] = None,
     session_id: Optional[str] = None,
-):
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """The main decorator entrypoint for Laminar. This is used to wrap functions and methods to create spans.
 
     Args:
@@ -28,7 +31,7 @@ def observe(
         Any: Returns the result of the wrapped function
     """
 
-    def decorator(func: Callable):
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
         current_span = get_current_span()
         if current_span != INVALID_SPAN:
             if session_id is not None:
@@ -51,4 +54,4 @@ def observe(
             else entity_method(name=name)(func)
         )
 
-    return decorator
+    return cast(Callable[P, R], decorator)

@@ -44,32 +44,46 @@ class APIError(Exception):
 
 
 class Laminar:
-    # _base_url = "https://api.lmnr.ai"
-    _base_url = "http://localhost:8000"
-    logger = logging.getLogger(__name__)
-    console_log_handler = logging.StreamHandler()
-    console_log_handler.setFormatter(VerboseColorfulFormatter())
-    logger.addHandler(console_log_handler)
+    __base_url = "https://api.lmnr.ai"
+    __project_api_key = None
+    __env = {}
+    __initialized = False
 
-    def __init__(self, project_api_key: Optional[str] = None):
-        self.project_api_key = project_api_key or os.environ.get("LMNR_PROJECT_API_KEY")
-        if not self.project_api_key:
+    @classmethod
+    def initialize(
+        cls, project_api_key: Optional[str] = None, env: dict[str, str] = {}
+    ):
+        cls.__project_api_key = project_api_key or os.environ.get(
+            "LMNR_PROJECT_API_KEY"
+        )
+        if not project_api_key:
             dotenv_path = dotenv.find_dotenv(usecwd=True)
-            self.project_api_key = dotenv.get_key(
+            cls.__project_api_key = dotenv.get_key(
                 dotenv_path=dotenv_path, key_to_get="LMNR_PROJECT_API_KEY"
             )
-        if not self.project_api_key:
+        if not cls.__project_api_key:
             raise ValueError(
                 "Please initialize the Laminar object with your project API key or set "
                 "the LMNR_PROJECT_API_KEY environment variable in your environment or .env file"
             )
+        cls.__env = env
+        cls.__initialized = True
+        cls._initialize_logger()
         Traceloop.init(
-            api_endpoint=self._base_url,
-            api_key=self.project_api_key,
+            api_endpoint=cls.__base_url,
+            api_key=cls.__project_api_key,
         )
 
+    @classmethod
+    def _initialize_logger(cls):
+        cls.__logger = logging.getLogger(__name__)
+        console_log_handler = logging.StreamHandler()
+        console_log_handler.setFormatter(VerboseColorfulFormatter())
+        cls.__logger.addHandler(console_log_handler)
+
+    @classmethod
     def run(
-        self,
+        cls,
         pipeline: str,
         inputs: dict[str, NodeInput],
         env: dict[str, str] = {},
@@ -104,7 +118,7 @@ class Laminar:
             ValueError: if project API key is not set
             PipelineRunError: if the endpoint run fails
         """
-        if self.project_api_key is None:
+        if cls.__project_api_key is None:
             raise ValueError(
                 "Please initialize the Laminar object with your project API key or set "
                 "the LMNR_PROJECT_API_KEY environment variable"
@@ -130,9 +144,9 @@ class Laminar:
             raise ValueError(f"Invalid request: {e}")
 
         response = requests.post(
-            self._base_url + "/v1/pipeline/run",
+            cls.__base_url + "/v1/pipeline/run",
             data=json.dumps(request.to_dict()),
-            headers=self._headers(),
+            headers=cls._headers(),
         )
         if response.status_code != 200:
             raise PipelineRunError(response)
@@ -147,8 +161,9 @@ class Laminar:
         except Exception:
             raise PipelineRunError(response)
 
+    @classmethod
     def event(
-        self,
+        cls,
         name: str,
         value: AttributeValue,
         timestamp: Optional[Union[datetime.datetime, int]] = None,
@@ -171,7 +186,7 @@ class Laminar:
 
         current_span = get_current_span()
         if current_span == INVALID_SPAN:
-            self.logger.warning(
+            cls.__logger.warning(
                 f"`Laminar().event()` called outside of span context. Event '{name}' will not be recorded in the trace. "
                 "Make sure to annotate the function with a decorator"
             )
@@ -179,12 +194,13 @@ class Laminar:
 
         current_span.add_event(name, event, timestamp)
 
+    @classmethod
     def evaluate_event(
-        self,
+        cls,
         name: str,
         evaluator: str,
         data: dict[str, AttributeValue],
-        env: dict[str, str] = {},
+        env: Optional[dict[str, str]] = {},
         timestamp: Optional[Union[datetime.datetime, int]] = None,
     ):
         """Send an event for evaluation to the Laminar backend
@@ -203,11 +219,11 @@ class Laminar:
             "lmnr.event.type": "evaluate",
             "lmnr.event.evaluator": evaluator,
             "lmnr.event.data": json.dumps(data),
-            "lmnr.event.env": json.dumps(env),
+            "lmnr.event.env": json.dumps(env if env is not None else cls.__env),
         }
         current_span = get_current_span()
         if current_span == INVALID_SPAN:
-            self.logger.warning(
+            cls.__logger.warning(
                 f"`Laminar().evaluate_event()` called outside of span context. Event '{name}' will not be recorded in the trace. "
                 "Make sure to annotate the function with a decorator"
             )
@@ -215,8 +231,9 @@ class Laminar:
 
         current_span.add_event(name, event)
 
+    @classmethod
     def start_span(
-        self,
+        cls,
         name: str,
         input: Any = None,
     ) -> Tuple[Span, object]:
@@ -231,7 +248,8 @@ class Laminar:
                 )
             return (span, token)
 
-    def end_span(self, span: Span, token: object, output: Any = None):
+    @classmethod
+    def end_span(cls, span: Span, token: object, output: Any = None):
         if output is not None:
             span.set_attribute(
                 SpanAttributes.TRACELOOP_ENTITY_OUTPUT, json.dumps({"output": output})
@@ -239,15 +257,16 @@ class Laminar:
         span.end()
         context.detach(token)
 
+    @classmethod
     def set_session(
-        self,
+        cls,
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
     ):
         current_span = get_current_span()
         if current_span != INVALID_SPAN:
-            self.logger.debug(
-                "Laminar().set_session() called outside of span context. Setting it manually in the current span."
+            cls.__logger.debug(
+                "Laminar().set_session() called inside a span context. Setting it manually in the current span."
             )
             if session_id is not None:
                 current_span.set_attribute(
@@ -264,14 +283,16 @@ class Laminar:
             }
         )
 
-    def clear_session(self):
+    @classmethod
+    def clear_session(cls):
         props: dict = copy.copy(context.get_value("association_properties"))
         props.pop("session_id", None)
         props.pop("user_id", None)
         Traceloop.set_association_properties(props)
 
-    def _headers(self):
+    @classmethod
+    def _headers(cls):
         return {
-            "Authorization": "Bearer " + self.project_api_key,
+            "Authorization": "Bearer " + cls.__project_api_key,
             "Content-Type": "application/json",
         }
