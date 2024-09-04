@@ -51,7 +51,10 @@ class Laminar:
 
     @classmethod
     def initialize(
-        cls, project_api_key: Optional[str] = None, env: dict[str, str] = {}
+        cls,
+        project_api_key: Optional[str] = None,
+        env: dict[str, str] = {},
+        base_url: Optional[str] = None,
     ):
         cls.__project_api_key = project_api_key or os.environ.get(
             "LMNR_PROJECT_API_KEY"
@@ -66,6 +69,8 @@ class Laminar:
                 "Please initialize the Laminar object with your project API key or set "
                 "the LMNR_PROJECT_API_KEY environment variable in your environment or .env file"
             )
+        if base_url is not None:
+            cls.__base_url = base_url
         cls.__env = env
         cls.__initialized = True
         cls._initialize_logger()
