@@ -54,7 +54,8 @@ class Laminar:
                             You can generate one by going to the projects
                             settings page on the Laminar dashboard.
                             If not specified, it will try to read from the
-                            LMNR_PROJECT_API_KEY environment variable.
+                            LMNR_PROJECT_API_KEY environment variable
+                            in os.environ or in .env file.
                             Defaults to None.
             env (dict[str, str], optional): Default environment passed to
                             `run` and `evaluate_event` requests, unless
