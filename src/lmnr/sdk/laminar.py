@@ -281,12 +281,12 @@ class Laminar:
                 current_span.set_attribute(
                     "traceloop.association.properties.user_id", user_id
                 )
-        Traceloop.set_association_properties(
-            {
-                "session_id": session_id,
-                "user_id": user_id,
-            }
-        )
+        association_properties = {}
+        if session_id is not None:
+            association_properties["session_id"] = session_id
+        if user_id is not None:
+            association_properties["user_id"] = user_id
+        Traceloop.set_association_properties(association_properties)
 
     @classmethod
     def clear_session(cls):
