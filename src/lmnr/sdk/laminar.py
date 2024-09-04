@@ -76,6 +76,10 @@ class Laminar:
         )
 
     @classmethod
+    def is_initialized(cls):
+        return cls.__initialized
+
+    @classmethod
     def _initialize_logger(cls):
         cls.__logger = logging.getLogger(__name__)
         console_log_handler = logging.StreamHandler()
