@@ -63,10 +63,10 @@ class Laminar:
                             provider keys are stored here.
                             Defaults to {}.
             base_url (Optional[str], optional): Url of Laminar endpoint,
-                            or the open telemetry ingester.
+                            or the  customopen telemetry ingester.
                             If not specified, defaults to
                             https://api.lmnr.ai.
-                            For local options of Laminar, default setting
+                            For locally hosted Laminar, default setting
                             must be http://localhost:8000
                             Defaults to None.
 
@@ -128,7 +128,8 @@ class Laminar:
         """Runs the pipeline with the given inputs
 
         Args:
-            pipeline (str): name of the Laminar pipeline
+            pipeline (str): name of the Laminar pipeline.
+                The pipeline must have a target version set.
             inputs (dict[str, NodeInput]):
                 inputs to the endpoint's target pipeline.
                 Keys in the dictionary must match input node names
@@ -207,9 +208,10 @@ class Laminar:
         Args:
             name (str): event name
             value (AttributeValue): event value. Must be a primitive type
+                            or a sequence of values of the same primitive type
             timestamp (Optional[Union[datetime.datetime, int]], optional):
                             If int, must be epoch nanoseconds. If not
-                            specified, relies on the underlying otel
+                            specified, relies on the underlying OpenTelemetry
                             implementation. Defaults to None.
         """
         if timestamp and isinstance(timestamp, datetime.datetime):
@@ -244,7 +246,8 @@ class Laminar:
 
         Args:
             name (str): name of the event
-            evaluator (str): name of the pipeline that evaluates the event
+            evaluator (str): name of the pipeline that evaluates the event.
+                        The pipeline must have a target version set.
             data (dict[str, AttributeValue]): map from input node name to
                         its value in the evaluator pipeline
             env (dict[str, str], optional): environment variables required

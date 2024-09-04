@@ -27,8 +27,8 @@ L.initialize(project_api_key="<LMNR_PROJECT_API_KEY>")
 This will automatically instrument most of the LLM, Vector DB, and related
 calls with OpenTelemetry-compatible instrumentation.
 
-We rely on the amazing [OpenLLMetry](https://github.com/traceloop/openllmetry), open-source package,
-by TraceLoop to achieve that.
+We rely on the amazing [OpenLLMetry](https://github.com/traceloop/openllmetry), open-source package
+by TraceLoop, to achieve that.
 
 ### Project API key
 
@@ -65,8 +65,7 @@ def poem_writer(topic="turbulence"):
     poem = response.choices[0].message.content
     return poem
 
-if __name__ == "__main__":
-    print(poem_writer(topic="laminar flow"))
+print(poem_writer(topic="laminar flow"))
 ```
 
 
