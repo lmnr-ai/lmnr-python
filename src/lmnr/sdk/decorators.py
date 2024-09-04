@@ -7,6 +7,7 @@ from traceloop.sdk import Traceloop
 
 from typing import Callable, Optional, ParamSpec, TypeVar, cast
 
+from .laminar import Laminar as L
 from .utils import is_async
 
 P = ParamSpec("P")
@@ -32,6 +33,10 @@ def observe(
     """
 
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
+        if not L.is_initialized():
+            raise Exception(
+                "Laminar is not initialized. Please call Laminar.initialize() first."
+            )
         current_span = get_current_span()
         if current_span != INVALID_SPAN:
             if session_id is not None:
