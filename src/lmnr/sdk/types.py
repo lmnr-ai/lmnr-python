@@ -78,8 +78,12 @@ EvaluationDatapointData: TypeAlias = dict[str, Any]
 EvaluationDatapointTarget: TypeAlias = dict[str, Any]
 
 
+# EvaluationDatapoint is a single data point in the evaluation
 class EvaluationDatapoint(pydantic.BaseModel):
+    # input to the executor function. Must be a dict with string keys
     data: EvaluationDatapointData
+    # input to the evaluator function (alongside the executor output).
+    # Must be a dict with string keys
     target: EvaluationDatapointTarget
 
 
@@ -90,6 +94,11 @@ ExecutorFunction: TypeAlias = Callable[
     [EvaluationDatapointData, *tuple[Any, ...], dict[str, Any]],
     Union[ExecutorFunctionReturnType, Awaitable[ExecutorFunctionReturnType]],
 ]
+
+# EvaluatorFunction is a function that takes the output of the executor and the
+# target data, and returns a score. The score can be a single number or a
+# record of string keys and number values. The latter is useful for evaluating
+# multiple criteria in one go instead of running multiple evaluators.
 EvaluatorFunction: TypeAlias = Callable[
     [ExecutorFunctionReturnType, *tuple[Any, ...], dict[str, Any]],
     Union[EvaluatorFunctionReturnType, Awaitable[EvaluatorFunctionReturnType]],

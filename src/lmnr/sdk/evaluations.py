@@ -38,6 +38,33 @@ class Evaluation:
         project_api_key: str = "",
         base_url: str = "https://api.lmnr.ai",
     ):
+        """
+        Initializes an instance of the Evaluations class.
+        Parameters:
+            name (str): The name of the evaluation.
+            data (Union[List[Union[EvaluationDatapoint, dict]], EvaluationDataset]): List of data points to evaluate or an evaluation dataset.
+                            `data` is the input to the executor function,
+                            `target` is the input to the evaluator function.
+            executor (Callable[..., Any]): The executor function.
+                            Takes the data point + any additional arguments
+                            and returns the output to evaluate.
+            evaluators (List[Callable[..., Any]]): List of evaluator functions.
+                Each evaluator function takes the output of the executor _and_
+                the target data, and returns a score. The score can be a
+                single number or a record of string keys and number values.
+                If the score is a single number, it will be named after the
+                evaluator function. If the function is anonymous, it will be
+                named `evaluator_${index}`, where index is the index of the
+                evaluator function in the list starting from 1.
+            batch_size (int, optional): The batch size for evaluation.
+                            Defaults to DEFAULT_BATCH_SIZE.
+            project_api_key (str, optional): The project API key.
+                            Defaults to an empty string.
+            base_url (str, optional): The base URL for the LMNR API.
+                            Useful if self-hosted elsewhere.
+                            Defaults to "https://api.lmnr.ai".
+        """
+
         self.name = name
         self.executor = executor
         self.evaluators = dict(
@@ -69,6 +96,14 @@ class Evaluation:
         L.initialize(project_api_key=project_api_key, base_url=base_url)
 
     async def run(self):
+        """Runs the evaluation.
+
+        Creates a new evaluation if no evaluation with such name exists, or
+        adds data to an existing one otherwise. Evaluates data points in
+        batches of `self.batch_size`. The executor
+        function is called on each data point to get the output,
+        and then evaluate it by each evaluator function.
+        """
         response = L.create_evaluation(self.name)
         batch_promises = []
 
@@ -78,7 +113,7 @@ class Evaluation:
                 if isinstance(self.data, list)
                 else self.data.slice(i, i + self.batch_size)
             )
-            batch_promises.append(self.evaluate_batch(batch))
+            batch_promises.append(self._evaluate_batch(batch))
 
         try:
             await asyncio.gather(*batch_promises)
@@ -87,7 +122,7 @@ class Evaluation:
         except Exception as e:
             print(f"Error evaluating batch: {e}")
 
-    async def evaluate_batch(self, batch: list[EvaluationDatapoint]):
+    async def _evaluate_batch(self, batch: list[EvaluationDatapoint]):
         results = []
         for datapoint in batch:
             output = (
@@ -107,11 +142,13 @@ class Evaluation:
                     else evaluator(output, target)
                 )
 
-                # if the evaluator returns a single number, use the evaluator name as the key
+                # if the evaluator returns a single number,
+                # use the evaluator name as the key
                 if isinstance(value, Numeric):
                     scores[evaluator_name] = value
                 else:
-                    # if the evaluator returns an object, use the object keys as the keys
+                    # if the evaluator returns an object,
+                    # use the object keys as the keys
                     scores.update(value)
 
             results.append(
