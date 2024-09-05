@@ -1,7 +1,8 @@
+import datetime
 import requests
 import pydantic
 import uuid
-from typing import Optional, Union
+from typing import Any, Awaitable, Callable, Literal, Optional, TypeAlias, Union
 
 from .utils import to_dict
 
@@ -16,7 +17,9 @@ class ConditionedValue(pydantic.BaseModel):
     value: "NodeInput"
 
 
-NodeInput = Union[str, list[ChatMessage], ConditionedValue]  # TypeAlias
+Numeric: TypeAlias = Union[int, float]
+NodeInput: TypeAlias = Union[str, list[ChatMessage], ConditionedValue]
+PipelineOutput: TypeAlias = Union[NodeInput, bool, Numeric]
 
 
 class PipelineRunRequest(pydantic.BaseModel):
@@ -45,7 +48,7 @@ class PipelineRunRequest(pydantic.BaseModel):
 
 
 class PipelineRunResponse(pydantic.BaseModel):
-    outputs: dict[str, dict[str, NodeInput]]
+    outputs: dict[str, dict[str, PipelineOutput]]
     run_id: str
 
 
@@ -69,3 +72,43 @@ class PipelineRunError(Exception):
             )
         except Exception:
             return super().__str__()
+
+
+EvaluationDatapointData: TypeAlias = dict[str, Any]
+EvaluationDatapointTarget: TypeAlias = dict[str, Any]
+
+
+class EvaluationDatapoint(pydantic.BaseModel):
+    data: EvaluationDatapointData
+    target: EvaluationDatapointTarget
+
+
+ExecutorFunctionReturnType: TypeAlias = Any
+EvaluatorFunctionReturnType: TypeAlias = Union[Numeric, dict[str, Numeric]]
+
+ExecutorFunction: TypeAlias = Callable[
+    [EvaluationDatapointData, *tuple[Any, ...], dict[str, Any]],
+    Union[ExecutorFunctionReturnType, Awaitable[ExecutorFunctionReturnType]],
+]
+EvaluatorFunction: TypeAlias = Callable[
+    [ExecutorFunctionReturnType, *tuple[Any, ...], dict[str, Any]],
+    Union[EvaluatorFunctionReturnType, Awaitable[EvaluatorFunctionReturnType]],
+]
+
+EvaluationStatus: TypeAlias = Literal["Started", "Finished", "Error"]
+
+
+class CreateEvaluationResponse(pydantic.BaseModel):
+    id: uuid.UUID
+    createdAt: datetime.datetime
+    name: str
+    status: EvaluationStatus
+    projectId: uuid.UUID
+    metadata: Optional[dict[str, Any]] = None
+
+
+class EvaluationResultDatapoint(pydantic.BaseModel):
+    data: EvaluationDatapointData
+    target: EvaluationDatapointTarget
+    executor_output: ExecutorFunctionReturnType
+    scores: dict[str, Numeric]

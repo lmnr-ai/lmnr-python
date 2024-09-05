@@ -25,6 +25,8 @@ import uuid
 from .log import VerboseColorfulFormatter
 
 from .types import (
+    CreateEvaluationResponse,
+    EvaluationResultDatapoint,
     PipelineRunError,
     PipelineRunResponse,
     NodeInput,
@@ -371,6 +373,71 @@ class Laminar:
         props.pop("session_id", None)
         props.pop("user_id", None)
         Traceloop.set_association_properties(props)
+
+    @classmethod
+    def create_evaluation(cls, name: str) -> CreateEvaluationResponse:
+        response = requests.post(
+            cls.__base_url + "/v1/evaluations",
+            data=json.dumps({"name": name}),
+            headers=cls._headers(),
+        )
+        if response.status_code != 200:
+            try:
+                resp_json = response.json()
+                raise ValueError(f"Error creating evaluation {json.dumps(resp_json)}")
+            except Exception:
+                raise ValueError(f"Error creating evaluation {response.text}")
+        return CreateEvaluationResponse.model_validate(response.json())
+
+    @classmethod
+    def post_evaluation_results(
+        cls, evaluation_name: str, data: list[EvaluationResultDatapoint]
+    ) -> requests.Response:
+        body = {
+            "name": evaluation_name,
+            "points": data,
+        }
+        response = requests.post(
+            cls.__base_url + "/v1/evaluation-datapoints",
+            data=json.dumps(body),
+            headers=cls._headers(),
+        )
+        if response.status_code != 200:
+            try:
+                resp_json = response.json()
+                raise ValueError(
+                    f"Failed to send evaluation results. Response: {json.dumps(resp_json)}"
+                )
+            except Exception:
+                raise ValueError(
+                    f"Failed to send evaluation results. Error: {response.text}"
+                )
+        return response
+
+    @classmethod
+    def update_evaluation_status(
+        cls, evaluation_name: str, status: str
+    ) -> requests.Response:
+        body = {
+            "name": evaluation_name,
+            "status": status,
+        }
+        response = requests.put(
+            cls.__base_url + "/v1/evaluations/",
+            data=json.dumps(body),
+            headers=cls._headers(),
+        )
+        if response.status_code != 200:
+            try:
+                resp_json = response.json()
+                raise ValueError(
+                    f"Failed to send evaluation status. Response: {json.dumps(resp_json)}"
+                )
+            except Exception:
+                raise ValueError(
+                    f"Failed to send evaluation status. Error: {response.text}"
+                )
+        return response
 
     @classmethod
     def _headers(cls):
