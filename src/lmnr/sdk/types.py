@@ -18,8 +18,8 @@ class ConditionedValue(pydantic.BaseModel):
 
 
 Numeric: TypeAlias = Union[int, float]
-NodeInput: TypeAlias = Union[str, list[ChatMessage], ConditionedValue]
-PipelineOutput: TypeAlias = Union[NodeInput, bool, Numeric]
+NodeInput: TypeAlias = Union[str, list[ChatMessage], ConditionedValue, Numeric, bool]
+PipelineOutput: TypeAlias = Union[NodeInput]
 
 
 class PipelineRunRequest(pydantic.BaseModel):
