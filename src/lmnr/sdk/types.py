@@ -1,7 +1,8 @@
+import datetime
 import requests
 import pydantic
 import uuid
-from typing import Optional, Union
+from typing import Any, Awaitable, Callable, Literal, Optional, TypeAlias, Union
 
 from .utils import to_dict
 
@@ -16,7 +17,9 @@ class ConditionedValue(pydantic.BaseModel):
     value: "NodeInput"
 
 
-NodeInput = Union[str, list[ChatMessage], ConditionedValue]  # TypeAlias
+Numeric: TypeAlias = Union[int, float]
+NodeInput: TypeAlias = Union[str, list[ChatMessage], ConditionedValue, Numeric, bool]
+PipelineOutput: TypeAlias = Union[NodeInput]
 
 
 class PipelineRunRequest(pydantic.BaseModel):
@@ -45,7 +48,7 @@ class PipelineRunRequest(pydantic.BaseModel):
 
 
 class PipelineRunResponse(pydantic.BaseModel):
-    outputs: dict[str, dict[str, NodeInput]]
+    outputs: dict[str, dict[str, PipelineOutput]]
     run_id: str
 
 
@@ -69,3 +72,52 @@ class PipelineRunError(Exception):
             )
         except Exception:
             return super().__str__()
+
+
+EvaluationDatapointData: TypeAlias = dict[str, Any]
+EvaluationDatapointTarget: TypeAlias = dict[str, Any]
+
+
+# EvaluationDatapoint is a single data point in the evaluation
+class EvaluationDatapoint(pydantic.BaseModel):
+    # input to the executor function. Must be a dict with string keys
+    data: EvaluationDatapointData
+    # input to the evaluator function (alongside the executor output).
+    # Must be a dict with string keys
+    target: EvaluationDatapointTarget
+
+
+ExecutorFunctionReturnType: TypeAlias = Any
+EvaluatorFunctionReturnType: TypeAlias = Union[Numeric, dict[str, Numeric]]
+
+ExecutorFunction: TypeAlias = Callable[
+    [EvaluationDatapointData, *tuple[Any, ...], dict[str, Any]],
+    Union[ExecutorFunctionReturnType, Awaitable[ExecutorFunctionReturnType]],
+]
+
+# EvaluatorFunction is a function that takes the output of the executor and the
+# target data, and returns a score. The score can be a single number or a
+# record of string keys and number values. The latter is useful for evaluating
+# multiple criteria in one go instead of running multiple evaluators.
+EvaluatorFunction: TypeAlias = Callable[
+    [ExecutorFunctionReturnType, *tuple[Any, ...], dict[str, Any]],
+    Union[EvaluatorFunctionReturnType, Awaitable[EvaluatorFunctionReturnType]],
+]
+
+EvaluationStatus: TypeAlias = Literal["Started", "Finished", "Error"]
+
+
+class CreateEvaluationResponse(pydantic.BaseModel):
+    id: uuid.UUID
+    createdAt: datetime.datetime
+    name: str
+    status: EvaluationStatus
+    projectId: uuid.UUID
+    metadata: Optional[dict[str, Any]] = None
+
+
+class EvaluationResultDatapoint(pydantic.BaseModel):
+    data: EvaluationDatapointData
+    target: EvaluationDatapointTarget
+    executor_output: ExecutorFunctionReturnType
+    scores: dict[str, Numeric]
