@@ -97,7 +97,6 @@ class Laminar:
         Traceloop.init(
             api_endpoint=cls.__base_url,
             api_key=cls.__project_api_key,
-            disable_batch=True,
         )
 
     @classmethod
