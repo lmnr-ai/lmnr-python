@@ -201,7 +201,7 @@ class Laminar:
     def event(
         cls,
         name: str,
-        value: Optional[AttributeValue],
+        value: Optional[AttributeValue] = None,
         timestamp: Optional[Union[datetime.datetime, int]] = None,
     ):
         """Associate an event with the current span. If event with such name never
@@ -214,6 +214,8 @@ class Laminar:
         Args:
             name (str): event name
             value (Optional[AttributeValue]): event value. Must be a primitive type.
+                            Boolean true is assumed in the backend if value is None.
+                            Defaults to None.
             timestamp (Optional[Union[datetime.datetime, int]], optional):
                             If int, must be epoch nanoseconds. If not
                             specified, relies on the underlying OpenTelemetry
