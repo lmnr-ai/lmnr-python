@@ -1,6 +1,7 @@
 from typing import Union
 
 from .types import EvaluatorFunction, ExecutorFunction, EvaluationDatapoint
+from .utils import is_async
 from .laminar import Laminar as L
 import asyncio
 
@@ -148,7 +149,7 @@ class Evaluation:
     async def _evaluate_datapoint(self, datapoint):
         output = (
             await self.executor(datapoint.data)
-            if asyncio.iscoroutinefunction(self.executor)
+            if is_async(self.executor)
             else self.executor(datapoint.data)
         )
         target = datapoint.target
@@ -159,7 +160,7 @@ class Evaluation:
             evaluator = self.evaluators[evaluator_name]
             value = (
                 await evaluator(output, target)
-                if asyncio.iscoroutinefunction(evaluator)
+                if is_async(evaluator)
                 else evaluator(output, target)
             )
 
