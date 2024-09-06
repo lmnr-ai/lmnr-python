@@ -1,7 +1,6 @@
 from typing import Union
 
-from .utils import is_async
-from .types import EvaluatorFunction, ExecutorFunction, EvaluationDatapoint, Numeric
+from .types import EvaluatorFunction, ExecutorFunction, EvaluationDatapoint
 from .laminar import Laminar as L
 import asyncio
 
@@ -95,7 +94,7 @@ class Evaluation:
         self.batch_size = batch_size
         L.initialize(project_api_key=project_api_key, base_url=base_url)
 
-    async def run(self):
+    def run(self):
         """Runs the evaluation.
 
         Creates a new evaluation if no evaluation with such name exists, or
@@ -103,7 +102,23 @@ class Evaluation:
         batches of `self.batch_size`. The executor
         function is called on each data point to get the output,
         and then evaluate it by each evaluator function.
+
+        Usage:
+        ```python
+        # from a synchronous content:
+        e.run()
+        # from an asynchronous content:
+        await e.run()
+        ```
+
         """
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            return loop.create_task(self._run())
+        else:
+            return loop.run_until_complete(self._run())
+
+    async def _run(self):
         response = L.create_evaluation(self.name)
 
         # Process batches sequentially

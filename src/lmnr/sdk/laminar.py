@@ -201,15 +201,19 @@ class Laminar:
     def event(
         cls,
         name: str,
-        value: AttributeValue,
+        value: Optional[AttributeValue],
         timestamp: Optional[Union[datetime.datetime, int]] = None,
     ):
-        """Associate an event with the current span
+        """Associate an event with the current span. If event with such name never
+        existed, Laminar will create a new event and infer its type from the value.
+        If the event already exists, Laminar will append the value to the event
+        if and only if the value is of a matching type. Otherwise, the event won't
+        be recorded Supported types are string, numeric, and boolean. If the value
+        is `None`, event is considered a boolean tag with the value of `True`.
 
         Args:
             name (str): event name
-            value (AttributeValue): event value. Must be a primitive type
-                            or a sequence of values of the same primitive type
+            value (Optional[AttributeValue]): event value. Must be a primitive type.
             timestamp (Optional[Union[datetime.datetime, int]], optional):
                             If int, must be epoch nanoseconds. If not
                             specified, relies on the underlying OpenTelemetry
@@ -220,8 +224,9 @@ class Laminar:
 
         event = {
             "lmnr.event.type": "default",
-            "lmnr.event.value": value,
         }
+        if value is not None:
+            event["lmnr.event.value"] = value
 
         current_span = get_current_span()
         if current_span == INVALID_SPAN:
