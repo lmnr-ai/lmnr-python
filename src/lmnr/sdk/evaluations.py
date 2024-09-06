@@ -105,59 +105,58 @@ class Evaluation:
         and then evaluate it by each evaluator function.
         """
         response = L.create_evaluation(self.name)
-        batch_promises = []
 
+        # Process batches sequentially
         for i in range(0, len(self.data), self.batch_size):
             batch = (
                 self.data[i : i + self.batch_size]
                 if isinstance(self.data, list)
                 else self.data.slice(i, i + self.batch_size)
             )
-            batch_promises.append(self._evaluate_batch(batch))
+            try:
+                await self._evaluate_batch(batch)
+            except Exception as e:
+                print(f"Error evaluating batch: {e}")
 
         try:
-            await asyncio.gather(*batch_promises)
             L.update_evaluation_status(response.name, "Finished")
             print(f"Evaluation {response.id} complete")
         except Exception as e:
-            print(f"Error evaluating batch: {e}")
+            print(f"Error updating evaluation status: {e}")
 
     async def _evaluate_batch(self, batch: list[EvaluationDatapoint]):
-        results = []
-        for datapoint in batch:
-            output = (
-                await self.executor(datapoint.data)
-                if is_async(self.executor)
-                else self.executor(datapoint.data)
-            )
-            target = datapoint.target
-
-            # iterate in order of evaluators
-            scores = {}
-            for evaluator_name in self.evaluator_names:
-                evaluator = self.evaluators[evaluator_name]
-                value = (
-                    await evaluator(output, target)
-                    if is_async(evaluator)
-                    else evaluator(output, target)
-                )
-
-                # if the evaluator returns a single number,
-                # use the evaluator name as the key
-                if isinstance(value, Numeric):
-                    scores[evaluator_name] = value
-                else:
-                    # if the evaluator returns an object,
-                    # use the object keys as the keys
-                    scores.update(value)
-
-            results.append(
-                {
-                    "executorOutput": output,
-                    "data": datapoint.data,
-                    "target": target,
-                    "scores": scores,
-                }
-            )
+        batch_promises = [self._evaluate_datapoint(datapoint) for datapoint in batch]
+        results = await asyncio.gather(*batch_promises)
 
         return L.post_evaluation_results(self.name, results)
+
+    async def _evaluate_datapoint(self, datapoint):
+        output = (
+            await self.executor(datapoint.data)
+            if asyncio.iscoroutinefunction(self.executor)
+            else self.executor(datapoint.data)
+        )
+        target = datapoint.target
+
+        # Iterate over evaluators
+        scores = {}
+        for evaluator_name in self.evaluator_names:
+            evaluator = self.evaluators[evaluator_name]
+            value = (
+                await evaluator(output, target)
+                if asyncio.iscoroutinefunction(evaluator)
+                else evaluator(output, target)
+            )
+
+            # If evaluator returns a single number, use evaluator name as key
+            if isinstance(value, (int, float)):
+                scores[evaluator_name] = value
+            else:
+                scores.update(value)
+
+        return {
+            "executorOutput": output,
+            "data": datapoint.data,
+            "target": target,
+            "scores": scores,
+        }
