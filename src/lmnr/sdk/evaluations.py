@@ -105,9 +105,9 @@ class Evaluation:
 
         Usage:
         ```python
-        # from a synchronous content:
+        # in a synchronous context:
         e.run()
-        # from an asynchronous content:
+        # in an asynchronous context:
         await e.run()
         ```
 
