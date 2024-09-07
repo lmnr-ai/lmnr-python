@@ -23,7 +23,7 @@ pydantic = "^2.7.4"
 requests = "^2.32.3"
 python-dotenv = "^1.0.1"
 backoff = "^2.2.1"
-traceloop-sdk = "^0.29.2"
+traceloop-sdk = {path = "./src/lmnr/openllmetry/packages/traceloop-sdk"}
 asyncio = "^3.4.3"
 
 [tool.poetry.group.dev.dependencies]
