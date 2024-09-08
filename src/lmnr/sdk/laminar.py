@@ -11,7 +11,7 @@ from traceloop.sdk import Traceloop
 from traceloop.sdk.tracing import get_tracer
 
 from pydantic.alias_generators import to_snake
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import copy
 import datetime
@@ -289,7 +289,7 @@ class Laminar:
         cls,
         name: str,
         input: Any = None,
-    ) -> Tuple[Span, object]:
+    ) -> Span:
         """Start a new span with the given name. Useful for manual
         instrumentation.
 
@@ -304,33 +304,20 @@ class Laminar:
                     that must be passed to `end_span` to end the span.
 
         """
-        with get_tracer() as tracer:
-            span = tracer.start_span(name)
-            ctx = set_span_in_context(span)
-            token = context.attach(ctx)
-            span.set_attribute(SpanAttributes.TRACELOOP_ENTITY_NAME, name)
-            if input is not None:
-                span.set_attribute(
-                    SpanAttributes.TRACELOOP_ENTITY_INPUT, json.dumps({"input": input})
-                )
-            return (span, token)
+        tracer = get_tracer().__enter__()
+        span = tracer.start_span(name)
+        # apparently, detaching from this context is not mandatory.
+        # According to traceloop, and the github issue in opentelemetry,
+        # the context is collected by the garbage collector.
+        # https://github.com/open-telemetry/opentelemetry-python/issues/2606#issuecomment-2106320379
+        context.attach(set_span_in_context(span))
 
-    @classmethod
-    def end_span(cls, span: Span, token: object, output: Any = None):
-        """End the span started with `start_span`
-
-        Args:
-            span (Span): span returned by `start_span`
-            token (object): context token returned by `start_span`
-            output (Any, optional): output of the span. Will be sent as an
-                attribute, so must be json serializable. Defaults to None.
-        """
-        if output is not None:
+        if input is not None:
             span.set_attribute(
-                SpanAttributes.TRACELOOP_ENTITY_OUTPUT, json.dumps({"output": output})
+                SpanAttributes.TRACELOOP_ENTITY_INPUT, json.dumps({"input": input})
             )
-        span.end()
-        context.detach(token)
+
+        return span
 
     @classmethod
     def set_session(

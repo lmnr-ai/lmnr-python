@@ -12,7 +12,6 @@ from opentelemetry.propagators.textmap import TextMapPropagator
 from opentelemetry.util.re import parse_env_headers
 
 from traceloop.sdk.metrics.metrics import MetricsWrapper
-from traceloop.sdk.telemetry import Telemetry
 from traceloop.sdk.instruments import Instruments
 from traceloop.sdk.config import (
     is_content_tracing_enabled,
@@ -54,8 +53,6 @@ class Traceloop:
         resource_attributes: dict = {},
         instruments: Optional[Set[Instruments]] = None,
     ) -> None:
-        Telemetry()
-
         api_endpoint = os.getenv("TRACELOOP_BASE_URL") or api_endpoint
         api_key = os.getenv("TRACELOOP_API_KEY") or api_key
 
@@ -69,7 +66,9 @@ class Traceloop:
             Traceloop.__fetcher = Fetcher(base_url=api_endpoint, api_key=api_key)
             Traceloop.__fetcher.run()
             print(
-                Fore.GREEN + "Traceloop syncing configuration and prompts" + Fore.RESET
+                Fore.GREEN
+                + "OpenLLMetry syncing configuration and prompts"
+                + Fore.RESET
             )
 
         if not is_tracing_enabled():
@@ -79,7 +78,7 @@ class Traceloop:
         enable_content_tracing = is_content_tracing_enabled()
 
         if exporter or processor:
-            print(Fore.GREEN + "Traceloop exporting traces to a custom exporter")
+            print(Fore.GREEN + "OpenLLMetry exporting traces to a custom exporter")
 
         headers = os.getenv("TRACELOOP_HEADERS") or headers
 
@@ -94,7 +93,7 @@ class Traceloop:
         ):
             print(
                 Fore.RED
-                + "Error: Missing Traceloop API key,"
+                + "Error: Missing OpenLLMetry API key,"
                 + " go to https://app.traceloop.com/settings/api-keys to create one"
             )
             print("Set the TRACELOOP_API_KEY environment variable to the key")
@@ -104,13 +103,13 @@ class Traceloop:
         if not exporter and not processor and headers:
             print(
                 Fore.GREEN
-                + f"Traceloop exporting traces to {api_endpoint}, authenticating with custom headers"
+                + f"OpenLLMetry exporting traces to {api_endpoint}, authenticating with custom headers"
             )
 
         if api_key and not exporter and not processor and not headers:
             print(
                 Fore.GREEN
-                + f"Traceloop exporting traces to {api_endpoint} authenticating with bearer token"
+                + f"OpenLLMetry exporting traces to {api_endpoint} authenticating with bearer token"
             )
             headers = {
                 "Authorization": f"Bearer {api_key}",

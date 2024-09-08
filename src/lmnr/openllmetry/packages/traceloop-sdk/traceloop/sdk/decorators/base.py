@@ -9,7 +9,6 @@ from opentelemetry import trace
 from opentelemetry import context as context_api
 from opentelemetry.semconv_ai import SpanAttributes, TraceloopSpanKindValues
 
-from traceloop.sdk.telemetry import Telemetry
 from traceloop.sdk.tracing import get_tracer, set_workflow_name
 from traceloop.sdk.tracing.tracing import (
     TracerWrapper,
@@ -35,7 +34,7 @@ def _json_dumps(data: dict) -> str:
             return json.dumps(data, cls=CustomJSONEncoder)
     except Exception as e:
         # Log the exception and return a placeholder if serialization completely fails
-        Telemetry().log_exception(e)
+        # Telemetry().log_exception(e)
         return "{}"  # Return an empty JSON object as a fallback
 
 
@@ -79,17 +78,12 @@ def entity_method(
 
                 try:
                     if _should_send_prompts():
-                        print("Checkpoint1")
-                        print("Args:\n", args)
-                        print("Kwargs:\n", kwargs)
                         span.set_attribute(
                             SpanAttributes.TRACELOOP_ENTITY_INPUT,
                             _json_dumps({"args": args, "kwargs": kwargs}),
                         )
-                        print("Checkpoint2")
                 except TypeError as e:
-                    print("Checkpoint4")
-                    Telemetry().log_exception(e)
+                    pass
 
                 res = fn(*args, **kwargs)
 
@@ -104,7 +98,7 @@ def entity_method(
                             _json_dumps(res),
                         )
                 except TypeError as e:
-                    Telemetry().log_exception(e)
+                    pass
 
                 span.end()
                 context_api.detach(ctx_token)
@@ -186,7 +180,7 @@ def aentity_method(
                             _json_dumps({"args": args, "kwargs": kwargs}),
                         )
                 except TypeError as e:
-                    Telemetry().log_exception(e)
+                    pass
 
                 res = await fn(*args, **kwargs)
 
@@ -200,9 +194,8 @@ def aentity_method(
                             SpanAttributes.TRACELOOP_ENTITY_OUTPUT, json.dumps(res)
                         )
                 except TypeError as e:
-                    Telemetry().log_exception(e)
+                    pass
 
-                print("Ending span")
                 span.end()
                 context_api.detach(ctx_token)
 
