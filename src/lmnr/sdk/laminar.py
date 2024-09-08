@@ -9,6 +9,7 @@ from opentelemetry.semconv_ai import SpanAttributes
 from opentelemetry.util.types import AttributeValue
 from traceloop.sdk import Traceloop
 from traceloop.sdk.tracing import get_tracer
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 from pydantic.alias_generators import to_snake
 from typing import Any, Optional, Union
@@ -97,6 +98,10 @@ class Laminar:
         Traceloop.init(
             api_endpoint=cls.__base_url,
             api_key=cls.__project_api_key,
+            exporter=OTLPSpanExporter(
+                endpoint="http://localhost:8085",
+                headers={"Authorization": f"Bearer {project_api_key}"},
+            ),
         )
 
     @classmethod
