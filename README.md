@@ -68,6 +68,44 @@ def poem_writer(topic="turbulence"):
 print(poem_writer(topic="laminar flow"))
 ```
 
+### Manual instrumentation
+
+Our manual instrumentation is a very thin wrapper around OpenTelemetry's
+`trace.start_span`. Our wrapper sets the span into the active context.
+You don't have to explicitly pass the spans around, it is enough to
+just call `L.start_span`, and OpenTelemetry will handle the context management
+
+```python
+from lmnr import observe, Laminar as L
+L.initialize(project_api_key="<LMNR_PROJECT_API_KEY>")
+
+def poem_writer(topic="turbulence"):
+    
+    span = L.start_span("poem_writer", topic) # start a span
+
+    prompt = f"write a poem about {topic}"
+
+    # OpenAI calls are still automatically instrumented with OpenLLMetry
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": prompt},
+        ],
+    )
+    poem = response.choices[0].message.content
+    # while within the span, you can attach laminar events to it
+    L.event("event_name", "event_value")
+
+    L.set_span_output(span, poem) # set an output
+    
+    # IMPORTANT: don't forget to end all the spans (usually in `finally` blocks)
+    # Otherwise, the trace may not be sent/displayed correctly
+    span.end()
+
+    return poem
+```
+
 
 ## Sending events
 
