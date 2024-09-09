@@ -36,7 +36,7 @@ from .types import (
 
 
 class Laminar:
-    __base_url: str = "https://api.lmnr.ai"
+    __base_url: str = "https://api.lmnr.ai:9095"
     __project_api_key: Optional[str] = None
     __env: dict[str, str] = {}
     __initialized: bool = False
@@ -99,8 +99,8 @@ class Laminar:
             api_endpoint=cls.__base_url,
             api_key=cls.__project_api_key,
             exporter=OTLPSpanExporter(
-                endpoint="http://localhost:8095",
-                headers={"authorization": f"Bearer {project_api_key}"},
+                endpoint=cls.__base_url,
+                headers={"authorization": f"Bearer {cls.__project_api_key}"},
             ),
         )
 
