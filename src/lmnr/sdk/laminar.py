@@ -4,11 +4,15 @@ from opentelemetry.trace import (
     get_current_span,
     set_span_in_context,
     Span,
+    SpanKind,
 )
 from opentelemetry.semconv_ai import SpanAttributes
 from opentelemetry.util.types import AttributeValue
+from opentelemetry.context.context import Context
+from opentelemetry.util import types
 from traceloop.sdk import Traceloop
 from traceloop.sdk.tracing import get_tracer
+from contextlib import contextmanager
 
 from pydantic.alias_generators import to_snake
 from typing import Any, Optional, Union
@@ -318,6 +322,40 @@ class Laminar:
             )
 
         return span
+
+    @classmethod
+    @contextmanager
+    def start_as_current_span(
+        cls,
+        name: str,
+        input: Any = None,
+        context: Optional[Context] = None,
+        kind: SpanKind = SpanKind.INTERNAL,
+        attributes: types.Attributes = None,
+        links=None,
+        start_time: Optional[int] = None,
+        record_exception: bool = True,
+        set_status_on_exception: bool = True,
+        end_on_exit: bool = True,
+    ):
+        with get_tracer() as tracer:
+            with tracer.start_as_current_span(
+                name,
+                context=context,
+                kind=kind,
+                attributes=attributes,
+                links=links,
+                start_time=start_time,
+                record_exception=record_exception,
+                set_status_on_exception=set_status_on_exception,
+                end_on_exit=end_on_exit,
+            ) as span:
+                if input is not None:
+                    span.set_attribute(
+                        SpanAttributes.TRACELOOP_ENTITY_INPUT,
+                        json.dumps({"input": input}),
+                    )
+                yield span
 
     @classmethod
     def set_span_output(cls, span: Span, output: Any = None):
