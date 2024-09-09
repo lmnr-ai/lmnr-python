@@ -330,7 +330,7 @@ class Laminar:
         """
         if output is not None:
             span.set_attribute(
-                SpanAttributes.TRACELOOP_ENTITY_OUTPUT, json.dumps({output})
+                SpanAttributes.TRACELOOP_ENTITY_OUTPUT, json.dumps(output)
             )
 
     @classmethod
