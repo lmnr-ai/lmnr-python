@@ -99,8 +99,8 @@ class Laminar:
             api_endpoint=cls.__base_url,
             api_key=cls.__project_api_key,
             exporter=OTLPSpanExporter(
-                endpoint="http://localhost:8085",
-                headers={"Authorization": f"Bearer {project_api_key}"},
+                endpoint="http://localhost:8095",
+                headers={"authorization": f"Bearer {project_api_key}"},
             ),
         )
 
