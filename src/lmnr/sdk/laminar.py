@@ -247,7 +247,7 @@ class Laminar:
         name: str,
         evaluator: str,
         data: dict[str, AttributeValue],
-        env: Optional[dict[str, str]] = {},
+        env: Optional[dict[str, str]] = None,
         timestamp: Optional[Union[datetime.datetime, int]] = None,
     ):
         """Send an event for evaluation to the Laminar backend
