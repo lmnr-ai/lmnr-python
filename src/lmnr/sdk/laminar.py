@@ -36,7 +36,7 @@ from .types import (
 
 
 class Laminar:
-    __base_url: str = "https://api.lmnr.ai:9095"
+    __base_url: str = "https://api.lmnr.ai:8443"
     __project_api_key: Optional[str] = None
     __env: dict[str, str] = {}
     __initialized: bool = False
@@ -68,9 +68,9 @@ class Laminar:
             base_url (Optional[str], optional): Url of Laminar endpoint,
                             or the  customopen telemetry ingester.
                             If not specified, defaults to
-                            https://api.lmnr.ai.
+                            https://api.lmnr.ai:8443.
                             For locally hosted Laminar, default setting
-                            must be http://localhost:8000
+                            must be http://localhost:8001
                             Defaults to None.
 
         Raises:
