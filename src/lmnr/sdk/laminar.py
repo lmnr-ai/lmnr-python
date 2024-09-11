@@ -355,7 +355,7 @@ class Laminar:
                         SpanAttributes.TRACELOOP_ENTITY_INPUT,
                         json.dumps({"input": input}),
                     )
-                yield span
+                yield
 
     @classmethod
     def set_span_output(cls, span: Span, output: Any = None):
