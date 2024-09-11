@@ -13,6 +13,7 @@ from opentelemetry.util import types
 from traceloop.sdk import Traceloop
 from traceloop.sdk.tracing import get_tracer
 from contextlib import contextmanager
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 from pydantic.alias_generators import to_snake
 from typing import Any, Optional, Union
@@ -39,7 +40,7 @@ from .types import (
 
 
 class Laminar:
-    __base_url: str = "https://api.lmnr.ai"
+    __base_url: str = "https://api.lmnr.ai:8443"
     __project_api_key: Optional[str] = None
     __env: dict[str, str] = {}
     __initialized: bool = False
@@ -71,9 +72,9 @@ class Laminar:
             base_url (Optional[str], optional): Url of Laminar endpoint,
                             or the  customopen telemetry ingester.
                             If not specified, defaults to
-                            https://api.lmnr.ai.
+                            https://api.lmnr.ai:8443.
                             For locally hosted Laminar, default setting
-                            must be http://localhost:8000
+                            must be http://localhost:8001
                             Defaults to None.
 
         Raises:
@@ -101,6 +102,10 @@ class Laminar:
         Traceloop.init(
             api_endpoint=cls.__base_url,
             api_key=cls.__project_api_key,
+            exporter=OTLPSpanExporter(
+                endpoint=cls.__base_url,
+                headers={"authorization": f"Bearer {cls.__project_api_key}"},
+            ),
         )
 
     @classmethod
