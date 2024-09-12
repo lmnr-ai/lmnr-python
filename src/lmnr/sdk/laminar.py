@@ -294,6 +294,68 @@ class Laminar:
         current_span.add_event(name, event)
 
     @classmethod
+    @contextmanager
+    def start_as_current_span(
+        cls,
+        name: str,
+        input: Any = None,
+        context: Optional[Context] = None,
+        kind: SpanKind = SpanKind.INTERNAL,
+        attributes: types.Attributes = None,
+        links=None,
+        start_time: Optional[int] = None,
+        record_exception: bool = True,
+        set_status_on_exception: bool = True,
+        end_on_exit: bool = True,
+    ):
+        """Start a new span as the current span. Useful for manual instrumentation.
+        This is the preferred and more stable way to use manual instrumentation.
+
+        Usage example:
+        ```python
+        with Laminar.start_as_current_span("my_span", input="my_input"):
+            await my_async_function()
+        ```
+
+        Args:
+            name (str): name of the span
+            input (Any, optional): input to the span. Will be sent as an
+                attribute, so must be json serializable. Defaults to None.
+            context (Optional[Context], optional): context to start the span in.
+                Defaults to None.
+            kind (SpanKind, optional): kind of the span. Defaults to SpanKind.INTERNAL.
+            attributes (types.Attributes, optional): attributes to set on the span.
+                Defaults to None.
+            links ([type], optional): links to set on the span. Defaults to None.
+            start_time (Optional[int], optional): start time of the span.
+                Defaults to None.
+            record_exception (bool, optional): whether to record exceptions.
+                Defaults to True.
+            set_status_on_exception (bool, optional): whether to set status on exception.
+                Defaults to True.
+            end_on_exit (bool, optional): whether to end the span on exit.
+                Defaults to True.
+        """
+        with get_tracer() as tracer:
+            with tracer.start_as_current_span(
+                name,
+                context=context,
+                kind=kind,
+                attributes=attributes,
+                links=links,
+                start_time=start_time,
+                record_exception=record_exception,
+                set_status_on_exception=set_status_on_exception,
+                end_on_exit=end_on_exit,
+            ) as span:
+                if input is not None:
+                    span.set_attribute(
+                        SpanAttributes.TRACELOOP_ENTITY_INPUT,
+                        json.dumps({"input": input}),
+                    )
+                yield
+
+    @classmethod
     def start_span(
         cls,
         name: str,
@@ -327,40 +389,6 @@ class Laminar:
             )
 
         return span
-
-    @classmethod
-    @contextmanager
-    def start_as_current_span(
-        cls,
-        name: str,
-        input: Any = None,
-        context: Optional[Context] = None,
-        kind: SpanKind = SpanKind.INTERNAL,
-        attributes: types.Attributes = None,
-        links=None,
-        start_time: Optional[int] = None,
-        record_exception: bool = True,
-        set_status_on_exception: bool = True,
-        end_on_exit: bool = True,
-    ):
-        with get_tracer() as tracer:
-            with tracer.start_as_current_span(
-                name,
-                context=context,
-                kind=kind,
-                attributes=attributes,
-                links=links,
-                start_time=start_time,
-                record_exception=record_exception,
-                set_status_on_exception=set_status_on_exception,
-                end_on_exit=end_on_exit,
-            ) as span:
-                if input is not None:
-                    span.set_attribute(
-                        SpanAttributes.TRACELOOP_ENTITY_INPUT,
-                        json.dumps({"input": input}),
-                    )
-                yield
 
     @classmethod
     def set_span_output(cls, span: Span, output: Any = None):
@@ -491,6 +519,7 @@ class Laminar:
 
     @classmethod
     def _headers(cls):
+        assert cls.__project_api_key is not None, "Project API key is not set"
         return {
             "Authorization": "Bearer " + cls.__project_api_key,
             "Content-Type": "application/json",
