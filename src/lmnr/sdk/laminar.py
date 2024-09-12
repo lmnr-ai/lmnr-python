@@ -10,8 +10,8 @@ from opentelemetry.semconv_ai import SpanAttributes
 from opentelemetry.util.types import AttributeValue
 from opentelemetry.context.context import Context
 from opentelemetry.util import types
-from traceloop.sdk import Traceloop
-from traceloop.sdk.tracing import get_tracer
+from lmnr.traceloop_sdk import Traceloop
+from lmnr.traceloop_sdk.tracing import get_tracer
 from contextlib import contextmanager
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
@@ -100,8 +100,6 @@ class Laminar:
         cls.__initialized = True
         cls._initialize_logger()
         Traceloop.init(
-            api_endpoint=cls.__base_url,
-            api_key=cls.__project_api_key,
             exporter=OTLPSpanExporter(
                 endpoint=cls.__base_url,
                 headers={"authorization": f"Bearer {cls.__project_api_key}"},
@@ -353,7 +351,7 @@ class Laminar:
                         SpanAttributes.TRACELOOP_ENTITY_INPUT,
                         json.dumps({"input": input}),
                     )
-                yield
+                yield span
 
     @classmethod
     def start_span(
