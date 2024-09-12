@@ -9,9 +9,10 @@ from opentelemetry.semconv_ai import SpanAttributes
 from opentelemetry.util.types import AttributeValue
 from traceloop.sdk import Traceloop
 from traceloop.sdk.tracing import get_tracer
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 from pydantic.alias_generators import to_snake
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import copy
 import datetime
@@ -35,7 +36,7 @@ from .types import (
 
 
 class Laminar:
-    __base_url: str = "https://api.lmnr.ai"
+    __base_url: str = "https://api.lmnr.ai:8443"
     __project_api_key: Optional[str] = None
     __env: dict[str, str] = {}
     __initialized: bool = False
@@ -67,9 +68,9 @@ class Laminar:
             base_url (Optional[str], optional): Url of Laminar endpoint,
                             or the  customopen telemetry ingester.
                             If not specified, defaults to
-                            https://api.lmnr.ai.
+                            https://api.lmnr.ai:8443.
                             For locally hosted Laminar, default setting
-                            must be http://localhost:8000
+                            must be http://localhost:8001
                             Defaults to None.
 
         Raises:
@@ -97,6 +98,10 @@ class Laminar:
         Traceloop.init(
             api_endpoint=cls.__base_url,
             api_key=cls.__project_api_key,
+            exporter=OTLPSpanExporter(
+                endpoint=cls.__base_url,
+                headers={"authorization": f"Bearer {cls.__project_api_key}"},
+            ),
         )
 
     @classmethod
@@ -247,7 +252,7 @@ class Laminar:
         name: str,
         evaluator: str,
         data: dict[str, AttributeValue],
-        env: Optional[dict[str, str]] = {},
+        env: Optional[dict[str, str]] = None,
         timestamp: Optional[Union[datetime.datetime, int]] = None,
     ):
         """Send an event for evaluation to the Laminar backend
@@ -289,7 +294,7 @@ class Laminar:
         cls,
         name: str,
         input: Any = None,
-    ) -> Tuple[Span, object]:
+    ) -> Span:
         """Start a new span with the given name. Useful for manual
         instrumentation.
 
@@ -304,33 +309,34 @@ class Laminar:
                     that must be passed to `end_span` to end the span.
 
         """
-        with get_tracer() as tracer:
-            span = tracer.start_span(name)
-            ctx = set_span_in_context(span)
-            token = context.attach(ctx)
-            span.set_attribute(SpanAttributes.TRACELOOP_ENTITY_NAME, name)
-            if input is not None:
-                span.set_attribute(
-                    SpanAttributes.TRACELOOP_ENTITY_INPUT, json.dumps({"input": input})
-                )
-            return (span, token)
+        tracer = get_tracer().__enter__()
+        span = tracer.start_span(name)
+        # apparently, detaching from this context is not mandatory.
+        # According to traceloop, and the github issue in opentelemetry,
+        # the context is collected by the garbage collector.
+        # https://github.com/open-telemetry/opentelemetry-python/issues/2606#issuecomment-2106320379
+        context.attach(set_span_in_context(span))
+
+        if input is not None:
+            span.set_attribute(
+                SpanAttributes.TRACELOOP_ENTITY_INPUT, json.dumps({"input": input})
+            )
+
+        return span
 
     @classmethod
-    def end_span(cls, span: Span, token: object, output: Any = None):
-        """End the span started with `start_span`
+    def set_span_output(cls, span: Span, output: Any = None):
+        """Set the output of the span. Useful for manual instrumentation.
 
         Args:
-            span (Span): span returned by `start_span`
-            token (object): context token returned by `start_span`
+            span (Span): the span to set the output for
             output (Any, optional): output of the span. Will be sent as an
                 attribute, so must be json serializable. Defaults to None.
         """
         if output is not None:
             span.set_attribute(
-                SpanAttributes.TRACELOOP_ENTITY_OUTPUT, json.dumps({"output": output})
+                SpanAttributes.TRACELOOP_ENTITY_OUTPUT, json.dumps(output)
             )
-        span.end()
-        context.detach(token)
 
     @classmethod
     def set_session(
