@@ -1,9 +1,9 @@
-from traceloop.sdk.decorators.base import (
+from lmnr.traceloop_sdk.decorators.base import (
     entity_method,
     aentity_method,
 )
 from opentelemetry.trace import INVALID_SPAN, get_current_span
-from traceloop.sdk import Traceloop
+from lmnr.traceloop_sdk import Traceloop
 
 from typing import Callable, Optional, ParamSpec, TypeVar, cast
 
@@ -42,11 +42,6 @@ def observe(
     """
 
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
-        if not L.is_initialized():
-            raise Exception(
-                "Laminar is not initialized. Please "
-                + "call Laminar.initialize() first."
-            )
         current_span = get_current_span()
         if current_span != INVALID_SPAN:
             if session_id is not None:
