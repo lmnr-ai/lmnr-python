@@ -90,19 +90,19 @@ class EvaluationDatapoint(pydantic.BaseModel):
 ExecutorFunctionReturnType: TypeAlias = Any
 EvaluatorFunctionReturnType: TypeAlias = Union[Numeric, dict[str, Numeric]]
 
-ExecutorFunction: TypeAlias = Callable[
-    [EvaluationDatapointData, *tuple[Any, ...], dict[str, Any]],
-    Union[ExecutorFunctionReturnType, Awaitable[ExecutorFunctionReturnType]],
-]
+# ExecutorFunction: TypeAlias = Callable[
+#     [EvaluationDatapointData, *tuple[Any, ...], dict[str, Any]],
+#     Union[ExecutorFunctionReturnType, Awaitable[ExecutorFunctionReturnType]],
+# ]
 
 # EvaluatorFunction is a function that takes the output of the executor and the
 # target data, and returns a score. The score can be a single number or a
 # record of string keys and number values. The latter is useful for evaluating
 # multiple criteria in one go instead of running multiple evaluators.
-EvaluatorFunction: TypeAlias = Callable[
-    [ExecutorFunctionReturnType, *tuple[Any, ...], dict[str, Any]],
-    Union[EvaluatorFunctionReturnType, Awaitable[EvaluatorFunctionReturnType]],
-]
+# EvaluatorFunction: TypeAlias = Callable[
+#     [ExecutorFunctionReturnType, *tuple[Any, ...], dict[str, Any]],
+#     Union[EvaluatorFunctionReturnType, Awaitable[EvaluatorFunctionReturnType]],
+# ]
 
 EvaluationStatus: TypeAlias = Literal["Started", "Finished", "Error"]
 

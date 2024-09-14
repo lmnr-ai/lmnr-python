@@ -1,6 +1,6 @@
-from typing import Union
+from typing import Any, Union
 
-from .types import EvaluatorFunction, ExecutorFunction, EvaluationDatapoint
+from .types import EvaluationDatapoint
 from .utils import is_async
 from .laminar import Laminar as L
 import asyncio
@@ -32,8 +32,8 @@ class Evaluation:
         self,
         name,
         data: Union[EvaluationDataset, list[Union[EvaluationDatapoint, dict]]],
-        executor: ExecutorFunction,
-        evaluators: list[EvaluatorFunction],
+        executor: Any,
+        evaluators: list[Any],
         batch_size: int = DEFAULT_BATCH_SIZE,
         project_api_key: str = "",
         base_url: str = "https://api.lmnr.ai",
