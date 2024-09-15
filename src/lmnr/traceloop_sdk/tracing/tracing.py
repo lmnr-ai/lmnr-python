@@ -63,9 +63,9 @@ class TracerWrapper(object):
     def __new__(
         cls,
         disable_batch=False,
-        processor: SpanProcessor | None = None,
-        propagator: TextMapPropagator | None = None,
-        exporter: SpanExporter | None = None,
+        processor: Optional[SpanProcessor] = None,
+        propagator: Optional[TextMapPropagator] = None,
+        exporter: Optional[SpanExporter] = None,
         should_enrich_metrics: bool = True,
         instruments: Optional[Set[Instruments]] = None,
     ) -> "TracerWrapper":
