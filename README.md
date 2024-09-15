@@ -19,18 +19,19 @@ pip install lmnr
 And the in your main Python file
 
 ```python
-from lmnr import Laminar as L
+from lmnr import Laminar as L, Instruments
 
-L.initialize(project_api_key="<LMNR_PROJECT_API_KEY>", instruments=set())
+L.initialize(project_api_key="<LMNR_PROJECT_API_KEY>", instruments={Instruments.OPENAI, Instruments.ANTHROPIC})
 ```
 
 If you want to automatically instrument particular LLM, Vector DB, and related
 calls with OpenTelemetry-compatible instrumentation, then pass the appropriate instruments to `.initialize()`.
 
+You can pass an empty set as `instruments=set()` to disable any kind of automatic instrumentation. 
 Also if you want to automatically instrument all supported libraries, then pass `instruments=None` or don't pass `instruments` at all.
 
-We rely on the amazing [OpenLLMetry](https://github.com/traceloop/openllmetry), open-source package
-by TraceLoop, to achieve that.
+Our code is based on the [OpenLLMetry](https://github.com/traceloop/openllmetry), open-source package
+by TraceLoop. Also, we are grateful to Traceloop for implementing autoinstrumentations for many libraries.
 
 ### Project API key
 
@@ -49,8 +50,8 @@ import os
 from openai import OpenAI
 
 
-from lmnr import observe, Laminar as L
-L.initialize(project_api_key="<LMNR_PROJECT_API_KEY>", instruments=set())
+from lmnr import observe, Laminar as L, Instruments
+L.initialize(project_api_key="<LMNR_PROJECT_API_KEY>", instruments={Instruments.OPENAI})
 
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
@@ -72,40 +73,32 @@ print(poem_writer(topic="laminar flow"))
 
 ### Manual instrumentation
 
-Our manual instrumentation is a very thin wrapper around OpenTelemetry's
-`trace.start_span`. Our wrapper sets the span into the active context.
-You don't have to explicitly pass the spans around, it is enough to
-just call `L.start_span`, and OpenTelemetry will handle the context management
+Also, you can `Laminar.start_as_current_span` if you want to record a chunk of your code.
 
 ```python
-from lmnr import observe, Laminar as L
-L.initialize(project_api_key="<LMNR_PROJECT_API_KEY>", instruments=set())
+from lmnr import observe, Laminar as L, Instruments
+L.initialize(project_api_key="<LMNR_PROJECT_API_KEY>", instruments={Instruments.OPENAI})
 
 def poem_writer(topic="turbulence"):
-    
-    span = L.start_span("poem_writer", topic) # start a span
-
     prompt = f"write a poem about {topic}"
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": prompt},
+    ]
 
-    # OpenAI calls are still automatically instrumented with OpenLLMetry
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt},
-        ],
-    )
-    poem = response.choices[0].message.content
-    # while within the span, you can attach laminar events to it
-    L.event("event_name", "event_value")
+    with L.start_as_current_span(name="poem_writer", input=messages):
+        # OpenAI calls are still automatically instrumented with OpenLLMetry
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=messages,
+        )
+        poem = response.choices[0].message.content
+        # while within the span, you can attach laminar events to it
+        L.event("event_name", "event_value")
 
-    L.set_span_output(poem) # set an output
-    
-    # IMPORTANT: don't forget to end all the spans (usually in `finally` blocks)
-    # Otherwise, the trace may not be sent/displayed correctly
-    span.end()
+        L.set_span_output(poem) # set an output
 
-    return poem
+        return poem
 ```
 
 
