@@ -1,3 +1,4 @@
+from lmnr.traceloop_sdk.instruments import Instruments
 from opentelemetry import context
 from opentelemetry.trace import (
     INVALID_SPAN,
@@ -16,7 +17,7 @@ from contextlib import contextmanager
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 from pydantic.alias_generators import to_snake
-from typing import Any, Optional, Union
+from typing import Any, Optional, Set, Union
 
 import copy
 import datetime
@@ -51,6 +52,7 @@ class Laminar:
         project_api_key: Optional[str] = None,
         env: dict[str, str] = {},
         base_url: Optional[str] = None,
+        instruments: Optional[Set[Instruments]] = None,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -104,6 +106,7 @@ class Laminar:
                 endpoint=cls.__base_url,
                 headers={"authorization": f"Bearer {cls.__project_api_key}"},
             ),
+            instruments=instruments,
         )
 
     @classmethod
