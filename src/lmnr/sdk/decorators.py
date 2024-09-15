@@ -3,11 +3,11 @@ from lmnr.traceloop_sdk.decorators.base import (
     aentity_method,
 )
 from opentelemetry.trace import INVALID_SPAN, get_current_span
-from lmnr.traceloop_sdk import Traceloop
 
 from typing import Callable, Optional, ParamSpec, TypeVar, cast
 
-from .laminar import Laminar as L
+from lmnr.traceloop_sdk.tracing.tracing import upsert_association_properties
+
 from .utils import is_async
 
 P = ParamSpec("P")
@@ -57,7 +57,7 @@ def observe(
             association_properties["session_id"] = session_id
         if user_id is not None:
             association_properties["user_id"] = user_id
-        Traceloop.set_association_properties(association_properties)
+        upsert_association_properties(association_properties)
         return (
             aentity_method(name=name)(func)
             if is_async(func)

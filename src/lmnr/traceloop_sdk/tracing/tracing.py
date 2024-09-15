@@ -63,9 +63,9 @@ class TracerWrapper(object):
     def __new__(
         cls,
         disable_batch=False,
-        processor: SpanProcessor = None,
-        propagator: TextMapPropagator = None,
-        exporter: SpanExporter = None,
+        processor: SpanProcessor | None = None,
+        propagator: TextMapPropagator | None = None,
+        exporter: SpanExporter | None = None,
         should_enrich_metrics: bool = True,
         instruments: Optional[Set[Instruments]] = None,
     ) -> "TracerWrapper":
@@ -342,14 +342,6 @@ class TracerWrapper(object):
         self.flush()
 
     def _span_processor_on_start(self, span, parent_context):
-        workflow_name = get_value("workflow_name")
-        if workflow_name is not None:
-            span.set_attribute(SpanAttributes.TRACELOOP_WORKFLOW_NAME, workflow_name)
-
-        entity_path = get_value("entity_path")
-        if entity_path is not None:
-            span.set_attribute(SpanAttributes.TRACELOOP_ENTITY_PATH, entity_path)
-
         association_properties = get_value("association_properties")
         if association_properties is not None:
             _set_association_properties_attributes(span, association_properties)
@@ -444,10 +436,18 @@ class TracerWrapper(object):
 def set_association_properties(properties: dict) -> None:
     attach(set_value("association_properties", properties))
 
-    # Attach association properties to the current span, if it's a workflow or a task
     span = trace.get_current_span()
-    if get_value("workflow_name") is not None or get_value("entity_name") is not None:
-        _set_association_properties_attributes(span, properties)
+    _set_association_properties_attributes(span, properties)
+
+
+def upsert_association_properties(properties: dict) -> None:
+    association_properties = get_value("association_properties") or {}
+    association_properties.update(properties)
+
+    attach(set_value("association_properties", association_properties))
+
+    span = trace.get_current_span()
+    _set_association_properties_attributes(span, properties)
 
 
 def _set_association_properties_attributes(span, properties: dict) -> None:
@@ -455,22 +455,6 @@ def _set_association_properties_attributes(span, properties: dict) -> None:
         span.set_attribute(
             f"{SpanAttributes.TRACELOOP_ASSOCIATION_PROPERTIES}.{key}", value
         )
-
-
-def set_workflow_name(workflow_name: str) -> None:
-    attach(set_value("workflow_name", workflow_name))
-
-
-def set_entity_path(entity_path: str) -> None:
-    attach(set_value("entity_path", entity_path))
-
-
-def get_chained_entity_path(entity_name: str) -> str:
-    parent = get_value("entity_path")
-    if parent is None:
-        return entity_name
-    else:
-        return f"{parent}.{entity_name}"
 
 
 def set_managed_prompt_tracing_context(

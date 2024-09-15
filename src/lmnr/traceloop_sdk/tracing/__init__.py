@@ -1,2 +1,1 @@
 from lmnr.traceloop_sdk.tracing.context_manager import get_tracer
-from lmnr.traceloop_sdk.tracing.tracing import set_workflow_name

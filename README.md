@@ -99,7 +99,7 @@ def poem_writer(topic="turbulence"):
     # while within the span, you can attach laminar events to it
     L.event("event_name", "event_value")
 
-    L.set_span_output(span, poem) # set an output
+    L.set_span_output(poem) # set an output
     
     # IMPORTANT: don't forget to end all the spans (usually in `finally` blocks)
     # Otherwise, the trace may not be sent/displayed correctly

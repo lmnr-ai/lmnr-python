@@ -2,7 +2,7 @@ import datetime
 import requests
 import pydantic
 import uuid
-from typing import Any, Awaitable, Callable, Literal, Optional, TypeAlias, Union
+from typing import Any, Literal, Optional, TypeAlias, Union
 
 from .utils import to_dict
 
