@@ -436,16 +436,21 @@ class TracerWrapper(object):
 def set_association_properties(properties: dict) -> None:
     attach(set_value("association_properties", properties))
 
+    # TODO: When called inside observe decorator, this actually sets the properties on the parent span, not the current one
+    # Then, processor's on_start will assign this to current span
     span = trace.get_current_span()
     _set_association_properties_attributes(span, properties)
 
 
-def upsert_association_properties(properties: dict) -> None:
+def update_association_properties(properties: dict) -> None:
+    """Only adds or updates properties that are not already present"""
     association_properties = get_value("association_properties") or {}
     association_properties.update(properties)
 
     attach(set_value("association_properties", association_properties))
 
+    # TODO: When called inside observe decorator, this actually sets the properties on the parent span, not the current one
+    # Then, processor's on_start will assign this to current span
     span = trace.get_current_span()
     _set_association_properties_attributes(span, properties)
 

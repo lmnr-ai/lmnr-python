@@ -26,7 +26,7 @@ import os
 import requests
 import uuid
 
-from lmnr.traceloop_sdk.tracing.tracing import upsert_association_properties
+from lmnr.traceloop_sdk.tracing.tracing import set_association_properties, update_association_properties
 
 from .log import VerboseColorfulFormatter
 
@@ -389,26 +389,12 @@ class Laminar:
                             Useful for grouping spans or traces by user.
                             Defaults to None.
         """
-        current_span = get_current_span()
-        if current_span != INVALID_SPAN:
-            cls.__logger.debug(
-                "Laminar().set_session() called inside a span context. Setting"
-                " it manually in the current span."
-            )
-            if session_id is not None:
-                current_span.set_attribute(
-                    "traceloop.association.properties.session_id", session_id
-                )
-            if user_id is not None:
-                current_span.set_attribute(
-                    "traceloop.association.properties.user_id", user_id
-                )
         association_properties = {}
         if session_id is not None:
             association_properties["session_id"] = session_id
         if user_id is not None:
             association_properties["user_id"] = user_id
-        upsert_association_properties(association_properties)
+        update_association_properties(association_properties)
 
     @classmethod
     def clear_session(cls):
@@ -416,7 +402,7 @@ class Laminar:
         props: dict = copy.copy(context.get_value("association_properties"))
         props.pop("session_id", None)
         props.pop("user_id", None)
-        upsert_association_properties(props)
+        set_association_properties(props)
 
     @classmethod
     def create_evaluation(cls, name: str) -> CreateEvaluationResponse:

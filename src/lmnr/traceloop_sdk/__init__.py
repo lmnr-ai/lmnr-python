@@ -18,10 +18,7 @@ from lmnr.traceloop_sdk.config import (
     is_tracing_enabled,
     is_metrics_enabled,
 )
-from lmnr.traceloop_sdk.tracing.tracing import (
-    TracerWrapper,
-    set_external_prompt_tracing_context,
-)
+from lmnr.traceloop_sdk.tracing.tracing import TracerWrapper
 from typing import Dict
 
 
