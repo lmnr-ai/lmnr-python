@@ -1,9 +1,8 @@
+from lmnr.traceloop_sdk.instruments import Instruments
 from opentelemetry import context
 from opentelemetry.trace import (
     INVALID_SPAN,
     get_current_span,
-    set_span_in_context,
-    Span,
     SpanKind,
 )
 from opentelemetry.semconv_ai import SpanAttributes
@@ -16,7 +15,7 @@ from contextlib import contextmanager
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 from pydantic.alias_generators import to_snake
-from typing import Any, Optional, Union
+from typing import Any, Optional, Set, Union
 
 import copy
 import datetime
@@ -26,6 +25,8 @@ import logging
 import os
 import requests
 import uuid
+
+from lmnr.traceloop_sdk.tracing.tracing import set_association_properties, update_association_properties
 
 from .log import VerboseColorfulFormatter
 
@@ -51,6 +52,7 @@ class Laminar:
         project_api_key: Optional[str] = None,
         env: dict[str, str] = {},
         base_url: Optional[str] = None,
+        instruments: Optional[Set[Instruments]] = None,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -104,6 +106,7 @@ class Laminar:
                 endpoint=cls.__base_url,
                 headers={"authorization": f"Bearer {cls.__project_api_key}"},
             ),
+            instruments=instruments,
         )
 
     @classmethod
@@ -354,50 +357,15 @@ class Laminar:
                 yield span
 
     @classmethod
-    def start_span(
-        cls,
-        name: str,
-        input: Any = None,
-    ) -> Span:
-        """Start a new span with the given name. Useful for manual
-        instrumentation.
+    def set_span_output(cls, output: Any = None):
+        """Set the output of the current span. Useful for manual instrumentation.
 
         Args:
-            name (str): name of the span
-            input (Any, optional): input to the span. Will be sent as an
-                attribute, so must be json serializable. Defaults to None.
-
-        Returns:
-            Tuple[Span, object]: Span - the started span, object -
-                    context token
-                    that must be passed to `end_span` to end the span.
-
-        """
-        tracer = get_tracer().__enter__()
-        span = tracer.start_span(name)
-        # apparently, detaching from this context is not mandatory.
-        # According to traceloop, and the github issue in opentelemetry,
-        # the context is collected by the garbage collector.
-        # https://github.com/open-telemetry/opentelemetry-python/issues/2606#issuecomment-2106320379
-        context.attach(set_span_in_context(span))
-
-        if input is not None:
-            span.set_attribute(
-                SpanAttributes.TRACELOOP_ENTITY_INPUT, json.dumps({"input": input})
-            )
-
-        return span
-
-    @classmethod
-    def set_span_output(cls, span: Span, output: Any = None):
-        """Set the output of the span. Useful for manual instrumentation.
-
-        Args:
-            span (Span): the span to set the output for
             output (Any, optional): output of the span. Will be sent as an
                 attribute, so must be json serializable. Defaults to None.
         """
-        if output is not None:
+        span = get_current_span()
+        if output is not None and span != INVALID_SPAN:
             span.set_attribute(
                 SpanAttributes.TRACELOOP_ENTITY_OUTPUT, json.dumps(output)
             )
@@ -421,26 +389,12 @@ class Laminar:
                             Useful for grouping spans or traces by user.
                             Defaults to None.
         """
-        current_span = get_current_span()
-        if current_span != INVALID_SPAN:
-            cls.__logger.debug(
-                "Laminar().set_session() called inside a span context. Setting"
-                " it manually in the current span."
-            )
-            if session_id is not None:
-                current_span.set_attribute(
-                    "traceloop.association.properties.session_id", session_id
-                )
-            if user_id is not None:
-                current_span.set_attribute(
-                    "traceloop.association.properties.user_id", user_id
-                )
         association_properties = {}
         if session_id is not None:
             association_properties["session_id"] = session_id
         if user_id is not None:
             association_properties["user_id"] = user_id
-        Traceloop.set_association_properties(association_properties)
+        update_association_properties(association_properties)
 
     @classmethod
     def clear_session(cls):
@@ -448,7 +402,7 @@ class Laminar:
         props: dict = copy.copy(context.get_value("association_properties"))
         props.pop("session_id", None)
         props.pop("user_id", None)
-        Traceloop.set_association_properties(props)
+        set_association_properties(props)
 
     @classmethod
     def create_evaluation(cls, name: str) -> CreateEvaluationResponse:

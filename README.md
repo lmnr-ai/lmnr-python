@@ -21,11 +21,13 @@ And the in your main Python file
 ```python
 from lmnr import Laminar as L
 
-L.initialize(project_api_key="<LMNR_PROJECT_API_KEY>")
+L.initialize(project_api_key="<LMNR_PROJECT_API_KEY>", instruments=set())
 ```
 
-This will automatically instrument most of the LLM, Vector DB, and related
-calls with OpenTelemetry-compatible instrumentation.
+If you want to automatically instrument particular LLM, Vector DB, and related
+calls with OpenTelemetry-compatible instrumentation, then pass the appropriate instruments to `.initialize()`.
+
+Also if you want to automatically instrument all supported libraries, then pass `instruments=None` or don't pass `instruments` at all.
 
 We rely on the amazing [OpenLLMetry](https://github.com/traceloop/openllmetry), open-source package
 by TraceLoop, to achieve that.
@@ -48,7 +50,7 @@ from openai import OpenAI
 
 
 from lmnr import observe, Laminar as L
-L.initialize(project_api_key="<LMNR_PROJECT_API_KEY>")
+L.initialize(project_api_key="<LMNR_PROJECT_API_KEY>", instruments=set())
 
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
@@ -77,7 +79,7 @@ just call `L.start_span`, and OpenTelemetry will handle the context management
 
 ```python
 from lmnr import observe, Laminar as L
-L.initialize(project_api_key="<LMNR_PROJECT_API_KEY>")
+L.initialize(project_api_key="<LMNR_PROJECT_API_KEY>", instruments=set())
 
 def poem_writer(topic="turbulence"):
     
@@ -97,7 +99,7 @@ def poem_writer(topic="turbulence"):
     # while within the span, you can attach laminar events to it
     L.event("event_name", "event_value")
 
-    L.set_span_output(span, poem) # set an output
+    L.set_span_output(poem) # set an output
     
     # IMPORTANT: don't forget to end all the spans (usually in `finally` blocks)
     # Otherwise, the trace may not be sent/displayed correctly
@@ -146,7 +148,7 @@ Example use:
 ```python
 from lmnr import Laminar as L
 
-L.initialize('<YOUR_PROJECT_API_KEY>')
+L.initialize('<YOUR_PROJECT_API_KEY>', instruments=set())
 
 result = l.run(
     pipeline = 'my_pipeline_name',

@@ -18,11 +18,7 @@ from lmnr.traceloop_sdk.config import (
     is_tracing_enabled,
     is_metrics_enabled,
 )
-from lmnr.traceloop_sdk.tracing.tracing import (
-    TracerWrapper,
-    set_association_properties,
-    set_external_prompt_tracing_context,
-)
+from lmnr.traceloop_sdk.tracing.tracing import TracerWrapper
 from typing import Dict
 
 
@@ -38,14 +34,14 @@ class Traceloop:
     def init(
         app_name: Optional[str] = sys.argv[0],
         api_endpoint: str = "https://api.lmnr.ai",
-        api_key: str = None,
+        api_key: Optional[str] = None,
         headers: Dict[str, str] = {},
         disable_batch=False,
-        exporter: SpanExporter = None,
-        metrics_exporter: MetricExporter = None,
-        metrics_headers: Dict[str, str] = None,
-        processor: SpanProcessor = None,
-        propagator: TextMapPropagator = None,
+        exporter: Optional[SpanExporter] = None,
+        metrics_exporter: Optional[MetricExporter] = None,
+        metrics_headers: Optional[Dict[str, str]] = None,
+        processor: Optional[SpanProcessor] = None,
+        propagator: Optional[TextMapPropagator] = None,
         should_enrich_metrics: bool = True,
         resource_attributes: dict = {},
         instruments: Optional[Set[Instruments]] = None,
@@ -130,9 +126,3 @@ class Traceloop:
         )
 
         Traceloop.__metrics_wrapper = MetricsWrapper(exporter=metrics_exporter)
-
-    def set_association_properties(properties: dict) -> None:
-        set_association_properties(properties)
-
-    def set_prompt(template: str, variables: dict, version: int):
-        set_external_prompt_tracing_context(template, variables, version)
