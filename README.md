@@ -9,6 +9,9 @@ OpenTelemetry log sender for [Laminar](https://github.com/lmnr-ai/lmnr) for Pyth
 
 
 ## Quickstart
+
+First, install the package:
+
 ```sh
 python3 -m venv .myenv
 source .myenv/bin/activate  # or use your favorite env management tool
@@ -16,48 +19,20 @@ source .myenv/bin/activate  # or use your favorite env management tool
 pip install lmnr
 ```
 
-And the in your main Python file
-
-```python
-from lmnr import Laminar as L, Instruments
-
-L.initialize(project_api_key="<LMNR_PROJECT_API_KEY>", instruments={Instruments.OPENAI, Instruments.ANTHROPIC})
-```
-
-If you want to automatically instrument particular LLM, Vector DB, and related
-calls with OpenTelemetry-compatible instrumentation, then pass the appropriate instruments to `.initialize()`.
-
-You can pass an empty set as `instruments=set()` to disable any kind of automatic instrumentation. 
-Also if you want to automatically instrument all supported libraries, then pass `instruments=None` or don't pass `instruments` at all.
-
-Our code is based on the [OpenLLMetry](https://github.com/traceloop/openllmetry), open-source package
-by TraceLoop. Also, we are grateful to Traceloop for implementing autoinstrumentations for many libraries.
-
-### Project API key
-
-Get the key from the settings page of your Laminar project ([Learn more](https://docs.lmnr.ai/api-reference/introduction#authentication)).
-You can either pass it to `.initialize()` or set it to `.env` at the root of your package with the key `LMNR_PROJECT_API_KEY`.
-
-## Instrumentation
-
-In addition to automatic instrumentation, we provide a simple `@observe()` decorator, if you want more fine-grained tracing
-or to trace other functions.
-
-### Example
+Then, you can initialize Laminar in your main file and instrument your code.
 
 ```python
 import os
 from openai import OpenAI
+from lmnr import Laminar as L, Instruments, observe
 
-
-from lmnr import observe, Laminar as L, Instruments
-L.initialize(project_api_key="<LMNR_PROJECT_API_KEY>", instruments={Instruments.OPENAI})
+L.initialize(project_api_key=os.environ["LMNR_PROJECT_API_KEY"], instruments={Instruments.OPENAI})
 
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
-@observe()  # annotate all functions you want to trace
-def poem_writer(topic="turbulence"):
+def poem_writer(topic: str):
     prompt = f"write a poem about {topic}"
+    # OpenAI calls are automatically instrumented
     response = client.chat.completions.create(
         model="gpt-4o",
         messages=[
@@ -68,39 +43,78 @@ def poem_writer(topic="turbulence"):
     poem = response.choices[0].message.content
     return poem
 
-print(poem_writer(topic="laminar flow"))
+@observe() # annotate all functions you want to trace
+def handle_user_request(...):
+    ...
+
+    poem = poem_writer(topic="laminar flow")
+    
+    ...
 ```
+
+Note that you need to only initialize Laminar once in your application.
+
+### Project API key
+
+Get the key from the settings page of your Laminar project ([Learn more](https://docs.lmnr.ai/api-reference/introduction#authentication)).
+You can either pass it to `.initialize()` or set it to `.env` at the root of your package with the key `LMNR_PROJECT_API_KEY`.
+
+## Instrumentation
 
 ### Manual instrumentation
 
-Also, you can `Laminar.start_as_current_span` if you want to record a chunk of your code.
+We provide a simple `@observe()` decorator, to trace various functions in your code.
+
+Also, you can use `Laminar.start_as_current_span` if you want to record a chunk of your code using `with` statement.
 
 ```python
-from lmnr import observe, Laminar as L, Instruments
-L.initialize(project_api_key="<LMNR_PROJECT_API_KEY>", instruments={Instruments.OPENAI})
+import os
+from openai import OpenAI
+from lmnr import Laminar as L, Instruments
 
-def poem_writer(topic="turbulence"):
+L.initialize(project_api_key=os.environ["LMNR_PROJECT_API_KEY"], instruments={Instruments.OPENAI})
+
+client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+def poem_writer(topic: str):
     prompt = f"write a poem about {topic}"
     messages = [
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": prompt},
     ]
 
+    # OpenAI calls are still automatically instrumented
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=messages,
+    )
+    poem = response.choices[0].message.content
+
+    return poem
+
+def handle_user_request(...):
     with L.start_as_current_span(name="poem_writer", input=messages):
-        # OpenAI calls are still automatically instrumented with OpenLLMetry
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=messages,
-        )
-        poem = response.choices[0].message.content
+        ...
+
+        poem = poem_writer(topic="laminar flow")
+        
+        ...
+        
         # while within the span, you can attach laminar events to it
-        L.event("event_name", "event_value")
+        L.event("is_poem_generated", True)
 
-        L.set_span_output(poem) # set an output
-
-        return poem
+        L.set_span_output(poem)
 ```
 
+### Automatic instrumentation
+
+If you want to automatically instrument particular LLM, Vector DB, or other
+calls with OpenTelemetry-compatible instrumentation, then pass the appropriate instruments to `.initialize()`.
+
+You can pass an empty set as `instruments=set()` to disable any kind of automatic instrumentation. 
+Also if you want to automatically instrument all supported libraries, then pass `instruments=None` or don't pass `instruments` at all.
+
+Check [autoinstrumentable libraries](#autoinstrumentable-libraries) section to see the list of supported libraries.
 
 ## Sending events
 
@@ -223,3 +237,40 @@ e = Evaluation(
 # Run the evaluation
 asyncio.run(e.run())
 ```
+
+## Autoinstrumentable libraries
+
+Currently, autoinstrumentation for the following libraries is supported:
+
+- OpenAI
+- Anthropic
+- Cohere
+- Pinecone
+- Chroma
+- Google GenerativeAI
+- LangChain
+- Mistral
+- Ollama
+- LlamaIndex
+- Milvus
+- Transformers
+- Together
+- Redis
+- Requests
+- Urllib3
+- PyMySQL
+- Bedrock
+- Replicate
+- VertexAI
+- WatsonX
+- Weaviate
+- Aleph Alpha
+- Marqo
+- LanceDB
+
+Thanks to Traceloop for implementing autoinstrumentation for most of the libraries listed above.
+
+## Acknowledgements
+
+This repository uses the code from and is inspired by [OpenLLMetry](https://github.com/traceloop/openllmetry), open-source package
+by TraceLoop.
