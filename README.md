@@ -240,37 +240,7 @@ asyncio.run(e.run())
 
 ## Autoinstrumentable libraries
 
-Currently, autoinstrumentation for the following libraries is supported:
+Laminar automatically instruments many LLM libraries with the help of
+Traceloop's [OpenLLMetry](https://github.com/traceloop/openllmetry).
 
-- OpenAI
-- Anthropic
-- Cohere
-- Pinecone
-- Chroma
-- Google GenerativeAI
-- LangChain
-- Mistral
-- Ollama
-- LlamaIndex
-- Milvus
-- Transformers
-- Together
-- Redis
-- Requests
-- Urllib3
-- PyMySQL
-- Bedrock
-- Replicate
-- VertexAI
-- WatsonX
-- Weaviate
-- Aleph Alpha
-- Marqo
-- LanceDB
-
-Thanks to Traceloop for implementing autoinstrumentation for most of the libraries listed above.
-
-## Acknowledgements
-
-This repository uses the code from and is inspired by [OpenLLMetry](https://github.com/traceloop/openllmetry), open-source package
-by TraceLoop.
+See the full list of instruments in the [enum](/src/lmnr/traceloop_sdk/instruments.py).
