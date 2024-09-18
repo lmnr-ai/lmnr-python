@@ -531,10 +531,6 @@ def init_instrumentations(should_enrich_metrics: bool):
     init_milvus_instrumentor()
     init_transformers_instrumentor()
     init_together_instrumentor()
-    # init_redis_instrumentor()
-    # init_requests_instrumentor()
-    # init_urllib3_instrumentor()
-    # init_pymysql_instrumentor()
     init_bedrock_instrumentor(should_enrich_metrics)
     init_replicate_instrumentor()
     init_vertexai_instrumentor()
@@ -544,6 +540,12 @@ def init_instrumentations(should_enrich_metrics: bool):
     init_marqo_instrumentor()
     init_lancedb_instrumentor()
     init_groq_instrumentor()
+
+    # These libraries are not instrumented by default, but if the user wants, he can manually specify them
+    # init_redis_instrumentor()
+    # init_requests_instrumentor()
+    # init_urllib3_instrumentor()
+    # init_pymysql_instrumentor()
 
 
 def init_openai_instrumentor(should_enrich_metrics: bool):
