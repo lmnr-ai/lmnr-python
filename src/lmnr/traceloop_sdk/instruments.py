@@ -2,6 +2,8 @@ from enum import Enum
 
 
 class Instruments(Enum):
+    # The list of libraries which will be autoinstrumented
+    # if no specific instruments are provided to initialize()
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     COHERE = "cohere"
@@ -15,10 +17,6 @@ class Instruments(Enum):
     MILVUS = "milvus"
     TRANSFORMERS = "transformers"
     TOGETHER = "together"
-    REDIS = "redis"
-    REQUESTS = "requests"
-    URLLIB3 = "urllib3"
-    PYMYSQL = "pymysql"
     BEDROCK = "bedrock"
     REPLICATE = "replicate"
     VERTEXAI = "vertexai"
@@ -27,3 +25,10 @@ class Instruments(Enum):
     ALEPHALPHA = "alephalpha"
     MARQO = "marqo"
     LANCEDB = "lancedb"
+
+    # The following libraries will not be autoinstrumented unless
+    # specified explicitly in the initialize() call.
+    REDIS = "redis"
+    REQUESTS = "requests"
+    URLLIB3 = "urllib3"
+    PYMYSQL = "pymysql"

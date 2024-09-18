@@ -24,14 +24,17 @@ Then, you can initialize Laminar in your main file and instrument your code.
 ```python
 import os
 from openai import OpenAI
-from lmnr import Laminar as L, Instruments, observe
+from lmnr import Laminar as L
 
-L.initialize(project_api_key=os.environ["LMNR_PROJECT_API_KEY"], instruments={Instruments.OPENAI})
+L.initialize(
+    project_api_key=os.environ["LMNR_PROJECT_API_KEY"],
+)
 
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 def poem_writer(topic: str):
     prompt = f"write a poem about {topic}"
+
     # OpenAI calls are automatically instrumented
     response = client.chat.completions.create(
         model="gpt-4o",
@@ -43,13 +46,9 @@ def poem_writer(topic: str):
     poem = response.choices[0].message.content
     return poem
 
-@observe() # annotate all functions you want to trace
-def handle_user_request(...):
-    ...
+if __name__ == "__main__":
+    print(poem_writer("laminar flow"))
 
-    poem = poem_writer(topic="laminar flow")
-    
-    ...
 ```
 
 Note that you need to only initialize Laminar once in your application.
@@ -63,16 +62,15 @@ You can either pass it to `.initialize()` or set it to `.env` at the root of you
 
 ### Manual instrumentation
 
-We provide a simple `@observe()` decorator, to trace various functions in your code.
-
-Also, you can use `Laminar.start_as_current_span` if you want to record a chunk of your code using `with` statement.
+To instrument any function in your code, we provide a simple `@observe()` decorator.
+This can be useful if you want to trace a request handler or a function which combines multiple LLM calls.
 
 ```python
 import os
 from openai import OpenAI
 from lmnr import Laminar as L, Instruments
 
-L.initialize(project_api_key=os.environ["LMNR_PROJECT_API_KEY"], instruments={Instruments.OPENAI})
+L.initialize(project_api_key=os.environ["LMNR_PROJECT_API_KEY"])
 
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
@@ -92,29 +90,54 @@ def poem_writer(topic: str):
 
     return poem
 
-def handle_user_request(...):
-    with L.start_as_current_span(name="poem_writer", input=messages):
+@observe()
+def generate_poems():
+    poem1 = poem_writer(topic="laminar flow")
+    L.event("is_poem_generated", True)
+    poem2 = poem_writer(topic="turbulence")
+    L.event("is_poem_generated", True)
+    poems = f"{poem1}\n\n---\n\n{poem2}"
+    return poems
+```
+
+Also, you can use `Laminar.start_as_current_span` if you want to record a chunk of your code using `with` statement.
+
+```python
+def handle_user_request(topic: str):
+    with L.start_as_current_span(name="poem_writer", input=topic):
         ...
 
-        poem = poem_writer(topic="laminar flow")
+        poem = poem_writer(topic=topic)
         
         ...
         
         # while within the span, you can attach laminar events to it
         L.event("is_poem_generated", True)
 
+        # Use set_span_output to record the output of the span
         L.set_span_output(poem)
 ```
 
 ### Automatic instrumentation
 
-If you want to automatically instrument particular LLM, Vector DB, or other
+Laminar allows you to automatically instrument majority of the most popular LLM, Vector DB, database, requests, and other libraries.
+
+If you want to automatically instrument a default set of libraries, then simply do NOT pass `instruments` argument to `.initialize()`.
+See the full list of available instrumentations in the [enum](/src/lmnr/traceloop_sdk/instruments.py).
+
+If you want to automatically instrument only specific LLM, Vector DB, or other
 calls with OpenTelemetry-compatible instrumentation, then pass the appropriate instruments to `.initialize()`.
+For example, if you want to only instrument OpenAI and Anthropic, then do the following:
 
-You can pass an empty set as `instruments=set()` to disable any kind of automatic instrumentation. 
-Also if you want to automatically instrument all supported libraries, then pass `instruments=None` or don't pass `instruments` at all.
+```python
+from lmnr import Laminar as L, Instruments
 
-Check [autoinstrumentable libraries](#autoinstrumentable-libraries) section to see the list of supported libraries.
+L.initialize(project_api_key=os.environ["LMNR_PROJECT_API_KEY"], instruments={Instruments.OPENAI, Instruments.ANTHROPIC})
+```
+
+If you want to fully disable any kind of autoinstrumentation, pass an empty set as `instruments=set()` to `.initialize()`. 
+
+Majority of the autoinstrumentations are provided by Traceloop's [OpenLLMetry](https://github.com/traceloop/openllmetry).
 
 ## Sending events
 
@@ -237,40 +260,3 @@ e = Evaluation(
 # Run the evaluation
 asyncio.run(e.run())
 ```
-
-## Autoinstrumentable libraries
-
-Currently, autoinstrumentation for the following libraries is supported:
-
-- OpenAI
-- Anthropic
-- Cohere
-- Pinecone
-- Chroma
-- Google GenerativeAI
-- LangChain
-- Mistral
-- Ollama
-- LlamaIndex
-- Milvus
-- Transformers
-- Together
-- Redis
-- Requests
-- Urllib3
-- PyMySQL
-- Bedrock
-- Replicate
-- VertexAI
-- WatsonX
-- Weaviate
-- Aleph Alpha
-- Marqo
-- LanceDB
-
-Thanks to Traceloop for implementing autoinstrumentation for most of the libraries listed above.
-
-## Acknowledgements
-
-This repository uses the code from and is inspired by [OpenLLMetry](https://github.com/traceloop/openllmetry), open-source package
-by TraceLoop.
