@@ -292,7 +292,7 @@ class Laminar:
             )
             return
 
-        current_span.add_event(name, event)
+        current_span.add_event(name, event, timestamp)
 
     @classmethod
     @contextmanager
