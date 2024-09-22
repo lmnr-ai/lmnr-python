@@ -37,11 +37,13 @@ from .types import (
     PipelineRunResponse,
     NodeInput,
     PipelineRunRequest,
+    UpdateEvaluationResponse,
 )
 
 
 class Laminar:
-    __base_url: str = "https://api.lmnr.ai:8443"
+    __base_http_url: str
+    __base_grpc_url: str
     __project_api_key: Optional[str] = None
     __env: dict[str, str] = {}
     __initialized: bool = False
@@ -52,6 +54,8 @@ class Laminar:
         project_api_key: Optional[str] = None,
         env: dict[str, str] = {},
         base_url: Optional[str] = None,
+        http_port: Optional[int] = None,
+        grpc_port: Optional[int] = None,
         instruments: Optional[Set[Instruments]] = None,
     ):
         """Initialize Laminar context across the application.
@@ -71,13 +75,12 @@ class Laminar:
                             overriden at request time. Usually, model
                             provider keys are stored here.
                             Defaults to {}.
-            base_url (Optional[str], optional): Url of Laminar endpoint,
-                            or the  customopen telemetry ingester.
-                            If not specified, defaults to
-                            https://api.lmnr.ai:8443.
-                            For locally hosted Laminar, default setting
-                            must be http://localhost:8001
-                            Defaults to None.
+            base_url (Optional[str], optional): Laminar API url.
+                            If not specified, defaults to https://api.lmnr.ai.
+            http_port (Optional[int], optional): Laminar API http port.
+                            If not specified, defaults to 443.
+            grpc_port (Optional[int], optional): Laminar API grpc port.
+                            If not specified, defaults to 8443.
 
         Raises:
             ValueError: If project API key is not set
@@ -96,14 +99,16 @@ class Laminar:
                 " your project API key or set the LMNR_PROJECT_API_KEY"
                 " environment variable in your environment or .env file"
             )
-        if base_url is not None:
-            cls.__base_url = base_url
+
+        cls.__base_http_url = f"{base_url or 'https://api.lmnr.ai'}:{http_port or 443}"
+        cls.__base_grpc_url = f"{base_url or 'https://api.lmnr.ai'}:{grpc_port or 8443}"
+
         cls.__env = env
         cls.__initialized = True
         cls._initialize_logger()
         Traceloop.init(
             exporter=OTLPSpanExporter(
-                endpoint=cls.__base_url,
+                endpoint=cls.__base_grpc_url,
                 headers={"authorization": f"Bearer {cls.__project_api_key}"},
             ),
             instruments=instruments,
@@ -190,7 +195,7 @@ class Laminar:
             raise ValueError(f"Invalid request: {e}")
 
         response = requests.post(
-            cls.__base_url + "/v1/pipeline/run",
+            cls.__base_http_url + "/v1/pipeline/run",
             data=json.dumps(request.to_dict()),
             headers=cls._headers(),
         )
@@ -407,7 +412,7 @@ class Laminar:
     @classmethod
     def create_evaluation(cls, name: str) -> CreateEvaluationResponse:
         response = requests.post(
-            cls.__base_url + "/v1/evaluations",
+            cls.__base_http_url + "/v1/evaluations",
             data=json.dumps({"name": name}),
             headers=cls._headers(),
         )
@@ -421,14 +426,14 @@ class Laminar:
 
     @classmethod
     def post_evaluation_results(
-        cls, evaluation_name: str, data: list[EvaluationResultDatapoint]
+        cls, evaluation_id: str, data: list[EvaluationResultDatapoint]
     ) -> requests.Response:
         body = {
-            "name": evaluation_name,
+            "evaluationId": evaluation_id,
             "points": data,
         }
         response = requests.post(
-            cls.__base_url + "/v1/evaluation-datapoints",
+            cls.__base_http_url + "/v1/evaluation-datapoints",
             data=json.dumps(body),
             headers=cls._headers(),
         )
@@ -446,28 +451,38 @@ class Laminar:
 
     @classmethod
     def update_evaluation_status(
-        cls, evaluation_name: str, status: str
-    ) -> requests.Response:
+        cls, evaluation_id: str, status: str
+    ) -> UpdateEvaluationResponse:
+        """
+        Updates the status of an evaluation. Returns the updated evaluation object.
+
+        Args:
+            evaluation_id (str): The ID of the evaluation to update.
+            status (str): The status to set for the evaluation.
+
+        Returns:
+            UpdateEvaluationResponse: The updated evaluation response.
+
+        Raises:
+            ValueError: If the request fails.
+        """
         body = {
-            "name": evaluation_name,
             "status": status,
         }
-        response = requests.put(
-            cls.__base_url + "/v1/evaluations/",
+        url = f"{cls.__base_http_url}/v1/evaluations/{evaluation_id}"
+
+        response = requests.post(
+            url,
             data=json.dumps(body),
             headers=cls._headers(),
         )
         if response.status_code != 200:
-            try:
-                resp_json = response.json()
-                raise ValueError(
-                    f"Failed to send evaluation status. Response: {json.dumps(resp_json)}"
-                )
-            except Exception:
-                raise ValueError(
-                    f"Failed to send evaluation status. Error: {response.text}"
-                )
-        return response
+            raise ValueError(
+                f"Failed to update evaluation status {evaluation_id}. "
+                f"Response: {response.text}"
+            )
+
+        return UpdateEvaluationResponse.model_validate(response.json())
 
     @classmethod
     def _headers(cls):

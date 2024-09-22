@@ -1,6 +1,10 @@
-from typing import Any, Union
+from contextlib import contextmanager
+import sys
+from typing import Any, Awaitable, Optional, Union
 
-from .types import EvaluationDatapoint
+import tqdm
+
+from .types import CreateEvaluationResponse, Datapoint, EvaluationResultDatapoint, Numeric
 from .utils import is_async
 from .laminar import Laminar as L
 import asyncio
@@ -8,6 +12,49 @@ import asyncio
 from abc import ABC, abstractmethod
 
 DEFAULT_BATCH_SIZE = 5
+
+
+_evaluation = None
+_set_global_evaluation = False
+
+
+@contextmanager
+def set_global_evaluation(set_global_evaluation: bool):
+    global _set_global_evaluation
+    original = _set_global_evaluation
+    try:
+        _set_global_evaluation = set_global_evaluation
+        yield
+    finally:
+        _set_global_evaluation = original
+
+
+def get_evaluation_url(project_id: str, evaluation_id: str):
+    return f"https://app.lmnr.ai/project/{project_id}/evaluations/{evaluation_id}"
+
+
+class EvaluationReporter:
+    def __init__(self):
+        pass
+
+    def start(self, name: str, project_id: str, id: str, length: int):
+        print(f"\nRunning evaluation {name}...\n\n")
+        print(f"Check progress and results at ${get_evaluation_url(project_id, id)}\n\n")
+        self.cli_progress = tqdm(total=length)
+
+    def update(self, batch_length: int):
+        self.cli_progress.update(batch_length)
+
+    def stopWithError(self, error: Exception):
+        self.cli_progress.close()
+        sys.stderr.write(f"\nError: {error}\n")
+
+    def stop(self, average_scores: dict[str, Numeric]):
+        self.cli_progress.close()
+        print("\nAverage scores:\n")
+        for (name, score) in average_scores.items():
+            print(f"{name}: {score}\n")
+        print("\n")
 
 
 class EvaluationDataset(ABC):
@@ -20,7 +67,7 @@ class EvaluationDataset(ABC):
         pass
 
     @abstractmethod
-    def __getitem__(self, idx) -> EvaluationDatapoint:
+    def __getitem__(self, idx) -> Datapoint:
         pass
 
     def slice(self, start: int, end: int):
@@ -30,16 +77,18 @@ class EvaluationDataset(ABC):
 class Evaluation:
     def __init__(
         self,
-        name,
-        data: Union[EvaluationDataset, list[Union[EvaluationDatapoint, dict]]],
+        name: str,
+        data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
         executor: Any,
         evaluators: list[Any],
         batch_size: int = DEFAULT_BATCH_SIZE,
-        project_api_key: str = "",
-        base_url: str = "https://api.lmnr.ai",
+        project_api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        http_port: Optional[int] = None,
     ):
         """
         Initializes an instance of the Evaluations class.
+
         Parameters:
             name (str): The name of the evaluation.
             data (Union[List[Union[EvaluationDatapoint, dict]], EvaluationDataset]): List of data points to evaluate or an evaluation dataset.
@@ -58,14 +107,18 @@ class Evaluation:
                 evaluator function in the list starting from 1.
             batch_size (int, optional): The batch size for evaluation.
                             Defaults to DEFAULT_BATCH_SIZE.
-            project_api_key (str, optional): The project API key.
+            project_api_key (Optional[str], optional): The project API key.
                             Defaults to an empty string.
-            base_url (str, optional): The base URL for the LMNR API.
+            base_url (Optional[str], optional): The base URL for the Laminar API.
                             Useful if self-hosted elsewhere.
                             Defaults to "https://api.lmnr.ai".
+            http_port (Optional[int], optional): The port for the Laminar API HTTP service.
+                            Defaults to 443.
         """
 
+        self.is_finished = False
         self.name = name
+        self.reporter = EvaluationReporter()
         self.executor = executor
         self.evaluators = dict(
             zip(
@@ -84,7 +137,7 @@ class Evaluation:
         if isinstance(data, list):
             self.data = [
                 (
-                    EvaluationDatapoint.model_validate(point)
+                    Datapoint.model_validate(point)
                     if isinstance(point, dict)
                     else point
                 )
@@ -93,9 +146,13 @@ class Evaluation:
         else:
             self.data = data
         self.batch_size = batch_size
-        L.initialize(project_api_key=project_api_key, base_url=base_url)
+        L.initialize(
+            project_api_key=project_api_key,
+            base_url=base_url,
+            http_port=http_port,
+        )
 
-    def run(self):
+    def run(self) -> Union[None, Awaitable[None]]:
         """Runs the evaluation.
 
         Creates a new evaluation if no evaluation with such name exists, or
@@ -113,40 +170,58 @@ class Evaluation:
         ```
 
         """
+        if self.is_finished:
+            raise Exception("Evaluation is already finished")
+
         loop = asyncio.get_event_loop()
         if loop.is_running():
             return loop.create_task(self._run())
         else:
             return loop.run_until_complete(self._run())
 
-    async def _run(self):
-        response = L.create_evaluation(self.name)
+    async def _run(self) -> None:
+        evaluation = L.create_evaluation(self.name)
+        self.reporter.start(
+            evaluation.name,
+            evaluation.projectId,
+            evaluation.id,
+            len(self.data),
+        )
 
-        # Process batches sequentially
+        try:
+            await self.evaluate_in_batches(evaluation)
+        except Exception as e:
+            L.update_evaluation_status(evaluation.id, "Error")
+            self.reporter.stopWithError(e)
+            self.is_finished = True
+            return
+
+        # If we update with status "Finished", we expect averageScores to be not empty
+        updated_evaluation = L.update_evaluation_status(evaluation.id, "Finished")
+        self.reporter.stop(updated_evaluation.averageScores)
+        self.is_finished = True
+
+    async def evaluate_in_batches(self, evaluation: CreateEvaluationResponse):
         for i in range(0, len(self.data), self.batch_size):
             batch = (
-                self.data[i : i + self.batch_size]
+                self.data[i: i + self.batch_size]
                 if isinstance(self.data, list)
                 else self.data.slice(i, i + self.batch_size)
             )
             try:
-                await self._evaluate_batch(batch)
+                results = await self._evaluate_batch(batch)
+                L.post_evaluation_datapoints(evaluation.id, results)
             except Exception as e:
                 print(f"Error evaluating batch: {e}")
+            finally:
+                self.reporter.update(len(batch))
 
-        try:
-            L.update_evaluation_status(response.name, "Finished")
-            print(f"Evaluation {response.id} complete")
-        except Exception as e:
-            print(f"Error updating evaluation status: {e}")
-
-    async def _evaluate_batch(self, batch: list[EvaluationDatapoint]):
+    async def _evaluate_batch(self, batch: list[Datapoint]) -> list[EvaluationResultDatapoint]:
         batch_promises = [self._evaluate_datapoint(datapoint) for datapoint in batch]
         results = await asyncio.gather(*batch_promises)
+        return results
 
-        return L.post_evaluation_results(self.name, results)
-
-    async def _evaluate_datapoint(self, datapoint):
+    async def _evaluate_datapoint(self, datapoint) -> EvaluationResultDatapoint:
         output = (
             await self.executor(datapoint.data)
             if is_async(self.executor)
@@ -155,7 +230,7 @@ class Evaluation:
         target = datapoint.target
 
         # Iterate over evaluators
-        scores = {}
+        scores: dict[str, Numeric] = {}
         for evaluator_name in self.evaluator_names:
             evaluator = self.evaluators[evaluator_name]
             value = (
@@ -165,14 +240,52 @@ class Evaluation:
             )
 
             # If evaluator returns a single number, use evaluator name as key
-            if isinstance(value, (int, float)):
+            if isinstance(value, Numeric):
                 scores[evaluator_name] = value
             else:
                 scores.update(value)
 
-        return {
-            "executorOutput": output,
-            "data": datapoint.data,
-            "target": target,
-            "scores": scores,
-        }
+        return EvaluationResultDatapoint(
+            data=datapoint.data,
+            target=target,
+            executorOutput=output,
+            scores=scores,
+        )
+
+
+def evaluate(
+        name: str,
+        data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
+        executor: Any,
+        evaluators: list[Any],
+        batch_size: int = DEFAULT_BATCH_SIZE,
+        project_api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        http_port: Optional[int] = None,
+) -> Optional[Awaitable[None]]:
+    """
+    Run evaluation.
+
+    If `_set_global_evaluation` is `True`, sets the global evaluation to be run in another part of the program.
+
+    Otherwise, if there is no event loop, runs the evaluation in the current thread until completion.
+    If there is an event loop, schedules the evaluation as a task in the event loop and returns an awaitable handle.
+    """
+    global _evaluation
+    global _set_global_evaluation
+
+    evaluation = Evaluation(
+        name,
+        data,
+        executor,
+        evaluators,
+        batch_size,
+        project_api_key,
+        base_url,
+        http_port,
+    )
+
+    if _set_global_evaluation:
+        _evaluation = evaluation
+    else:
+        return evaluation.run()

@@ -79,7 +79,7 @@ EvaluationDatapointTarget = dict[str, Any]
 
 
 # EvaluationDatapoint is a single data point in the evaluation
-class EvaluationDatapoint(pydantic.BaseModel):
+class Datapoint(pydantic.BaseModel):
     # input to the executor function. Must be a dict with string keys
     data: EvaluationDatapointData
     # input to the evaluator function (alongside the executor output).
@@ -114,6 +114,10 @@ class CreateEvaluationResponse(pydantic.BaseModel):
     status: EvaluationStatus
     projectId: uuid.UUID
     metadata: Optional[dict[str, Any]] = None
+    averageScores: Optional[dict[str, Numeric]] = None
+
+
+UpdateEvaluationResponse = CreateEvaluationResponse
 
 
 class EvaluationResultDatapoint(pydantic.BaseModel):
