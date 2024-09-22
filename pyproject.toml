@@ -62,8 +62,8 @@ opentelemetry-instrumentation-weaviate = "^0.30.0"
 opentelemetry-instrumentation-alephalpha = "^0.30.0"
 opentelemetry-instrumentation-marqo = "^0.30.0"
 opentelemetry-instrumentation-groq = "^0.30.0"
-tqdm = "^4.66.5"
-argparse = "^1.4.0"
+tqdm = "~=4.0"
+argparse = "~=1.0"
 
 [tool.poetry.group.dev.dependencies]
 autopep8 = "^2.2.0"
