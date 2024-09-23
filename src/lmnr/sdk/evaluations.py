@@ -76,10 +76,10 @@ class EvaluationDataset(ABC):
 class Evaluation:
     def __init__(
         self,
-        name: str,
         data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
         executor: Any,
         evaluators: list[Any],
+        name: Optional[str] = None,
         batch_size: int = DEFAULT_BATCH_SIZE,
         project_api_key: Optional[str] = None,
         base_url: Optional[str] = None,
@@ -89,7 +89,6 @@ class Evaluation:
         Initializes an instance of the Evaluations class.
 
         Parameters:
-            name (str): The name of the evaluation.
             data (Union[List[Union[EvaluationDatapoint, dict]], EvaluationDataset]): List of data points to evaluate or an evaluation dataset.
                             `data` is the input to the executor function,
                             `target` is the input to the evaluator function.
@@ -104,6 +103,8 @@ class Evaluation:
                 evaluator function. If the function is anonymous, it will be
                 named `evaluator_${index}`, where index is the index of the
                 evaluator function in the list starting from 1.
+            name (Optional[str], optional): The name of the evaluation.
+                            It will be auto-generated if not provided.
             batch_size (int, optional): The batch size for evaluation.
                             Defaults to DEFAULT_BATCH_SIZE.
             project_api_key (Optional[str], optional): The project API key.
@@ -254,33 +255,57 @@ class Evaluation:
 
 
 def evaluate(
-    name: str,
     data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
     executor: Any,
     evaluators: list[Any],
+    name: Optional[str] = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
     project_api_key: Optional[str] = None,
     base_url: Optional[str] = None,
     http_port: Optional[int] = None,
 ) -> Optional[Awaitable[None]]:
     """
-    Run evaluation.
-
-    If `_set_global_evaluation` is `True`, sets the global evaluation to be run in another part of the program.
-
-    Otherwise, if there is no event loop, runs the evaluation in the current thread until completion.
+    If added to the file which is called through lmnr eval command, then simply registers the evaluation.
+    Otherwise, if there is no event loop, creates it and runs the evaluation until completion.
     If there is an event loop, schedules the evaluation as a task in the event loop and returns an awaitable handle.
+
+    Parameters:
+        data (Union[List[Union[EvaluationDatapoint, dict]], EvaluationDataset]): List of data points to evaluate or an evaluation dataset.
+                        `data` is the input to the executor function,
+                        `target` is the input to the evaluator function.
+        executor (Callable[..., Any]): The executor function.
+                        Takes the data point + any additional arguments
+                        and returns the output to evaluate.
+        evaluators (List[Callable[..., Any]]): List of evaluator functions.
+            Each evaluator function takes the output of the executor _and_
+            the target data, and returns a score. The score can be a
+            single number or a record of string keys and number values.
+            If the score is a single number, it will be named after the
+            evaluator function. If the function is anonymous, it will be
+            named `evaluator_${index}`, where index is the index of the
+            evaluator function in the list starting from 1.
+        name (Optional[str], optional): The name of the evaluation.
+            It will be auto-generated if not provided.
+        batch_size (int, optional): The batch size for evaluation.
+                        Defaults to DEFAULT_BATCH_SIZE.
+        project_api_key (Optional[str], optional): The project API key.
+                        Defaults to an empty string.
+        base_url (Optional[str], optional): The base URL for the Laminar API.
+                        Useful if self-hosted elsewhere.
+                        Defaults to "https://api.lmnr.ai".
+        http_port (Optional[int], optional): The port for the Laminar API HTTP service.
+                        Defaults to 443.
     """
 
     evaluation = Evaluation(
-        name,
-        data,
-        executor,
-        evaluators,
-        batch_size,
-        project_api_key,
-        base_url,
-        http_port,
+        data=data,
+        executor=executor,
+        evaluators=evaluators,
+        name=name,
+        batch_size=batch_size,
+        project_api_key=project_api_key,
+        base_url=base_url,
+        http_port=http_port,
     )
 
     global _evaluation

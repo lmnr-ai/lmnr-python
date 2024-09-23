@@ -410,7 +410,7 @@ class Laminar:
         set_association_properties(props)
 
     @classmethod
-    def create_evaluation(cls, name: str) -> CreateEvaluationResponse:
+    def create_evaluation(cls, name: Optional[str]) -> CreateEvaluationResponse:
         response = requests.post(
             cls.__base_http_url + "/v1/evaluations",
             data=json.dumps({"name": name}),
