@@ -7,7 +7,7 @@ from typing import Any, Awaitable, Optional, Union
 from tqdm import tqdm
 
 from .laminar import Laminar as L
-from .types import CreateEvaluationResponse, Datapoint, EvaluationResultDatapoint, Numeric
+from .types import CreateEvaluationResponse, Datapoint, EvaluationResultDatapoint, Numeric, NumericTypes
 from .utils import is_async
 
 DEFAULT_BATCH_SIZE = 5
@@ -240,7 +240,7 @@ class Evaluation:
             )
 
             # If evaluator returns a single number, use evaluator name as key
-            if isinstance(value, Numeric):
+            if isinstance(value, NumericTypes):
                 scores[evaluator_name] = value
             else:
                 scores.update(value)

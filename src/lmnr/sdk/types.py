@@ -18,6 +18,8 @@ class ConditionedValue(pydantic.BaseModel):
 
 
 Numeric = Union[int, float]
+NumericTypes = (int, float)  # for use with isinstance
+
 NodeInput = Union[str, list[ChatMessage], ConditionedValue, Numeric, bool]
 PipelineOutput = Union[NodeInput]
 
