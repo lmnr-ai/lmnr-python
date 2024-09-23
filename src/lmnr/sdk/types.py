@@ -18,6 +18,8 @@ class ConditionedValue(pydantic.BaseModel):
 
 
 Numeric = Union[int, float]
+NumericTypes = (int, float)  # for use with isinstance
+
 NodeInput = Union[str, list[ChatMessage], ConditionedValue, Numeric, bool]
 PipelineOutput = Union[NodeInput]
 
@@ -79,7 +81,7 @@ EvaluationDatapointTarget = dict[str, Any]
 
 
 # EvaluationDatapoint is a single data point in the evaluation
-class EvaluationDatapoint(pydantic.BaseModel):
+class Datapoint(pydantic.BaseModel):
     # input to the executor function. Must be a dict with string keys
     data: EvaluationDatapointData
     # input to the evaluator function (alongside the executor output).
@@ -114,10 +116,14 @@ class CreateEvaluationResponse(pydantic.BaseModel):
     status: EvaluationStatus
     projectId: uuid.UUID
     metadata: Optional[dict[str, Any]] = None
+    averageScores: Optional[dict[str, Numeric]] = None
+
+
+UpdateEvaluationResponse = CreateEvaluationResponse
 
 
 class EvaluationResultDatapoint(pydantic.BaseModel):
     data: EvaluationDatapointData
     target: EvaluationDatapointTarget
-    executor_output: ExecutorFunctionReturnType
+    executorOutput: ExecutorFunctionReturnType
     scores: dict[str, Numeric]
