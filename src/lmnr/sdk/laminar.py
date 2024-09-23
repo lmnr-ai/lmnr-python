@@ -88,7 +88,7 @@ class Laminar:
         cls.__project_api_key = project_api_key or os.environ.get(
             "LMNR_PROJECT_API_KEY"
         )
-        if not project_api_key:
+        if not cls.__project_api_key:
             dotenv_path = dotenv.find_dotenv(usecwd=True)
             cls.__project_api_key = dotenv.get_key(
                 dotenv_path=dotenv_path, key_to_get="LMNR_PROJECT_API_KEY"
@@ -426,11 +426,11 @@ class Laminar:
 
     @classmethod
     def post_evaluation_results(
-        cls, evaluation_id: str, data: list[EvaluationResultDatapoint]
+        cls, evaluation_id: uuid.UUID, data: list[EvaluationResultDatapoint]
     ) -> requests.Response:
         body = {
-            "evaluationId": evaluation_id,
-            "points": data,
+            "evaluationId": str(evaluation_id),
+            "points": [datapoint.model_dump() for datapoint in data],
         }
         response = requests.post(
             cls.__base_http_url + "/v1/evaluation-datapoints",

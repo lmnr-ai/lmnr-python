@@ -55,9 +55,6 @@ class Traceloop:
 
         enable_content_tracing = is_content_tracing_enabled()
 
-        if exporter or processor:
-            print(Fore.GREEN + "Laminar exporting traces to a custom exporter")
-
         headers = os.getenv("TRACELOOP_HEADERS") or headers
 
         if isinstance(headers, str):
@@ -78,17 +75,7 @@ class Traceloop:
             print(Fore.RESET)
             return
 
-        if not exporter and not processor and headers:
-            print(
-                Fore.GREEN
-                + f"Laminar exporting traces to {api_endpoint}, authenticating with custom headers"
-            )
-
         if api_key and not exporter and not processor and not headers:
-            print(
-                Fore.GREEN
-                + f"Laminar exporting traces to {api_endpoint} authenticating with bearer token"
-            )
             headers = {
                 "Authorization": f"Bearer {api_key}",
             }

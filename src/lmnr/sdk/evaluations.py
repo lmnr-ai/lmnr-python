@@ -1,18 +1,16 @@
-from contextlib import contextmanager
+import asyncio
 import sys
+from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from typing import Any, Awaitable, Optional, Union
 
-import tqdm
+from tqdm import tqdm
 
+from .laminar import Laminar as L
 from .types import CreateEvaluationResponse, Datapoint, EvaluationResultDatapoint, Numeric
 from .utils import is_async
-from .laminar import Laminar as L
-import asyncio
-
-from abc import ABC, abstractmethod
 
 DEFAULT_BATCH_SIZE = 5
-
 
 _evaluation = None
 _set_global_evaluation = False
@@ -27,10 +25,11 @@ def set_global_evaluation(set_global_evaluation: bool):
         yield
     finally:
         _set_global_evaluation = original
+        pass
 
 
 def get_evaluation_url(project_id: str, evaluation_id: str):
-    return f"https://app.lmnr.ai/project/{project_id}/evaluations/{evaluation_id}"
+    return f"https://www.lmnr.ai/project/{project_id}/evaluations/{evaluation_id}"
 
 
 class EvaluationReporter:
@@ -38,9 +37,9 @@ class EvaluationReporter:
         pass
 
     def start(self, name: str, project_id: str, id: str, length: int):
-        print(f"\nRunning evaluation {name}...\n\n")
-        print(f"Check progress and results at ${get_evaluation_url(project_id, id)}\n\n")
-        self.cli_progress = tqdm(total=length)
+        print(f"Running evaluation {name}...\n")
+        print(f"Check progress and results at {get_evaluation_url(project_id, id)}\n")
+        self.cli_progress = tqdm(total=length, bar_format="{bar} {percentage:3.0f}% | ETA: {remaining}s | {n_fmt}/{total_fmt}", ncols=60)
 
     def update(self, batch_length: int):
         self.cli_progress.update(batch_length)
@@ -51,9 +50,9 @@ class EvaluationReporter:
 
     def stop(self, average_scores: dict[str, Numeric]):
         self.cli_progress.close()
-        print("\nAverage scores:\n")
+        print("\nAverage scores:")
         for (name, score) in average_scores.items():
-            print(f"{name}: {score}\n")
+            print(f"{name}: {score}")
         print("\n")
 
 
@@ -150,6 +149,7 @@ class Evaluation:
             project_api_key=project_api_key,
             base_url=base_url,
             http_port=http_port,
+            instruments=set(),
         )
 
     def run(self) -> Union[None, Awaitable[None]]:
@@ -210,7 +210,7 @@ class Evaluation:
             )
             try:
                 results = await self._evaluate_batch(batch)
-                L.post_evaluation_datapoints(evaluation.id, results)
+                L.post_evaluation_results(evaluation.id, results)
             except Exception as e:
                 print(f"Error evaluating batch: {e}")
             finally:
@@ -254,14 +254,14 @@ class Evaluation:
 
 
 def evaluate(
-        name: str,
-        data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
-        executor: Any,
-        evaluators: list[Any],
-        batch_size: int = DEFAULT_BATCH_SIZE,
-        project_api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
-        http_port: Optional[int] = None,
+    name: str,
+    data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
+    executor: Any,
+    evaluators: list[Any],
+    batch_size: int = DEFAULT_BATCH_SIZE,
+    project_api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+    http_port: Optional[int] = None,
 ) -> Optional[Awaitable[None]]:
     """
     Run evaluation.
@@ -271,8 +271,6 @@ def evaluate(
     Otherwise, if there is no event loop, runs the evaluation in the current thread until completion.
     If there is an event loop, schedules the evaluation as a task in the event loop and returns an awaitable handle.
     """
-    global _evaluation
-    global _set_global_evaluation
 
     evaluation = Evaluation(
         name,
@@ -285,6 +283,7 @@ def evaluate(
         http_port,
     )
 
+    global _evaluation
     if _set_global_evaluation:
         _evaluation = evaluation
     else:

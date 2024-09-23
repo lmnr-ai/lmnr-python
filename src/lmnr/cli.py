@@ -4,28 +4,23 @@ import importlib
 import os
 import sys
 
-from lmnr.sdk.evaluations import set_global_evaluation, _evaluation
+from lmnr.sdk.evaluations import set_global_evaluation
 
 
 # TODO: Refactor this code
 async def run_evaluation(args):
-    print(args)
-
     sys.path.insert(0, os.getcwd())
-
-    evaluation = None
 
     with set_global_evaluation(True):
         file = os.path.abspath(args.file)
 
-        spec = importlib.util.spec_from_file_location("evaluation", file)
+        spec = importlib.util.spec_from_file_location("run_eval", file)
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
 
+        from lmnr.sdk.evaluations import _evaluation
         evaluation = _evaluation
-        print(f"Evaluation after executing code: {evaluation}")
-
-    await evaluation.run()
+        await evaluation.run()
 
 
 def cli():

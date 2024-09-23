@@ -123,5 +123,5 @@ UpdateEvaluationResponse = CreateEvaluationResponse
 class EvaluationResultDatapoint(pydantic.BaseModel):
     data: EvaluationDatapointData
     target: EvaluationDatapointTarget
-    executor_output: ExecutorFunctionReturnType
+    executorOutput: ExecutorFunctionReturnType
     scores: dict[str, Numeric]
