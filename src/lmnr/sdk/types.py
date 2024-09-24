@@ -127,3 +127,8 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
     target: EvaluationDatapointTarget
     executorOutput: ExecutorFunctionReturnType
     scores: dict[str, Numeric]
+
+
+# TODO: Should this be enum?
+SpanType = Literal["DEFAULT", "LLM", "PIPELINE", "EXECUTOR", "EVALUATOR"]
+TraceType = Literal["DEFAULT", "EVENT", "EVALUATION"]

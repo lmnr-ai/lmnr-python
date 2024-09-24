@@ -5,7 +5,6 @@ from opentelemetry.trace import (
     get_current_span,
     SpanKind,
 )
-from opentelemetry.semconv_ai import SpanAttributes
 from opentelemetry.util.types import AttributeValue
 from opentelemetry.context.context import Context
 from opentelemetry.util import types
@@ -26,6 +25,7 @@ import os
 import requests
 import uuid
 
+from lmnr.traceloop_sdk.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT
 from lmnr.traceloop_sdk.tracing.tracing import set_association_properties, update_association_properties
 
 from .log import VerboseColorfulFormatter
@@ -356,7 +356,7 @@ class Laminar:
             ) as span:
                 if input is not None:
                     span.set_attribute(
-                        SpanAttributes.TRACELOOP_ENTITY_INPUT,
+                        SPAN_INPUT,
                         json.dumps({"input": input}),
                     )
                 yield span
@@ -372,7 +372,7 @@ class Laminar:
         span = get_current_span()
         if output is not None and span != INVALID_SPAN:
             span.set_attribute(
-                SpanAttributes.TRACELOOP_ENTITY_OUTPUT, json.dumps(output)
+                SPAN_OUTPUT, json.dumps(output)
             )
 
     @classmethod

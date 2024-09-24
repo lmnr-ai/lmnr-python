@@ -3,7 +3,6 @@ import logging
 import os
 
 
-from colorama import Fore
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
     OTLPSpanExporter as HTTPExporter,
@@ -24,17 +23,16 @@ from opentelemetry.trace import get_tracer_provider, ProxyTracerProvider
 from opentelemetry.context import get_value, attach, set_value
 from opentelemetry.instrumentation.threading import ThreadingInstrumentor
 
-from opentelemetry.semconv_ai import SpanAttributes
-
 # from lmnr.traceloop_sdk import Telemetry
 from lmnr.traceloop_sdk.instruments import Instruments
+from lmnr.traceloop_sdk.tracing.attributes import ASSOCIATION_PROPERTIES
 from lmnr.traceloop_sdk.tracing.content_allow_list import ContentAllowList
 from lmnr.traceloop_sdk.utils import is_notebook
 from lmnr.traceloop_sdk.utils.package_check import is_package_installed
 from typing import Dict, Optional, Set
 
 
-TRACER_NAME = "traceloop.tracer"
+TRACER_NAME = "lmnr.tracer"
 EXCLUDED_URLS = """
     iam.cloud.ibm.com,
     dataplatform.cloud.ibm.com,
@@ -44,7 +42,7 @@ EXCLUDED_URLS = """
     api.anthropic.com,
     api.cohere.ai,
     pinecone.io,
-    traceloop.com,
+    api.lmnr.ai,
     posthog.com,
     sentry.io,
     bedrock-runtime,
@@ -130,138 +128,103 @@ class TracerWrapper(object):
                 for instrument in instruments:
                     if instrument == Instruments.OPENAI:
                         if not init_openai_instrumentor(should_enrich_metrics):
-                            print(Fore.RED + "Warning: OpenAI library does not exist.")
-                            print(Fore.RESET)
+                            print("Warning: OpenAI library does not exist.")
                     elif instrument == Instruments.ANTHROPIC:
                         if not init_anthropic_instrumentor(should_enrich_metrics):
                             print(
-                                Fore.RED + "Warning: Anthropic library does not exist."
+                                 "Warning: Anthropic library does not exist."
                             )
-                            print(Fore.RESET)
                     elif instrument == Instruments.COHERE:
                         if not init_cohere_instrumentor():
-                            print(Fore.RED + "Warning: Cohere library does not exist.")
-                            print(Fore.RESET)
+                            print("Warning: Cohere library does not exist.")
                     elif instrument == Instruments.PINECONE:
                         if not init_pinecone_instrumentor():
                             print(
-                                Fore.RED + "Warning: Pinecone library does not exist."
+                                "Warning: Pinecone library does not exist."
                             )
-                            print(Fore.RESET)
                     elif instrument == Instruments.CHROMA:
                         if not init_chroma_instrumentor():
-                            print(Fore.RED + "Warning: Chroma library does not exist.")
-                            print(Fore.RESET)
+                            print("Warning: Chroma library does not exist.")
                     elif instrument == Instruments.GOOGLE_GENERATIVEAI:
                         if not init_google_generativeai_instrumentor():
-                            print(
-                                Fore.RED
-                                + "Warning: Google Generative AI library does not exist."
-                            )
-                            print(Fore.RESET)
+                            print("Warning: Google Generative AI library does not exist.")
                     elif instrument == Instruments.LANGCHAIN:
                         if not init_langchain_instrumentor():
                             print(
-                                Fore.RED + "Warning: LangChain library does not exist."
+                                "Warning: LangChain library does not exist."
                             )
-                            print(Fore.RESET)
                     elif instrument == Instruments.MISTRAL:
                         if not init_mistralai_instrumentor():
                             print(
-                                Fore.RED + "Warning: MistralAI library does not exist."
+                                "Warning: MistralAI library does not exist."
                             )
-                            print(Fore.RESET)
                     elif instrument == Instruments.OLLAMA:
                         if not init_ollama_instrumentor():
-                            print(Fore.RED + "Warning: Ollama library does not exist.")
-                            print(Fore.RESET)
+                            print("Warning: Ollama library does not exist.")
                     elif instrument == Instruments.LLAMA_INDEX:
                         if not init_llama_index_instrumentor():
                             print(
-                                Fore.RED + "Warning: LlamaIndex library does not exist."
+                                "Warning: LlamaIndex library does not exist."
                             )
-                            print(Fore.RESET)
                     elif instrument == Instruments.MILVUS:
                         if not init_milvus_instrumentor():
-                            print(Fore.RED + "Warning: Milvus library does not exist.")
-                            print(Fore.RESET)
+                            print("Warning: Milvus library does not exist.")
                     elif instrument == Instruments.TRANSFORMERS:
                         if not init_transformers_instrumentor():
-                            print(
-                                Fore.RED
-                                + "Warning: Transformers library does not exist."
-                            )
-                            print(Fore.RESET)
+                            print("Warning: Transformers library does not exist.")
                     elif instrument == Instruments.TOGETHER:
                         if not init_together_instrumentor():
                             print(
-                                Fore.RED + "Warning: TogetherAI library does not exist."
+                                "Warning: TogetherAI library does not exist."
                             )
-                            print(Fore.RESET)
                     elif instrument == Instruments.REQUESTS:
                         if not init_requests_instrumentor():
                             print(
-                                Fore.RED + "Warning: Requests library does not exist."
+                                "Warning: Requests library does not exist."
                             )
-                            print(Fore.RESET)
                     elif instrument == Instruments.URLLIB3:
                         if not init_urllib3_instrumentor():
-                            print(Fore.RED + "Warning: urllib3 library does not exist.")
-                            print(Fore.RESET)
+                            print("Warning: urllib3 library does not exist.")
                     elif instrument == Instruments.PYMYSQL:
                         if not init_pymysql_instrumentor():
-                            print(Fore.RED + "Warning: PyMySQL library does not exist.")
-                            print(Fore.RESET)
+                            print("Warning: PyMySQL library does not exist.")
                     elif instrument == Instruments.BEDROCK:
                         if not init_bedrock_instrumentor(should_enrich_metrics):
-                            print(Fore.RED + "Warning: Bedrock library does not exist.")
-                            print(Fore.RESET)
+                            print("Warning: Bedrock library does not exist.")
                     elif instrument == Instruments.REPLICATE:
                         if not init_replicate_instrumentor():
                             print(
-                                Fore.RED + "Warning: Replicate library does not exist."
+                                "Warning: Replicate library does not exist."
                             )
-                            print(Fore.RESET)
                     elif instrument == Instruments.VERTEXAI:
                         if not init_vertexai_instrumentor():
                             print(
-                                Fore.RED + "Warning: Vertex AI library does not exist."
+                                "Warning: Vertex AI library does not exist."
                             )
-                            print(Fore.RESET)
                     elif instrument == Instruments.WATSONX:
                         if not init_watsonx_instrumentor():
-                            print(Fore.RED + "Warning: Watsonx library does not exist.")
-                            print(Fore.RESET)
+                            print("Warning: Watsonx library does not exist.")
                     elif instrument == Instruments.WEAVIATE:
                         if not init_weaviate_instrumentor():
                             print(
-                                Fore.RED + "Warning: Weaviate library does not exist."
+                                "Warning: Weaviate library does not exist."
                             )
-                            print(Fore.RESET)
                     elif instrument == Instruments.ALEPHALPHA:
                         if not init_alephalpha_instrumentor():
-                            print(
-                                Fore.RED
-                                + "Warning: Aleph Alpha library does not exist."
-                            )
-                            print(Fore.RESET)
+                            print("Warning: Aleph Alpha library does not exist.")
                     elif instrument == Instruments.MARQO:
                         if not init_marqo_instrumentor():
-                            print(Fore.RED + "Warning: marqo library does not exist.")
-                            print(Fore.RESET)
+                            print("Warning: marqo library does not exist.")
                     elif instrument == Instruments.LANCEDB:
                         if not init_lancedb_instrumentor():
-                            print(Fore.RED + "Warning: LanceDB library does not exist.")
-                            print(Fore.RESET)
+                            print("Warning: LanceDB library does not exist.")
                     elif instrument == Instruments.REDIS:
                         if not init_redis_instrumentor():
-                            print(Fore.RED + "Warning: redis library does not exist.")
-                            print(Fore.RESET)
+                            print("Warning: redis library does not exist.")
 
                     else:
                         print(
-                            Fore.RED
-                            + "Warning: "
+                            "Warning: "
                             + instrument
                             + " instrumentation does not exist."
                         )
@@ -270,7 +233,6 @@ class TracerWrapper(object):
                             + "from lmnr.traceloop_sdk.instruments import Instruments\n"
                             + 'Traceloop.init(app_name="...", instruments=set([Instruments.OPENAI]))'
                         )
-                        print(Fore.RESET)
 
             obj.__content_allow_list = ContentAllowList()
 
@@ -292,49 +254,6 @@ class TracerWrapper(object):
                     attach(set_value("override_enable_content_tracing", True))
                 else:
                     attach(set_value("override_enable_content_tracing", False))
-
-        if is_llm_span(span):
-            managed_prompt = get_value("managed_prompt")
-            if managed_prompt is not None:
-                span.set_attribute(
-                    SpanAttributes.TRACELOOP_PROMPT_MANAGED, managed_prompt
-                )
-
-            prompt_key = get_value("prompt_key")
-            if prompt_key is not None:
-                span.set_attribute(SpanAttributes.TRACELOOP_PROMPT_KEY, prompt_key)
-
-            prompt_version = get_value("prompt_version")
-            if prompt_version is not None:
-                span.set_attribute(
-                    SpanAttributes.TRACELOOP_PROMPT_VERSION, prompt_version
-                )
-
-            prompt_version_name = get_value("prompt_version_name")
-            if prompt_version_name is not None:
-                span.set_attribute(
-                    SpanAttributes.TRACELOOP_PROMPT_VERSION_NAME, prompt_version_name
-                )
-
-            prompt_version_hash = get_value("prompt_version_hash")
-            if prompt_version_hash is not None:
-                span.set_attribute(
-                    SpanAttributes.TRACELOOP_PROMPT_VERSION_HASH, prompt_version_hash
-                )
-
-            prompt_template = get_value("prompt_template")
-            if prompt_template is not None:
-                span.set_attribute(
-                    SpanAttributes.TRACELOOP_PROMPT_TEMPLATE, prompt_template
-                )
-
-            prompt_template_variables = get_value("prompt_template_variables")
-            if prompt_template_variables is not None:
-                for key, value in prompt_template_variables.items():
-                    span.set_attribute(
-                        f"{SpanAttributes.TRACELOOP_PROMPT_TEMPLATE_VARIABLES}.{key}",
-                        value,
-                    )
 
         # Call original on_start method if it exists in custom processor
         if self.__spans_processor_original_on_start:
@@ -360,11 +279,7 @@ class TracerWrapper(object):
         if (os.getenv("TRACELOOP_SUPPRESS_WARNINGS") or "false").lower() == "true":
             return False
 
-        print(
-            Fore.RED
-            + "Warning: Traceloop not initialized, make sure you call Traceloop.init()"
-        )
-        print(Fore.RESET)
+        print("Warning: Laminar not initialized, make sure to initialize")
         return False
 
     def flush(self):
@@ -399,7 +314,7 @@ def update_association_properties(properties: dict) -> None:
 def _set_association_properties_attributes(span, properties: dict) -> None:
     for key, value in properties.items():
         span.set_attribute(
-            f"{SpanAttributes.TRACELOOP_ASSOCIATION_PROPERTIES}.{key}", value
+            f"{ASSOCIATION_PROPERTIES}.{key}", value
         )
 
 
@@ -425,10 +340,6 @@ def set_external_prompt_tracing_context(
     attach(set_value("prompt_version", version))
     attach(set_value("prompt_template", template))
     attach(set_value("prompt_template_variables", variables))
-
-
-def is_llm_span(span) -> bool:
-    return span.attributes.get(SpanAttributes.LLM_REQUEST_TYPE) is not None
 
 
 def init_spans_exporter(api_endpoint: str, headers: Dict[str, str]) -> SpanExporter:
@@ -499,7 +410,6 @@ def init_openai_instrumentor(should_enrich_metrics: bool):
                 # exception_logger=lambda e: Telemetry().log_exception(e),
                 enrich_assistant=should_enrich_metrics,
                 enrich_token_usage=should_enrich_metrics,
-                get_common_metrics_attributes=metrics_common_attributes,
             )
             if not instrumentor.is_instrumented_by_opentelemetry:
                 instrumentor.instrument()
@@ -520,7 +430,6 @@ def init_anthropic_instrumentor(should_enrich_metrics: bool):
             instrumentor = AnthropicInstrumentor(
                 # exception_logger=lambda e: Telemetry().log_exception(e),
                 enrich_token_usage=should_enrich_metrics,
-                get_common_metrics_attributes=metrics_common_attributes,
             )
             if not instrumentor.is_instrumented_by_opentelemetry:
                 instrumentor.instrument()
@@ -988,23 +897,3 @@ def init_groq_instrumentor():
         logging.error(f"Error initializing Groq instrumentor: {e}")
         # Telemetry().log_exception(e)
         return False
-
-
-def metrics_common_attributes():
-    common_attributes = {}
-    workflow_name = get_value("workflow_name")
-    if workflow_name is not None:
-        common_attributes[SpanAttributes.TRACELOOP_WORKFLOW_NAME] = workflow_name
-
-    entity_name = get_value("entity_name")
-    if entity_name is not None:
-        common_attributes[SpanAttributes.TRACELOOP_ENTITY_NAME] = entity_name
-
-    association_properties = get_value("association_properties")
-    if association_properties is not None:
-        for key, value in association_properties.items():
-            common_attributes[
-                f"{SpanAttributes.TRACELOOP_ASSOCIATION_PROPERTIES}.{key}"
-            ] = value
-
-    return common_attributes

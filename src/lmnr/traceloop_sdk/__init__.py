@@ -3,20 +3,16 @@ import sys
 from pathlib import Path
 
 from typing import Optional, Set
-from colorama import Fore
 from opentelemetry.sdk.trace import SpanProcessor
 from opentelemetry.sdk.trace.export import SpanExporter
-from opentelemetry.sdk.metrics.export import MetricExporter
 from opentelemetry.sdk.resources import SERVICE_NAME
 from opentelemetry.propagators.textmap import TextMapPropagator
 from opentelemetry.util.re import parse_env_headers
 
-from lmnr.traceloop_sdk.metrics.metrics import MetricsWrapper
 from lmnr.traceloop_sdk.instruments import Instruments
 from lmnr.traceloop_sdk.config import (
     is_content_tracing_enabled,
     is_tracing_enabled,
-    is_metrics_enabled,
 )
 from lmnr.traceloop_sdk.tracing.tracing import TracerWrapper
 from typing import Dict
@@ -38,8 +34,6 @@ class Traceloop:
         headers: Dict[str, str] = {},
         disable_batch=False,
         exporter: Optional[SpanExporter] = None,
-        metrics_exporter: Optional[MetricExporter] = None,
-        metrics_headers: Optional[Dict[str, str]] = None,
         processor: Optional[SpanProcessor] = None,
         propagator: Optional[TextMapPropagator] = None,
         should_enrich_metrics: bool = True,
@@ -50,7 +44,7 @@ class Traceloop:
         api_key = os.getenv("TRACELOOP_API_KEY") or api_key
 
         if not is_tracing_enabled():
-            print(Fore.YELLOW + "Tracing is disabled" + Fore.RESET)
+            # print(Fore.YELLOW + "Tracing is disabled" + Fore.RESET)
             return
 
         enable_content_tracing = is_content_tracing_enabled()
@@ -66,13 +60,13 @@ class Traceloop:
             and api_endpoint == "https://api.lmnr.ai"
             and not api_key
         ):
-            print(
-                Fore.RED
-                + "Error: Missing API key,"
-                + " go to project settings to create one"
-            )
-            print("Set the LMNR_PROJECT_API_KEY environment variable to the key")
-            print(Fore.RESET)
+            # print(
+            #     Fore.RED
+            #     + "Error: Missing API key,"
+            #     + " go to project settings to create one"
+            # )
+            # print("Set the LMNR_PROJECT_API_KEY environment variable to the key")
+            # print(Fore.RESET)
             return
 
         if api_key and not exporter and not processor and not headers:
@@ -80,7 +74,7 @@ class Traceloop:
                 "Authorization": f"Bearer {api_key}",
             }
 
-        print(Fore.RESET)
+        # print(Fore.RESET)
 
         # Tracer init
         resource_attributes.update({SERVICE_NAME: app_name})
@@ -95,21 +89,3 @@ class Traceloop:
             should_enrich_metrics=should_enrich_metrics,
             instruments=instruments,
         )
-
-        if not metrics_exporter and exporter:
-            return
-
-        metrics_endpoint = os.getenv("TRACELOOP_METRICS_ENDPOINT") or api_endpoint
-        metrics_headers = (
-            os.getenv("TRACELOOP_METRICS_HEADERS") or metrics_headers or headers
-        )
-
-        if not is_metrics_enabled() or not metrics_exporter and exporter:
-            print(Fore.YELLOW + "Metrics are disabled" + Fore.RESET)
-            return
-
-        MetricsWrapper.set_static_params(
-            resource_attributes, metrics_endpoint, metrics_headers
-        )
-
-        Traceloop.__metrics_wrapper = MetricsWrapper(exporter=metrics_exporter)
