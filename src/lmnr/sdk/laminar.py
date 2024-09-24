@@ -414,18 +414,9 @@ class Laminar:
         cls,
         trace_type: TraceType,
     ):
-        """Set the session and user id for the current span and the context
-        (i.e. any children spans created from the current span in the current
-        thread).
-
+        """Set the trace_type for the current span and the context
         Args:
-            session_id (Optional[str], optional): Custom session id.
-                            Useful to debug and group long-running
-                            sessions/conversations.
-                            Defaults to None.
-            user_id (Optional[str], optional): Custom user id.
-                            Useful for grouping spans or traces by user.
-                            Defaults to None.
+            trace_type (TraceType): Type of the trace
         """
         association_properties = {
             TRACE_TYPE: trace_type.value,

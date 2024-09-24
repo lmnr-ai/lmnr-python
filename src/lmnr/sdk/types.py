@@ -150,7 +150,7 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
 class SpanType(Enum):
     DEFAULT = "DEFAULT"
     LLM = "LLM"
-    # PIPELINE = "PIPELINE"  # must not be set manually
+    PIPELINE = "PIPELINE"  # must not be set manually
     EXECUTOR = "EXECUTOR"
     EVALUATOR = "EVALUATOR"
     EVALUATION = "EVALUATION"
@@ -158,5 +158,5 @@ class SpanType(Enum):
 
 class TraceType(Enum):
     DEFAULT = "DEFAULT"
-    # EVENT = "EVENT"  # must not be set manually
+    EVENT = "EVENT"  # must not be set manually
     EVALUATION = "EVALUATION"
