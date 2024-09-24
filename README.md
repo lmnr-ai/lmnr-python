@@ -1,11 +1,14 @@
 # Laminar Python
 
-OpenTelemetry log sender for [Laminar](https://github.com/lmnr-ai/lmnr) for Python code.
+Python SDK for [Laminar](https://www.lmnr.ai).
+
+[Laminar](https://www.lmnr.ai) is an open-source platform for engineering LLM products. Trace, evaluate, annotate, and analyze LLM data. Bring LLM applications to production with confidence.
+
+Check our [open-source repo](https://github.com/lmnr-ai/lmnr) and don't forget to star it ⭐
 
  <a href="https://pypi.org/project/lmnr/"> ![PyPI - Version](https://img.shields.io/pypi/v/lmnr?label=lmnr&logo=pypi&logoColor=3775A9) </a>
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/lmnr)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/lmnr)
-
 
 
 ## Quickstart
@@ -165,6 +168,67 @@ L.event("topic alignment", topic in poem)
 L.evaluate_event("excessive_wordiness", "check_wordy", {"text_input": poem})
 ```
 
+## Evaluations
+
+### Quickstart
+
+Install the package:
+
+```sh
+pip install lmnr
+```
+
+Create a file named `my_first_eval.py` with the following code:
+
+```python
+from lmnr import evaluate
+
+def write_poem(data):
+    return f"This is a good poem about {data['topic']}"
+
+def contains_poem(output, target):
+    return 1 if output in target['poem'] else 0
+
+# Evaluation data
+data = [
+    {"data": {"topic": "flowers"}, "target": {"poem": "This is a good poem about flowers"}},
+    {"data": {"topic": "cars"}, "target": {"poem": "I like cars"}},
+]
+
+evaluate(
+    data=data,
+    executor=write_poem,
+    evaluators={
+        "containsPoem": contains_poem
+    }
+)
+```
+
+Run the following commands:
+
+```sh
+export LMNR_PROJECT_API_KEY=<YOUR_PROJECT_API_KEY>  # get from Laminar project settings
+lmnr eval my_first_eval.py  # run in the virtual environment where lmnr is installed
+```
+
+Visit the URL printed in the console to see the results.
+
+### Overview
+
+Bring rigor to the development of your LLM applications with evaluations.
+
+You can run evaluations locally by providing executor (part of the logic used in your application) and evaluators (numeric scoring functions) to `evaluate` function.
+
+`evaluate` takes in the following parameters:
+- `data` – an array of `EvaluationDatapoint` objects, where each `EvaluationDatapoint` has two keys: `target` and `data`, each containing a key-value object. Alternatively, you can pass in dictionaries, and we will instantiate `EvaluationDatapoint`s with pydantic if possible
+- `executor` – the logic you want to evaluate. This function must take `data` as the first argument, and produce any output. It can be both a function or an `async` function.
+- `evaluators` – Dictionary which maps evaluator names to evaluators. Functions that take output of executor as the first argument, `target` as the second argument and produce a numeric scores. Each function can produce either a single number or `dict[str, int|float]` of scores. Each evaluator can be both a function or an `async` function.
+- `name` – optional name for the evaluation. Automatically generated if not provided.
+
+\* If you already have the outputs of executors you want to evaluate, you can specify the executor as an identity function, that takes in `data` and returns only needed value(s) from it.
+
+[Read docs](https://docs.lmnr.ai/evaluations/introduction) to learn more about evaluations.
+
 ## Laminar pipelines as prompt chain managers
 
 You can create Laminar pipelines in the UI and manage chains of LLM calls there.
@@ -198,72 +262,3 @@ PipelineRunResponse(
     run_id='53b012d5-5759-48a6-a9c5-0011610e3669'
 )
 ```
-
-## Running offline evaluations on your data
-
-You can evaluate your code with your own data and send it to Laminar using the `Evaluation` class.
-
-Evaluation takes in the following parameters:
-- `name` – the name of your evaluation. If no such evaluation exists in the project, it will be created. Otherwise, data will be pushed to the existing evaluation
-- `data` – an array of `EvaluationDatapoint` objects, where each `EvaluationDatapoint` has two keys: `target` and `data`, each containing a key-value object. Alternatively, you can pass in dictionaries, and we will instantiate `EvaluationDatapoint`s with pydantic if possible
-- `executor` – the logic you want to evaluate. This function must take `data` as the first argument, and produce any output. *
-- `evaluators` – evaluaton logic. Functions that take output of executor as the first argument, `target` as the second argument and produce a numeric scores. Pass a dict from evaluator name to a function. Each function can produce either a single number or `dict[str, int|float]` of scores.
-
-\* If you already have the outputs of executors you want to evaluate, you can specify the executor as an identity function, that takes in `data` and returns only needed value(s) from it.
-
-### Example code
-
-```python
-from lmnr import evaluate
-from openai import AsyncOpenAI
-import asyncio
-import os
-
-openai_client = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
-
-async def get_capital(data):
-    country = data["country"]
-    response = await openai_client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {
-                "role": "user",
-                "content": f"What is the capital of {country}? Just name the "
-                "city and nothing else",
-            },
-        ],
-    )
-    return response.choices[0].message.content.strip()
-
-
-# Evaluation data
-data = [
-    {"data": {"country": "Canada"}, "target": {"capital": "Ottawa"}},
-    {"data": {"country": "Germany"}, "target": {"capital": "Berlin"}},
-    {"data": {"country": "Tanzania"}, "target": {"capital": "Dodoma"}},
-]
-
-
-def correctness(output, target):
-    return 1 if output == target["capital"] else 0
-
-
-# Create an Evaluation instance
-e = evaluate(
-    name="my-evaluation",
-    data=data,
-    executor=get_capital,
-    evaluators={"correctness": correctness},
-    project_api_key=os.environ["LMNR_PROJECT_API_KEY"],
-)
-```
-
-### Running from CLI.
-
-1. Make sure `lmnr` is installed in a venv. CLI does not work with a global env
-1. Run `lmnr path/to/my/eval.py`
-
-### Running from code
-
-Simply execute the function, e.g. `python3 path/to/my/eval.py`
