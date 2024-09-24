@@ -252,7 +252,7 @@ class Evaluation:
             scores: dict[str, Numeric] = {}
             for evaluator_name, evaluator in self.evaluators.items():
                 with L.start_as_current_span(
-                    "evaluator", input={"output": output, "target": target}
+                    evaluator_name, input={"output": output, "target": target}
                 ) as evaluator_span:
                     evaluator_span.set_attribute(SPAN_TYPE, SpanType.EVALUATOR.value)
                     value = (
