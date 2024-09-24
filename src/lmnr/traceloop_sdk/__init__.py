@@ -60,13 +60,11 @@ class Traceloop:
             and api_endpoint == "https://api.lmnr.ai"
             and not api_key
         ):
-            # print(
-            #     Fore.RED
-            #     + "Error: Missing API key,"
-            #     + " go to project settings to create one"
-            # )
-            # print("Set the LMNR_PROJECT_API_KEY environment variable to the key")
-            # print(Fore.RESET)
+            print(
+                "Error: Missing API key,"
+                + " go to project settings to create one"
+            )
+            print("Set the LMNR_PROJECT_API_KEY environment variable to the key")
             return
 
         if api_key and not exporter and not processor and not headers:
