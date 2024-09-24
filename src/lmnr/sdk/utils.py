@@ -1,5 +1,4 @@
 import asyncio
-import copy
 import datetime
 import dataclasses
 import enum
@@ -50,7 +49,7 @@ def is_iterator(o: typing.Any) -> bool:
     return hasattr(o, "__iter__") and hasattr(o, "__next__")
 
 
-def to_dict(obj: typing.Any) -> dict[str, typing.Any]:
+def serialize(obj: typing.Any) -> dict[str, typing.Any]:
     def to_dict_inner(o: typing.Any):
         if isinstance(o, (datetime.datetime, datetime.date)):
             return o.strftime("%Y-%m-%dT%H:%M:%S.%f%z")
@@ -59,7 +58,7 @@ def to_dict(obj: typing.Any) -> dict[str, typing.Any]:
         elif isinstance(o, (int, float, str, bool)):
             return o
         elif isinstance(o, uuid.UUID):
-            return str(o)  # same as in return, but explicit
+            return str(o)  # same as in final return, but explicit
         elif isinstance(o, enum.Enum):
             return o.value
         elif dataclasses.is_dataclass(o):
@@ -90,11 +89,12 @@ def get_input_from_func_args(
 ) -> dict[str, typing.Any]:
     # Remove implicitly passed "self" or "cls" argument for
     # instance or class methods
-    res = copy.deepcopy(func_kwargs)
+    res = func_kwargs.copy()
+    print(func.__name__, inspect.signature(func).parameters)
     for i, k in enumerate(inspect.signature(func).parameters.keys()):
         if is_method and k in ["self", "cls"]:
             continue
         # If param has default value, then it's not present in func args
-        if len(func_args) > i:
+        if i < len(func_args):
             res[k] = func_args[i]
     return res

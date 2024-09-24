@@ -2,12 +2,26 @@ import asyncio
 import sys
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from typing import Any, Awaitable, Optional, Union
+from typing import Any, Awaitable, Optional, Set, Union
+import uuid
 
 from tqdm import tqdm
 
+from ..traceloop_sdk.instruments import Instruments
+from ..traceloop_sdk.tracing.attributes import SPAN_TYPE
+
 from .laminar import Laminar as L
-from .types import CreateEvaluationResponse, Datapoint, EvaluationResultDatapoint, Numeric, NumericTypes
+from .types import (
+    CreateEvaluationResponse,
+    Datapoint,
+    EvaluationResultDatapoint,
+    EvaluatorFunction,
+    ExecutorFunction,
+    Numeric,
+    NumericTypes,
+    SpanType,
+    TraceType,
+)
 from .utils import is_async
 
 DEFAULT_BATCH_SIZE = 5
@@ -39,7 +53,11 @@ class EvaluationReporter:
     def start(self, name: str, project_id: str, id: str, length: int):
         print(f"Running evaluation {name}...\n")
         print(f"Check progress and results at {get_evaluation_url(project_id, id)}\n")
-        self.cli_progress = tqdm(total=length, bar_format="{bar} {percentage:3.0f}% | ETA: {remaining}s | {n_fmt}/{total_fmt}", ncols=60)
+        self.cli_progress = tqdm(
+            total=length,
+            bar_format="{bar} {percentage:3.0f}% | ETA: {remaining}s | {n_fmt}/{total_fmt}",
+            ncols=60,
+        )
 
     def update(self, batch_length: int):
         self.cli_progress.update(batch_length)
@@ -51,7 +69,7 @@ class EvaluationReporter:
     def stop(self, average_scores: dict[str, Numeric]):
         self.cli_progress.close()
         print("\nAverage scores:")
-        for (name, score) in average_scores.items():
+        for name, score in average_scores.items():
             print(f"{name}: {score}")
         print("\n")
 
@@ -78,12 +96,14 @@ class Evaluation:
         self,
         data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
         executor: Any,
-        evaluators: list[Any],
+        evaluators: dict[str, EvaluatorFunction],
         name: Optional[str] = None,
         batch_size: int = DEFAULT_BATCH_SIZE,
         project_api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         http_port: Optional[int] = None,
+        grpc_port: Optional[int] = None,
+        instruments: Optional[Set[Instruments]] = None,
     ):
         """
         Initializes an instance of the Evaluations class.
@@ -114,33 +134,18 @@ class Evaluation:
                             Defaults to "https://api.lmnr.ai".
             http_port (Optional[int], optional): The port for the Laminar API HTTP service.
                             Defaults to 443.
+            instruments (Optional[Set[Instruments]], optional): Set of modules to auto-instrument.
+                            Defaults to None. If None, all available instruments will be used.
         """
 
         self.is_finished = False
         self.name = name
         self.reporter = EvaluationReporter()
         self.executor = executor
-        self.evaluators = dict(
-            zip(
-                [
-                    (
-                        e.__name__
-                        if e.__name__ and e.__name__ != "<lambda>"
-                        else f"evaluator_{i+1}"
-                    )
-                    for i, e in enumerate(evaluators)
-                ],
-                evaluators,
-            )
-        )
-        self.evaluator_names = list(self.evaluators.keys())
+        self.evaluators = evaluators
         if isinstance(data, list):
             self.data = [
-                (
-                    Datapoint.model_validate(point)
-                    if isinstance(point, dict)
-                    else point
-                )
+                (Datapoint.model_validate(point) if isinstance(point, dict) else point)
                 for point in data
             ]
         else:
@@ -150,7 +155,8 @@ class Evaluation:
             project_api_key=project_api_key,
             base_url=base_url,
             http_port=http_port,
-            instruments=set(),
+            grpc_port=grpc_port,
+            instruments=instruments,
         )
 
     def run(self) -> Union[None, Awaitable[None]]:
@@ -182,6 +188,7 @@ class Evaluation:
 
     async def _run(self) -> None:
         evaluation = L.create_evaluation(self.name)
+        self.name = evaluation.name
         self.reporter.start(
             evaluation.name,
             evaluation.projectId,
@@ -205,7 +212,7 @@ class Evaluation:
     async def evaluate_in_batches(self, evaluation: CreateEvaluationResponse):
         for i in range(0, len(self.data), self.batch_size):
             batch = (
-                self.data[i: i + self.batch_size]
+                self.data[i : i + self.batch_size]
                 if isinstance(self.data, list)
                 else self.data.slice(i, i + self.batch_size)
             )
@@ -217,52 +224,72 @@ class Evaluation:
             finally:
                 self.reporter.update(len(batch))
 
-    async def _evaluate_batch(self, batch: list[Datapoint]) -> list[EvaluationResultDatapoint]:
+    async def _evaluate_batch(
+        self, batch: list[Datapoint]
+    ) -> list[EvaluationResultDatapoint]:
         batch_promises = [self._evaluate_datapoint(datapoint) for datapoint in batch]
         results = await asyncio.gather(*batch_promises)
         return results
 
-    async def _evaluate_datapoint(self, datapoint) -> EvaluationResultDatapoint:
-        output = (
-            await self.executor(datapoint.data)
-            if is_async(self.executor)
-            else self.executor(datapoint.data)
-        )
-        target = datapoint.target
+    async def _evaluate_datapoint(
+        self, datapoint: Datapoint
+    ) -> EvaluationResultDatapoint:
+        with L.start_as_current_span(self.name) as evaluation_span:
+            L._set_trace_type(trace_type=TraceType.EVALUATION)
+            evaluation_span.set_attribute(SPAN_TYPE, SpanType.EVALUATION.value)
+            with L.start_as_current_span(
+                "executor", input={"data": datapoint.data}
+            ) as executor_span:
+                executor_span.set_attribute(SPAN_TYPE, SpanType.EXECUTOR.value)
+                output = (
+                    await self.executor(datapoint.data)
+                    if is_async(self.executor)
+                    else self.executor(datapoint.data)
+                )
+                L.set_span_output(output)
+            target = datapoint.target
 
-        # Iterate over evaluators
-        scores: dict[str, Numeric] = {}
-        for evaluator_name in self.evaluator_names:
-            evaluator = self.evaluators[evaluator_name]
-            value = (
-                await evaluator(output, target)
-                if is_async(evaluator)
-                else evaluator(output, target)
+            # Iterate over evaluators
+            scores: dict[str, Numeric] = {}
+            for evaluator_name, evaluator in self.evaluators.items():
+                with L.start_as_current_span(
+                    "evaluator", input={"output": output, "target": target}
+                ) as evaluator_span:
+                    evaluator_span.set_attribute(SPAN_TYPE, SpanType.EVALUATOR.value)
+                    value = (
+                        await evaluator(output, target)
+                        if is_async(evaluator)
+                        else evaluator(output, target)
+                    )
+                    L.set_span_output(value)
+
+                # If evaluator returns a single number, use evaluator name as key
+                if isinstance(value, NumericTypes):
+                    scores[evaluator_name] = value
+                else:
+                    scores.update(value)
+
+            trace_id = uuid.UUID(int=evaluation_span.get_span_context().trace_id)
+            return EvaluationResultDatapoint(
+                data=datapoint.data,
+                target=target,
+                executor_output=output,
+                scores=scores,
+                trace_id=trace_id,
             )
-
-            # If evaluator returns a single number, use evaluator name as key
-            if isinstance(value, NumericTypes):
-                scores[evaluator_name] = value
-            else:
-                scores.update(value)
-
-        return EvaluationResultDatapoint(
-            data=datapoint.data,
-            target=target,
-            executorOutput=output,
-            scores=scores,
-        )
 
 
 def evaluate(
     data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
-    executor: Any,
-    evaluators: list[Any],
+    executor: ExecutorFunction,
+    evaluators: dict[str, EvaluatorFunction],
     name: Optional[str] = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
     project_api_key: Optional[str] = None,
     base_url: Optional[str] = None,
     http_port: Optional[int] = None,
+    grpc_port: Optional[int] = None,
+    instruments: Optional[Set[Instruments]] = None,
 ) -> Optional[Awaitable[None]]:
     """
     If added to the file which is called through lmnr eval command, then simply registers the evaluation.
@@ -295,6 +322,10 @@ def evaluate(
                         Defaults to "https://api.lmnr.ai".
         http_port (Optional[int], optional): The port for the Laminar API HTTP service.
                         Defaults to 443.
+        grpc_port (Optional[int], optional): The port for the Laminar API gRPC service.
+                        Defaults to 8443.
+        instruments (Optional[Set[Instruments]], optional): Set of modules to auto-instrument.
+                        Defaults to None. If None, all available instruments will be used.
     """
 
     evaluation = Evaluation(
@@ -306,6 +337,8 @@ def evaluate(
         project_api_key=project_api_key,
         base_url=base_url,
         http_port=http_port,
+        grpc_port=grpc_port,
+        instruments=instruments,
     )
 
     global _evaluation
