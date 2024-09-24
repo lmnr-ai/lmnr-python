@@ -16,50 +16,21 @@ Check our [open-source repo](https://github.com/lmnr-ai/lmnr) and don't forget t
 First, install the package:
 
 ```sh
-python3 -m venv .myenv
-source .myenv/bin/activate  # or use your favorite env management tool
-
 pip install lmnr
 ```
 
-Then, you can initialize Laminar in your main file and instrument your code.
+And then in the code
 
 ```python
-import os
-from openai import OpenAI
 from lmnr import Laminar as L
 
-L.initialize(
-    project_api_key=os.environ["LMNR_PROJECT_API_KEY"],
-)
-
-client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-
-def poem_writer(topic: str):
-    prompt = f"write a poem about {topic}"
-
-    # OpenAI calls are automatically instrumented
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt},
-        ],
-    )
-    poem = response.choices[0].message.content
-    return poem
-
-if __name__ == "__main__":
-    print(poem_writer("laminar flow"))
-
+L.initialize(project_api_key="<PROJECT_API_KEY>")
 ```
 
+This will automatically instrument most of the LLM, Vector DB, and related
+calls with OpenTelemetry-compatible instrumentation.
+
 Note that you need to only initialize Laminar once in your application.
-
-### Project API key
-
-Get the key from the settings page of your Laminar project ([Learn more](https://docs.lmnr.ai/api-reference/introduction#authentication)).
-You can either pass it to `.initialize()` or set it to `.env` at the root of your package with the key `LMNR_PROJECT_API_KEY`.
 
 ## Instrumentation
 
