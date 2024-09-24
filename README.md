@@ -137,7 +137,7 @@ L.initialize(project_api_key=os.environ["LMNR_PROJECT_API_KEY"], instruments={In
 
 If you want to fully disable any kind of autoinstrumentation, pass an empty set as `instruments=set()` to `.initialize()`. 
 
-Majority of the autoinstrumentations are provided by Traceloop's [OpenLLMetry](https://github.com/traceloop/openllmetry).
+Autoinstrumentations are provided by Traceloop's [OpenLLMetry](https://github.com/traceloop/openllmetry).
 
 ## Sending events
 
