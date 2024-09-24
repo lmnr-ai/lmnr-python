@@ -207,13 +207,14 @@ Evaluation takes in the following parameters:
 - `name` – the name of your evaluation. If no such evaluation exists in the project, it will be created. Otherwise, data will be pushed to the existing evaluation
 - `data` – an array of `EvaluationDatapoint` objects, where each `EvaluationDatapoint` has two keys: `target` and `data`, each containing a key-value object. Alternatively, you can pass in dictionaries, and we will instantiate `EvaluationDatapoint`s with pydantic if possible
 - `executor` – the logic you want to evaluate. This function must take `data` as the first argument, and produce any output. *
-- `evaluators` – evaluaton logic. List of functions that take output of executor as the first argument, `target` as the second argument and produce a numeric scores. Each function can produce either a single number or `dict[str, int|float]` of scores.
+- `evaluators` – evaluaton logic. Functions that take output of executor as the first argument, `target` as the second argument and produce a numeric scores. Pass a dict from evaluator name to a function. Each function can produce either a single number or `dict[str, int|float]` of scores.
 
 \* If you already have the outputs of executors you want to evaluate, you can specify the executor as an identity function, that takes in `data` and returns only needed value(s) from it.
 
-### Example
+### Example code
 
 ```python
+from lmnr import evaluate
 from openai import AsyncOpenAI
 import asyncio
 import os
@@ -244,19 +245,25 @@ data = [
 ]
 
 
-def evaluator_A(output, target):
+def correctness(output, target):
     return 1 if output == target["capital"] else 0
 
 
 # Create an Evaluation instance
-e = Evaluation(
-    name="py-evaluation-async",
+e = evaluate(
+    name="my-evaluation",
     data=data,
     executor=get_capital,
-    evaluators=[evaluator_A],
+    evaluators={"correctness": correctness},
     project_api_key=os.environ["LMNR_PROJECT_API_KEY"],
 )
-
-# Run the evaluation
-asyncio.run(e.run())
 ```
+
+### Running from CLI.
+
+1. Make sure `lmnr` is installed in a venv. CLI does not work with a global env
+1. Run `lmnr path/to/my/eval.py`
+
+### Running from code
+
+Simply execute the function, e.g. `python3 path/to/my/eval.py`
