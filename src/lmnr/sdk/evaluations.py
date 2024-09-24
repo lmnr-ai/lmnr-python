@@ -188,7 +188,6 @@ class Evaluation:
 
     async def _run(self) -> None:
         evaluation = L.create_evaluation(self.name)
-        self.name = evaluation.name
         self.reporter.start(
             evaluation.name,
             evaluation.projectId,
@@ -234,7 +233,7 @@ class Evaluation:
     async def _evaluate_datapoint(
         self, datapoint: Datapoint
     ) -> EvaluationResultDatapoint:
-        with L.start_as_current_span(self.name) as evaluation_span:
+        with L.start_as_current_span("evaluation") as evaluation_span:
             L._set_trace_type(trace_type=TraceType.EVALUATION)
             evaluation_span.set_attribute(SPAN_TYPE, SpanType.EVALUATION.value)
             with L.start_as_current_span(
