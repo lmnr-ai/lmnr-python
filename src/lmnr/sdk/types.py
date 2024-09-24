@@ -1,10 +1,11 @@
 import datetime
-import requests
+from enum import Enum
 import pydantic
-import uuid
+import requests
 from typing import Any, Awaitable, Callable, Literal, Optional, Union
+import uuid
 
-from .utils import to_dict
+from .utils import serialize
 
 
 class ChatMessage(pydantic.BaseModel):
@@ -37,7 +38,7 @@ class PipelineRunRequest(pydantic.BaseModel):
     def to_dict(self):
         return {
             "inputs": {
-                k: v.model_dump() if isinstance(v, pydantic.BaseModel) else to_dict(v)
+                k: v.model_dump() if isinstance(v, pydantic.BaseModel) else serialize(v)
                 for k, v in self.inputs.items()
             },
             "pipeline": self.pipeline,
@@ -125,5 +126,37 @@ UpdateEvaluationResponse = CreateEvaluationResponse
 class EvaluationResultDatapoint(pydantic.BaseModel):
     data: EvaluationDatapointData
     target: EvaluationDatapointTarget
-    executorOutput: ExecutorFunctionReturnType
+    executor_output: ExecutorFunctionReturnType
     scores: dict[str, Numeric]
+    trace_id: uuid.UUID
+
+    # uuid is not serializable by default, so we need to convert it to a string
+    def to_dict(self):
+        return {
+            "data": {
+                k: v.model_dump() if isinstance(v, pydantic.BaseModel) else serialize(v)
+                for k, v in self.data.items()
+            },
+            "target": {
+                k: v.model_dump() if isinstance(v, pydantic.BaseModel) else serialize(v)
+                for k, v in self.target.items()
+            },
+            "executorOutput": serialize(self.executor_output),
+            "scores": self.scores,
+            "traceId": str(self.trace_id),
+        }
+
+
+class SpanType(Enum):
+    DEFAULT = "DEFAULT"
+    LLM = "LLM"
+    PIPELINE = "PIPELINE"  # must not be set manually
+    EXECUTOR = "EXECUTOR"
+    EVALUATOR = "EVALUATOR"
+    EVALUATION = "EVALUATION"
+
+
+class TraceType(Enum):
+    DEFAULT = "DEFAULT"
+    EVENT = "EVENT"  # must not be set manually
+    EVALUATION = "EVALUATION"

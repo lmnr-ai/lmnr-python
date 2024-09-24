@@ -7,9 +7,10 @@ import warnings
 
 from opentelemetry import trace
 from opentelemetry import context as context_api
-from opentelemetry.semconv_ai import SpanAttributes
 
+from lmnr.sdk.utils import get_input_from_func_args, is_method
 from lmnr.traceloop_sdk.tracing import get_tracer
+from lmnr.traceloop_sdk.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT
 from lmnr.traceloop_sdk.tracing.tracing import TracerWrapper
 from lmnr.traceloop_sdk.utils.json_encoder import JSONEncoder
 
@@ -52,8 +53,12 @@ def entity_method(
                 try:
                     if _should_send_prompts():
                         span.set_attribute(
-                            SpanAttributes.TRACELOOP_ENTITY_INPUT,
-                            _json_dumps({"args": args, "kwargs": kwargs}),
+                            SPAN_INPUT,
+                            _json_dumps(
+                                get_input_from_func_args(
+                                    fn, is_method(fn), args, kwargs
+                                )
+                            ),
                         )
                 except TypeError:
                     pass
@@ -67,7 +72,7 @@ def entity_method(
                 try:
                     if _should_send_prompts():
                         span.set_attribute(
-                            SpanAttributes.TRACELOOP_ENTITY_OUTPUT,
+                            SPAN_OUTPUT,
                             _json_dumps(res),
                         )
                 except TypeError:
@@ -105,8 +110,12 @@ def aentity_method(
                 try:
                     if _should_send_prompts():
                         span.set_attribute(
-                            SpanAttributes.TRACELOOP_ENTITY_INPUT,
-                            _json_dumps({"args": args, "kwargs": kwargs}),
+                            SPAN_INPUT,
+                            _json_dumps(
+                                get_input_from_func_args(
+                                    fn, is_method(fn), args, kwargs
+                                )
+                            ),
                         )
                 except TypeError:
                     pass
@@ -119,9 +128,7 @@ def aentity_method(
 
                 try:
                     if _should_send_prompts():
-                        span.set_attribute(
-                            SpanAttributes.TRACELOOP_ENTITY_OUTPUT, json.dumps(res)
-                        )
+                        span.set_attribute(SPAN_OUTPUT, json.dumps(res))
                 except TypeError:
                     pass
 

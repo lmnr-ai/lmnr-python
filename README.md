@@ -1,11 +1,14 @@
 # Laminar Python
 
-OpenTelemetry log sender for [Laminar](https://github.com/lmnr-ai/lmnr) for Python code.
+Python SDK for [Laminar](https://www.lmnr.ai).
+
+[Laminar](https://www.lmnr.ai) is an open-source platform for engineering LLM products. Trace, evaluate, annotate, and analyze LLM data. Bring LLM applications to production with confidence.
+
+Check our [open-source repo](https://github.com/lmnr-ai/lmnr) and don't forget to star it ⭐
 
  <a href="https://pypi.org/project/lmnr/"> ![PyPI - Version](https://img.shields.io/pypi/v/lmnr?label=lmnr&logo=pypi&logoColor=3775A9) </a>
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/lmnr)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/lmnr)
-
 
 
 ## Quickstart
@@ -13,50 +16,21 @@ OpenTelemetry log sender for [Laminar](https://github.com/lmnr-ai/lmnr) for Pyth
 First, install the package:
 
 ```sh
-python3 -m venv .myenv
-source .myenv/bin/activate  # or use your favorite env management tool
-
 pip install lmnr
 ```
 
-Then, you can initialize Laminar in your main file and instrument your code.
+And then in the code
 
 ```python
-import os
-from openai import OpenAI
 from lmnr import Laminar as L
 
-L.initialize(
-    project_api_key=os.environ["LMNR_PROJECT_API_KEY"],
-)
-
-client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-
-def poem_writer(topic: str):
-    prompt = f"write a poem about {topic}"
-
-    # OpenAI calls are automatically instrumented
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt},
-        ],
-    )
-    poem = response.choices[0].message.content
-    return poem
-
-if __name__ == "__main__":
-    print(poem_writer("laminar flow"))
-
+L.initialize(project_api_key="<PROJECT_API_KEY>")
 ```
 
+This will automatically instrument most of the LLM, Vector DB, and related
+calls with OpenTelemetry-compatible instrumentation.
+
 Note that you need to only initialize Laminar once in your application.
-
-### Project API key
-
-Get the key from the settings page of your Laminar project ([Learn more](https://docs.lmnr.ai/api-reference/introduction#authentication)).
-You can either pass it to `.initialize()` or set it to `.env` at the root of your package with the key `LMNR_PROJECT_API_KEY`.
 
 ## Instrumentation
 
@@ -137,7 +111,7 @@ L.initialize(project_api_key=os.environ["LMNR_PROJECT_API_KEY"], instruments={In
 
 If you want to fully disable any kind of autoinstrumentation, pass an empty set as `instruments=set()` to `.initialize()`. 
 
-Majority of the autoinstrumentations are provided by Traceloop's [OpenLLMetry](https://github.com/traceloop/openllmetry).
+Autoinstrumentations are provided by Traceloop's [OpenLLMetry](https://github.com/traceloop/openllmetry).
 
 ## Sending events
 
@@ -164,6 +138,67 @@ L.event("topic alignment", topic in poem)
 # "excessive_wordiness"
 L.evaluate_event("excessive_wordiness", "check_wordy", {"text_input": poem})
 ```
+
+## Evaluations
+
+### Quickstart
+
+Install the package:
+
+```sh
+pip install lmnr
+```
+
+Create a file named `my_first_eval.py` with the following code:
+
+```python
+from lmnr import evaluate
+
+def write_poem(data):
+    return f"This is a good poem about {data['topic']}"
+
+def contains_poem(output, target):
+    return 1 if output in target['poem'] else 0
+
+# Evaluation data
+data = [
+    {"data": {"topic": "flowers"}, "target": {"poem": "This is a good poem about flowers"}},
+    {"data": {"topic": "cars"}, "target": {"poem": "I like cars"}},
+]
+
+evaluate(
+    data=data,
+    executor=write_poem,
+    evaluators={
+        "containsPoem": contains_poem
+    }
+)
+```
+
+Run the following commands:
+
+```sh
+export LMNR_PROJECT_API_KEY=<YOUR_PROJECT_API_KEY>  # get from Laminar project settings
+lmnr eval my_first_eval.py  # run in the virtual environment where lmnr is installed
+```
+
+Visit the URL printed in the console to see the results.
+
+### Overview
+
+Bring rigor to the development of your LLM applications with evaluations.
+
+You can run evaluations locally by providing executor (part of the logic used in your application) and evaluators (numeric scoring functions) to `evaluate` function.
+
+`evaluate` takes in the following parameters:
+- `data` – an array of `EvaluationDatapoint` objects, where each `EvaluationDatapoint` has two keys: `target` and `data`, each containing a key-value object. Alternatively, you can pass in dictionaries, and we will instantiate `EvaluationDatapoint`s with pydantic if possible
+- `executor` – the logic you want to evaluate. This function must take `data` as the first argument, and produce any output. It can be both a function or an `async` function.
+- `evaluators` – Dictionary which maps evaluator names to evaluators. Functions that take output of executor as the first argument, `target` as the second argument and produce a numeric scores. Each function can produce either a single number or `dict[str, int|float]` of scores. Each evaluator can be both a function or an `async` function.
+- `name` – optional name for the evaluation. Automatically generated if not provided.
+
+\* If you already have the outputs of executors you want to evaluate, you can specify the executor as an identity function, that takes in `data` and returns only needed value(s) from it.
+
+[Read docs](https://docs.lmnr.ai/evaluations/introduction) to learn more about evaluations.
 
 ## Laminar pipelines as prompt chain managers
 
@@ -197,66 +232,4 @@ PipelineRunResponse(
     # useful to locate your trace
     run_id='53b012d5-5759-48a6-a9c5-0011610e3669'
 )
-```
-
-## Running offline evaluations on your data
-
-You can evaluate your code with your own data and send it to Laminar using the `Evaluation` class.
-
-Evaluation takes in the following parameters:
-- `name` – the name of your evaluation. If no such evaluation exists in the project, it will be created. Otherwise, data will be pushed to the existing evaluation
-- `data` – an array of `EvaluationDatapoint` objects, where each `EvaluationDatapoint` has two keys: `target` and `data`, each containing a key-value object. Alternatively, you can pass in dictionaries, and we will instantiate `EvaluationDatapoint`s with pydantic if possible
-- `executor` – the logic you want to evaluate. This function must take `data` as the first argument, and produce any output. *
-- `evaluators` – evaluaton logic. List of functions that take output of executor as the first argument, `target` as the second argument and produce a numeric scores. Each function can produce either a single number or `dict[str, int|float]` of scores.
-
-\* If you already have the outputs of executors you want to evaluate, you can specify the executor as an identity function, that takes in `data` and returns only needed value(s) from it.
-
-### Example
-
-```python
-from openai import AsyncOpenAI
-import asyncio
-import os
-
-openai_client = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
-
-async def get_capital(data):
-    country = data["country"]
-    response = await openai_client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {
-                "role": "user",
-                "content": f"What is the capital of {country}? Just name the "
-                "city and nothing else",
-            },
-        ],
-    )
-    return response.choices[0].message.content.strip()
-
-
-# Evaluation data
-data = [
-    {"data": {"country": "Canada"}, "target": {"capital": "Ottawa"}},
-    {"data": {"country": "Germany"}, "target": {"capital": "Berlin"}},
-    {"data": {"country": "Tanzania"}, "target": {"capital": "Dodoma"}},
-]
-
-
-def evaluator_A(output, target):
-    return 1 if output == target["capital"] else 0
-
-
-# Create an Evaluation instance
-e = Evaluation(
-    name="py-evaluation-async",
-    data=data,
-    executor=get_capital,
-    evaluators=[evaluator_A],
-    project_api_key=os.environ["LMNR_PROJECT_API_KEY"],
-)
-
-# Run the evaluation
-asyncio.run(e.run())
 ```

@@ -5,7 +5,6 @@ from opentelemetry.trace import (
     get_current_span,
     SpanKind,
 )
-from opentelemetry.semconv_ai import SpanAttributes
 from opentelemetry.util.types import AttributeValue
 from opentelemetry.context.context import Context
 from opentelemetry.util import types
@@ -26,7 +25,17 @@ import os
 import requests
 import uuid
 
-from lmnr.traceloop_sdk.tracing.tracing import set_association_properties, update_association_properties
+from lmnr.traceloop_sdk.tracing.attributes import (
+    SESSION_ID,
+    SPAN_INPUT,
+    SPAN_OUTPUT,
+    TRACE_TYPE,
+    USER_ID,
+)
+from lmnr.traceloop_sdk.tracing.tracing import (
+    set_association_properties,
+    update_association_properties,
+)
 
 from .log import VerboseColorfulFormatter
 
@@ -37,6 +46,7 @@ from .types import (
     PipelineRunResponse,
     NodeInput,
     PipelineRunRequest,
+    TraceType,
     UpdateEvaluationResponse,
 )
 
@@ -356,8 +366,8 @@ class Laminar:
             ) as span:
                 if input is not None:
                     span.set_attribute(
-                        SpanAttributes.TRACELOOP_ENTITY_INPUT,
-                        json.dumps({"input": input}),
+                        SPAN_INPUT,
+                        json.dumps(input),
                     )
                 yield span
 
@@ -371,9 +381,7 @@ class Laminar:
         """
         span = get_current_span()
         if output is not None and span != INVALID_SPAN:
-            span.set_attribute(
-                SpanAttributes.TRACELOOP_ENTITY_OUTPUT, json.dumps(output)
-            )
+            span.set_attribute(SPAN_OUTPUT, json.dumps(output))
 
     @classmethod
     def set_session(
@@ -396,9 +404,23 @@ class Laminar:
         """
         association_properties = {}
         if session_id is not None:
-            association_properties["session_id"] = session_id
+            association_properties[SESSION_ID] = session_id
         if user_id is not None:
-            association_properties["user_id"] = user_id
+            association_properties[USER_ID] = user_id
+        update_association_properties(association_properties)
+
+    @classmethod
+    def _set_trace_type(
+        cls,
+        trace_type: TraceType,
+    ):
+        """Set the trace_type for the current span and the context
+        Args:
+            trace_type (TraceType): Type of the trace
+        """
+        association_properties = {
+            TRACE_TYPE: trace_type.value,
+        }
         update_association_properties(association_properties)
 
     @classmethod
@@ -430,7 +452,7 @@ class Laminar:
     ) -> requests.Response:
         body = {
             "evaluationId": str(evaluation_id),
-            "points": [datapoint.model_dump() for datapoint in data],
+            "points": [datapoint.to_dict() for datapoint in data],
         }
         response = requests.post(
             cls.__base_http_url + "/v1/evaluation-datapoints",

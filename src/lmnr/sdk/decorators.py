@@ -6,6 +6,7 @@ from opentelemetry.trace import INVALID_SPAN, get_current_span
 
 from typing import Callable, Optional, cast
 
+from lmnr.traceloop_sdk.tracing.attributes import SESSION_ID, USER_ID
 from lmnr.traceloop_sdk.tracing.tracing import update_association_properties
 
 from .utils import is_async
@@ -43,11 +44,11 @@ def observe(
         if current_span != INVALID_SPAN:
             if session_id is not None:
                 current_span.set_attribute(
-                    "traceloop.association.properties.session_id", session_id
+                    SESSION_ID, session_id
                 )
             if user_id is not None:
                 current_span.set_attribute(
-                    "traceloop.association.properties.user_id", user_id
+                    USER_ID, user_id
                 )
         association_properties = {}
         if session_id is not None:
