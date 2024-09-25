@@ -117,10 +117,14 @@ class CreateEvaluationResponse(pydantic.BaseModel):
     status: EvaluationStatus
     projectId: uuid.UUID
     metadata: Optional[dict[str, Any]] = None
-    averageScores: Optional[dict[str, Numeric]] = None
 
 
-UpdateEvaluationResponse = CreateEvaluationResponse
+class EvaluationStats(pydantic.BaseModel):
+    averageScores: dict[str, Numeric]
+
+
+class UpdateEvaluationResponse(pydantic.BaseModel):
+    stats: EvaluationStats
 
 
 class EvaluationResultDatapoint(pydantic.BaseModel):

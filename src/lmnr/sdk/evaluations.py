@@ -203,21 +203,21 @@ class Evaluation:
             self.is_finished = True
             return
 
-        # If we update with status "Finished", we expect averageScores to be not empty
-        updated_evaluation = L.update_evaluation_status(evaluation.id, "Finished")
-        self.reporter.stop(updated_evaluation.averageScores)
+        update_evaluation_response = L.update_evaluation_status(evaluation.id, "Finished")
+        average_scores = update_evaluation_response.stats.averageScores
+        self.reporter.stop(average_scores)
         self.is_finished = True
 
-    async def evaluate_in_batches(self, evaluation: CreateEvaluationResponse):
+    async def evaluate_in_batches(self, evaluation_id: uuid.UUID):
         for i in range(0, len(self.data), self.batch_size):
             batch = (
-                self.data[i : i + self.batch_size]
+                self.data[i: i + self.batch_size]
                 if isinstance(self.data, list)
                 else self.data.slice(i, i + self.batch_size)
             )
             try:
                 results = await self._evaluate_batch(batch)
-                L.post_evaluation_results(evaluation.id, results)
+                L.post_evaluation_results(evaluation_id, results)
             except Exception as e:
                 print(f"Error evaluating batch: {e}")
             finally:
