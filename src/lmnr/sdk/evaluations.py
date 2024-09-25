@@ -12,7 +12,6 @@ from ..traceloop_sdk.tracing.attributes import SPAN_TYPE
 
 from .laminar import Laminar as L
 from .types import (
-    CreateEvaluationResponse,
     Datapoint,
     EvaluationResultDatapoint,
     EvaluatorFunction,
