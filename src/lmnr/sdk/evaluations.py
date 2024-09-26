@@ -195,7 +195,7 @@ class Evaluation:
         )
 
         try:
-            await self.evaluate_in_batches(evaluation)
+            await self.evaluate_in_batches(evaluation.id)
         except Exception as e:
             L.update_evaluation_status(evaluation.id, "Error")
             self.reporter.stopWithError(e)
