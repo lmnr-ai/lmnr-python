@@ -25,7 +25,7 @@ from opentelemetry.instrumentation.threading import ThreadingInstrumentor
 
 # from lmnr.traceloop_sdk import Telemetry
 from lmnr.traceloop_sdk.instruments import Instruments
-from lmnr.traceloop_sdk.tracing.attributes import ASSOCIATION_PROPERTIES
+from lmnr.traceloop_sdk.tracing.attributes import ASSOCIATION_PROPERTIES, SPAN_PATH
 from lmnr.traceloop_sdk.tracing.content_allow_list import ContentAllowList
 from lmnr.traceloop_sdk.utils import is_notebook
 from lmnr.traceloop_sdk.utils.package_check import is_package_installed
@@ -245,6 +245,14 @@ class TracerWrapper(object):
         self.flush()
 
     def _span_processor_on_start(self, span, parent_context):
+        span_path = get_value("span_path")
+        if span_path is not None:
+            # This is done redundantly here for most decorated functions
+            # However, need to do this for auto-instrumented libraries.
+            # Then, for auto-instrumented ones, they'll attach
+            # the final part of the name to the span on the backend.
+            span.set_attribute(SPAN_PATH, span_path)
+
         association_properties = get_value("association_properties")
         if association_properties is not None:
             _set_association_properties_attributes(span, association_properties)
@@ -316,6 +324,12 @@ def _set_association_properties_attributes(span, properties: dict) -> None:
         span.set_attribute(
             f"{ASSOCIATION_PROPERTIES}.{key}", value
         )
+
+
+def get_span_path(span_name: str) -> str:
+    current_span_path = get_value("span_path")
+    span_path = f"{current_span_path}.{span_name}" if current_span_path else span_name
+    return span_path
 
 
 def set_managed_prompt_tracing_context(
