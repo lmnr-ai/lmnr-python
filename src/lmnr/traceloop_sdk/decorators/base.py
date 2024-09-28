@@ -10,8 +10,8 @@ from opentelemetry import context as context_api
 
 from lmnr.sdk.utils import get_input_from_func_args, is_method
 from lmnr.traceloop_sdk.tracing import get_tracer
-from lmnr.traceloop_sdk.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT
-from lmnr.traceloop_sdk.tracing.tracing import TracerWrapper
+from lmnr.traceloop_sdk.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT, SPAN_PATH
+from lmnr.traceloop_sdk.tracing.tracing import TracerWrapper, get_span_path
 from lmnr.traceloop_sdk.utils.json_encoder import JSONEncoder
 
 
@@ -47,7 +47,12 @@ def entity_method(
 
             with get_tracer() as tracer:
                 span = tracer.start_span(span_name)
-                ctx = trace.set_span_in_context(span)
+
+                span_path = get_span_path(span_name)
+                span.set_attribute(SPAN_PATH, span_path)
+                ctx = context_api.set_value("span_path", span_path)
+
+                ctx = trace.set_span_in_context(span, ctx)
                 ctx_token = context_api.attach(ctx)
 
                 try:
@@ -104,7 +109,12 @@ def aentity_method(
 
             with get_tracer() as tracer:
                 span = tracer.start_span(span_name)
-                ctx = trace.set_span_in_context(span)
+
+                span_path = get_span_path(span_name)
+                span.set_attribute(SPAN_PATH, span_path)
+                ctx = context_api.set_value("span_path", span_path)
+
+                ctx = trace.set_span_in_context(span, ctx)
                 ctx_token = context_api.attach(ctx)
 
                 try:

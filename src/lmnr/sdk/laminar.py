@@ -3,11 +3,9 @@ from opentelemetry import context
 from opentelemetry.trace import (
     INVALID_SPAN,
     get_current_span,
-    SpanKind,
 )
 from opentelemetry.util.types import AttributeValue
-from opentelemetry.context.context import Context
-from opentelemetry.util import types
+from opentelemetry.context import set_value, attach, detach
 from lmnr.traceloop_sdk import Traceloop
 from lmnr.traceloop_sdk.tracing import get_tracer
 from contextlib import contextmanager
@@ -29,10 +27,12 @@ from lmnr.traceloop_sdk.tracing.attributes import (
     SESSION_ID,
     SPAN_INPUT,
     SPAN_OUTPUT,
+    SPAN_PATH,
     TRACE_TYPE,
     USER_ID,
 )
 from lmnr.traceloop_sdk.tracing.tracing import (
+    get_span_path,
     set_association_properties,
     update_association_properties,
 )
@@ -315,14 +315,6 @@ class Laminar:
         cls,
         name: str,
         input: Any = None,
-        context: Optional[Context] = None,
-        kind: SpanKind = SpanKind.INTERNAL,
-        attributes: types.Attributes = None,
-        links=None,
-        start_time: Optional[int] = None,
-        record_exception: bool = True,
-        set_status_on_exception: bool = True,
-        end_on_exit: bool = True,
     ):
         """Start a new span as the current span. Useful for manual instrumentation.
         This is the preferred and more stable way to use manual instrumentation.
@@ -337,32 +329,15 @@ class Laminar:
             name (str): name of the span
             input (Any, optional): input to the span. Will be sent as an
                 attribute, so must be json serializable. Defaults to None.
-            context (Optional[Context], optional): context to start the span in.
-                Defaults to None.
-            kind (SpanKind, optional): kind of the span. Defaults to SpanKind.INTERNAL.
-            attributes (types.Attributes, optional): attributes to set on the span.
-                Defaults to None.
-            links ([type], optional): links to set on the span. Defaults to None.
-            start_time (Optional[int], optional): start time of the span.
-                Defaults to None.
-            record_exception (bool, optional): whether to record exceptions.
-                Defaults to True.
-            set_status_on_exception (bool, optional): whether to set status on exception.
-                Defaults to True.
-            end_on_exit (bool, optional): whether to end the span on exit.
-                Defaults to True.
         """
         with get_tracer() as tracer:
+            span_path = get_span_path(name)
+            ctx = set_value("span_path", span_path)
+            ctx_token = attach(set_value("span_path", span_path))
             with tracer.start_as_current_span(
                 name,
-                context=context,
-                kind=kind,
-                attributes=attributes,
-                links=links,
-                start_time=start_time,
-                record_exception=record_exception,
-                set_status_on_exception=set_status_on_exception,
-                end_on_exit=end_on_exit,
+                context=ctx,
+                attributes={SPAN_PATH: span_path},
             ) as span:
                 if input is not None:
                     span.set_attribute(
@@ -370,6 +345,12 @@ class Laminar:
                         json.dumps(input),
                     )
                 yield span
+
+            # TODO: Figure out if this is necessary
+            try:
+                detach(ctx_token)
+            except Exception:
+                pass
 
     @classmethod
     def set_span_output(cls, output: Any = None):
