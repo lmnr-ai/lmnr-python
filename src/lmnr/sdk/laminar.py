@@ -47,7 +47,6 @@ from .types import (
     NodeInput,
     PipelineRunRequest,
     TraceType,
-    UpdateEvaluationResponse,
 )
 
 
@@ -413,10 +412,14 @@ class Laminar:
         set_association_properties(props)
 
     @classmethod
-    def create_evaluation(cls, name: Optional[str]) -> CreateEvaluationResponse:
+    def create_evaluation(cls, data: list[EvaluationResultDatapoint], group_id: Optional[str] = None, name: Optional[str] = None) -> CreateEvaluationResponse:
         response = requests.post(
             cls.__base_http_url + "/v1/evaluations",
-            data=json.dumps({"name": name}),
+            data=json.dumps({
+                "groupId": group_id,
+                "name": name,
+                "points": [datapoint.to_dict() for datapoint in data]
+            }),
             headers=cls._headers(),
         )
         if response.status_code != 200:
@@ -426,66 +429,6 @@ class Laminar:
             except Exception:
                 raise ValueError(f"Error creating evaluation {response.text}")
         return CreateEvaluationResponse.model_validate(response.json())
-
-    @classmethod
-    def post_evaluation_results(
-        cls, evaluation_id: uuid.UUID, data: list[EvaluationResultDatapoint]
-    ) -> requests.Response:
-        body = {
-            "evaluationId": str(evaluation_id),
-            "points": [datapoint.to_dict() for datapoint in data],
-        }
-        response = requests.post(
-            cls.__base_http_url + "/v1/evaluation-datapoints",
-            data=json.dumps(body),
-            headers=cls._headers(),
-        )
-        if response.status_code != 200:
-            try:
-                resp_json = response.json()
-                raise ValueError(
-                    f"Failed to send evaluation results. Response: {json.dumps(resp_json)}"
-                )
-            except Exception:
-                raise ValueError(
-                    f"Failed to send evaluation results. Error: {response.text}"
-                )
-        return response
-
-    @classmethod
-    def update_evaluation_status(
-        cls, evaluation_id: str, status: str
-    ) -> UpdateEvaluationResponse:
-        """
-        Updates the status of an evaluation. Returns the updated evaluation object.
-
-        Args:
-            evaluation_id (str): The ID of the evaluation to update.
-            status (str): The status to set for the evaluation.
-
-        Returns:
-            UpdateEvaluationResponse: The updated evaluation response.
-
-        Raises:
-            ValueError: If the request fails.
-        """
-        body = {
-            "status": status,
-        }
-        url = f"{cls.__base_http_url}/v1/evaluations/{evaluation_id}"
-
-        response = requests.post(
-            url,
-            data=json.dumps(body),
-            headers=cls._headers(),
-        )
-        if response.status_code != 200:
-            raise ValueError(
-                f"Failed to update evaluation status {evaluation_id}. "
-                f"Response: {response.text}"
-            )
-
-        return UpdateEvaluationResponse.model_validate(response.json())
 
     @classmethod
     def _headers(cls):
