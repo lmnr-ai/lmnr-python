@@ -66,7 +66,6 @@ class EvaluationReporter:
         pass
 
     def start(self, length: int):
-        print("Running evaluation...\n")
         self.cli_progress = tqdm(
             total=length,
             bar_format="{bar} {percentage:3.0f}% | ETA: {remaining}s | {n_fmt}/{total_fmt}",
@@ -82,8 +81,8 @@ class EvaluationReporter:
 
     def stop(self, average_scores: dict[str, Numeric], project_id: str, evaluation_id: str):
         self.cli_progress.close()
-        print(f"Check progress and results at {get_evaluation_url(project_id, evaluation_id)}\n")
-        print("\nAverage scores:")
+        print(f"\nCheck progress and results at {get_evaluation_url(project_id, evaluation_id)}\n")
+        print("Average scores:")
         for name, score in average_scores.items():
             print(f"{name}: {score}")
         print("\n")
