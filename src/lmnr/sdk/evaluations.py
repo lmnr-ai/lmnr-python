@@ -1,4 +1,5 @@
 import asyncio
+import re
 import sys
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
@@ -45,13 +46,26 @@ def get_evaluation_url(project_id: str, evaluation_id: str):
     return f"https://www.lmnr.ai/project/{project_id}/evaluations/{evaluation_id}"
 
 
+def get_average_scores(results: list[EvaluationResultDatapoint]) -> dict[str, Numeric]:
+    per_score_values = {}
+    for result in results:
+        for key, value in result.scores.items():
+            if key not in per_score_values:
+                per_score_values[key] = []
+            per_score_values[key].append(value)
+
+    average_scores = {}
+    for key, values in per_score_values.items():
+        average_scores[key] = sum(values) / len(values)
+
+    return average_scores
+
+
 class EvaluationReporter:
     def __init__(self):
         pass
 
-    def start(self, name: str, project_id: str, id: str, length: int):
-        print(f"Running evaluation {name}...\n")
-        print(f"Check progress and results at {get_evaluation_url(project_id, id)}\n")
+    def start(self, length: int):
         self.cli_progress = tqdm(
             total=length,
             bar_format="{bar} {percentage:3.0f}% | ETA: {remaining}s | {n_fmt}/{total_fmt}",
@@ -65,9 +79,10 @@ class EvaluationReporter:
         self.cli_progress.close()
         sys.stderr.write(f"\nError: {error}\n")
 
-    def stop(self, average_scores: dict[str, Numeric]):
+    def stop(self, average_scores: dict[str, Numeric], project_id: str, evaluation_id: str):
         self.cli_progress.close()
-        print("\nAverage scores:")
+        print(f"\nCheck progress and results at {get_evaluation_url(project_id, evaluation_id)}\n")
+        print("Average scores:")
         for name, score in average_scores.items():
             print(f"{name}: {score}")
         print("\n")
@@ -96,6 +111,7 @@ class Evaluation:
         data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
         executor: Any,
         evaluators: dict[str, EvaluatorFunction],
+        group_id: Optional[str] = None,
         name: Optional[str] = None,
         batch_size: int = DEFAULT_BATCH_SIZE,
         project_api_key: Optional[str] = None,
@@ -122,6 +138,8 @@ class Evaluation:
                 evaluator function. If the function is anonymous, it will be
                 named `evaluator_${index}`, where index is the index of the
                 evaluator function in the list starting from 1.
+            group_id (Optional[str], optional): Group id of the evaluation.
+                            Defaults to "default".
             name (Optional[str], optional): The name of the evaluation.
                             It will be auto-generated if not provided.
             batch_size (int, optional): The batch size for evaluation.
@@ -137,11 +155,16 @@ class Evaluation:
                             Defaults to None. If None, all available instruments will be used.
         """
 
+        if not evaluators:
+            raise ValueError("No evaluators provided")
+
+        # TODO: Compile regex once and then reuse it
+        for evaluator_name in evaluators:
+            if not re.match(r'^[\w\s-]+$', evaluator_name):
+                raise ValueError(f'Invalid evaluator key: "{evaluator_name}". Keys must only contain letters, digits, hyphens, underscores, or spaces.')
+
         self.is_finished = False
-        self.name = name
         self.reporter = EvaluationReporter()
-        self.executor = executor
-        self.evaluators = evaluators
         if isinstance(data, list):
             self.data = [
                 (Datapoint.model_validate(point) if isinstance(point, dict) else point)
@@ -149,6 +172,10 @@ class Evaluation:
             ]
         else:
             self.data = data
+        self.executor = executor
+        self.evaluators = evaluators
+        self.group_id = group_id
+        self.name = name
         self.batch_size = batch_size
         L.initialize(
             project_api_key=project_api_key,
@@ -159,23 +186,6 @@ class Evaluation:
         )
 
     def run(self) -> Union[None, Awaitable[None]]:
-        """Runs the evaluation.
-
-        Creates a new evaluation if no evaluation with such name exists, or
-        adds data to an existing one otherwise. Evaluates data points in
-        batches of `self.batch_size`. The executor
-        function is called on each data point to get the output,
-        and then evaluate it by each evaluator function.
-
-        Usage:
-        ```python
-        # in a synchronous context:
-        e.run()
-        # in an asynchronous context:
-        await e.run()
-        ```
-
-        """
         if self.is_finished:
             raise Exception("Evaluation is already finished")
 
@@ -186,41 +196,34 @@ class Evaluation:
             return loop.run_until_complete(self._run())
 
     async def _run(self) -> None:
-        evaluation = L.create_evaluation(self.name)
         self.reporter.start(
-            evaluation.name,
-            evaluation.projectId,
-            evaluation.id,
             len(self.data),
         )
 
         try:
-            await self.evaluate_in_batches(evaluation.id)
+            result_datapoints = await self.evaluate_in_batches()
         except Exception as e:
-            L.update_evaluation_status(evaluation.id, "Error")
             self.reporter.stopWithError(e)
             self.is_finished = True
             return
+        else:
+            evaluation = L.create_evaluation(data=result_datapoints, group_id=self.group_id, name=self.name)
+            average_scores = get_average_scores(result_datapoints)
+            self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
+            self.is_finished = True
 
-        update_evaluation_response = L.update_evaluation_status(evaluation.id, "Finished")
-        average_scores = update_evaluation_response.stats.averageScores
-        self.reporter.stop(average_scores)
-        self.is_finished = True
-
-    async def evaluate_in_batches(self, evaluation_id: uuid.UUID):
+    async def evaluate_in_batches(self) -> list[EvaluationResultDatapoint]:
+        result_datapoints = []
         for i in range(0, len(self.data), self.batch_size):
             batch = (
                 self.data[i: i + self.batch_size]
                 if isinstance(self.data, list)
                 else self.data.slice(i, i + self.batch_size)
             )
-            try:
-                results = await self._evaluate_batch(batch)
-                L.post_evaluation_results(evaluation_id, results)
-            except Exception as e:
-                print(f"Error evaluating batch: {e}")
-            finally:
-                self.reporter.update(len(batch))
+            batch_datapoints = await self._evaluate_batch(batch)
+            result_datapoints.extend(batch_datapoints)
+            self.reporter.update(len(batch))
+        return result_datapoints
 
     async def _evaluate_batch(
         self, batch: list[Datapoint]
@@ -281,6 +284,7 @@ def evaluate(
     data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
     executor: ExecutorFunction,
     evaluators: dict[str, EvaluatorFunction],
+    group_id: Optional[str] = None,
     name: Optional[str] = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
     project_api_key: Optional[str] = None,
@@ -309,8 +313,11 @@ def evaluate(
             evaluator function. If the function is anonymous, it will be
             named `evaluator_${index}`, where index is the index of the
             evaluator function in the list starting from 1.
-        name (Optional[str], optional): The name of the evaluation.
-            It will be auto-generated if not provided.
+        group_id (Optional[str], optional): Group name which is same
+                        as the feature you are evaluating in your project or application.
+                        Defaults to "default".
+        name (Optional[str], optional): Optional name of the evaluation. Used to easily
+                        identify the evaluation in the group.
         batch_size (int, optional): The batch size for evaluation.
                         Defaults to DEFAULT_BATCH_SIZE.
         project_api_key (Optional[str], optional): The project API key.
@@ -330,6 +337,7 @@ def evaluate(
         data=data,
         executor=executor,
         evaluators=evaluators,
+        group_id=group_id,
         name=name,
         batch_size=batch_size,
         project_api_key=project_api_key,

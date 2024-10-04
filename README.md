@@ -171,7 +171,8 @@ evaluate(
     executor=write_poem,
     evaluators={
         "containsPoem": contains_poem
-    }
+    },
+    group_id="my_first_feature"
 )
 ```
 

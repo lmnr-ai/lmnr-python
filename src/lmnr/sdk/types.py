@@ -2,7 +2,7 @@ import datetime
 from enum import Enum
 import pydantic
 import requests
-from typing import Any, Awaitable, Callable, Literal, Optional, Union
+from typing import Any, Awaitable, Callable, Optional, Union
 import uuid
 
 from .utils import serialize
@@ -107,24 +107,13 @@ EvaluatorFunction = Callable[
     Union[EvaluatorFunctionReturnType, Awaitable[EvaluatorFunctionReturnType]],
 ]
 
-EvaluationStatus = Literal["Started", "Finished", "Error"]
-
 
 class CreateEvaluationResponse(pydantic.BaseModel):
     id: uuid.UUID
     createdAt: datetime.datetime
+    groupId: str
     name: str
-    status: EvaluationStatus
     projectId: uuid.UUID
-    metadata: Optional[dict[str, Any]] = None
-
-
-class EvaluationStats(pydantic.BaseModel):
-    averageScores: dict[str, Numeric]
-
-
-class UpdateEvaluationResponse(pydantic.BaseModel):
-    stats: EvaluationStats
 
 
 class EvaluationResultDatapoint(pydantic.BaseModel):
