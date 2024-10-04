@@ -13,7 +13,6 @@ from ..traceloop_sdk.tracing.attributes import SPAN_TYPE
 
 from .laminar import Laminar as L
 from .types import (
-    CreateEvaluationResponse,
     Datapoint,
     EvaluationResultDatapoint,
     EvaluatorFunction,
@@ -209,7 +208,7 @@ class Evaluation:
             self.is_finished = True
             return
         else:
-            evaluation: CreateEvaluationResponse = await L.create_evaluation(data=result_datapoints, group_id=self.group_id, name=self.name)
+            evaluation = L.create_evaluation(data=result_datapoints, group_id=self.group_id, name=self.name)
             average_scores = get_average_scores(result_datapoints)
             self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
             self.is_finished = True
