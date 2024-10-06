@@ -1,6 +1,6 @@
 [project]
 name = "lmnr"
-version = "0.4.14"
+version = "0.4.15b2"
 description = "Python SDK for Laminar AI"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -11,7 +11,7 @@ license = "Apache-2.0"
 
 [tool.poetry]
 name = "lmnr"
-version = "0.4.14"
+version = "0.4.15b2"
 description = "Python SDK for Laminar AI"
 authors = ["lmnr.ai"]
 readme = "README.md"
@@ -33,10 +33,9 @@ opentelemetry-instrumentation-sqlalchemy = "^0.48b0"
 opentelemetry-instrumentation-urllib3 = "^0.48b0"
 opentelemetry-instrumentation-threading = "^0.48b0"
 opentelemetry-semantic-conventions-ai = "0.4.1"
-tenacity = "~=8.0"
+tenacity = ">=8.0"
 jinja2 = "~=3.0"
 deprecated = "~=1.0"
-posthog = "~=3.0"
 opentelemetry-instrumentation-mistralai = "^0.30.0"
 opentelemetry-instrumentation-openai = "^0.30.0"
 opentelemetry-instrumentation-ollama = "^0.30.0"

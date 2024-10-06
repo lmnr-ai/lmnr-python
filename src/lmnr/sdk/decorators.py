@@ -4,7 +4,8 @@ from lmnr.traceloop_sdk.decorators.base import (
 )
 from opentelemetry.trace import INVALID_SPAN, get_current_span
 
-from typing import Callable, Optional, cast
+from typing import Callable, Optional, TypeVar, cast
+from typing_extensions import ParamSpec
 
 from lmnr.traceloop_sdk.tracing.attributes import SESSION_ID, USER_ID
 from lmnr.traceloop_sdk.tracing.tracing import update_association_properties
@@ -12,12 +13,16 @@ from lmnr.traceloop_sdk.tracing.tracing import update_association_properties
 from .utils import is_async
 
 
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
 def observe(
     *,
     name: Optional[str] = None,
     user_id: Optional[str] = None,
     session_id: Optional[str] = None,
-) -> Callable[[Callable], Callable]:
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """The main decorator entrypoint for Laminar. This is used to wrap
     functions and methods to create spans.
 
@@ -43,13 +48,9 @@ def observe(
         current_span = get_current_span()
         if current_span != INVALID_SPAN:
             if session_id is not None:
-                current_span.set_attribute(
-                    SESSION_ID, session_id
-                )
+                current_span.set_attribute(SESSION_ID, session_id)
             if user_id is not None:
-                current_span.set_attribute(
-                    USER_ID, user_id
-                )
+                current_span.set_attribute(USER_ID, user_id)
         association_properties = {}
         if session_id is not None:
             association_properties["session_id"] = session_id
