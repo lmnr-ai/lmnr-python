@@ -1,6 +1,6 @@
 [project]
 name = "lmnr"
-version = "0.4.16b0"
+version = "0.4.16"
 description = "Python SDK for Laminar AI"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -11,7 +11,7 @@ license = "Apache-2.0"
 
 [tool.poetry]
 name = "lmnr"
-version = "0.4.15"
+version = "0.4.16"
 description = "Python SDK for Laminar AI"
 authors = ["lmnr.ai"]
 readme = "README.md"
@@ -50,7 +50,7 @@ opentelemetry-instrumentation-chromadb = ">=0.32.0"
 opentelemetry-instrumentation-transformers = ">=0.32.0"
 opentelemetry-instrumentation-together = ">=0.20.0"
 opentelemetry-instrumentation-llamaindex = ">=0.32.0"
-opentelemetry-instrumentation-milvus = "^0.32.0"
+opentelemetry-instrumentation-milvus = ">=0.32.0"
 opentelemetry-instrumentation-haystack = ">=0.32.0"
 opentelemetry-instrumentation-bedrock = ">=0.32.0"
 opentelemetry-instrumentation-replicate = ">=0.32.0"
