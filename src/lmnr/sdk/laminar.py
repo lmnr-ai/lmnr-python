@@ -1,3 +1,4 @@
+import re
 from lmnr.traceloop_sdk.instruments import Instruments
 from opentelemetry import context
 from opentelemetry.trace import (
@@ -72,23 +73,23 @@ class Laminar:
         decorators.
 
         Args:
-            project_api_key (Optional[str], optional): Laminar project api key.
-                            You can generate one by going to the projects
-                            settings page on the Laminar dashboard.
-                            If not specified, it will try to read from the
-                            LMNR_PROJECT_API_KEY environment variable
+            project_api_key (Optional[str], optional): Laminar project api key.\
+                            You can generate one by going to the projects\
+                            settings page on the Laminar dashboard.\
+                            If not specified, it will try to read from the\
+                            LMNR_PROJECT_API_KEY environment variable\
                             in os.environ or in .env file.
                             Defaults to None.
-            env (dict[str, str], optional): Default environment passed to
-                            `run` requests, unless
-                            overriden at request time. Usually, model
-                            provider keys are stored here.
+            env (dict[str, str], optional): Default environment passed to\
+                            `run` requests, unless overriden at request time.\
+                            Usually, model provider keys are stored here.
                             Defaults to {}.
-            base_url (Optional[str], optional): Laminar API url.
+            base_url (Optional[str], optional): Laminar API url. Do NOT include\
+                            the port number, use `http_port` and `grpc_port`.\
                             If not specified, defaults to https://api.lmnr.ai.
-            http_port (Optional[int], optional): Laminar API http port.
+            http_port (Optional[int], optional): Laminar API http port.\
                             If not specified, defaults to 443.
-            grpc_port (Optional[int], optional): Laminar API grpc port.
+            grpc_port (Optional[int], optional): Laminar API grpc port.\
                             If not specified, defaults to 8443.
 
         Raises:
@@ -108,9 +109,14 @@ class Laminar:
                 " your project API key or set the LMNR_PROJECT_API_KEY"
                 " environment variable in your environment or .env file"
             )
-
-        cls.__base_http_url = f"{base_url or 'https://api.lmnr.ai'}:{http_port or 443}"
-        cls.__base_grpc_url = f"{base_url or 'https://api.lmnr.ai'}:{grpc_port or 8443}"
+        if re.search(r":\d{1,5}$", base_url):
+            raise ValueError(
+                "Please provide the `base_url` without the port number. "
+                "Use the `http_port` and `grpc_port` arguments instead."
+            )
+        url = base_url or "https://api.lmnr.ai"
+        cls.__base_http_url = f"{url}:{http_port or 443}"
+        cls.__base_grpc_url = f"{url}:{grpc_port or 8443}"
 
         cls.__env = env
         cls.__initialized = True
@@ -153,22 +159,22 @@ class Laminar:
         """Runs the pipeline with the given inputs
 
         Args:
-            pipeline (str): name of the Laminar pipeline.
+            pipeline (str): name of the Laminar pipeline.\
                 The pipeline must have a target version set.
             inputs (dict[str, NodeInput]):
-                inputs to the endpoint's target pipeline.
+                inputs to the endpoint's target pipeline.\
                 Keys in the dictionary must match input node names
             env (dict[str, str], optional):
                 Environment variables for the pipeline execution.
                 Defaults to {}.
             metadata (dict[str, str], optional):
-                any custom metadata to be stored
-                with execution trace. Defaults to {}.
-            parent_span_id (Optional[uuid.UUID], optional):
-                parent span id for the resulting span.
+                any custom metadata to be stored with execution trace.
+                Defaults to {}.
+            parent_span_id (Optional[uuid.UUID], optional): parent span id for\
+                the resulting span.
                 Defaults to None.
-            trace_id (Optional[uuid.UUID], optional):
-                trace id for the resulting trace.
+            trace_id (Optional[uuid.UUID], optional): trace id for the\
+                resulting trace.
                 Defaults to None.
 
         Returns:
@@ -195,7 +201,7 @@ class Laminar:
             request = PipelineRunRequest(
                 inputs=inputs,
                 pipeline=pipeline,
-                env=env,
+                env=env or cls.__env,
                 metadata=metadata,
                 parent_span_id=parent_span_id,
                 trace_id=trace_id,
@@ -228,21 +234,23 @@ class Laminar:
         value: Optional[AttributeValue] = None,
         timestamp: Optional[Union[datetime.datetime, int]] = None,
     ):
-        """Associate an event with the current span. If event with such name never
-        existed, Laminar will create a new event and infer its type from the value.
-        If the event already exists, Laminar will append the value to the event
-        if and only if the value is of a matching type. Otherwise, the event won't
-        be recorded Supported types are string, numeric, and boolean. If the value
+        """Associate an event with the current span. If event with such
+        name never existed, Laminar will create a new event and infer its type
+        from the value. If the event already exists, Laminar will append the
+        value to the event if and only if the value is of a matching type.
+        Otherwise, the event won't be recorded.
+        Supported types are string, numeric, and boolean. If the value
         is `None`, event is considered a boolean tag with the value of `True`.
 
         Args:
             name (str): event name
-            value (Optional[AttributeValue]): event value. Must be a primitive type.
-                            Boolean true is assumed in the backend if value is None.
+            value (Optional[AttributeValue]): event value. Must be a primitive\
+                            type. Boolean true is assumed in the backend if\
+                            `value` is None.
                             Defaults to None.
-            timestamp (Optional[Union[datetime.datetime, int]], optional):
-                            If int, must be epoch nanoseconds. If not
-                            specified, relies on the underlying OpenTelemetry
+            timestamp (Optional[Union[datetime.datetime, int]], optional):\
+                            If int, must be epoch nanoseconds. If not\
+                            specified, relies on the underlying OpenTelemetry\
                             implementation. Defaults to None.
         """
         if timestamp and isinstance(timestamp, datetime.datetime):
@@ -272,18 +280,18 @@ class Laminar:
         name: str,
         input: Any = None,
     ):
-        """Start a new span as the current span. Useful for manual instrumentation.
-        This is the preferred and more stable way to use manual instrumentation.
+        """Start a new span as the current span. Useful for manual
+        instrumentation.
 
         Usage example:
         ```python
-        with Laminar.start_as_current_span("my_span", input="my_input"):
+        with Laminar.start_as_current_span("my_span", input="my_input") as span:
             await my_async_function()
         ```
 
         Args:
             name (str): name of the span
-            input (Any, optional): input to the span. Will be sent as an
+            input (Any, optional): input to the span. Will be sent as an\
                 attribute, so must be json serializable. Defaults to None.
         """
         with get_tracer() as tracer:
@@ -310,10 +318,11 @@ class Laminar:
 
     @classmethod
     def set_span_output(cls, output: Any = None):
-        """Set the output of the current span. Useful for manual instrumentation.
+        """Set the output of the current span. Useful for manual
+        instrumentation.
 
         Args:
-            output (Any, optional): output of the span. Will be sent as an
+            output (Any, optional): output of the span. Will be sent as an\
                 attribute, so must be json serializable. Defaults to None.
         """
         span = get_current_span()
@@ -331,12 +340,12 @@ class Laminar:
         thread).
 
         Args:
-            session_id (Optional[str], optional): Custom session id.
-                            Useful to debug and group long-running
+            session_id (Optional[str], optional): Custom session id.\
+                            Useful to debug and group long-running\
                             sessions/conversations.
                             Defaults to None.
-            user_id (Optional[str], optional): Custom user id.
-                            Useful for grouping spans or traces by user.
+            user_id (Optional[str], optional): Custom user id.\
+                            Useful for grouping spans or traces by user.\
                             Defaults to None.
         """
         association_properties = {}
