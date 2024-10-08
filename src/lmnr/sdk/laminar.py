@@ -80,7 +80,7 @@ class Laminar:
                             in os.environ or in .env file.
                             Defaults to None.
             env (dict[str, str], optional): Default environment passed to
-                            `run` and `evaluate_event` requests, unless
+                            `run` requests, unless
                             overriden at request time. Usually, model
                             provider keys are stored here.
                             Defaults to {}.
@@ -266,49 +266,6 @@ class Laminar:
         current_span.add_event(name, event, timestamp)
 
     @classmethod
-    def evaluate_event(
-        cls,
-        name: str,
-        evaluator: str,
-        data: dict[str, AttributeValue],
-        env: Optional[dict[str, str]] = None,
-        timestamp: Optional[Union[datetime.datetime, int]] = None,
-    ):
-        """Send an event for evaluation to the Laminar backend
-
-        Args:
-            name (str): name of the event
-            evaluator (str): name of the pipeline that evaluates the event.
-                        The pipeline must have a target version set.
-            data (dict[str, AttributeValue]): map from input node name to
-                        its value in the evaluator pipeline
-            env (dict[str, str], optional): environment variables required
-                        to run the pipeline. Defaults to {}.
-            timestamp (Optional[Union[datetime.datetime, int]], optional):
-                        If int, must be epoch nanoseconds.
-                        If not specified, relies on the underlying
-                        OpenTelemetry implementation. Defaults to None.
-        """
-        if timestamp and isinstance(timestamp, datetime.datetime):
-            timestamp = int(timestamp.timestamp() * 1e9)
-        event = {
-            "lmnr.event.type": "evaluate",
-            "lmnr.event.evaluator": evaluator,
-            "lmnr.event.data": json.dumps(data),
-            "lmnr.event.env": json.dumps(env if env is not None else cls.__env),
-        }
-        current_span = get_current_span()
-        if current_span == INVALID_SPAN:
-            cls.__logger.warning(
-                "`Laminar().evaluate_event()` called outside of span context."
-                f"Event '{name}' will not be recorded in the trace. "
-                "Make sure to annotate the function with a decorator"
-            )
-            return
-
-        current_span.add_event(name, event, timestamp)
-
-    @classmethod
     @contextmanager
     def start_as_current_span(
         cls,
@@ -412,14 +369,21 @@ class Laminar:
         set_association_properties(props)
 
     @classmethod
-    def create_evaluation(cls, data: list[EvaluationResultDatapoint], group_id: Optional[str] = None, name: Optional[str] = None) -> CreateEvaluationResponse:
+    def create_evaluation(
+        cls,
+        data: list[EvaluationResultDatapoint],
+        group_id: Optional[str] = None,
+        name: Optional[str] = None,
+    ) -> CreateEvaluationResponse:
         response = requests.post(
             cls.__base_http_url + "/v1/evaluations",
-            data=json.dumps({
-                "groupId": group_id,
-                "name": name,
-                "points": [datapoint.to_dict() for datapoint in data]
-            }),
+            data=json.dumps(
+                {
+                    "groupId": group_id,
+                    "name": name,
+                    "points": [datapoint.to_dict() for datapoint in data],
+                }
+            ),
             headers=cls._headers(),
         )
         if response.status_code != 200:
