@@ -79,9 +79,13 @@ class EvaluationReporter:
         self.cli_progress.close()
         sys.stderr.write(f"\nError: {error}\n")
 
-    def stop(self, average_scores: dict[str, Numeric], project_id: str, evaluation_id: str):
+    def stop(
+        self, average_scores: dict[str, Numeric], project_id: str, evaluation_id: str
+    ):
         self.cli_progress.close()
-        print(f"\nCheck progress and results at {get_evaluation_url(project_id, evaluation_id)}\n")
+        print(
+            f"\nCheck progress and results at {get_evaluation_url(project_id, evaluation_id)}\n"
+        )
         print("Average scores:")
         for name, score in average_scores.items():
             print(f"{name}: {score}")
@@ -124,35 +128,41 @@ class Evaluation:
         Initializes an instance of the Evaluations class.
 
         Parameters:
-            data (Union[List[Union[EvaluationDatapoint, dict]], EvaluationDataset]): List of data points to evaluate or an evaluation dataset.
+            data (Union[List[EvaluationDatapoint|dict], EvaluationDataset]):\
+                List of data points to evaluate or an evaluation dataset.
                             `data` is the input to the executor function,
                             `target` is the input to the evaluator function.
-            executor (Callable[..., Any]): The executor function.
-                            Takes the data point + any additional arguments
+            executor (Callable[..., Any]): The executor function.\
+                            Takes the data point + any additional arguments\
                             and returns the output to evaluate.
-            evaluators (List[Callable[..., Any]]): List of evaluator functions.
-                Each evaluator function takes the output of the executor _and_
-                the target data, and returns a score. The score can be a
-                single number or a record of string keys and number values.
-                If the score is a single number, it will be named after the
-                evaluator function. If the function is anonymous, it will be
-                named `evaluator_${index}`, where index is the index of the
+            evaluators (List[Callable[..., Any]]): List of evaluator functions.\
+                Each evaluator function takes the output of the executor _and_\
+                the target data, and returns a score. The score can be a\
+                single number or a record of string keys and number values.\
+                If the score is a single number, it will be named after the\
+                evaluator function. If the function is anonymous, it will be\
+                named `evaluator_${index}`, where index is the index of the\
                 evaluator function in the list starting from 1.
             group_id (Optional[str], optional): Group id of the evaluation.
                             Defaults to "default".
-            name (Optional[str], optional): The name of the evaluation.
+            name (Optional[str], optional): The name of the evaluation.\
                             It will be auto-generated if not provided.
             batch_size (int, optional): The batch size for evaluation.
                             Defaults to DEFAULT_BATCH_SIZE.
             project_api_key (Optional[str], optional): The project API key.
                             Defaults to an empty string.
-            base_url (Optional[str], optional): The base URL for the Laminar API.
-                            Useful if self-hosted elsewhere.
+            base_url (Optional[str], optional): The base URL for Laminar API.\
+                            Useful if self-hosted elsewhere. Do NOT include the\
+                            port, use `http_port` and `grpc_port` instead.
                             Defaults to "https://api.lmnr.ai".
-            http_port (Optional[int], optional): The port for the Laminar API HTTP service.
-                            Defaults to 443.
-            instruments (Optional[Set[Instruments]], optional): Set of modules to auto-instrument.
-                            Defaults to None. If None, all available instruments will be used.
+            http_port (Optional[int], optional): The port for Laminar API\
+                            HTTP service. Defaults to 443 if not specified.
+            grpc_port (Optional[int], optional): The port for Laminar API\
+                            gRPC service. Defaults to 8443 if not specified.
+            instruments (Optional[Set[Instruments]], optional): Set of modules\
+                to auto-instrument. If None, all available instruments will be\
+                used.
+                Defaults to None.
         """
 
         if not evaluators:
@@ -160,8 +170,12 @@ class Evaluation:
 
         # TODO: Compile regex once and then reuse it
         for evaluator_name in evaluators:
-            if not re.match(r'^[\w\s-]+$', evaluator_name):
-                raise ValueError(f'Invalid evaluator key: "{evaluator_name}". Keys must only contain letters, digits, hyphens, underscores, or spaces.')
+            if not re.match(r"^[\w\s-]+$", evaluator_name):
+                raise ValueError(
+                    f'Invalid evaluator key: "{evaluator_name}". '
+                    "Keys must only contain letters, digits, hyphens,"
+                    "underscores, or spaces."
+                )
 
         self.is_finished = False
         self.reporter = EvaluationReporter()
@@ -207,7 +221,9 @@ class Evaluation:
             self.is_finished = True
             return
         else:
-            evaluation = L.create_evaluation(data=result_datapoints, group_id=self.group_id, name=self.name)
+            evaluation = L.create_evaluation(
+                data=result_datapoints, group_id=self.group_id, name=self.name
+            )
             average_scores = get_average_scores(result_datapoints)
             self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
             self.is_finished = True
@@ -216,7 +232,7 @@ class Evaluation:
         result_datapoints = []
         for i in range(0, len(self.data), self.batch_size):
             batch = (
-                self.data[i: i + self.batch_size]
+                self.data[i : i + self.batch_size]
                 if isinstance(self.data, list)
                 else self.data.slice(i, i + self.batch_size)
             )
@@ -294,43 +310,58 @@ def evaluate(
     instruments: Optional[Set[Instruments]] = None,
 ) -> Optional[Awaitable[None]]:
     """
-    If added to the file which is called through lmnr eval command, then simply registers the evaluation.
-    Otherwise, if there is no event loop, creates it and runs the evaluation until completion.
-    If there is an event loop, schedules the evaluation as a task in the event loop and returns an awaitable handle.
+    If added to the file which is called through `lmnr eval` command, then
+    registers the evaluation; otherwise, runs the evaluation.
+
+    If there is no event loop, creates it and runs the evaluation until
+    completion.
+    If there is an event loop, schedules the evaluation as a task in the
+    event loop and returns an awaitable handle.
 
     Parameters:
-        data (Union[List[Union[EvaluationDatapoint, dict]], EvaluationDataset]): List of data points to evaluate or an evaluation dataset.
+        data (Union[list[EvaluationDatapoint|dict]], EvaluationDataset]):\
+                    List of data points to evaluate or an evaluation dataset.
                         `data` is the input to the executor function,
                         `target` is the input to the evaluator function.
-        executor (Callable[..., Any]): The executor function.
-                        Takes the data point + any additional arguments
+        executor (Callable[..., Any]): The executor function.\
+                        Takes the data point + any additional arguments\
                         and returns the output to evaluate.
-        evaluators (List[Callable[..., Any]]): List of evaluator functions.
-            Each evaluator function takes the output of the executor _and_
-            the target data, and returns a score. The score can be a
-            single number or a record of string keys and number values.
-            If the score is a single number, it will be named after the
-            evaluator function. If the function is anonymous, it will be
-            named `evaluator_${index}`, where index is the index of the
+        evaluators (List[Callable[..., Any]]): List of evaluator functions.\
+            Each evaluator function takes the output of the executor _and_\
+            the target data, and returns a score. The score can be a\
+            single number or a record of string keys and number values.\
+            If the score is a single number, it will be named after the\
+            evaluator function. If the function is anonymous, it will be\
+            named `evaluator_${index}`, where index is the index of the\
             evaluator function in the list starting from 1.
-        group_id (Optional[str], optional): Group name which is same
-                        as the feature you are evaluating in your project or application.
-                        Defaults to "default".
-        name (Optional[str], optional): Optional name of the evaluation. Used to easily
-                        identify the evaluation in the group.
+        group_id (Optional[str], optional): an identifier to group evaluations.\
+                        It is practical to group evaluations that evaluate\
+                        the same feature on the same dataset, to be able to\
+                        view their comparisons in the same place. If not\
+                        provided, defaults to "default".
+                        Defaults to None
+        name (Optional[str], optional): Optional name of the evaluation.\
+                        Used to identify the evaluation in the group.\
+                        If not provided, a random name will be generated.
+                        Defaults to None.
         batch_size (int, optional): The batch size for evaluation.
                         Defaults to DEFAULT_BATCH_SIZE.
         project_api_key (Optional[str], optional): The project API key.
-                        Defaults to an empty string.
-        base_url (Optional[str], optional): The base URL for the Laminar API.
-                        Useful if self-hosted elsewhere.
+                        Defaults to None.
+        base_url (Optional[str], optional): The base URL for Laminar API.\
+                        Useful if self-hosted elsewhere. Do NOT include the\
+                        port, use `http_port` and `grpc_port` instead.
                         Defaults to "https://api.lmnr.ai".
-        http_port (Optional[int], optional): The port for the Laminar API HTTP service.
-                        Defaults to 443.
-        grpc_port (Optional[int], optional): The port for the Laminar API gRPC service.
-                        Defaults to 8443.
-        instruments (Optional[Set[Instruments]], optional): Set of modules to auto-instrument.
-                        Defaults to None. If None, all available instruments will be used.
+        http_port (Optional[int], optional): The port for Laminar API's HTTP\
+                        service. 443 is used if not specified.
+                        Defaults to None.
+        grpc_port (Optional[int], optional): The port for Laminar API's gRPC\
+                        service. 8443 is used if not specified.
+                        Defaults to None.
+        instruments (Optional[Set[Instruments]], optional): Set of modules to\
+                        auto-instrument. If None, all available instruments\
+                        will be used.
+                        Defaults to None.
     """
 
     evaluation = Evaluation(
