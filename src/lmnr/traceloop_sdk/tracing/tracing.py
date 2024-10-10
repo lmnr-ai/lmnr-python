@@ -131,41 +131,33 @@ class TracerWrapper(object):
                             print("Warning: OpenAI library does not exist.")
                     elif instrument == Instruments.ANTHROPIC:
                         if not init_anthropic_instrumentor(should_enrich_metrics):
-                            print(
-                                 "Warning: Anthropic library does not exist."
-                            )
+                            print("Warning: Anthropic library does not exist.")
                     elif instrument == Instruments.COHERE:
                         if not init_cohere_instrumentor():
                             print("Warning: Cohere library does not exist.")
                     elif instrument == Instruments.PINECONE:
                         if not init_pinecone_instrumentor():
-                            print(
-                                "Warning: Pinecone library does not exist."
-                            )
+                            print("Warning: Pinecone library does not exist.")
                     elif instrument == Instruments.CHROMA:
                         if not init_chroma_instrumentor():
                             print("Warning: Chroma library does not exist.")
                     elif instrument == Instruments.GOOGLE_GENERATIVEAI:
                         if not init_google_generativeai_instrumentor():
-                            print("Warning: Google Generative AI library does not exist.")
+                            print(
+                                "Warning: Google Generative AI library does not exist."
+                            )
                     elif instrument == Instruments.LANGCHAIN:
                         if not init_langchain_instrumentor():
-                            print(
-                                "Warning: LangChain library does not exist."
-                            )
+                            print("Warning: LangChain library does not exist.")
                     elif instrument == Instruments.MISTRAL:
                         if not init_mistralai_instrumentor():
-                            print(
-                                "Warning: MistralAI library does not exist."
-                            )
+                            print("Warning: MistralAI library does not exist.")
                     elif instrument == Instruments.OLLAMA:
                         if not init_ollama_instrumentor():
                             print("Warning: Ollama library does not exist.")
                     elif instrument == Instruments.LLAMA_INDEX:
                         if not init_llama_index_instrumentor():
-                            print(
-                                "Warning: LlamaIndex library does not exist."
-                            )
+                            print("Warning: LlamaIndex library does not exist.")
                     elif instrument == Instruments.MILVUS:
                         if not init_milvus_instrumentor():
                             print("Warning: Milvus library does not exist.")
@@ -174,14 +166,10 @@ class TracerWrapper(object):
                             print("Warning: Transformers library does not exist.")
                     elif instrument == Instruments.TOGETHER:
                         if not init_together_instrumentor():
-                            print(
-                                "Warning: TogetherAI library does not exist."
-                            )
+                            print("Warning: TogetherAI library does not exist.")
                     elif instrument == Instruments.REQUESTS:
                         if not init_requests_instrumentor():
-                            print(
-                                "Warning: Requests library does not exist."
-                            )
+                            print("Warning: Requests library does not exist.")
                     elif instrument == Instruments.URLLIB3:
                         if not init_urllib3_instrumentor():
                             print("Warning: urllib3 library does not exist.")
@@ -193,22 +181,16 @@ class TracerWrapper(object):
                             print("Warning: Bedrock library does not exist.")
                     elif instrument == Instruments.REPLICATE:
                         if not init_replicate_instrumentor():
-                            print(
-                                "Warning: Replicate library does not exist."
-                            )
+                            print("Warning: Replicate library does not exist.")
                     elif instrument == Instruments.VERTEXAI:
                         if not init_vertexai_instrumentor():
-                            print(
-                                "Warning: Vertex AI library does not exist."
-                            )
+                            print("Warning: Vertex AI library does not exist.")
                     elif instrument == Instruments.WATSONX:
                         if not init_watsonx_instrumentor():
                             print("Warning: Watsonx library does not exist.")
                     elif instrument == Instruments.WEAVIATE:
                         if not init_weaviate_instrumentor():
-                            print(
-                                "Warning: Weaviate library does not exist."
-                            )
+                            print("Warning: Weaviate library does not exist.")
                     elif instrument == Instruments.ALEPHALPHA:
                         if not init_alephalpha_instrumentor():
                             print("Warning: Aleph Alpha library does not exist.")
@@ -321,9 +303,7 @@ def update_association_properties(properties: dict) -> None:
 
 def _set_association_properties_attributes(span, properties: dict) -> None:
     for key, value in properties.items():
-        span.set_attribute(
-            f"{ASSOCIATION_PROPERTIES}.{key}", value
-        )
+        span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)
 
 
 def get_span_path(span_name: str) -> str:
@@ -444,6 +424,7 @@ def init_anthropic_instrumentor(should_enrich_metrics: bool):
             instrumentor = AnthropicInstrumentor(
                 # exception_logger=lambda e: Telemetry().log_exception(e),
                 enrich_token_usage=should_enrich_metrics,
+                upload_base64_image=None,
             )
             if not instrumentor.is_instrumented_by_opentelemetry:
                 instrumentor.instrument()
