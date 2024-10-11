@@ -109,12 +109,12 @@ class Laminar:
                 " your project API key or set the LMNR_PROJECT_API_KEY"
                 " environment variable in your environment or .env file"
             )
-        if re.search(r":\d{1,5}$", base_url):
+        url = base_url or "https://api.lmnr.ai"
+        if re.search(r":\d{1,5}$", url):
             raise ValueError(
                 "Please provide the `base_url` without the port number. "
                 "Use the `http_port` and `grpc_port` arguments instead."
             )
-        url = base_url or "https://api.lmnr.ai"
         cls.__base_http_url = f"{url}:{http_port or 443}"
         cls.__base_grpc_url = f"{url}:{grpc_port or 8443}"
 
