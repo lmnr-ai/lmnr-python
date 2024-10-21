@@ -9,11 +9,13 @@ from opentelemetry.util.types import AttributeValue
 from opentelemetry.context import set_value, attach, detach
 from lmnr.traceloop_sdk import Traceloop
 from lmnr.traceloop_sdk.tracing import get_tracer
+from lmnr.traceloop_sdk.tracing.attributes import Attributes, SPAN_TYPE
+from lmnr.traceloop_sdk.decorators.base import json_dumps
 from contextlib import contextmanager
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 from pydantic.alias_generators import to_snake
-from typing import Any, Optional, Set, Union
+from typing import Any, Literal, Optional, Set, Union
 
 import copy
 import datetime
@@ -279,6 +281,7 @@ class Laminar:
         cls,
         name: str,
         input: Any = None,
+        span_type: Union[Literal["DEFAULT"], Literal["LLM"]] = "DEFAULT",
     ):
         """Start a new span as the current span. Useful for manual
         instrumentation.
@@ -287,6 +290,7 @@ class Laminar:
         ```python
         with Laminar.start_as_current_span("my_span", input="my_input") as span:
             await my_async_function()
+            Laminar.set_span_output("my_output")`
         ```
 
         Args:
@@ -308,6 +312,7 @@ class Laminar:
                         SPAN_INPUT,
                         json.dumps(input),
                     )
+                span.set_attribute(SPAN_TYPE, span_type)
                 yield span
 
             # TODO: Figure out if this is necessary
@@ -327,7 +332,36 @@ class Laminar:
         """
         span = get_current_span()
         if output is not None and span != INVALID_SPAN:
-            span.set_attribute(SPAN_OUTPUT, json.dumps(output))
+            span.set_attribute(SPAN_OUTPUT, json_dumps(output))
+
+    @classmethod
+    def set_span_attributes(
+        cls,
+        attributes: dict[Attributes, Any],
+    ):
+        """Set attributes for the current span. Useful for manual
+        instrumentation.
+
+        Args:
+            attributes (dict[ATTRIBUTES, Any]): attributes to set for the span
+        """
+        span = get_current_span()
+        if span == INVALID_SPAN:
+            return
+
+        for key, value in attributes.items():
+            # Python 3.12+ should do: if key not in Attributes:
+            try:
+                Attributes(key.value)
+            except (TypeError, AttributeError):
+                cls.__logger.warning(
+                    f"Attribute {key} is not a valid Laminar attribute."
+                )
+                continue
+            if not isinstance(value, (str, int, float, bool)):
+                span.set_attribute(key.value, json_dumps(value))
+            else:
+                span.set_attribute(key.value, value)
 
     @classmethod
     def set_session(
