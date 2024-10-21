@@ -1,6 +1,7 @@
 import json
 from functools import wraps
 import os
+import pydantic
 import types
 from typing import Any, Optional
 import warnings
@@ -17,13 +18,15 @@ from lmnr.traceloop_sdk.utils.json_encoder import JSONEncoder
 
 class CustomJSONEncoder(JSONEncoder):
     def default(self, o: Any) -> Any:
+        if isinstance(o, pydantic.BaseModel):
+            return o.model_dump_json()
         try:
             return super().default(o)
         except TypeError:
             return str(o)  # Fallback to string representation for unsupported types
 
 
-def _json_dumps(data: dict) -> str:
+def json_dumps(data: dict) -> str:
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
@@ -59,7 +62,7 @@ def entity_method(
                     if _should_send_prompts():
                         span.set_attribute(
                             SPAN_INPUT,
-                            _json_dumps(
+                            json_dumps(
                                 get_input_from_func_args(
                                     fn, is_method(fn), args, kwargs
                                 )
@@ -78,7 +81,7 @@ def entity_method(
                     if _should_send_prompts():
                         span.set_attribute(
                             SPAN_OUTPUT,
-                            _json_dumps(res),
+                            json_dumps(res),
                         )
                 except TypeError:
                     pass
@@ -121,7 +124,7 @@ def aentity_method(
                     if _should_send_prompts():
                         span.set_attribute(
                             SPAN_INPUT,
-                            _json_dumps(
+                            json_dumps(
                                 get_input_from_func_args(
                                     fn, is_method(fn), args, kwargs
                                 )
