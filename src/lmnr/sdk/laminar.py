@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import requests
+import urllib.parse
 import uuid
 
 from lmnr.traceloop_sdk.tracing.attributes import (
@@ -45,6 +46,7 @@ from .log import VerboseColorfulFormatter
 from .types import (
     CreateEvaluationResponse,
     EvaluationResultDatapoint,
+    GetDatapointsResponse,
     PipelineRunError,
     PipelineRunResponse,
     NodeInput,
@@ -284,7 +286,9 @@ class Laminar:
         span_type: Union[Literal["DEFAULT"], Literal["LLM"]] = "DEFAULT",
     ):
         """Start a new span as the current span. Useful for manual
-        instrumentation.
+        instrumentation. If `span_type` is set to `"LLM"`, you should report
+        usage and response attributes manually. See `Laminar.set_span_attributes`
+        for more information.
 
         Usage example:
         ```python
@@ -297,6 +301,9 @@ class Laminar:
             name (str): name of the span
             input (Any, optional): input to the span. Will be sent as an\
                 attribute, so must be json serializable. Defaults to None.
+            span_type (Union[Literal["DEFAULT"], Literal["LLM"]], optional):\
+                type of the span. If you use `"LLM"`, you should report usage\
+                and response attributes manually. Defaults to "DEFAULT".
         """
         with get_tracer() as tracer:
             span_path = get_span_path(name)
@@ -341,6 +348,22 @@ class Laminar:
     ):
         """Set attributes for the current span. Useful for manual
         instrumentation.
+        Example:
+        ```python
+        with L.start_as_current_span(
+            name="my_span_name", input=input["messages"], span_type="LLM"
+        ):
+            response = await my_custom_call_to_openai(input)
+            L.set_span_output(response["choices"][0]["message"]["content"])
+            L.set_span_attributes({
+                Attributes.PROVIDER: 'openai',
+                Attributes.REQUEST_MODEL: input["model"],
+                Attributes.RESPONSE_MODEL: response["model"],
+                Attributes.INPUT_TOKEN_COUNT: response["usage"]["prompt_tokens"],
+                Attributes.OUTPUT_TOKEN_COUNT: response["usage"]["completion_tokens"],
+            })
+            # ...
+        ```
 
         Args:
             attributes (dict[ATTRIBUTES, Any]): attributes to set for the span
@@ -433,9 +456,35 @@ class Laminar:
             try:
                 resp_json = response.json()
                 raise ValueError(f"Error creating evaluation {json.dumps(resp_json)}")
-            except Exception:
+            except requests.exceptions.RequestException:
                 raise ValueError(f"Error creating evaluation {response.text}")
         return CreateEvaluationResponse.model_validate(response.json())
+
+    @classmethod
+    def get_datapoints(
+        cls,
+        dataset_name: str,
+        offset: int,
+        limit: int,
+    ) -> GetDatapointsResponse:
+        params = {"name": dataset_name, "offset": offset, "limit": limit}
+        url = (
+            cls.__base_http_url
+            + "/v1/datasets/datapoints?"
+            + urllib.parse.urlencode(params)
+        )
+        response = requests.get(url, headers=cls._headers())
+        if response.status_code != 200:
+            try:
+                resp_json = response.json()
+                raise ValueError(
+                    f"Error fetching datapoints: [{response.status_code}] {json.dumps(resp_json)}"
+                )
+            except requests.exceptions.RequestException:
+                raise ValueError(
+                    f"Error fetching datapoints: [{response.status_code}] {response.text}"
+                )
+        return GetDatapointsResponse.model_validate(response.json())
 
     @classmethod
     def _headers(cls):
