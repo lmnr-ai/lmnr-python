@@ -79,6 +79,7 @@ class PipelineRunError(Exception):
 
 EvaluationDatapointData = dict[str, Any]
 EvaluationDatapointTarget = dict[str, Any]
+EvaluationDatapointMetadata = Optional[dict[str, Any]]
 
 
 # EvaluationDatapoint is a single data point in the evaluation
@@ -88,6 +89,7 @@ class Datapoint(pydantic.BaseModel):
     # input to the evaluator function (alongside the executor output).
     # Must be a dict with string keys
     target: EvaluationDatapointTarget
+    metadata: EvaluationDatapointMetadata = pydantic.Field(default=None)
 
 
 ExecutorFunctionReturnType = Any
@@ -153,3 +155,8 @@ class TraceType(Enum):
     DEFAULT = "DEFAULT"
     EVENT = "EVENT"  # must not be set manually
     EVALUATION = "EVALUATION"
+
+
+class GetDatapointsResponse(pydantic.BaseModel):
+    items: list[Datapoint]
+    totalCount: int

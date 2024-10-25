@@ -1,17 +1,18 @@
 import asyncio
 import re
 import sys
-from abc import ABC, abstractmethod
-from contextlib import contextmanager
-from typing import Any, Awaitable, Optional, Set, Union
 import uuid
 
+from contextlib import contextmanager
 from tqdm import tqdm
+from typing import Any, Awaitable, Optional, Set, Union
 
 from ..traceloop_sdk.instruments import Instruments
 from ..traceloop_sdk.tracing.attributes import SPAN_TYPE
 
+from .datasets import EvaluationDataset
 from .laminar import Laminar as L
+from .log import get_default_logger
 from .types import (
     Datapoint,
     EvaluationResultDatapoint,
@@ -84,29 +85,12 @@ class EvaluationReporter:
     ):
         self.cli_progress.close()
         print(
-            f"\nCheck progress and results at {get_evaluation_url(project_id, evaluation_id)}\n"
+            f"\nCheck the results at {get_evaluation_url(project_id, evaluation_id)}\n"
         )
         print("Average scores:")
         for name, score in average_scores.items():
             print(f"{name}: {score}")
         print("\n")
-
-
-class EvaluationDataset(ABC):
-    @abstractmethod
-    def __init__(self, *args, **kwargs):
-        pass
-
-    @abstractmethod
-    def __len__(self) -> int:
-        pass
-
-    @abstractmethod
-    def __getitem__(self, idx) -> Datapoint:
-        pass
-
-    def slice(self, start: int, end: int):
-        return [self[i] for i in range(max(start, 0), min(end, len(self)))]
 
 
 class Evaluation:
@@ -135,14 +119,13 @@ class Evaluation:
             executor (Callable[..., Any]): The executor function.\
                             Takes the data point + any additional arguments\
                             and returns the output to evaluate.
-            evaluators (List[Callable[..., Any]]): List of evaluator functions.\
-                Each evaluator function takes the output of the executor _and_\
-                the target data, and returns a score. The score can be a\
-                single number or a record of string keys and number values.\
+            evaluators (dict[str, Callable[..., Any]]): Evaluator functions and\
+                names. Each evaluator function takes the output of the executor\
+                _and_ the target data, and returns a score. The score can be a\
+                single number or a dict of string keys and number values.\
                 If the score is a single number, it will be named after the\
-                evaluator function. If the function is anonymous, it will be\
-                named `evaluator_${index}`, where index is the index of the\
-                evaluator function in the list starting from 1.
+                evaluator function. Evaluator function names must contain only\
+                letters, digits, hyphens, underscores, or spaces.
             group_id (Optional[str], optional): Group id of the evaluation.
                             Defaults to "default".
             name (Optional[str], optional): The name of the evaluation.\
@@ -191,6 +174,7 @@ class Evaluation:
         self.group_id = group_id
         self.name = name
         self.batch_size = batch_size
+        self._logger = get_default_logger(self.__class__.__name__)
         L.initialize(
             project_api_key=project_api_key,
             base_url=base_url,
@@ -215,7 +199,7 @@ class Evaluation:
         )
 
         try:
-            result_datapoints = await self.evaluate_in_batches()
+            result_datapoints = await self._evaluate_in_batches()
         except Exception as e:
             self.reporter.stopWithError(e)
             self.is_finished = True
@@ -228,7 +212,7 @@ class Evaluation:
             self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
             self.is_finished = True
 
-    async def evaluate_in_batches(self) -> list[EvaluationResultDatapoint]:
+    async def _evaluate_in_batches(self) -> list[EvaluationResultDatapoint]:
         result_datapoints = []
         for i in range(0, len(self.data), self.batch_size):
             batch = (
@@ -326,14 +310,14 @@ def evaluate(
         executor (Callable[..., Any]): The executor function.\
                         Takes the data point + any additional arguments\
                         and returns the output to evaluate.
-        evaluators (List[Callable[..., Any]]): List of evaluator functions.\
-            Each evaluator function takes the output of the executor _and_\
-            the target data, and returns a score. The score can be a\
-            single number or a record of string keys and number values.\
-            If the score is a single number, it will be named after the\
-            evaluator function. If the function is anonymous, it will be\
-            named `evaluator_${index}`, where index is the index of the\
-            evaluator function in the list starting from 1.
+        evaluators (List[Callable[..., Any]]): 
+            evaluators (dict[str, Callable[..., Any]]): Evaluator functions and\
+                names. Each evaluator function takes the output of the executor\
+                _and_ the target data, and returns a score. The score can be a\
+                single number or a dict of string keys and number values.\
+                If the score is a single number, it will be named after the\
+                evaluator function. Evaluator function names must contain only\
+                letters, digits, hyphens, underscores, or spaces.
         group_id (Optional[str], optional): an identifier to group evaluations.\
                         It is practical to group evaluations that evaluate\
                         the same feature on the same dataset, to be able to\

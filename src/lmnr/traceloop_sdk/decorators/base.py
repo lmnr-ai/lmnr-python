@@ -1,10 +1,10 @@
 import json
 from functools import wraps
+import logging
 import os
 import pydantic
 import types
 from typing import Any, Optional
-import warnings
 
 from opentelemetry import trace
 from opentelemetry import context as context_api
@@ -28,12 +28,10 @@ class CustomJSONEncoder(JSONEncoder):
 
 def json_dumps(data: dict) -> str:
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)
-            return json.dumps(data, cls=CustomJSONEncoder)
+        return json.dumps(data, cls=CustomJSONEncoder)
     except Exception:
         # Log the exception and return a placeholder if serialization completely fails
-        # Telemetry().log_exception(e)
+        logging.warning("Failed to serialize data to JSON, type: %s", type(data))
         return "{}"  # Return an empty JSON object as a fallback
 
 
@@ -141,7 +139,7 @@ def aentity_method(
 
                 try:
                     if _should_send_prompts():
-                        span.set_attribute(SPAN_OUTPUT, json.dumps(res))
+                        span.set_attribute(SPAN_OUTPUT, json_dumps(res))
                 except TypeError:
                     pass
 
