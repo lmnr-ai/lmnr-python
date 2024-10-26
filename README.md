@@ -188,6 +188,7 @@ You can run evaluations locally by providing executor (part of the logic used in
 - `executor` – the logic you want to evaluate. This function must take `data` as the first argument, and produce any output. It can be both a function or an `async` function.
 - `evaluators` – Dictionary which maps evaluator names to evaluators. Functions that take output of executor as the first argument, `target` as the second argument and produce a numeric scores. Each function can produce either a single number or `dict[str, int|float]` of scores. Each evaluator can be both a function or an `async` function.
 - `name` – optional name for the evaluation. Automatically generated if not provided.
+- `group_id` – optional group name for the evaluation. Evaluations within the same group can be compared visually side-by-side
 
 \* If you already have the outputs of executors you want to evaluate, you can specify the executor as an identity function, that takes in `data` and returns only needed value(s) from it.
 
