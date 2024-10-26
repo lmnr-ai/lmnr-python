@@ -99,8 +99,8 @@ class Evaluation:
         data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
         executor: Any,
         evaluators: dict[str, EvaluatorFunction],
-        group_id: Optional[str] = None,
         name: Optional[str] = None,
+        group_id: Optional[str] = None,
         batch_size: int = DEFAULT_BATCH_SIZE,
         project_api_key: Optional[str] = None,
         base_url: Optional[str] = None,
@@ -126,25 +126,33 @@ class Evaluation:
                 If the score is a single number, it will be named after the\
                 evaluator function. Evaluator function names must contain only\
                 letters, digits, hyphens, underscores, or spaces.
-            group_id (Optional[str], optional): Group id of the evaluation.
-                            Defaults to "default".
-            name (Optional[str], optional): The name of the evaluation.\
-                            It will be auto-generated if not provided.
-            batch_size (int, optional): The batch size for evaluation.
-                            Defaults to DEFAULT_BATCH_SIZE.
-            project_api_key (Optional[str], optional): The project API key.
-                            Defaults to an empty string.
+            name (Optional[str], optional): Optional name of the evaluation.\
+                Used to identify the evaluation in the group.\
+                If not provided, a random name will be generated.
+                Defaults to None.
+            group_id (Optional[str], optional): an identifier to group\
+                evaluations. Only evaluations within the same group_id can be\
+                visually compared. If not provided, "default" is assigned.
+                Defaults to None
+            batch_size (int, optional): The batch size for evaluation. This many\
+                data points will be evaluated in parallel.
+                Defaults to DEFAULT_BATCH_SIZE.
+            project_api_key (Optional[str], optional): The project API key.\
+                If not provided, LMNR_PROJECT_API_KEY environment variable is\
+                used.
+                Defaults to an empty string.
             base_url (Optional[str], optional): The base URL for Laminar API.\
-                            Useful if self-hosted elsewhere. Do NOT include the\
-                            port, use `http_port` and `grpc_port` instead.
-                            Defaults to "https://api.lmnr.ai".
+                Useful if self-hosted. Do NOT include the port, use `http_port`\
+                and `grpc_port` instead.
+                Defaults to "https://api.lmnr.ai".
             http_port (Optional[int], optional): The port for Laminar API\
-                            HTTP service. Defaults to 443 if not specified.
+                HTTP service. Defaults to 443 if not specified.
             grpc_port (Optional[int], optional): The port for Laminar API\
-                            gRPC service. Defaults to 8443 if not specified.
+                gRPC service. Defaults to 8443 if not specified.
             instruments (Optional[Set[Instruments]], optional): Set of modules\
                 to auto-instrument. If None, all available instruments will be\
                 used.
+                See https://docs.lmnr.ai/tracing/automatic-instrumentation
                 Defaults to None.
         """
 
@@ -284,8 +292,8 @@ def evaluate(
     data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
     executor: ExecutorFunction,
     evaluators: dict[str, EvaluatorFunction],
-    group_id: Optional[str] = None,
     name: Optional[str] = None,
+    group_id: Optional[str] = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
     project_api_key: Optional[str] = None,
     base_url: Optional[str] = None,
@@ -318,16 +326,14 @@ def evaluate(
                 If the score is a single number, it will be named after the\
                 evaluator function. Evaluator function names must contain only\
                 letters, digits, hyphens, underscores, or spaces.
-        group_id (Optional[str], optional): an identifier to group evaluations.\
-                        It is practical to group evaluations that evaluate\
-                        the same feature on the same dataset, to be able to\
-                        view their comparisons in the same place. If not\
-                        provided, defaults to "default".
-                        Defaults to None
         name (Optional[str], optional): Optional name of the evaluation.\
                         Used to identify the evaluation in the group.\
                         If not provided, a random name will be generated.
                         Defaults to None.
+        group_id (Optional[str], optional): an identifier to group evaluations.\
+                        Only evaluations within the same group_id can be\
+                        visually compared. If not provided, set to "default".
+                        Defaults to None
         batch_size (int, optional): The batch size for evaluation.
                         Defaults to DEFAULT_BATCH_SIZE.
         project_api_key (Optional[str], optional): The project API key.
