@@ -308,7 +308,7 @@ class Laminar:
         with get_tracer() as tracer:
             span_path = get_span_path(name)
             ctx = set_value("span_path", span_path)
-            ctx_token = attach(set_value("span_path", span_path))
+            ctx_token = attach(ctx)
             with tracer.start_as_current_span(
                 name,
                 context=ctx,
@@ -317,7 +317,7 @@ class Laminar:
                 if input is not None:
                     span.set_attribute(
                         SPAN_INPUT,
-                        json.dumps(input),
+                        json_dumps(input),
                     )
                 span.set_attribute(SPAN_TYPE, span_type)
                 yield span
