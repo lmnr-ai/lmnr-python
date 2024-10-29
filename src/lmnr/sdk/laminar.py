@@ -61,6 +61,7 @@ class Laminar:
     __project_api_key: Optional[str] = None
     __env: dict[str, str] = {}
     __initialized: bool = False
+    __http_session: Optional[requests.Session] = None
 
     @classmethod
     def initialize(
@@ -125,6 +126,7 @@ class Laminar:
         cls.__env = env
         cls.__initialized = True
         cls._initialize_logger()
+        cls.__http_session = requests.Session()
         Traceloop.init(
             exporter=OTLPSpanExporter(
                 endpoint=cls.__base_grpc_url,
@@ -213,10 +215,18 @@ class Laminar:
         except Exception as e:
             raise ValueError(f"Invalid request: {e}")
 
-        response = requests.post(
-            cls.__base_http_url + "/v1/pipeline/run",
-            data=json.dumps(request.to_dict()),
-            headers=cls._headers(),
+        response = (
+            cls.__http_session.post(
+                cls.__base_http_url + "/v1/pipeline/run",
+                data=json.dumps(request.to_dict()),
+                headers=cls._headers(),
+            )
+            if cls.__http_session
+            else requests.post(
+                cls.__base_http_url + "/v1/pipeline/run",
+                data=json.dumps(request.to_dict()),
+                headers=cls._headers(),
+            )
         )
         if response.status_code != 200:
             raise PipelineRunError(response)
