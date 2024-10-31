@@ -34,7 +34,7 @@ class LaminarDataset(EvaluationDataset):
         self._fetched_items = []
         self._offset = 0
         self._fetch_size = fetch_size
-        self._logger = get_default_logger(self.__class__.__name__, level=logging.DEBUG)
+        self._logger = get_default_logger(self.__class__.__name__)
 
     def _fetch_batch(self):
         self._logger.debug(

@@ -25,7 +25,11 @@ from opentelemetry.instrumentation.threading import ThreadingInstrumentor
 
 # from lmnr.traceloop_sdk import Telemetry
 from lmnr.traceloop_sdk.instruments import Instruments
-from lmnr.traceloop_sdk.tracing.attributes import ASSOCIATION_PROPERTIES, SPAN_PATH
+from lmnr.traceloop_sdk.tracing.attributes import (
+    ASSOCIATION_PROPERTIES,
+    SPAN_INSTRUMENTATION_SOURCE,
+    SPAN_PATH,
+)
 from lmnr.traceloop_sdk.tracing.content_allow_list import ContentAllowList
 from lmnr.traceloop_sdk.utils import is_notebook
 from lmnr.traceloop_sdk.utils.package_check import is_package_installed
@@ -235,6 +239,8 @@ class TracerWrapper(object):
             # the final part of the name to the span on the backend.
             span.set_attribute(SPAN_PATH, span_path)
 
+        span.set_attribute(SPAN_INSTRUMENTATION_SOURCE, "python")
+
         association_properties = get_value("association_properties")
         if association_properties is not None:
             _set_association_properties_attributes(span, association_properties)
@@ -266,10 +272,7 @@ class TracerWrapper(object):
         if hasattr(cls, "instance"):
             return True
 
-        if (os.getenv("TRACELOOP_SUPPRESS_WARNINGS") or "false").lower() == "true":
-            return False
-
-        print("Warning: Laminar not initialized, make sure to initialize")
+        logging.warning("Warning: Laminar not initialized, make sure to initialize")
         return False
 
     def flush(self):
@@ -557,7 +560,9 @@ def init_langchain_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing LangChain instrumentor: {e}")
+        # FIXME: silence this error temporarily, it appears to not be critical
+        if str(e) != "No module named 'langchain_community'":
+            logging.error(f"Error initializing LangChain instrumentor: {e}")
         # Telemetry().log_exception(e)
         return False
 
