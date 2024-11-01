@@ -18,6 +18,7 @@ from .types import (
     EvaluationResultDatapoint,
     EvaluatorFunction,
     ExecutorFunction,
+    HumanEvaluator,
     Numeric,
     NumericTypes,
     SpanType,
@@ -99,6 +100,7 @@ class Evaluation:
         data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
         executor: Any,
         evaluators: dict[str, EvaluatorFunction],
+        human_evaluators: dict[str, HumanEvaluator] = {},
         name: Optional[str] = None,
         group_id: Optional[str] = None,
         batch_size: int = DEFAULT_BATCH_SIZE,
@@ -126,6 +128,11 @@ class Evaluation:
                 If the score is a single number, it will be named after the\
                 evaluator function. Evaluator function names must contain only\
                 letters, digits, hyphens, underscores, or spaces.
+            human_evaluators (dict[str, HumanEvaluator], optional):\
+                [Beta] Dictionary from human evaluator names to instances of\
+                HumanEvaluator. For now, human evaluator only holds the queue\
+                name.
+                Defaults to an empty dictionary.
             name (Optional[str], optional): Optional name of the evaluation.\
                 Used to identify the evaluation in the group.\
                 If not provided, a random name will be generated.
@@ -159,14 +166,27 @@ class Evaluation:
         if not evaluators:
             raise ValueError("No evaluators provided")
 
-        # TODO: Compile regex once and then reuse it
+        evaluator_name_regex = re.compile(r"^[\w\s-]+$")
         for evaluator_name in evaluators:
-            if not re.match(r"^[\w\s-]+$", evaluator_name):
+            if not evaluator_name_regex.match(evaluator_name):
                 raise ValueError(
                     f'Invalid evaluator key: "{evaluator_name}". '
                     "Keys must only contain letters, digits, hyphens,"
                     "underscores, or spaces."
                 )
+        for evaluator_name in human_evaluators or {}:
+            if not evaluator_name_regex.match(evaluator_name):
+                raise ValueError(
+                    f'Invalid human evaluator key: "{evaluator_name}". '
+                    "Keys must only contain letters, digits, hyphens,"
+                    "underscores, or spaces."
+                )
+
+        if intersection := set(evaluators.keys()) & set(human_evaluators.keys()):
+            raise ValueError(
+                "Evaluator and human evaluator names must not overlap. "
+                f"Repeated keys: {intersection}"
+            )
 
         self.is_finished = False
         self.reporter = EvaluationReporter()
@@ -183,6 +203,7 @@ class Evaluation:
         self.name = name
         self.batch_size = batch_size
         self._logger = get_default_logger(self.__class__.__name__)
+        self.human_evaluators = human_evaluators
         L.initialize(
             project_api_key=project_api_key,
             base_url=base_url,
@@ -202,9 +223,7 @@ class Evaluation:
             return loop.run_until_complete(self._run())
 
     async def _run(self) -> None:
-        self.reporter.start(
-            len(self.data),
-        )
+        self.reporter.start(len(self.data))
 
         try:
             result_datapoints = await self._evaluate_in_batches()
@@ -212,13 +231,19 @@ class Evaluation:
             self.reporter.stopWithError(e)
             self.is_finished = True
             return
-        else:
-            evaluation = L.create_evaluation(
-                data=result_datapoints, group_id=self.group_id, name=self.name
-            )
-            average_scores = get_average_scores(result_datapoints)
-            self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
-            self.is_finished = True
+
+        # For now add all human evaluators to all result datapoints
+        # In the future, we will add ways to specify which human evaluators
+        # to add to which result datapoints, e.g. sample some randomly
+        for result_datapoint in result_datapoints:
+            result_datapoint.human_evaluators = self.human_evaluators or {}
+
+        evaluation = L.create_evaluation(
+            data=result_datapoints, group_id=self.group_id, name=self.name
+        )
+        average_scores = get_average_scores(result_datapoints)
+        self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
+        self.is_finished = True
 
     async def _evaluate_in_batches(self) -> list[EvaluationResultDatapoint]:
         result_datapoints = []
@@ -292,6 +317,7 @@ def evaluate(
     data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
     executor: ExecutorFunction,
     evaluators: dict[str, EvaluatorFunction],
+    human_evaluators: dict[str, HumanEvaluator] = {},
     name: Optional[str] = None,
     group_id: Optional[str] = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
@@ -326,6 +352,10 @@ def evaluate(
                 If the score is a single number, it will be named after the\
                 evaluator function. Evaluator function names must contain only\
                 letters, digits, hyphens, underscores, or spaces.
+        human_evaluators (dict[str, HumanEvaluator], optional):\
+            [Beta] Dictionary from human evaluator names to instances of\
+            HumanEvaluator. For now, human evaluator only holds the queue name.
+            Defaults to an empty dictionary.
         name (Optional[str], optional): Optional name of the evaluation.\
                         Used to identify the evaluation in the group.\
                         If not provided, a random name will be generated.
@@ -359,6 +389,7 @@ def evaluate(
         executor=executor,
         evaluators=evaluators,
         group_id=group_id,
+        human_evaluators=human_evaluators,
         name=name,
         batch_size=batch_size,
         project_api_key=project_api_key,

@@ -110,6 +110,13 @@ EvaluatorFunction = Callable[
 ]
 
 
+class HumanEvaluator(pydantic.BaseModel):
+    queueName: str
+
+    def __init__(self, queue_name: str):
+        super().__init__(queueName=queue_name)
+
+
 class CreateEvaluationResponse(pydantic.BaseModel):
     id: uuid.UUID
     createdAt: datetime.datetime
@@ -123,6 +130,7 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
     target: EvaluationDatapointTarget
     executor_output: ExecutorFunctionReturnType
     scores: dict[str, Numeric]
+    human_evaluators: dict[str, HumanEvaluator] = pydantic.Field(default_factory=dict)
     trace_id: uuid.UUID
 
     # uuid is not serializable by default, so we need to convert it to a string
@@ -139,6 +147,10 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
             "executorOutput": serialize(self.executor_output),
             "scores": self.scores,
             "traceId": str(self.trace_id),
+            "humanEvaluators": {
+                k: v.model_dump() if isinstance(v, pydantic.BaseModel) else serialize(v)
+                for k, v in self.human_evaluators.items()
+            },
         }
 
 
