@@ -166,7 +166,6 @@ class Evaluation:
         if not evaluators:
             raise ValueError("No evaluators provided")
 
-        # TODO: Compile regex once and then reuse it
         evaluator_name_regex = re.compile(r"^[\w\s-]+$")
         for evaluator_name in evaluators:
             if not evaluator_name_regex.match(evaluator_name):
@@ -185,7 +184,7 @@ class Evaluation:
 
         if intersection := set(evaluators.keys()) & set(human_evaluators.keys()):
             raise ValueError(
-                "Evaluator and human evaluator names must be unique. "
+                "Evaluator and human evaluator names must not overlap. "
                 f"Repeated keys: {intersection}"
             )
 
