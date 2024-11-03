@@ -1,3 +1,4 @@
+from contextvars import Context
 import re
 from lmnr.traceloop_sdk.instruments import Instruments
 from opentelemetry import context
@@ -294,6 +295,7 @@ class Laminar:
         name: str,
         input: Any = None,
         span_type: Union[Literal["DEFAULT"], Literal["LLM"]] = "DEFAULT",
+        context: Optional[Context] = None,
     ):
         """Start a new span as the current span. Useful for manual
         instrumentation. If `span_type` is set to `"LLM"`, you should report
@@ -314,10 +316,12 @@ class Laminar:
             span_type (Union[Literal["DEFAULT"], Literal["LLM"]], optional):\
                 type of the span. If you use `"LLM"`, you should report usage\
                 and response attributes manually. Defaults to "DEFAULT".
+            context (Optional[Context], optional): raw OpenTelemetry context\
+                to attach the span to. Defaults to None.
         """
         with get_tracer() as tracer:
             span_path = get_span_path(name)
-            ctx = set_value("span_path", span_path)
+            ctx = set_value("span_path", span_path, context)
             ctx_token = attach(ctx)
             with tracer.start_as_current_span(
                 name,
@@ -337,6 +341,67 @@ class Laminar:
                 detach(ctx_token)
             except Exception:
                 pass
+
+    @classmethod
+    def start_span(
+        cls,
+        name: str,
+        input: Any = None,
+        span_type: Union[Literal["DEFAULT"], Literal["LLM"]] = "DEFAULT",
+        context: Optional[Context] = None,
+    ):
+        """Start a new span. Useful for manual instrumentation.
+        If `span_type` is set to `"LLM"`, you should report usage and response
+        attributes manually. See `Laminar.set_span_attributes` for more
+        information.
+
+        Usage example:
+        ```python
+        from src.lmnr import Laminar, use_span
+        def foo(span):
+            with use_span(span):
+                with Laminar.start_as_current_span("foo_inner"):
+                    some_function()
+        
+        def bar():
+            with use_span(span):
+                openai_client.chat.completions.create()
+        
+        span = Laminar.start_span("outer")
+        foo(span)
+        bar(span)
+        # IMPORTANT: End the span manually
+        span.end()
+        
+        # Results in:
+        # | outer
+        # |   | foo
+        # |   |   | foo_inner
+        # |   | bar
+        # |   |   | openai.chat
+        ```
+
+        Args:
+            name (str): name of the span
+            input (Any, optional): input to the span. Will be sent as an\
+                attribute, so must be json serializable. Defaults to None.
+            span_type (Union[Literal["DEFAULT"], Literal["LLM"]], optional):\
+                type of the span. If you use `"LLM"`, you should report usage\
+                and response attributes manually. Defaults to "DEFAULT".
+            context (Optional[Context], optional): raw OpenTelemetry context\
+                to attach the span to. Defaults to None.
+        """
+        with get_tracer() as tracer:
+            span_path = get_span_path(name)
+            ctx = set_value("span_path", span_path, context)
+            span = tracer.start_span(name, context=ctx)
+            if input is not None:
+                span.set_attribute(
+                    SPAN_INPUT,
+                    json_dumps(input),
+                )
+            span.set_attribute(SPAN_TYPE, span_type)
+            return span
 
     @classmethod
     def set_span_output(cls, output: Any = None):
