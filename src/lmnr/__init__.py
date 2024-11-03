@@ -11,3 +11,4 @@ from .sdk.types import (
 from .sdk.decorators import observe
 from .traceloop_sdk import Instruments
 from .traceloop_sdk.tracing.attributes import Attributes
+from opentelemetry.trace import use_span
