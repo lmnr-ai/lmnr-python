@@ -131,6 +131,7 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
     scores: dict[str, Numeric]
     human_evaluators: dict[str, HumanEvaluator] = pydantic.Field(default_factory=dict)
     trace_id: uuid.UUID
+    executor_span_id: uuid.UUID
 
     # uuid is not serializable by default, so we need to convert it to a string
     def to_dict(self):
@@ -141,14 +142,15 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
                 "executorOutput": serialize(self.executor_output),
                 "scores": self.scores,
                 "traceId": str(self.trace_id),
-                "humanEvaluators": {
-                    k: (
+                "humanEvaluators": [
+                    (
                         v.model_dump()
                         if isinstance(v, pydantic.BaseModel)
                         else serialize(v)
                     )
-                    for k, v in self.human_evaluators.items()
-                },
+                    for v in self.human_evaluators
+                ],
+                "executorSpanId": str(self.executor_span_id),
             }
         except Exception as e:
             raise ValueError(f"Error serializing EvaluationResultDatapoint: {e}")
