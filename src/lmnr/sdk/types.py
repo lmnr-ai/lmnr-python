@@ -129,7 +129,7 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
     target: EvaluationDatapointTarget
     executor_output: ExecutorFunctionReturnType
     scores: dict[str, Numeric]
-    human_evaluators: dict[str, HumanEvaluator] = pydantic.Field(default_factory=dict)
+    human_evaluators: list[HumanEvaluator] = pydantic.Field(default_factory=list)
     trace_id: uuid.UUID
     executor_span_id: uuid.UUID
 
