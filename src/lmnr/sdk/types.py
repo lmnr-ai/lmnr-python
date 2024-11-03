@@ -77,18 +77,17 @@ class PipelineRunError(Exception):
             return super().__str__()
 
 
-EvaluationDatapointData = dict[str, Any]
-EvaluationDatapointTarget = dict[str, Any]
-EvaluationDatapointMetadata = Optional[dict[str, Any]]
+EvaluationDatapointData = Any  # non-null, must be JSON-serializable
+EvaluationDatapointTarget = Optional[Any]  # must be JSON-serializable
+EvaluationDatapointMetadata = Optional[Any]  # must be JSON-serializable
 
 
 # EvaluationDatapoint is a single data point in the evaluation
 class Datapoint(pydantic.BaseModel):
-    # input to the executor function. Must be a dict with string keys
+    # input to the executor function.
     data: EvaluationDatapointData
     # input to the evaluator function (alongside the executor output).
-    # Must be a dict with string keys
-    target: EvaluationDatapointTarget
+    target: EvaluationDatapointTarget = pydantic.Field(default=None)
     metadata: EvaluationDatapointMetadata = pydantic.Field(default=None)
 
 
@@ -135,23 +134,24 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
 
     # uuid is not serializable by default, so we need to convert it to a string
     def to_dict(self):
-        return {
-            "data": {
-                k: v.model_dump() if isinstance(v, pydantic.BaseModel) else serialize(v)
-                for k, v in self.data.items()
-            },
-            "target": {
-                k: v.model_dump() if isinstance(v, pydantic.BaseModel) else serialize(v)
-                for k, v in self.target.items()
-            },
-            "executorOutput": serialize(self.executor_output),
-            "scores": self.scores,
-            "traceId": str(self.trace_id),
-            "humanEvaluators": {
-                k: v.model_dump() if isinstance(v, pydantic.BaseModel) else serialize(v)
-                for k, v in self.human_evaluators.items()
-            },
-        }
+        try:
+            return {
+                "data": serialize(self.data),
+                "target": serialize(self.target),
+                "executorOutput": serialize(self.executor_output),
+                "scores": self.scores,
+                "traceId": str(self.trace_id),
+                "humanEvaluators": {
+                    k: (
+                        v.model_dump()
+                        if isinstance(v, pydantic.BaseModel)
+                        else serialize(v)
+                    )
+                    for k, v in self.human_evaluators.items()
+                },
+            }
+        except Exception as e:
+            raise ValueError(f"Error serializing EvaluationResultDatapoint: {e}")
 
 
 class SpanType(Enum):
@@ -165,7 +165,7 @@ class SpanType(Enum):
 
 class TraceType(Enum):
     DEFAULT = "DEFAULT"
-    EVENT = "EVENT"  # must not be set manually
+    EVENT = "EVENT"  # deprecated
     EVALUATION = "EVALUATION"
 
 

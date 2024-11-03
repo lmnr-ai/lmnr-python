@@ -50,7 +50,7 @@ def is_iterator(o: typing.Any) -> bool:
 
 
 def serialize(obj: typing.Any) -> dict[str, typing.Any]:
-    def to_dict_inner(o: typing.Any):
+    def serialize_inner(o: typing.Any):
         if isinstance(o, (datetime.datetime, datetime.date)):
             return o.strftime("%Y-%m-%dT%H:%M:%S.%f%z")
         elif o is None:
@@ -68,17 +68,17 @@ def serialize(obj: typing.Any) -> dict[str, typing.Any]:
         elif isinstance(o, pydantic.BaseModel):
             return o.model_dump()
         elif isinstance(o, (tuple, set, frozenset)):
-            return [to_dict_inner(item) for item in o]
+            return [serialize_inner(item) for item in o]
         elif isinstance(o, list):
-            return [to_dict_inner(item) for item in o]
+            return [serialize_inner(item) for item in o]
         elif isinstance(o, dict):
-            return {to_dict_inner(k): to_dict_inner(v) for k, v in o.items()}
+            return {serialize_inner(k): serialize_inner(v) for k, v in o.items()}
         elif isinstance(o, queue.Queue):
             return type(o).__name__
 
         return str(o)
 
-    return to_dict_inner(obj)
+    return serialize_inner(obj)
 
 
 def get_input_from_func_args(
