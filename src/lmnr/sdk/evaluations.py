@@ -100,7 +100,7 @@ class Evaluation:
         data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
         executor: Any,
         evaluators: dict[str, EvaluatorFunction],
-        human_evaluators: dict[str, HumanEvaluator] = {},
+        human_evaluators: list[HumanEvaluator] = [],
         name: Optional[str] = None,
         group_id: Optional[str] = None,
         batch_size: int = DEFAULT_BATCH_SIZE,
@@ -128,11 +128,10 @@ class Evaluation:
                 If the score is a single number, it will be named after the\
                 evaluator function. Evaluator function names must contain only\
                 letters, digits, hyphens, underscores, or spaces.
-            human_evaluators (dict[str, HumanEvaluator], optional):\
-                [Beta] Dictionary from human evaluator names to instances of\
-                HumanEvaluator. For now, human evaluator only holds the queue\
-                name.
-                Defaults to an empty dictionary.
+            human_evaluators (list[HumanEvaluator], optional):\
+                [Beta] List of instances of HumanEvaluator. For now, human\
+                evaluator only holds the queue name.
+                Defaults to an empty list.
             name (Optional[str], optional): Optional name of the evaluation.\
                 Used to identify the evaluation in the group.\
                 If not provided, a random name will be generated.
@@ -174,19 +173,6 @@ class Evaluation:
                     "Keys must only contain letters, digits, hyphens,"
                     "underscores, or spaces."
                 )
-        for evaluator_name in human_evaluators or {}:
-            if not evaluator_name_regex.match(evaluator_name):
-                raise ValueError(
-                    f'Invalid human evaluator key: "{evaluator_name}". '
-                    "Keys must only contain letters, digits, hyphens,"
-                    "underscores, or spaces."
-                )
-
-        if intersection := set(evaluators.keys()) & set(human_evaluators.keys()):
-            raise ValueError(
-                "Evaluator and human evaluator names must not overlap. "
-                f"Repeated keys: {intersection}"
-            )
 
         self.is_finished = False
         self.reporter = EvaluationReporter()
@@ -281,6 +267,9 @@ class Evaluation:
                     else self.executor(datapoint.data)
                 )
                 L.set_span_output(output)
+                executor_span_id = uuid.UUID(
+                    int=executor_span.get_span_context().span_id
+                )
             target = datapoint.target
 
             # Iterate over evaluators
@@ -310,6 +299,7 @@ class Evaluation:
                 executor_output=output,
                 scores=scores,
                 trace_id=trace_id,
+                executor_span_id=executor_span_id,
             )
 
 
@@ -317,7 +307,7 @@ def evaluate(
     data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
     executor: ExecutorFunction,
     evaluators: dict[str, EvaluatorFunction],
-    human_evaluators: dict[str, HumanEvaluator] = {},
+    human_evaluators: list[HumanEvaluator] = [],
     name: Optional[str] = None,
     group_id: Optional[str] = None,
     batch_size: int = DEFAULT_BATCH_SIZE,
@@ -352,10 +342,10 @@ def evaluate(
                 If the score is a single number, it will be named after the\
                 evaluator function. Evaluator function names must contain only\
                 letters, digits, hyphens, underscores, or spaces.
-        human_evaluators (dict[str, HumanEvaluator], optional):\
-            [Beta] Dictionary from human evaluator names to instances of\
-            HumanEvaluator. For now, human evaluator only holds the queue name.
-            Defaults to an empty dictionary.
+        human_evaluators (list[HumanEvaluator], optional):\
+            [Beta] List of instances of HumanEvaluator. For now, human\
+            evaluator only holds the queue name.
+            Defaults to an empty list.
         name (Optional[str], optional): Optional name of the evaluation.\
                         Used to identify the evaluation in the group.\
                         If not provided, a random name will be generated.
