@@ -1,29 +1,31 @@
+from contextlib import contextmanager
 from contextvars import Context
-import re
-from lmnr.traceloop_sdk.instruments import Instruments
-from opentelemetry import context
-from opentelemetry.trace import (
-    INVALID_SPAN,
-    get_current_span,
-)
+from opentelemetry import context, trace
 from opentelemetry.util.types import AttributeValue
 from opentelemetry.context import set_value, attach, detach
 from lmnr.traceloop_sdk import Traceloop
+from lmnr.traceloop_sdk.instruments import Instruments
 from lmnr.traceloop_sdk.tracing import get_tracer
-from lmnr.traceloop_sdk.tracing.attributes import Attributes, SPAN_TYPE
+from lmnr.traceloop_sdk.tracing.attributes import (
+    Attributes,
+    SPAN_TYPE,
+    OVERRIDE_PARENT_SPAN,
+)
 from lmnr.traceloop_sdk.decorators.base import json_dumps
-from contextlib import contextmanager
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 from pydantic.alias_generators import to_snake
 from typing import Any, Literal, Optional, Set, Union
 
+import aiohttp
 import copy
 import datetime
 import dotenv
 import json
 import logging
 import os
+import random
+import re
 import requests
 import urllib.parse
 import uuid
@@ -197,8 +199,8 @@ class Laminar:
                 "API key or set the LMNR_PROJECT_API_KEY environment variable"
             )
         try:
-            current_span = get_current_span()
-            if current_span != INVALID_SPAN:
+            current_span = trace.get_current_span()
+            if current_span != trace.INVALID_SPAN:
                 parent_span_id = parent_span_id or uuid.UUID(
                     int=current_span.get_span_context().span_id
                 )
@@ -277,8 +279,8 @@ class Laminar:
         if value is not None:
             event["lmnr.event.value"] = value
 
-        current_span = get_current_span()
-        if current_span == INVALID_SPAN:
+        current_span = trace.get_current_span()
+        if current_span == trace.INVALID_SPAN:
             cls.__logger.warning(
                 "`Laminar().event()` called outside of span context. "
                 f"Event '{name}' will not be recorded in the trace. "
@@ -296,6 +298,7 @@ class Laminar:
         input: Any = None,
         span_type: Union[Literal["DEFAULT"], Literal["LLM"]] = "DEFAULT",
         context: Optional[Context] = None,
+        trace_id: Optional[uuid.UUID] = None,
     ):
         """Start a new span as the current span. Useful for manual
         instrumentation. If `span_type` is set to `"LLM"`, you should report
@@ -318,25 +321,46 @@ class Laminar:
                 and response attributes manually. Defaults to "DEFAULT".
             context (Optional[Context], optional): raw OpenTelemetry context\
                 to attach the span to. Defaults to None.
+            trace_id (Optional[uuid.UUID], optional): [EXPERIMENTAL] override\
+                the trace id for the span. If not provided, use the current\
+                trace id. Defaults to None.
         """
+
         with get_tracer() as tracer:
             span_path = get_span_path(name)
             ctx = set_value("span_path", span_path, context)
+            if trace_id is not None:
+                if isinstance(trace_id, uuid.UUID):
+                    span_context = trace.SpanContext(
+                        trace_id=int(trace_id),
+                        span_id=random.getrandbits(64),
+                        is_remote=False,
+                        trace_flags=trace.TraceFlags(trace.TraceFlags.SAMPLED),
+                    )
+                    ctx = trace.set_span_in_context(
+                        trace.NonRecordingSpan(span_context), ctx
+                    )
+                else:
+                    cls.__logger.warning(
+                        "trace_id provided to `Laminar.start_as_current_span`"
+                        " is not a valid UUID"
+                    )
             ctx_token = attach(ctx)
             with tracer.start_as_current_span(
                 name,
                 context=ctx,
-                attributes={SPAN_PATH: span_path},
+                attributes={SPAN_PATH: span_path, SPAN_TYPE: span_type},
             ) as span:
+                if trace_id is not None and isinstance(trace_id, uuid.UUID):
+                    span.set_attribute(OVERRIDE_PARENT_SPAN, True)
                 if input is not None:
                     span.set_attribute(
                         SPAN_INPUT,
                         json_dumps(input),
                     )
-                span.set_attribute(SPAN_TYPE, span_type)
                 yield span
 
-            # TODO: Figure out if this is necessary
+            # # TODO: Figure out if this is necessary
             try:
                 detach(ctx_token)
             except Exception:
@@ -349,6 +373,7 @@ class Laminar:
         input: Any = None,
         span_type: Union[Literal["DEFAULT"], Literal["LLM"]] = "DEFAULT",
         context: Optional[Context] = None,
+        trace_id: Optional[uuid.UUID] = None,
     ):
         """Start a new span. Useful for manual instrumentation.
         If `span_type` is set to `"LLM"`, you should report usage and response
@@ -390,17 +415,41 @@ class Laminar:
                 and response attributes manually. Defaults to "DEFAULT".
             context (Optional[Context], optional): raw OpenTelemetry context\
                 to attach the span to. Defaults to None.
+            trace_id (Optional[uuid.UUID], optional): [EXPERIMENTAL] override\
+                the trace id for the span. If not provided, use the current\
+                trace id. Defaults to None.
         """
         with get_tracer() as tracer:
             span_path = get_span_path(name)
             ctx = set_value("span_path", span_path, context)
-            span = tracer.start_span(name, context=ctx)
+            if trace_id is not None:
+                if isinstance(trace_id, uuid.UUID):
+                    span_context = trace.SpanContext(
+                        trace_id=int(trace_id),
+                        span_id=random.getrandbits(64),
+                        is_remote=False,
+                        trace_flags=trace.TraceFlags(trace.TraceFlags.SAMPLED),
+                    )
+                    ctx = trace.set_span_in_context(
+                        trace.NonRecordingSpan(span_context), ctx
+                    )
+                else:
+                    cls.__logger.warning(
+                        "trace_id provided to `Laminar.start_span`"
+                        " is not a valid UUID"
+                    )
+            span = tracer.start_span(
+                name,
+                context=ctx,
+                attributes={SPAN_PATH: span_path, SPAN_TYPE: span_type},
+            )
+            if trace_id is not None and isinstance(trace_id, uuid.UUID):
+                span.set_attribute(OVERRIDE_PARENT_SPAN, True)
             if input is not None:
                 span.set_attribute(
                     SPAN_INPUT,
                     json_dumps(input),
                 )
-            span.set_attribute(SPAN_TYPE, span_type)
             return span
 
     @classmethod
@@ -412,8 +461,8 @@ class Laminar:
             output (Any, optional): output of the span. Will be sent as an\
                 attribute, so must be json serializable. Defaults to None.
         """
-        span = get_current_span()
-        if output is not None and span != INVALID_SPAN:
+        span = trace.get_current_span()
+        if output is not None and span != trace.INVALID_SPAN:
             span.set_attribute(SPAN_OUTPUT, json_dumps(output))
 
     @classmethod
@@ -443,8 +492,8 @@ class Laminar:
         Args:
             attributes (dict[ATTRIBUTES, Any]): attributes to set for the span
         """
-        span = get_current_span()
-        if span == INVALID_SPAN:
+        span = trace.get_current_span()
+        if span == trace.INVALID_SPAN:
             return
 
         for key, value in attributes.items():

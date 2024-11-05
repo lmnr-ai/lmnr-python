@@ -184,8 +184,6 @@ class TracerWrapper(object):
 def set_association_properties(properties: dict) -> None:
     attach(set_value("association_properties", properties))
 
-    # TODO: When called inside observe decorator, this actually sets the properties on the parent span, not the current one
-    # Then, processor's on_start will assign this to current span
     span = trace.get_current_span()
     _set_association_properties_attributes(span, properties)
 
@@ -197,8 +195,6 @@ def update_association_properties(properties: dict) -> None:
 
     attach(set_value("association_properties", association_properties))
 
-    # TODO: When called inside observe decorator, this actually sets the properties on the parent span, not the current one
-    # Then, processor's on_start will assign this to current span
     span = trace.get_current_span()
     _set_association_properties_attributes(span, properties)
 
@@ -227,15 +223,6 @@ def set_managed_prompt_tracing_context(
     attach(set_value("prompt_version_name", version_name))
     attach(set_value("prompt_version_hash", version_hash))
     attach(set_value("prompt_template_variables", template_variables))
-
-
-def set_external_prompt_tracing_context(
-    template: str, variables: dict, version: int
-) -> None:
-    attach(set_value("managed_prompt", False))
-    attach(set_value("prompt_version", version))
-    attach(set_value("prompt_template", template))
-    attach(set_value("prompt_template_variables", variables))
 
 
 def init_spans_exporter(api_endpoint: str, headers: Dict[str, str]) -> SpanExporter:
