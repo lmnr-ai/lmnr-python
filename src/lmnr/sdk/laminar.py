@@ -17,7 +17,6 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from pydantic.alias_generators import to_snake
 from typing import Any, Literal, Optional, Set, Union
 
-import aiohttp
 import copy
 import datetime
 import dotenv
