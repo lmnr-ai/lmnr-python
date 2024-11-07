@@ -113,24 +113,6 @@ If you want to fully disable any kind of autoinstrumentation, pass an empty set 
 
 Autoinstrumentations are provided by Traceloop's [OpenLLMetry](https://github.com/traceloop/openllmetry).
 
-## Sending events
-
-You can send laminar events using `L.event(name, value)`.
-
-Read our [docs](https://docs.lmnr.ai) to learn more about events and examples.
-
-### Example
-
-```python
-from lmnr import Laminar as L
-# ...
-poem = response.choices[0].message.content
-
-# this will register True or False value with Laminar
-L.event("topic alignment", topic in poem)
-
-```
-
 ## Evaluations
 
 ### Quickstart
