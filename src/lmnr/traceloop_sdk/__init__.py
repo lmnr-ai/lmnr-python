@@ -19,11 +19,6 @@ from typing import Dict
 
 
 class Traceloop:
-    AUTO_CREATED_KEY_PATH = str(
-        Path.home() / ".cache" / "traceloop" / "auto_created_key"
-    )
-    AUTO_CREATED_URL = str(Path.home() / ".cache" / "traceloop" / "auto_created_url")
-
     __tracer_wrapper: TracerWrapper
 
     @staticmethod
@@ -36,20 +31,14 @@ class Traceloop:
         exporter: Optional[SpanExporter] = None,
         processor: Optional[SpanProcessor] = None,
         propagator: Optional[TextMapPropagator] = None,
-        should_enrich_metrics: bool = True,
+        should_enrich_metrics: bool = False,
         resource_attributes: dict = {},
         instruments: Optional[Set[Instruments]] = None,
     ) -> None:
-        api_endpoint = os.getenv("TRACELOOP_BASE_URL") or api_endpoint
-        api_key = os.getenv("TRACELOOP_API_KEY") or api_key
-
         if not is_tracing_enabled():
-            # print(Fore.YELLOW + "Tracing is disabled" + Fore.RESET)
             return
 
         enable_content_tracing = is_content_tracing_enabled()
-
-        headers = os.getenv("TRACELOOP_HEADERS") or headers
 
         if isinstance(headers, str):
             headers = parse_env_headers(headers)
@@ -61,18 +50,14 @@ class Traceloop:
             and not api_key
         ):
             print(
-                "Error: Missing API key,"
-                + " go to project settings to create one"
+                "Set the LMNR_PROJECT_API_KEY environment variable to your project API key"
             )
-            print("Set the LMNR_PROJECT_API_KEY environment variable to the key")
             return
 
         if api_key and not exporter and not processor and not headers:
             headers = {
                 "Authorization": f"Bearer {api_key}",
             }
-
-        # print(Fore.RESET)
 
         # Tracer init
         resource_attributes.update({SERVICE_NAME: app_name})

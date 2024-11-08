@@ -68,7 +68,7 @@ class TracerWrapper(object):
         processor: Optional[SpanProcessor] = None,
         propagator: Optional[TextMapPropagator] = None,
         exporter: Optional[SpanExporter] = None,
-        should_enrich_metrics: bool = True,
+        should_enrich_metrics: bool = False,
         instruments: Optional[Set[Instruments]] = None,
     ) -> "TracerWrapper":
         if not hasattr(cls, "instance"):
