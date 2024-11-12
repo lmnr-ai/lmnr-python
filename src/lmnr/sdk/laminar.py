@@ -1,18 +1,19 @@
 from contextlib import contextmanager
 from contextvars import Context
-from opentelemetry import context, trace
-from opentelemetry.util.types import AttributeValue
-from opentelemetry.context import set_value, attach, detach
 from lmnr.traceloop_sdk import Traceloop
 from lmnr.traceloop_sdk.instruments import Instruments
 from lmnr.traceloop_sdk.tracing import get_tracer
 from lmnr.traceloop_sdk.tracing.attributes import (
+    ASSOCIATION_PROPERTIES,
     Attributes,
     SPAN_TYPE,
     OVERRIDE_PARENT_SPAN,
 )
 from lmnr.traceloop_sdk.decorators.base import json_dumps
+from opentelemetry import context, trace
+from opentelemetry.context import attach, detach, set_value
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.util.types import AttributeValue
 
 from pydantic.alias_generators import to_snake
 from typing import Any, Literal, Optional, Set, Union
@@ -39,6 +40,7 @@ from lmnr.traceloop_sdk.tracing.attributes import (
 )
 from lmnr.traceloop_sdk.tracing.tracing import (
     get_span_path,
+    remove_association_properties,
     set_association_properties,
     update_association_properties,
 )
@@ -298,6 +300,7 @@ class Laminar:
         span_type: Union[Literal["DEFAULT"], Literal["LLM"]] = "DEFAULT",
         context: Optional[Context] = None,
         trace_id: Optional[uuid.UUID] = None,
+        labels: Optional[dict[str, str]] = None,
     ):
         """Start a new span as the current span. Useful for manual
         instrumentation. If `span_type` is set to `"LLM"`, you should report
@@ -323,6 +326,8 @@ class Laminar:
             trace_id (Optional[uuid.UUID], optional): [EXPERIMENTAL] override\
                 the trace id for the span. If not provided, use the current\
                 trace id. Defaults to None.
+            labels (Optional[dict[str, str]], optional): labels to set for the\
+                span. Defaults to None.
         """
 
         with get_tracer() as tracer:
@@ -345,10 +350,26 @@ class Laminar:
                         " is not a valid UUID"
                     )
             ctx_token = attach(ctx)
+            label_props = {}
+            try:
+                if labels:
+                    label_props = dict(
+                        (f"{ASSOCIATION_PROPERTIES}.label.{k}", json_dumps(v))
+                        for k, v in labels.items()  # noqa: F821
+                    )
+            except Exception:
+                cls.__logger.warning(
+                    f"`start_as_current_span` Could not set labels: {labels}. "
+                    "They will be propagated to the next span."
+                )
             with tracer.start_as_current_span(
                 name,
                 context=ctx,
-                attributes={SPAN_PATH: span_path, SPAN_TYPE: span_type},
+                attributes={
+                    SPAN_PATH: span_path,
+                    SPAN_TYPE: span_type,
+                    **(label_props),
+                },
             ) as span:
                 if trace_id is not None and isinstance(trace_id, uuid.UUID):
                     span.set_attribute(OVERRIDE_PARENT_SPAN, True)
@@ -366,6 +387,41 @@ class Laminar:
                 pass
 
     @classmethod
+    @contextmanager
+    def with_labels(cls, labels: dict[str, str], context: Optional[Context] = None):
+        """Set labels for spans within this `with` context. This is useful for
+        adding labels to the spans created in the auto-instrumentations.
+
+        Requirements:
+        - Labels must be created in your project in advance.
+        - Keys must be strings from your label names.
+        - Values must be strings matching the label's allowed values.
+
+        Usage example:
+        ```python
+        with Laminar.with_labels({"sentiment": "positive"}):
+            openai_client.chat.completions.create()
+        ```
+        """
+        with get_tracer():
+            label_props = labels.copy()
+            label_props = dict(
+                (f"label.{k}", json_dumps(v)) for k, v in label_props.items()
+            )
+            update_association_properties(
+                label_props, set_on_current_span=False, context=context
+            )
+            yield
+            try:
+                remove_association_properties(label_props)
+            except Exception:
+                cls.__logger.warning(
+                    f"`with_labels` Could not remove labels: {labels}. They will be "
+                    "propagated to the next span."
+                )
+                pass
+
+    @classmethod
     def start_span(
         cls,
         name: str,
@@ -373,6 +429,7 @@ class Laminar:
         span_type: Union[Literal["DEFAULT"], Literal["LLM"]] = "DEFAULT",
         context: Optional[Context] = None,
         trace_id: Optional[uuid.UUID] = None,
+        labels: Optional[dict[str, str]] = None,
     ):
         """Start a new span. Useful for manual instrumentation.
         If `span_type` is set to `"LLM"`, you should report usage and response
@@ -417,6 +474,8 @@ class Laminar:
             trace_id (Optional[uuid.UUID], optional): [EXPERIMENTAL] override\
                 the trace id for the span. If not provided, use the current\
                 trace id. Defaults to None.
+            labels (Optional[dict[str, str]], optional): labels to set for the\
+                span. Defaults to None.
         """
         with get_tracer() as tracer:
             span_path = get_span_path(name)
@@ -437,10 +496,26 @@ class Laminar:
                         "trace_id provided to `Laminar.start_span`"
                         " is not a valid UUID"
                     )
+            label_props = {}
+            try:
+                if labels:
+                    label_props = dict(
+                        (f"{ASSOCIATION_PROPERTIES}.label.{k}", json_dumps(v))
+                        for k, v in labels.items()  # noqa: F821
+                    )
+            except Exception:
+                cls.__logger.warning(
+                    f"`start_span` Could not set labels: {labels}. They will be "
+                    "propagated to the next span."
+                )
             span = tracer.start_span(
                 name,
                 context=ctx,
-                attributes={SPAN_PATH: span_path, SPAN_TYPE: span_type},
+                attributes={
+                    SPAN_PATH: span_path,
+                    SPAN_TYPE: span_type,
+                    **(label_props),
+                },
             )
             if trace_id is not None and isinstance(trace_id, uuid.UUID):
                 span.set_attribute(OVERRIDE_PARENT_SPAN, True)

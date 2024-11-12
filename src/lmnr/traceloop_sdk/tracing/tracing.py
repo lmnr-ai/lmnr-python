@@ -1,28 +1,9 @@
 import atexit
+import copy
 import logging
-import os
 
 
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
-    OTLPSpanExporter as HTTPExporter,
-)
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
-    OTLPSpanExporter as GRPCExporter,
-)
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider, SpanProcessor
-from opentelemetry.propagators.textmap import TextMapPropagator
-from opentelemetry.propagate import set_global_textmap
-from opentelemetry.sdk.trace.export import (
-    SpanExporter,
-    SimpleSpanProcessor,
-    BatchSpanProcessor,
-)
-from opentelemetry.trace import get_tracer_provider, ProxyTracerProvider
-from opentelemetry.context import get_value, attach, set_value
-from opentelemetry.instrumentation.threading import ThreadingInstrumentor
-
+from contextvars import Context
 from lmnr.traceloop_sdk.instruments import Instruments
 from lmnr.traceloop_sdk.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
@@ -32,6 +13,26 @@ from lmnr.traceloop_sdk.tracing.attributes import (
 from lmnr.traceloop_sdk.tracing.content_allow_list import ContentAllowList
 from lmnr.traceloop_sdk.utils import is_notebook
 from lmnr.traceloop_sdk.utils.package_check import is_package_installed
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+    OTLPSpanExporter as HTTPExporter,
+)
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+    OTLPSpanExporter as GRPCExporter,
+)
+from opentelemetry.instrumentation.threading import ThreadingInstrumentor
+from opentelemetry.context import get_value, attach, set_value
+from opentelemetry.propagate import set_global_textmap
+from opentelemetry.propagators.textmap import TextMapPropagator
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider, SpanProcessor
+from opentelemetry.sdk.trace.export import (
+    SpanExporter,
+    SimpleSpanProcessor,
+    BatchSpanProcessor,
+)
+from opentelemetry.trace import get_tracer_provider, ProxyTracerProvider
+
 from typing import Dict, Optional, Set
 
 
@@ -188,15 +189,27 @@ def set_association_properties(properties: dict) -> None:
     _set_association_properties_attributes(span, properties)
 
 
-def update_association_properties(properties: dict) -> None:
+def update_association_properties(
+    properties: dict,
+    set_on_current_span: bool = True,
+    context: Optional[Context] = None,
+) -> None:
     """Only adds or updates properties that are not already present"""
-    association_properties = get_value("association_properties") or {}
+    association_properties = get_value("association_properties", context) or {}
     association_properties.update(properties)
 
-    attach(set_value("association_properties", association_properties))
+    attach(set_value("association_properties", association_properties, context))
 
-    span = trace.get_current_span()
-    _set_association_properties_attributes(span, properties)
+    if set_on_current_span:
+        span = trace.get_current_span()
+        _set_association_properties_attributes(span, properties)
+
+
+def remove_association_properties(properties: dict) -> None:
+    props: dict = copy.copy(get_value("association_properties") or {})
+    for k in properties.keys():
+        props.pop(k, None)
+    set_association_properties(props)
 
 
 def _set_association_properties_attributes(span, properties: dict) -> None:
