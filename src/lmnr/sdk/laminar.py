@@ -599,7 +599,9 @@ class Laminar:
                             Useful to debug and group long-running\
                             sessions/conversations.
                             Defaults to None.
-            user_id (Optional[str], optional): Custom user id.\
+            user_id (Optional[str], optional). Deprecated.\
+                            Use `Laminar.set_metadata` instead.\
+                            Custom user id.\
                             Useful for grouping spans or traces by user.\
                             Defaults to None.
         """
@@ -607,8 +609,32 @@ class Laminar:
         if session_id is not None:
             association_properties[SESSION_ID] = session_id
         if user_id is not None:
-            association_properties[USER_ID] = user_id
+            cls.__logger.warning(
+                "User ID in set_session is deprecated and will be removed soon. "
+                "Please use `Laminar.set_metadata` instead."
+            )
+            association_properties["metadata." + USER_ID] = user_id
         update_association_properties(association_properties)
+
+    @classmethod
+    def set_metadata(cls, metadata: dict[str, Any]):
+        """Set the metadata for the current trace.
+
+        Args:
+            metadata (dict[str, Any]): Metadata to set for the trace. Willl be\
+                sent as attributes, so must be json serializable.
+        """
+        props = {f"metadata.{k}": json_dumps(v) for k, v in metadata.items()}
+        update_association_properties(props)
+
+    @classmethod
+    def clear_metadata(cls):
+        """Clear the metadata from the context"""
+        props: dict = copy.copy(context.get_value("association_properties"))
+        for k in props.keys():
+            if k.startswith("metadata."):
+                props.pop(k)
+        set_association_properties(props)
 
     @classmethod
     def _set_trace_type(
