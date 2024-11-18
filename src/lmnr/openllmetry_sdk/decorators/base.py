@@ -10,10 +10,10 @@ from opentelemetry import trace
 from opentelemetry import context as context_api
 
 from lmnr.sdk.utils import get_input_from_func_args, is_method
-from lmnr.traceloop_sdk.tracing import get_tracer
-from lmnr.traceloop_sdk.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT, SPAN_PATH
-from lmnr.traceloop_sdk.tracing.tracing import TracerWrapper, get_span_path
-from lmnr.traceloop_sdk.utils.json_encoder import JSONEncoder
+from lmnr.openllmetry_sdk.tracing import get_tracer
+from lmnr.openllmetry_sdk.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT, SPAN_PATH
+from lmnr.openllmetry_sdk.tracing.tracing import TracerWrapper, get_span_path
+from lmnr.openllmetry_sdk.utils.json_encoder import JSONEncoder
 
 
 class CustomJSONEncoder(JSONEncoder):

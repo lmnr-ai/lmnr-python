@@ -7,8 +7,8 @@ from contextlib import contextmanager
 from tqdm import tqdm
 from typing import Any, Awaitable, Optional, Set, Union
 
-from ..traceloop_sdk.instruments import Instruments
-from ..traceloop_sdk.tracing.attributes import SPAN_TYPE
+from ..openllmetry_sdk.instruments import Instruments
+from ..openllmetry_sdk.tracing.attributes import SPAN_TYPE
 
 from .datasets import EvaluationDataset
 from .laminar import Laminar as L

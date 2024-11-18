@@ -9,12 +9,12 @@ from opentelemetry.sdk.resources import SERVICE_NAME
 from opentelemetry.propagators.textmap import TextMapPropagator
 from opentelemetry.util.re import parse_env_headers
 
-from lmnr.traceloop_sdk.instruments import Instruments
-from lmnr.traceloop_sdk.config import (
+from lmnr.openllmetry_sdk.instruments import Instruments
+from lmnr.openllmetry_sdk.config import (
     is_content_tracing_enabled,
     is_tracing_enabled,
 )
-from lmnr.traceloop_sdk.tracing.tracing import TracerWrapper
+from lmnr.openllmetry_sdk.tracing.tracing import TracerWrapper
 from typing import Dict
 
 

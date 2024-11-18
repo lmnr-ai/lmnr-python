@@ -1,15 +1,15 @@
 from contextlib import contextmanager
 from contextvars import Context
-from lmnr.traceloop_sdk import Traceloop
-from lmnr.traceloop_sdk.instruments import Instruments
-from lmnr.traceloop_sdk.tracing import get_tracer
-from lmnr.traceloop_sdk.tracing.attributes import (
+from lmnr.openllmetry_sdk import Traceloop
+from lmnr.openllmetry_sdk.instruments import Instruments
+from lmnr.openllmetry_sdk.tracing import get_tracer
+from lmnr.openllmetry_sdk.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     Attributes,
     SPAN_TYPE,
     OVERRIDE_PARENT_SPAN,
 )
-from lmnr.traceloop_sdk.decorators.base import json_dumps
+from lmnr.openllmetry_sdk.decorators.base import json_dumps
 from opentelemetry import context, trace
 from opentelemetry.context import attach, detach, set_value
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -30,7 +30,7 @@ import requests
 import urllib.parse
 import uuid
 
-from lmnr.traceloop_sdk.tracing.attributes import (
+from lmnr.openllmetry_sdk.tracing.attributes import (
     SESSION_ID,
     SPAN_INPUT,
     SPAN_OUTPUT,
@@ -38,7 +38,7 @@ from lmnr.traceloop_sdk.tracing.attributes import (
     TRACE_TYPE,
     USER_ID,
 )
-from lmnr.traceloop_sdk.tracing.tracing import (
+from lmnr.openllmetry_sdk.tracing.tracing import (
     get_span_path,
     remove_association_properties,
     set_association_properties,
