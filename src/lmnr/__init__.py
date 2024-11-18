@@ -9,6 +9,6 @@ from .sdk.types import (
     PipelineRunResponse,
 )
 from .sdk.decorators import observe
-from .traceloop_sdk import Instruments
-from .traceloop_sdk.tracing.attributes import Attributes
+from .openllmetry_sdk import Instruments
+from .openllmetry_sdk.tracing.attributes import Attributes
 from opentelemetry.trace import use_span

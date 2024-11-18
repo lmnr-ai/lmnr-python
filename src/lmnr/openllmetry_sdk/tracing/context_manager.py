@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 
-from lmnr.traceloop_sdk.tracing.tracing import TracerWrapper
+from lmnr.openllmetry_sdk.tracing.tracing import TracerWrapper
 
 
 @contextmanager

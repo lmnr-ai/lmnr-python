@@ -4,15 +4,16 @@ import logging
 
 
 from contextvars import Context
-from lmnr.traceloop_sdk.instruments import Instruments
-from lmnr.traceloop_sdk.tracing.attributes import (
+from lmnr.sdk.log import VerboseColorfulFormatter
+from lmnr.openllmetry_sdk.instruments import Instruments
+from lmnr.openllmetry_sdk.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     SPAN_INSTRUMENTATION_SOURCE,
     SPAN_PATH,
 )
-from lmnr.traceloop_sdk.tracing.content_allow_list import ContentAllowList
-from lmnr.traceloop_sdk.utils import is_notebook
-from lmnr.traceloop_sdk.utils.package_check import is_package_installed
+from lmnr.openllmetry_sdk.tracing.content_allow_list import ContentAllowList
+from lmnr.openllmetry_sdk.utils import is_notebook
+from lmnr.openllmetry_sdk.utils.package_check import is_package_installed
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
     OTLPSpanExporter as HTTPExporter,
@@ -34,6 +35,11 @@ from opentelemetry.sdk.trace.export import (
 from opentelemetry.trace import get_tracer_provider, ProxyTracerProvider
 
 from typing import Dict, Optional, Set
+
+module_logger = logging.getLogger(__name__)
+console_log_handler = logging.StreamHandler()
+console_log_handler.setFormatter(VerboseColorfulFormatter())
+module_logger.addHandler(console_log_handler)
 
 
 TRACER_NAME = "lmnr.tracer"
@@ -62,6 +68,7 @@ class TracerWrapper(object):
     endpoint: str = None
     headers: Dict[str, str] = {}
     __tracer_provider: TracerProvider = None
+    __logger: logging.Logger = None
 
     def __new__(
         cls,
@@ -72,6 +79,7 @@ class TracerWrapper(object):
         should_enrich_metrics: bool = False,
         instruments: Optional[Set[Instruments]] = None,
     ) -> "TracerWrapper":
+        cls._initialize_logger(cls)
         if not hasattr(cls, "instance"):
             obj = cls.instance = super(TracerWrapper, cls).__new__(cls)
             if not TracerWrapper.endpoint:
@@ -115,8 +123,8 @@ class TracerWrapper(object):
             )
 
             if not instrument_set:
-                logging.warning(
-                    "Warning: No valid instruments set. Remove 'instrument' "
+                cls.__logger.warning(
+                    "No valid instruments set. Remove 'instrument' "
                     "argument to use all instruments, or set a valid instrument."
                 )
 
@@ -129,6 +137,12 @@ class TracerWrapper(object):
 
     def exit_handler(self):
         self.flush()
+
+    def _initialize_logger(self):
+        self.__logger = logging.getLogger(__name__)
+        console_log_handler = logging.StreamHandler()
+        console_log_handler.setFormatter(VerboseColorfulFormatter())
+        self.__logger.addHandler(console_log_handler)
 
     def _span_processor_on_start(self, span, parent_context):
         span_path = get_value("span_path")
@@ -172,7 +186,7 @@ class TracerWrapper(object):
         if hasattr(cls, "instance"):
             return True
 
-        logging.warning("Warning: Laminar not initialized, make sure to initialize")
+        cls.__logger.warning("Laminar not initialized, make sure to initialize")
         return False
 
     def flush(self):
@@ -253,7 +267,7 @@ def init_tracer_provider(resource: Resource) -> TracerProvider:
         provider = TracerProvider(resource=resource)
         trace.set_tracer_provider(provider)
     elif not hasattr(default_provider, "add_span_processor"):
-        logging.error(
+        module_logger.error(
             "Cannot add span processor to the default provider since it doesn't support it"
         )
         return
@@ -280,7 +294,11 @@ def init_instrumentations(
         ]
     )
 
-    instruments = instruments or (set(Instruments) - default_off_instruments)
+    instruments = (
+        instruments
+        if instruments is not None
+        else (set(Instruments) - default_off_instruments)
+    )
 
     # Remove any instruments that were explicitly blocked
     instruments = instruments - block_instruments
@@ -375,18 +393,14 @@ def init_instrumentations(
             if init_weaviate_instrumentor():
                 instrument_set = True
         else:
-            logging.warning(f"Warning: {instrument} instrumentation does not exist.")
-            logging.warning(
+            module_logger.warning(
+                f"Warning: {instrument} instrumentation does not exist."
+            )
+            module_logger.warning(
                 "Usage:\n"
                 "from lmnr import Laminar, Instruments\n"
                 "Laminar.init(instruments=set([Instruments.OPENAI]))"
             )
-
-    if not instrument_set:
-        logging.warning(
-            "Warning: No valid instruments set. "
-            + "Specify instruments or remove 'instruments' argument to use all instruments."
-        )
 
     return instrument_set
 
@@ -405,7 +419,7 @@ def init_openai_instrumentor(should_enrich_metrics: bool):
         return True
 
     except Exception as e:
-        logging.error(f"Error initializing OpenAI instrumentor: {e}")
+        module_logger.error(f"Error initializing OpenAI instrumentor: {e}")
         return False
 
 
@@ -422,7 +436,7 @@ def init_anthropic_instrumentor(should_enrich_metrics: bool):
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing Anthropic instrumentor: {e}")
+        module_logger.error(f"Error initializing Anthropic instrumentor: {e}")
         return False
 
 
@@ -436,7 +450,7 @@ def init_cohere_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing Cohere instrumentor: {e}")
+        module_logger.error(f"Error initializing Cohere instrumentor: {e}")
         return False
 
 
@@ -450,7 +464,7 @@ def init_pinecone_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing Pinecone instrumentor: {e}")
+        module_logger.error(f"Error initializing Pinecone instrumentor: {e}")
         return False
 
 
@@ -463,7 +477,7 @@ def init_qdrant_instrumentor():
             if not instrumentor.is_instrumented_by_opentelemetry:
                 instrumentor.instrument()
     except Exception as e:
-        logging.error(f"Error initializing Qdrant instrumentor: {e}")
+        module_logger.error(f"Error initializing Qdrant instrumentor: {e}")
         return False
 
 
@@ -477,7 +491,7 @@ def init_chroma_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing Chroma instrumentor: {e}")
+        module_logger.error(f"Error initializing Chroma instrumentor: {e}")
         return False
 
 
@@ -493,7 +507,7 @@ def init_google_generativeai_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing Gemini instrumentor: {e}")
+        module_logger.error(f"Error initializing Gemini instrumentor: {e}")
         return False
 
 
@@ -507,7 +521,7 @@ def init_haystack_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing Haystack instrumentor: {e}")
+        module_logger.error(f"Error initializing Haystack instrumentor: {e}")
         return False
 
 
@@ -523,7 +537,7 @@ def init_langchain_instrumentor():
     except Exception as e:
         # FIXME: silencing this error temporarily, it appears to not be critical
         if str(e) != "No module named 'langchain_community'":
-            logging.error(f"Error initializing LangChain instrumentor: {e}")
+            module_logger.error(f"Error initializing LangChain instrumentor: {e}")
         return False
 
 
@@ -537,7 +551,7 @@ def init_mistralai_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing MistralAI instrumentor: {e}")
+        module_logger.error(f"Error initializing MistralAI instrumentor: {e}")
         return False
 
 
@@ -551,7 +565,7 @@ def init_ollama_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing Ollama instrumentor: {e}")
+        module_logger.error(f"Error initializing Ollama instrumentor: {e}")
         return False
 
 
@@ -567,7 +581,7 @@ def init_transformers_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing Transformers instrumentor: {e}")
+        module_logger.error(f"Error initializing Transformers instrumentor: {e}")
         return False
 
 
@@ -581,7 +595,7 @@ def init_together_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing TogetherAI instrumentor: {e}")
+        module_logger.error(f"Error initializing TogetherAI instrumentor: {e}")
         return False
 
 
@@ -595,7 +609,7 @@ def init_llama_index_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing LlamaIndex instrumentor: {e}")
+        module_logger.error(f"Error initializing LlamaIndex instrumentor: {e}")
         return False
 
 
@@ -609,7 +623,7 @@ def init_milvus_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing Milvus instrumentor: {e}")
+        module_logger.error(f"Error initializing Milvus instrumentor: {e}")
         return False
 
 
@@ -623,7 +637,7 @@ def init_requests_instrumentor():
                 instrumentor.instrument(excluded_urls=EXCLUDED_URLS)
         return True
     except Exception as e:
-        logging.error(f"Error initializing Requests instrumentor: {e}")
+        module_logger.error(f"Error initializing Requests instrumentor: {e}")
         return False
 
 
@@ -637,7 +651,7 @@ def init_urllib3_instrumentor():
                 instrumentor.instrument(excluded_urls=EXCLUDED_URLS)
         return True
     except Exception as e:
-        logging.error(f"Error initializing urllib3 instrumentor: {e}")
+        module_logger.error(f"Error initializing urllib3 instrumentor: {e}")
         return False
 
 
@@ -651,7 +665,7 @@ def init_pymysql_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing SQLAlchemy instrumentor: {e}")
+        module_logger.error(f"Error initializing SQLAlchemy instrumentor: {e}")
         return False
 
 
@@ -667,7 +681,7 @@ def init_bedrock_instrumentor(should_enrich_metrics: bool):
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing Bedrock instrumentor: {e}")
+        module_logger.error(f"Error initializing Bedrock instrumentor: {e}")
         return False
 
 
@@ -681,7 +695,7 @@ def init_replicate_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing Replicate instrumentor: {e}")
+        module_logger.error(f"Error initializing Replicate instrumentor: {e}")
         return False
 
 
@@ -695,7 +709,7 @@ def init_vertexai_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.warning(f"Error initializing Vertex AI instrumentor: {e}")
+        module_logger.warning(f"Error initializing Vertex AI instrumentor: {e}")
         return False
 
 
@@ -711,7 +725,7 @@ def init_watsonx_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.warning(f"Error initializing Watsonx instrumentor: {e}")
+        module_logger.warning(f"Error initializing Watsonx instrumentor: {e}")
         return False
 
 
@@ -725,7 +739,7 @@ def init_weaviate_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.warning(f"Error initializing Weaviate instrumentor: {e}")
+        module_logger.warning(f"Error initializing Weaviate instrumentor: {e}")
         return False
 
 
@@ -739,7 +753,7 @@ def init_alephalpha_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing Aleph Alpha instrumentor: {e}")
+        module_logger.error(f"Error initializing Aleph Alpha instrumentor: {e}")
         return False
 
 
@@ -753,7 +767,7 @@ def init_marqo_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing marqo instrumentor: {e}")
+        module_logger.error(f"Error initializing marqo instrumentor: {e}")
         return False
 
 
@@ -767,7 +781,7 @@ def init_lancedb_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing LanceDB instrumentor: {e}")
+        module_logger.error(f"Error initializing LanceDB instrumentor: {e}")
 
 
 def init_redis_instrumentor():
@@ -780,7 +794,7 @@ def init_redis_instrumentor():
                 instrumentor.instrument(excluded_urls=EXCLUDED_URLS)
         return True
     except Exception as e:
-        logging.error(f"Error initializing redis instrumentor: {e}")
+        module_logger.error(f"Error initializing redis instrumentor: {e}")
         return False
 
 
@@ -794,7 +808,7 @@ def init_groq_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing Groq instrumentor: {e}")
+        module_logger.error(f"Error initializing Groq instrumentor: {e}")
         return False
 
 
@@ -810,5 +824,5 @@ def init_sagemaker_instrumentor(should_enrich_metrics: bool):
                 instrumentor.instrument()
         return True
     except Exception as e:
-        logging.error(f"Error initializing SageMaker instrumentor: {e}")
+        module_logger.error(f"Error initializing SageMaker instrumentor: {e}")
         return False
