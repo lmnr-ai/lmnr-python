@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.4.39b1"
+version = "0.4.39"
 description = "Python SDK for Laminar AI"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -17,7 +17,7 @@ license = "Apache-2.0"
 
 [tool.poetry]
 name = "lmnr"
-version = "0.4.39b1"
+version = "0.4.39"
 description = "Python SDK for Laminar AI"
 authors = ["lmnr.ai"]
 readme = "README.md"
@@ -70,16 +70,16 @@ opentelemetry-instrumentation-watsonx = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-weaviate = {version = ">=0.33.12", optional = true}
 
 # List of all possible extras. You can specify one or more of these extras
-# when installing the package, like
+# when installing the package, using any of the following:
 # `pip install 'lmnr[anthropic,openai]'`
-# `uv pip install lmnr[anthropic,openai]`
+# `uv pip install 'lmnr[anthropic,openai]'`
 # `uv add lmnr --extra anthropic --extra openai`
-# `poetry add lmnr[anthropic,openai]`
+# `poetry add 'lmnr[anthropic,openai]'`
 
-# `full` is the group added for convenience, if you want to install all
+# `all` is the group added for convenience, if you want to install all
 # the instrumentations.
 [tool.poetry.extras]
-full = [
+all = [
   "opentelemetry-instrumentation-alephalpha",
   "opentelemetry-instrumentation-anthropic",
   "opentelemetry-instrumentation-bedrock",

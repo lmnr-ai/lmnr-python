@@ -36,7 +36,6 @@ from lmnr.openllmetry_sdk.tracing.attributes import (
     SPAN_OUTPUT,
     SPAN_PATH,
     TRACE_TYPE,
-    USER_ID,
 )
 from lmnr.openllmetry_sdk.tracing.tracing import (
     get_span_path,
@@ -588,7 +587,6 @@ class Laminar:
     def set_session(
         cls,
         session_id: Optional[str] = None,
-        user_id: Optional[str] = None,
     ):
         """Set the session and user id for the current span and the context
         (i.e. any children spans created from the current span in the current
@@ -599,29 +597,18 @@ class Laminar:
                             Useful to debug and group long-running\
                             sessions/conversations.
                             Defaults to None.
-            user_id (Optional[str], optional). Deprecated.\
-                            Use `Laminar.set_metadata` instead.\
-                            Custom user id.\
-                            Useful for grouping spans or traces by user.\
-                            Defaults to None.
         """
         association_properties = {}
         if session_id is not None:
             association_properties[SESSION_ID] = session_id
-        if user_id is not None:
-            cls.__logger.warning(
-                "User ID in set_session is deprecated and will be removed soon. "
-                "Please use `Laminar.set_metadata` instead."
-            )
-            association_properties["metadata." + USER_ID] = user_id
         update_association_properties(association_properties)
 
     @classmethod
-    def set_metadata(cls, metadata: dict[str, Any]):
+    def set_metadata(cls, metadata: dict[str, str]):
         """Set the metadata for the current trace.
 
         Args:
-            metadata (dict[str, Any]): Metadata to set for the trace. Willl be\
+            metadata (dict[str, str]): Metadata to set for the trace. Willl be\
                 sent as attributes, so must be json serializable.
         """
         props = {f"metadata.{k}": json_dumps(v) for k, v in metadata.items()}
