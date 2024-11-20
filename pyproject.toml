@@ -1,6 +1,6 @@
 [project]
 name = "lmnr"
-version = "0.4.38"
+version = "0.4.39b0"
 description = "Python SDK for Laminar AI"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -11,7 +11,7 @@ license = "Apache-2.0"
 
 [tool.poetry]
 name = "lmnr"
-version = "0.4.38"
+version = "0.4.39b0"
 description = "Python SDK for Laminar AI"
 authors = ["lmnr.ai"]
 readme = "README.md"
@@ -35,33 +35,162 @@ opentelemetry-semantic-conventions-ai = "0.4.2"
 tenacity = ">=8.0"
 jinja2 = "~=3.0"
 deprecated = "~=1.0"
-opentelemetry-instrumentation-alephalpha = "^0.33.12"
-opentelemetry-instrumentation-anthropic = "^0.33.12"
-opentelemetry-instrumentation-bedrock = "^0.33.12"
-opentelemetry-instrumentation-chromadb = "^0.33.12"
-opentelemetry-instrumentation-cohere = "^0.33.12"
-opentelemetry-instrumentation-google-generativeai = "^0.33.12"
-opentelemetry-instrumentation-groq = "^0.33.12"
-opentelemetry-instrumentation-haystack = "^0.33.12"
-opentelemetry-instrumentation-lancedb = "^0.33.12"
-opentelemetry-instrumentation-langchain = "^0.33.12"
-opentelemetry-instrumentation-llamaindex = "^0.33.12"
-opentelemetry-instrumentation-marqo = "^0.33.12"
-opentelemetry-instrumentation-milvus = "^0.33.12"
-opentelemetry-instrumentation-mistralai = "^0.33.12"
-opentelemetry-instrumentation-ollama = "^0.33.12"
-opentelemetry-instrumentation-openai = "^0.33.12"
-opentelemetry-instrumentation-pinecone = "^0.33.12"
-opentelemetry-instrumentation-qdrant = "^0.33.12"
-opentelemetry-instrumentation-replicate = "^0.33.12"
-opentelemetry-instrumentation-sagemaker = "^0.33.12"
-opentelemetry-instrumentation-together = "^0.33.12"
-opentelemetry-instrumentation-transformers = "^0.33.12"
-opentelemetry-instrumentation-vertexai = "^0.33.12"
-opentelemetry-instrumentation-watsonx = "^0.33.12"
-opentelemetry-instrumentation-weaviate = "^0.33.12"
 tqdm = "~=4.0"
 argparse = "~=1.0"
+
+[tool.poetry.group.alephalpha]
+optional = true
+[tool.poetry.group.alephalpha.dependencies]
+opentelemetry-instrumentation-alephalpha = "^0.33.11"
+
+[tool.poetry.group.anthropic]
+optional = true
+[tool.poetry.group.anthropic.dependencies]
+opentelemetry-instrumentation-anthropic = "^0.33.12"
+
+[tool.poetry.group.bedrock]
+optional = true
+[tool.poetry.group.bedrock.dependencies]
+opentelemetry-instrumentation-bedrock = "^0.33.12"
+
+[tool.poetry.group.chromadb]
+optional = true
+[tool.poetry.group.chromadb.dependencies]
+opentelemetry-instrumentation-chromadb = "^0.33.12"
+
+[tool.poetry.group.cohere]
+optional = true
+[tool.poetry.group.cohere.dependencies]
+opentelemetry-instrumentation-cohere = "^0.33.12"
+
+[tool.poetry.group.google-generativeai]
+optional = true
+[tool.poetry.group.google-generativeai.dependencies]
+opentelemetry-instrumentation-google-generativeai = "^0.33.12"
+
+[tool.poetry.group.groq]
+optional = true
+[tool.poetry.group.groq.dependencies]
+opentelemetry-instrumentation-groq = "^0.33.12"
+
+[tool.poetry.group.haystack]
+optional = true
+[tool.poetry.group.haystack.dependencies]
+opentelemetry-instrumentation-haystack = "^0.33.12"
+
+[tool.poetry.group.lancedb]
+optional = true
+[tool.poetry.group.lancedb.dependencies]
+opentelemetry-instrumentation-lancedb = "^0.33.12"
+
+[tool.poetry.group.langchain]
+optional = true
+[tool.poetry.group.langchain.dependencies]
+opentelemetry-instrumentation-langchain = "^0.33.12"
+
+[tool.poetry.group.llamaindex]
+optional = true
+[tool.poetry.group.llamaindex.dependencies]
+opentelemetry-instrumentation-llamaindex = "^0.33.12"
+
+[tool.poetry.group.marqo]
+optional = true
+[tool.poetry.group.marqo.dependencies]
+opentelemetry-instrumentation-marqo = "^0.33.12"
+
+[tool.poetry.group.milvus]
+optional = true
+[tool.poetry.group.milvus.dependencies]
+opentelemetry-instrumentation-milvus = "^0.33.12"
+
+[tool.poetry.group.mistralai]
+optional = true
+[tool.poetry.group.mistralai.dependencies]
+opentelemetry-instrumentation-mistralai = "^0.33.12"
+
+[tool.poetry.group.ollama]
+optional = true
+[tool.poetry.group.ollama.dependencies]
+opentelemetry-instrumentation-ollama = "^0.33.12"
+
+[tool.poetry.group.openai]
+optional = true
+[tool.poetry.group.openai.dependencies]
+opentelemetry-instrumentation-openai = "^0.33.12"
+
+[tool.poetry.group.pinecone]
+optional = true
+[tool.poetry.group.pinecone.dependencies]
+opentelemetry-instrumentation-pinecone = "^0.33.12"
+
+[tool.poetry.group.qdrant]
+optional = true
+[tool.poetry.group.qdrant.dependencies]
+opentelemetry-instrumentation-qdrant = "^0.33.12"
+
+[tool.poetry.group.replicate]
+optional = true
+[tool.poetry.group.replicate.dependencies]
+opentelemetry-instrumentation-replicate = "^0.33.12"
+
+[tool.poetry.group.sagemaker]
+optional = true
+[tool.poetry.group.sagemaker.dependencies]
+opentelemetry-instrumentation-sagemaker = "^0.33.12"
+
+[tool.poetry.group.together]
+optional = true
+[tool.poetry.group.together.dependencies]
+opentelemetry-instrumentation-together = "^0.33.12"
+
+[tool.poetry.group.transformers]
+optional = true
+[tool.poetry.group.transformers.dependencies]
+opentelemetry-instrumentation-transformers = "^0.33.12"
+
+[tool.poetry.group.vertexai]
+optional = true
+[tool.poetry.group.vertexai.dependencies]
+opentelemetry-instrumentation-vertexai = "^0.33.12"
+
+[tool.poetry.group.watsonx]
+optional = true
+[tool.poetry.group.watsonx.dependencies]
+opentelemetry-instrumentation-watsonx = "^0.33.12"
+
+[tool.poetry.group.weaviate]
+optional = true
+[tool.poetry.group.weaviate.dependencies]
+opentelemetry-instrumentation-weaviate = "^0.33.12"
+
+# [tool.poetry.extras]
+# full = [
+#   "alephalpha",
+#   "anthropic",
+#   "bedrock",
+#   "chromadb",
+#   "cohere",
+#   "google-generativeai",
+#   "groq",
+#   "haystack",
+#   "lancedb",
+#   "langchain",
+#   "llamaindex",
+#   "marqo",
+#   "milvus",
+#   "mistralai",
+#   "ollama",
+#   "openai",
+#   "pinecone",
+#   "qdrant",
+#   "replicate",
+#   "sagemaker",
+#   "together",
+#   "transformers",
+#   "vertexai",
+#   "watsonx",
+#   "weaviate"
+# ]
 
 [tool.poetry.group.dev.dependencies]
 autopep8 = "^2.2.0"
