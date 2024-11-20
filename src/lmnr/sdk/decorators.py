@@ -7,7 +7,7 @@ from opentelemetry.trace import INVALID_SPAN, get_current_span
 from typing import Callable, Optional, TypeVar, cast
 from typing_extensions import ParamSpec
 
-from lmnr.openllmetry_sdk.tracing.attributes import SESSION_ID, USER_ID
+from lmnr.openllmetry_sdk.tracing.attributes import SESSION_ID
 from lmnr.openllmetry_sdk.tracing.tracing import update_association_properties
 
 from .utils import is_async
