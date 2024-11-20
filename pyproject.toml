@@ -163,34 +163,34 @@ optional = true
 [tool.poetry.group.weaviate.dependencies]
 opentelemetry-instrumentation-weaviate = "^0.33.12"
 
-# [tool.poetry.extras]
-# full = [
-#   "alephalpha",
-#   "anthropic",
-#   "bedrock",
-#   "chromadb",
-#   "cohere",
-#   "google-generativeai",
-#   "groq",
-#   "haystack",
-#   "lancedb",
-#   "langchain",
-#   "llamaindex",
-#   "marqo",
-#   "milvus",
-#   "mistralai",
-#   "ollama",
-#   "openai",
-#   "pinecone",
-#   "qdrant",
-#   "replicate",
-#   "sagemaker",
-#   "together",
-#   "transformers",
-#   "vertexai",
-#   "watsonx",
-#   "weaviate"
-# ]
+[tool.poetry.extras]
+full = [
+  "alephalpha",
+  "anthropic",
+  "bedrock",
+  "chromadb",
+  "cohere",
+  "google-generativeai",
+  "groq",
+  "haystack",
+  "lancedb",
+  "langchain",
+  "llamaindex",
+  "marqo",
+  "milvus",
+  "mistralai",
+  "ollama",
+  "openai",
+  "pinecone",
+  "qdrant",
+  "replicate",
+  "sagemaker",
+  "together",
+  "transformers",
+  "vertexai",
+  "watsonx",
+  "weaviate"
+]
 
 [tool.poetry.group.dev.dependencies]
 autopep8 = "^2.2.0"
