@@ -13,22 +13,27 @@ Check our [open-source repo](https://github.com/lmnr-ai/lmnr) and don't forget t
 
 ## Quickstart
 
-First, install the package:
+First, install the package, specifying the instrumentations you want to use.
+
+For example, to install the package with OpenAI and Anthropic instrumentations:
 
 ```sh
-pip install lmnr
+pip install 'lmnr[anthropic,openai]'
 ```
 
-And then in the code
+To install all possible instrumentations, use the following command:
+
+```sh
+pip install 'lmnr[all]'
+```
+
+Initialize Laminar in your code:
 
 ```python
-from lmnr import Laminar as L
+from lmnr import Laminar
 
-L.initialize(project_api_key="<PROJECT_API_KEY>")
+Laminar.initialize(project_api_key="<PROJECT_API_KEY>")
 ```
-
-This will automatically instrument most of the LLM, Vector DB, and related
-calls with OpenTelemetry-compatible instrumentation.
 
 Note that you need to only initialize Laminar once in your application.
 
@@ -42,9 +47,9 @@ This can be useful if you want to trace a request handler or a function which co
 ```python
 import os
 from openai import OpenAI
-from lmnr import Laminar as L, Instruments
+from lmnr import Laminar
 
-L.initialize(project_api_key=os.environ["LMNR_PROJECT_API_KEY"])
+Laminar.initialize(project_api_key=os.environ["LMNR_PROJECT_API_KEY"])
 
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
@@ -67,9 +72,7 @@ def poem_writer(topic: str):
 @observe()
 def generate_poems():
     poem1 = poem_writer(topic="laminar flow")
-    L.event("is_poem_generated", True)
     poem2 = poem_writer(topic="turbulence")
-    L.event("is_poem_generated", True)
     poems = f"{poem1}\n\n---\n\n{poem2}"
     return poems
 ```
@@ -78,18 +81,10 @@ Also, you can use `Laminar.start_as_current_span` if you want to record a chunk 
 
 ```python
 def handle_user_request(topic: str):
-    with L.start_as_current_span(name="poem_writer", input=topic):
-        ...
-
+    with Laminar.start_as_current_span(name="poem_writer", input=topic):
         poem = poem_writer(topic=topic)
-        
-        ...
-        
-        # while within the span, you can attach laminar events to it
-        L.event("is_poem_generated", True)
-
         # Use set_span_output to record the output of the span
-        L.set_span_output(poem)
+        Laminar.set_span_output(poem)
 ```
 
 ### Automatic instrumentation
@@ -104,9 +99,9 @@ calls with OpenTelemetry-compatible instrumentation, then pass the appropriate i
 For example, if you want to only instrument OpenAI and Anthropic, then do the following:
 
 ```python
-from lmnr import Laminar as L, Instruments
+from lmnr import Laminar, Instruments
 
-L.initialize(project_api_key=os.environ["LMNR_PROJECT_API_KEY"], instruments={Instruments.OPENAI, Instruments.ANTHROPIC})
+Laminar.initialize(project_api_key=os.environ["LMNR_PROJECT_API_KEY"], instruments={Instruments.OPENAI, Instruments.ANTHROPIC})
 ```
 
 If you want to fully disable any kind of autoinstrumentation, pass an empty set as `instruments=set()` to `.initialize()`. 
@@ -187,11 +182,11 @@ Once your pipeline target is set, you can call it from Python in just a few line
 Example use:
 
 ```python
-from lmnr import Laminar as L
+from lmnr import Laminar
 
-L.initialize('<YOUR_PROJECT_API_KEY>', instruments=set())
+Laminar.initialize('<YOUR_PROJECT_API_KEY>', instruments=set())
 
-result = l.run(
+result = Laminar.run(
     pipeline = 'my_pipeline_name',
     inputs = {'input_node_name': 'some_value'},
     # all environment variables
