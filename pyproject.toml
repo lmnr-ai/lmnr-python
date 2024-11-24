@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.4.40"
+version = "0.4.41"
 description = "Python SDK for Laminar AI"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -17,7 +17,7 @@ license = "Apache-2.0"
 
 [tool.poetry]
 name = "lmnr"
-version = "0.4.40"
+version = "0.4.41"
 description = "Python SDK for Laminar AI"
 authors = ["lmnr.ai"]
 readme = "README.md"
@@ -43,6 +43,7 @@ jinja2 = "~=3.0"
 deprecated = "~=1.0"
 tqdm = "~=4.0"
 argparse = "~=1.0"
+aiohttp = "~=3.0"
 opentelemetry-instrumentation-alephalpha = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-anthropic = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-bedrock = {version = ">=0.33.12", optional = true}
@@ -58,7 +59,7 @@ opentelemetry-instrumentation-marqo = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-milvus = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-mistralai = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-ollama = {version = ">=0.33.12", optional = true}
-opentelemetry-instrumentation-openai = {version = ">=0.33.12", optional = true}
+opentelemetry-instrumentation-openai = {optional = true, path = "../openllmetry/packages/opentelemetry-instrumentation-openai"}
 opentelemetry-instrumentation-pinecone = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-qdrant = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-replicate = {version = ">=0.33.12", optional = true}
@@ -69,6 +70,7 @@ opentelemetry-instrumentation-vertexai = {version = ">=0.33.12", optional = true
 opentelemetry-instrumentation-watsonx = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-weaviate = {version = ">=0.33.12", optional = true}
 
+[tool.poetry.extras]
 # List of all possible extras. You can specify one or more of these extras
 # when installing the package, using any of the following:
 # `pip install 'lmnr[anthropic,openai]'`
@@ -78,7 +80,6 @@ opentelemetry-instrumentation-weaviate = {version = ">=0.33.12", optional = true
 
 # `all` is the group added for convenience, if you want to install all
 # the instrumentations.
-[tool.poetry.extras]
 all = [
   "opentelemetry-instrumentation-alephalpha",
   "opentelemetry-instrumentation-anthropic",

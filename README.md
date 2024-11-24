@@ -204,3 +204,16 @@ PipelineRunResponse(
     run_id='53b012d5-5759-48a6-a9c5-0011610e3669'
 )
 ```
+
+## Semantic search
+
+You can perform a semantic search on a dataset in Laminar by calling `Laminar.semantic_search`.
+
+```python
+response = Laminar.semantic_search(
+    query="Greatest Chinese architectural wonders",
+    dataset_id=uuid.UUID("413f8404-724c-4aa4-af16-714d84fd7958"),
+)
+```
+
+[Read more](https://docs.lmnr.ai/datasets/indexing) about indexing and semantic search.

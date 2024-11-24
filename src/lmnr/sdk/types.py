@@ -1,7 +1,7 @@
+import aiohttp
 import datetime
 from enum import Enum
 import pydantic
-import requests
 from typing import Any, Awaitable, Callable, Optional, Union
 import uuid
 
@@ -55,11 +55,40 @@ class PipelineRunResponse(pydantic.BaseModel):
     run_id: str
 
 
+class SemanticSearchRequest(pydantic.BaseModel):
+    query: str
+    dataset_id: uuid.UUID
+    limit: Optional[int] = pydantic.Field(default=None)
+    threshold: Optional[float] = pydantic.Field(default=None, ge=0.0, le=1.0)
+
+    def to_dict(self):
+        res = {
+            "query": self.query,
+            "datasetId": str(self.dataset_id),
+        }
+        if self.limit is not None:
+            res["limit"] = self.limit
+        if self.threshold is not None:
+            res["threshold"] = self.threshold
+        return res
+
+
+class SemanticSearchResult(pydantic.BaseModel):
+    dataset_id: uuid.UUID
+    score: float
+    data: dict[str, Any]
+    content: str
+
+
+class SemanticSearchResponse(pydantic.BaseModel):
+    results: list[SemanticSearchResult]
+
+
 class PipelineRunError(Exception):
     error_code: str
     error_message: str
 
-    def __init__(self, response: requests.Response):
+    def __init__(self, response: aiohttp.ClientResponse):
         try:
             resp_json = response.json()
             self.error_code = resp_json["error_code"]
