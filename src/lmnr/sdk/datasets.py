@@ -1,11 +1,9 @@
 from abc import ABC, abstractmethod
-import logging
+import asyncio
 
 from .log import get_default_logger
 from .laminar import Laminar as L
-from .types import (
-    Datapoint,
-)
+from .types import Datapoint
 
 DEFAULT_FETCH_SIZE = 25
 

@@ -16,8 +16,10 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from opentelemetry.util.types import AttributeValue
 
 from pydantic.alias_generators import to_snake
-from typing import Any, Literal, Optional, Set, Union
+from typing import Any, Awaitable, Literal, Optional, Set, Union
 
+import aiohttp
+import asyncio
 import copy
 import datetime
 import dotenv
@@ -25,8 +27,8 @@ import json
 import logging
 import os
 import random
-import re
 import requests
+import re
 import urllib.parse
 import uuid
 
@@ -54,6 +56,8 @@ from .types import (
     PipelineRunResponse,
     NodeInput,
     PipelineRunRequest,
+    SemanticSearchRequest,
+    SemanticSearchResponse,
     TraceType,
 )
 
@@ -64,7 +68,6 @@ class Laminar:
     __project_api_key: Optional[str] = None
     __env: dict[str, str] = {}
     __initialized: bool = False
-    __http_session: Optional[requests.Session] = None
 
     @classmethod
     def initialize(
@@ -129,7 +132,6 @@ class Laminar:
         cls.__env = env
         cls.__initialized = True
         cls._initialize_logger()
-        cls.__http_session = requests.Session()
         Traceloop.init(
             exporter=OTLPSpanExporter(
                 endpoint=cls.__base_grpc_url,
@@ -164,8 +166,9 @@ class Laminar:
         metadata: dict[str, str] = {},
         parent_span_id: Optional[uuid.UUID] = None,
         trace_id: Optional[uuid.UUID] = None,
-    ) -> PipelineRunResponse:
-        """Runs the pipeline with the given inputs
+    ) -> Union[PipelineRunResponse, Awaitable[PipelineRunResponse]]:
+        """Runs the pipeline with the given inputs. If called from an async
+        function, must be awaited.
 
         Args:
             pipeline (str): name of the Laminar pipeline.\
@@ -215,34 +218,47 @@ class Laminar:
                 parent_span_id=parent_span_id,
                 trace_id=trace_id,
             )
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                return cls.__run(request)
+            else:
+                return asyncio.run(cls.__run(request))
         except Exception as e:
             raise ValueError(f"Invalid request: {e}")
 
-        response = (
-            cls.__http_session.post(
-                cls.__base_http_url + "/v1/pipeline/run",
-                data=json.dumps(request.to_dict()),
-                headers=cls._headers(),
-            )
-            if cls.__http_session
-            else requests.post(
-                cls.__base_http_url + "/v1/pipeline/run",
-                data=json.dumps(request.to_dict()),
-                headers=cls._headers(),
-            )
+    @classmethod
+    def semantic_search(
+        cls,
+        query: str,
+        dataset_id: uuid.UUID,
+        limit: Optional[int] = None,
+        threshold: Optional[float] = None,
+    ) -> SemanticSearchResponse:
+        """Perform a semantic search on a dataset. If called from an async
+        function, must be awaited.
+
+        Args:
+            query (str): query string to search by
+            dataset_id (uuid.UUID): id of the dataset to search in
+            limit (Optional[int], optional): maximum number of results to\
+                return. Defaults to None.
+            threshold (Optional[float], optional): minimum score for a result\
+                to be returned. Defaults to None.
+
+        Returns:
+            SemanticSearchResponse: response object containing the search results sorted by score in descending order
+        """
+        request = SemanticSearchRequest(
+            query=query,
+            dataset_id=dataset_id,
+            limit=limit,
+            threshold=threshold,
         )
-        if response.status_code != 200:
-            raise PipelineRunError(response)
-        try:
-            resp_json = response.json()
-            keys = list(resp_json.keys())
-            for key in keys:
-                value = resp_json[key]
-                del resp_json[key]
-                resp_json[to_snake(key)] = value
-            return PipelineRunResponse(**resp_json)
-        except Exception:
-            raise PipelineRunError(response)
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            return cls.__semantic_search(request)
+        else:
+            return asyncio.run(cls.__semantic_search(request))
 
     @classmethod
     def event(
@@ -646,30 +662,33 @@ class Laminar:
         set_association_properties(props)
 
     @classmethod
-    def create_evaluation(
+    async def create_evaluation(
         cls,
         data: list[EvaluationResultDatapoint],
         group_id: Optional[str] = None,
         name: Optional[str] = None,
     ) -> CreateEvaluationResponse:
-        response = requests.post(
-            cls.__base_http_url + "/v1/evaluations",
-            data=json.dumps(
-                {
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                cls.__base_http_url + "/v1/evaluations",
+                json={
                     "groupId": group_id,
                     "name": name,
                     "points": [datapoint.to_dict() for datapoint in data],
-                }
-            ),
-            headers=cls._headers(),
-        )
-        if response.status_code != 200:
-            try:
-                resp_json = response.json()
-                raise ValueError(f"Error creating evaluation {json.dumps(resp_json)}")
-            except requests.exceptions.RequestException:
-                raise ValueError(f"Error creating evaluation {response.text}")
-        return CreateEvaluationResponse.model_validate(response.json())
+                },
+                headers=cls._headers(),
+            ) as response:
+                if response.status != 200:
+                    try:
+                        resp_json = await response.json()
+                        raise ValueError(
+                            f"Error creating evaluation {json.dumps(resp_json)}"
+                        )
+                    except aiohttp.ClientError:
+                        text = await response.text()
+                        raise ValueError(f"Error creating evaluation {text}")
+                resp_json = await response.json()
+                return CreateEvaluationResponse.model_validate(resp_json)
 
     @classmethod
     def get_datapoints(
@@ -678,6 +697,10 @@ class Laminar:
         offset: int,
         limit: int,
     ) -> GetDatapointsResponse:
+        # TODO: Use aiohttp. Currently, this function is called from within
+        # `LaminarDataset.__len__`, which is sync, but can be called from
+        # both sync and async. Python does not make it easy to mix things this
+        # way, so we should probably refactor `LaminarDataset`.
         params = {"name": dataset_name, "offset": offset, "limit": limit}
         url = (
             cls.__base_http_url
@@ -704,3 +727,53 @@ class Laminar:
             "Authorization": "Bearer " + cls.__project_api_key,
             "Content-Type": "application/json",
         }
+
+    @classmethod
+    async def __run(
+        cls,
+        request: PipelineRunRequest,
+    ) -> PipelineRunResponse:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                cls.__base_http_url + "/v1/pipeline/run",
+                data=json.dumps(request.to_dict()),
+                headers=cls._headers(),
+            ) as response:
+                if response.status != 200:
+                    raise PipelineRunError(response)
+                try:
+                    resp_json = await response.json()
+                    keys = list(resp_json.keys())
+                    for key in keys:
+                        value = resp_json[key]
+                        del resp_json[key]
+                        resp_json[to_snake(key)] = value
+                    return PipelineRunResponse(**resp_json)
+                except Exception:
+                    raise PipelineRunError(response)
+
+    @classmethod
+    async def __semantic_search(
+        cls,
+        request: SemanticSearchRequest,
+    ) -> SemanticSearchResponse:
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                cls.__base_http_url + "/v1/semantic-search",
+                data=json.dumps(request.to_dict()),
+                headers=cls._headers(),
+            ) as response:
+                if response.status != 200:
+                    raise ValueError(
+                        f"Error performing semantic search: [{response.status}] {response.text}"
+                    )
+                try:
+                    resp_json = await response.json()
+                    for result in resp_json["results"]:
+                        result["dataset_id"] = uuid.UUID(result["datasetId"])
+                    return SemanticSearchResponse(**resp_json)
+                except Exception as e:
+                    raise ValueError(
+                        f"Error parsing semantic search response: status={response.status} error={e}"
+                    )

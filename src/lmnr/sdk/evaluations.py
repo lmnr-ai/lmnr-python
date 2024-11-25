@@ -3,7 +3,6 @@ import re
 import sys
 import uuid
 
-from contextlib import contextmanager
 from tqdm import tqdm
 from typing import Any, Awaitable, Optional, Set, Union
 
@@ -11,6 +10,7 @@ from ..openllmetry_sdk.instruments import Instruments
 from ..openllmetry_sdk.tracing.attributes import SPAN_TYPE
 
 from .datasets import EvaluationDataset
+from .eval_control import EVALUATION_INSTANCE, PREPARE_ONLY
 from .laminar import Laminar as L
 from .log import get_default_logger
 from .types import (
@@ -27,21 +27,6 @@ from .types import (
 from .utils import is_async
 
 DEFAULT_BATCH_SIZE = 5
-
-_evaluation = None
-_set_global_evaluation = False
-
-
-@contextmanager
-def set_global_evaluation(set_global_evaluation: bool):
-    global _set_global_evaluation
-    original = _set_global_evaluation
-    try:
-        _set_global_evaluation = set_global_evaluation
-        yield
-    finally:
-        _set_global_evaluation = original
-        pass
 
 
 def get_evaluation_url(project_id: str, evaluation_id: str):
@@ -198,15 +183,10 @@ class Evaluation:
             instruments=instruments,
         )
 
-    def run(self) -> Union[None, Awaitable[None]]:
+    async def run(self) -> Awaitable[None]:
         if self.is_finished:
             raise Exception("Evaluation is already finished")
-
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            return loop.create_task(self._run())
-        else:
-            return loop.run_until_complete(self._run())
+        return await self._run()
 
     async def _run(self) -> None:
         self.reporter.start(len(self.data))
@@ -224,7 +204,7 @@ class Evaluation:
         for result_datapoint in result_datapoints:
             result_datapoint.human_evaluators = self.human_evaluators or {}
 
-        evaluation = L.create_evaluation(
+        evaluation = await L.create_evaluation(
             data=result_datapoints, group_id=self.group_id, name=self.name
         )
         average_scores = get_average_scores(result_datapoints)
@@ -389,8 +369,11 @@ def evaluate(
         instruments=instruments,
     )
 
-    global _evaluation
-    if _set_global_evaluation:
-        _evaluation = evaluation
+    if PREPARE_ONLY.get():
+        EVALUATION_INSTANCE.set(evaluation)
     else:
-        return evaluation.run()
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            return loop.run_until_complete(evaluation.run())
+        else:
+            return asyncio.run(evaluation.run())
