@@ -59,7 +59,7 @@ opentelemetry-instrumentation-marqo = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-milvus = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-mistralai = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-ollama = {version = ">=0.33.12", optional = true}
-opentelemetry-instrumentation-openai = {optional = true, path = "../openllmetry/packages/opentelemetry-instrumentation-openai"}
+opentelemetry-instrumentation-openai = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-pinecone = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-qdrant = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-replicate = {version = ">=0.33.12", optional = true}
