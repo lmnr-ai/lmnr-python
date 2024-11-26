@@ -183,11 +183,7 @@ class TracerWrapper(object):
 
     @classmethod
     def verify_initialized(cls) -> bool:
-        if hasattr(cls, "instance"):
-            return True
-
-        cls.__logger.warning("Laminar not initialized, make sure to initialize")
-        return False
+        return hasattr(cls, "instance")
 
     def flush(self):
         self.__spans_processor.force_flush()

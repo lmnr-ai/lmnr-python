@@ -345,6 +345,9 @@ class Laminar:
                 span. Defaults to None.
         """
 
+        if not cls.is_initialized():
+            yield
+
         with get_tracer() as tracer:
             span_path = get_span_path(name)
             ctx = set_value("span_path", span_path, context)
@@ -757,7 +760,6 @@ class Laminar:
         cls,
         request: SemanticSearchRequest,
     ) -> SemanticSearchResponse:
-
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 cls.__base_http_url + "/v1/semantic-search",
