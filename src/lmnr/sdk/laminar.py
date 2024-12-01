@@ -347,6 +347,7 @@ class Laminar:
 
         if not cls.is_initialized():
             yield
+            return
 
         with get_tracer() as tracer:
             span_path = get_span_path(name)
