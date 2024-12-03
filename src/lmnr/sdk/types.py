@@ -124,7 +124,7 @@ ExecutorFunctionReturnType = Any
 EvaluatorFunctionReturnType = Union[Numeric, dict[str, Numeric]]
 
 ExecutorFunction = Callable[
-    [EvaluationDatapointData, Any, dict[str, Any]],
+    [EvaluationDatapointData, Any],
     Union[ExecutorFunctionReturnType, Awaitable[ExecutorFunctionReturnType]],
 ]
 
@@ -133,7 +133,7 @@ ExecutorFunction = Callable[
 # record of string keys and number values. The latter is useful for evaluating
 # multiple criteria in one go instead of running multiple evaluators.
 EvaluatorFunction = Callable[
-    [ExecutorFunctionReturnType, Any, dict[str, Any]],
+    [ExecutorFunctionReturnType, Any],
     Union[EvaluatorFunctionReturnType, Awaitable[EvaluatorFunctionReturnType]],
 ]
 
