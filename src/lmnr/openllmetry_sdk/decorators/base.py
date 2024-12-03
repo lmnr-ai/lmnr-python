@@ -3,11 +3,13 @@ from functools import wraps
 import logging
 import os
 import pydantic
+import traceback
 import types
 from typing import Any, Optional
 
 from opentelemetry import trace
 from opentelemetry import context as context_api
+from opentelemetry.trace import Span
 
 from lmnr.sdk.utils import get_input_from_func_args, is_method
 from lmnr.openllmetry_sdk.tracing import get_tracer
@@ -69,7 +71,12 @@ def entity_method(
                 except TypeError:
                     pass
 
-                res = fn(*args, **kwargs)
+                try:
+                    res = fn(*args, **kwargs)
+                except Exception as e:
+                    _process_exception(span, e)
+                    span.end()
+                    raise e
 
                 # span will be ended in the generator
                 if isinstance(res, types.GeneratorType):
@@ -131,7 +138,12 @@ def aentity_method(
                 except TypeError:
                     pass
 
-                res = await fn(*args, **kwargs)
+                try:
+                    res = await fn(*args, **kwargs)
+                except Exception as e:
+                    _process_exception(span, e)
+                    span.end()
+                    raise e
 
                 # span will be ended in the generator
                 if isinstance(res, types.AsyncGeneratorType):
@@ -177,3 +189,17 @@ def _should_send_prompts():
     return (
         os.getenv("TRACELOOP_TRACE_CONTENT") or "true"
     ).lower() == "true" or context_api.get_value("override_enable_content_tracing")
+
+
+def _process_exception(span: Span, e: Exception):
+    exception_path = [type(e).__module__] if type(e).__module__ != "builtins" else []
+    exception_path.append(type(e).__qualname__)
+    span.add_event(
+        "exception",
+        {
+            "exception.message": str(e),
+            "exception.type": ".".join(exception_path),
+            "exception.stacktrace": traceback.format_exc(),
+            "exception.escaped": True,
+        },
+    )
