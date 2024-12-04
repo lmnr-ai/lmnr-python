@@ -191,4 +191,5 @@ def _should_send_prompts():
 
 
 def _process_exception(span: Span, e: Exception):
-    span.record_exception(e)
+    # Note that this `escaped` is sent as a StringValue("True"), not a boolean.
+    span.record_exception(e, escaped=True)
