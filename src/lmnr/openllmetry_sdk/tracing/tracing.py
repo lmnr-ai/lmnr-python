@@ -10,6 +10,7 @@ from lmnr.openllmetry_sdk.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     SPAN_INSTRUMENTATION_SOURCE,
     SPAN_PATH,
+    TRACING_LEVEL,
 )
 from lmnr.openllmetry_sdk.tracing.content_allow_list import ContentAllowList
 from lmnr.openllmetry_sdk.utils import is_notebook
@@ -224,6 +225,9 @@ def remove_association_properties(properties: dict) -> None:
 
 def _set_association_properties_attributes(span, properties: dict) -> None:
     for key, value in properties.items():
+        if key == TRACING_LEVEL:
+            span.set_attribute(f"lmnr.internal.{TRACING_LEVEL}", value)
+            continue
         span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)
 
 

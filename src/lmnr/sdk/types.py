@@ -203,3 +203,9 @@ class TraceType(Enum):
 class GetDatapointsResponse(pydantic.BaseModel):
     items: list[Datapoint]
     totalCount: int
+
+
+class TracingLevel(Enum):
+    OFF = 0
+    META_ONLY = 1
+    ALL = 2

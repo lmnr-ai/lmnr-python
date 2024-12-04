@@ -7,6 +7,7 @@ from .sdk.types import (
     NodeInput,
     PipelineRunError,
     PipelineRunResponse,
+    TracingLevel,
 )
 from .sdk.decorators import observe
 from .openllmetry_sdk import Instruments
