@@ -59,6 +59,7 @@ from .types import (
     SemanticSearchRequest,
     SemanticSearchResponse,
     TraceType,
+    TracingLevel,
 )
 
 
@@ -559,6 +560,39 @@ class Laminar:
             span.set_attribute(SPAN_OUTPUT, json_dumps(output))
 
     @classmethod
+    @contextmanager
+    def set_tracing_level(self, level: TracingLevel):
+        """Set the tracing level for the current span and the context
+        (i.e. any children spans created from the current span in the current
+        thread).
+
+        Tracing level can be one of:
+        - `TracingLevel.ALL`: Enable tracing for the current span and all
+            children spans.
+        - `TracingLevel.META_ONLY`: Enable tracing for the current span and all
+            children spans, but only record metadata, e.g. tokens, costs.
+        - `TracingLevel.OFF`: Disable recording any spans.
+
+        Example:
+        ```python
+        from lmnr import Laminar, TracingLevel
+
+        with Laminar.set_tracing_level(TracingLevel.META_ONLY):
+            openai_client.chat.completions.create()
+        ```
+        """
+        if level == TracingLevel.ALL:
+            yield
+        else:
+            level = "meta_only" if level == TracingLevel.META_ONLY else "off"
+            update_association_properties({"tracing_level": level})
+            yield
+            try:
+                remove_association_properties({"tracing_level": level})
+            except Exception:
+                pass
+
+    @classmethod
     def set_span_attributes(
         cls,
         attributes: dict[Attributes, Any],
@@ -644,20 +678,6 @@ class Laminar:
         set_association_properties(props)
 
     @classmethod
-    def _set_trace_type(
-        cls,
-        trace_type: TraceType,
-    ):
-        """Set the trace_type for the current span and the context
-        Args:
-            trace_type (TraceType): Type of the trace
-        """
-        association_properties = {
-            TRACE_TYPE: trace_type.value,
-        }
-        update_association_properties(association_properties)
-
-    @classmethod
     def clear_session(cls):
         """Clear the session and user id from  the context"""
         props: dict = copy.copy(context.get_value("association_properties"))
@@ -731,6 +751,20 @@ class Laminar:
             "Authorization": "Bearer " + cls.__project_api_key,
             "Content-Type": "application/json",
         }
+
+    @classmethod
+    def _set_trace_type(
+        cls,
+        trace_type: TraceType,
+    ):
+        """Set the trace_type for the current span and the context
+        Args:
+            trace_type (TraceType): Type of the trace
+        """
+        association_properties = {
+            TRACE_TYPE: trace_type.value,
+        }
+        update_association_properties(association_properties)
 
     @classmethod
     async def __run(

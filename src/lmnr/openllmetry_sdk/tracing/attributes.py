@@ -12,6 +12,7 @@ ASSOCIATION_PROPERTIES = "lmnr.association.properties"
 SESSION_ID = "session_id"
 USER_ID = "user_id"
 TRACE_TYPE = "trace_type"
+TRACING_LEVEL = "tracing_level"
 
 
 # exposed to the user, configurable

@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.4.44"
+version = "0.4.45"
 description = "Python SDK for Laminar AI"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -17,7 +17,7 @@ license = "Apache-2.0"
 
 [tool.poetry]
 name = "lmnr"
-version = "0.4.44"
+version = "0.4.45"
 description = "Python SDK for Laminar AI"
 authors = ["lmnr.ai"]
 readme = "README.md"
@@ -25,10 +25,9 @@ license = "Apache-2.0"
 
 [tool.poetry.dependencies]
 python = ">=3.9,<4"
-pydantic = "~=2.7"
-requests = "~=2.0"
-python-dotenv = "~=1.0"
-backoff = "~=2.0"
+pydantic = ">=2.7"
+requests = ">=2.0"
+python-dotenv = ">=1.0"
 opentelemetry-api = ">=1.28.0"
 opentelemetry-sdk = ">=1.28.0"
 opentelemetry-exporter-otlp-proto-http = ">=1.28.0"
@@ -38,12 +37,10 @@ opentelemetry-instrumentation-sqlalchemy = "^0.49b0"
 opentelemetry-instrumentation-urllib3 = "^0.49b0"
 opentelemetry-instrumentation-threading = "^0.49b0"
 opentelemetry-semantic-conventions-ai = "0.4.2"
-tenacity = ">=8.0"
-jinja2 = "~=3.0"
-deprecated = "~=1.0"
-tqdm = "~=4.0"
-argparse = "~=1.0"
-aiohttp = "~=3.0"
+deprecated = ">=1.0"
+tqdm = ">=4.0"
+argparse = ">=1.0"
+aiohttp = ">=3.0"
 opentelemetry-instrumentation-alephalpha = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-anthropic = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-bedrock = {version = ">=0.33.12", optional = true}
