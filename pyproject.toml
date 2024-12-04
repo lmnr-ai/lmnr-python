@@ -68,7 +68,6 @@ opentelemetry-instrumentation-vertexai = {version = ">=0.33.12", optional = true
 opentelemetry-instrumentation-watsonx = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-weaviate = {version = ">=0.33.12", optional = true}
 
-openai = "^1.56.2"
 [tool.poetry.extras]
 # List of all possible extras. You can specify one or more of these extras
 # when installing the package, using any of the following:
