@@ -3,7 +3,6 @@ from functools import wraps
 import logging
 import os
 import pydantic
-import traceback
 import types
 from typing import Any, Optional
 
@@ -192,14 +191,4 @@ def _should_send_prompts():
 
 
 def _process_exception(span: Span, e: Exception):
-    exception_path = [type(e).__module__] if type(e).__module__ != "builtins" else []
-    exception_path.append(type(e).__qualname__)
-    span.add_event(
-        "exception",
-        {
-            "exception.message": str(e),
-            "exception.type": ".".join(exception_path),
-            "exception.stacktrace": traceback.format_exc(),
-            "exception.escaped": True,
-        },
-    )
+    span.record_exception(e)

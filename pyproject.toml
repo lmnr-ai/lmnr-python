@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.4.45"
+version = "0.4.46"
 description = "Python SDK for Laminar AI"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -17,7 +17,7 @@ license = "Apache-2.0"
 
 [tool.poetry]
 name = "lmnr"
-version = "0.4.45"
+version = "0.4.46"
 description = "Python SDK for Laminar AI"
 authors = ["lmnr.ai"]
 readme = "README.md"
@@ -41,6 +41,7 @@ deprecated = ">=1.0"
 tqdm = ">=4.0"
 argparse = ">=1.0"
 aiohttp = ">=3.0"
+tenacity = ">=8.0"
 opentelemetry-instrumentation-alephalpha = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-anthropic = {version = ">=0.33.12", optional = true}
 opentelemetry-instrumentation-bedrock = {version = ">=0.33.12", optional = true}
