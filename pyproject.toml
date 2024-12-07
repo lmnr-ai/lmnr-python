@@ -136,6 +136,7 @@ autopep8 = "^2.2.0"
 flake8 = "7.0.0"
 pytest = "^8.2.2"
 pytest-sugar = "1.0.0"
+pytest-asyncio = "^0.24.0"
 
 [build-system]
 requires = ["poetry-core"]
