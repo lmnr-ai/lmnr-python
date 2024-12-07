@@ -12,6 +12,7 @@ from lmnr.openllmetry_sdk.tracing.attributes import (
 from lmnr.openllmetry_sdk.decorators.base import json_dumps
 from opentelemetry import context, trace
 from opentelemetry.context import attach, detach, set_value
+from opentelemetry.sdk.trace import SpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.util.types import AttributeValue
 
@@ -79,6 +80,7 @@ class Laminar:
         http_port: Optional[int] = None,
         grpc_port: Optional[int] = None,
         instruments: Optional[Set[Instruments]] = None,
+        _processor: Optional[SpanProcessor] = None,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -133,7 +135,16 @@ class Laminar:
         cls.__env = env
         cls.__initialized = True
         cls._initialize_logger()
+
+        if _processor is not None:
+            cls.__logger.warning(
+                "Using a custom span processor. This feature is added for tests only. "
+                "Any use of this feature outside of tests is not supported and "
+                "advised against."
+            )
+
         Traceloop.init(
+            processor=_processor,
             exporter=OTLPSpanExporter(
                 endpoint=cls.__base_grpc_url,
                 headers={"authorization": f"Bearer {cls.__project_api_key}"},
@@ -268,13 +279,9 @@ class Laminar:
         value: Optional[AttributeValue] = None,
         timestamp: Optional[Union[datetime.datetime, int]] = None,
     ):
-        """Associate an event with the current span. If event with such
-        name never existed, Laminar will create a new event and infer its type
-        from the value. If the event already exists, Laminar will append the
-        value to the event if and only if the value is of a matching type.
-        Otherwise, the event won't be recorded.
-        Supported types are string, numeric, and boolean. If the value
-        is `None`, event is considered a boolean tag with the value of `True`.
+        """Associate an event with the current span. If using manual\
+        instrumentation, use raw OpenTelemetry `span.add_event()` instead.\
+       `value` will be saved as a `lmnr.event.value` attribute.
 
         Args:
             name (str): event name
@@ -672,9 +679,9 @@ class Laminar:
     def clear_metadata(cls):
         """Clear the metadata from the context"""
         props: dict = copy.copy(context.get_value("association_properties"))
-        for k in props.keys():
-            if k.startswith("metadata."):
-                props.pop(k)
+        metadata_keys = [k for k in props.keys() if k.startswith("metadata.")]
+        for k in metadata_keys:
+            props.pop(k)
         set_association_properties(props)
 
     @classmethod
