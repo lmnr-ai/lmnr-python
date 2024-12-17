@@ -7,11 +7,11 @@ import re
 import sys
 
 from .sdk.eval_control import PREPARE_ONLY, EVALUATION_INSTANCE
-from .sdk.log import VerboseColorfulFormatter
+from .sdk.log import ColorfulFormatter
 
 LOG = logging.getLogger(__name__)
 console_log_handler = logging.StreamHandler()
-console_log_handler.setFormatter(VerboseColorfulFormatter())
+console_log_handler.setFormatter(ColorfulFormatter())
 LOG.addHandler(console_log_handler)
 
 
