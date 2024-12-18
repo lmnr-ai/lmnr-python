@@ -24,6 +24,29 @@ class CustomFormatter(logging.Formatter):
         return formatter.format(record)
 
 
+class ColorfulFormatter(logging.Formatter):
+    grey = "\x1b[38;20m"
+    green = "\x1b[32;20m"
+    yellow = "\x1b[33;20m"
+    red = "\x1b[31;20m"
+    bold_red = "\x1b[31;1m"
+    reset = "\x1b[0m"
+    fmt = "Laminar %(levelname)s: %(message)s"
+
+    FORMATS = {
+        logging.DEBUG: grey + fmt + reset,
+        logging.INFO: green + fmt + reset,
+        logging.WARNING: yellow + fmt + reset,
+        logging.ERROR: red + fmt + reset,
+        logging.CRITICAL: bold_red + fmt + reset,
+    }
+
+    def format(self, record: logging.LogRecord):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
+
 # For StreamHandlers / console
 class VerboseColorfulFormatter(CustomFormatter):
     def format(self, record):
@@ -32,7 +55,7 @@ class VerboseColorfulFormatter(CustomFormatter):
 
 # For Verbose FileHandlers / files
 class VerboseFormatter(CustomFormatter):
-    fmt = "%(asctime)s::%(name)s::%(levelname)s| %(message)s (%(filename)s:%(lineno)d)"
+    fmt = "%(asctime)s::%(name)s::%(levelname)s: %(message)s (%(filename)s:%(lineno)d)"
 
     def format(self, record):
         formatter = logging.Formatter(self.fmt)

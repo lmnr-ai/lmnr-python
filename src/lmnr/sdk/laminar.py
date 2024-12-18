@@ -136,15 +136,7 @@ class Laminar:
         cls.__initialized = True
         cls._initialize_logger()
 
-        if _processor is not None:
-            cls.__logger.warning(
-                "Using a custom span processor. This feature is added for tests only. "
-                "Any use of this feature outside of tests is not supported and "
-                "advised against."
-            )
-
         Traceloop.init(
-            processor=_processor,
             exporter=OTLPSpanExporter(
                 endpoint=cls.__base_grpc_url,
                 headers={"authorization": f"Bearer {cls.__project_api_key}"},
@@ -407,7 +399,7 @@ class Laminar:
                     )
                 yield span
 
-            # # TODO: Figure out if this is necessary
+            # TODO: Figure out if this is necessary
             try:
                 detach(ctx_token)
             except Exception:

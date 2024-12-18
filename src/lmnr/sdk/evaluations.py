@@ -29,8 +29,17 @@ from .utils import is_async
 DEFAULT_BATCH_SIZE = 5
 
 
-def get_evaluation_url(project_id: str, evaluation_id: str):
-    return f"https://www.lmnr.ai/project/{project_id}/evaluations/{evaluation_id}"
+def get_evaluation_url(
+    project_id: str, evaluation_id: str, base_url: str = "https://www.lmnr.ai"
+):
+    url = base_url
+    if url.endswith("/"):
+        url = url[:-1]
+    if url.endswith("localhost") or url.endswith("127.0.0.1"):
+        # We best effort assume that the frontend is running on port 3000
+        # TODO: expose the frontend port?
+        url = url + ":3000"
+    return f"{url}/project/{project_id}/evaluations/{evaluation_id}"
 
 
 def get_average_scores(results: list[EvaluationResultDatapoint]) -> dict[str, Numeric]:
@@ -49,8 +58,8 @@ def get_average_scores(results: list[EvaluationResultDatapoint]) -> dict[str, Nu
 
 
 class EvaluationReporter:
-    def __init__(self):
-        pass
+    def __init__(self, base_url: str = "https://www.lmnr.ai"):
+        self.base_url = base_url
 
     def start(self, length: int):
         self.cli_progress = tqdm(
@@ -71,7 +80,7 @@ class EvaluationReporter:
     ):
         self.cli_progress.close()
         print(
-            f"\nCheck the results at {get_evaluation_url(project_id, evaluation_id)}\n"
+            f"\nCheck the results at {get_evaluation_url(project_id, evaluation_id, self.base_url)}\n"
         )
         print("Average scores:")
         for name, score in average_scores.items():
@@ -160,7 +169,7 @@ class Evaluation:
                 )
 
         self.is_finished = False
-        self.reporter = EvaluationReporter()
+        self.reporter = EvaluationReporter(base_url)
         if isinstance(data, list):
             self.data = [
                 (Datapoint.model_validate(point) if isinstance(point, dict) else point)
