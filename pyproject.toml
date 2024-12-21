@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.4.49"
+version = "0.4.50"
 description = "Python SDK for Laminar AI"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -17,7 +17,7 @@ license = "Apache-2.0"
 
 [tool.poetry]
 name = "lmnr"
-version = "0.4.49"
+version = "0.4.50"
 description = "Python SDK for Laminar AI"
 authors = ["lmnr.ai"]
 readme = "README.md"

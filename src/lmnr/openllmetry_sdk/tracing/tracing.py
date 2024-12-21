@@ -509,7 +509,7 @@ def init_chroma_instrumentor():
 
 def init_google_generativeai_instrumentor():
     try:
-        if is_package_installed("google.generativeai") and is_package_installed(
+        if is_package_installed("google-generativeai") and is_package_installed(
             "opentelemetry-instrumentation-google-generativeai"
         ):
             from opentelemetry.instrumentation.google_generativeai import (
