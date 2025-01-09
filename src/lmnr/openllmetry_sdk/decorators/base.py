@@ -12,8 +12,8 @@ from opentelemetry.trace import Span
 
 from lmnr.sdk.utils import get_input_from_func_args, is_method
 from lmnr.openllmetry_sdk.tracing import get_tracer
-from lmnr.openllmetry_sdk.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT, SPAN_PATH
-from lmnr.openllmetry_sdk.tracing.tracing import TracerWrapper, get_span_path
+from lmnr.openllmetry_sdk.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT
+from lmnr.openllmetry_sdk.tracing.tracing import TracerWrapper
 from lmnr.openllmetry_sdk.utils.json_encoder import JSONEncoder
 
 
@@ -50,11 +50,7 @@ def entity_method(
             with get_tracer() as tracer:
                 span = tracer.start_span(span_name)
 
-                span_path = get_span_path(span_name)
-                span.set_attribute(SPAN_PATH, span_path)
-                ctx = context_api.set_value("span_path", span_path)
-
-                ctx = trace.set_span_in_context(span, ctx)
+                ctx = trace.set_span_in_context(span, context_api.get_current())
                 ctx_token = context_api.attach(ctx)
 
                 try:
@@ -101,8 +97,6 @@ def entity_method(
 
 
 # Async Decorators
-
-
 def aentity_method(
     name: Optional[str] = None,
 ):
@@ -117,11 +111,7 @@ def aentity_method(
             with get_tracer() as tracer:
                 span = tracer.start_span(span_name)
 
-                span_path = get_span_path(span_name)
-                span.set_attribute(SPAN_PATH, span_path)
-                ctx = context_api.set_value("span_path", span_path)
-
-                ctx = trace.set_span_in_context(span, ctx)
+                ctx = trace.set_span_in_context(span, context_api.get_current())
                 ctx_token = context_api.attach(ctx)
 
                 try:

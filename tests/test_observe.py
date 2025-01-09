@@ -153,7 +153,9 @@ def test_observe_nested(exporter: InMemorySpanExporter):
     assert bar_span.attributes["lmnr.association.properties.session_id"] == "123"
 
     assert foo_span.attributes["lmnr.span.input"] == json.dumps({})
+    assert foo_span.attributes["lmnr.span.path"] == "observed_foo"
     assert bar_span.attributes["lmnr.span.input"] == json.dumps({})
+    assert bar_span.attributes["lmnr.span.path"] == "observed_foo.observed_bar"
 
     assert foo_span.attributes["lmnr.span.output"] == json.dumps("bar")
     assert bar_span.attributes["lmnr.span.output"] == json.dumps("bar")
