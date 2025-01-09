@@ -1,9 +1,13 @@
 name: Run Tests
 
+# on:
+#   pull_request:
+#     types: [opened, synchronize]
+#     branches: ["main"]
+
 on:
-  pull_request:
-    types: [opened, synchronize]
-    branches: ["main"]
+  push:
+    branches: ["test-action"]
 
 jobs:
   test:
@@ -21,7 +25,7 @@ jobs:
         uses: abatilo/actions-poetry@v4
       - name: Install dependencies
         run: |
-          poetry cache clear . --all
+          poetry lock
           poetry show --tree
           poetry install --with main,dev
       - name: Run tests
