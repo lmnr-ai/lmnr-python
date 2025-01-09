@@ -7,21 +7,20 @@
 [project]
 name = "lmnr"
 version = "0.4.51"
-description = "Python SDK for Laminar AI"
+description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
 ]
 readme = "README.md"
 requires-python = ">=3.9,<4"
 license = "Apache-2.0"
+dependencies = ["poetry (>=2.0.0,<3.0.0)"]
+
+[project.scripts]
+lmnr = "lmnr.cli:cli"
 
 [tool.poetry]
-name = "lmnr"
-version = "0.4.51"
-description = "Python SDK for Laminar AI"
-authors = ["lmnr.ai"]
-readme = "README.md"
-license = "Apache-2.0"
+requires-poetry = ">=2.0"
 
 [tool.poetry.dependencies]
 python = ">=3.9,<4"
@@ -42,33 +41,33 @@ tqdm = ">=4.0"
 argparse = ">=1.0"
 aiohttp = ">=3.0"
 tenacity = ">=8.0"
-opentelemetry-instrumentation-alephalpha = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-anthropic = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-bedrock = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-chromadb = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-cohere = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-google-generativeai = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-groq = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-haystack = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-lancedb = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-langchain = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-llamaindex = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-marqo = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-milvus = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-mistralai = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-ollama = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-openai = {version = ">=0.33.12", optional = true}
-opentelemetry-instrumentation-pinecone = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-qdrant = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-replicate = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-sagemaker = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-together = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-transformers = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-vertexai = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-watsonx = {version = ">=0.34.0", optional = true}
-opentelemetry-instrumentation-weaviate = {version = ">=0.34.0", optional = true}
+opentelemetry-instrumentation-alephalpha = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-anthropic = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-bedrock = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-chromadb = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-cohere = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-google-generativeai = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-groq = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-haystack = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-lancedb = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-langchain = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-llamaindex = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-marqo = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-milvus = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-mistralai = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-ollama = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-openai = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-pinecone = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-qdrant = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-replicate = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-sagemaker = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-together = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-transformers = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-vertexai = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-watsonx = {version = ">=0.35.0", optional = true}
+opentelemetry-instrumentation-weaviate = {version = ">=0.35.0", optional = true}
 
-[tool.poetry.extras]
+[project.optional-dependencies]
 # List of all possible extras. You can specify one or more of these extras
 # when installing the package, using any of the following:
 # `pip install 'lmnr[anthropic,openai]'`
@@ -142,8 +141,3 @@ pytest-asyncio = "^0.24.0"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.poetry.scripts]
-lmnr = "lmnr.cli:cli"
-
-[project.optional-dependencies]
-test = ["pytest"]
