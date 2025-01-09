@@ -20,9 +20,7 @@ jobs:
       - name: Install poetry
         uses: abatilo/actions-poetry@v4
       - name: Install dependencies
-        run: |
-          poetry cache clear . --all
-          poetry show --tree
-          poetry install --with main,dev
+        run: poetry install
       - name: Run tests
         run: poetry run pytest
+
