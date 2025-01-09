@@ -20,6 +20,7 @@ jobs:
       - name: Install poetry
         uses: abatilo/actions-poetry@v4
       - name: Install dependencies
-        run: poetry install
+        # explicitly adding main, because github skipped it for some reason
+        run: poetry install --with main,dev
       - name: Run tests
         run: poetry run pytest
