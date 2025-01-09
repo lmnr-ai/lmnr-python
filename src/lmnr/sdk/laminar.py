@@ -10,8 +10,8 @@ from lmnr.openllmetry_sdk.tracing.attributes import (
     OVERRIDE_PARENT_SPAN,
 )
 from lmnr.openllmetry_sdk.decorators.base import json_dumps
-from opentelemetry import context, trace
-from opentelemetry.context import attach, detach, set_value
+from opentelemetry import context as context_api, trace
+from opentelemetry.context import attach, detach
 from opentelemetry.sdk.trace import SpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.util.types import AttributeValue
@@ -37,11 +37,9 @@ from lmnr.openllmetry_sdk.tracing.attributes import (
     SESSION_ID,
     SPAN_INPUT,
     SPAN_OUTPUT,
-    SPAN_PATH,
     TRACE_TYPE,
 )
 from lmnr.openllmetry_sdk.tracing.tracing import (
-    get_span_path,
     remove_association_properties,
     set_association_properties,
     update_association_properties,
@@ -350,8 +348,7 @@ class Laminar:
             return
 
         with get_tracer() as tracer:
-            span_path = get_span_path(name)
-            ctx = set_value("span_path", span_path, context)
+            ctx = context or context_api.get_current()
             if trace_id is not None:
                 if isinstance(trace_id, uuid.UUID):
                     span_context = trace.SpanContext(
@@ -385,7 +382,6 @@ class Laminar:
                 name,
                 context=ctx,
                 attributes={
-                    SPAN_PATH: span_path,
                     SPAN_TYPE: span_type,
                     **(label_props),
                 },
@@ -497,8 +493,7 @@ class Laminar:
                 span. Defaults to None.
         """
         with get_tracer() as tracer:
-            span_path = get_span_path(name)
-            ctx = set_value("span_path", span_path, context)
+            ctx = context or context_api.get_current()
             if trace_id is not None:
                 if isinstance(trace_id, uuid.UUID):
                     span_context = trace.SpanContext(
@@ -531,7 +526,6 @@ class Laminar:
                 name,
                 context=ctx,
                 attributes={
-                    SPAN_PATH: span_path,
                     SPAN_TYPE: span_type,
                     **(label_props),
                 },
@@ -670,7 +664,7 @@ class Laminar:
     @classmethod
     def clear_metadata(cls):
         """Clear the metadata from the context"""
-        props: dict = copy.copy(context.get_value("association_properties"))
+        props: dict = copy.copy(context_api.get_value("association_properties"))
         metadata_keys = [k for k in props.keys() if k.startswith("metadata.")]
         for k in metadata_keys:
             props.pop(k)
@@ -679,7 +673,7 @@ class Laminar:
     @classmethod
     def clear_session(cls):
         """Clear the session and user id from  the context"""
-        props: dict = copy.copy(context.get_value("association_properties"))
+        props: dict = copy.copy(context_api.get_value("association_properties"))
         props.pop("session_id", None)
         props.pop("user_id", None)
         set_association_properties(props)

@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-import asyncio
 
 from .log import get_default_logger
 from .laminar import Laminar as L

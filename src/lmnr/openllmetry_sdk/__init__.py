@@ -1,6 +1,4 @@
-import os
 import sys
-from pathlib import Path
 
 from typing import Optional, Set
 from opentelemetry.sdk.trace import SpanProcessor

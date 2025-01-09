@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch
 from lmnr import Laminar
 from lmnr.openllmetry_sdk import Traceloop
-
+from lmnr.openllmetry_sdk.tracing.tracing import TracerWrapper
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter
 
@@ -35,3 +35,4 @@ def exporter() -> SpanExporter:
 @pytest.fixture(scope="function", autouse=True)
 def clear_exporter(exporter: InMemorySpanExporter):
     exporter.clear()
+    TracerWrapper.clear()
