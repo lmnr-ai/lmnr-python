@@ -2,11 +2,11 @@
 
 # If you are looking for information about possible extras installations,
 # i.e. what you can pass into `pip install 'lmnr[extra1,extra2]'`, please see the
-# `[tool.poetry.extras]` section below.
+# `[project.optional-dependencies]` section below.
 
 [project]
 name = "lmnr"
-version = "0.4.51"
+version = "0.4.51b0"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -15,7 +15,6 @@ readme = "README.md"
 requires-python = ">=3.9,<4"
 license = "Apache-2.0"
 dependencies = [
-  "poetry (>=2.0.0,<3.0.0)",
   "pydantic (>=2.7)",
   "requests (>=2.0)",
   "python-dotenv (>=1.0)",
@@ -33,50 +32,45 @@ dependencies = [
   "argparse (>=1.0)",
   "aiohttp (>=3.0)",
   "tenacity (>=8.0)",
+  "poetry-core>=2.0.0",
 ]
 
 [project.scripts]
 lmnr = "lmnr.cli:cli"
 
-[tool.poetry]
-requires-poetry = ">=2.0"
-
-# TODO: Migrate these other to project section
-[tool.poetry.dependencies]
-opentelemetry-instrumentation-alephalpha = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-anthropic = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-bedrock = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-chromadb = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-cohere = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-google-generativeai = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-groq = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-haystack = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-lancedb = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-langchain = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-llamaindex = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-marqo = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-milvus = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-mistralai = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-ollama = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-openai = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-pinecone = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-qdrant = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-replicate = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-sagemaker = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-together = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-transformers = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-vertexai = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-watsonx = {version = ">=0.35.0", optional = true}
-opentelemetry-instrumentation-weaviate = {version = ">=0.35.0", optional = true}
-
 [project.optional-dependencies]
 # List of all possible extras. You can specify one or more of these extras
-# when installing the package, using any of the following:
+# when installing the package, using any of the following examples:
 # `pip install 'lmnr[anthropic,openai]'`
 # `uv pip install 'lmnr[anthropic,openai]'`
 # `uv add lmnr --extra anthropic --extra openai`
 # `poetry add 'lmnr[anthropic,openai]'`
 
+alephalpha=["opentelemetry-instrumentation-alephalpha>=0.35.0"]
+anthropic=["opentelemetry-instrumentation-anthropic>=0.35.0"]
+bedrock=["opentelemetry-instrumentation-bedrock>=0.35.0"]
+chromadb=["opentelemetry-instrumentation-chromadb>=0.35.0"]
+cohere=["opentelemetry-instrumentation-cohere>=0.35.0"]
+google-generativeai=["opentelemetry-instrumentation-google-generativeai>=0.35.0"]
+groq=["opentelemetry-instrumentation-groq>=0.35.0"]
+haystack=["opentelemetry-instrumentation-haystack>=0.35.0"]
+lancedb=["opentelemetry-instrumentation-lancedb>=0.35.0"]
+langchain=["opentelemetry-instrumentation-langchain>=0.35.0"]
+llamaindex=["opentelemetry-instrumentation-llamaindex>=0.35.0"]
+marqo=["opentelemetry-instrumentation-marqo>=0.35.0"]
+milvus=["opentelemetry-instrumentation-milvus>=0.35.0"]
+mistralai=["opentelemetry-instrumentation-mistralai>=0.35.0"]
+ollama=["opentelemetry-instrumentation-ollama>=0.35.0"]
+openai=["opentelemetry-instrumentation-openai>=0.35.0"]
+pinecone=["opentelemetry-instrumentation-pinecone>=0.35.0"]
+qdrant=["opentelemetry-instrumentation-qdrant>=0.35.0"]
+replicate=["opentelemetry-instrumentation-replicate>=0.35.0"]
+sagemaker=["opentelemetry-instrumentation-sagemaker>=0.35.0"]
+together=["opentelemetry-instrumentation-together>=0.35.0"]
+transformers=["opentelemetry-instrumentation-transformers>=0.35.0"]
+vertexai=["opentelemetry-instrumentation-vertexai>=0.35.0"]
+watsonx=["opentelemetry-instrumentation-watsonx>=0.35.0"]
+weaviate=["opentelemetry-instrumentation-weaviate>=0.35.0"]
 # `all` is the group added for convenience, if you want to install all
 # the instrumentations.
 all = [
@@ -106,38 +100,16 @@ all = [
   "opentelemetry-instrumentation-watsonx",
   "opentelemetry-instrumentation-weaviate"
 ]
-alephalpha=["opentelemetry-instrumentation-alephalpha"]
-anthropic=["opentelemetry-instrumentation-anthropic"]
-bedrock=["opentelemetry-instrumentation-bedrock"]
-chromadb=["opentelemetry-instrumentation-chromadb"]
-cohere=["opentelemetry-instrumentation-cohere"]
-google-generativeai=["opentelemetry-instrumentation-google-generativeai"]
-groq=["opentelemetry-instrumentation-groq"]
-haystack=["opentelemetry-instrumentation-haystack"]
-lancedb=["opentelemetry-instrumentation-lancedb"]
-langchain=["opentelemetry-instrumentation-langchain"]
-llamaindex=["opentelemetry-instrumentation-llamaindex"]
-marqo=["opentelemetry-instrumentation-marqo"]
-milvus=["opentelemetry-instrumentation-milvus"]
-mistralai=["opentelemetry-instrumentation-mistralai"]
-ollama=["opentelemetry-instrumentation-ollama"]
-openai=["opentelemetry-instrumentation-openai"]
-pinecone=["opentelemetry-instrumentation-pinecone"]
-qdrant=["opentelemetry-instrumentation-qdrant"]
-replicate=["opentelemetry-instrumentation-replicate"]
-sagemaker=["opentelemetry-instrumentation-sagemaker"]
-together=["opentelemetry-instrumentation-together"]
-transformers=["opentelemetry-instrumentation-transformers"]
-vertexai=["opentelemetry-instrumentation-vertexai"]
-watsonx=["opentelemetry-instrumentation-watsonx"]
-weaviate=["opentelemetry-instrumentation-weaviate"]
 
-[tool.poetry.group.dev.dependencies]
-autopep8 = "^2.2.0"
-flake8 = "7.0.0"
-pytest = "^8.2.2"
-pytest-sugar = "1.0.0"
-pytest-asyncio = "^0.24.0"
+# TODO: Migrate these to project section
+[dependency-groups]
+dev = [
+  "autopep8",
+  "flake8",
+  "pytest",
+  "pytest-sugar",
+  "pytest-asyncio"
+]
 
 [build-system]
 requires = ["poetry-core"]
