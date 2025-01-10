@@ -78,7 +78,6 @@ class Laminar:
         http_port: Optional[int] = None,
         grpc_port: Optional[int] = None,
         instruments: Optional[Set[Instruments]] = None,
-        _processor: Optional[SpanProcessor] = None,
         disable_batch: bool = False,
     ):
         """Initialize Laminar context across the application.
@@ -104,6 +103,14 @@ class Laminar:
                             If not specified, defaults to 443.
             grpc_port (Optional[int], optional): Laminar API grpc port.\
                             If not specified, defaults to 8443.
+            instruments (Optional[Set[Instruments]], optional): Instruments to\
+                        enable. Defaults to all instruments. You can pass\
+                        an empty set to disable all instruments. Read more:\
+                        https://docs.lmnr.ai/tracing/automatic-instrumentation
+            disable_batch (bool, optional): If set to True, spans will be sent\
+                        immediately to the backend. Useful for debugging, but\
+                        may cause performance overhead in production.
+                        Defaults to False.
 
         Raises:
             ValueError: If project API key is not set
