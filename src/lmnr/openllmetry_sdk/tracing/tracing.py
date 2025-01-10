@@ -23,11 +23,11 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
     OTLPSpanExporter as GRPCExporter,
 )
 from opentelemetry.instrumentation.threading import ThreadingInstrumentor
-from opentelemetry.context import get_value, attach, set_value
+from opentelemetry.context import get_value, attach, get_current, set_value, Context
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.propagators.textmap import TextMapPropagator
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider, SpanProcessor
+from opentelemetry.sdk.trace import TracerProvider, SpanProcessor, Span
 from opentelemetry.sdk.trace.export import (
     SpanExporter,
     SimpleSpanProcessor,
@@ -70,6 +70,7 @@ class TracerWrapper(object):
     headers: Dict[str, str] = {}
     __tracer_provider: TracerProvider = None
     __logger: logging.Logger = None
+    __span_id_to_path: dict[int, str] = {}
 
     def __new__(
         cls,
@@ -137,6 +138,7 @@ class TracerWrapper(object):
         return cls.instance
 
     def exit_handler(self):
+        self.__span_id_to_path = {}
         self.flush()
 
     def _initialize_logger(self):
@@ -145,14 +147,18 @@ class TracerWrapper(object):
         console_log_handler.setFormatter(VerboseColorfulFormatter())
         self.__logger.addHandler(console_log_handler)
 
-    def _span_processor_on_start(self, span, parent_context):
-        span_path = get_value("span_path")
-        if span_path is not None:
-            # This is done redundantly here for most decorated functions
-            # However, need to do this for auto-instrumented libraries.
-            # Then, for auto-instrumented ones, they'll attach
-            # the final part of the name to the span on the backend.
-            span.set_attribute(SPAN_PATH, span_path)
+    def _span_processor_on_start(
+        self, span: Span, parent_context: Optional[Context] = None
+    ):
+        span_path_in_context = get_value("span_path", parent_context or get_current())
+        span_path_in_context = None
+        parent_span_path = span_path_in_context or (
+            self.__span_id_to_path.get(span.parent.span_id) if span.parent else None
+        )
+        span_path = f"{parent_span_path}.{span.name}" if parent_span_path else span.name
+        span.set_attribute(SPAN_PATH, span_path)
+        set_value("span_path", span_path, get_current())
+        self.__span_id_to_path[span.get_span_context().span_id] = span_path
 
         span.set_attribute(SPAN_INSTRUMENTATION_SOURCE, "python")
 
@@ -185,6 +191,11 @@ class TracerWrapper(object):
     @classmethod
     def verify_initialized(cls) -> bool:
         return hasattr(cls, "instance")
+
+    @classmethod
+    def clear(cls):
+        # Any state cleanup. Now used in between tests
+        cls.__span_id_to_path = {}
 
     def flush(self):
         self.__spans_processor.force_flush()
@@ -229,12 +240,6 @@ def _set_association_properties_attributes(span, properties: dict) -> None:
             span.set_attribute(f"lmnr.internal.{TRACING_LEVEL}", value)
             continue
         span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)
-
-
-def get_span_path(span_name: str) -> str:
-    current_span_path = get_value("span_path")
-    span_path = f"{current_span_path}.{span_name}" if current_span_path else span_name
-    return span_path
 
 
 def set_managed_prompt_tracing_context(

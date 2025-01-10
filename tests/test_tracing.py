@@ -165,6 +165,22 @@ def test_use_span_exception(exporter: InMemorySpanExporter):
     assert events[0].attributes["exception.message"] == "error"
 
 
+def test_use_span_nested_path(exporter: InMemorySpanExporter):
+    span = Laminar.start_span("test", input="my_input")
+    with use_span(span, end_on_exit=True):
+        with Laminar.start_as_current_span("foo"):
+            pass
+
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 2
+
+    outer_span = [span for span in spans if span.name == "test"][0]
+    inner_span = [span for span in spans if span.name == "foo"][0]
+
+    assert outer_span.attributes["lmnr.span.path"] == "test"
+    assert inner_span.attributes["lmnr.span.path"] == "test.foo"
+
+
 def test_use_span_suppress_exception(exporter: InMemorySpanExporter):
     def foo(span):
         with use_span(span, end_on_exit=True, record_exception=False):
