@@ -79,6 +79,7 @@ class Laminar:
         grpc_port: Optional[int] = None,
         instruments: Optional[Set[Instruments]] = None,
         _processor: Optional[SpanProcessor] = None,
+        disable_batch: bool = False,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -140,6 +141,7 @@ class Laminar:
                 headers={"authorization": f"Bearer {cls.__project_api_key}"},
             ),
             instruments=instruments,
+            disable_batch=disable_batch,
         )
 
     @classmethod
