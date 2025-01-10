@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.4.51b0"
+version = "0.4.51"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -32,7 +32,6 @@ dependencies = [
   "argparse (>=1.0)",
   "aiohttp (>=3.0)",
   "tenacity (>=8.0)",
-  "poetry-core>=2.0.0",
 ]
 
 [project.scripts]
