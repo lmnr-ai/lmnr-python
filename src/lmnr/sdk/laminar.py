@@ -12,7 +12,6 @@ from lmnr.openllmetry_sdk.tracing.attributes import (
 from lmnr.openllmetry_sdk.decorators.base import json_dumps
 from opentelemetry import context as context_api, trace
 from opentelemetry.context import attach, detach
-from opentelemetry.sdk.trace import SpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.util.types import AttributeValue
 
