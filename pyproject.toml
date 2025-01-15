@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.4.52"
+version = "0.4.53.dev0"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -18,14 +18,14 @@ dependencies = [
   "pydantic (>=2.0.3)",
   "requests (>=2.0)",
   "python-dotenv (>=1.0)",
-  "opentelemetry-api (>=1.28.0)",
-  "opentelemetry-sdk (>=1.28.0)",
-  "opentelemetry-exporter-otlp-proto-http (>=1.28.0)",
-  "opentelemetry-exporter-otlp-proto-grpc (>=1.28.0)",
-  "opentelemetry-instrumentation-requests (>=0.50b0)",
-  "opentelemetry-instrumentation-sqlalchemy (>=0.50b0)",
-  "opentelemetry-instrumentation-urllib3 (>=0.50b0)",
-  "opentelemetry-instrumentation-threading (>=0.50b0)",
+  "opentelemetry-api (>=1.27.0)",
+  "opentelemetry-sdk (>=1.27.0)",
+  "opentelemetry-exporter-otlp-proto-http (>=1.27.0)",
+  "opentelemetry-exporter-otlp-proto-grpc (>=1.27.0)",
+  "opentelemetry-instrumentation-requests (==0.48b0)",
+  "opentelemetry-instrumentation-sqlalchemy (==0.48b0)",
+  "opentelemetry-instrumentation-urllib3 (==0.48b0)",
+  "opentelemetry-instrumentation-threading (==0.48b0)",
   "opentelemetry-semantic-conventions-ai (>=0.4.2)",
   "deprecated (>=1.0)",
   "tqdm (>=4.0)",
@@ -45,59 +45,59 @@ lmnr = "lmnr.cli:cli"
 # `uv add lmnr --extra anthropic --extra openai`
 # `poetry add 'lmnr[anthropic,openai]'`
 
-alephalpha=["opentelemetry-instrumentation-alephalpha>=0.35.0"]
-anthropic=["opentelemetry-instrumentation-anthropic>=0.35.0"]
-bedrock=["opentelemetry-instrumentation-bedrock>=0.35.0"]
-chromadb=["opentelemetry-instrumentation-chromadb>=0.35.0"]
-cohere=["opentelemetry-instrumentation-cohere>=0.35.0"]
-google-generativeai=["opentelemetry-instrumentation-google-generativeai>=0.35.0"]
-groq=["opentelemetry-instrumentation-groq>=0.35.0"]
-haystack=["opentelemetry-instrumentation-haystack>=0.35.0"]
-lancedb=["opentelemetry-instrumentation-lancedb>=0.35.0"]
-langchain=["opentelemetry-instrumentation-langchain>=0.35.0"]
-llamaindex=["opentelemetry-instrumentation-llamaindex>=0.35.0"]
-marqo=["opentelemetry-instrumentation-marqo>=0.35.0"]
-milvus=["opentelemetry-instrumentation-milvus>=0.35.0"]
-mistralai=["opentelemetry-instrumentation-mistralai>=0.35.0"]
-ollama=["opentelemetry-instrumentation-ollama>=0.35.0"]
-openai=["opentelemetry-instrumentation-openai>=0.35.0"]
-pinecone=["opentelemetry-instrumentation-pinecone>=0.35.0"]
-qdrant=["opentelemetry-instrumentation-qdrant>=0.35.0"]
-replicate=["opentelemetry-instrumentation-replicate>=0.35.0"]
-sagemaker=["opentelemetry-instrumentation-sagemaker>=0.35.0"]
-together=["opentelemetry-instrumentation-together>=0.35.0"]
-transformers=["opentelemetry-instrumentation-transformers>=0.35.0"]
-vertexai=["opentelemetry-instrumentation-vertexai>=0.35.0"]
-watsonx=["opentelemetry-instrumentation-watsonx>=0.35.0"]
-weaviate=["opentelemetry-instrumentation-weaviate>=0.35.0"]
+alephalpha=["opentelemetry-instrumentation-alephalpha==0.33.9"]
+anthropic=["opentelemetry-instrumentation-anthropic==0.33.9"]
+bedrock=["opentelemetry-instrumentation-bedrock==0.33.9"]
+chromadb=["opentelemetry-instrumentation-chromadb==0.33.9"]
+cohere=["opentelemetry-instrumentation-cohere==0.33.9"]
+google-generativeai=["opentelemetry-instrumentation-google-generativeai==0.33.9"]
+groq=["opentelemetry-instrumentation-groq==0.33.9"]
+haystack=["opentelemetry-instrumentation-haystack==0.33.9"]
+lancedb=["opentelemetry-instrumentation-lancedb==0.33.9"]
+langchain=["opentelemetry-instrumentation-langchain==0.33.9"]
+llamaindex=["opentelemetry-instrumentation-llamaindex==0.33.9"]
+marqo=["opentelemetry-instrumentation-marqo==0.33.9"]
+milvus=["opentelemetry-instrumentation-milvus==0.33.9"]
+mistralai=["opentelemetry-instrumentation-mistralai==0.33.9"]
+ollama=["opentelemetry-instrumentation-ollama==0.33.9"]
+openai=["opentelemetry-instrumentation-openai==0.33.9"]
+pinecone=["opentelemetry-instrumentation-pinecone==0.33.9"]
+qdrant=["opentelemetry-instrumentation-qdrant==0.33.9"]
+replicate=["opentelemetry-instrumentation-replicate==0.33.9"]
+sagemaker=["opentelemetry-instrumentation-sagemaker==0.33.9"]
+together=["opentelemetry-instrumentation-together==0.33.9"]
+transformers=["opentelemetry-instrumentation-transformers==0.33.9"]
+vertexai=["opentelemetry-instrumentation-vertexai==0.33.9"]
+watsonx=["opentelemetry-instrumentation-watsonx==0.33.9"]
+weaviate=["opentelemetry-instrumentation-weaviate==0.33.9"]
 # `all` is the group added for convenience, if you want to install all
 # the instrumentations.
 all = [
-  "opentelemetry-instrumentation-alephalpha>=0.35.0",
-  "opentelemetry-instrumentation-anthropic>=0.35.0",
-  "opentelemetry-instrumentation-bedrock>=0.35.0",
-  "opentelemetry-instrumentation-chromadb>=0.35.0",
-  "opentelemetry-instrumentation-cohere>=0.35.0",
-  "opentelemetry-instrumentation-google-generativeai>=0.35.0",
-  "opentelemetry-instrumentation-groq>=0.35.0",
-  "opentelemetry-instrumentation-haystack>=0.35.0",
-  "opentelemetry-instrumentation-lancedb>=0.35.0",
-  "opentelemetry-instrumentation-langchain>=0.35.0",
-  "opentelemetry-instrumentation-llamaindex>=0.35.0",
-  "opentelemetry-instrumentation-marqo>=0.35.0",
-  "opentelemetry-instrumentation-milvus>=0.35.0",
-  "opentelemetry-instrumentation-mistralai>=0.35.0",
-  "opentelemetry-instrumentation-ollama>=0.35.0",
-  "opentelemetry-instrumentation-openai>=0.35.0",
-  "opentelemetry-instrumentation-pinecone>=0.35.0",
-  "opentelemetry-instrumentation-qdrant>=0.35.0",
-  "opentelemetry-instrumentation-replicate>=0.35.0",
-  "opentelemetry-instrumentation-sagemaker>=0.35.0",
-  "opentelemetry-instrumentation-together>=0.35.0",
-  "opentelemetry-instrumentation-transformers>=0.35.0",
-  "opentelemetry-instrumentation-vertexai>=0.35.0",
-  "opentelemetry-instrumentation-watsonx>=0.35.0",
-  "opentelemetry-instrumentation-weaviate>=0.35.0"
+  "opentelemetry-instrumentation-alephalpha==0.33.9",
+  "opentelemetry-instrumentation-anthropic==0.33.9",
+  "opentelemetry-instrumentation-bedrock==0.33.9",
+  "opentelemetry-instrumentation-chromadb==0.33.9",
+  "opentelemetry-instrumentation-cohere==0.33.9",
+  "opentelemetry-instrumentation-google-generativeai==0.33.9",
+  "opentelemetry-instrumentation-groq==0.33.9",
+  "opentelemetry-instrumentation-haystack==0.33.9",
+  "opentelemetry-instrumentation-lancedb==0.33.9",
+  "opentelemetry-instrumentation-langchain==0.33.9",
+  "opentelemetry-instrumentation-llamaindex==0.33.9",
+  "opentelemetry-instrumentation-marqo==0.33.9",
+  "opentelemetry-instrumentation-milvus==0.33.9",
+  "opentelemetry-instrumentation-mistralai==0.33.9",
+  "opentelemetry-instrumentation-ollama==0.33.9",
+  "opentelemetry-instrumentation-openai==0.33.9",
+  "opentelemetry-instrumentation-pinecone==0.33.9",
+  "opentelemetry-instrumentation-qdrant==0.33.9",
+  "opentelemetry-instrumentation-replicate==0.33.9",
+  "opentelemetry-instrumentation-sagemaker==0.33.9",
+  "opentelemetry-instrumentation-together==0.33.9",
+  "opentelemetry-instrumentation-transformers==0.33.9",
+  "opentelemetry-instrumentation-vertexai==0.33.9",
+  "opentelemetry-instrumentation-watsonx==0.33.9",
+  "opentelemetry-instrumentation-weaviate==0.33.9"
 ]
 
 [dependency-groups]
