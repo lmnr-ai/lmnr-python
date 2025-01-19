@@ -70,7 +70,7 @@ class TracerWrapper(object):
     headers: Dict[str, str] = {}
     __tracer_provider: TracerProvider = None
     __logger: logging.Logger = None
-    __span_id_to_path: dict[int, str] = {}
+    __span_id_to_path: dict[int, list[str]] = {}
 
     def __new__(
         cls,
@@ -155,7 +155,7 @@ class TracerWrapper(object):
         parent_span_path = span_path_in_context or (
             self.__span_id_to_path.get(span.parent.span_id) if span.parent else None
         )
-        span_path = f"{parent_span_path}.{span.name}" if parent_span_path else span.name
+        span_path = parent_span_path + [span.name] if parent_span_path else [span.name]
         span.set_attribute(SPAN_PATH, span_path)
         set_value("span_path", span_path, get_current())
         self.__span_id_to_path[span.get_span_context().span_id] = span_path
