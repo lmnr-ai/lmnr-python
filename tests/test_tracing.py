@@ -17,6 +17,7 @@ def test_start_as_current_span(exporter: InMemorySpanExporter):
     assert json.loads(spans[0].attributes["lmnr.span.output"]) == "foo"
     assert json.loads(spans[0].attributes["lmnr.span.input"]) == "my_input"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
 def test_start_as_current_span_exception(exporter: InMemorySpanExporter):
@@ -30,6 +31,7 @@ def test_start_as_current_span_exception(exporter: InMemorySpanExporter):
     assert spans[0].name == "test"
     assert json.loads(spans[0].attributes["lmnr.span.input"]) == "my_input"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
     events = spans[0].events
     assert len(events) == 1
@@ -46,6 +48,7 @@ def test_start_as_current_span_span_type(exporter: InMemorySpanExporter):
     assert len(spans) == 1
     assert spans[0].attributes["lmnr.span.type"] == "LLM"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
 def test_start_as_current_span_labels(exporter: InMemorySpanExporter):
@@ -59,6 +62,7 @@ def test_start_as_current_span_labels(exporter: InMemorySpanExporter):
         == "bar"
     )
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
 def test_set_span_attributes(exporter: InMemorySpanExporter):
@@ -84,6 +88,7 @@ def test_set_span_attributes(exporter: InMemorySpanExporter):
     assert spans[0].attributes["gen_ai.usage.input_tokens"] == 100
     assert spans[0].attributes["gen_ai.usage.output_tokens"] == 200
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
 def test_use_span_set_attributes(exporter: InMemorySpanExporter):
@@ -111,6 +116,7 @@ def test_use_span_set_attributes(exporter: InMemorySpanExporter):
     assert spans[0].attributes["gen_ai.usage.input_tokens"] == 100
     assert spans[0].attributes["gen_ai.usage.output_tokens"] == 200
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
 def test_use_span_end_on_exit(exporter: InMemorySpanExporter):
@@ -126,6 +132,7 @@ def test_use_span_end_on_exit(exporter: InMemorySpanExporter):
     assert json.loads(spans[0].attributes["lmnr.span.output"]) == "foo"
     assert json.loads(spans[0].attributes["lmnr.span.input"]) == "my_input"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
 def test_use_span_manual_end(exporter: InMemorySpanExporter):
@@ -141,6 +148,7 @@ def test_use_span_manual_end(exporter: InMemorySpanExporter):
     assert json.loads(spans[0].attributes["lmnr.span.input"]) == "my_input"
     assert json.loads(spans[0].attributes["lmnr.span.output"]) == "foo"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
 def test_use_span_exception(exporter: InMemorySpanExporter):
@@ -157,6 +165,7 @@ def test_use_span_exception(exporter: InMemorySpanExporter):
     assert spans[0].name == "test"
     assert json.loads(spans[0].attributes["lmnr.span.input"]) == "my_input"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
     events = spans[0].events
     assert len(events) == 1
@@ -177,8 +186,8 @@ def test_use_span_nested_path(exporter: InMemorySpanExporter):
     outer_span = [span for span in spans if span.name == "test"][0]
     inner_span = [span for span in spans if span.name == "foo"][0]
 
-    assert outer_span.attributes["lmnr.span.path"] == "test"
-    assert inner_span.attributes["lmnr.span.path"] == "test.foo"
+    assert outer_span.attributes["lmnr.span.path"] == ("test",)
+    assert inner_span.attributes["lmnr.span.path"] == ("test", "foo")
 
 
 def test_use_span_suppress_exception(exporter: InMemorySpanExporter):
@@ -195,6 +204,7 @@ def test_use_span_suppress_exception(exporter: InMemorySpanExporter):
     assert spans[0].name == "test"
     assert json.loads(spans[0].attributes["lmnr.span.input"]) == "my_input"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
     events = spans[0].events
     assert len(events) == 0
@@ -210,6 +220,7 @@ def test_session_id(exporter: InMemorySpanExporter):
     assert spans[0].attributes["lmnr.association.properties.session_id"] == "123"
     assert spans[0].name == "test"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
 def test_session_id_clear(exporter: InMemorySpanExporter):
@@ -234,6 +245,7 @@ def test_session_id_clear(exporter: InMemorySpanExporter):
         no_session_span.attributes.get("lmnr.association.properties.session_id") is None
     )
     assert no_session_span.attributes["lmnr.span.instrumentation_source"] == "python"
+    assert no_session_span.attributes["lmnr.span.path"] == ("no_session",)
 
 
 def test_with_labels(exporter: InMemorySpanExporter):
@@ -265,6 +277,10 @@ def test_with_labels(exporter: InMemorySpanExporter):
     assert second_span.attributes["lmnr.span.instrumentation_source"] == "python"
     assert third_span.attributes["lmnr.span.instrumentation_source"] == "python"
 
+    assert first_span.attributes["lmnr.span.path"] == ("test1",)
+    assert second_span.attributes["lmnr.span.path"] == ("test2",)
+    assert third_span.attributes["lmnr.span.path"] == ("test3",)
+
 
 def test_with_labels_observe(exporter: InMemorySpanExporter):
     @observe()
@@ -282,6 +298,7 @@ def test_with_labels_observe(exporter: InMemorySpanExporter):
         == "bar"
     )
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("foo",)
 
 
 def test_metadata(exporter: InMemorySpanExporter):
@@ -297,6 +314,7 @@ def test_metadata(exporter: InMemorySpanExporter):
     )
     assert spans[0].name == "test"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
 def test_metadata_clear(exporter: InMemorySpanExporter):
@@ -327,6 +345,7 @@ def test_metadata_clear(exporter: InMemorySpanExporter):
     )
     assert with_metadata_span.attributes["lmnr.span.instrumentation_source"] == "python"
     assert no_metadata_span.attributes["lmnr.span.instrumentation_source"] == "python"
+    assert no_metadata_span.attributes["lmnr.span.path"] == ("no_metadata",)
 
 
 def test_tracing_level_attribute(exporter: InMemorySpanExporter):
@@ -346,6 +365,8 @@ def test_tracing_level_attribute(exporter: InMemorySpanExporter):
     assert second_span.attributes["lmnr.internal.tracing_level"] == "off"
     assert first_span.attributes["lmnr.span.instrumentation_source"] == "python"
     assert second_span.attributes["lmnr.span.instrumentation_source"] == "python"
+    assert first_span.attributes["lmnr.span.path"] == ("test",)
+    assert second_span.attributes["lmnr.span.path"] == ("test2",)
 
 
 def test_force_trace_id(exporter: InMemorySpanExporter):
@@ -363,6 +384,7 @@ def test_force_trace_id(exporter: InMemorySpanExporter):
 
     assert spans[0].attributes.get("lmnr.internal.override_parent_span") is True
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
 def test_force_trace_id_does_not_override_if_not_uuid(exporter: InMemorySpanExporter):
@@ -373,3 +395,4 @@ def test_force_trace_id_does_not_override_if_not_uuid(exporter: InMemorySpanExpo
     assert len(spans) == 1
     assert spans[0].attributes.get("lmnr.internal.override_parent_span") is None
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("test",)

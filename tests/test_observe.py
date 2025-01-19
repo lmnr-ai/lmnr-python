@@ -26,6 +26,7 @@ def test_observe(exporter: InMemorySpanExporter):
     }
     assert json.loads(spans[0].attributes["lmnr.span.output"]) == "foo"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
 
 
 def test_observe_name(exporter: InMemorySpanExporter):
@@ -39,6 +40,7 @@ def test_observe_name(exporter: InMemorySpanExporter):
     assert spans[0].name == "custom_name"
     assert result == "foo"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("custom_name",)
 
 
 def test_observe_session_id(exporter: InMemorySpanExporter):
@@ -52,6 +54,7 @@ def test_observe_session_id(exporter: InMemorySpanExporter):
     assert len(spans) == 1
     assert spans[0].attributes["lmnr.association.properties.session_id"] == "123"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
 
 
 def test_observe_exception(exporter: InMemorySpanExporter):
@@ -70,6 +73,7 @@ def test_observe_exception(exporter: InMemorySpanExporter):
     assert events[0].name == "exception"
     assert events[0].attributes["exception.type"] == "ValueError"
     assert events[0].attributes["exception.message"] == "test"
+    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
 
 
 def test_observe_exception_with_session_id_and_name(exporter: InMemorySpanExporter):
@@ -85,6 +89,7 @@ def test_observe_exception_with_session_id_and_name(exporter: InMemorySpanExport
     assert spans[0].attributes["lmnr.association.properties.session_id"] == "123"
     assert spans[0].name == "custom_name"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("custom_name",)
 
     events = spans[0].events
     assert len(events) == 1
@@ -106,6 +111,7 @@ async def test_observe_async(exporter: InMemorySpanExporter):
     assert spans[0].name == "observed_foo"
     assert json.loads(spans[0].attributes["lmnr.span.output"]) == "foo"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
 
 
 @pytest.mark.asyncio
@@ -128,6 +134,7 @@ async def test_observe_async_exception(exporter: InMemorySpanExporter):
     assert events[0].name == "exception"
     assert events[0].attributes["exception.type"] == "ValueError"
     assert events[0].attributes["exception.message"] == "test"
+    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
 
 
 def test_observe_nested(exporter: InMemorySpanExporter):
@@ -153,9 +160,9 @@ def test_observe_nested(exporter: InMemorySpanExporter):
     assert bar_span.attributes["lmnr.association.properties.session_id"] == "123"
 
     assert foo_span.attributes["lmnr.span.input"] == json.dumps({})
-    assert foo_span.attributes["lmnr.span.path"] == "observed_foo"
+    assert foo_span.attributes["lmnr.span.path"] == ("observed_foo",)
     assert bar_span.attributes["lmnr.span.input"] == json.dumps({})
-    assert bar_span.attributes["lmnr.span.path"] == "observed_foo.observed_bar"
+    assert bar_span.attributes["lmnr.span.path"] == ("observed_foo", "observed_bar")
 
     assert foo_span.attributes["lmnr.span.output"] == json.dumps("bar")
     assert bar_span.attributes["lmnr.span.output"] == json.dumps("bar")
