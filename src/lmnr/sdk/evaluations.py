@@ -29,9 +29,10 @@ from .utils import is_async
 DEFAULT_BATCH_SIZE = 5
 
 
-def get_evaluation_url(
-    project_id: str, evaluation_id: str, base_url: str = "https://www.lmnr.ai"
-):
+def get_evaluation_url(project_id: str, evaluation_id: str, base_url: Optional[str] = None):
+    if not base_url:
+        base_url = "https://www.lmnr.ai"
+
     url = base_url
     if url.endswith("/"):
         url = url[:-1]
@@ -58,7 +59,7 @@ def get_average_scores(results: list[EvaluationResultDatapoint]) -> dict[str, Nu
 
 
 class EvaluationReporter:
-    def __init__(self, base_url: str = "https://www.lmnr.ai"):
+    def __init__(self, base_url):
         self.base_url = base_url
 
     def start(self, length: int):
