@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.4.54"
+version = "0.4.55"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -32,6 +32,15 @@ dependencies = [
   "argparse (>=1.0)",
   "aiohttp (>=3.0)",
   "tenacity (>=8.0)",
+  # explicitly freeze grpcio. Since 1.68.0, grpcio writes a warning message
+  # that looks scary, but is harmless.
+  # WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+  # E0000 00:00:1737439981.199902 9456033 init.cc:229] grpc_wait_for_shutdown_with_timeout() timed out.
+  #
+  # Related issue:
+  # https://discuss.ai.google.dev/t/warning-all-log-messages-before-absl-initializelog-is-called-are-written-to-stderr-e0000-001731955515-629532-17124-init-cc-229-grpc-wait-for-shutdown-with-timeout-timed-out/50020
+  # https://github.com/grpc/grpc/issues/38490
+  "grpcio<1.68.0",
 ]
 
 [project.scripts]
@@ -45,59 +54,59 @@ lmnr = "lmnr.cli:cli"
 # `uv add lmnr --extra anthropic --extra openai`
 # `poetry add 'lmnr[anthropic,openai]'`
 
-alephalpha=["opentelemetry-instrumentation-alephalpha>=0.35.0"]
-anthropic=["opentelemetry-instrumentation-anthropic>=0.35.0"]
-bedrock=["opentelemetry-instrumentation-bedrock>=0.35.0"]
-chromadb=["opentelemetry-instrumentation-chromadb>=0.35.0"]
-cohere=["opentelemetry-instrumentation-cohere>=0.35.0"]
-google-generativeai=["opentelemetry-instrumentation-google-generativeai>=0.35.0"]
-groq=["opentelemetry-instrumentation-groq>=0.35.0"]
-haystack=["opentelemetry-instrumentation-haystack>=0.35.0"]
-lancedb=["opentelemetry-instrumentation-lancedb>=0.35.0"]
-langchain=["opentelemetry-instrumentation-langchain>=0.35.0"]
-llamaindex=["opentelemetry-instrumentation-llamaindex>=0.35.0"]
-marqo=["opentelemetry-instrumentation-marqo>=0.35.0"]
-milvus=["opentelemetry-instrumentation-milvus>=0.35.0"]
-mistralai=["opentelemetry-instrumentation-mistralai>=0.35.0"]
-ollama=["opentelemetry-instrumentation-ollama>=0.35.0"]
-openai=["opentelemetry-instrumentation-openai>=0.35.0"]
-pinecone=["opentelemetry-instrumentation-pinecone>=0.35.0"]
-qdrant=["opentelemetry-instrumentation-qdrant>=0.35.0"]
-replicate=["opentelemetry-instrumentation-replicate>=0.35.0"]
-sagemaker=["opentelemetry-instrumentation-sagemaker>=0.35.0"]
-together=["opentelemetry-instrumentation-together>=0.35.0"]
-transformers=["opentelemetry-instrumentation-transformers>=0.35.0"]
-vertexai=["opentelemetry-instrumentation-vertexai>=0.35.0"]
-watsonx=["opentelemetry-instrumentation-watsonx>=0.35.0"]
-weaviate=["opentelemetry-instrumentation-weaviate>=0.35.0"]
+alephalpha=["opentelemetry-instrumentation-alephalpha>=0.36.1"]
+anthropic=["opentelemetry-instrumentation-anthropic>=0.36.1"]
+bedrock=["opentelemetry-instrumentation-bedrock>=0.36.1"]
+chromadb=["opentelemetry-instrumentation-chromadb>=0.36.1"]
+cohere=["opentelemetry-instrumentation-cohere>=0.36.1"]
+google-generativeai=["opentelemetry-instrumentation-google-generativeai>=0.36.1"]
+groq=["opentelemetry-instrumentation-groq>=0.36.1"]
+haystack=["opentelemetry-instrumentation-haystack>=0.36.1"]
+lancedb=["opentelemetry-instrumentation-lancedb>=0.36.1"]
+langchain=["opentelemetry-instrumentation-langchain>=0.36.1"]
+llamaindex=["opentelemetry-instrumentation-llamaindex>=0.36.1"]
+marqo=["opentelemetry-instrumentation-marqo>=0.36.1"]
+milvus=["opentelemetry-instrumentation-milvus>=0.36.1"]
+mistralai=["opentelemetry-instrumentation-mistralai>=0.36.1"]
+ollama=["opentelemetry-instrumentation-ollama>=0.36.1"]
+openai=["opentelemetry-instrumentation-openai>=0.36.1"]
+pinecone=["opentelemetry-instrumentation-pinecone>=0.36.1"]
+qdrant=["opentelemetry-instrumentation-qdrant>=0.36.1"]
+replicate=["opentelemetry-instrumentation-replicate>=0.36.1"]
+sagemaker=["opentelemetry-instrumentation-sagemaker>=0.36.1"]
+together=["opentelemetry-instrumentation-together>=0.36.1"]
+transformers=["opentelemetry-instrumentation-transformers>=0.36.1"]
+vertexai=["opentelemetry-instrumentation-vertexai>=0.36.1"]
+watsonx=["opentelemetry-instrumentation-watsonx>=0.36.1"]
+weaviate=["opentelemetry-instrumentation-weaviate>=0.36.1"]
 # `all` is the group added for convenience, if you want to install all
 # the instrumentations.
 all = [
-  "opentelemetry-instrumentation-alephalpha>=0.35.0",
-  "opentelemetry-instrumentation-anthropic>=0.35.0",
-  "opentelemetry-instrumentation-bedrock>=0.35.0",
-  "opentelemetry-instrumentation-chromadb>=0.35.0",
-  "opentelemetry-instrumentation-cohere>=0.35.0",
-  "opentelemetry-instrumentation-google-generativeai>=0.35.0",
-  "opentelemetry-instrumentation-groq>=0.35.0",
-  "opentelemetry-instrumentation-haystack>=0.35.0",
-  "opentelemetry-instrumentation-lancedb>=0.35.0",
-  "opentelemetry-instrumentation-langchain>=0.35.0",
-  "opentelemetry-instrumentation-llamaindex>=0.35.0",
-  "opentelemetry-instrumentation-marqo>=0.35.0",
-  "opentelemetry-instrumentation-milvus>=0.35.0",
-  "opentelemetry-instrumentation-mistralai>=0.35.0",
-  "opentelemetry-instrumentation-ollama>=0.35.0",
-  "opentelemetry-instrumentation-openai>=0.35.0",
-  "opentelemetry-instrumentation-pinecone>=0.35.0",
-  "opentelemetry-instrumentation-qdrant>=0.35.0",
-  "opentelemetry-instrumentation-replicate>=0.35.0",
-  "opentelemetry-instrumentation-sagemaker>=0.35.0",
-  "opentelemetry-instrumentation-together>=0.35.0",
-  "opentelemetry-instrumentation-transformers>=0.35.0",
-  "opentelemetry-instrumentation-vertexai>=0.35.0",
-  "opentelemetry-instrumentation-watsonx>=0.35.0",
-  "opentelemetry-instrumentation-weaviate>=0.35.0"
+  "opentelemetry-instrumentation-alephalpha>=0.36.1",
+  "opentelemetry-instrumentation-anthropic>=0.36.1",
+  "opentelemetry-instrumentation-bedrock>=0.36.1",
+  "opentelemetry-instrumentation-chromadb>=0.36.1",
+  "opentelemetry-instrumentation-cohere>=0.36.1",
+  "opentelemetry-instrumentation-google-generativeai>=0.36.1",
+  "opentelemetry-instrumentation-groq>=0.36.1",
+  "opentelemetry-instrumentation-haystack>=0.36.1",
+  "opentelemetry-instrumentation-lancedb>=0.36.1",
+  "opentelemetry-instrumentation-langchain>=0.36.1",
+  "opentelemetry-instrumentation-llamaindex>=0.36.1",
+  "opentelemetry-instrumentation-marqo>=0.36.1",
+  "opentelemetry-instrumentation-milvus>=0.36.1",
+  "opentelemetry-instrumentation-mistralai>=0.36.1",
+  "opentelemetry-instrumentation-ollama>=0.36.1",
+  "opentelemetry-instrumentation-openai>=0.36.1",
+  "opentelemetry-instrumentation-pinecone>=0.36.1",
+  "opentelemetry-instrumentation-qdrant>=0.36.1",
+  "opentelemetry-instrumentation-replicate>=0.36.1",
+  "opentelemetry-instrumentation-sagemaker>=0.36.1",
+  "opentelemetry-instrumentation-together>=0.36.1",
+  "opentelemetry-instrumentation-transformers>=0.36.1",
+  "opentelemetry-instrumentation-vertexai>=0.36.1",
+  "opentelemetry-instrumentation-watsonx>=0.36.1",
+  "opentelemetry-instrumentation-weaviate>=0.36.1"
 ]
 
 [dependency-groups]
