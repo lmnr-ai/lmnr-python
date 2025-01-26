@@ -142,6 +142,8 @@ class Laminar:
         cls._initialize_logger()
 
         Traceloop.init(
+            base_http_url=cls.__base_http_url,
+            project_api_key=cls.__project_api_key,
             exporter=OTLPSpanExporter(
                 endpoint=cls.__base_grpc_url,
                 headers={"authorization": f"Bearer {cls.__project_api_key}"},

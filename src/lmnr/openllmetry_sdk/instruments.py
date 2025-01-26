@@ -21,6 +21,7 @@ class Instruments(Enum):
     OLLAMA = "ollama"
     OPENAI = "openai"
     PINECONE = "pinecone"
+    PLAYWRIGHT = "playwright"
     QDRANT = "qdrant"
     REPLICATE = "replicate"
     SAGEMAKER = "sagemaker"

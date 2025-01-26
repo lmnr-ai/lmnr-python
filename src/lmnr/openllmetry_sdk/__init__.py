@@ -32,6 +32,8 @@ class Traceloop:
         should_enrich_metrics: bool = False,
         resource_attributes: dict = {},
         instruments: Optional[Set[Instruments]] = None,
+        base_http_url: Optional[str] = None,
+        project_api_key: Optional[str] = None,
     ) -> None:
         if not is_tracing_enabled():
             return
@@ -69,4 +71,6 @@ class Traceloop:
             exporter=exporter,
             should_enrich_metrics=should_enrich_metrics,
             instruments=instruments,
+            base_http_url=base_http_url,
+            project_api_key=project_api_key,
         )
