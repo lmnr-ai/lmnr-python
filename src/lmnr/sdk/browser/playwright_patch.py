@@ -198,7 +198,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         inject_rrweb(self)
         return result
 
-    def patch_context_new_page():
+    def patch_browser():
         """
         Overrides BrowserContext.new_page with a patched async function
         that injects rrweb into every new page.
@@ -218,7 +218,4 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
             _original_goto = SyncPage.goto
             SyncPage.goto = patched_goto
 
-    patch_context_new_page()
-    # print(
-    #     f"DONE INIT PLAYWRIGHT TRACING. SERVER URL: {http_url}, PROJECT API KEY: {project_api_key}"
-    # )
+    patch_browser()
