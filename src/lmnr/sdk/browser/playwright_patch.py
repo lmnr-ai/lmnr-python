@@ -1,4 +1,5 @@
 import opentelemetry
+import uuid
 
 try:
     from playwright.async_api import BrowserContext, Page
@@ -18,7 +19,53 @@ _original_goto = None
 _original_new_page_async = None
 _original_goto_async = None
 
-UUID_LIBRARY_URL = "https://cdn.jsdelivr.net/npm/uuid@latest/dist/umd/uuidv4.min.js"
+INJECT_PLACEHOLDER = """
+([baseUrl, projectApiKey]) => {
+    const serverUrl = `${baseUrl}/v1/browser-sessions/events`;
+    const BATCH_SIZE = 50;
+    const FLUSH_INTERVAL = 2000;
+
+    window.rrwebEventsBatch = [];
+    
+    window.sendBatch = async (isEnd = false) => {
+        if (window.rrwebEventsBatch.length === 0) return;
+        
+        const eventsPayload = {
+            sessionId: window.rrwebSessionId,
+            traceId: window.traceId,
+            events: window.rrwebEventsBatch,
+            isEndOfSession: isEnd
+        };
+
+        try {
+            await fetch(serverUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${projectApiKey}` },
+                body: JSON.stringify(eventsPayload),
+            });
+            window.rrwebEventsBatch = [];
+        } catch (error) {
+            console.error('Failed to send events:', error);
+        }
+    };
+
+    setInterval(() => window.sendBatch(false), FLUSH_INTERVAL);
+
+    window.rrweb.record({
+        emit(event) {
+            window.rrwebEventsBatch.push(event);
+            
+            if (window.rrwebEventsBatch.length >= BATCH_SIZE) {
+                window.sendBatch(false);
+            }
+        }
+    });
+
+    window.addEventListener('beforeunload', () => {
+        window.sendBatch(true);
+    });
+}
+"""
 
 
 def init_playwright_tracing(http_url: str, project_api_key: str):
@@ -26,17 +73,15 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         # Get current trace ID from active span
         current_span = opentelemetry.trace.get_current_span()
         trace_id = format(current_span.get_span_context().trace_id, "032x")
-
-        # First inject UUID library
-        page.add_script_tag(url=UUID_LIBRARY_URL)
+        session_id = str(uuid.uuid4().hex)
 
         # Generate UUID session ID and set trace ID
         page.evaluate(
-            """(traceId) => {
-            window.rrwebSessionId = uuidv4();
+            """([traceId, sessionId]) => {
+            window.rrwebSessionId = sessionId;
             window.traceId = traceId;
         }""",
-            trace_id,
+            [trace_id, session_id],
         )
 
         # Load rrweb and set up recording
@@ -46,53 +91,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
 
         # Update the recording setup to include trace ID
         page.evaluate(
-            """
-            ([baseUrl, projectApiKey]) => {
-                const serverUrl = `${baseUrl}/v1/browser-sessions/events`;
-                const BATCH_SIZE = 10;
-                const FLUSH_INTERVAL = 1000;
-
-                window.rrwebEventsBatch = [];
-                
-                window.sendBatch = async (isEnd = false) => {
-                    if (window.rrwebEventsBatch.length === 0) return;
-                    
-                    const eventsPayload = {
-                        sessionId: window.rrwebSessionId,
-                        traceId: window.traceId,
-                        events: window.rrwebEventsBatch,
-                        isEndOfSession: isEnd
-                    };
-
-                    try {
-                        await fetch(serverUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${projectApiKey}` },
-                            body: JSON.stringify(eventsPayload),
-                        });
-                        window.rrwebEventsBatch = [];
-                    } catch (error) {
-                        console.error('Failed to send events:', error);
-                    }
-                };
-
-                setInterval(() => window.sendBatch(false), FLUSH_INTERVAL);
-
-                window.rrweb.record({
-                    emit(event) {
-                        window.rrwebEventsBatch.push(event);
-                        
-                        if (window.rrwebEventsBatch.length >= BATCH_SIZE) {
-                            window.sendBatch(false);
-                        }
-                    }
-                });
-
-                window.addEventListener('beforeunload', () => {
-                    window.sendBatch(true);
-                });
-            }
-        """,
+            INJECT_PLACEHOLDER,
             [http_url, project_api_key],
         )
 
@@ -100,17 +99,15 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         # Get current trace ID from active span
         current_span = opentelemetry.trace.get_current_span()
         trace_id = format(current_span.get_span_context().trace_id, "032x")
-
-        # First inject UUID library
-        await page.add_script_tag(url=UUID_LIBRARY_URL)
+        session_id = str(uuid.uuid4().hex)
 
         # Generate UUID session ID and set trace ID
         await page.evaluate(
-            """(traceId) => {
-            window.rrwebSessionId = uuidv4();
+            """([traceId, sessionId]) => {
+            window.rrwebSessionId = sessionId;
             window.traceId = traceId;
         }""",
-            trace_id,
+            [trace_id, session_id],
         )
 
         # Load rrweb and set up recording
@@ -120,53 +117,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
 
         # Update the recording setup to include trace ID
         await page.evaluate(
-            """
-            ([baseUrl, projectApiKey]) => {
-                const serverUrl = `${baseUrl}/v1/browser-sessions/events`;
-                const BATCH_SIZE = 10;
-                const FLUSH_INTERVAL = 1000;
-
-                window.rrwebEventsBatch = [];
-                
-                window.sendBatch = async (isEnd = false) => {
-                    if (window.rrwebEventsBatch.length === 0) return;
-                    
-                    const eventsPayload = {
-                        sessionId: window.rrwebSessionId,
-                        traceId: window.traceId,
-                        events: window.rrwebEventsBatch,
-                        isEndOfSession: isEnd
-                    };
-
-                    try {
-                        await fetch(serverUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${projectApiKey}` },
-                            body: JSON.stringify(eventsPayload),
-                        });
-                        window.rrwebEventsBatch = [];
-                    } catch (error) {
-                        console.error('Failed to send events:', error);
-                    }
-                };
-
-                setInterval(() => window.sendBatch(false), FLUSH_INTERVAL);
-
-                window.rrweb.record({
-                    emit(event) {
-                        window.rrwebEventsBatch.push(event);
-                        
-                        if (window.rrwebEventsBatch.length >= BATCH_SIZE) {
-                            window.sendBatch(false);
-                        }
-                    }
-                });
-
-                window.addEventListener('beforeunload', () => {
-                    window.sendBatch(true);
-                });
-            }
-        """,
+            INJECT_PLACEHOLDER,
             [http_url, project_api_key],
         )
 
