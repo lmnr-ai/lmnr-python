@@ -22,19 +22,19 @@ _original_goto_async = None
 INJECT_PLACEHOLDER = """
 ([baseUrl, projectApiKey]) => {
     const serverUrl = `${baseUrl}/v1/browser-sessions/events`;
-    const BATCH_SIZE = 50;
-    const FLUSH_INTERVAL = 2000;
+    const BATCH_SIZE = 16;
+    const FLUSH_INTERVAL = 1000;
+    const HEARTBEAT_INTERVAL = 1000; // 1 second heartbeat
 
     window.rrwebEventsBatch = [];
     
-    window.sendBatch = async (isEnd = false) => {
+    window.sendBatch = async () => {
         if (window.rrwebEventsBatch.length === 0) return;
         
         const eventsPayload = {
             sessionId: window.rrwebSessionId,
             traceId: window.traceId,
-            events: window.rrwebEventsBatch,
-            isEndOfSession: isEnd
+            events: window.rrwebEventsBatch
         };
 
         try {
@@ -49,20 +49,30 @@ INJECT_PLACEHOLDER = """
         }
     };
 
-    setInterval(() => window.sendBatch(false), FLUSH_INTERVAL);
+    setInterval(() => window.sendBatch(), FLUSH_INTERVAL);
+
+    // Add heartbeat event
+    setInterval(() => {
+        window.rrwebEventsBatch.push({
+            type: 6, // Custom event type
+            data: { source: 'heartbeat' },
+            timestamp: Date.now()
+        });
+    }, HEARTBEAT_INTERVAL);
 
     window.rrweb.record({
         emit(event) {
             window.rrwebEventsBatch.push(event);
             
             if (window.rrwebEventsBatch.length >= BATCH_SIZE) {
-                window.sendBatch(false);
+                window.sendBatch();
             }
         }
     });
 
+    // Simplified beforeunload handler
     window.addEventListener('beforeunload', () => {
-        window.sendBatch(true);
+        window.sendBatch();
     });
 }
 """
