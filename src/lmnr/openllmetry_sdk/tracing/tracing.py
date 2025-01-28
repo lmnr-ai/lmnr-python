@@ -6,6 +6,7 @@ import logging
 from contextvars import Context
 from lmnr.sdk.log import VerboseColorfulFormatter
 from lmnr.openllmetry_sdk.instruments import Instruments
+from lmnr.sdk.browser import init_browser_tracing
 from lmnr.openllmetry_sdk.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     SPAN_INSTRUMENTATION_SOURCE,
@@ -80,6 +81,8 @@ class TracerWrapper(object):
         exporter: Optional[SpanExporter] = None,
         should_enrich_metrics: bool = False,
         instruments: Optional[Set[Instruments]] = None,
+        base_http_url: Optional[str] = None,
+        project_api_key: Optional[str] = None,
     ) -> "TracerWrapper":
         cls._initialize_logger(cls)
         if not hasattr(cls, "instance"):
@@ -122,6 +125,8 @@ class TracerWrapper(object):
             instrument_set = init_instrumentations(
                 should_enrich_metrics,
                 instruments,
+                base_http_url=base_http_url,
+                project_api_key=project_api_key,
             )
 
             if not instrument_set:
@@ -286,6 +291,8 @@ def init_instrumentations(
     should_enrich_metrics: bool,
     instruments: Optional[Set[Instruments]] = None,
     block_instruments: Optional[Set[Instruments]] = None,
+    base_http_url: Optional[str] = None,
+    project_api_key: Optional[str] = None,
 ):
     block_instruments = block_instruments or set()
     # These libraries are not instrumented by default,
@@ -396,6 +403,9 @@ def init_instrumentations(
                 instrument_set = True
         elif instrument == Instruments.WEAVIATE:
             if init_weaviate_instrumentor():
+                instrument_set = True
+        elif instrument == Instruments.PLAYWRIGHT:
+            if init_browser_tracing(base_http_url, project_api_key):
                 instrument_set = True
         else:
             module_logger.warning(
