@@ -82,6 +82,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
     def inject_rrweb(page: SyncPage):
         # Get current trace ID from active span
         current_span = opentelemetry.trace.get_current_span()
+        current_span.set_attribute("lmnr.internal.has_browser_session", True)
         trace_id = format(current_span.get_span_context().trace_id, "032x")
         session_id = str(uuid.uuid4().hex)
 
@@ -106,10 +107,17 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         )
 
     async def inject_rrweb_async(page: Page):
+        # Wait for the page to be in a ready state first
+        await page.wait_for_load_state("domcontentloaded")
+
         # Get current trace ID from active span
         current_span = opentelemetry.trace.get_current_span()
+        current_span.set_attribute("lmnr.internal.has_browser_session", True)
         trace_id = format(current_span.get_span_context().trace_id, "032x")
         session_id = str(uuid.uuid4().hex)
+
+        # Wait for any existing script load to complete
+        await page.wait_for_load_state("networkidle")
 
         # Generate UUID session ID and set trace ID
         await page.evaluate(
@@ -124,6 +132,8 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         await page.add_script_tag(
             url="https://cdn.jsdelivr.net/npm/rrweb@latest/dist/rrweb.min.js"
         )
+
+        await page.wait_for_function("""(() => window.rrweb || 'rrweb' in window)""")
 
         # Update the recording setup to include trace ID
         await page.evaluate(
