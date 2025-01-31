@@ -34,6 +34,7 @@ class Traceloop:
         instruments: Optional[Set[Instruments]] = None,
         base_http_url: Optional[str] = None,
         project_api_key: Optional[str] = None,
+        max_export_batch_size: Optional[int] = None,
     ) -> None:
         if not is_tracing_enabled():
             return
@@ -73,4 +74,5 @@ class Traceloop:
             instruments=instruments,
             base_http_url=base_http_url,
             project_api_key=project_api_key,
+            max_export_batch_size=max_export_batch_size,
         )

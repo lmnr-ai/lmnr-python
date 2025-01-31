@@ -78,6 +78,7 @@ class Laminar:
         grpc_port: Optional[int] = None,
         instruments: Optional[Set[Instruments]] = None,
         disable_batch: bool = False,
+        max_export_batch_size: Optional[int] = None,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -150,6 +151,7 @@ class Laminar:
             ),
             instruments=instruments,
             disable_batch=disable_batch,
+            max_export_batch_size=max_export_batch_size,
         )
 
     @classmethod
@@ -716,6 +718,31 @@ class Laminar:
                         raise ValueError(f"Error creating evaluation {text}")
                 resp_json = await response.json()
                 return CreateEvaluationResponse.model_validate(resp_json)
+    
+    @classmethod
+    async def init_eval(cls, name: Optional[str] = None, group_name: Optional[str] = None) -> uuid.UUID:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                cls.__base_http_url + "/v1/evals",
+                json={
+                    "name": name,
+                    "groupName": group_name,
+                },
+                headers=cls._headers(),
+            ) as response:
+                resp_json = await response.json()
+                return uuid.UUID(resp_json["id"])
+
+    @classmethod
+    async def save_eval_datapoints(cls, eval_id: uuid.UUID, datapoints: list[EvaluationResultDatapoint]):
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                cls.__base_http_url + f"/v1/evals/{eval_id}/datapoints",
+                json=[datapoint.to_dict() for datapoint in datapoints],
+                headers=cls._headers(),
+            ) as response:
+                if response.status != 200:
+                    raise ValueError(f"Error saving evaluation datapoints: {response.text}")
 
     @classmethod
     def get_datapoints(

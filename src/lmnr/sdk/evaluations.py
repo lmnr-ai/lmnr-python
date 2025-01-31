@@ -27,7 +27,7 @@ from .types import (
 from .utils import is_async
 
 DEFAULT_BATCH_SIZE = 5
-
+MAX_EXPORT_BATCH_SIZE = 64
 
 def get_evaluation_url(project_id: str, evaluation_id: str, base_url: Optional[str] = None):
     if not base_url:
@@ -39,7 +39,7 @@ def get_evaluation_url(project_id: str, evaluation_id: str, base_url: Optional[s
     if url.endswith("localhost") or url.endswith("127.0.0.1"):
         # We best effort assume that the frontend is running on port 3000
         # TODO: expose the frontend port?
-        url = url + ":3000"
+        url = url + ":5667"
     return f"{url}/project/{project_id}/evaluations/{evaluation_id}"
 
 
@@ -98,12 +98,13 @@ class Evaluation:
         human_evaluators: list[HumanEvaluator] = [],
         name: Optional[str] = None,
         group_id: Optional[str] = None,
-        batch_size: int = DEFAULT_BATCH_SIZE,
+        concurrency_limit: int = DEFAULT_BATCH_SIZE,
         project_api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         http_port: Optional[int] = None,
         grpc_port: Optional[int] = None,
         instruments: Optional[Set[Instruments]] = None,
+        max_export_batch_size: Optional[int] = MAX_EXPORT_BATCH_SIZE,
     ):
         """
         Initializes an instance of the Evaluations class.
@@ -135,8 +136,8 @@ class Evaluation:
                 evaluations. Only evaluations within the same group_id can be\
                 visually compared. If not provided, "default" is assigned.
                 Defaults to None
-            batch_size (int, optional): The batch size for evaluation. This many\
-                data points will be evaluated in parallel.
+            concurrency_limit (int, optional): The concurrency limit for evaluation. This many\
+                data points will be evaluated in parallel with a pool of workers.
                 Defaults to DEFAULT_BATCH_SIZE.
             project_api_key (Optional[str], optional): The project API key.\
                 If not provided, LMNR_PROJECT_API_KEY environment variable is\
@@ -182,7 +183,8 @@ class Evaluation:
         self.evaluators = evaluators
         self.group_id = group_id
         self.name = name
-        self.batch_size = batch_size
+        self.concurrency_limit = concurrency_limit
+        self.batch_size = concurrency_limit
         self._logger = get_default_logger(self.__class__.__name__)
         self.human_evaluators = human_evaluators
         L.initialize(
@@ -191,6 +193,7 @@ class Evaluation:
             http_port=http_port,
             grpc_port=grpc_port,
             instruments=instruments,
+            max_export_batch_size=max_export_batch_size,
         )
 
     async def run(self) -> Awaitable[None]:
@@ -202,7 +205,8 @@ class Evaluation:
         self.reporter.start(len(self.data))
 
         try:
-            result_datapoints = await self._evaluate_in_batches()
+            eval_id = await L.init_eval(name=self.name, group_name=self.group_id)
+            result_datapoints = await self._evaluate_in_batches(eval_id)
         except Exception as e:
             self.reporter.stopWithError(e)
             self.is_finished = True
@@ -221,28 +225,33 @@ class Evaluation:
         self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
         self.is_finished = True
 
-    async def _evaluate_in_batches(self) -> list[EvaluationResultDatapoint]:
-        result_datapoints = []
-        for i in range(0, len(self.data), self.batch_size):
-            batch = (
-                self.data[i : i + self.batch_size]
-                if isinstance(self.data, list)
-                else self.data.slice(i, i + self.batch_size)
-            )
-            batch_datapoints = await self._evaluate_batch(batch)
-            result_datapoints.extend(batch_datapoints)
-            self.reporter.update(len(batch))
-        return result_datapoints
+    async def _evaluate_in_batches(self, eval_id: uuid.UUID) -> list[EvaluationResultDatapoint]:
+        semaphore = asyncio.Semaphore(self.concurrency_limit)
+        
+        async def evaluate_with_semaphore(datapoint, index):
+            async with semaphore:
+                result = await self._evaluate_datapoint(eval_id, datapoint)
+                self.reporter.update(1)
+                return index, result
 
-    async def _evaluate_batch(
-        self, batch: list[Datapoint]
-    ) -> list[EvaluationResultDatapoint]:
-        batch_promises = [self._evaluate_datapoint(datapoint) for datapoint in batch]
-        results = await asyncio.gather(*batch_promises)
-        return results
+        # Create tasks for all datapoints with their indices
+        tasks = []
+        data_iter = self.data if isinstance(self.data, list) else range(len(self.data))
+        for idx, item in enumerate(data_iter):
+            datapoint = item if isinstance(self.data, list) else self.data[item]
+            task = asyncio.create_task(evaluate_with_semaphore(datapoint, idx))
+            tasks.append(task)
+
+        # Wait for all tasks to complete and preserve order
+        results = await asyncio.gather(*tasks)
+        # Sort by index and extract just the results
+        ordered_results = [result for _, result in sorted(results, key=lambda x: x[0])]
+        return ordered_results
 
     async def _evaluate_datapoint(
-        self, datapoint: Datapoint
+        self, 
+        eval_id: uuid.UUID,
+        datapoint: Datapoint
     ) -> EvaluationResultDatapoint:
         with L.start_as_current_span("evaluation") as evaluation_span:
             L._set_trace_type(trace_type=TraceType.EVALUATION)
@@ -283,7 +292,7 @@ class Evaluation:
                     scores.update(value)
 
             trace_id = uuid.UUID(int=evaluation_span.get_span_context().trace_id)
-            return EvaluationResultDatapoint(
+            datapoint = EvaluationResultDatapoint(
                 data=datapoint.data,
                 target=target,
                 executor_output=output,
@@ -291,6 +300,8 @@ class Evaluation:
                 trace_id=trace_id,
                 executor_span_id=executor_span_id,
             )
+            await L.save_eval_datapoints(eval_id, [datapoint])
+            return datapoint
 
 
 def evaluate(
@@ -300,7 +311,7 @@ def evaluate(
     human_evaluators: list[HumanEvaluator] = [],
     name: Optional[str] = None,
     group_id: Optional[str] = None,
-    batch_size: int = DEFAULT_BATCH_SIZE,
+    concurrency_limit: int = DEFAULT_BATCH_SIZE,
     project_api_key: Optional[str] = None,
     base_url: Optional[str] = None,
     http_port: Optional[int] = None,
@@ -344,7 +355,7 @@ def evaluate(
                         Only evaluations within the same group_id can be\
                         visually compared. If not provided, set to "default".
                         Defaults to None
-        batch_size (int, optional): The batch size for evaluation.
+        concurrency_limit (int, optional): The concurrency limit for evaluation.
                         Defaults to DEFAULT_BATCH_SIZE.
         project_api_key (Optional[str], optional): The project API key.
                         Defaults to None.
@@ -371,7 +382,7 @@ def evaluate(
         group_id=group_id,
         human_evaluators=human_evaluators,
         name=name,
-        batch_size=batch_size,
+        concurrency_limit=concurrency_limit,
         project_api_key=project_api_key,
         base_url=base_url,
         http_port=http_port,

@@ -83,6 +83,7 @@ class TracerWrapper(object):
         instruments: Optional[Set[Instruments]] = None,
         base_http_url: Optional[str] = None,
         project_api_key: Optional[str] = None,
+        max_export_batch_size: Optional[int] = None,
     ) -> "TracerWrapper":
         cls._initialize_logger(cls)
         if not hasattr(cls, "instance"):
@@ -109,7 +110,8 @@ class TracerWrapper(object):
                     )
                 else:
                     obj.__spans_processor: SpanProcessor = BatchSpanProcessor(
-                        obj.__spans_exporter
+                        obj.__spans_exporter,
+                        max_export_batch_size=max_export_batch_size,
                     )
                 obj.__spans_processor_original_on_start = None
 
