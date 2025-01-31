@@ -1,6 +1,7 @@
 import opentelemetry
 import uuid
 import asyncio
+import os
 
 try:
     from playwright.async_api import BrowserContext, Page
@@ -41,6 +42,7 @@ INJECT_PLACEHOLDER = """
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${projectApiKey}` },
                 body: JSON.stringify(eventsPayload),
             });
+            console.log('Events sent successfully', eventsPayload.events.length);
             window.rrwebEventsBatch = [];
         } catch (error) {
             console.error('Failed to send events:', error);
@@ -73,6 +75,7 @@ INJECT_PLACEHOLDER = """
 
 
 def init_playwright_tracing(http_url: str, project_api_key: str):
+
     def inject_rrweb(page: SyncPage):
         # Get current trace ID from active span
         current_span = opentelemetry.trace.get_current_span()
@@ -89,7 +92,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
             [trace_id, session_id],
         )
 
-        # Load rrweb and set up recording
+        # Load rrweb from CDN
         page.add_script_tag(
             url="https://cdn.jsdelivr.net/npm/rrweb@latest/dist/rrweb.min.js"
         )
@@ -120,7 +123,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
                 [trace_id, session_id],
             )
 
-            # Load rrweb and set up recording
+            # Load rrweb from CDN
             await page.add_script_tag(
                 url="https://cdn.jsdelivr.net/npm/rrweb@latest/dist/rrweb.min.js"
             )
@@ -150,11 +153,63 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         await inject_rrweb_async(page)
 
     async def patched_new_page_async(self: BrowserContext, *args, **kwargs):
+        # Modify CSP to allow required domains
+        async def handle_route(route):
+            try:
+                response = await route.fetch()
+                headers = dict(response.headers)
+                
+                # Find and modify CSP header
+                for header_name in headers:
+                    if header_name.lower() == 'content-security-policy':
+                        csp = headers[header_name]
+                        parts = csp.split(';')
+                        for i, part in enumerate(parts):
+                            if 'script-src' in part:
+                                parts[i] = f"{part.strip()} cdn.jsdelivr.net"
+                            elif 'connect-src' in part:
+                                parts[i] = f"{part.strip()} " + http_url
+                        if not any('connect-src' in part for part in parts):
+                            parts.append(" connect-src 'self' " + http_url)
+                        headers[header_name] = ';'.join(parts)
+                
+                await route.fulfill(response=response, headers=headers)
+            except Exception:
+                # Continue with the original request without modification
+                await route.continue_()
+            
+        await self.route("**/*", handle_route)
         page = await _original_new_page_async(self, *args, **kwargs)
         await handle_navigation_async(page)
         return page
 
     def patched_new_page(self: SyncBrowserContext, *args, **kwargs):
+        # Modify CSP to allow required domains
+        def handle_route(route):
+            try:
+                response = route.fetch()
+                headers = dict(response.headers)
+                
+                # Find and modify CSP header
+                for header_name in headers:
+                    if header_name.lower() == 'content-security-policy':
+                        csp = headers[header_name]
+                        parts = csp.split(';')
+                        for i, part in enumerate(parts):
+                            if 'script-src' in part:
+                                parts[i] = f"{part.strip()} cdn.jsdelivr.net"
+                            elif 'connect-src' in part:
+                                parts[i] = f"{part.strip()} " + http_url
+                        if not any('connect-src' in part for part in parts):
+                            parts.append(" connect-src 'self' " + http_url)
+                        headers[header_name] = ';'.join(parts)
+                
+                route.fulfill(response=response, headers=headers)
+            except Exception:
+                # Continue with the original request without modification
+                route.continue_()
+            
+        self.route("**/*", handle_route)
         page = _original_new_page(self, *args, **kwargs)
         handle_navigation(page)
         return page
