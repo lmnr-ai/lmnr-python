@@ -29,7 +29,10 @@ from .utils import is_async
 DEFAULT_BATCH_SIZE = 5
 MAX_EXPORT_BATCH_SIZE = 64
 
-def get_evaluation_url(project_id: str, evaluation_id: str, base_url: Optional[str] = None):
+
+def get_evaluation_url(
+    project_id: str, evaluation_id: str, base_url: Optional[str] = None
+):
     if not base_url:
         base_url = "https://www.lmnr.ai"
 
@@ -225,9 +228,11 @@ class Evaluation:
         self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
         self.is_finished = True
 
-    async def _evaluate_in_batches(self, eval_id: uuid.UUID) -> list[EvaluationResultDatapoint]:
+    async def _evaluate_in_batches(
+        self, eval_id: uuid.UUID
+    ) -> list[EvaluationResultDatapoint]:
         semaphore = asyncio.Semaphore(self.concurrency_limit)
-        
+
         async def evaluate_with_semaphore(datapoint, index):
             async with semaphore:
                 result = await self._evaluate_datapoint(eval_id, datapoint)
@@ -249,9 +254,7 @@ class Evaluation:
         return ordered_results
 
     async def _evaluate_datapoint(
-        self, 
-        eval_id: uuid.UUID,
-        datapoint: Datapoint
+        self, eval_id: uuid.UUID, datapoint: Datapoint
     ) -> EvaluationResultDatapoint:
         with L.start_as_current_span("evaluation") as evaluation_span:
             L._set_trace_type(trace_type=TraceType.EVALUATION)
@@ -300,7 +303,7 @@ class Evaluation:
                 trace_id=trace_id,
                 executor_span_id=executor_span_id,
             )
-            await L.save_eval_datapoints(eval_id, [datapoint])
+            await L.save_eval_datapoints(eval_id, [datapoint], self.group_id)
             return datapoint
 
 

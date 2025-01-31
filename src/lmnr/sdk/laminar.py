@@ -718,9 +718,11 @@ class Laminar:
                         raise ValueError(f"Error creating evaluation {text}")
                 resp_json = await response.json()
                 return CreateEvaluationResponse.model_validate(resp_json)
-    
+
     @classmethod
-    async def init_eval(cls, name: Optional[str] = None, group_name: Optional[str] = None) -> uuid.UUID:
+    async def init_eval(
+        cls, name: Optional[str] = None, group_name: Optional[str] = None
+    ) -> uuid.UUID:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 cls.__base_http_url + "/v1/evals",
@@ -734,15 +736,25 @@ class Laminar:
                 return uuid.UUID(resp_json["id"])
 
     @classmethod
-    async def save_eval_datapoints(cls, eval_id: uuid.UUID, datapoints: list[EvaluationResultDatapoint]):
+    async def save_eval_datapoints(
+        cls,
+        eval_id: uuid.UUID,
+        datapoints: list[EvaluationResultDatapoint],
+        group_id: Optional[str] = None,
+    ):
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 cls.__base_http_url + f"/v1/evals/{eval_id}/datapoints",
-                json=[datapoint.to_dict() for datapoint in datapoints],
+                json={
+                    "points": [datapoint.to_dict() for datapoint in datapoints],
+                    "groupId": group_id,
+                },
                 headers=cls._headers(),
             ) as response:
                 if response.status != 200:
-                    raise ValueError(f"Error saving evaluation datapoints: {response.text}")
+                    raise ValueError(
+                        f"Error saving evaluation datapoints: {response.text}"
+                    )
 
     @classmethod
     def get_datapoints(
