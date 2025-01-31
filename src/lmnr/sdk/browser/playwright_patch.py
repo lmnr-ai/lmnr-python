@@ -23,7 +23,7 @@ INJECT_PLACEHOLDER = """
 ([baseUrl, projectApiKey]) => {
     const serverUrl = `${baseUrl}/v1/browser-sessions/events`;
     const FLUSH_INTERVAL = 1000;
-    const HEARTBEAT_INTERVAL = 1000; // 1 second heartbeat
+    const HEARTBEAT_INTERVAL = 1000;
 
     window.rrwebEventsBatch = [];
     
@@ -37,12 +37,36 @@ INJECT_PLACEHOLDER = """
         };
         
         try {
-            await fetch(serverUrl, {
+            const jsonString = JSON.stringify(eventsPayload);
+            const uint8Array = new TextEncoder().encode(jsonString);
+            
+            const cs = new CompressionStream('gzip');
+            const compressedStream = await new Response(
+                new Response(uint8Array).body.pipeThrough(cs)
+            ).arrayBuffer();
+            
+            const compressedArray = new Uint8Array(compressedStream);
+            
+            const blob = new Blob([compressedArray], { type: 'application/octet-stream' });
+            
+            const response = await fetch(serverUrl, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${projectApiKey}` },
-                body: JSON.stringify(eventsPayload),
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Encoding': 'gzip',
+                    'Authorization': `Bearer ${projectApiKey}`
+                },
+                body: blob,
+                compress: false,
+                credentials: 'omit',
+                mode: 'cors',
+                cache: 'no-cache',
             });
-            console.log('Events sent successfully', eventsPayload.events.length);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
             window.rrwebEventsBatch = [];
         } catch (error) {
             console.error('Failed to send events:', error);
@@ -51,10 +75,9 @@ INJECT_PLACEHOLDER = """
 
     setInterval(() => window.sendBatch(), FLUSH_INTERVAL);
 
-    // Add heartbeat event
     setInterval(() => {
         window.rrwebEventsBatch.push({
-            type: 6, // Custom event type
+            type: 6,
             data: { source: 'heartbeat' },
             timestamp: Date.now()
         });
@@ -66,7 +89,6 @@ INJECT_PLACEHOLDER = """
         }
     });
 
-    // Simplified beforeunload handler
     window.addEventListener('beforeunload', () => {
         window.sendBatch();
     });
@@ -175,7 +197,6 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
                 
                 await route.fulfill(response=response, headers=headers)
             except Exception:
-                # Continue with the original request without modification
                 await route.continue_()
             
         await self.route("**/*", handle_route)
