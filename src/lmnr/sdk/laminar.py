@@ -47,7 +47,8 @@ from lmnr.openllmetry_sdk.tracing.tracing import (
 from .log import VerboseColorfulFormatter
 
 from .types import (
-    CreateEvaluationResponse,
+    HumanEvaluator,
+    InitEvaluationResponse,
     EvaluationResultDatapoint,
     GetDatapointsResponse,
     PipelineRunError,
@@ -691,38 +692,9 @@ class Laminar:
         set_association_properties(props)
 
     @classmethod
-    async def create_evaluation(
-        cls,
-        data: list[EvaluationResultDatapoint],
-        group_id: Optional[str] = None,
-        name: Optional[str] = None,
-    ) -> CreateEvaluationResponse:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                cls.__base_http_url + "/v1/evaluations",
-                json={
-                    "groupId": group_id,
-                    "name": name,
-                    "points": [datapoint.to_dict() for datapoint in data],
-                },
-                headers=cls._headers(),
-            ) as response:
-                if response.status != 200:
-                    try:
-                        resp_json = await response.json()
-                        raise ValueError(
-                            f"Error creating evaluation {json.dumps(resp_json)}"
-                        )
-                    except aiohttp.ClientError:
-                        text = await response.text()
-                        raise ValueError(f"Error creating evaluation {text}")
-                resp_json = await response.json()
-                return CreateEvaluationResponse.model_validate(resp_json)
-
-    @classmethod
     async def init_eval(
         cls, name: Optional[str] = None, group_name: Optional[str] = None
-    ) -> uuid.UUID:
+    ) -> InitEvaluationResponse:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 cls.__base_http_url + "/v1/evals",
@@ -733,21 +705,23 @@ class Laminar:
                 headers=cls._headers(),
             ) as response:
                 resp_json = await response.json()
-                return uuid.UUID(resp_json["id"])
+                return InitEvaluationResponse.model_validate(resp_json)
 
     @classmethod
     async def save_eval_datapoints(
         cls,
         eval_id: uuid.UUID,
         datapoints: list[EvaluationResultDatapoint],
-        group_id: Optional[str] = None,
+        groupName: Optional[str] = None,
+        human_evaluators: Optional[list[HumanEvaluator]] = None,
     ):
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 cls.__base_http_url + f"/v1/evals/{eval_id}/datapoints",
                 json={
                     "points": [datapoint.to_dict() for datapoint in datapoints],
-                    "groupId": group_id,
+                    "groupName": groupName,
+                    "humanEvaluators": human_evaluators,
                 },
                 headers=cls._headers(),
             ) as response:

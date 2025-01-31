@@ -100,7 +100,7 @@ class Evaluation:
         evaluators: dict[str, EvaluatorFunction],
         human_evaluators: list[HumanEvaluator] = [],
         name: Optional[str] = None,
-        group_id: Optional[str] = None,
+        group_name: Optional[str] = None,
         concurrency_limit: int = DEFAULT_BATCH_SIZE,
         project_api_key: Optional[str] = None,
         base_url: Optional[str] = None,
@@ -135,8 +135,8 @@ class Evaluation:
                 Used to identify the evaluation in the group.\
                 If not provided, a random name will be generated.
                 Defaults to None.
-            group_id (Optional[str], optional): an identifier to group\
-                evaluations. Only evaluations within the same group_id can be\
+            group_name (Optional[str], optional): an identifier to group\
+                evaluations. Only evaluations within the same group_name can be\
                 visually compared. If not provided, "default" is assigned.
                 Defaults to None
             concurrency_limit (int, optional): The concurrency limit for evaluation. This many\
@@ -184,7 +184,7 @@ class Evaluation:
             self.data = data
         self.executor = executor
         self.evaluators = evaluators
-        self.group_id = group_id
+        self.group_name = group_name
         self.name = name
         self.concurrency_limit = concurrency_limit
         self.batch_size = concurrency_limit
@@ -206,24 +206,17 @@ class Evaluation:
 
     async def _run(self) -> None:
         self.reporter.start(len(self.data))
-
         try:
-            eval_id = await L.init_eval(name=self.name, group_name=self.group_id)
-            result_datapoints = await self._evaluate_in_batches(eval_id)
+            evaluation = await L.init_eval(name=self.name, group_name=self.group_name)
+            result_datapoints = await self._evaluate_in_batches(evaluation.id)
         except Exception as e:
             self.reporter.stopWithError(e)
             self.is_finished = True
             return
 
-        # For now add all human evaluators to all result datapoints
-        # In the future, we will add ways to specify which human evaluators
-        # to add to which result datapoints, e.g. sample some randomly
         for result_datapoint in result_datapoints:
             result_datapoint.human_evaluators = self.human_evaluators or {}
 
-        evaluation = await L.create_evaluation(
-            data=result_datapoints, group_id=self.group_id, name=self.name
-        )
         average_scores = get_average_scores(result_datapoints)
         self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
         self.is_finished = True
@@ -301,9 +294,13 @@ class Evaluation:
                 executor_output=output,
                 scores=scores,
                 trace_id=trace_id,
+                # For now add all human evaluators to all result datapoints
+                # In the future, we will add ways to specify which human evaluators
+                # to add to which result datapoints, e.g. sample some randomly
+                human_evaluators=self.human_evaluators,
                 executor_span_id=executor_span_id,
             )
-            await L.save_eval_datapoints(eval_id, [datapoint], self.group_id)
+            await L.save_eval_datapoints(eval_id, [datapoint], self.group_name)
             return datapoint
 
 
@@ -313,7 +310,8 @@ def evaluate(
     evaluators: dict[str, EvaluatorFunction],
     human_evaluators: list[HumanEvaluator] = [],
     name: Optional[str] = None,
-    group_id: Optional[str] = None,
+    group_id: Optional[str] = None,  # Deprecated
+    group_name: Optional[str] = None,
     concurrency_limit: int = DEFAULT_BATCH_SIZE,
     project_api_key: Optional[str] = None,
     base_url: Optional[str] = None,
@@ -332,12 +330,12 @@ def evaluate(
 
     Parameters:
         data (Union[list[EvaluationDatapoint|dict]], EvaluationDataset]):\
-                    List of data points to evaluate or an evaluation dataset.
-                        `data` is the input to the executor function,
-                        `target` is the input to the evaluator function.
+            List of data points to evaluate or an evaluation dataset.
+                `data` is the input to the executor function,
+                `target` is the input to the evaluator function.
         executor (Callable[..., Any]): The executor function.\
-                        Takes the data point + any additional arguments\
-                        and returns the output to evaluate.
+            Takes the data point + any additional arguments\
+            and returns the output to evaluate.
         evaluators (List[Callable[..., Any]]): 
             evaluators (dict[str, Callable[..., Any]]): Evaluator functions and\
                 names. Each evaluator function takes the output of the executor\
@@ -351,13 +349,18 @@ def evaluate(
             evaluator only holds the queue name.
             Defaults to an empty list.
         name (Optional[str], optional): Optional name of the evaluation.\
-                        Used to identify the evaluation in the group.\
-                        If not provided, a random name will be generated.
-                        Defaults to None.
-        group_id (Optional[str], optional): an identifier to group evaluations.\
+            Used to identify the evaluation in the group. If not provided, a\
+            random name will be generated.
+            Defaults to None.
+        group_id (Optional[str], optional): [DEPRECATED] Use group_name instead.
+                        An identifier to group evaluations.\
                         Only evaluations within the same group_id can be\
                         visually compared. If not provided, set to "default".
                         Defaults to None
+        group_name (Optional[str], optional): An identifier to group evaluations.\
+            Only evaluations within the same group_name can be visually compared.\
+            If not provided, set to "default".
+            Defaults to None
         concurrency_limit (int, optional): The concurrency limit for evaluation.
                         Defaults to DEFAULT_BATCH_SIZE.
         project_api_key (Optional[str], optional): The project API key.
@@ -377,12 +380,16 @@ def evaluate(
                         will be used.
                         Defaults to None.
     """
+    if group_id:
+        raise DeprecationWarning("group_id is deprecated. Use group_name instead.")
+
+    group_name = group_name or group_id
 
     evaluation = Evaluation(
         data=data,
         executor=executor,
         evaluators=evaluators,
-        group_id=group_id,
+        group_name=group_name,
         human_evaluators=human_evaluators,
         name=name,
         concurrency_limit=concurrency_limit,

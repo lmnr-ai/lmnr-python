@@ -141,11 +141,8 @@ EvaluatorFunction = Callable[
 class HumanEvaluator(pydantic.BaseModel):
     queueName: str
 
-    def __init__(self, queue_name: str):
-        super().__init__(queueName=queue_name)
 
-
-class CreateEvaluationResponse(pydantic.BaseModel):
+class InitEvaluationResponse(pydantic.BaseModel):
     id: uuid.UUID
     createdAt: datetime.datetime
     groupId: str
