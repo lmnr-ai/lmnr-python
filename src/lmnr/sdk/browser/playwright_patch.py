@@ -11,7 +11,7 @@ try:
     )
 except ImportError as e:
     raise ImportError(
-        f"Attempated to import {__file__}, but it is designed "
+        f"Attempted to import {__file__}, but it is designed "
         "to patch Playwright, which is not installed. Use `pip install playwright` "
         "to install Playwright or remove this import."
     ) from e
@@ -150,7 +150,9 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
                 url="https://cdn.jsdelivr.net/npm/rrweb@latest/dist/rrweb.min.js"
             )
 
-            await page.wait_for_function("""(() => window.rrweb || 'rrweb' in window)""")
+            await page.wait_for_function(
+                """(() => window.rrweb || 'rrweb' in window)"""
+            )
 
             # Update the recording setup to include trace ID
             await page.evaluate(
@@ -163,14 +165,14 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
     def handle_navigation(page: SyncPage):
         def on_load():
             inject_rrweb(page)
-        
+
         page.on("load", on_load)
         inject_rrweb(page)
 
     async def handle_navigation_async(page: Page):
         async def on_load():
             await inject_rrweb_async(page)
-        
+
         page.on("load", lambda: asyncio.create_task(on_load()))
         await inject_rrweb_async(page)
 
@@ -180,25 +182,25 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
             try:
                 response = await route.fetch()
                 headers = dict(response.headers)
-                
+
                 # Find and modify CSP header
                 for header_name in headers:
-                    if header_name.lower() == 'content-security-policy':
+                    if header_name.lower() == "content-security-policy":
                         csp = headers[header_name]
-                        parts = csp.split(';')
+                        parts = csp.split(";")
                         for i, part in enumerate(parts):
-                            if 'script-src' in part:
+                            if "script-src" in part:
                                 parts[i] = f"{part.strip()} cdn.jsdelivr.net"
-                            elif 'connect-src' in part:
+                            elif "connect-src" in part:
                                 parts[i] = f"{part.strip()} " + http_url
-                        if not any('connect-src' in part for part in parts):
+                        if not any("connect-src" in part for part in parts):
                             parts.append(" connect-src 'self' " + http_url)
-                        headers[header_name] = ';'.join(parts)
-                
+                        headers[header_name] = ";".join(parts)
+
                 await route.fulfill(response=response, headers=headers)
             except Exception:
                 await route.continue_()
-            
+
         await self.route("**/*", handle_route)
         page = await _original_new_page_async(self, *args, **kwargs)
         await handle_navigation_async(page)
@@ -210,26 +212,26 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
             try:
                 response = route.fetch()
                 headers = dict(response.headers)
-                
+
                 # Find and modify CSP header
                 for header_name in headers:
-                    if header_name.lower() == 'content-security-policy':
+                    if header_name.lower() == "content-security-policy":
                         csp = headers[header_name]
-                        parts = csp.split(';')
+                        parts = csp.split(";")
                         for i, part in enumerate(parts):
-                            if 'script-src' in part:
+                            if "script-src" in part:
                                 parts[i] = f"{part.strip()} cdn.jsdelivr.net"
-                            elif 'connect-src' in part:
+                            elif "connect-src" in part:
                                 parts[i] = f"{part.strip()} " + http_url
-                        if not any('connect-src' in part for part in parts):
+                        if not any("connect-src" in part for part in parts):
                             parts.append(" connect-src 'self' " + http_url)
-                        headers[header_name] = ';'.join(parts)
-                
+                        headers[header_name] = ";".join(parts)
+
                 route.fulfill(response=response, headers=headers)
             except Exception:
                 # Continue with the original request without modification
                 route.continue_()
-            
+
         self.route("**/*", handle_route)
         page = _original_new_page(self, *args, **kwargs)
         handle_navigation(page)

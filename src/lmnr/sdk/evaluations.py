@@ -228,7 +228,7 @@ class Evaluation:
 
         async def evaluate_with_semaphore(datapoint, index):
             async with semaphore:
-                result = await self._evaluate_datapoint(eval_id, datapoint)
+                result = await self._evaluate_datapoint(eval_id, datapoint, index)
                 self.reporter.update(1)
                 return index, result
 
@@ -247,7 +247,7 @@ class Evaluation:
         return ordered_results
 
     async def _evaluate_datapoint(
-        self, eval_id: uuid.UUID, datapoint: Datapoint
+        self, eval_id: uuid.UUID, datapoint: Datapoint, index: int
     ) -> EvaluationResultDatapoint:
         with L.start_as_current_span("evaluation") as evaluation_span:
             L._set_trace_type(trace_type=TraceType.EVALUATION)
@@ -299,6 +299,7 @@ class Evaluation:
                 # to add to which result datapoints, e.g. sample some randomly
                 human_evaluators=self.human_evaluators,
                 executor_span_id=executor_span_id,
+                index=index,
             )
             await L.save_eval_datapoints(eval_id, [datapoint], self.group_name)
             return datapoint

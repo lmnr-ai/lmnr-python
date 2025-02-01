@@ -40,6 +40,7 @@ dependencies = [
   # https://discuss.ai.google.dev/t/warning-all-log-messages-before-absl-initializelog-is-called-are-written-to-stderr-e0000-001731955515-629532-17124-init-cc-229-grpc-wait-for-shutdown-with-timeout-timed-out/50020
   # https://github.com/grpc/grpc/issues/38490
   "grpcio<1.68.0",
+  "openai>=1.61.0",
 ]
 
 [project.scripts]
