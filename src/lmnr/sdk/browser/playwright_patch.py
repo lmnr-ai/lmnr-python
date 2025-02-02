@@ -1,7 +1,6 @@
 import opentelemetry
 import uuid
 import asyncio
-import os
 
 try:
     from playwright.async_api import BrowserContext, Page

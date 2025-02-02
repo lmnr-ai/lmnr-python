@@ -2,7 +2,6 @@ import asyncio
 import re
 import sys
 import uuid
-
 from tqdm import tqdm
 from typing import Any, Awaitable, Optional, Set, Union
 
@@ -190,6 +189,7 @@ class Evaluation:
         self.batch_size = concurrency_limit
         self._logger = get_default_logger(self.__class__.__name__)
         self.human_evaluators = human_evaluators
+        self.upload_tasks = []  # Add this line to track upload tasks
         L.initialize(
             project_api_key=project_api_key,
             base_url=base_url,
@@ -209,6 +209,12 @@ class Evaluation:
         try:
             evaluation = await L.init_eval(name=self.name, group_name=self.group_name)
             result_datapoints = await self._evaluate_in_batches(evaluation.id)
+            
+            # Wait for all background upload tasks to complete
+            if self.upload_tasks:
+                self._logger.debug(f"Waiting for {len(self.upload_tasks)} upload tasks to complete")
+                await asyncio.gather(*self.upload_tasks)
+                self._logger.debug("All upload tasks completed")
         except Exception as e:
             self.reporter.stopWithError(e)
             self.is_finished = True
@@ -224,26 +230,30 @@ class Evaluation:
     async def _evaluate_in_batches(
         self, eval_id: uuid.UUID
     ) -> list[EvaluationResultDatapoint]:
-        semaphore = asyncio.Semaphore(self.concurrency_limit)
 
-        async def evaluate_with_semaphore(datapoint, index):
-            async with semaphore:
+        semaphore = asyncio.Semaphore(self.concurrency_limit)
+        tasks = []
+        data_iter = self.data if isinstance(self.data, list) else range(len(self.data))
+
+        async def evaluate_task(datapoint, index):
+            try:
                 result = await self._evaluate_datapoint(eval_id, datapoint, index)
                 self.reporter.update(1)
                 return index, result
+            finally:
+                semaphore.release()
 
-        # Create tasks for all datapoints with their indices
-        tasks = []
-        data_iter = self.data if isinstance(self.data, list) else range(len(self.data))
+        # Create tasks only after acquiring semaphore
         for idx, item in enumerate(data_iter):
+            await semaphore.acquire()
             datapoint = item if isinstance(self.data, list) else self.data[item]
-            task = asyncio.create_task(evaluate_with_semaphore(datapoint, idx))
+            task = asyncio.create_task(evaluate_task(datapoint, idx))
             tasks.append(task)
 
         # Wait for all tasks to complete and preserve order
         results = await asyncio.gather(*tasks)
-        # Sort by index and extract just the results
         ordered_results = [result for _, result in sorted(results, key=lambda x: x[0])]
+
         return ordered_results
 
     async def _evaluate_datapoint(
@@ -256,11 +266,15 @@ class Evaluation:
                 "executor", input={"data": datapoint.data}
             ) as executor_span:
                 executor_span.set_attribute(SPAN_TYPE, SpanType.EXECUTOR.value)
-                output = (
-                    await self.executor(datapoint.data)
-                    if is_async(self.executor)
-                    else self.executor(datapoint.data)
-                )
+                # Run synchronous executors in a thread pool to avoid blocking
+                if not is_async(self.executor):
+                    loop = asyncio.get_event_loop()
+                    output = await loop.run_in_executor(
+                        None, self.executor, datapoint.data
+                    )
+                else:
+                    output = await self.executor(datapoint.data)
+                    
                 L.set_span_output(output)
                 executor_span_id = uuid.UUID(
                     int=executor_span.get_span_context().span_id
@@ -288,21 +302,28 @@ class Evaluation:
                     scores.update(value)
 
             trace_id = uuid.UUID(int=evaluation_span.get_span_context().trace_id)
-            datapoint = EvaluationResultDatapoint(
-                data=datapoint.data,
-                target=target,
-                executor_output=output,
-                scores=scores,
-                trace_id=trace_id,
-                # For now add all human evaluators to all result datapoints
-                # In the future, we will add ways to specify which human evaluators
-                # to add to which result datapoints, e.g. sample some randomly
-                human_evaluators=self.human_evaluators,
-                executor_span_id=executor_span_id,
-                index=index,
-            )
-            await L.save_eval_datapoints(eval_id, [datapoint], self.group_name)
-            return datapoint
+
+        datapoint = EvaluationResultDatapoint(
+            data=datapoint.data,
+            target=target,
+            executor_output=output,
+            scores=scores,
+            trace_id=trace_id,
+            # For now add all human evaluators to all result datapoints
+            # In the future, we will add ways to specify which human evaluators
+            # to add to which result datapoints, e.g. sample some randomly
+            human_evaluators=self.human_evaluators,
+            executor_span_id=executor_span_id,
+            index=index,
+        )
+        
+        # Create background upload task without awaiting it
+        upload_task = asyncio.create_task(
+            L.save_eval_datapoints(eval_id, [datapoint], self.group_name)
+        )
+        self.upload_tasks.append(upload_task)
+
+        return datapoint
 
 
 def evaluate(
