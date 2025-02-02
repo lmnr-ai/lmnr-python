@@ -209,10 +209,12 @@ class Evaluation:
         try:
             evaluation = await L.init_eval(name=self.name, group_name=self.group_name)
             result_datapoints = await self._evaluate_in_batches(evaluation.id)
-            
+
             # Wait for all background upload tasks to complete
             if self.upload_tasks:
-                self._logger.debug(f"Waiting for {len(self.upload_tasks)} upload tasks to complete")
+                self._logger.debug(
+                    f"Waiting for {len(self.upload_tasks)} upload tasks to complete"
+                )
                 await asyncio.gather(*self.upload_tasks)
                 self._logger.debug("All upload tasks completed")
         except Exception as e:
@@ -274,7 +276,7 @@ class Evaluation:
                     )
                 else:
                     output = await self.executor(datapoint.data)
-                    
+
                 L.set_span_output(output)
                 executor_span_id = uuid.UUID(
                     int=executor_span.get_span_context().span_id
@@ -316,7 +318,7 @@ class Evaluation:
             executor_span_id=executor_span_id,
             index=index,
         )
-        
+
         # Create background upload task without awaiting it
         upload_task = asyncio.create_task(
             L.save_eval_datapoints(eval_id, [datapoint], self.group_name)
