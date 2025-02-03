@@ -56,7 +56,6 @@ INJECT_PLACEHOLDER = """
                     'Authorization': `Bearer ${projectApiKey}`
                 },
                 body: blob,
-                compress: false,
                 credentials: 'omit',
                 mode: 'cors',
                 cache: 'no-cache',

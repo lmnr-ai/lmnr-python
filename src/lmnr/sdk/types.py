@@ -166,7 +166,8 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
             return {
                 "data": serialize(self.data),
                 "target": serialize(self.target),
-                "executorOutput": serialize(self.executor_output),
+                # preserve only preview of the output (full output is in)
+                "executorOutput": str(serialize(self.executor_output))[:100],
                 "scores": self.scores,
                 "traceId": str(self.trace_id),
                 "humanEvaluators": [
