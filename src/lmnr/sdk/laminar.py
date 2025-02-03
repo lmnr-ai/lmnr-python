@@ -713,7 +713,6 @@ class Laminar:
         eval_id: uuid.UUID,
         datapoints: list[EvaluationResultDatapoint],
         groupName: Optional[str] = None,
-        human_evaluators: Optional[list[HumanEvaluator]] = None,
     ):
         async with aiohttp.ClientSession() as session:
 
@@ -722,7 +721,6 @@ class Laminar:
                 json={
                     "points": [datapoint.to_dict() for datapoint in datapoints],
                     "groupName": groupName,
-                    "humanEvaluators": human_evaluators,
                 },
                 headers=cls._headers(),
             ) as response:
