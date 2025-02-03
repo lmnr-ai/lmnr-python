@@ -339,6 +339,7 @@ def evaluate(
     http_port: Optional[int] = None,
     grpc_port: Optional[int] = None,
     instruments: Optional[Set[Instruments]] = None,
+    max_export_batch_size: Optional[int] = MAX_EXPORT_BATCH_SIZE,
 ) -> Optional[Awaitable[None]]:
     """
     If added to the file which is called through `lmnr eval` command, then
@@ -419,6 +420,7 @@ def evaluate(
         http_port=http_port,
         grpc_port=grpc_port,
         instruments=instruments,
+        max_export_batch_size=max_export_batch_size,
     )
 
     if PREPARE_ONLY.get():
