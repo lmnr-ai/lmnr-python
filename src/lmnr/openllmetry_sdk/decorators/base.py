@@ -38,6 +38,8 @@ def json_dumps(data: dict) -> str:
 
 def entity_method(
     name: Optional[str] = None,
+    ignore_input: bool = False,
+    ignore_output: bool = False,
 ):
     def decorate(fn):
         @wraps(fn)
@@ -54,7 +56,7 @@ def entity_method(
                 ctx_token = context_api.attach(ctx)
 
                 try:
-                    if _should_send_prompts():
+                    if _should_send_prompts() and not ignore_input:
                         span.set_attribute(
                             SPAN_INPUT,
                             json_dumps(
@@ -78,7 +80,7 @@ def entity_method(
                     return _handle_generator(span, res)
 
                 try:
-                    if _should_send_prompts():
+                    if _should_send_prompts() and not ignore_output:
                         span.set_attribute(
                             SPAN_OUTPUT,
                             json_dumps(res),
@@ -99,6 +101,8 @@ def entity_method(
 # Async Decorators
 def aentity_method(
     name: Optional[str] = None,
+    ignore_input: bool = False,
+    ignore_output: bool = False,
 ):
     def decorate(fn):
         @wraps(fn)
@@ -115,7 +119,7 @@ def aentity_method(
                 ctx_token = context_api.attach(ctx)
 
                 try:
-                    if _should_send_prompts():
+                    if _should_send_prompts() and not ignore_input:
                         span.set_attribute(
                             SPAN_INPUT,
                             json_dumps(
@@ -139,7 +143,7 @@ def aentity_method(
                     return await _ahandle_generator(span, ctx_token, res)
 
                 try:
-                    if _should_send_prompts():
+                    if _should_send_prompts() and not ignore_output:
                         span.set_attribute(SPAN_OUTPUT, json_dumps(res))
                 except TypeError:
                     pass
