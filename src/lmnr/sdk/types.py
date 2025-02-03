@@ -164,9 +164,11 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
     def to_dict(self):
         try:
             return {
-                "data": serialize(self.data),
-                "target": serialize(self.target),
-                "executorOutput": serialize(self.executor_output),
+                # preserve only preview of the data, target and executor output
+                # (full data is in trace)
+                "data": str(serialize(self.data))[:100],
+                "target": str(serialize(self.target))[:100],
+                "executorOutput": str(serialize(self.executor_output))[:100],
                 "scores": self.scores,
                 "traceId": str(self.trace_id),
                 "humanEvaluators": [
