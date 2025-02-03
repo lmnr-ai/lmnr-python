@@ -222,9 +222,6 @@ class Evaluation:
             self.is_finished = True
             return
 
-        for result_datapoint in result_datapoints:
-            result_datapoint.human_evaluators = self.human_evaluators or {}
-
         average_scores = get_average_scores(result_datapoints)
         self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
         self.is_finished = True
