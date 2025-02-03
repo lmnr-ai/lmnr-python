@@ -432,6 +432,10 @@ def init_openai_instrumentor(should_enrich_metrics: bool):
             instrumentor = OpenAIInstrumentor(
                 enrich_assistant=should_enrich_metrics,
                 enrich_token_usage=should_enrich_metrics,
+                # Default in the package provided is an empty function, which
+                # results in dropping the image data if we don't explicitly
+                # set it to None.
+                upload_base64_image=None,
             )
             if not instrumentor.is_instrumented_by_opentelemetry:
                 instrumentor.instrument()
