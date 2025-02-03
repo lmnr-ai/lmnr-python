@@ -15,6 +15,7 @@ from lmnr.openllmetry_sdk.tracing import get_tracer
 from lmnr.openllmetry_sdk.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT
 from lmnr.openllmetry_sdk.tracing.tracing import TracerWrapper
 from lmnr.openllmetry_sdk.utils.json_encoder import JSONEncoder
+from lmnr.openllmetry_sdk.config import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 
 
 class CustomJSONEncoder(JSONEncoder):
@@ -57,14 +58,15 @@ def entity_method(
 
                 try:
                     if _should_send_prompts() and not ignore_input:
-                        span.set_attribute(
-                            SPAN_INPUT,
-                            json_dumps(
-                                get_input_from_func_args(
-                                    fn, is_method(fn), args, kwargs
-                                )
-                            ),
+                        inp = json_dumps(
+                            get_input_from_func_args(fn, is_method(fn), args, kwargs)
                         )
+                        if len(inp) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
+                            span.set_attribute(
+                                SPAN_INPUT, "Laminar: input too large to record"
+                            )
+                        else:
+                            span.set_attribute(SPAN_INPUT, inp)
                 except TypeError:
                     pass
 
@@ -81,10 +83,13 @@ def entity_method(
 
                 try:
                     if _should_send_prompts() and not ignore_output:
-                        span.set_attribute(
-                            SPAN_OUTPUT,
-                            json_dumps(res),
-                        )
+                        output = json_dumps(res)
+                        if len(output) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
+                            span.set_attribute(
+                                SPAN_OUTPUT, "Laminar: output too large to record"
+                            )
+                        else:
+                            span.set_attribute(SPAN_OUTPUT, output)
                 except TypeError:
                     pass
 
@@ -120,14 +125,15 @@ def aentity_method(
 
                 try:
                     if _should_send_prompts() and not ignore_input:
-                        span.set_attribute(
-                            SPAN_INPUT,
-                            json_dumps(
-                                get_input_from_func_args(
-                                    fn, is_method(fn), args, kwargs
-                                )
-                            ),
+                        inp = json_dumps(
+                            get_input_from_func_args(fn, is_method(fn), args, kwargs)
                         )
+                        if len(inp) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
+                            span.set_attribute(
+                                SPAN_INPUT, "Laminar: input too large to record"
+                            )
+                        else:
+                            span.set_attribute(SPAN_INPUT, inp)
                 except TypeError:
                     pass
 
@@ -144,7 +150,13 @@ def aentity_method(
 
                 try:
                     if _should_send_prompts() and not ignore_output:
-                        span.set_attribute(SPAN_OUTPUT, json_dumps(res))
+                        output = json_dumps(res)
+                        if len(output) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
+                            span.set_attribute(
+                                SPAN_OUTPUT, "Laminar: output too large to record"
+                            )
+                        else:
+                            span.set_attribute(SPAN_OUTPUT, output)
                 except TypeError:
                     pass
 
