@@ -5,6 +5,7 @@ SPAN_INPUT = "lmnr.span.input"
 SPAN_OUTPUT = "lmnr.span.output"
 SPAN_TYPE = "lmnr.span.type"
 SPAN_PATH = "lmnr.span.path"
+SPAN_IDS_PATH = "lmnr.span.ids_path"
 SPAN_INSTRUMENTATION_SOURCE = "lmnr.span.instrumentation_source"
 OVERRIDE_PARENT_SPAN = "lmnr.internal.override_parent_span"
 
