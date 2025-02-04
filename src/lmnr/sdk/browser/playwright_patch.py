@@ -132,7 +132,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
                         time.sleep(0.5)  # Wait before retry
             except Exception as script_error:
                 logger.error("Failed to load rrweb after all retries: %s", script_error)
-                raise
+                return
 
         # Get current trace ID from active span
         current_span = opentelemetry.trace.get_current_span()
@@ -190,8 +190,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
                         await asyncio.sleep(0.5)  # Wait before retry
             except Exception as script_error:
                 logger.error("Failed to load rrweb after all retries: %s", script_error)
-                raise
-
+                return
         # Get current trace ID from active span
         current_span = opentelemetry.trace.get_current_span()
         if current_span.is_recording():
