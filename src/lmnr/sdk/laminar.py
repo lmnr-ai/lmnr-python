@@ -323,7 +323,9 @@ class Laminar:
         cls,
         name: str,
         input: Any = None,
-        span_type: Union[Literal["DEFAULT"], Literal["LLM"]] = "DEFAULT",
+        span_type: Union[
+            Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]
+        ] = "DEFAULT",
         context: Optional[Context] = None,
         trace_id: Optional[uuid.UUID] = None,
         labels: Optional[dict[str, str]] = None,
@@ -461,7 +463,9 @@ class Laminar:
         cls,
         name: str,
         input: Any = None,
-        span_type: Union[Literal["DEFAULT"], Literal["LLM"]] = "DEFAULT",
+        span_type: Union[
+            Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]
+        ] = "DEFAULT",
         context: Optional[Context] = None,
         trace_id: Optional[uuid.UUID] = None,
         labels: Optional[dict[str, str]] = None,

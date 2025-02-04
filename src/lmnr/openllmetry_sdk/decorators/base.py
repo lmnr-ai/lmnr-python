@@ -4,7 +4,7 @@ import logging
 import os
 import pydantic
 import types
-from typing import Any, Optional
+from typing import Any, Literal, Optional, Union
 
 from opentelemetry import trace
 from opentelemetry import context as context_api
@@ -12,7 +12,7 @@ from opentelemetry.trace import Span
 
 from lmnr.sdk.utils import get_input_from_func_args, is_method
 from lmnr.openllmetry_sdk.tracing import get_tracer
-from lmnr.openllmetry_sdk.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT
+from lmnr.openllmetry_sdk.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT, SPAN_TYPE
 from lmnr.openllmetry_sdk.tracing.tracing import TracerWrapper
 from lmnr.openllmetry_sdk.utils.json_encoder import JSONEncoder
 from lmnr.openllmetry_sdk.config import MAX_MANUAL_SPAN_PAYLOAD_SIZE
@@ -41,6 +41,7 @@ def entity_method(
     name: Optional[str] = None,
     ignore_input: bool = False,
     ignore_output: bool = False,
+    span_type: Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]] = "DEFAULT",
 ):
     def decorate(fn):
         @wraps(fn)
@@ -51,7 +52,7 @@ def entity_method(
             span_name = name or fn.__name__
 
             with get_tracer() as tracer:
-                span = tracer.start_span(span_name)
+                span = tracer.start_span(span_name, attributes={SPAN_TYPE: span_type})
 
                 ctx = trace.set_span_in_context(span, context_api.get_current())
                 ctx_token = context_api.attach(ctx)
@@ -108,6 +109,7 @@ def aentity_method(
     name: Optional[str] = None,
     ignore_input: bool = False,
     ignore_output: bool = False,
+    span_type: Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]] = "DEFAULT",
 ):
     def decorate(fn):
         @wraps(fn)
@@ -118,7 +120,7 @@ def aentity_method(
             span_name = name or fn.__name__
 
             with get_tracer() as tracer:
-                span = tracer.start_span(span_name)
+                span = tracer.start_span(span_name, attributes={SPAN_TYPE: span_type})
 
                 ctx = trace.set_span_in_context(span, context_api.get_current())
                 ctx_token = context_api.attach(ctx)
