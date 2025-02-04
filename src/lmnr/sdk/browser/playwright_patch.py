@@ -105,10 +105,12 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         page.wait_for_load_state("domcontentloaded")
 
         # First check if rrweb is already loaded
-        is_loaded = page.evaluate("""
+        is_loaded = page.evaluate(
+            """
             () => typeof window.rrweb !== 'undefined'
-        """)
-        
+        """
+        )
+
         if not is_loaded:
             try:
                 # Add retry logic for script loading
@@ -121,7 +123,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
                         # Verify script loaded successfully
                         page.wait_for_function(
                             """(() => typeof window.rrweb !== 'undefined')""",
-                            timeout=5000
+                            timeout=5000,
                         )
                         break
                     except Exception:
@@ -136,7 +138,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         current_span = opentelemetry.trace.get_current_span()
         if current_span.is_recording():
             current_span.set_attribute("lmnr.internal.has_browser_session", True)
-            
+
         trace_id = format(current_span.get_span_context().trace_id, "032x")
         session_id = str(uuid.uuid4().hex)
 
@@ -156,15 +158,17 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         )
 
     async def inject_rrweb_async(page: Page):
-        
+
         # Wait for the page to be in a ready state first
         await page.wait_for_load_state("domcontentloaded")
 
         # First check if rrweb is already loaded
-        is_loaded = await page.evaluate("""
+        is_loaded = await page.evaluate(
+            """
             () => typeof window.rrweb !== 'undefined'
-        """)
-        
+        """
+        )
+
         if not is_loaded:
             try:
                 # Add retry logic for script loading
@@ -177,7 +181,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
                         # Verify script loaded successfully
                         await page.wait_for_function(
                             """(() => typeof window.rrweb !== 'undefined')""",
-                            timeout=5000
+                            timeout=5000,
                         )
                         break
                     except Exception:
@@ -192,7 +196,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         current_span = opentelemetry.trace.get_current_span()
         if current_span.is_recording():
             current_span.set_attribute("lmnr.internal.has_browser_session", True)
-            
+
         trace_id = format(current_span.get_span_context().trace_id, "032x")
         session_id = str(uuid.uuid4().hex)
 
