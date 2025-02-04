@@ -1,6 +1,9 @@
 import opentelemetry
 import uuid
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 try:
     from playwright.async_api import BrowserContext, Page
@@ -158,7 +161,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
                 [http_url, project_api_key],
             )
         except Exception as e:
-            print(f"Error injecting rrweb: {e}")
+            logger.error("Error injecting rrweb: %s", e)
 
     def handle_navigation(page: SyncPage):
         def on_load():
