@@ -2,6 +2,7 @@ import opentelemetry
 import uuid
 import asyncio
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -100,9 +101,42 @@ INJECT_PLACEHOLDER = """
 def init_playwright_tracing(http_url: str, project_api_key: str):
 
     def inject_rrweb(page: SyncPage):
+        # Wait for the page to be in a ready state first
+        page.wait_for_load_state("domcontentloaded")
+
+        # First check if rrweb is already loaded
+        is_loaded = page.evaluate("""
+            () => typeof window.rrweb !== 'undefined'
+        """)
+        
+        if not is_loaded:
+            try:
+                # Add retry logic for script loading
+                retries = 3
+                for attempt in range(retries):
+                    try:
+                        page.add_script_tag(
+                            url="https://cdn.jsdelivr.net/npm/rrweb@latest/dist/rrweb.min.js"
+                        )
+                        # Verify script loaded successfully
+                        page.wait_for_function(
+                            """(() => typeof window.rrweb !== 'undefined')""",
+                            timeout=5000
+                        )
+                        break
+                    except Exception:
+                        if attempt == retries - 1:  # Last attempt
+                            raise
+                        time.sleep(0.5)  # Wait before retry
+            except Exception as script_error:
+                logger.error("Failed to load rrweb after all retries: %s", script_error)
+                raise
+
         # Get current trace ID from active span
         current_span = opentelemetry.trace.get_current_span()
-        current_span.set_attribute("lmnr.internal.has_browser_session", True)
+        if current_span.is_recording():
+            current_span.set_attribute("lmnr.internal.has_browser_session", True)
+            
         trace_id = format(current_span.get_span_context().trace_id, "032x")
         session_id = str(uuid.uuid4().hex)
 
@@ -115,11 +149,6 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
             [trace_id, session_id],
         )
 
-        # Load rrweb from CDN
-        page.add_script_tag(
-            url="https://cdn.jsdelivr.net/npm/rrweb@latest/dist/rrweb.min.js"
-        )
-
         # Update the recording setup to include trace ID
         page.evaluate(
             INJECT_PLACEHOLDER,
@@ -127,41 +156,60 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         )
 
     async def inject_rrweb_async(page: Page):
-        try:
-            # Wait for the page to be in a ready state first
-            await page.wait_for_load_state("domcontentloaded")
+        
+        # Wait for the page to be in a ready state first
+        await page.wait_for_load_state("domcontentloaded")
 
-            # Get current trace ID from active span
-            current_span = opentelemetry.trace.get_current_span()
+        # First check if rrweb is already loaded
+        is_loaded = await page.evaluate("""
+            () => typeof window.rrweb !== 'undefined'
+        """)
+        
+        if not is_loaded:
+            try:
+                # Add retry logic for script loading
+                retries = 3
+                for attempt in range(retries):
+                    try:
+                        await page.add_script_tag(
+                            url="https://cdn.jsdelivr.net/npm/rrweb@latest/dist/rrweb.min.js"
+                        )
+                        # Verify script loaded successfully
+                        await page.wait_for_function(
+                            """(() => typeof window.rrweb !== 'undefined')""",
+                            timeout=5000
+                        )
+                        break
+                    except Exception:
+                        if attempt == retries - 1:  # Last attempt
+                            raise
+                        await asyncio.sleep(0.5)  # Wait before retry
+            except Exception as script_error:
+                logger.error("Failed to load rrweb after all retries: %s", script_error)
+                raise
+
+        # Get current trace ID from active span
+        current_span = opentelemetry.trace.get_current_span()
+        if current_span.is_recording():
             current_span.set_attribute("lmnr.internal.has_browser_session", True)
-            trace_id = format(current_span.get_span_context().trace_id, "032x")
-            session_id = str(uuid.uuid4().hex)
+            
+        trace_id = format(current_span.get_span_context().trace_id, "032x")
+        session_id = str(uuid.uuid4().hex)
 
-            # Generate UUID session ID and set trace ID
-            await page.evaluate(
-                """([traceId, sessionId]) => {
-                window.rrwebSessionId = sessionId;
-                window.traceId = traceId;
-            }""",
-                [trace_id, session_id],
-            )
+        # Generate UUID session ID and set trace ID
+        await page.evaluate(
+            """([traceId, sessionId]) => {
+            window.rrwebSessionId = sessionId;
+            window.traceId = traceId;
+        }""",
+            [trace_id, session_id],
+        )
 
-            # Load rrweb from CDN
-            await page.add_script_tag(
-                url="https://cdn.jsdelivr.net/npm/rrweb@latest/dist/rrweb.min.js"
-            )
-
-            await page.wait_for_function(
-                """(() => window.rrweb || 'rrweb' in window)"""
-            )
-
-            # Update the recording setup to include trace ID
-            await page.evaluate(
-                INJECT_PLACEHOLDER,
-                [http_url, project_api_key],
-            )
-        except Exception as e:
-            logger.error("Error injecting rrweb: %s", e)
+        # Update the recording setup to include trace ID
+        await page.evaluate(
+            INJECT_PLACEHOLDER,
+            [http_url, project_api_key],
+        )
 
     def handle_navigation(page: SyncPage):
         def on_load():
