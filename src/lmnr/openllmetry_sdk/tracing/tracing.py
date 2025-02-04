@@ -1,7 +1,7 @@
 import atexit
 import copy
 import logging
-
+import uuid
 
 from contextvars import Context
 from lmnr.sdk.log import VerboseColorfulFormatter
@@ -9,6 +9,7 @@ from lmnr.openllmetry_sdk.instruments import Instruments
 from lmnr.sdk.browser import init_browser_tracing
 from lmnr.openllmetry_sdk.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
+    SPAN_IDS_PATH,
     SPAN_INSTRUMENTATION_SOURCE,
     SPAN_PATH,
     TRACING_LEVEL,
@@ -72,6 +73,7 @@ class TracerWrapper(object):
     __tracer_provider: TracerProvider = None
     __logger: logging.Logger = None
     __span_id_to_path: dict[int, list[str]] = {}
+    __span_id_lists: dict[int, list[str]] = {}
 
     def __new__(
         cls,
@@ -162,10 +164,18 @@ class TracerWrapper(object):
         parent_span_path = span_path_in_context or (
             self.__span_id_to_path.get(span.parent.span_id) if span.parent else None
         )
+        parent_span_ids_path = (
+            self.__span_id_lists.get(span.parent.span_id, []) if span.parent else []
+        )
         span_path = parent_span_path + [span.name] if parent_span_path else [span.name]
+        span_ids_path = parent_span_ids_path + [
+            str(uuid.UUID(int=span.get_span_context().span_id))
+        ]
         span.set_attribute(SPAN_PATH, span_path)
+        span.set_attribute(SPAN_IDS_PATH, span_ids_path)
         set_value("span_path", span_path, get_current())
         self.__span_id_to_path[span.get_span_context().span_id] = span_path
+        self.__span_id_lists[span.get_span_context().span_id] = span_ids_path
 
         span.set_attribute(SPAN_INSTRUMENTATION_SOURCE, "python")
 
@@ -203,6 +213,7 @@ class TracerWrapper(object):
     def clear(cls):
         # Any state cleanup. Now used in between tests
         cls.__span_id_to_path = {}
+        cls.__span_id_lists = {}
 
     def flush(self):
         self.__spans_processor.force_flush()

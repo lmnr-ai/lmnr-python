@@ -7,3 +7,6 @@ def is_tracing_enabled() -> bool:
 
 def is_content_tracing_enabled() -> bool:
     return (os.getenv("TRACELOOP_TRACE_CONTENT") or "true").lower() == "true"
+
+
+MAX_MANUAL_SPAN_PAYLOAD_SIZE = 1024 * 1024  # 1MB

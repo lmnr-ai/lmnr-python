@@ -9,6 +9,7 @@ from lmnr.openllmetry_sdk.tracing.attributes import (
     SPAN_TYPE,
     OVERRIDE_PARENT_SPAN,
 )
+from lmnr.openllmetry_sdk.config import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 from lmnr.openllmetry_sdk.decorators.base import json_dumps
 from opentelemetry import context as context_api, trace
 from opentelemetry.context import attach, detach
@@ -47,7 +48,6 @@ from lmnr.openllmetry_sdk.tracing.tracing import (
 from .log import VerboseColorfulFormatter
 
 from .types import (
-    HumanEvaluator,
     InitEvaluationResponse,
     EvaluationResultDatapoint,
     GetDatapointsResponse,
@@ -323,7 +323,9 @@ class Laminar:
         cls,
         name: str,
         input: Any = None,
-        span_type: Union[Literal["DEFAULT"], Literal["LLM"]] = "DEFAULT",
+        span_type: Union[
+            Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]
+        ] = "DEFAULT",
         context: Optional[Context] = None,
         trace_id: Optional[uuid.UUID] = None,
         labels: Optional[dict[str, str]] = None,
@@ -402,10 +404,17 @@ class Laminar:
                 if trace_id is not None and isinstance(trace_id, uuid.UUID):
                     span.set_attribute(OVERRIDE_PARENT_SPAN, True)
                 if input is not None:
-                    span.set_attribute(
-                        SPAN_INPUT,
-                        json_dumps(input),
-                    )
+                    serialized_input = json_dumps(input)
+                    if len(serialized_input) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
+                        span.set_attribute(
+                            SPAN_INPUT,
+                            "Laminar: input too large to record",
+                        )
+                    else:
+                        span.set_attribute(
+                            SPAN_INPUT,
+                            serialized_input,
+                        )
                 yield span
 
             # TODO: Figure out if this is necessary
@@ -454,7 +463,9 @@ class Laminar:
         cls,
         name: str,
         input: Any = None,
-        span_type: Union[Literal["DEFAULT"], Literal["LLM"]] = "DEFAULT",
+        span_type: Union[
+            Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]
+        ] = "DEFAULT",
         context: Optional[Context] = None,
         trace_id: Optional[uuid.UUID] = None,
         labels: Optional[dict[str, str]] = None,
@@ -546,10 +557,17 @@ class Laminar:
             if trace_id is not None and isinstance(trace_id, uuid.UUID):
                 span.set_attribute(OVERRIDE_PARENT_SPAN, True)
             if input is not None:
-                span.set_attribute(
-                    SPAN_INPUT,
-                    json_dumps(input),
-                )
+                serialized_input = json_dumps(input)
+                if len(serialized_input) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
+                    span.set_attribute(
+                        SPAN_INPUT,
+                        "Laminar: input too large to record",
+                    )
+                else:
+                    span.set_attribute(
+                        SPAN_INPUT,
+                        serialized_input,
+                    )
             return span
 
     @classmethod
@@ -563,7 +581,14 @@ class Laminar:
         """
         span = trace.get_current_span()
         if output is not None and span != trace.INVALID_SPAN:
-            span.set_attribute(SPAN_OUTPUT, json_dumps(output))
+            serialized_output = json_dumps(output)
+            if len(serialized_output) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
+                span.set_attribute(
+                    SPAN_OUTPUT,
+                    "Laminar: output too large to record",
+                )
+            else:
+                span.set_attribute(SPAN_OUTPUT, serialized_output)
 
     @classmethod
     @contextmanager

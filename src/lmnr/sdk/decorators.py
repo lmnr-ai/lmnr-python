@@ -4,7 +4,7 @@ from lmnr.openllmetry_sdk.decorators.base import (
 )
 from opentelemetry.trace import INVALID_SPAN, get_current_span
 
-from typing import Callable, Optional, TypeVar, cast
+from typing import Callable, Literal, Optional, TypeVar, Union, cast
 from typing_extensions import ParamSpec
 
 from lmnr.openllmetry_sdk.tracing.attributes import SESSION_ID
@@ -21,6 +21,9 @@ def observe(
     *,
     name: Optional[str] = None,
     session_id: Optional[str] = None,
+    ignore_input: bool = False,
+    ignore_output: bool = False,
+    span_type: Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]] = "DEFAULT",
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """The main decorator entrypoint for Laminar. This is used to wrap
     functions and methods to create spans.
@@ -50,9 +53,19 @@ def observe(
             association_properties["session_id"] = session_id
         update_association_properties(association_properties)
         return (
-            aentity_method(name=name)(func)
+            aentity_method(
+                name=name,
+                ignore_input=ignore_input,
+                ignore_output=ignore_output,
+                span_type=span_type,
+            )(func)
             if is_async(func)
-            else entity_method(name=name)(func)
+            else entity_method(
+                name=name,
+                ignore_input=ignore_input,
+                ignore_output=ignore_output,
+                span_type=span_type,
+            )(func)
         )
 
     return cast(Callable, decorator)

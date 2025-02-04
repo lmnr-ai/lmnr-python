@@ -4,7 +4,7 @@ import logging
 import os
 import pydantic
 import types
-from typing import Any, Optional
+from typing import Any, Literal, Optional, Union
 
 from opentelemetry import trace
 from opentelemetry import context as context_api
@@ -12,9 +12,10 @@ from opentelemetry.trace import Span
 
 from lmnr.sdk.utils import get_input_from_func_args, is_method
 from lmnr.openllmetry_sdk.tracing import get_tracer
-from lmnr.openllmetry_sdk.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT
+from lmnr.openllmetry_sdk.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT, SPAN_TYPE
 from lmnr.openllmetry_sdk.tracing.tracing import TracerWrapper
 from lmnr.openllmetry_sdk.utils.json_encoder import JSONEncoder
+from lmnr.openllmetry_sdk.config import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 
 
 class CustomJSONEncoder(JSONEncoder):
@@ -38,6 +39,9 @@ def json_dumps(data: dict) -> str:
 
 def entity_method(
     name: Optional[str] = None,
+    ignore_input: bool = False,
+    ignore_output: bool = False,
+    span_type: Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]] = "DEFAULT",
 ):
     def decorate(fn):
         @wraps(fn)
@@ -48,21 +52,22 @@ def entity_method(
             span_name = name or fn.__name__
 
             with get_tracer() as tracer:
-                span = tracer.start_span(span_name)
+                span = tracer.start_span(span_name, attributes={SPAN_TYPE: span_type})
 
                 ctx = trace.set_span_in_context(span, context_api.get_current())
                 ctx_token = context_api.attach(ctx)
 
                 try:
-                    if _should_send_prompts():
-                        span.set_attribute(
-                            SPAN_INPUT,
-                            json_dumps(
-                                get_input_from_func_args(
-                                    fn, is_method(fn), args, kwargs
-                                )
-                            ),
+                    if _should_send_prompts() and not ignore_input:
+                        inp = json_dumps(
+                            get_input_from_func_args(fn, is_method(fn), args, kwargs)
                         )
+                        if len(inp) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
+                            span.set_attribute(
+                                SPAN_INPUT, "Laminar: input too large to record"
+                            )
+                        else:
+                            span.set_attribute(SPAN_INPUT, inp)
                 except TypeError:
                     pass
 
@@ -78,11 +83,14 @@ def entity_method(
                     return _handle_generator(span, res)
 
                 try:
-                    if _should_send_prompts():
-                        span.set_attribute(
-                            SPAN_OUTPUT,
-                            json_dumps(res),
-                        )
+                    if _should_send_prompts() and not ignore_output:
+                        output = json_dumps(res)
+                        if len(output) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
+                            span.set_attribute(
+                                SPAN_OUTPUT, "Laminar: output too large to record"
+                            )
+                        else:
+                            span.set_attribute(SPAN_OUTPUT, output)
                 except TypeError:
                     pass
 
@@ -99,6 +107,9 @@ def entity_method(
 # Async Decorators
 def aentity_method(
     name: Optional[str] = None,
+    ignore_input: bool = False,
+    ignore_output: bool = False,
+    span_type: Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]] = "DEFAULT",
 ):
     def decorate(fn):
         @wraps(fn)
@@ -109,21 +120,22 @@ def aentity_method(
             span_name = name or fn.__name__
 
             with get_tracer() as tracer:
-                span = tracer.start_span(span_name)
+                span = tracer.start_span(span_name, attributes={SPAN_TYPE: span_type})
 
                 ctx = trace.set_span_in_context(span, context_api.get_current())
                 ctx_token = context_api.attach(ctx)
 
                 try:
-                    if _should_send_prompts():
-                        span.set_attribute(
-                            SPAN_INPUT,
-                            json_dumps(
-                                get_input_from_func_args(
-                                    fn, is_method(fn), args, kwargs
-                                )
-                            ),
+                    if _should_send_prompts() and not ignore_input:
+                        inp = json_dumps(
+                            get_input_from_func_args(fn, is_method(fn), args, kwargs)
                         )
+                        if len(inp) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
+                            span.set_attribute(
+                                SPAN_INPUT, "Laminar: input too large to record"
+                            )
+                        else:
+                            span.set_attribute(SPAN_INPUT, inp)
                 except TypeError:
                     pass
 
@@ -139,8 +151,14 @@ def aentity_method(
                     return await _ahandle_generator(span, ctx_token, res)
 
                 try:
-                    if _should_send_prompts():
-                        span.set_attribute(SPAN_OUTPUT, json_dumps(res))
+                    if _should_send_prompts() and not ignore_output:
+                        output = json_dumps(res)
+                        if len(output) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
+                            span.set_attribute(
+                                SPAN_OUTPUT, "Laminar: output too large to record"
+                            )
+                        else:
+                            span.set_attribute(SPAN_OUTPUT, output)
                 except TypeError:
                     pass
 
