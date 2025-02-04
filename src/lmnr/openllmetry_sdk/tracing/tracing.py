@@ -165,7 +165,7 @@ class TracerWrapper(object):
             self.__span_id_to_path.get(span.parent.span_id) if span.parent else None
         )
         parent_span_ids_path = (
-            self.__span_id_lists.get(span.parent.span_id) if span.parent else []
+            self.__span_id_lists.get(span.parent.span_id, []) if span.parent else []
         )
         span_path = parent_span_path + [span.name] if parent_span_path else [span.name]
         span_ids_path = parent_span_ids_path + [
@@ -213,6 +213,7 @@ class TracerWrapper(object):
     def clear(cls):
         # Any state cleanup. Now used in between tests
         cls.__span_id_to_path = {}
+        cls.__span_id_lists = {}
 
     def flush(self):
         self.__spans_processor.force_flush()
