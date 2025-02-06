@@ -13,7 +13,7 @@ from lmnr.openllmetry_sdk.config import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 from lmnr.openllmetry_sdk.decorators.base import json_dumps
 from opentelemetry import context as context_api, trace
 from opentelemetry.context import attach, detach
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter, Compression
 from opentelemetry.util.types import AttributeValue
 
 from pydantic.alias_generators import to_snake
@@ -149,6 +149,7 @@ class Laminar:
             exporter=OTLPSpanExporter(
                 endpoint=cls.__base_grpc_url,
                 headers={"authorization": f"Bearer {cls.__project_api_key}"},
+                compression=Compression.Gzip,
             ),
             instruments=instruments,
             disable_batch=disable_batch,

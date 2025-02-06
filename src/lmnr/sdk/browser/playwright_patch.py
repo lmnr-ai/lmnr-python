@@ -97,6 +97,39 @@ INJECT_PLACEHOLDER = """
 }
 """
 
+def retry_sync(func, retries=5, delay=0.5, error_message="Operation failed"):
+    """Utility function for retry logic in synchronous operations"""
+    for attempt in range(retries):
+        try:
+            result = func()
+            if result:  # If function returns truthy value, consider it successful
+                return result
+            if attempt == retries - 1:  # Last attempt
+                logger.error(f"{error_message} after all retries")
+                return None
+        except Exception as e:
+            if attempt == retries - 1:  # Last attempt
+                logger.error(f"{error_message}: {e}")
+                return None
+        time.sleep(delay)
+    return None
+
+async def retry_async(func, retries=5, delay=0.5, error_message="Operation failed"):
+    """Utility function for retry logic in asynchronous operations"""
+    for attempt in range(retries):
+        try:
+            result = await func()
+            if result:  # If function returns truthy value, consider it successful
+                return result
+            if attempt == retries - 1:  # Last attempt
+                logger.error(f"{error_message} after all retries")
+                return None
+        except Exception as e:
+            if attempt == retries - 1:  # Last attempt
+                logger.error(f"{error_message}: {e}")
+                return None
+        await asyncio.sleep(delay)
+    return None
 
 def init_playwright_tracing(http_url: str, project_api_key: str):
 
@@ -112,26 +145,22 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         )
 
         if not is_loaded:
-            try:
-                # Add retry logic for script loading
-                retries = 3
-                for attempt in range(retries):
-                    try:
-                        page.add_script_tag(
-                            url="https://cdn.jsdelivr.net/npm/rrweb@latest/dist/rrweb.min.js"
-                        )
-                        # Verify script loaded successfully
-                        page.wait_for_function(
-                            """(() => typeof window.rrweb !== 'undefined')""",
-                            timeout=5000,
-                        )
-                        break
-                    except Exception:
-                        if attempt == retries - 1:  # Last attempt
-                            raise
-                        time.sleep(0.5)  # Wait before retry
-            except Exception as script_error:
-                logger.error("Failed to load rrweb after all retries: %s", script_error)
+            def load_rrweb():
+                page.add_script_tag(
+                    url="https://cdn.jsdelivr.net/npm/rrweb@latest/dist/rrweb.min.js"
+                )
+                # Verify script loaded successfully
+                page.wait_for_function(
+                    """(() => typeof window.rrweb !== 'undefined')""",
+                    timeout=10000,
+                )
+                return True
+
+            if not retry_sync(
+                load_rrweb,
+                delay=1,
+                error_message="Failed to load rrweb"
+            ):
                 return
 
         # Get current trace ID from active span
@@ -142,14 +171,23 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         trace_id = format(current_span.get_span_context().trace_id, "032x")
         session_id = str(uuid.uuid4().hex)
 
-        # Generate UUID session ID and set trace ID
-        page.evaluate(
-            """([traceId, sessionId]) => {
-            window.rrwebSessionId = sessionId;
-            window.traceId = traceId;
-        }""",
-            [trace_id, session_id],
-        )
+        def set_window_vars():
+            page.evaluate(
+                """([traceId, sessionId]) => {
+                window.rrwebSessionId = sessionId;
+                window.traceId = traceId;
+            }""",
+                [trace_id, session_id],
+            )
+            return page.evaluate("""
+                () => window.rrwebSessionId && window.traceId
+            """)
+
+        if not retry_sync(
+            set_window_vars,
+            error_message="Failed to set window variables"
+        ):
+            return
 
         # Update the recording setup to include trace ID
         page.evaluate(
@@ -158,7 +196,6 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         )
 
     async def inject_rrweb_async(page: Page):
-
         # Wait for the page to be in a ready state first
         await page.wait_for_load_state("domcontentloaded")
 
@@ -170,27 +207,24 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         )
 
         if not is_loaded:
-            try:
-                # Add retry logic for script loading
-                retries = 3
-                for attempt in range(retries):
-                    try:
-                        await page.add_script_tag(
-                            url="https://cdn.jsdelivr.net/npm/rrweb@latest/dist/rrweb.min.js"
-                        )
-                        # Verify script loaded successfully
-                        await page.wait_for_function(
-                            """(() => typeof window.rrweb !== 'undefined')""",
-                            timeout=5000,
-                        )
-                        break
-                    except Exception:
-                        if attempt == retries - 1:  # Last attempt
-                            raise
-                        await asyncio.sleep(0.5)  # Wait before retry
-            except Exception as script_error:
-                logger.error("Failed to load rrweb after all retries: %s", script_error)
+            async def load_rrweb():
+                await page.add_script_tag(
+                    url="https://cdn.jsdelivr.net/npm/rrweb@latest/dist/rrweb.min.js"
+                )
+                # Verify script loaded successfully
+                await page.wait_for_function(
+                    """(() => typeof window.rrweb !== 'undefined')""",
+                    timeout=10000,
+                )
+                return True
+
+            if not await retry_async(
+                load_rrweb,
+                delay=1,
+                error_message="Failed to load rrweb"
+            ):
                 return
+
         # Get current trace ID from active span
         current_span = opentelemetry.trace.get_current_span()
         if current_span.is_recording():
@@ -199,14 +233,23 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         trace_id = format(current_span.get_span_context().trace_id, "032x")
         session_id = str(uuid.uuid4().hex)
 
-        # Generate UUID session ID and set trace ID
-        await page.evaluate(
-            """([traceId, sessionId]) => {
-            window.rrwebSessionId = sessionId;
-            window.traceId = traceId;
-        }""",
-            [trace_id, session_id],
-        )
+        async def set_window_vars():
+            await page.evaluate(
+                """([traceId, sessionId]) => {
+                window.rrwebSessionId = sessionId;
+                window.traceId = traceId;
+            }""",
+                [trace_id, session_id],
+            )
+            return await page.evaluate("""
+                () => window.rrwebSessionId && window.traceId
+            """)
+
+        if not await retry_async(
+            set_window_vars,
+            error_message="Failed to set window variables"
+        ):
+            return
 
         # Update the recording setup to include trace ID
         await page.evaluate(
@@ -250,8 +293,11 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
                         headers[header_name] = ";".join(parts)
 
                 await route.fulfill(response=response, headers=headers)
-            except Exception:
-                await route.continue_()
+            except Exception as e:
+                # Only continue if the route hasn't been handled yet
+                logger.debug(f"Error handling route: {e}")
+                if "Route is already handled" not in str(e):
+                    await route.continue_()
 
         await self.route("**/*", handle_route)
         page = await _original_new_page_async(self, *args, **kwargs)
@@ -280,9 +326,11 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
                         headers[header_name] = ";".join(parts)
 
                 route.fulfill(response=response, headers=headers)
-            except Exception:
-                # Continue with the original request without modification
-                route.continue_()
+            except Exception as e:
+                # Only continue if the route hasn't been handled yet
+                logger.debug(f"Error handling route: {e}")
+                if "Route is already handled" not in str(e):
+                    route.continue_()
 
         self.route("**/*", handle_route)
         page = _original_new_page(self, *args, **kwargs)
