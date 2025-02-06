@@ -13,7 +13,10 @@ from lmnr.openllmetry_sdk.config import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 from lmnr.openllmetry_sdk.decorators.base import json_dumps
 from opentelemetry import context as context_api, trace
 from opentelemetry.context import attach, detach
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter, Compression
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+    OTLPSpanExporter,
+    Compression,
+)
 from opentelemetry.util.types import AttributeValue
 
 from pydantic.alias_generators import to_snake
@@ -80,6 +83,7 @@ class Laminar:
         instruments: Optional[Set[Instruments]] = None,
         disable_batch: bool = False,
         max_export_batch_size: Optional[int] = None,
+        export_timeout_seconds: Optional[int] = None,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -112,6 +116,10 @@ class Laminar:
                         immediately to the backend. Useful for debugging, but\
                         may cause performance overhead in production.
                         Defaults to False.
+            export_timeout_seconds (Optional[int], optional): Timeout for the OTLP\
+                        exporter. Defaults to 30 seconds (unlike the\
+                        OpenTelemetry default of 10 seconds).
+                        Defaults to None.
 
         Raises:
             ValueError: If project API key is not set
@@ -150,6 +158,8 @@ class Laminar:
                 endpoint=cls.__base_grpc_url,
                 headers={"authorization": f"Bearer {cls.__project_api_key}"},
                 compression=Compression.Gzip,
+                # default timeout is 10 seconds, increase it to 30 seconds
+                timeout=export_timeout_seconds or 30,
             ),
             instruments=instruments,
             disable_batch=disable_batch,

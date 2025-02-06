@@ -97,6 +97,7 @@ INJECT_PLACEHOLDER = """
 }
 """
 
+
 def retry_sync(func, retries=5, delay=0.5, error_message="Operation failed"):
     """Utility function for retry logic in synchronous operations"""
     for attempt in range(retries):
@@ -113,6 +114,7 @@ def retry_sync(func, retries=5, delay=0.5, error_message="Operation failed"):
                 return None
         time.sleep(delay)
     return None
+
 
 async def retry_async(func, retries=5, delay=0.5, error_message="Operation failed"):
     """Utility function for retry logic in asynchronous operations"""
@@ -131,6 +133,7 @@ async def retry_async(func, retries=5, delay=0.5, error_message="Operation faile
         await asyncio.sleep(delay)
     return None
 
+
 def init_playwright_tracing(http_url: str, project_api_key: str):
 
     def inject_rrweb(page: SyncPage):
@@ -145,6 +148,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         )
 
         if not is_loaded:
+
             def load_rrweb():
                 page.add_script_tag(
                     url="https://cdn.jsdelivr.net/npm/rrweb@latest/dist/rrweb.min.js"
@@ -157,9 +161,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
                 return True
 
             if not retry_sync(
-                load_rrweb,
-                delay=1,
-                error_message="Failed to load rrweb"
+                load_rrweb, delay=1, error_message="Failed to load rrweb"
             ):
                 return
 
@@ -179,13 +181,14 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
             }""",
                 [trace_id, session_id],
             )
-            return page.evaluate("""
+            return page.evaluate(
+                """
                 () => window.rrwebSessionId && window.traceId
-            """)
+            """
+            )
 
         if not retry_sync(
-            set_window_vars,
-            error_message="Failed to set window variables"
+            set_window_vars, error_message="Failed to set window variables"
         ):
             return
 
@@ -207,6 +210,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         )
 
         if not is_loaded:
+
             async def load_rrweb():
                 await page.add_script_tag(
                     url="https://cdn.jsdelivr.net/npm/rrweb@latest/dist/rrweb.min.js"
@@ -219,9 +223,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
                 return True
 
             if not await retry_async(
-                load_rrweb,
-                delay=1,
-                error_message="Failed to load rrweb"
+                load_rrweb, delay=1, error_message="Failed to load rrweb"
             ):
                 return
 
@@ -241,13 +243,14 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
             }""",
                 [trace_id, session_id],
             )
-            return await page.evaluate("""
+            return await page.evaluate(
+                """
                 () => window.rrwebSessionId && window.traceId
-            """)
+            """
+            )
 
         if not await retry_async(
-            set_window_vars,
-            error_message="Failed to set window variables"
+            set_window_vars, error_message="Failed to set window variables"
         ):
             return
 
