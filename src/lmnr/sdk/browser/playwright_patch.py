@@ -297,12 +297,11 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
 
                 await route.fulfill(response=response, headers=headers)
             except Exception as e:
-                # Only continue if the route hasn't been handled yet
                 logger.debug(f"Error handling route: {e}")
-                if "Route is already handled" not in str(e):
-                    await route.continue_()
+                await route.continue_()
 
-        await self.route("**/*", handle_route)
+        # Only intercept requests that need CSP modification for jsdelivr
+        await self.route("**cdn.jsdelivr.net/**", handle_route)
         page = await _original_new_page_async(self, *args, **kwargs)
         await handle_navigation_async(page)
         return page
@@ -330,12 +329,11 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
 
                 route.fulfill(response=response, headers=headers)
             except Exception as e:
-                # Only continue if the route hasn't been handled yet
                 logger.debug(f"Error handling route: {e}")
-                if "Route is already handled" not in str(e):
-                    route.continue_()
+                route.continue_()
 
-        self.route("**/*", handle_route)
+        # Only intercept requests that need CSP modification for jsdelivr
+        self.route("**cdn.jsdelivr.net/**", handle_route)
         page = _original_new_page(self, *args, **kwargs)
         handle_navigation(page)
         return page
