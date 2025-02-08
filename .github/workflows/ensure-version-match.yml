@@ -9,11 +9,9 @@
 name: Ensure Version Match Between pyproject.toml and src/lmnr/version.py
 
 on:
-  push:
-    branches: ["browser"]
-  # pull_request:
-  #   types: [opened, synchronize]
-  #   branches: ["main"]
+  pull_request:
+    types: [opened, synchronize]
+    branches: ["main"]
 
 
 jobs:
