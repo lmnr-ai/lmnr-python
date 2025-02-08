@@ -135,9 +135,9 @@ class TracerWrapper(object):
             )
 
             if not instrument_set:
-                cls.__logger.warning(
-                    "No valid instruments set. Remove 'instrument' "
-                    "argument to use all instruments, or set a valid instrument."
+                cls.__logger.info(
+                    "No instruments set through Laminar. "
+                    "Only enabling basic OpenTelemetry tracing."
                 )
 
             obj.__content_allow_list = ContentAllowList()
@@ -280,7 +280,9 @@ def init_spans_exporter(api_endpoint: str, headers: Dict[str, str]) -> SpanExpor
     if "http" in api_endpoint.lower() or "https" in api_endpoint.lower():
         return HTTPExporter(endpoint=f"{api_endpoint}/v1/traces", headers=headers)
     else:
-        return GRPCExporter(endpoint=f"{api_endpoint}", headers=headers, compression=Compression.Gzip)
+        return GRPCExporter(
+            endpoint=f"{api_endpoint}", headers=headers, compression=Compression.Gzip
+        )
 
 
 def init_tracer_provider(resource: Resource) -> TracerProvider:
