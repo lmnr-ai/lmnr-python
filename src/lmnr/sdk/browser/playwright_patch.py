@@ -55,7 +55,7 @@ INJECT_PLACEHOLDER = """
             const response = await fetch(serverUrl, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/octet-stream',
+                    'Content-Type': 'application/json',
                     'Content-Encoding': 'gzip',
                     'Authorization': `Bearer ${projectApiKey}`,
                     'Accept': 'application/json'
