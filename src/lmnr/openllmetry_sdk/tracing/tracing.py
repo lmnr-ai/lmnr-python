@@ -11,6 +11,8 @@ from lmnr.openllmetry_sdk.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     SPAN_IDS_PATH,
     SPAN_INSTRUMENTATION_SOURCE,
+    SPAN_INSTRUMENTATION_VERSION,
+    SPAN_LANGUAGE_VERSION,
     SPAN_PATH,
     TRACING_LEVEL,
 )
@@ -39,6 +41,8 @@ from opentelemetry.sdk.trace.export import (
 from opentelemetry.trace import get_tracer_provider, ProxyTracerProvider
 
 from typing import Dict, Optional, Set
+
+from lmnr.version import LIB_VERSION, PYTHON_VERSION
 
 module_logger = logging.getLogger(__name__)
 console_log_handler = logging.StreamHandler()
@@ -179,6 +183,8 @@ class TracerWrapper(object):
         self.__span_id_lists[span.get_span_context().span_id] = span_ids_path
 
         span.set_attribute(SPAN_INSTRUMENTATION_SOURCE, "python")
+        span.set_attribute(SPAN_INSTRUMENTATION_VERSION, LIB_VERSION)
+        span.set_attribute(SPAN_LANGUAGE_VERSION, PYTHON_VERSION)
 
         association_properties = get_value("association_properties")
         if association_properties is not None:

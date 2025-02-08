@@ -1,0 +1,38 @@
+# This workflow will upload a Python Package using Twine when a release is created
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python#publishing-to-package-registries
+
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+name: Ensure Version Match Between pyproject.toml and src/lmnr/version.py
+
+on:
+  push:
+    branches: ["browser"]
+  # pull_request:
+  #   types: [opened, synchronize]
+  #   branches: ["main"]
+
+
+jobs:
+  ensure-version-match:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+    - name: Ensure version match
+      run: |
+        LIB_VERSION=$(cat src/lmnr/version.py | grep LIB_VERSION | cut -d'=' -f2 | sed 's/[" '"'"']//g')
+        uv add toml-cli
+        PYPROJECT_VERSION=$(uv run toml get --toml-path=pyproject.toml project.version)
+        if [ "$LIB_VERSION" != "$PYPROJECT_VERSION" ]; then
+          echo "Version mismatch between src/lmnr/version.py and pyproject.toml"
+          echo "LIB_VERSION: $LIB_VERSION"
+          echo "PYPROJECT_VERSION: $PYPROJECT_VERSION"
+          exit 1
+        fi
+        echo "Version match between src/lmnr/version.py and pyproject.toml"
