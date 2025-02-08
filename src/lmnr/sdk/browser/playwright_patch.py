@@ -55,18 +55,21 @@ INJECT_PLACEHOLDER = """
             const response = await fetch(serverUrl, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
+                    'Content-Type': 'application/octet-stream',
                     'Content-Encoding': 'gzip',
-                    'Authorization': `Bearer ${projectApiKey}`
+                    'Authorization': `Bearer ${projectApiKey}`,
+                    'Accept': 'application/json'
                 },
                 body: blob,
-                credentials: 'omit',
                 mode: 'cors',
-                cache: 'no-cache',
+                credentials: 'omit'
             });
             
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                console.error(`HTTP error! status: ${response.status}`);
+                if (response.status === 0) {
+                    console.error('Possible CORS issue - check network tab for details');
+                }
             }
             
             window.rrwebEventsBatch = [];
