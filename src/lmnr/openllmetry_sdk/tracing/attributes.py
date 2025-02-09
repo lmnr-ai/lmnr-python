@@ -7,7 +7,7 @@ SPAN_TYPE = "lmnr.span.type"
 SPAN_PATH = "lmnr.span.path"
 SPAN_IDS_PATH = "lmnr.span.ids_path"
 SPAN_INSTRUMENTATION_SOURCE = "lmnr.span.instrumentation_source"
-SPAN_INSTRUMENTATION_VERSION = "lmnr.span.instrumentation_version"
+SPAN_SDK_VERSION = "lmnr.span.sdk_version"
 SPAN_LANGUAGE_VERSION = "lmnr.span.language_version"
 OVERRIDE_PARENT_SPAN = "lmnr.internal.override_parent_span"
 
