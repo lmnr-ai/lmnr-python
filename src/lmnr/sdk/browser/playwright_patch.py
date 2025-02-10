@@ -3,6 +3,7 @@ import uuid
 import asyncio
 import logging
 import time
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -22,21 +23,25 @@ except ImportError as e:
 _original_new_page = None
 _original_new_page_async = None
 
+current_dir = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(current_dir, "rrweb", "rrweb.min.js"), "r") as f:
+    RRWEB_CONTENT = f"() => {{ {f.read()} }}"
+
 INJECT_PLACEHOLDER = """
 ([baseUrl, projectApiKey]) => {
     const serverUrl = `${baseUrl}/v1/browser-sessions/events`;
     const FLUSH_INTERVAL = 1000;
     const HEARTBEAT_INTERVAL = 1000;
 
-    window.rrwebEventsBatch = [];
+    window.lmnrRrwebEventsBatch = [];
     
-    window.sendBatch = async () => {
-        if (window.rrwebEventsBatch.length === 0) return;
+    window.lmnrSendRrwebEventsBatch = async () => {
+        if (window.lmnrRrwebEventsBatch.length === 0) return;
         
         const eventsPayload = {
-            sessionId: window.rrwebSessionId,
-            traceId: window.traceId,
-            events: window.rrwebEventsBatch
+            sessionId: window.lmnrRrwebSessionId,
+            traceId: window.lmnrTraceId,
+            events: window.lmnrRrwebEventsBatch
         };
         
         try {
@@ -71,31 +76,31 @@ INJECT_PLACEHOLDER = """
                     console.error('Possible CORS issue - check network tab for details');
                 }
             }
-            
-            window.rrwebEventsBatch = [];
+
+            window.lmnrRrwebEventsBatch = [];
         } catch (error) {
             console.error('Failed to send events:', error);
         }
     };
 
-    setInterval(() => window.sendBatch(), FLUSH_INTERVAL);
+    setInterval(() => window.lmnrSendRrwebEventsBatch(), FLUSH_INTERVAL);
 
     setInterval(() => {
-        window.rrwebEventsBatch.push({
+        window.lmnrRrwebEventsBatch.push({
             type: 6,
             data: { source: 'heartbeat' },
             timestamp: Date.now()
         });
     }, HEARTBEAT_INTERVAL);
 
-    window.rrweb.record({
+    window.lmnrRrweb.record({
         emit(event) {
-            window.rrwebEventsBatch.push(event);            
+            window.lmnrRrwebEventsBatch.push(event);            
         }
     });
 
     window.addEventListener('beforeunload', () => {
-        window.sendBatch();
+        window.lmnrSendRrwebEventsBatch();
     });
 }
 """
@@ -146,20 +151,17 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         # First check if rrweb is already loaded
         is_loaded = page.evaluate(
             """
-            () => typeof window.rrweb !== 'undefined'
+            () => typeof window.lmnrRrweb !== 'undefined'
         """
         )
 
         if not is_loaded:
-
             def load_rrweb():
-                page.add_script_tag(
-                    url="https://cdn.jsdelivr.net/npm/rrweb@latest/dist/rrweb.min.js"
-                )
+                page.evaluate(RRWEB_CONTENT)
                 # Verify script loaded successfully
                 page.wait_for_function(
-                    """(() => typeof window.rrweb !== 'undefined')""",
-                    timeout=10000,
+                    """(() => typeof window.lmnrRrweb !== 'undefined')""",
+                    timeout=5000,
                 )
                 return True
 
@@ -179,14 +181,14 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         def set_window_vars():
             page.evaluate(
                 """([traceId, sessionId]) => {
-                window.rrwebSessionId = sessionId;
-                window.traceId = traceId;
+                window.lmnrRrwebSessionId = sessionId;
+                window.lmnrTraceId = traceId;
             }""",
                 [trace_id, session_id],
             )
             return page.evaluate(
                 """
-                () => window.rrwebSessionId && window.traceId
+                () => window.lmnrRrwebSessionId && window.lmnrTraceId
             """
             )
 
@@ -208,20 +210,18 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         # First check if rrweb is already loaded
         is_loaded = await page.evaluate(
             """
-            () => typeof window.rrweb !== 'undefined'
-        """
+            () => typeof window.lmnrRrweb !== 'undefined'
+        """     
         )
 
         if not is_loaded:
 
             async def load_rrweb():
-                await page.add_script_tag(
-                    url="https://cdn.jsdelivr.net/npm/rrweb@latest/dist/rrweb.min.js"
-                )
+                await page.evaluate(RRWEB_CONTENT)
                 # Verify script loaded successfully
                 await page.wait_for_function(
-                    """(() => typeof window.rrweb !== 'undefined')""",
-                    timeout=10000,
+                    """(() => typeof window.lmnrRrweb !== 'undefined')""",
+                    timeout=5000,
                 )
                 return True
 
@@ -241,14 +241,14 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         async def set_window_vars():
             await page.evaluate(
                 """([traceId, sessionId]) => {
-                window.rrwebSessionId = sessionId;
-                window.traceId = traceId;
+                window.lmnrRrwebSessionId = sessionId;
+                window.lmnrTraceId = traceId;
             }""",
                 [trace_id, session_id],
             )
             return await page.evaluate(
                 """
-                () => window.rrwebSessionId && window.traceId
+                () => window.lmnrRrwebSessionId && window.lmnrTraceId
             """
             )
 
@@ -290,12 +290,8 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
                         csp = headers[header_name]
                         parts = csp.split(";")
                         for i, part in enumerate(parts):
-                            if "script-src" in part:
-                                parts[i] = f"{part.strip()} cdn.jsdelivr.net"
-                            elif "connect-src" in part:
-                                parts[i] = f"{part.strip()} " + http_url
-                        if not any("connect-src" in part for part in parts):
-                            parts.append(" connect-src 'self' " + http_url)
+                            if "connect-src" in part:
+                                parts[i] = f"{part.strip()} {http_url}"
                         headers[header_name] = ";".join(parts)
 
                 await route.fulfill(response=response, headers=headers)
@@ -303,8 +299,8 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
                 logger.debug(f"Error handling route: {e}")
                 await route.continue_()
 
-        # Only intercept requests that need CSP modification for jsdelivr
-        await self.route("**cdn.jsdelivr.net/**", handle_route)
+        # Intercept all navigation requests to modify CSP headers
+        await self.route("**/*", handle_route)
         page = await _original_new_page_async(self, *args, **kwargs)
         await handle_navigation_async(page)
         return page
@@ -322,12 +318,10 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
                         csp = headers[header_name]
                         parts = csp.split(";")
                         for i, part in enumerate(parts):
-                            if "script-src" in part:
-                                parts[i] = f"{part.strip()} cdn.jsdelivr.net"
-                            elif "connect-src" in part:
-                                parts[i] = f"{part.strip()} " + http_url
+                            if "connect-src" in part:
+                                parts[i] = f"{part.strip()} {http_url}"
                         if not any("connect-src" in part for part in parts):
-                            parts.append(" connect-src 'self' " + http_url)
+                            parts.append(f" connect-src 'self' {http_url}")
                         headers[header_name] = ";".join(parts)
 
                 route.fulfill(response=response, headers=headers)
@@ -335,8 +329,8 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
                 logger.debug(f"Error handling route: {e}")
                 route.continue_()
 
-        # Only intercept requests that need CSP modification for jsdelivr
-        self.route("**cdn.jsdelivr.net/**", handle_route)
+        # Intercept all navigation requests to modify CSP headers
+        self.route("**/*", handle_route)
         page = _original_new_page(self, *args, **kwargs)
         handle_navigation(page)
         return page
