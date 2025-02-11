@@ -1,6 +1,7 @@
 **/__pycache__
 dist/
 poetry.lock
+uv.lock
 lmnr_engine/
 .vscode
 .venv

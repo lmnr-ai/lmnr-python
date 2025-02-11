@@ -107,6 +107,7 @@ class Evaluation:
         grpc_port: Optional[int] = None,
         instruments: Optional[Set[Instruments]] = None,
         max_export_batch_size: Optional[int] = MAX_EXPORT_BATCH_SIZE,
+        trace_export_timeout_seconds: Optional[int] = None,
     ):
         """
         Initializes an instance of the Evaluations class.
@@ -197,6 +198,7 @@ class Evaluation:
             grpc_port=grpc_port,
             instruments=instruments,
             max_export_batch_size=max_export_batch_size,
+            export_timeout_seconds=trace_export_timeout_seconds,
         )
 
     async def run(self) -> Awaitable[None]:
@@ -340,6 +342,7 @@ def evaluate(
     grpc_port: Optional[int] = None,
     instruments: Optional[Set[Instruments]] = None,
     max_export_batch_size: Optional[int] = MAX_EXPORT_BATCH_SIZE,
+    trace_export_timeout_seconds: Optional[int] = None,
 ) -> Optional[Awaitable[None]]:
     """
     If added to the file which is called through `lmnr eval` command, then
@@ -401,6 +404,8 @@ def evaluate(
                         auto-instrument. If None, all available instruments\
                         will be used.
                         Defaults to None.
+        trace_export_timeout_seconds (Optional[int], optional): The timeout for\
+                        trace export on OpenTelemetry exporter. Defaults to None.
     """
     if group_id:
         raise DeprecationWarning("group_id is deprecated. Use group_name instead.")
@@ -421,6 +426,7 @@ def evaluate(
         grpc_port=grpc_port,
         instruments=instruments,
         max_export_batch_size=max_export_batch_size,
+        trace_export_timeout_seconds=trace_export_timeout_seconds,
     )
 
     if PREPARE_ONLY.get():

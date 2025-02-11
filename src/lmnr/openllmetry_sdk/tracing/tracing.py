@@ -11,6 +11,8 @@ from lmnr.openllmetry_sdk.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     SPAN_IDS_PATH,
     SPAN_INSTRUMENTATION_SOURCE,
+    SPAN_SDK_VERSION,
+    SPAN_LANGUAGE_VERSION,
     SPAN_PATH,
     TRACING_LEVEL,
 )
@@ -24,6 +26,7 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
     OTLPSpanExporter as GRPCExporter,
 )
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import Compression
 from opentelemetry.instrumentation.threading import ThreadingInstrumentor
 from opentelemetry.context import get_value, attach, get_current, set_value, Context
 from opentelemetry.propagate import set_global_textmap
@@ -38,6 +41,8 @@ from opentelemetry.sdk.trace.export import (
 from opentelemetry.trace import get_tracer_provider, ProxyTracerProvider
 
 from typing import Dict, Optional, Set
+
+from lmnr.version import SDK_VERSION, PYTHON_VERSION
 
 module_logger = logging.getLogger(__name__)
 console_log_handler = logging.StreamHandler()
@@ -134,9 +139,9 @@ class TracerWrapper(object):
             )
 
             if not instrument_set:
-                cls.__logger.warning(
-                    "No valid instruments set. Remove 'instrument' "
-                    "argument to use all instruments, or set a valid instrument."
+                cls.__logger.info(
+                    "No instruments set through Laminar. "
+                    "Only enabling basic OpenTelemetry tracing."
                 )
 
             obj.__content_allow_list = ContentAllowList()
@@ -178,6 +183,8 @@ class TracerWrapper(object):
         self.__span_id_lists[span.get_span_context().span_id] = span_ids_path
 
         span.set_attribute(SPAN_INSTRUMENTATION_SOURCE, "python")
+        span.set_attribute(SPAN_SDK_VERSION, SDK_VERSION)
+        span.set_attribute(SPAN_LANGUAGE_VERSION, f"python@{PYTHON_VERSION}")
 
         association_properties = get_value("association_properties")
         if association_properties is not None:
@@ -279,7 +286,9 @@ def init_spans_exporter(api_endpoint: str, headers: Dict[str, str]) -> SpanExpor
     if "http" in api_endpoint.lower() or "https" in api_endpoint.lower():
         return HTTPExporter(endpoint=f"{api_endpoint}/v1/traces", headers=headers)
     else:
-        return GRPCExporter(endpoint=f"{api_endpoint}", headers=headers)
+        return GRPCExporter(
+            endpoint=f"{api_endpoint}", headers=headers, compression=Compression.Gzip
+        )
 
 
 def init_tracer_provider(resource: Resource) -> TracerProvider:
