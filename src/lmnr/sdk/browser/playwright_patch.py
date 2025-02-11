@@ -95,7 +95,7 @@ INJECT_PLACEHOLDER = """
 
     window.lmnrRrweb.record({
         emit(event) {
-            window.lmnrRrwebEventsBatch.push(event);            
+            window.lmnrRrwebEventsBatch.push(event);
         }
     });
 
