@@ -156,6 +156,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         )
 
         if not is_loaded:
+
             def load_rrweb():
                 page.evaluate(RRWEB_CONTENT)
                 # Verify script loaded successfully
@@ -211,7 +212,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         is_loaded = await page.evaluate(
             """
             () => typeof window.lmnrRrweb !== 'undefined'
-        """     
+        """
         )
 
         if not is_loaded:
