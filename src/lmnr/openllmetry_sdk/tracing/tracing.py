@@ -21,9 +21,6 @@ from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
     OTLPSpanExporter as HTTPExporter,
 )
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
-    OTLPSpanExporter as GRPCExporter,
-)
 from opentelemetry.instrumentation.threading import ThreadingInstrumentor
 from opentelemetry.context import get_value, attach, get_current, set_value, Context
 from opentelemetry.propagate import set_global_textmap
@@ -276,10 +273,10 @@ def set_managed_prompt_tracing_context(
 
 
 def init_spans_exporter(api_endpoint: str, headers: Dict[str, str]) -> SpanExporter:
-    if "http" in api_endpoint.lower() or "https" in api_endpoint.lower():
-        return HTTPExporter(endpoint=f"{api_endpoint}/v1/traces", headers=headers)
-    else:
-        return GRPCExporter(endpoint=f"{api_endpoint}", headers=headers)
+    # if "http" in api_endpoint.lower() or "https" in api_endpoint.lower():
+    return HTTPExporter(endpoint=f"{api_endpoint}/v1/traces", headers=headers)
+    # else:
+    #     return GRPCExporter(endpoint=f"{api_endpoint}", headers=headers)
 
 
 def init_tracer_provider(resource: Resource) -> TracerProvider:

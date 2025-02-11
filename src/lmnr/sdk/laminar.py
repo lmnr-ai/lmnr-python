@@ -13,7 +13,7 @@ from lmnr.openllmetry_sdk.config import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 from lmnr.openllmetry_sdk.decorators.base import json_dumps
 from opentelemetry import context as context_api, trace
 from opentelemetry.context import attach, detach
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.util.types import AttributeValue
 
 from pydantic.alias_generators import to_snake
@@ -104,6 +104,7 @@ class Laminar:
                             If not specified, defaults to 443.
             grpc_port (Optional[int], optional): Laminar API grpc port.\
                             If not specified, defaults to 8443.
+                            Unused in this `no-grpc` version.
             instruments (Optional[Set[Instruments]], optional): Instruments to\
                         enable. Defaults to all instruments. You can pass\
                         an empty set to disable all instruments. Read more:\
@@ -147,7 +148,7 @@ class Laminar:
             base_http_url=cls.__base_http_url,
             project_api_key=cls.__project_api_key,
             exporter=OTLPSpanExporter(
-                endpoint=cls.__base_grpc_url,
+                endpoint=cls.__base_http_url + "/v1/traces",
                 headers={"authorization": f"Bearer {cls.__project_api_key}"},
             ),
             instruments=instruments,
