@@ -1,6 +1,6 @@
 from importlib.metadata import distributions
 
-installed_packages = {dist.metadata["Name"].lower() for dist in distributions()}
+installed_packages = {dist.metadata.get("Name", "").lower() for dist in distributions()}
 
 
 def is_package_installed(package_name: str) -> bool:
