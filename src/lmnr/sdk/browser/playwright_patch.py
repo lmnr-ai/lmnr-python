@@ -139,7 +139,7 @@ async def send_events_async(page: Page, http_url: str, project_api_key: str, ses
             "sessionId": session_id,
             "traceId": trace_id,
             "events": events,
-            "source": f"python {PYTHON_VERSION}",
+            "source": f"python@{PYTHON_VERSION}",
             "sdkVersion": SDK_VERSION
         }
 
@@ -180,7 +180,7 @@ def send_events_sync(page: SyncPage, http_url: str, project_api_key: str, sessio
             "sessionId": session_id,
             "traceId": trace_id,
             "events": events,
-            "source": f"python {PYTHON_VERSION}",
+            "source": f"python@{PYTHON_VERSION}",
             "sdkVersion": SDK_VERSION
         }
 
