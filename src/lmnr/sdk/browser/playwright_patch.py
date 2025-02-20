@@ -142,8 +142,6 @@ async def send_events(page: Page, http_url: str, project_api_key: str, session_i
             ) as response:
                 if not response.ok:
                     logger.error(f"Failed to send events: {response.status}")
-                else:
-                    logger.info(f"Sent {len(events)} events", events)
 
     except Exception as e:
         logger.error(f"Error sending events: {e}")
