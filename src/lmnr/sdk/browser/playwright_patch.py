@@ -1,4 +1,3 @@
-import opentelemetry
 import uuid
 import asyncio
 import logging
@@ -9,8 +8,8 @@ import requests
 import threading
 import gzip
 import json
-from opentelemetry import trace
-from contextlib import contextmanager
+from lmnr.version import SDK_VERSION, PYTHON_VERSION
+from lmnr import Laminar
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +39,16 @@ INJECT_PLACEHOLDER = """
     
     window.lmnrRrwebEventsBatch = [];
     
+    // Utility function to compress individual event data
+    async function compressEventData(data) {
+        const jsonString = JSON.stringify(data);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const compressedStream = blob.stream().pipeThrough(new CompressionStream('gzip'));
+        const compressedResponse = new Response(compressedStream);
+        const compressedData = await compressedResponse.arrayBuffer();
+        return Array.from(new Uint8Array(compressedData));
+    }
+    
     window.lmnrGetAndClearEvents = () => {
         const events = window.lmnrRrwebEventsBatch;
         window.lmnrRrwebEventsBatch = [];
@@ -47,12 +56,14 @@ INJECT_PLACEHOLDER = """
     };
 
     // Add heartbeat events
-    setInterval(() => {
-        window.lmnrRrwebEventsBatch.push({
+    setInterval(async () => {
+        const heartbeat = {
             type: 6,
-            data: { source: 'heartbeat' },
+            data: await compressEventData({ source: 'heartbeat' }),
             timestamp: Date.now()
-        });
+        };
+        
+        window.lmnrRrwebEventsBatch.push(heartbeat);
         
         // Prevent memory issues by limiting batch size
         if (window.lmnrRrwebEventsBatch.length > BATCH_SIZE) {
@@ -61,8 +72,13 @@ INJECT_PLACEHOLDER = """
     }, 1000);
 
     window.lmnrRrweb.record({
-        emit(event) {
-            window.lmnrRrwebEventsBatch.push(event);
+        async emit(event) {
+            // Compress the data field
+            const compressedEvent = {
+                ...event,
+                data: await compressEventData(event.data)
+            };
+            window.lmnrRrwebEventsBatch.push(compressedEvent);
         }
     });
 }
@@ -105,7 +121,7 @@ async def retry_async(func, retries=5, delay=0.5, error_message="Operation faile
     return None
 
 
-async def send_events(page: Page, http_url: str, project_api_key: str, session_id: str, trace_id: str):
+async def send_events_async(page: Page, http_url: str, project_api_key: str, session_id: str, trace_id: str):
     """Fetch events from the page and send them to the server"""
     try:
         # Check if function exists first
@@ -122,22 +138,21 @@ async def send_events(page: Page, http_url: str, project_api_key: str, session_i
         payload = {
             "sessionId": session_id,
             "traceId": trace_id,
-            "events": events
+            "events": events,
+            "source": f"python {PYTHON_VERSION}",
+            "sdkVersion": SDK_VERSION
         }
 
         headers = {
             'Content-Type': 'application/json',
             'Authorization': f'Bearer {project_api_key}',
-            'Accept': 'application/json',
-            'Content-Encoding': 'gzip'  # Add Content-Encoding header
+            'Accept': 'application/json'
         }
-
-        compressed_payload = gzip.compress(json.dumps(payload).encode('utf-8'))
 
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f"{http_url}/v1/browser-sessions/events",
-                data=compressed_payload,  # Use data instead of json for raw bytes
+                json=payload,
                 headers=headers,
             ) as response:
                 if not response.ok:
@@ -165,8 +180,8 @@ def send_events_sync(page: SyncPage, http_url: str, project_api_key: str, sessio
             "sessionId": session_id,
             "traceId": trace_id,
             "events": events,
-            "source": "python",
-            "sdkVersion": "0.0.1"
+            "source": f"python {PYTHON_VERSION}",
+            "sdkVersion": SDK_VERSION
         }
 
         headers = {
@@ -249,7 +264,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         def collection_loop():
             while not page.is_closed():  # Stop when page closes
                 send_events_sync(page, http_url, project_api_key, session_id, trace_id)
-                time.sleep(1)
+                time.sleep(2)
         
         thread = threading.Thread(target=collection_loop, daemon=True)
         thread.start()
@@ -262,11 +277,10 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         await inject_rrweb_async(page)
         
         async def collection_loop():
-            print("started collection_loop")
             try:
                 while not page.is_closed():  # Stop when page closes
-                    await send_events(page, http_url, project_api_key, session_id, trace_id)
-                    await asyncio.sleep(1)
+                    await send_events_async(page, http_url, project_api_key, session_id, trace_id)
+                    await asyncio.sleep(2)
                 logger.info("Event collection stopped")
             except Exception as e:
                 logger.error(f"Event collection stopped: {e}")
@@ -278,35 +292,31 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         page.on("close", lambda: task.cancel())
 
     def patched_new_page(self: SyncBrowserContext, *args, **kwargs):
-        # with browser_session_span() as (session_id, trace_id):
-        page = _original_new_page(self, *args, **kwargs)
-        
-        session_id = str(uuid.uuid4().hex)
-        current_span = opentelemetry.trace.get_current_span()
-        if current_span.is_recording():
-            current_span.set_attribute("lmnr.internal.has_browser_session", True)
+        with Laminar.start_as_current_span(name="browser_context.new_page") as span:
+            page = _original_new_page(self, *args, **kwargs)
+                
+            session_id = str(uuid.uuid4().hex)
+            span.set_attribute("lmnr.internal.has_browser_session", True)
 
-        trace_id = format(current_span.get_span_context().trace_id, "032x")
-        session_id = str(uuid.uuid4().hex)
+            trace_id = format(span.get_span_context().trace_id, "032x")
+            session_id = str(uuid.uuid4().hex)
 
-        handle_navigation(page, session_id, trace_id)
-        return page
+            handle_navigation(page, session_id, trace_id)
+            return page
+    
 
     async def patched_new_page_async(self: BrowserContext, *args, **kwargs):
-        # with browser_session_span() as (session_id, trace_id):
 
-        page = await _original_new_page_async(self, *args, **kwargs)
+        with Laminar.start_as_current_span(name="browser_context.new_page") as span:
+            page = await _original_new_page_async(self, *args, **kwargs)
         
-        session_id = str(uuid.uuid4().hex)
-        current_span = opentelemetry.trace.get_current_span()
-        if current_span.is_recording():
-            current_span.set_attribute("lmnr.internal.has_browser_session", True)
+            session_id = str(uuid.uuid4().hex)
 
-        trace_id = format(current_span.get_span_context().trace_id, "032x")
-        session_id = str(uuid.uuid4().hex)
-
-        await handle_navigation_async(page, session_id, trace_id)
-        return page
+            span.set_attribute("lmnr.internal.has_browser_session", True)
+            trace_id = format(span.get_span_context().trace_id, "032x")
+            session_id = str(uuid.uuid4().hex)
+            await handle_navigation_async(page, session_id, trace_id)
+            return page
 
     def patch_browser():
         global _original_new_page, _original_new_page_async
