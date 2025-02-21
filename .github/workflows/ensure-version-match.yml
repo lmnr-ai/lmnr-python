@@ -18,7 +18,7 @@ jobs:
       run: uv add toml-cli
     - name: Ensure version match
       run: |
-        SDK_VERSION=$(cat src/lmnr/version.py | grep SDK_VERSION | cut -d'=' -f2 | sed 's/[" '"'"']//g')
+        SDK_VERSION=$(cat src/lmnr/version.py | grep SDK_VERSION | head -n1 | cut -d'=' -f2 | sed 's/[" '"'"']//g')
         PYPROJECT_VERSION=$(uv run toml get --toml-path=pyproject.toml project.version)
         if [ "$SDK_VERSION" != "$PYPROJECT_VERSION" ]; then
           echo "Version mismatch between src/lmnr/version.py and pyproject.toml"
