@@ -152,13 +152,13 @@ class Laminar:
         cls.__initialized = True
         cls._initialize_logger()
 
-        if not is_latest_version():
-            cls.__logger.warning(
-                "You are using an older version of the Laminar SDK. "
-                f"Latest version: {get_latest_pypi_version()}, current version: {SDK_VERSION}.\n"
-                "Please update to the latest version by running "
-                "`pip install --upgrade lmnr`."
-            )
+        # if not is_latest_version():
+        #     cls.__logger.warning(
+        #         "You are using an older version of the Laminar SDK. "
+        #         f"Latest version: {get_latest_pypi_version()}, current version: {SDK_VERSION}.\n"
+        #         "Please update to the latest version by running "
+        #         "`pip install --upgrade lmnr`."
+        #     )
 
         Traceloop.init(
             base_http_url=cls.__base_http_url,
