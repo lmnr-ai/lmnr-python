@@ -121,13 +121,17 @@ async def retry_async(func, retries=5, delay=0.5, error_message="Operation faile
     return None
 
 
-async def send_events_async(page: Page, http_url: str, project_api_key: str, session_id: str, trace_id: str):
+async def send_events_async(
+    page: Page, http_url: str, project_api_key: str, session_id: str, trace_id: str
+):
     """Fetch events from the page and send them to the server"""
     try:
         # Check if function exists first
-        has_function = await page.evaluate("""
+        has_function = await page.evaluate(
+            """
             () => typeof window.lmnrGetAndClearEvents === 'function'
-        """)
+        """
+        )
         if not has_function:
             return
 
@@ -140,13 +144,13 @@ async def send_events_async(page: Page, http_url: str, project_api_key: str, ses
             "traceId": trace_id,
             "events": events,
             "source": f"python@{PYTHON_VERSION}",
-            "sdkVersion": SDK_VERSION
+            "sdkVersion": SDK_VERSION,
         }
 
         headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {project_api_key}',
-            'Accept': 'application/json'
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {project_api_key}",
+            "Accept": "application/json",
         }
 
         async with aiohttp.ClientSession() as session:
@@ -162,13 +166,17 @@ async def send_events_async(page: Page, http_url: str, project_api_key: str, ses
         logger.error(f"Error sending events: {e}")
 
 
-def send_events_sync(page: SyncPage, http_url: str, project_api_key: str, session_id: str, trace_id: str):
+def send_events_sync(
+    page: SyncPage, http_url: str, project_api_key: str, session_id: str, trace_id: str
+):
     """Synchronous version of send_events"""
     try:
         # Check if function exists first
-        has_function = page.evaluate("""
+        has_function = page.evaluate(
+            """
             () => typeof window.lmnrGetAndClearEvents === 'function'
-        """)
+        """
+        )
         if not has_function:
             return
 
@@ -181,23 +189,23 @@ def send_events_sync(page: SyncPage, http_url: str, project_api_key: str, sessio
             "traceId": trace_id,
             "events": events,
             "source": f"python@{PYTHON_VERSION}",
-            "sdkVersion": SDK_VERSION
+            "sdkVersion": SDK_VERSION,
         }
 
         headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {project_api_key}',
-            'Accept': 'application/json',
-            'Content-Encoding': 'gzip'  # Add Content-Encoding header
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {project_api_key}",
+            "Accept": "application/json",
+            "Content-Encoding": "gzip",  # Add Content-Encoding header
         }
 
         # Compress the payload
-        compressed_payload = gzip.compress(json.dumps(payload).encode('utf-8'))
+        compressed_payload = gzip.compress(json.dumps(payload).encode("utf-8"))
 
         response = requests.post(
             f"{http_url}/v1/browser-sessions/events",
             data=compressed_payload,  # Use data instead of json for raw bytes
-            headers=headers
+            headers=headers,
         )
         if not response.ok:
             logger.error(f"Failed to send events: {response.status_code}")
@@ -211,11 +219,10 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
     def inject_rrweb(page: SyncPage):
         page.wait_for_load_state("domcontentloaded")
 
-        is_loaded = page.evaluate(
-            """() => typeof window.lmnrRrweb !== 'undefined'"""
-        )
+        is_loaded = page.evaluate("""() => typeof window.lmnrRrweb !== 'undefined'""")
 
         if not is_loaded:
+
             def load_rrweb():
                 page.evaluate(RRWEB_CONTENT)
                 page.wait_for_function(
@@ -239,6 +246,7 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
         )
 
         if not is_loaded:
+
             async def load_rrweb():
                 await page.evaluate(RRWEB_CONTENT)
                 await page.wait_for_function(
@@ -260,12 +268,12 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
 
         page.on("load", on_load)
         inject_rrweb(page)
-        
+
         def collection_loop():
             while not page.is_closed():  # Stop when page closes
                 send_events_sync(page, http_url, project_api_key, session_id, trace_id)
                 time.sleep(2)
-        
+
         thread = threading.Thread(target=collection_loop, daemon=True)
         thread.start()
 
@@ -275,26 +283,28 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
 
         page.on("load", lambda: asyncio.create_task(on_load()))
         await inject_rrweb_async(page)
-        
+
         async def collection_loop():
             try:
                 while not page.is_closed():  # Stop when page closes
-                    await send_events_async(page, http_url, project_api_key, session_id, trace_id)
+                    await send_events_async(
+                        page, http_url, project_api_key, session_id, trace_id
+                    )
                     await asyncio.sleep(2)
                 logger.info("Event collection stopped")
             except Exception as e:
                 logger.error(f"Event collection stopped: {e}")
-        
+
         # Create and store task
         task = asyncio.create_task(collection_loop())
-        
+
         # Clean up task when page closes
         page.on("close", lambda: task.cancel())
 
     def patched_new_page(self: SyncBrowserContext, *args, **kwargs):
         with Laminar.start_as_current_span(name="browser_context.new_page") as span:
             page = _original_new_page(self, *args, **kwargs)
-                
+
             session_id = str(uuid.uuid4().hex)
             span.set_attribute("lmnr.internal.has_browser_session", True)
 
@@ -303,13 +313,11 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
 
             handle_navigation(page, session_id, trace_id)
             return page
-    
 
     async def patched_new_page_async(self: BrowserContext, *args, **kwargs):
-
         with Laminar.start_as_current_span(name="browser_context.new_page") as span:
             page = await _original_new_page_async(self, *args, **kwargs)
-        
+
             session_id = str(uuid.uuid4().hex)
 
             span.set_attribute("lmnr.internal.has_browser_session", True)
