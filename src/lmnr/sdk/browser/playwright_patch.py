@@ -1,9 +1,15 @@
-import opentelemetry
 import uuid
 import asyncio
 import logging
 import time
 import os
+import aiohttp
+import requests
+import threading
+import gzip
+import json
+from lmnr.version import SDK_VERSION, PYTHON_VERSION
+from lmnr import Laminar
 
 logger = logging.getLogger(__name__)
 
@@ -28,79 +34,52 @@ with open(os.path.join(current_dir, "rrweb", "rrweb.min.js"), "r") as f:
     RRWEB_CONTENT = f"() => {{ {f.read()} }}"
 
 INJECT_PLACEHOLDER = """
-([baseUrl, projectApiKey]) => {
-    const serverUrl = `${baseUrl}/v1/browser-sessions/events`;
-    const FLUSH_INTERVAL = 1000;
-    const HEARTBEAT_INTERVAL = 1000;
-
+() => {
+    const BATCH_SIZE = 1000;  // Maximum events to store in memory
+    
     window.lmnrRrwebEventsBatch = [];
     
-    window.lmnrSendRrwebEventsBatch = async () => {
-        if (window.lmnrRrwebEventsBatch.length === 0) return;
-        
-        const eventsPayload = {
-            sessionId: window.lmnrRrwebSessionId,
-            traceId: window.lmnrTraceId,
-            events: window.lmnrRrwebEventsBatch
-        };
-        
-        try {
-            const jsonString = JSON.stringify(eventsPayload);
-            const uint8Array = new TextEncoder().encode(jsonString);
-            
-            const cs = new CompressionStream('gzip');
-            const compressedStream = await new Response(
-                new Response(uint8Array).body.pipeThrough(cs)
-            ).arrayBuffer();
-            
-            const compressedArray = new Uint8Array(compressedStream);
-            
-            const blob = new Blob([compressedArray], { type: 'application/octet-stream' });
-            
-            const response = await fetch(serverUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Content-Encoding': 'gzip',
-                    'Authorization': `Bearer ${projectApiKey}`,
-                    'Accept': 'application/json'
-                },
-                body: blob,
-                mode: 'cors',
-                credentials: 'omit'
-            });
-            
-            if (!response.ok) {
-                console.error(`HTTP error! status: ${response.status}`);
-                if (response.status === 0) {
-                    console.error('Possible CORS issue - check network tab for details');
-                }
-            }
-
-            window.lmnrRrwebEventsBatch = [];
-        } catch (error) {
-            console.error('Failed to send events:', error);
-        }
+    // Utility function to compress individual event data
+    async function compressEventData(data) {
+        const jsonString = JSON.stringify(data);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const compressedStream = blob.stream().pipeThrough(new CompressionStream('gzip'));
+        const compressedResponse = new Response(compressedStream);
+        const compressedData = await compressedResponse.arrayBuffer();
+        return Array.from(new Uint8Array(compressedData));
+    }
+    
+    window.lmnrGetAndClearEvents = () => {
+        const events = window.lmnrRrwebEventsBatch;
+        window.lmnrRrwebEventsBatch = [];
+        return events;
     };
 
-    setInterval(() => window.lmnrSendRrwebEventsBatch(), FLUSH_INTERVAL);
-
-    setInterval(() => {
-        window.lmnrRrwebEventsBatch.push({
+    // Add heartbeat events
+    setInterval(async () => {
+        const heartbeat = {
             type: 6,
-            data: { source: 'heartbeat' },
+            data: await compressEventData({ source: 'heartbeat' }),
             timestamp: Date.now()
-        });
-    }, HEARTBEAT_INTERVAL);
+        };
+        
+        window.lmnrRrwebEventsBatch.push(heartbeat);
+        
+        // Prevent memory issues by limiting batch size
+        if (window.lmnrRrwebEventsBatch.length > BATCH_SIZE) {
+            window.lmnrRrwebEventsBatch = window.lmnrRrwebEventsBatch.slice(-BATCH_SIZE);
+        }
+    }, 1000);
 
     window.lmnrRrweb.record({
-        emit(event) {
-            window.lmnrRrwebEventsBatch.push(event);
+        async emit(event) {
+            // Compress the data field
+            const compressedEvent = {
+                ...event,
+                data: await compressEventData(event.data)
+            };
+            window.lmnrRrwebEventsBatch.push(compressedEvent);
         }
-    });
-
-    window.addEventListener('beforeunload', () => {
-        window.lmnrSendRrwebEventsBatch();
     });
 }
 """
@@ -142,199 +121,248 @@ async def retry_async(func, retries=5, delay=0.5, error_message="Operation faile
     return None
 
 
+async def send_events_async(
+    page: Page, http_url: str, project_api_key: str, session_id: str, trace_id: str
+):
+    """Fetch events from the page and send them to the server"""
+    try:
+        # Check if function exists first
+        has_function = await page.evaluate(
+            """
+            () => typeof window.lmnrGetAndClearEvents === 'function'
+        """
+        )
+        if not has_function:
+            return
+
+        events = await page.evaluate("window.lmnrGetAndClearEvents()")
+        if not events or len(events) == 0:
+            return
+
+        payload = {
+            "sessionId": session_id,
+            "traceId": trace_id,
+            "events": events,
+            "source": f"python@{PYTHON_VERSION}",
+            "sdkVersion": SDK_VERSION,
+        }
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {project_api_key}",
+            "Accept": "application/json",
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{http_url}/v1/browser-sessions/events",
+                json=payload,
+                headers=headers,
+            ) as response:
+                if not response.ok:
+                    logger.error(f"Failed to send events: {response.status}")
+
+    except Exception as e:
+        logger.error(f"Error sending events: {e}")
+
+
+def send_events_sync(
+    page: SyncPage, http_url: str, project_api_key: str, session_id: str, trace_id: str
+):
+    """Synchronous version of send_events"""
+    try:
+        # Check if function exists first
+        has_function = page.evaluate(
+            """
+            () => typeof window.lmnrGetAndClearEvents === 'function'
+        """
+        )
+        if not has_function:
+            return
+
+        events = page.evaluate("window.lmnrGetAndClearEvents()")
+        if not events or len(events) == 0:
+            return
+
+        payload = {
+            "sessionId": session_id,
+            "traceId": trace_id,
+            "events": events,
+            "source": f"python@{PYTHON_VERSION}",
+            "sdkVersion": SDK_VERSION,
+        }
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {project_api_key}",
+            "Accept": "application/json",
+            "Content-Encoding": "gzip",  # Add Content-Encoding header
+        }
+
+        # Compress the payload
+        compressed_payload = gzip.compress(json.dumps(payload).encode("utf-8"))
+
+        response = requests.post(
+            f"{http_url}/v1/browser-sessions/events",
+            data=compressed_payload,  # Use data instead of json for raw bytes
+            headers=headers,
+        )
+        if not response.ok:
+            logger.error(f"Failed to send events: {response.status_code}")
+
+    except Exception as e:
+        logger.error(f"Error sending events: {e}")
+
+
 def init_playwright_tracing(http_url: str, project_api_key: str):
 
     def inject_rrweb(page: SyncPage):
-        # Wait for the page to be in a ready state first
-        page.wait_for_load_state("domcontentloaded")
+        try:
+            page.wait_for_load_state("domcontentloaded")
 
-        # First check if rrweb is already loaded
-        is_loaded = page.evaluate(
-            """
-            () => typeof window.lmnrRrweb !== 'undefined'
-        """
-        )
-
-        if not is_loaded:
-
-            def load_rrweb():
-                page.evaluate(RRWEB_CONTENT)
-                # Verify script loaded successfully
-                page.wait_for_function(
-                    """(() => typeof window.lmnrRrweb !== 'undefined')""",
-                    timeout=5000,
+            # Wrap the evaluate call in a try-catch
+            try:
+                is_loaded = page.evaluate(
+                    """() => typeof window.lmnrRrweb !== 'undefined'"""
                 )
-                return True
+            except Exception as e:
+                logger.debug(f"Failed to check if rrweb is loaded: {e}")
+                is_loaded = False
 
-            if not retry_sync(
-                load_rrweb, delay=1, error_message="Failed to load rrweb"
-            ):
-                return
+            if not is_loaded:
+                def load_rrweb():
+                    try:
+                        page.evaluate(RRWEB_CONTENT)
+                        page.wait_for_function(
+                            """(() => typeof window.lmnrRrweb !== 'undefined')""",
+                            timeout=5000,
+                        )
+                        return True
+                    except Exception as e:
+                        logger.debug(f"Failed to load rrweb: {e}")
+                        return False
 
-        # Get current trace ID from active span
-        current_span = opentelemetry.trace.get_current_span()
-        if current_span.is_recording():
-            current_span.set_attribute("lmnr.internal.has_browser_session", True)
+                if not retry_sync(
+                    load_rrweb, delay=1, error_message="Failed to load rrweb"
+                ):
+                    return
 
-        trace_id = format(current_span.get_span_context().trace_id, "032x")
-        session_id = str(uuid.uuid4().hex)
+            try:
+                page.evaluate(INJECT_PLACEHOLDER)
+            except Exception as e:
+                logger.debug(f"Failed to inject rrweb placeholder: {e}")
 
-        def set_window_vars():
-            page.evaluate(
-                """([traceId, sessionId]) => {
-                window.lmnrRrwebSessionId = sessionId;
-                window.lmnrTraceId = traceId;
-            }""",
-                [trace_id, session_id],
-            )
-            return page.evaluate(
-                """
-                () => window.lmnrRrwebSessionId && window.lmnrTraceId
-            """
-            )
-
-        if not retry_sync(
-            set_window_vars, error_message="Failed to set window variables"
-        ):
-            return
-
-        # Update the recording setup to include trace ID
-        page.evaluate(
-            INJECT_PLACEHOLDER,
-            [http_url, project_api_key],
-        )
+        except Exception as e:
+            logger.error(f"Error during rrweb injection: {e}")
 
     async def inject_rrweb_async(page: Page):
-        # Wait for the page to be in a ready state first
-        await page.wait_for_load_state("domcontentloaded")
+        try:
+            await page.wait_for_load_state("domcontentloaded")
 
-        # First check if rrweb is already loaded
-        is_loaded = await page.evaluate(
-            """
-            () => typeof window.lmnrRrweb !== 'undefined'
-        """
-        )
-
-        if not is_loaded:
-
-            async def load_rrweb():
-                await page.evaluate(RRWEB_CONTENT)
-                # Verify script loaded successfully
-                await page.wait_for_function(
-                    """(() => typeof window.lmnrRrweb !== 'undefined')""",
-                    timeout=5000,
+            # Wrap the evaluate call in a try-catch
+            try:
+                is_loaded = await page.evaluate(
+                    """() => typeof window.lmnrRrweb !== 'undefined'"""
                 )
-                return True
+            except Exception as e:
+                logger.debug(f"Failed to check if rrweb is loaded: {e}")
+                is_loaded = False
 
-            if not await retry_async(
-                load_rrweb, delay=1, error_message="Failed to load rrweb"
-            ):
-                return
+            if not is_loaded:
+                async def load_rrweb():
+                    try:
+                        await page.evaluate(RRWEB_CONTENT)
+                        await page.wait_for_function(
+                            """(() => typeof window.lmnrRrweb !== 'undefined')""",
+                            timeout=5000,
+                        )
+                        return True
+                    except Exception as e:
+                        logger.debug(f"Failed to load rrweb: {e}")
+                        return False
 
-        # Get current trace ID from active span
-        current_span = opentelemetry.trace.get_current_span()
-        if current_span.is_recording():
-            current_span.set_attribute("lmnr.internal.has_browser_session", True)
+                if not await retry_async(
+                    load_rrweb, delay=1, error_message="Failed to load rrweb"
+                ):
+                    return
 
-        trace_id = format(current_span.get_span_context().trace_id, "032x")
-        session_id = str(uuid.uuid4().hex)
+            try:
+                await page.evaluate(INJECT_PLACEHOLDER)
+            except Exception as e:
+                logger.debug(f"Failed to inject rrweb placeholder: {e}")
 
-        async def set_window_vars():
-            await page.evaluate(
-                """([traceId, sessionId]) => {
-                window.lmnrRrwebSessionId = sessionId;
-                window.lmnrTraceId = traceId;
-            }""",
-                [trace_id, session_id],
-            )
-            return await page.evaluate(
-                """
-                () => window.lmnrRrwebSessionId && window.lmnrTraceId
-            """
-            )
+        except Exception as e:
+            logger.error(f"Error during rrweb injection: {e}")
 
-        if not await retry_async(
-            set_window_vars, error_message="Failed to set window variables"
-        ):
-            return
-
-        # Update the recording setup to include trace ID
-        await page.evaluate(
-            INJECT_PLACEHOLDER,
-            [http_url, project_api_key],
-        )
-
-    def handle_navigation(page: SyncPage):
+    def handle_navigation(page: SyncPage, session_id: str, trace_id: str):
         def on_load():
-            inject_rrweb(page)
+            try:
+                inject_rrweb(page)
+            except Exception as e:
+                logger.error(f"Error in on_load handler: {e}")
 
         page.on("load", on_load)
         inject_rrweb(page)
 
-    async def handle_navigation_async(page: Page):
+        def collection_loop():
+            while not page.is_closed():  # Stop when page closes
+                send_events_sync(page, http_url, project_api_key, session_id, trace_id)
+                time.sleep(2)
+
+        thread = threading.Thread(target=collection_loop, daemon=True)
+        thread.start()
+
+    async def handle_navigation_async(page: Page, session_id: str, trace_id: str):
         async def on_load():
-            await inject_rrweb_async(page)
+            try:
+                await inject_rrweb_async(page)
+            except Exception as e:
+                logger.error(f"Error in on_load handler: {e}")
 
         page.on("load", lambda: asyncio.create_task(on_load()))
         await inject_rrweb_async(page)
 
-    async def patched_new_page_async(self: BrowserContext, *args, **kwargs):
-        # Modify CSP to allow required domains
-        async def handle_route(route):
+        async def collection_loop():
             try:
-                response = await route.fetch()
-                headers = dict(response.headers)
-
-                # Find and modify CSP header
-                for header_name in headers:
-                    if header_name.lower() == "content-security-policy":
-                        csp = headers[header_name]
-                        parts = csp.split(";")
-                        for i, part in enumerate(parts):
-                            if "connect-src" in part:
-                                parts[i] = f"{part.strip()} {http_url}"
-                        headers[header_name] = ";".join(parts)
-
-                await route.fulfill(response=response, headers=headers)
+                while not page.is_closed():  # Stop when page closes
+                    await send_events_async(
+                        page, http_url, project_api_key, session_id, trace_id
+                    )
+                    await asyncio.sleep(2)
+                logger.info("Event collection stopped")
             except Exception as e:
-                logger.debug(f"Error handling route: {e}")
-                await route.continue_()
+                logger.error(f"Event collection stopped: {e}")
 
-        # Intercept all navigation requests to modify CSP headers
-        await self.route("**/*", handle_route)
-        page = await _original_new_page_async(self, *args, **kwargs)
-        await handle_navigation_async(page)
-        return page
+        # Create and store task
+        task = asyncio.create_task(collection_loop())
+
+        # Clean up task when page closes
+        page.on("close", lambda: task.cancel())
 
     def patched_new_page(self: SyncBrowserContext, *args, **kwargs):
-        # Modify CSP to allow required domains
-        def handle_route(route):
-            try:
-                response = route.fetch()
-                headers = dict(response.headers)
+        with Laminar.start_as_current_span(name="browser_context.new_page") as span:
+            page = _original_new_page(self, *args, **kwargs)
 
-                # Find and modify CSP header
-                for header_name in headers:
-                    if header_name.lower() == "content-security-policy":
-                        csp = headers[header_name]
-                        parts = csp.split(";")
-                        for i, part in enumerate(parts):
-                            if "connect-src" in part:
-                                parts[i] = f"{part.strip()} {http_url}"
-                        if not any("connect-src" in part for part in parts):
-                            parts.append(f" connect-src 'self' {http_url}")
-                        headers[header_name] = ";".join(parts)
+            session_id = str(uuid.uuid4().hex)
+            span.set_attribute("lmnr.internal.has_browser_session", True)
 
-                route.fulfill(response=response, headers=headers)
-            except Exception as e:
-                logger.debug(f"Error handling route: {e}")
-                route.continue_()
+            trace_id = format(span.get_span_context().trace_id, "032x")
+            session_id = str(uuid.uuid4().hex)
 
-        # Intercept all navigation requests to modify CSP headers
-        self.route("**/*", handle_route)
-        page = _original_new_page(self, *args, **kwargs)
-        handle_navigation(page)
-        return page
+            handle_navigation(page, session_id, trace_id)
+            return page
+
+    async def patched_new_page_async(self: BrowserContext, *args, **kwargs):
+        with Laminar.start_as_current_span(name="browser_context.new_page") as span:
+            page = await _original_new_page_async(self, *args, **kwargs)
+
+            session_id = str(uuid.uuid4().hex)
+
+            span.set_attribute("lmnr.internal.has_browser_session", True)
+            trace_id = format(span.get_span_context().trace_id, "032x")
+            session_id = str(uuid.uuid4().hex)
+            await handle_navigation_async(page, session_id, trace_id)
+            return page
 
     def patch_browser():
         global _original_new_page, _original_new_page_async

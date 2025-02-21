@@ -13,6 +13,7 @@ from lmnr.openllmetry_sdk.config import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 from lmnr.openllmetry_sdk.decorators.base import json_dumps
 from opentelemetry import context as context_api, trace
 from opentelemetry.context import attach, detach
+from lmnr.version import SDK_VERSION, get_latest_pypi_version, is_latest_version
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
     OTLPSpanExporter,
     Compression,
@@ -150,6 +151,14 @@ class Laminar:
         cls.__env = env
         cls.__initialized = True
         cls._initialize_logger()
+
+        # if not is_latest_version():
+        #     cls.__logger.warning(
+        #         "You are using an older version of the Laminar SDK. "
+        #         f"Latest version: {get_latest_pypi_version()}, current version: {SDK_VERSION}.\n"
+        #         "Please update to the latest version by running "
+        #         "`pip install --upgrade lmnr`."
+        #     )
 
         Traceloop.init(
             base_http_url=cls.__base_http_url,
