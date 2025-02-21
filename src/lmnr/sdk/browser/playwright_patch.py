@@ -217,54 +217,89 @@ def send_events_sync(
 def init_playwright_tracing(http_url: str, project_api_key: str):
 
     def inject_rrweb(page: SyncPage):
-        page.wait_for_load_state("domcontentloaded")
+        try:
+            page.wait_for_load_state("domcontentloaded")
 
-        is_loaded = page.evaluate("""() => typeof window.lmnrRrweb !== 'undefined'""")
-
-        if not is_loaded:
-
-            def load_rrweb():
-                page.evaluate(RRWEB_CONTENT)
-                page.wait_for_function(
-                    """(() => typeof window.lmnrRrweb !== 'undefined')""",
-                    timeout=5000,
+            # Wrap the evaluate call in a try-catch
+            try:
+                is_loaded = page.evaluate(
+                    """() => typeof window.lmnrRrweb !== 'undefined'"""
                 )
-                return True
+            except Exception as e:
+                logger.debug(f"Failed to check if rrweb is loaded: {e}")
+                is_loaded = False
 
-            if not retry_sync(
-                load_rrweb, delay=1, error_message="Failed to load rrweb"
-            ):
-                return
+            if not is_loaded:
+                def load_rrweb():
+                    try:
+                        page.evaluate(RRWEB_CONTENT)
+                        page.wait_for_function(
+                            """(() => typeof window.lmnrRrweb !== 'undefined')""",
+                            timeout=5000,
+                        )
+                        return True
+                    except Exception as e:
+                        logger.debug(f"Failed to load rrweb: {e}")
+                        return False
 
-        page.evaluate(INJECT_PLACEHOLDER)
+                if not retry_sync(
+                    load_rrweb, delay=1, error_message="Failed to load rrweb"
+                ):
+                    return
+
+            try:
+                page.evaluate(INJECT_PLACEHOLDER)
+            except Exception as e:
+                logger.debug(f"Failed to inject rrweb placeholder: {e}")
+
+        except Exception as e:
+            logger.error(f"Error during rrweb injection: {e}")
 
     async def inject_rrweb_async(page: Page):
-        await page.wait_for_load_state("domcontentloaded")
+        try:
+            await page.wait_for_load_state("domcontentloaded")
 
-        is_loaded = await page.evaluate(
-            """() => typeof window.lmnrRrweb !== 'undefined'"""
-        )
-
-        if not is_loaded:
-
-            async def load_rrweb():
-                await page.evaluate(RRWEB_CONTENT)
-                await page.wait_for_function(
-                    """(() => typeof window.lmnrRrweb !== 'undefined')""",
-                    timeout=5000,
+            # Wrap the evaluate call in a try-catch
+            try:
+                is_loaded = await page.evaluate(
+                    """() => typeof window.lmnrRrweb !== 'undefined'"""
                 )
-                return True
+            except Exception as e:
+                logger.debug(f"Failed to check if rrweb is loaded: {e}")
+                is_loaded = False
 
-            if not await retry_async(
-                load_rrweb, delay=1, error_message="Failed to load rrweb"
-            ):
-                return
+            if not is_loaded:
+                async def load_rrweb():
+                    try:
+                        await page.evaluate(RRWEB_CONTENT)
+                        await page.wait_for_function(
+                            """(() => typeof window.lmnrRrweb !== 'undefined')""",
+                            timeout=5000,
+                        )
+                        return True
+                    except Exception as e:
+                        logger.debug(f"Failed to load rrweb: {e}")
+                        return False
 
-        await page.evaluate(INJECT_PLACEHOLDER)
+                if not await retry_async(
+                    load_rrweb, delay=1, error_message="Failed to load rrweb"
+                ):
+                    return
+
+            try:
+                await page.evaluate(INJECT_PLACEHOLDER)
+            except Exception as e:
+                logger.debug(f"Failed to inject rrweb placeholder: {e}")
+
+        except Exception as e:
+            logger.error(f"Error during rrweb injection: {e}")
 
     def handle_navigation(page: SyncPage, session_id: str, trace_id: str):
         def on_load():
-            inject_rrweb(page)
+            try:
+                inject_rrweb(page)
+            except Exception as e:
+                logger.error(f"Error in on_load handler: {e}")
 
         page.on("load", on_load)
         inject_rrweb(page)
@@ -279,7 +314,10 @@ def init_playwright_tracing(http_url: str, project_api_key: str):
 
     async def handle_navigation_async(page: Page, session_id: str, trace_id: str):
         async def on_load():
-            await inject_rrweb_async(page)
+            try:
+                await inject_rrweb_async(page)
+            except Exception as e:
+                logger.error(f"Error in on_load handler: {e}")
 
         page.on("load", lambda: asyncio.create_task(on_load()))
         await inject_rrweb_async(page)
