@@ -5,6 +5,8 @@ import uuid
 from lmnr import Attributes, Laminar, observe, TracingLevel, use_span
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
+from lmnr.sdk.types import LaminarSpanContext
+
 
 def test_start_as_current_span(exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("test", input="my_input"):
@@ -369,30 +371,26 @@ def test_tracing_level_attribute(exporter: InMemorySpanExporter):
     assert second_span.attributes["lmnr.span.path"] == ("test2",)
 
 
-def test_force_trace_id(exporter: InMemorySpanExporter):
-    with Laminar.start_as_current_span(
-        "test", trace_id=uuid.UUID("01234567-890a-bcde-f123-456789abcdef")
-    ):
-        pass
+def test_span_context(exporter: InMemorySpanExporter):
+    def foo(context: LaminarSpanContext):
+        with Laminar.start_as_current_span("inner", parent_span_context=context):
+            pass
+
+    span = Laminar.start_span("test")
+    foo(Laminar.get_laminar_span_context(span))
+    span.end()
 
     spans = exporter.get_finished_spans()
-    assert len(spans) == 1
-    assert (
-        spans[0].context.trace_id
-        == uuid.UUID("01234567-890a-bcde-f123-456789abcdef").int
+    assert len(spans) == 2
+    inner_span = [span for span in spans if span.name == "inner"][0]
+    outer_span = [span for span in spans if span.name == "test"][0]
+
+    assert inner_span.attributes["lmnr.span.instrumentation_source"] == "python"
+    assert inner_span.attributes["lmnr.span.path"] == ("test", "inner")
+    assert inner_span.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=outer_span.get_span_context().span_id)),
+        str(uuid.UUID(int=inner_span.get_span_context().span_id)),
     )
-
-    assert spans[0].attributes.get("lmnr.internal.override_parent_span") is True
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("test",)
-
-
-def test_force_trace_id_does_not_override_if_not_uuid(exporter: InMemorySpanExporter):
-    with Laminar.start_as_current_span("test", trace_id="not_a_uuid"):
-        pass
-
-    spans = exporter.get_finished_spans()
-    assert len(spans) == 1
-    assert spans[0].attributes.get("lmnr.internal.override_parent_span") is None
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("test",)
+    assert (
+        inner_span.get_span_context().trace_id == outer_span.get_span_context().trace_id
+    )

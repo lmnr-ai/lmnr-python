@@ -210,3 +210,25 @@ class TracingLevel(Enum):
     OFF = 0
     META_ONLY = 1
     ALL = 2
+
+
+class LaminarSpanContext(pydantic.BaseModel):
+    trace_id: uuid.UUID
+    span_id: uuid.UUID
+    is_remote: bool = pydantic.Field(default=False)
+
+    # uuid is not serializable by default, so we need to convert it to a string
+    def to_dict(self):
+        return {
+            "traceId": str(self.trace_id),
+            "spanId": str(self.span_id),
+            "isRemote": self.is_remote,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "LaminarSpanContext":
+        return cls(
+            trace_id=uuid.UUID(data["traceId"]),
+            span_id=uuid.UUID(data["spanId"]),
+            is_remote=data["isRemote"],
+        )
