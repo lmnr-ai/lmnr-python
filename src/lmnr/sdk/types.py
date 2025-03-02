@@ -213,6 +213,18 @@ class TracingLevel(Enum):
 
 
 class LaminarSpanContext(pydantic.BaseModel):
+    """
+    A span context that can be used to continue a trace across services. This
+    is a slightly modified version of the OpenTelemetry span context. For
+    usage examples, see `Laminar.get_laminar_span_context_dict`,
+    `Laminar.get_laminar_span_context_str`, `Laminar.get_span_context`, and
+    `Laminar.deserialize_laminar_span_context`.
+
+    The difference between this and the OpenTelemetry span context is that
+    the `trace_id` and `span_id` are stored as UUIDs instead of integers for
+    easier debugging, and the separate trace flags are not currently stored.
+    """
+
     trace_id: uuid.UUID
     span_id: uuid.UUID
     is_remote: bool = pydantic.Field(default=False)

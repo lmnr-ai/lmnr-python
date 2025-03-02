@@ -38,7 +38,7 @@ from opentelemetry.sdk.trace.export import (
     SimpleSpanProcessor,
     BatchSpanProcessor,
 )
-from opentelemetry.trace import get_tracer_provider, ProxyTracerProvider
+from opentelemetry.sdk.trace import SpanLimits
 
 from typing import Dict, Optional, Set
 
@@ -68,6 +68,8 @@ EXCLUDED_URLS = """
     googleapis.com,
     githubusercontent.com,
     openaipublic.blob.core.windows.net"""
+
+MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN = 5000
 
 
 class TracerWrapper(object):
@@ -291,22 +293,21 @@ def init_spans_exporter(api_endpoint: str, headers: Dict[str, str]) -> SpanExpor
         )
 
 
+# TODO: check if it's safer to use the default tracer provider obtained from
+# get_tracer_provider()
 def init_tracer_provider(resource: Resource) -> TracerProvider:
-    provider: TracerProvider = None
-    default_provider: TracerProvider = get_tracer_provider()
+    tracer_provider = TracerProvider(
+        resource=resource,
+        span_limits=SpanLimits(
+            # this defaults to 128, which causes us to drop messages
+            max_attributes=MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN,
+            max_span_attributes=MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN,
+            max_event_attributes=MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN,
+            max_events=MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN,
+        ),
+    )
 
-    if isinstance(default_provider, ProxyTracerProvider):
-        provider = TracerProvider(resource=resource)
-        trace.set_tracer_provider(provider)
-    elif not hasattr(default_provider, "add_span_processor"):
-        module_logger.error(
-            "Cannot add span processor to the default provider since it doesn't support it"
-        )
-        return
-    else:
-        provider = default_provider
-
-    return provider
+    return tracer_provider
 
 
 def init_instrumentations(

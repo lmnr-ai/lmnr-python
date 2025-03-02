@@ -371,6 +371,47 @@ def test_tracing_level_attribute(exporter: InMemorySpanExporter):
     assert second_span.attributes["lmnr.span.path"] == ("test2",)
 
 
+def test_1k_attributes(exporter: InMemorySpanExporter):
+    with Laminar.start_as_current_span("test") as span:
+        for i in range(1000):
+            span.set_attribute(f"foo_{i}", f"bar{i}")
+
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("test",)
+    for i in range(1000):
+        assert spans[0].attributes[f"foo_{i}"] == f"bar{i}"
+
+
+def test_1k_attributes_fails_with_default_tracer_provider(
+    exporter: InMemorySpanExporter,
+):
+    from opentelemetry.trace import get_tracer_provider
+    from unittest.mock import patch
+    import os
+
+    # reset to default just in case this test is run with env var set
+    if os.environ.get("OTEL_ATTRIBUTE_COUNT_LIMIT"):
+        os.environ["OTEL_ATTRIBUTE_COUNT_LIMIT"] = "128"
+
+    default_tracer_provider = get_tracer_provider()
+    with patch(
+        "lmnr.openllmetry_sdk.tracing.tracing.init_tracer_provider",
+        return_value=default_tracer_provider,
+    ):
+        with Laminar.start_as_current_span("test") as span:
+            for i in range(1000):
+                span.set_attribute(f"foo_{i}", f"bar{i}")
+
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("test",)
+    with pytest.raises(KeyError):
+        spans[0].attributes[f"foo_{1000}"]
+
+
 def test_span_context(exporter: InMemorySpanExporter):
     def foo(context: LaminarSpanContext):
         with Laminar.start_as_current_span("inner", parent_span_context=context):
@@ -378,6 +419,138 @@ def test_span_context(exporter: InMemorySpanExporter):
 
     span = Laminar.start_span("test")
     foo(Laminar.get_laminar_span_context(span))
+    span.end()
+
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 2
+    inner_span = [span for span in spans if span.name == "inner"][0]
+    outer_span = [span for span in spans if span.name == "test"][0]
+
+    assert inner_span.attributes["lmnr.span.instrumentation_source"] == "python"
+    assert inner_span.attributes["lmnr.span.path"] == ("test", "inner")
+    assert inner_span.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=outer_span.get_span_context().span_id)),
+        str(uuid.UUID(int=inner_span.get_span_context().span_id)),
+    )
+    assert (
+        inner_span.get_span_context().trace_id == outer_span.get_span_context().trace_id
+    )
+
+
+def test_span_context_dict(exporter: InMemorySpanExporter):
+    def foo(context: dict):
+        parent_span_context = Laminar.deserialize_laminar_span_context(context)
+        with Laminar.start_as_current_span(
+            "inner", parent_span_context=parent_span_context
+        ):
+            pass
+
+    span = Laminar.start_span("test")
+    foo(Laminar.get_laminar_span_context_dict(span))
+    span.end()
+
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 2
+    inner_span = [span for span in spans if span.name == "inner"][0]
+    outer_span = [span for span in spans if span.name == "test"][0]
+
+    assert inner_span.attributes["lmnr.span.instrumentation_source"] == "python"
+    assert inner_span.attributes["lmnr.span.path"] == ("test", "inner")
+    assert inner_span.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=outer_span.get_span_context().span_id)),
+        str(uuid.UUID(int=inner_span.get_span_context().span_id)),
+    )
+    assert (
+        inner_span.get_span_context().trace_id == outer_span.get_span_context().trace_id
+    )
+
+
+def test_span_context_str(exporter: InMemorySpanExporter):
+    def foo(context: str):
+        parent_span_context = Laminar.deserialize_laminar_span_context(context)
+        with Laminar.start_as_current_span(
+            "inner", parent_span_context=parent_span_context
+        ):
+            pass
+
+    span = Laminar.start_span("test")
+    foo(Laminar.get_laminar_span_context_dict(span))
+    span.end()
+
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 2
+    inner_span = [span for span in spans if span.name == "inner"][0]
+    outer_span = [span for span in spans if span.name == "test"][0]
+
+    assert inner_span.attributes["lmnr.span.instrumentation_source"] == "python"
+    assert inner_span.attributes["lmnr.span.path"] == ("test", "inner")
+    assert inner_span.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=outer_span.get_span_context().span_id)),
+        str(uuid.UUID(int=inner_span.get_span_context().span_id)),
+    )
+    assert (
+        inner_span.get_span_context().trace_id == outer_span.get_span_context().trace_id
+    )
+
+
+def test_span_context_ended_span(exporter: InMemorySpanExporter):
+    # TODO: check with opentelemetry standards if we should allow this
+    def foo(context: LaminarSpanContext):
+        with Laminar.start_as_current_span("inner", parent_span_context=context):
+            pass
+
+    span = Laminar.start_span("test")
+    span.end()
+    foo(Laminar.get_laminar_span_context(span))
+
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 2
+    inner_span = [span for span in spans if span.name == "inner"][0]
+    outer_span = [span for span in spans if span.name == "test"][0]
+
+    assert inner_span.attributes["lmnr.span.instrumentation_source"] == "python"
+    assert inner_span.attributes["lmnr.span.path"] == ("test", "inner")
+    assert inner_span.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=outer_span.get_span_context().span_id)),
+        str(uuid.UUID(int=inner_span.get_span_context().span_id)),
+    )
+    assert (
+        inner_span.get_span_context().trace_id == outer_span.get_span_context().trace_id
+    )
+
+
+def test_span_context_otel_fallback(exporter: InMemorySpanExporter):
+    def foo(context: LaminarSpanContext):
+        with Laminar.start_as_current_span("inner", parent_span_context=context):
+            pass
+
+    span = Laminar.start_span("test")
+    foo(span.get_span_context())
+    span.end()
+
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 2
+    inner_span = [span for span in spans if span.name == "inner"][0]
+    outer_span = [span for span in spans if span.name == "test"][0]
+
+    assert inner_span.attributes["lmnr.span.instrumentation_source"] == "python"
+    assert inner_span.attributes["lmnr.span.path"] == ("test", "inner")
+    assert inner_span.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=outer_span.get_span_context().span_id)),
+        str(uuid.UUID(int=inner_span.get_span_context().span_id)),
+    )
+    assert (
+        inner_span.get_span_context().trace_id == outer_span.get_span_context().trace_id
+    )
+
+
+def test_span_context_dict_fallback(exporter: InMemorySpanExporter):
+    def foo(context: LaminarSpanContext):
+        with Laminar.start_as_current_span("inner", parent_span_context=context):
+            pass
+
+    span = Laminar.start_span("test")
+    foo(Laminar.get_laminar_span_context_dict(span))
     span.end()
 
     spans = exporter.get_finished_spans()
