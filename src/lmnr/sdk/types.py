@@ -284,11 +284,9 @@ class LaminarSpanContext(pydantic.BaseModel):
                     trace_flags=TraceFlags(TraceFlags.SAMPLED),
                 )
             except Exception:
-                raise ValueError(
-                    "Invalid span_context provided to `Laminar.start_span`"
-                )
+                raise ValueError("Invalid span_context provided")
         else:
-            raise ValueError("Invalid span_context provided to `Laminar.start_span`")
+            raise ValueError("Invalid span_context provided")
 
     @classmethod
     def deserialize(cls, data: Union[dict[str, Any], str]) -> "LaminarSpanContext":
@@ -297,4 +295,4 @@ class LaminarSpanContext(pydantic.BaseModel):
         elif isinstance(data, str):
             return cls.from_dict(json.loads(data))
         else:
-            raise ValueError("Invalid span_context provided to `Laminar.start_span`")
+            raise ValueError("Invalid span_context provided")
