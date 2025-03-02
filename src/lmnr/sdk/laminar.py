@@ -35,6 +35,7 @@ import requests
 import re
 import urllib.parse
 import uuid
+import warnings
 
 from lmnr.openllmetry_sdk.tracing.attributes import (
     SESSION_ID,
@@ -397,49 +398,16 @@ class Laminar:
         with get_tracer() as tracer:
             ctx = context or context_api.get_current()
             if trace_id is not None:
-                cls.__logger.warning(
+                warnings.warn(
                     "trace_id provided to `Laminar.start_as_current_span`"
-                    " is deprecated, use parent_span_context instead"
+                    " is deprecated, use parent_span_context instead",
+                    DeprecationWarning,
+                    stacklevel=2,
                 )
             if parent_span_context is not None:
-                if isinstance(parent_span_context, LaminarSpanContext):
-                    span_context = trace.SpanContext(
-                        trace_id=parent_span_context.trace_id.int,
-                        span_id=parent_span_context.span_id.int,
-                        is_remote=parent_span_context.is_remote,
-                        trace_flags=trace.TraceFlags(trace.TraceFlags.SAMPLED),
-                    )
-                elif isinstance(parent_span_context, trace.SpanContext) or (
-                    isinstance(getattr(parent_span_context, "trace_id", None), int)
-                    and isinstance(getattr(parent_span_context, "span_id", None), int)
-                ):
-                    cls.__logger.warning(
-                        "parent_span_context provided to `Laminar.start_as_current_span`"
-                        " is likely a raw OpenTelemetry span context. Will try to use it. "
-                        "Please use `LaminarSpanContext` instead."
-                    )
-                    span_context = parent_span_context
-                elif isinstance(parent_span_context, dict) or isinstance(
-                    parent_span_context, str
-                ):
-                    try:
-                        laminar_span_context = LaminarSpanContext.from_dict(
-                            parent_span_context
-                        )
-                        span_context = trace.SpanContext(
-                            trace_id=laminar_span_context.trace_id.int,
-                            span_id=laminar_span_context.span_id.int,
-                            is_remote=laminar_span_context.is_remote,
-                            trace_flags=trace.TraceFlags(trace.TraceFlags.SAMPLED),
-                        )
-                    except Exception:
-                        raise ValueError(
-                            "Invalid parent_span_context provided to `Laminar.start_as_current_span`"
-                        )
-                else:
-                    raise ValueError(
-                        "Invalid parent_span_context provided to `Laminar.start_as_current_span`"
-                    )
+                span_context = LaminarSpanContext.try_to_otel_span_context(
+                    parent_span_context, cls.__logger
+                )
                 ctx = trace.set_span_in_context(
                     trace.NonRecordingSpan(span_context), ctx
                 )
@@ -604,49 +572,16 @@ class Laminar:
         with get_tracer() as tracer:
             ctx = context or context_api.get_current()
             if trace_id is not None:
-                cls.__logger.warning(
+                warnings.warn(
                     "trace_id provided to `Laminar.start_span`"
-                    " is deprecated, use parent_span_context instead"
+                    " is deprecated, use parent_span_context instead",
+                    DeprecationWarning,
+                    stacklevel=2,
                 )
             if parent_span_context is not None:
-                if isinstance(parent_span_context, LaminarSpanContext):
-                    span_context = trace.SpanContext(
-                        trace_id=parent_span_context.trace_id.int,
-                        span_id=parent_span_context.span_id.int,
-                        is_remote=parent_span_context.is_remote,
-                        trace_flags=trace.TraceFlags(trace.TraceFlags.SAMPLED),
-                    )
-                elif isinstance(parent_span_context, trace.SpanContext) or (
-                    isinstance(getattr(parent_span_context, "trace_id", None), int)
-                    and isinstance(getattr(parent_span_context, "span_id", None), int)
-                ):
-                    cls.__logger.warning(
-                        "parent_span_context provided to `Laminar.start_span`"
-                        " is likely a raw OpenTelemetry span context. Will try to use it. "
-                        "Please use `LaminarSpanContext` instead."
-                    )
-                    span_context = parent_span_context
-                elif isinstance(parent_span_context, dict) or isinstance(
-                    parent_span_context, str
-                ):
-                    try:
-                        laminar_span_context = LaminarSpanContext.from_dict(
-                            parent_span_context
-                        )
-                        span_context = trace.SpanContext(
-                            trace_id=laminar_span_context.trace_id.int,
-                            span_id=laminar_span_context.span_id.int,
-                            is_remote=laminar_span_context.is_remote,
-                            trace_flags=trace.TraceFlags(trace.TraceFlags.SAMPLED),
-                        )
-                    except Exception:
-                        raise ValueError(
-                            "Invalid parent_span_context provided to `Laminar.start_span`"
-                        )
-                else:
-                    raise ValueError(
-                        "Invalid parent_span_context provided to `Laminar.start_span`"
-                    )
+                span_context = LaminarSpanContext.try_to_otel_span_context(
+                    parent_span_context, cls.__logger
+                )
                 ctx = trace.set_span_in_context(
                     trace.NonRecordingSpan(span_context), ctx
                 )
@@ -859,12 +794,7 @@ class Laminar:
     def deserialize_laminar_span_context(
         cls, span_context: Union[dict, str]
     ) -> LaminarSpanContext:
-        if isinstance(span_context, dict):
-            return LaminarSpanContext.from_dict(span_context)
-        elif isinstance(span_context, str):
-            return LaminarSpanContext.from_dict(json.loads(span_context))
-        else:
-            raise ValueError("Invalid span context")
+        return LaminarSpanContext.deserialize(span_context)
 
     @classmethod
     def set_session(

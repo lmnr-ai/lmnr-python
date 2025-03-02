@@ -1,6 +1,9 @@
+import logging
 import aiohttp
 import datetime
 from enum import Enum
+import json
+from opentelemetry.trace import SpanContext, TraceFlags
 import pydantic
 from typing import Any, Awaitable, Callable, Optional, Union
 import uuid
@@ -244,3 +247,54 @@ class LaminarSpanContext(pydantic.BaseModel):
             span_id=uuid.UUID(data["spanId"]),
             is_remote=data["isRemote"],
         )
+
+    @classmethod
+    def try_to_otel_span_context(
+        cls,
+        span_context: Union["LaminarSpanContext", dict[str, Any], str, SpanContext],
+        logger: Optional[logging.Logger] = None,
+    ) -> SpanContext:
+        if logger is None:
+            logger = logging.getLogger(__name__)
+
+        if isinstance(span_context, LaminarSpanContext):
+            return SpanContext(
+                trace_id=span_context.trace_id.int,
+                span_id=span_context.span_id.int,
+                is_remote=span_context.is_remote,
+                trace_flags=TraceFlags(TraceFlags.SAMPLED),
+            )
+        elif isinstance(span_context, SpanContext) or (
+            isinstance(getattr(span_context, "trace_id", None), int)
+            and isinstance(getattr(span_context, "span_id", None), int)
+        ):
+            logger.warning(
+                "span_context provided"
+                " is likely a raw OpenTelemetry span context. Will try to use it. "
+                "Please use `LaminarSpanContext` instead."
+            )
+            return span_context
+        elif isinstance(span_context, dict) or isinstance(span_context, str):
+            try:
+                laminar_span_context = cls.deserialize(span_context)
+                return SpanContext(
+                    trace_id=laminar_span_context.trace_id.int,
+                    span_id=laminar_span_context.span_id.int,
+                    is_remote=laminar_span_context.is_remote,
+                    trace_flags=TraceFlags(TraceFlags.SAMPLED),
+                )
+            except Exception:
+                raise ValueError(
+                    "Invalid span_context provided to `Laminar.start_span`"
+                )
+        else:
+            raise ValueError("Invalid span_context provided to `Laminar.start_span`")
+
+    @classmethod
+    def deserialize(cls, data: Union[dict[str, Any], str]) -> "LaminarSpanContext":
+        if isinstance(data, dict):
+            return cls.from_dict(data)
+        elif isinstance(data, str):
+            return cls.from_dict(json.loads(data))
+        else:
+            raise ValueError("Invalid span_context provided to `Laminar.start_span`")
