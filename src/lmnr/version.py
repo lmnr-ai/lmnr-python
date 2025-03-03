@@ -3,7 +3,7 @@ import requests
 from packaging import version
 
 
-SDK_VERSION = "0.4.63"
+SDK_VERSION = "0.4.64"
 PYTHON_VERSION = f"{sys.version_info.major}.{sys.version_info.minor}"
 
 

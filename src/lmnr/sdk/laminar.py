@@ -797,6 +797,10 @@ class Laminar:
         return LaminarSpanContext.deserialize(span_context)
 
     @classmethod
+    def shutdown(cls):
+        Traceloop.flush()
+
+    @classmethod
     def set_session(
         cls,
         session_id: Optional[str] = None,

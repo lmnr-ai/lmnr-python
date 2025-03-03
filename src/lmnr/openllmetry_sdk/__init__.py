@@ -76,3 +76,7 @@ class Traceloop:
             project_api_key=project_api_key,
             max_export_batch_size=max_export_batch_size,
         )
+
+    @staticmethod
+    def flush():
+        Traceloop.__tracer_wrapper.flush()
