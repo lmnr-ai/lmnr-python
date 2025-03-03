@@ -79,4 +79,5 @@ class Traceloop:
 
     @staticmethod
     def flush():
-        Traceloop.__tracer_wrapper.flush()
+        if Traceloop.__tracer_wrapper:
+            Traceloop.__tracer_wrapper.flush()
