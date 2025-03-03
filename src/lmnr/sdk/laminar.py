@@ -153,6 +153,11 @@ class Laminar:
         cls.__initialized = True
         cls._initialize_logger()
 
+        if not os.environ.get("OTEL_ATTRIBUTE_COUNT_LIMIT"):
+            # each message is at least 2 attributes: role and content,
+            # but the default attribute limit is 128, so raise it
+            os.environ["OTEL_ATTRIBUTE_COUNT_LIMIT"] = "10000"
+
         # if not is_latest_version():
         #     cls.__logger.warning(
         #         "You are using an older version of the Laminar SDK. "
