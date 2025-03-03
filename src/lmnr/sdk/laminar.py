@@ -13,7 +13,6 @@ from lmnr.openllmetry_sdk.config import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 from lmnr.openllmetry_sdk.decorators.base import json_dumps
 from opentelemetry import context as context_api, trace
 from opentelemetry.context import attach, detach
-from lmnr.version import SDK_VERSION, get_latest_pypi_version, is_latest_version
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
     OTLPSpanExporter,
     Compression,
@@ -36,6 +35,7 @@ import requests
 import re
 import urllib.parse
 import uuid
+import warnings
 
 from lmnr.openllmetry_sdk.tracing.attributes import (
     SESSION_ID,
@@ -55,6 +55,7 @@ from .types import (
     InitEvaluationResponse,
     EvaluationResultDatapoint,
     GetDatapointsResponse,
+    LaminarSpanContext,
     PipelineRunError,
     PipelineRunResponse,
     NodeInput,
@@ -347,8 +348,10 @@ class Laminar:
             Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]
         ] = "DEFAULT",
         context: Optional[Context] = None,
-        trace_id: Optional[uuid.UUID] = None,
         labels: Optional[dict[str, str]] = None,
+        parent_span_context: Optional[LaminarSpanContext] = None,
+        # deprecated, use parent_span_context instead
+        trace_id: Optional[uuid.UUID] = None,
     ):
         """Start a new span as the current span. Useful for manual
         instrumentation. If `span_type` is set to `"LLM"`, you should report
@@ -371,11 +374,21 @@ class Laminar:
                 and response attributes manually. Defaults to "DEFAULT".
             context (Optional[Context], optional): raw OpenTelemetry context\
                 to attach the span to. Defaults to None.
-            trace_id (Optional[uuid.UUID], optional): [EXPERIMENTAL] override\
-                the trace id for the span. If not provided, use the current\
-                trace id. Defaults to None.
+            parent_span_context (Optional[LaminarSpanContext], optional): parent\
+                span context to use for the span. Useful for continuing traces\
+                across services. If parent_span_context is a\
+                raw OpenTelemetry span context, or if it is a dictionary or string\
+                obtained from `Laminar.get_laminar_span_context_dict()` or\
+                `Laminar.get_laminar_span_context_str()` respectively, it will be\
+                converted to a `LaminarSpanContext` if possible. See also\
+                `Laminar.get_span_context`, `Laminar.get_span_context_dict` and\
+                `Laminar.get_span_context_str` for more information.
+                Defaults to None.
             labels (Optional[dict[str, str]], optional): labels to set for the\
                 span. Defaults to None.
+            trace_id (Optional[uuid.UUID], optional): [Deprecated] override\
+                the trace id for the span. If not provided, use the current\
+                trace id. Defaults to None.
         """
 
         if not cls.is_initialized():
@@ -385,21 +398,29 @@ class Laminar:
         with get_tracer() as tracer:
             ctx = context or context_api.get_current()
             if trace_id is not None:
-                if isinstance(trace_id, uuid.UUID):
-                    span_context = trace.SpanContext(
-                        trace_id=int(trace_id),
-                        span_id=random.getrandbits(64),
-                        is_remote=False,
-                        trace_flags=trace.TraceFlags(trace.TraceFlags.SAMPLED),
-                    )
-                    ctx = trace.set_span_in_context(
-                        trace.NonRecordingSpan(span_context), ctx
-                    )
-                else:
-                    cls.__logger.warning(
-                        "trace_id provided to `Laminar.start_as_current_span`"
-                        " is not a valid UUID"
-                    )
+                warnings.warn(
+                    "trace_id provided to `Laminar.start_as_current_span`"
+                    " is deprecated, use parent_span_context instead",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+            if parent_span_context is not None:
+                span_context = LaminarSpanContext.try_to_otel_span_context(
+                    parent_span_context, cls.__logger
+                )
+                ctx = trace.set_span_in_context(
+                    trace.NonRecordingSpan(span_context), ctx
+                )
+            elif trace_id is not None and isinstance(trace_id, uuid.UUID):
+                span_context = trace.SpanContext(
+                    trace_id=int(trace_id),
+                    span_id=random.getrandbits(64),
+                    is_remote=False,
+                    trace_flags=trace.TraceFlags(trace.TraceFlags.SAMPLED),
+                )
+                ctx = trace.set_span_in_context(
+                    trace.NonRecordingSpan(span_context), ctx
+                )
             ctx_token = attach(ctx)
             label_props = {}
             try:
@@ -487,8 +508,10 @@ class Laminar:
             Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]
         ] = "DEFAULT",
         context: Optional[Context] = None,
-        trace_id: Optional[uuid.UUID] = None,
+        parent_span_context: Optional[LaminarSpanContext] = None,
         labels: Optional[dict[str, str]] = None,
+        # deprecated, use parent_span_context instead
+        trace_id: Optional[uuid.UUID] = None,
     ):
         """Start a new span. Useful for manual instrumentation.
         If `span_type` is set to `"LLM"`, you should report usage and response
@@ -530,30 +553,48 @@ class Laminar:
                 and response attributes manually. Defaults to "DEFAULT".
             context (Optional[Context], optional): raw OpenTelemetry context\
                 to attach the span to. Defaults to None.
-            trace_id (Optional[uuid.UUID], optional): [EXPERIMENTAL] override\
-                the trace id for the span. If not provided, use the current\
-                trace id. Defaults to None.
+            parent_span_context (Optional[LaminarSpanContext], optional): parent\
+                span context to use for the span. Useful for continuing traces\
+                across services. If parent_span_context is a\
+                raw OpenTelemetry span context, or if it is a dictionary or string\
+                obtained from `Laminar.get_laminar_span_context_dict()` or\
+                `Laminar.get_laminar_span_context_str()` respectively, it will be\
+                converted to a `LaminarSpanContext` if possible. See also\
+                `Laminar.get_span_context`, `Laminar.get_span_context_dict` and\
+                `Laminar.get_span_context_str` for more information.
+                Defaults to None.
             labels (Optional[dict[str, str]], optional): labels to set for the\
                 span. Defaults to None.
+            trace_id (Optional[uuid.UUID], optional): Deprecated, use\
+                `parent_span_context` instead. If provided, it will be used to\
+                set the trace id for the span.
         """
         with get_tracer() as tracer:
             ctx = context or context_api.get_current()
             if trace_id is not None:
-                if isinstance(trace_id, uuid.UUID):
-                    span_context = trace.SpanContext(
-                        trace_id=int(trace_id),
-                        span_id=random.getrandbits(64),
-                        is_remote=False,
-                        trace_flags=trace.TraceFlags(trace.TraceFlags.SAMPLED),
-                    )
-                    ctx = trace.set_span_in_context(
-                        trace.NonRecordingSpan(span_context), ctx
-                    )
-                else:
-                    cls.__logger.warning(
-                        "trace_id provided to `Laminar.start_span`"
-                        " is not a valid UUID"
-                    )
+                warnings.warn(
+                    "trace_id provided to `Laminar.start_span`"
+                    " is deprecated, use parent_span_context instead",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+            if parent_span_context is not None:
+                span_context = LaminarSpanContext.try_to_otel_span_context(
+                    parent_span_context, cls.__logger
+                )
+                ctx = trace.set_span_in_context(
+                    trace.NonRecordingSpan(span_context), ctx
+                )
+            elif trace_id is not None and isinstance(trace_id, uuid.UUID):
+                span_context = trace.SpanContext(
+                    trace_id=int(trace_id),
+                    span_id=random.getrandbits(64),
+                    is_remote=False,
+                    trace_flags=trace.TraceFlags(trace.TraceFlags.SAMPLED),
+                )
+                ctx = trace.set_span_in_context(
+                    trace.NonRecordingSpan(span_context), ctx
+                )
             label_props = {}
             try:
                 if labels:
@@ -687,6 +728,77 @@ class Laminar:
                 span.set_attribute(key.value, json_dumps(value))
             else:
                 span.set_attribute(key.value, value)
+
+    @classmethod
+    def get_laminar_span_context(
+        cls, span: Optional[trace.Span] = None
+    ) -> Optional[LaminarSpanContext]:
+        """Get the laminar span context for a given span.
+        If no span is provided, the current active span will be used.
+        """
+        span = span or trace.get_current_span()
+        if span == trace.INVALID_SPAN:
+            return None
+        return LaminarSpanContext(
+            trace_id=uuid.UUID(int=span.get_span_context().trace_id),
+            span_id=uuid.UUID(int=span.get_span_context().span_id),
+            is_remote=span.get_span_context().is_remote,
+        )
+
+    @classmethod
+    def get_laminar_span_context_dict(
+        cls, span: Optional[trace.Span] = None
+    ) -> Optional[dict]:
+        """Get the laminar span context for a given span as a dictionary.
+        If no span is provided, the current active span will be used.
+
+        This is useful for continuing a trace across services.
+
+        Example:
+        ```python
+        # service A:
+        with Laminar.start_as_current_span("service_a"):
+            span_context = Laminar.get_laminar_span_context_dict()
+            # send span_context to service B
+            call_service_b(request, headers={"laminar-span-context": span_context})
+
+        # service B:
+        def call_service_b(request, headers):
+            span_context = LaminarSpanContext.from_dict(headers["laminar-span-context"])
+            with Laminar.start_as_current_span("service_b", parent_span_context=span_context):
+                # rest of the function
+                pass
+        ```
+
+        This will result in a trace like:
+        ```
+        service_a
+          service_b
+        ```
+        """
+        span_context = cls.get_laminar_span_context(span)
+        if span_context is None:
+            return None
+        return span_context.to_dict()
+
+    @classmethod
+    def get_laminar_span_context_str(
+        cls, span: Optional[trace.Span] = None
+    ) -> Optional[str]:
+        span_context = cls.get_laminar_span_context(span)
+        if span_context is None:
+            return None
+        return json.dumps(span_context.to_dict())
+
+    @classmethod
+    def deserialize_laminar_span_context(
+        cls, span_context: Union[dict, str]
+    ) -> LaminarSpanContext:
+        return LaminarSpanContext.deserialize(span_context)
+
+    @classmethod
+    def shutdown(cls):
+        Traceloop.flush()
 
     @classmethod
     def set_session(

@@ -10,6 +10,7 @@ from .sdk.types import (
     TracingLevel,
 )
 from .sdk.decorators import observe
+from .sdk.types import LaminarSpanContext
 from .openllmetry_sdk import Instruments
 from .openllmetry_sdk.tracing.attributes import Attributes
 from opentelemetry.trace import use_span
