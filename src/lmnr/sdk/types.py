@@ -268,9 +268,9 @@ class LaminarSpanContext(pydantic.BaseModel):
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "LaminarSpanContext":
         return cls(
-            trace_id=uuid.UUID(data["traceId"] or data["trace_id"]),
-            span_id=uuid.UUID(data["spanId"] or data["span_id"]),
-            is_remote=data["isRemote"] or data["is_remote"] or False,
+            trace_id=uuid.UUID(data.get("traceId") or data.get("trace_id")),
+            span_id=uuid.UUID(data.get("spanId") or data.get("span_id")),
+            is_remote=data.get("isRemote") or data.get("is_remote") or False,
         )
 
     @classmethod
