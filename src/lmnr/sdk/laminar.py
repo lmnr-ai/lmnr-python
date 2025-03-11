@@ -19,11 +19,9 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
 )
 from opentelemetry.util.types import AttributeValue
 
-from pydantic.alias_generators import to_snake
 from typing import Any, Awaitable, Literal, Optional, Set, Union
 
-import aiohttp
-import asyncio
+import atexit
 import copy
 import datetime
 import dotenv
@@ -31,9 +29,7 @@ import json
 import logging
 import os
 import random
-import requests
 import re
-import urllib.parse
 import uuid
 import warnings
 
@@ -48,19 +44,14 @@ from lmnr.openllmetry_sdk.tracing.tracing import (
     set_association_properties,
     update_association_properties,
 )
+from lmnr.sdk.client import LaminarClient
 
 from .log import VerboseColorfulFormatter
 
 from .types import (
-    InitEvaluationResponse,
-    EvaluationResultDatapoint,
-    GetDatapointsResponse,
     LaminarSpanContext,
-    PipelineRunError,
     PipelineRunResponse,
     NodeInput,
-    PipelineRunRequest,
-    SemanticSearchRequest,
     SemanticSearchResponse,
     TraceType,
     TracingLevel,
@@ -152,7 +143,11 @@ class Laminar:
         cls.__env = env
         cls.__initialized = True
         cls._initialize_logger()
-
+        LaminarClient.initialize(
+            base_url=cls.__base_http_url,
+            project_api_key=cls.__project_api_key,
+        )
+        atexit.register(LaminarClient.shutdown)
         if not os.environ.get("OTEL_ATTRIBUTE_COUNT_LIMIT"):
             # each message is at least 2 attributes: role and content,
             # but the default attribute limit is 128, so raise it
@@ -237,35 +232,14 @@ class Laminar:
             ValueError: if project API key is not set
             PipelineRunError: if the endpoint run fails
         """
-        if cls.__project_api_key is None:
-            raise ValueError(
-                "Please initialize the Laminar object with your project "
-                "API key or set the LMNR_PROJECT_API_KEY environment variable"
-            )
-        try:
-            current_span = trace.get_current_span()
-            if current_span != trace.INVALID_SPAN:
-                parent_span_id = parent_span_id or uuid.UUID(
-                    int=current_span.get_span_context().span_id
-                )
-                trace_id = trace_id or uuid.UUID(
-                    int=current_span.get_span_context().trace_id
-                )
-            request = PipelineRunRequest(
-                inputs=inputs,
-                pipeline=pipeline,
-                env=env or cls.__env,
-                metadata=metadata,
-                parent_span_id=parent_span_id,
-                trace_id=trace_id,
-            )
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                return cls.__run(request)
-            else:
-                return asyncio.run(cls.__run(request))
-        except Exception as e:
-            raise ValueError(f"Invalid request: {e}")
+        return LaminarClient.run_pipeline(
+            pipeline=pipeline,
+            inputs=inputs,
+            env=env or cls.__env,
+            metadata=metadata,
+            parent_span_id=parent_span_id,
+            trace_id=trace_id,
+        )
 
     @classmethod
     def semantic_search(
@@ -289,17 +263,12 @@ class Laminar:
         Returns:
             SemanticSearchResponse: response object containing the search results sorted by score in descending order
         """
-        request = SemanticSearchRequest(
+        return LaminarClient.semantic_search(
             query=query,
             dataset_id=dataset_id,
             limit=limit,
             threshold=threshold,
         )
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            return cls.__semantic_search(request)
-        else:
-            return asyncio.run(cls.__semantic_search(request))
 
     @classmethod
     def event(
@@ -754,7 +723,14 @@ class Laminar:
     def get_laminar_span_context_dict(
         cls, span: Optional[trace.Span] = None
     ) -> Optional[dict]:
-        """Get the laminar span context for a given span as a dictionary.
+        span_context = cls.get_laminar_span_context(span)
+        if span_context is None:
+            return None
+        return span_context.to_dict()
+
+    @classmethod
+    def serialize_span_context(cls, span: Optional[trace.Span] = None) -> Optional[str]:
+        """Get the laminar span context for a given span as a string.
         If no span is provided, the current active span will be used.
 
         This is useful for continuing a trace across services.
@@ -763,13 +739,13 @@ class Laminar:
         ```python
         # service A:
         with Laminar.start_as_current_span("service_a"):
-            span_context = Laminar.get_laminar_span_context_dict()
+            span_context = Laminar.serialize_span_context()
             # send span_context to service B
             call_service_b(request, headers={"laminar-span-context": span_context})
 
         # service B:
         def call_service_b(request, headers):
-            span_context = LaminarSpanContext.from_dict(headers["laminar-span-context"])
+            span_context = Laminar.deserialize_span_context(headers["laminar-span-context"])
             with Laminar.start_as_current_span("service_b", parent_span_context=span_context):
                 # rest of the function
                 pass
@@ -784,19 +760,10 @@ class Laminar:
         span_context = cls.get_laminar_span_context(span)
         if span_context is None:
             return None
-        return span_context.to_dict()
-
-    @classmethod
-    def get_laminar_span_context_str(
-        cls, span: Optional[trace.Span] = None
-    ) -> Optional[str]:
-        span_context = cls.get_laminar_span_context(span)
-        if span_context is None:
-            return None
         return json.dumps(span_context.to_dict())
 
     @classmethod
-    def deserialize_laminar_span_context(
+    def deserialize_span_context(
         cls, span_context: Union[dict, str]
     ) -> LaminarSpanContext:
         return LaminarSpanContext.deserialize(span_context)
@@ -804,6 +771,12 @@ class Laminar:
     @classmethod
     def shutdown(cls):
         Traceloop.flush()
+        LaminarClient.shutdown()
+
+    @classmethod
+    async def shutdown_async(cls):
+        Traceloop.flush()
+        await LaminarClient.shutdown_async()
 
     @classmethod
     def set_session(
@@ -854,74 +827,6 @@ class Laminar:
         set_association_properties(props)
 
     @classmethod
-    async def init_eval(
-        cls, name: Optional[str] = None, group_name: Optional[str] = None
-    ) -> InitEvaluationResponse:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                cls.__base_http_url + "/v1/evals",
-                json={
-                    "name": name,
-                    "groupName": group_name,
-                },
-                headers=cls._headers(),
-            ) as response:
-                resp_json = await response.json()
-                return InitEvaluationResponse.model_validate(resp_json)
-
-    @classmethod
-    async def save_eval_datapoints(
-        cls,
-        eval_id: uuid.UUID,
-        datapoints: list[EvaluationResultDatapoint],
-        groupName: Optional[str] = None,
-    ):
-        async with aiohttp.ClientSession() as session:
-
-            async with session.post(
-                cls.__base_http_url + f"/v1/evals/{eval_id}/datapoints",
-                json={
-                    "points": [datapoint.to_dict() for datapoint in datapoints],
-                    "groupName": groupName,
-                },
-                headers=cls._headers(),
-            ) as response:
-                if response.status != 200:
-                    raise ValueError(
-                        f"Error saving evaluation datapoints: {response.text}"
-                    )
-
-    @classmethod
-    def get_datapoints(
-        cls,
-        dataset_name: str,
-        offset: int,
-        limit: int,
-    ) -> GetDatapointsResponse:
-        # TODO: Use aiohttp. Currently, this function is called from within
-        # `LaminarDataset.__len__`, which is sync, but can be called from
-        # both sync and async. Python does not make it easy to mix things this
-        # way, so we should probably refactor `LaminarDataset`.
-        params = {"name": dataset_name, "offset": offset, "limit": limit}
-        url = (
-            cls.__base_http_url
-            + "/v1/datasets/datapoints?"
-            + urllib.parse.urlencode(params)
-        )
-        response = requests.get(url, headers=cls._headers())
-        if response.status_code != 200:
-            try:
-                resp_json = response.json()
-                raise ValueError(
-                    f"Error fetching datapoints: [{response.status_code}] {json.dumps(resp_json)}"
-                )
-            except requests.exceptions.RequestException:
-                raise ValueError(
-                    f"Error fetching datapoints: [{response.status_code}] {response.text}"
-                )
-        return GetDatapointsResponse.model_validate(response.json())
-
-    @classmethod
     def _headers(cls):
         assert cls.__project_api_key is not None, "Project API key is not set"
         return {
@@ -942,52 +847,3 @@ class Laminar:
             TRACE_TYPE: trace_type.value,
         }
         update_association_properties(association_properties)
-
-    @classmethod
-    async def __run(
-        cls,
-        request: PipelineRunRequest,
-    ) -> PipelineRunResponse:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                cls.__base_http_url + "/v1/pipeline/run",
-                data=json.dumps(request.to_dict()),
-                headers=cls._headers(),
-            ) as response:
-                if response.status != 200:
-                    raise PipelineRunError(response)
-                try:
-                    resp_json = await response.json()
-                    keys = list(resp_json.keys())
-                    for key in keys:
-                        value = resp_json[key]
-                        del resp_json[key]
-                        resp_json[to_snake(key)] = value
-                    return PipelineRunResponse(**resp_json)
-                except Exception:
-                    raise PipelineRunError(response)
-
-    @classmethod
-    async def __semantic_search(
-        cls,
-        request: SemanticSearchRequest,
-    ) -> SemanticSearchResponse:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                cls.__base_http_url + "/v1/semantic-search",
-                data=json.dumps(request.to_dict()),
-                headers=cls._headers(),
-            ) as response:
-                if response.status != 200:
-                    raise ValueError(
-                        f"Error performing semantic search: [{response.status}] {response.text}"
-                    )
-                try:
-                    resp_json = await response.json()
-                    for result in resp_json["results"]:
-                        result["dataset_id"] = uuid.UUID(result["datasetId"])
-                    return SemanticSearchResponse(**resp_json)
-                except Exception as e:
-                    raise ValueError(
-                        f"Error parsing semantic search response: status={response.status} error={e}"
-                    )

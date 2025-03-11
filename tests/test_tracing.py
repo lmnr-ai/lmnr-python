@@ -436,7 +436,7 @@ def test_span_context(exporter: InMemorySpanExporter):
 
 def test_span_context_dict(exporter: InMemorySpanExporter):
     def foo(context: dict):
-        parent_span_context = Laminar.deserialize_laminar_span_context(context)
+        parent_span_context = Laminar.deserialize_span_context(context)
         with Laminar.start_as_current_span(
             "inner", parent_span_context=parent_span_context
         ):
@@ -464,7 +464,7 @@ def test_span_context_dict(exporter: InMemorySpanExporter):
 
 def test_span_context_str(exporter: InMemorySpanExporter):
     def foo(context: str):
-        parent_span_context = Laminar.deserialize_laminar_span_context(context)
+        parent_span_context = Laminar.deserialize_span_context(context)
         with Laminar.start_as_current_span(
             "inner", parent_span_context=parent_span_context
         ):

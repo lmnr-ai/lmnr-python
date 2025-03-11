@@ -153,7 +153,32 @@ class InitEvaluationResponse(pydantic.BaseModel):
     projectId: uuid.UUID
 
 
+class PartialEvaluationDatapoint(pydantic.BaseModel):
+    id: uuid.UUID
+    data: EvaluationDatapointData
+    target: EvaluationDatapointTarget
+    index: int
+    trace_id: uuid.UUID
+    executor_span_id: uuid.UUID
+
+    # uuid is not serializable by default, so we need to convert it to a string
+    def to_dict(self):
+        try:
+            return {
+                "id": str(self.id),
+                "data": str(serialize(self.data))[:100],
+                "target": str(serialize(self.target))[:100],
+                "index": self.index,
+                "traceId": str(self.trace_id),
+                "executorSpanId": str(self.executor_span_id),
+            }
+        except Exception as e:
+            raise ValueError(f"Error serializing PartialEvaluationDatapoint: {e}")
+
+
 class EvaluationResultDatapoint(pydantic.BaseModel):
+    id: uuid.UUID
+    index: int
     data: EvaluationDatapointData
     target: EvaluationDatapointTarget
     executor_output: ExecutorFunctionReturnType
@@ -161,7 +186,6 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
     human_evaluators: list[HumanEvaluator] = pydantic.Field(default_factory=list)
     trace_id: uuid.UUID
     executor_span_id: uuid.UUID
-    index: int
 
     # uuid is not serializable by default, so we need to convert it to a string
     def to_dict(self):
@@ -169,6 +193,7 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
             return {
                 # preserve only preview of the data, target and executor output
                 # (full data is in trace)
+                "id": str(self.id),
                 "data": str(serialize(self.data))[:100],
                 "target": str(serialize(self.target))[:100],
                 "executorOutput": str(serialize(self.executor_output))[:100],
@@ -243,9 +268,9 @@ class LaminarSpanContext(pydantic.BaseModel):
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "LaminarSpanContext":
         return cls(
-            trace_id=uuid.UUID(data["traceId"]),
-            span_id=uuid.UUID(data["spanId"]),
-            is_remote=data["isRemote"],
+            trace_id=uuid.UUID(data["traceId"] or data["trace_id"]),
+            span_id=uuid.UUID(data["spanId"] or data["span_id"]),
+            is_remote=data["isRemote"] or data["is_remote"] or False,
         )
 
     @classmethod

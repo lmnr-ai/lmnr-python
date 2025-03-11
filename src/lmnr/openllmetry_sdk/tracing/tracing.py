@@ -28,7 +28,7 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
 )
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import Compression
 from opentelemetry.instrumentation.threading import ThreadingInstrumentor
-from opentelemetry.context import get_value, attach, get_current, set_value, Context
+from opentelemetry.context import get_value, attach, get_current, set_value
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.propagators.textmap import TextMapPropagator
 from opentelemetry.sdk.resources import Resource

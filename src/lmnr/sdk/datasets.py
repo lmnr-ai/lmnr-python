@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
+from .client import LaminarClient
 from .log import get_default_logger
-from .laminar import Laminar as L
 from .types import Datapoint
 
 DEFAULT_FETCH_SIZE = 25
@@ -38,7 +38,7 @@ class LaminarDataset(EvaluationDataset):
             f"dataset {self.name}. Fetching batch from {self._offset} to "
             + f"{self._offset + self._fetch_size}"
         )
-        resp = L.get_datapoints(self.name, self._offset, self._fetch_size)
+        resp = LaminarClient.get_datapoints(self.name, self._offset, self._fetch_size)
         self._fetched_items += resp.items
         self._offset = len(self._fetched_items)
         if self._len is None:
