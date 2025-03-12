@@ -543,6 +543,8 @@ class Laminar:
                 `parent_span_context` instead. If provided, it will be used to\
                 set the trace id for the span.
         """
+        if not cls.is_initialized():
+            return trace.NonRecordingSpan(context or context_api.get_current())
         with get_tracer() as tracer:
             ctx = context or context_api.get_current()
             if trace_id is not None:
