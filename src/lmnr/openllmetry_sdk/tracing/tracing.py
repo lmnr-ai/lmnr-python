@@ -6,7 +6,6 @@ import uuid
 from contextvars import Context
 from lmnr.sdk.log import VerboseColorfulFormatter
 from lmnr.openllmetry_sdk.instruments import Instruments
-from lmnr.sdk.browser import init_browser_tracing
 from lmnr.openllmetry_sdk.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     SPAN_IDS_PATH,
@@ -28,7 +27,7 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
 )
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import Compression
 from opentelemetry.instrumentation.threading import ThreadingInstrumentor
-from opentelemetry.context import get_value, attach, get_current, set_value, Context
+from opentelemetry.context import get_value, attach, get_current, set_value
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.propagators.textmap import TextMapPropagator
 from opentelemetry.sdk.resources import Resource
@@ -38,7 +37,7 @@ from opentelemetry.sdk.trace.export import (
     SimpleSpanProcessor,
     BatchSpanProcessor,
 )
-from opentelemetry.sdk.trace import SpanLimits
+from opentelemetry.trace import get_tracer_provider, ProxyTracerProvider
 
 from typing import Dict, Optional, Set
 
@@ -238,6 +237,10 @@ def set_association_properties(properties: dict) -> None:
     _set_association_properties_attributes(span, properties)
 
 
+def get_association_properties(context: Optional[Context] = None) -> dict:
+    return get_value("association_properties", context) or {}
+
+
 def update_association_properties(
     properties: dict,
     set_on_current_span: bool = True,
@@ -296,18 +299,21 @@ def init_spans_exporter(api_endpoint: str, headers: Dict[str, str]) -> SpanExpor
 # TODO: check if it's safer to use the default tracer provider obtained from
 # get_tracer_provider()
 def init_tracer_provider(resource: Resource) -> TracerProvider:
-    tracer_provider = TracerProvider(
-        resource=resource,
-        span_limits=SpanLimits(
-            # this defaults to 128, which causes us to drop messages
-            max_attributes=MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN,
-            max_span_attributes=MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN,
-            max_event_attributes=MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN,
-            max_events=MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN,
-        ),
-    )
+    provider: TracerProvider = None
+    default_provider: TracerProvider = get_tracer_provider()
 
-    return tracer_provider
+    if isinstance(default_provider, ProxyTracerProvider):
+        provider = TracerProvider(resource=resource)
+        trace.set_tracer_provider(provider)
+    elif not hasattr(default_provider, "add_span_processor"):
+        module_logger.error(
+            "Cannot add span processor to the default provider since it doesn't support it"
+        )
+        return
+    else:
+        provider = default_provider
+
+    return provider
 
 
 def init_instrumentations(
@@ -428,7 +434,10 @@ def init_instrumentations(
             if init_weaviate_instrumentor():
                 instrument_set = True
         elif instrument == Instruments.PLAYWRIGHT:
-            if init_browser_tracing(base_http_url, project_api_key):
+            if init_playwright_instrumentor():
+                instrument_set = True
+        elif instrument == Instruments.BROWSER_USE:
+            if init_browser_use_instrumentor():
                 instrument_set = True
         else:
             module_logger.warning(
@@ -441,6 +450,32 @@ def init_instrumentations(
             )
 
     return instrument_set
+
+
+def init_browser_use_instrumentor():
+    try:
+        if is_package_installed("browser-use"):
+            from lmnr.sdk.browser.browser_use_otel import BrowserUseInstrumentor
+
+            instrumentor = BrowserUseInstrumentor()
+            instrumentor.instrument()
+        return True
+    except Exception as e:
+        module_logger.error(f"Error initializing BrowserUse instrumentor: {e}")
+        return False
+
+
+def init_playwright_instrumentor():
+    try:
+        if is_package_installed("playwright"):
+            from lmnr.sdk.browser.playwright_otel import PlaywrightInstrumentor
+
+            instrumentor = PlaywrightInstrumentor()
+            instrumentor.instrument()
+        return True
+    except Exception as e:
+        module_logger.error(f"Error initializing Playwright instrumentor: {e}")
+        return False
 
 
 def init_openai_instrumentor(should_enrich_metrics: bool):

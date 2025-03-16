@@ -54,14 +54,14 @@ def test_start_as_current_span_span_type(exporter: InMemorySpanExporter):
 
 
 def test_start_as_current_span_labels(exporter: InMemorySpanExporter):
-    with Laminar.start_as_current_span("test", labels={"foo": "bar"}):
+    with Laminar.start_as_current_span("test", labels=["foo", "bar"]):
         pass
 
     spans = exporter.get_finished_spans()
     assert len(spans) == 1
-    assert (
-        json.loads(spans[0].attributes["lmnr.association.properties.label.foo"])
-        == "bar"
+    assert spans[0].attributes["lmnr.association.properties.labels"] == (
+        "foo",
+        "bar",
     )
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
@@ -251,7 +251,7 @@ def test_session_id_clear(exporter: InMemorySpanExporter):
 
 
 def test_with_labels(exporter: InMemorySpanExporter):
-    with Laminar.with_labels(labels={"foo": "bar"}):
+    with Laminar.with_labels(labels=["foo", "bar"]):
         with Laminar.start_as_current_span("test1"):
             pass
         with Laminar.start_as_current_span("test2"):
@@ -265,15 +265,15 @@ def test_with_labels(exporter: InMemorySpanExporter):
     first_span = [span for span in spans if span.name == "test1"][0]
     second_span = [span for span in spans if span.name == "test2"][0]
     third_span = [span for span in spans if span.name == "test3"][0]
-    assert (
-        json.loads(first_span.attributes["lmnr.association.properties.label.foo"])
-        == "bar"
+    assert first_span.attributes["lmnr.association.properties.labels"] == (
+        "foo",
+        "bar",
     )
-    assert (
-        json.loads(second_span.attributes["lmnr.association.properties.label.foo"])
-        == "bar"
+    assert second_span.attributes["lmnr.association.properties.labels"] == (
+        "foo",
+        "bar",
     )
-    assert third_span.attributes.get("lmnr.association.properties.label.foo") is None
+    assert third_span.attributes.get("lmnr.association.properties.labels") == tuple()
 
     assert first_span.attributes["lmnr.span.instrumentation_source"] == "python"
     assert second_span.attributes["lmnr.span.instrumentation_source"] == "python"
@@ -289,15 +289,15 @@ def test_with_labels_observe(exporter: InMemorySpanExporter):
     def foo():
         pass
 
-    with Laminar.with_labels(labels={"foo": "bar"}):
+    with Laminar.with_labels(labels=["foo", "bar"]):
         foo()
 
     spans = exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "foo"
-    assert (
-        json.loads(spans[0].attributes["lmnr.association.properties.label.foo"])
-        == "bar"
+    assert spans[0].attributes["lmnr.association.properties.labels"] == (
+        "foo",
+        "bar",
     )
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
     assert spans[0].attributes["lmnr.span.path"] == ("foo",)
@@ -436,7 +436,7 @@ def test_span_context(exporter: InMemorySpanExporter):
 
 def test_span_context_dict(exporter: InMemorySpanExporter):
     def foo(context: dict):
-        parent_span_context = Laminar.deserialize_laminar_span_context(context)
+        parent_span_context = Laminar.deserialize_span_context(context)
         with Laminar.start_as_current_span(
             "inner", parent_span_context=parent_span_context
         ):
@@ -464,7 +464,7 @@ def test_span_context_dict(exporter: InMemorySpanExporter):
 
 def test_span_context_str(exporter: InMemorySpanExporter):
     def foo(context: str):
-        parent_span_context = Laminar.deserialize_laminar_span_context(context)
+        parent_span_context = Laminar.deserialize_span_context(context)
         with Laminar.start_as_current_span(
             "inner", parent_span_context=parent_span_context
         ):

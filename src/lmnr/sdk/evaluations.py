@@ -8,6 +8,7 @@ from typing import Any, Awaitable, Optional, Set, Union
 from ..openllmetry_sdk.instruments import Instruments
 from ..openllmetry_sdk.tracing.attributes import SPAN_TYPE
 
+from .client import LaminarClient
 from .datasets import EvaluationDataset
 from .eval_control import EVALUATION_INSTANCE, PREPARE_ONLY
 from .laminar import Laminar as L
@@ -20,6 +21,7 @@ from .types import (
     HumanEvaluator,
     Numeric,
     NumericTypes,
+    PartialEvaluationDatapoint,
     SpanType,
     TraceType,
 )
@@ -209,7 +211,9 @@ class Evaluation:
     async def _run(self) -> None:
         self.reporter.start(len(self.data))
         try:
-            evaluation = await L.init_eval(name=self.name, group_name=self.group_name)
+            evaluation = await LaminarClient.init_eval(
+                name=self.name, group_name=self.group_name
+            )
             result_datapoints = await self._evaluate_in_batches(evaluation.id)
 
             # Wait for all background upload tasks to complete
@@ -227,6 +231,7 @@ class Evaluation:
         average_scores = get_average_scores(result_datapoints)
         self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
         self.is_finished = True
+        await LaminarClient.shutdown_async()
 
     async def _evaluate_in_batches(
         self, eval_id: uuid.UUID
@@ -260,12 +265,29 @@ class Evaluation:
     async def _evaluate_datapoint(
         self, eval_id: uuid.UUID, datapoint: Datapoint, index: int
     ) -> EvaluationResultDatapoint:
+        evaluation_id = uuid.uuid4()
         with L.start_as_current_span("evaluation") as evaluation_span:
             L._set_trace_type(trace_type=TraceType.EVALUATION)
             evaluation_span.set_attribute(SPAN_TYPE, SpanType.EVALUATION.value)
             with L.start_as_current_span(
                 "executor", input={"data": datapoint.data}
             ) as executor_span:
+                executor_span_id = uuid.UUID(
+                    int=executor_span.get_span_context().span_id
+                )
+                trace_id = uuid.UUID(int=executor_span.get_span_context().trace_id)
+                partial_datapoint = PartialEvaluationDatapoint(
+                    id=evaluation_id,
+                    data=datapoint.data,
+                    target=datapoint.target,
+                    index=index,
+                    trace_id=trace_id,
+                    executor_span_id=executor_span_id,
+                )
+                # First, create datapoint with trace_id so that we can show the dp in the UI
+                await LaminarClient.save_eval_datapoints(
+                    eval_id, [partial_datapoint], self.group_name
+                )
                 executor_span.set_attribute(SPAN_TYPE, SpanType.EXECUTOR.value)
                 # Run synchronous executors in a thread pool to avoid blocking
                 if not is_async(self.executor):
@@ -277,9 +299,6 @@ class Evaluation:
                     output = await self.executor(datapoint.data)
 
                 L.set_span_output(output)
-                executor_span_id = uuid.UUID(
-                    int=executor_span.get_span_context().span_id
-                )
             target = datapoint.target
 
             # Iterate over evaluators
@@ -289,11 +308,13 @@ class Evaluation:
                     evaluator_name, input={"output": output, "target": target}
                 ) as evaluator_span:
                     evaluator_span.set_attribute(SPAN_TYPE, SpanType.EVALUATOR.value)
-                    value = (
-                        await evaluator(output, target)
-                        if is_async(evaluator)
-                        else evaluator(output, target)
-                    )
+                    if is_async(evaluator):
+                        value = await evaluator(output, target)
+                    else:
+                        loop = asyncio.get_event_loop()
+                        value = await loop.run_in_executor(
+                            None, evaluator, output, target
+                        )
                     L.set_span_output(value)
 
                 # If evaluator returns a single number, use evaluator name as key
@@ -305,6 +326,7 @@ class Evaluation:
             trace_id = uuid.UUID(int=evaluation_span.get_span_context().trace_id)
 
         datapoint = EvaluationResultDatapoint(
+            id=evaluation_id,
             data=datapoint.data,
             target=target,
             executor_output=output,
@@ -320,7 +342,7 @@ class Evaluation:
 
         # Create background upload task without awaiting it
         upload_task = asyncio.create_task(
-            L.save_eval_datapoints(eval_id, [datapoint], self.group_name)
+            LaminarClient.save_eval_datapoints(eval_id, [datapoint], self.group_name)
         )
         self.upload_tasks.append(upload_task)
 
