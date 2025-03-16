@@ -308,11 +308,13 @@ class Evaluation:
                     evaluator_name, input={"output": output, "target": target}
                 ) as evaluator_span:
                     evaluator_span.set_attribute(SPAN_TYPE, SpanType.EVALUATOR.value)
-                    value = (
-                        await evaluator(output, target)
-                        if is_async(evaluator)
-                        else evaluator(output, target)
-                    )
+                    if is_async(evaluator):
+                        value = await evaluator(output, target)
+                    else:
+                        loop = asyncio.get_event_loop()
+                        value = await loop.run_in_executor(
+                            None, evaluator, output, target
+                        )
                     L.set_span_output(value)
 
                 # If evaluator returns a single number, use evaluator name as key

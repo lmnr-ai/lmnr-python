@@ -6,7 +6,6 @@ import uuid
 from contextvars import Context
 from lmnr.sdk.log import VerboseColorfulFormatter
 from lmnr.openllmetry_sdk.instruments import Instruments
-from lmnr.sdk.browser import init_browser_tracing
 from lmnr.openllmetry_sdk.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     SPAN_IDS_PATH,
@@ -238,6 +237,10 @@ def set_association_properties(properties: dict) -> None:
     _set_association_properties_attributes(span, properties)
 
 
+def get_association_properties(context: Optional[Context] = None) -> dict:
+    return get_value("association_properties", context) or {}
+
+
 def update_association_properties(
     properties: dict,
     set_on_current_span: bool = True,
@@ -263,6 +266,7 @@ def remove_association_properties(properties: dict) -> None:
 
 def _set_association_properties_attributes(span, properties: dict) -> None:
     for key, value in properties.items():
+        print(key, value)
         if key == TRACING_LEVEL:
             span.set_attribute(f"lmnr.internal.{TRACING_LEVEL}", value)
             continue
@@ -431,7 +435,10 @@ def init_instrumentations(
             if init_weaviate_instrumentor():
                 instrument_set = True
         elif instrument == Instruments.PLAYWRIGHT:
-            if init_browser_tracing(base_http_url, project_api_key):
+            if init_playwright_instrumentor():
+                instrument_set = True
+        elif instrument == Instruments.BROWSER_USE:
+            if init_browser_use_instrumentor():
                 instrument_set = True
         else:
             module_logger.warning(
@@ -444,6 +451,32 @@ def init_instrumentations(
             )
 
     return instrument_set
+
+
+def init_browser_use_instrumentor():
+    try:
+        if is_package_installed("browser-use"):
+            from lmnr.sdk.browser.browser_use_otel import BrowserUseInstrumentor
+
+            instrumentor = BrowserUseInstrumentor()
+            instrumentor.instrument()
+        return True
+    except Exception as e:
+        module_logger.error(f"Error initializing BrowserUse instrumentor: {e}")
+        return False
+
+
+def init_playwright_instrumentor():
+    try:
+        if is_package_installed("playwright"):
+            from lmnr.sdk.browser.playwright_otel import BrowserUseInstrumentor
+
+            instrumentor = BrowserUseInstrumentor()
+            instrumentor.instrument()
+        return True
+    except Exception as e:
+        module_logger.error(f"Error initializing Playwright instrumentor: {e}")
+        return False
 
 
 def init_openai_instrumentor(should_enrich_metrics: bool):

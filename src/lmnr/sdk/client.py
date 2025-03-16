@@ -7,6 +7,7 @@ in other classes.
 import asyncio
 import json
 import aiohttp
+import gzip
 from opentelemetry import trace
 from pydantic.alias_generators import to_snake
 import requests
@@ -25,23 +26,27 @@ from lmnr.sdk.types import (
     SemanticSearchRequest,
     SemanticSearchResponse,
 )
+from lmnr.version import SDK_VERSION
 
 
 class LaminarClient:
     __base_url: str
     __project_api_key: str
     __session: aiohttp.ClientSession = None
+    __sync_session: requests.Session = None
 
     @classmethod
     def initialize(cls, base_url: str, project_api_key: str):
         cls.__base_url = base_url
         cls.__project_api_key = project_api_key
+        cls.__sync_session = requests.Session()
         loop = asyncio.get_event_loop()
         if loop.is_running():
             cls.__session = aiohttp.ClientSession()
 
     @classmethod
     def shutdown(cls):
+        cls.__sync_session.close()
         if cls.__session is not None:
             try:
                 loop = asyncio.get_event_loop()
@@ -91,7 +96,7 @@ class LaminarClient:
             )
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                return cls.__run(request)
+                return loop.run_in_executor(None, cls.__run, request)
             else:
                 return asyncio.run(cls.__run(request))
         except Exception as e:
@@ -113,7 +118,7 @@ class LaminarClient:
         )
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            return cls.__semantic_search(request)
+            return loop.run_in_executor(None, cls.__semantic_search, request)
         else:
             return asyncio.run(cls.__semantic_search(request))
 
@@ -150,7 +155,70 @@ class LaminarClient:
             headers=cls._headers(),
         ) as response:
             if response.status != 200:
-                raise ValueError(f"Error saving evaluation datapoints: {response.text}")
+                raise ValueError(
+                    f"Error saving evaluation datapoints: {await response.text()}"
+                )
+
+    @classmethod
+    async def send_browser_events(
+        cls,
+        session_id: str,
+        trace_id: str,
+        events: list[dict],
+        source: str,
+    ):
+        session = await cls.__get_session()
+        payload = {
+            "sessionId": session_id,
+            "traceId": trace_id,
+            "events": events,
+            "source": source,
+            "sdkVersion": SDK_VERSION,
+        }
+        compressed_payload = gzip.compress(json.dumps(payload).encode("utf-8"))
+
+        async with session.post(
+            cls.__base_url + "/v1/browser-sessions/events",
+            data=compressed_payload,
+            headers={
+                **cls._headers(),
+                "Content-Encoding": "gzip",
+            },
+        ) as response:
+            if response.status != 200:
+                raise ValueError(
+                    f"Failed to send events: [{response.status}] {await response.text()}"
+                )
+
+    @classmethod
+    def send_browser_events_sync(
+        cls,
+        session_id: str,
+        trace_id: str,
+        events: list[dict],
+        source: str,
+    ):
+        url = cls.__base_url + "/v1/browser-sessions/events"
+        payload = {
+            "sessionId": session_id,
+            "traceId": trace_id,
+            "events": events,
+            "source": source,
+            "sdkVersion": SDK_VERSION,
+        }
+        compressed_payload = gzip.compress(json.dumps(payload).encode("utf-8"))
+        response = cls.__sync_session.post(
+            url,
+            data=compressed_payload,
+            headers={
+                **cls._headers(),
+                "Content-Encoding": "gzip",
+            },
+        )
+        if response.status_code != 200:
+            raise ValueError(
+                f"Failed to send events: [{response.status_code}] {response.text}"
+            )
 
     @classmethod
     def get_datapoints(
@@ -167,7 +235,7 @@ class LaminarClient:
         url = (
             cls.__base_url + "/v1/datasets/datapoints?" + urllib.parse.urlencode(params)
         )
-        response = requests.get(url, headers=cls._headers())
+        response = cls.__sync_session.get(url, headers=cls._headers())
         if response.status_code != 200:
             try:
                 resp_json = response.json()
@@ -217,7 +285,7 @@ class LaminarClient:
         ) as response:
             if response.status != 200:
                 raise ValueError(
-                    f"Error performing semantic search: [{response.status}] {response.text}"
+                    f"Error performing semantic search: [{response.status}] {await response.text()}"
                 )
             try:
                 resp_json = await response.json()
@@ -235,6 +303,7 @@ class LaminarClient:
         return {
             "Authorization": "Bearer " + cls.__project_api_key,
             "Content-Type": "application/json",
+            "Accept": "application/json",
         }
 
     @classmethod

@@ -7,6 +7,7 @@ class Instruments(Enum):
     ALEPHALPHA = "alephalpha"
     ANTHROPIC = "anthropic"
     BEDROCK = "bedrock"
+    BROWSER_USE = "browser_use"
     CHROMA = "chroma"
     COHERE = "cohere"
     GOOGLE_GENERATIVEAI = "google_generativeai"

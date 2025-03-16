@@ -17,6 +17,7 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
     OTLPSpanExporter,
     Compression,
 )
+from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
 from opentelemetry.util.types import AttributeValue
 
 from typing import Any, Awaitable, Literal, Optional, Set, Union
@@ -40,6 +41,7 @@ from lmnr.openllmetry_sdk.tracing.attributes import (
     TRACE_TYPE,
 )
 from lmnr.openllmetry_sdk.tracing.tracing import (
+    get_association_properties,
     remove_association_properties,
     set_association_properties,
     update_association_properties,
@@ -131,7 +133,7 @@ class Laminar:
                 " your project API key or set the LMNR_PROJECT_API_KEY"
                 " environment variable in your environment or .env file"
             )
-        url = base_url or "https://api.lmnr.ai"
+        url = re.sub(r"/$", "", base_url or "https://api.lmnr.ai")
         if re.search(r":\d{1,5}$", url):
             raise ValueError(
                 "Please provide the `base_url` without the port number. "
@@ -322,7 +324,7 @@ class Laminar:
             Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]
         ] = "DEFAULT",
         context: Optional[Context] = None,
-        labels: Optional[dict[str, str]] = None,
+        labels: Optional[list[str]] = None,
         parent_span_context: Optional[LaminarSpanContext] = None,
         # deprecated, use parent_span_context instead
         trace_id: Optional[uuid.UUID] = None,
@@ -358,7 +360,7 @@ class Laminar:
                 `Laminar.get_span_context`, `Laminar.get_span_context_dict` and\
                 `Laminar.get_span_context_str` for more information.
                 Defaults to None.
-            labels (Optional[dict[str, str]], optional): labels to set for the\
+            labels (Optional[list[str]], optional): labels to set for the\
                 span. Defaults to None.
             trace_id (Optional[uuid.UUID], optional): [Deprecated] override\
                 the trace id for the span. If not provided, use the current\
@@ -366,7 +368,13 @@ class Laminar:
         """
 
         if not cls.is_initialized():
-            yield
+            yield trace.NonRecordingSpan(
+                trace.SpanContext(
+                    trace_id=RandomIdGenerator().generate_trace_id(),
+                    span_id=RandomIdGenerator().generate_span_id(),
+                    is_remote=False,
+                )
+            )
             return
 
         with get_tracer() as tracer:
@@ -399,10 +407,7 @@ class Laminar:
             label_props = {}
             try:
                 if labels:
-                    label_props = dict(
-                        (f"{ASSOCIATION_PROPERTIES}.label.{k}", json_dumps(v))
-                        for k, v in labels.items()  # noqa: F821
-                    )
+                    label_props = {f"{ASSOCIATION_PROPERTIES}.labels": labels}
             except Exception:
                 cls.__logger.warning(
                     f"`start_as_current_span` Could not set labels: {labels}. "
@@ -440,7 +445,7 @@ class Laminar:
 
     @classmethod
     @contextmanager
-    def with_labels(cls, labels: dict[str, str], context: Optional[Context] = None):
+    def with_labels(cls, labels: list[str], context: Optional[Context] = None):
         """Set labels for spans within this `with` context. This is useful for
         adding labels to the spans created in the auto-instrumentations.
 
@@ -455,17 +460,21 @@ class Laminar:
             openai_client.chat.completions.create()
         ```
         """
+        if not cls.is_initialized():
+            yield
+            return
+
         with get_tracer():
             label_props = labels.copy()
-            label_props = dict(
-                (f"label.{k}", json_dumps(v)) for k, v in label_props.items()
-            )
+            prev_labels = get_association_properties(context).get("labels", [])
             update_association_properties(
-                label_props, set_on_current_span=False, context=context
+                {"labels": prev_labels + label_props},
+                set_on_current_span=False,
+                context=context,
             )
             yield
             try:
-                remove_association_properties(label_props)
+                set_association_properties({"labels": prev_labels})
             except Exception:
                 cls.__logger.warning(
                     f"`with_labels` Could not remove labels: {labels}. They will be "
@@ -544,7 +553,14 @@ class Laminar:
                 set the trace id for the span.
         """
         if not cls.is_initialized():
-            return trace.NonRecordingSpan(context or context_api.get_current())
+            return trace.NonRecordingSpan(
+                trace.SpanContext(
+                    trace_id=RandomIdGenerator().generate_trace_id(),
+                    span_id=RandomIdGenerator().generate_span_id(),
+                    is_remote=False,
+                )
+            )
+
         with get_tracer() as tracer:
             ctx = context or context_api.get_current()
             if trace_id is not None:
@@ -574,10 +590,9 @@ class Laminar:
             label_props = {}
             try:
                 if labels:
-                    label_props = dict(
-                        (f"{ASSOCIATION_PROPERTIES}.label.{k}", json_dumps(v))
-                        for k, v in labels.items()  # noqa: F821
-                    )
+                    label_props = {
+                        f"{ASSOCIATION_PROPERTIES}.labels": json_dumps(labels)
+                    }
             except Exception:
                 cls.__logger.warning(
                     f"`start_span` Could not set labels: {labels}. They will be "
