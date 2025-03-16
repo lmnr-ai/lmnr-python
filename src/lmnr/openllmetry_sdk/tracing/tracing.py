@@ -266,7 +266,6 @@ def remove_association_properties(properties: dict) -> None:
 
 def _set_association_properties_attributes(span, properties: dict) -> None:
     for key, value in properties.items():
-        print(key, value)
         if key == TRACING_LEVEL:
             span.set_attribute(f"lmnr.internal.{TRACING_LEVEL}", value)
             continue
@@ -469,9 +468,9 @@ def init_browser_use_instrumentor():
 def init_playwright_instrumentor():
     try:
         if is_package_installed("playwright"):
-            from lmnr.sdk.browser.playwright_otel import BrowserUseInstrumentor
+            from lmnr.sdk.browser.playwright_otel import PlaywrightInstrumentor
 
-            instrumentor = BrowserUseInstrumentor()
+            instrumentor = PlaywrightInstrumentor()
             instrumentor.instrument()
         return True
     except Exception as e:
