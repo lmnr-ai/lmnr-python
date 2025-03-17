@@ -259,7 +259,7 @@ async def _wrap_async(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         return page
 
 
-class BrowserUseInstrumentor(BaseInstrumentor):
+class PlaywrightInstrumentor(BaseInstrumentor):
     def __init__(self):
         super().__init__()
 
