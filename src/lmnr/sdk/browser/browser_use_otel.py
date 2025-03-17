@@ -35,7 +35,7 @@ WRAPPED_METHODS = [
         "object": "Controller",
         "method": "act",
         "span_name": "controller.act",
-        "ignore_input": False,
+        "ignore_input": True,
         "ignore_output": False,
         "span_type": "DEFAULT",
     },
@@ -58,13 +58,12 @@ async def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     }
     if to_wrap.get("method") == "execute_action":
         span_name = args[0] if len(args) > 0 else kwargs.get("action_name", "action")
-    elif to_wrap.get("method") == "execute_action":
-        attributes["lmnr.span.input"] = {
-            "action": span_name,
-            "params": json_dumps(
-                args[1] if len(args) > 1 else kwargs.get("params", {})
-            ),
-        }
+        attributes["lmnr.span.input"] = json_dumps(
+            {
+                "action": span_name,
+                "params": args[1] if len(args) > 1 else kwargs.get("params", {}),
+            }
+        )
     else:
         if not to_wrap.get("ignore_input"):
             attributes["lmnr.span.input"] = json_dumps(
