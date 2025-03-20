@@ -7,11 +7,12 @@ import uuid
 
 from lmnr.sdk.browser.utils import (
     INJECT_PLACEHOLDER,
-    _with_tracer_wrapper,
+    with_tracer_and_client_wrapper,
     retry_sync,
     retry_async,
 )
-from lmnr.sdk.client import LaminarClient
+from lmnr.sdk.client.async_client import AsyncLaminarClient
+from lmnr.sdk.client.sync_client import LaminarClient
 from lmnr.version import PYTHON_VERSION, SDK_VERSION
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
@@ -58,7 +59,9 @@ with open(os.path.join(current_dir, "rrweb", "rrweb.min.js"), "r") as f:
     RRWEB_CONTENT = f"() => {{ {f.read()} }}"
 
 
-async def send_events_async(page: Page, session_id: str, trace_id: str):
+async def send_events_async(
+    page: Page, session_id: str, trace_id: str, client: LaminarClient
+):
     """Fetch events from the page and send them to the server"""
     try:
         # Check if function exists first
@@ -74,7 +77,7 @@ async def send_events_async(page: Page, session_id: str, trace_id: str):
         if not events or len(events) == 0:
             return
 
-        await LaminarClient.send_browser_events(
+        await client.send_browser_events(
             session_id, trace_id, events, f"python@{PYTHON_VERSION}"
         )
 
@@ -82,7 +85,9 @@ async def send_events_async(page: Page, session_id: str, trace_id: str):
         logger.error(f"Error sending events: {e}")
 
 
-def send_events_sync(page: SyncPage, session_id: str, trace_id: str):
+def send_events_sync(
+    page: SyncPage, session_id: str, trace_id: str, client: LaminarClient
+):
     """Synchronous version of send_events"""
     try:
         # Check if function exists first
@@ -98,7 +103,7 @@ def send_events_sync(page: SyncPage, session_id: str, trace_id: str):
         if not events or len(events) == 0:
             return
 
-        LaminarClient.send_browser_events_sync(
+        client.send_browser_events_sync(
             session_id, trace_id, events, f"python@{PYTHON_VERSION}"
         )
 
@@ -188,7 +193,9 @@ async def inject_rrweb_async(page: Page):
         logger.error(f"Error during rrweb injection: {e}")
 
 
-def handle_navigation(page: SyncPage, session_id: str, trace_id: str):
+def handle_navigation(
+    page: SyncPage, session_id: str, trace_id: str, client: LaminarClient
+):
     def on_load():
         try:
             inject_rrweb(page)
@@ -200,14 +207,16 @@ def handle_navigation(page: SyncPage, session_id: str, trace_id: str):
 
     def collection_loop():
         while not page.is_closed():  # Stop when page closes
-            send_events_sync(page, session_id, trace_id)
+            send_events_sync(page, session_id, trace_id, client)
             time.sleep(2)
 
     thread = threading.Thread(target=collection_loop, daemon=True)
     thread.start()
 
 
-async def handle_navigation_async(page: Page, session_id: str, trace_id: str):
+async def handle_navigation_async(
+    page: Page, session_id: str, trace_id: str, client: LaminarClient
+):
     async def on_load():
         try:
             await inject_rrweb_async(page)
@@ -220,7 +229,7 @@ async def handle_navigation_async(page: Page, session_id: str, trace_id: str):
     async def collection_loop():
         try:
             while not page.is_closed():  # Stop when page closes
-                await send_events_async(page, session_id, trace_id)
+                await send_events_async(page, session_id, trace_id, client)
                 await asyncio.sleep(2)
             logger.info("Event collection stopped")
         except Exception as e:
@@ -233,8 +242,10 @@ async def handle_navigation_async(page: Page, session_id: str, trace_id: str):
     page.on("close", lambda: task.cancel())
 
 
-@_with_tracer_wrapper
-def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
+@with_tracer_and_client_wrapper
+def _wrap(
+    tracer: Tracer, client: LaminarClient, to_wrap, wrapped, instance, args, kwargs
+):
     with tracer.start_as_current_span(
         f"browser_context.{to_wrap.get('method')}"
     ) as span:
@@ -242,12 +253,14 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         session_id = str(uuid.uuid4().hex)
         trace_id = format(get_current_span().get_span_context().trace_id, "032x")
         span.set_attribute("lmnr.internal.has_browser_session", True)
-        handle_navigation(page, session_id, trace_id)
+        handle_navigation(page, session_id, trace_id, client)
         return page
 
 
-@_with_tracer_wrapper
-async def _wrap_async(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
+@with_tracer_and_client_wrapper
+async def _wrap_async(
+    tracer: Tracer, client: LaminarClient, to_wrap, wrapped, instance, args, kwargs
+):
     with tracer.start_as_current_span(
         f"browser_context.{to_wrap.get('method')}"
     ) as span:
@@ -255,13 +268,15 @@ async def _wrap_async(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         session_id = str(uuid.uuid4().hex)
         trace_id = format(get_current_span().get_span_context().trace_id, "032x")
         span.set_attribute("lmnr.internal.has_browser_session", True)
-        await handle_navigation_async(page, session_id, trace_id)
+        await handle_navigation_async(page, session_id, trace_id, client)
         return page
 
 
 class PlaywrightInstrumentor(BaseInstrumentor):
-    def __init__(self):
+    def __init__(self, client: LaminarClient, async_client: AsyncLaminarClient):
         super().__init__()
+        self.client = client
+        self.async_client = async_client
 
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
@@ -280,11 +295,12 @@ class PlaywrightInstrumentor(BaseInstrumentor):
                     f"{wrap_object}.{wrap_method}",
                     _wrap(
                         tracer,
+                        self.client,
                         wrapped_method,
                     ),
                 )
             except ModuleNotFoundError:
-                pass  # that's ok, we're not instrumenting everything
+                pass  # that's ok, we don't want to fail if some module is missing
 
         for wrapped_method in WRAPPED_METHODS_ASYNC:
             wrap_package = wrapped_method.get("package")
@@ -296,11 +312,12 @@ class PlaywrightInstrumentor(BaseInstrumentor):
                     f"{wrap_object}.{wrap_method}",
                     _wrap_async(
                         tracer,
+                        self.async_client,
                         wrapped_method,
                     ),
                 )
             except ModuleNotFoundError:
-                pass  # that's ok, we're not instrumenting everything
+                pass  # that's ok, we don't want to fail if some module is missing
 
     def _uninstrument(self, **kwargs):
         for wrapped_method in [*WRAPPED_METHODS, *WRAPPED_METHODS_ASYNC]:

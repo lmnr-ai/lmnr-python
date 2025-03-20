@@ -2,14 +2,17 @@ import asyncio
 import re
 import sys
 import uuid
+import dotenv
 from tqdm import tqdm
 from typing import Any, Awaitable, Optional, Set, Union
+
+from lmnr.sdk.client.async_client import AsyncLaminarClient
 
 from ..openllmetry_sdk.instruments import Instruments
 from ..openllmetry_sdk.tracing.attributes import SPAN_TYPE
 
-from .client import LaminarClient
-from .datasets import EvaluationDataset
+from .client.sync_client import LaminarClient
+from .datasets import EvaluationDataset, LaminarDataset
 from .eval_control import EVALUATION_INSTANCE, PREPARE_ONLY
 from .laminar import Laminar as L
 from .log import get_default_logger
@@ -192,7 +195,27 @@ class Evaluation:
         self.batch_size = concurrency_limit
         self._logger = get_default_logger(self.__class__.__name__)
         self.human_evaluators = human_evaluators
-        self.upload_tasks = []  # Add this line to track upload tasks
+        self.upload_tasks = []
+        self.base_http_url = f"{base_url}:{http_port or 443}"
+
+        api_key = project_api_key
+        if not api_key:
+            dotenv_path = dotenv.find_dotenv(usecwd=True)
+            api_key = dotenv.get_key(
+                dotenv_path=dotenv_path, key_to_get="LMNR_PROJECT_API_KEY"
+            )
+        if not api_key:
+            raise ValueError(
+                "Please initialize the Laminar object with"
+                " your project API key or set the LMNR_PROJECT_API_KEY"
+                " environment variable in your environment or .env file"
+            )
+        self.project_api_key = api_key
+
+        self.client = AsyncLaminarClient(
+            base_url=self.base_http_url,
+            project_api_key=self.project_api_key,
+        )
         L.initialize(
             project_api_key=project_api_key,
             base_url=base_url,
@@ -209,9 +232,16 @@ class Evaluation:
         return await self._run()
 
     async def _run(self) -> None:
+        if isinstance(self.data, LaminarDataset):
+            self.data.set_client(
+                LaminarClient(
+                    self.base_http_url,
+                    self.project_api_key,
+                )
+            )
         self.reporter.start(len(self.data))
         try:
-            evaluation = await LaminarClient.init_eval(
+            evaluation = await self.client.init_eval(
                 name=self.name, group_name=self.group_name
             )
             result_datapoints = await self._evaluate_in_batches(evaluation.id)
@@ -226,12 +256,18 @@ class Evaluation:
         except Exception as e:
             self.reporter.stopWithError(e)
             self.is_finished = True
+            await self._shutdown()
             return
 
         average_scores = get_average_scores(result_datapoints)
         self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
         self.is_finished = True
-        await LaminarClient.shutdown_async()
+        await self._shutdown()
+
+    async def _shutdown(self):
+        await self.client.shutdown()
+        if isinstance(self.data, LaminarDataset) and self.data.client:
+            self.data.client.shutdown()
 
     async def _evaluate_in_batches(
         self, eval_id: uuid.UUID
@@ -285,7 +321,7 @@ class Evaluation:
                     executor_span_id=executor_span_id,
                 )
                 # First, create datapoint with trace_id so that we can show the dp in the UI
-                await LaminarClient.save_eval_datapoints(
+                await self.client.save_eval_datapoints(
                     eval_id, [partial_datapoint], self.group_name
                 )
                 executor_span.set_attribute(SPAN_TYPE, SpanType.EXECUTOR.value)
@@ -342,7 +378,7 @@ class Evaluation:
 
         # Create background upload task without awaiting it
         upload_task = asyncio.create_task(
-            LaminarClient.save_eval_datapoints(eval_id, [datapoint], self.group_name)
+            self.client.save_eval_datapoints(eval_id, [datapoint], self.group_name)
         )
         self.upload_tasks.append(upload_task)
 

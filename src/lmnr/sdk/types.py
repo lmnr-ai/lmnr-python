@@ -1,7 +1,7 @@
 import logging
-import aiohttp
 import datetime
 from enum import Enum
+import httpx
 import json
 from opentelemetry.trace import SpanContext, TraceFlags
 import pydantic
@@ -91,11 +91,15 @@ class PipelineRunError(Exception):
     error_code: str
     error_message: str
 
-    def __init__(self, response: aiohttp.ClientResponse):
+    def __init__(self, response: httpx.Response):
         try:
             resp_json = response.json()
-            self.error_code = resp_json["error_code"]
-            self.error_message = resp_json["error_message"]
+            try:
+                resp_dict = dict(resp_json)
+            except Exception:
+                resp_dict = {}
+            self.error_code = resp_dict.get("error_code")
+            self.error_message = resp_dict.get("error_message")
             super().__init__(self.error_message)
         except Exception:
             super().__init__(response.text)

@@ -1,3 +1,5 @@
+from .sdk.client.sync_client import LaminarClient
+from .sdk.client.async_client import AsyncLaminarClient
 from .sdk.datasets import EvaluationDataset, LaminarDataset
 from .sdk.evaluations import evaluate
 from .sdk.laminar import Laminar
