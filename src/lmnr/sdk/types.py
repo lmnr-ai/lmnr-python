@@ -5,7 +5,7 @@ import httpx
 import json
 from opentelemetry.trace import SpanContext, TraceFlags
 import pydantic
-from typing import Any, Awaitable, Callable, Optional, Union
+from typing import Any, Awaitable, Callable, Literal, Optional, Union
 import uuid
 
 from .utils import serialize
@@ -325,3 +325,105 @@ class LaminarSpanContext(pydantic.BaseModel):
             return cls.from_dict(json.loads(data))
         else:
             raise ValueError("Invalid span_context provided")
+
+
+class ModelProvider(str, Enum):
+    ANTHROPIC = "anthropic"
+    BEDROCK = "bedrock"
+
+
+class AgentChatMessageContentTextBlock(pydantic.BaseModel):
+    type: Literal["text"]
+    text: str
+
+
+class AgentChatMessageImageUrlBlock(pydantic.BaseModel):
+    type: Literal["image"]
+    imageUrl: str
+
+
+class AgentChatMessageImageBase64Block(pydantic.BaseModel):
+    type: Literal["image"]
+    imageB64: str
+
+
+class AgentChatMessageImageBlock(pydantic.RootModel):
+    root: Union[AgentChatMessageImageUrlBlock, AgentChatMessageImageBase64Block]
+
+
+class AgentChatMessageContentBlock(pydantic.RootModel):
+    root: Union[AgentChatMessageContentTextBlock, AgentChatMessageImageBlock]
+
+
+class AgentChatMessageContent(pydantic.RootModel):
+    root: Union[str, list[AgentChatMessageContentBlock]]
+
+
+class AgentChatMessage(pydantic.BaseModel):
+    role: str
+    content: AgentChatMessageContent
+    name: Optional[str] = None
+    toolCallId: Optional[str] = None
+    isStateMessage: bool = False
+
+
+class AgentState(pydantic.BaseModel):
+    messages: list[AgentChatMessage] = pydantic.Field(default_factory=list)
+    # browser_state: Optional[BrowserState] = None
+
+
+class RunAgentRequest(pydantic.BaseModel):
+    prompt: str
+    state: Optional[AgentState] = None
+    span_context: Optional[LaminarSpanContext] = None
+    model_provider: Optional[ModelProvider] = None
+    model: Optional[str] = None
+    stream: bool = False
+    enable_thinking: bool = True
+    cdp_url: Optional[str] = None
+
+    def to_dict(self):
+        result = {
+            "prompt": self.prompt,
+            "stream": self.stream,
+            "enableThinking": self.enable_thinking,
+        }
+        if self.state:
+            result["state"] = self.state.model_dump()
+        if self.span_context:
+            result["spanContext"] = self.span_context.to_dict()
+        if self.model_provider:
+            result["modelProvider"] = self.model_provider.value
+        if self.model:
+            result["model"] = self.model
+        if self.cdp_url:
+            result["cdpUrl"] = self.cdp_url
+        return result
+
+
+class ActionResult(pydantic.BaseModel):
+    isDone: bool = pydantic.Field(default=False)
+    content: Optional[str] = pydantic.Field(default=None)
+    error: Optional[str] = pydantic.Field(default=None)
+
+
+class AgentOutput(pydantic.BaseModel):
+    state: AgentState = pydantic.Field(default_factory=AgentState)
+    result: ActionResult = pydantic.Field(default_factory=ActionResult)
+
+
+class StepChunkContent(pydantic.BaseModel):
+    chunkType: Literal["step"]
+    messageId: uuid.UUID
+    actionResult: ActionResult
+    summary: str
+
+
+class FinalOutputChunkContent(pydantic.BaseModel):
+    chunkType: Literal["finalOutput"]
+    messageId: uuid.UUID
+    content: AgentOutput
+
+
+class RunAgentResponseChunk(pydantic.RootModel):
+    root: Union[StepChunkContent, FinalOutputChunkContent]

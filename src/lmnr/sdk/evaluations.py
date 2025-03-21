@@ -265,9 +265,9 @@ class Evaluation:
         await self._shutdown()
 
     async def _shutdown(self):
-        await self.client.shutdown()
+        await self.client.close()
         if isinstance(self.data, LaminarDataset) and self.data.client:
-            self.data.client.shutdown()
+            self.data.client.close()
 
     async def _evaluate_in_batches(
         self, eval_id: uuid.UUID

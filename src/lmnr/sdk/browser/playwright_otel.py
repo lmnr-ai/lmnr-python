@@ -13,7 +13,7 @@ from lmnr.sdk.browser.utils import (
 )
 from lmnr.sdk.client.async_client import AsyncLaminarClient
 from lmnr.sdk.client.sync_client import LaminarClient
-from lmnr.version import PYTHON_VERSION, SDK_VERSION
+from lmnr.version import SDK_VERSION
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
@@ -60,7 +60,7 @@ with open(os.path.join(current_dir, "rrweb", "rrweb.min.js"), "r") as f:
 
 
 async def send_events_async(
-    page: Page, session_id: str, trace_id: str, client: LaminarClient
+    page: Page, session_id: str, trace_id: str, client: AsyncLaminarClient
 ):
     """Fetch events from the page and send them to the server"""
     try:
@@ -77,9 +77,7 @@ async def send_events_async(
         if not events or len(events) == 0:
             return
 
-        await client.send_browser_events(
-            session_id, trace_id, events, f"python@{PYTHON_VERSION}"
-        )
+        await client.send_browser_events(session_id, trace_id, events)
 
     except Exception as e:
         logger.error(f"Error sending events: {e}")
@@ -103,9 +101,7 @@ def send_events_sync(
         if not events or len(events) == 0:
             return
 
-        client.send_browser_events_sync(
-            session_id, trace_id, events, f"python@{PYTHON_VERSION}"
-        )
+        client.send_browser_events(session_id, trace_id, events)
 
     except Exception as e:
         logger.error(f"Error sending events: {e}")
@@ -215,7 +211,7 @@ def handle_navigation(
 
 
 async def handle_navigation_async(
-    page: Page, session_id: str, trace_id: str, client: LaminarClient
+    page: Page, session_id: str, trace_id: str, client: AsyncLaminarClient
 ):
     async def on_load():
         try:
@@ -259,7 +255,7 @@ def _wrap(
 
 @with_tracer_and_client_wrapper
 async def _wrap_async(
-    tracer: Tracer, client: LaminarClient, to_wrap, wrapped, instance, args, kwargs
+    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
 ):
     with tracer.start_as_current_span(
         f"browser_context.{to_wrap.get('method')}"
