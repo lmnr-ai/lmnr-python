@@ -20,9 +20,8 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
 from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
 from opentelemetry.util.types import AttributeValue
 
-from typing import Any, Awaitable, Literal, Optional, Set, Union
+from typing import Any, Literal, Optional, Set, Union
 
-import atexit
 import copy
 import datetime
 import dotenv
@@ -46,15 +45,11 @@ from lmnr.openllmetry_sdk.tracing.tracing import (
     set_association_properties,
     update_association_properties,
 )
-from lmnr.sdk.client import LaminarClient
 
 from .log import VerboseColorfulFormatter
 
 from .types import (
     LaminarSpanContext,
-    PipelineRunResponse,
-    NodeInput,
-    SemanticSearchResponse,
     TraceType,
     TracingLevel,
 )
@@ -64,14 +59,12 @@ class Laminar:
     __base_http_url: str
     __base_grpc_url: str
     __project_api_key: Optional[str] = None
-    __env: dict[str, str] = {}
     __initialized: bool = False
 
     @classmethod
     def initialize(
         cls,
         project_api_key: Optional[str] = None,
-        env: dict[str, str] = {},
         base_url: Optional[str] = None,
         http_port: Optional[int] = None,
         grpc_port: Optional[int] = None,
@@ -92,10 +85,6 @@ class Laminar:
                             LMNR_PROJECT_API_KEY environment variable\
                             in os.environ or in .env file.
                             Defaults to None.
-            env (dict[str, str], optional): Default environment passed to\
-                            `run` requests, unless overriden at request time.\
-                            Usually, model provider keys are stored here.
-                            Defaults to {}.
             base_url (Optional[str], optional): Laminar API url. Do NOT include\
                             the port number, use `http_port` and `grpc_port`.\
                             If not specified, defaults to https://api.lmnr.ai.
@@ -142,14 +131,8 @@ class Laminar:
         cls.__base_http_url = f"{url}:{http_port or 443}"
         cls.__base_grpc_url = f"{url}:{grpc_port or 8443}"
 
-        cls.__env = env
         cls.__initialized = True
         cls._initialize_logger()
-        LaminarClient.initialize(
-            base_url=cls.__base_http_url,
-            project_api_key=cls.__project_api_key,
-        )
-        atexit.register(LaminarClient.shutdown)
         if not os.environ.get("OTEL_ATTRIBUTE_COUNT_LIMIT"):
             # each message is at least 2 attributes: role and content,
             # but the default attribute limit is 128, so raise it
@@ -194,83 +177,6 @@ class Laminar:
         console_log_handler = logging.StreamHandler()
         console_log_handler.setFormatter(VerboseColorfulFormatter())
         cls.__logger.addHandler(console_log_handler)
-
-    @classmethod
-    def run(
-        cls,
-        pipeline: str,
-        inputs: dict[str, NodeInput],
-        env: dict[str, str] = {},
-        metadata: dict[str, str] = {},
-        parent_span_id: Optional[uuid.UUID] = None,
-        trace_id: Optional[uuid.UUID] = None,
-    ) -> Union[PipelineRunResponse, Awaitable[PipelineRunResponse]]:
-        """Runs the pipeline with the given inputs. If called from an async
-        function, must be awaited.
-
-        Args:
-            pipeline (str): name of the Laminar pipeline.\
-                The pipeline must have a target version set.
-            inputs (dict[str, NodeInput]):
-                inputs to the endpoint's target pipeline.\
-                Keys in the dictionary must match input node names
-            env (dict[str, str], optional):
-                Environment variables for the pipeline execution.
-                Defaults to {}.
-            metadata (dict[str, str], optional):
-                any custom metadata to be stored with execution trace.
-                Defaults to {}.
-            parent_span_id (Optional[uuid.UUID], optional): parent span id for\
-                the resulting span.
-                Defaults to None.
-            trace_id (Optional[uuid.UUID], optional): trace id for the\
-                resulting trace.
-                Defaults to None.
-
-        Returns:
-            PipelineRunResponse: response object containing the outputs
-
-        Raises:
-            ValueError: if project API key is not set
-            PipelineRunError: if the endpoint run fails
-        """
-        return LaminarClient.run_pipeline(
-            pipeline=pipeline,
-            inputs=inputs,
-            env=env or cls.__env,
-            metadata=metadata,
-            parent_span_id=parent_span_id,
-            trace_id=trace_id,
-        )
-
-    @classmethod
-    def semantic_search(
-        cls,
-        query: str,
-        dataset_id: uuid.UUID,
-        limit: Optional[int] = None,
-        threshold: Optional[float] = None,
-    ) -> SemanticSearchResponse:
-        """Perform a semantic search on a dataset. If called from an async
-        function, must be awaited.
-
-        Args:
-            query (str): query string to search by
-            dataset_id (uuid.UUID): id of the dataset to search in
-            limit (Optional[int], optional): maximum number of results to\
-                return. Defaults to None.
-            threshold (Optional[float], optional): minimum score for a result\
-                to be returned. Defaults to None.
-
-        Returns:
-            SemanticSearchResponse: response object containing the search results sorted by score in descending order
-        """
-        return LaminarClient.semantic_search(
-            query=query,
-            dataset_id=dataset_id,
-            limit=limit,
-            threshold=threshold,
-        )
 
     @classmethod
     def event(
@@ -788,12 +694,10 @@ class Laminar:
     @classmethod
     def shutdown(cls):
         Traceloop.flush()
-        LaminarClient.shutdown()
 
     @classmethod
     async def shutdown_async(cls):
         Traceloop.flush()
-        await LaminarClient.shutdown_async()
 
     @classmethod
     def set_session(

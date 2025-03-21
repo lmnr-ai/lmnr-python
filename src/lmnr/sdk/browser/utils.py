@@ -2,6 +2,8 @@ import asyncio
 import logging
 import time
 
+from lmnr.sdk.client.sync_client import LaminarClient
+
 logger = logging.getLogger(__name__)
 
 INJECT_PLACEHOLDER = """
@@ -56,12 +58,24 @@ INJECT_PLACEHOLDER = """
 """
 
 
-def _with_tracer_wrapper(func):
+def with_tracer_wrapper(func):
     """Helper for providing tracer for wrapper functions."""
 
     def _with_tracer(tracer, to_wrap):
         def wrapper(wrapped, instance, args, kwargs):
             return func(tracer, to_wrap, wrapped, instance, args, kwargs)
+
+        return wrapper
+
+    return _with_tracer
+
+
+def with_tracer_and_client_wrapper(func):
+    """Helper for providing tracer and client for wrapper functions."""
+
+    def _with_tracer(tracer, client: LaminarClient, to_wrap):
+        def wrapper(wrapped, instance, args, kwargs):
+            return func(tracer, client, to_wrap, wrapped, instance, args, kwargs)
 
         return wrapper
 

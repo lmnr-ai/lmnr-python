@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from .client import LaminarClient
+from .client.sync_client import LaminarClient
 from .log import get_default_logger
 from .types import Datapoint
 
@@ -38,7 +38,7 @@ class LaminarDataset(EvaluationDataset):
             f"dataset {self.name}. Fetching batch from {self._offset} to "
             + f"{self._offset + self._fetch_size}"
         )
-        resp = LaminarClient.get_datapoints(self.name, self._offset, self._fetch_size)
+        resp = self.client.get_datapoints(self.name, self._offset, self._fetch_size)
         self._fetched_items += resp.items
         self._offset = len(self._fetched_items)
         if self._len is None:
@@ -53,3 +53,6 @@ class LaminarDataset(EvaluationDataset):
         if idx >= len(self._fetched_items):
             self._fetch_batch()
         return self._fetched_items[idx]
+
+    def set_client(self, client: LaminarClient):
+        self.client = client
