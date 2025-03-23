@@ -12,7 +12,7 @@ from lmnr.sdk.types import (
     RunAgentRequest,
     RunAgentResponseChunk,
 )
-from lmnr.version import PYTHON_VERSION, SDK_VERSION
+from lmnr.version import PYTHON_VERSION, __version__
 
 
 class Agent(BaseResource):
@@ -68,7 +68,7 @@ class Agent(BaseResource):
             Union[AgentOutput, Generator[RunAgentResponseChunk, None, None]]: agent output or a generator of response chunks
         """
         if span_context is not None and isinstance(span_context, LaminarSpanContext):
-            span_context = span_context.to_string()
+            span_context = str(span_context)
         request = RunAgentRequest(
             prompt=prompt,
             span_context=span_context,
@@ -173,7 +173,7 @@ class Agent(BaseResource):
             "traceId": trace_id,
             "events": events,
             "source": f"python@{PYTHON_VERSION}",
-            "sdkVersion": SDK_VERSION,
+            "sdkVersion": __version__,
         }
         compressed_payload = gzip.compress(json.dumps(payload).encode("utf-8"))
         response = self._client.post(

@@ -20,7 +20,7 @@ from lmnr.sdk.types import (
     RunAgentRequest,
     RunAgentResponseChunk,
 )
-from lmnr.version import PYTHON_VERSION, SDK_VERSION
+from lmnr.version import PYTHON_VERSION, __version__
 
 
 class Agent(BaseAsyncResource):
@@ -182,7 +182,7 @@ class Agent(BaseAsyncResource):
             "traceId": trace_id,
             "events": events,
             "source": f"python@{PYTHON_VERSION}",
-            "sdkVersion": SDK_VERSION,
+            "sdkVersion": __version__,
         }
         compressed_payload = gzip.compress(json.dumps(payload).encode("utf-8"))
         response = await self._client.post(

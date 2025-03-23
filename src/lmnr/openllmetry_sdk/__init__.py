@@ -44,17 +44,6 @@ class Traceloop:
         if isinstance(headers, str):
             headers = parse_env_headers(headers)
 
-        if (
-            not exporter
-            and not processor
-            and api_endpoint == "https://api.lmnr.ai"
-            and not api_key
-        ):
-            print(
-                "Set the LMNR_PROJECT_API_KEY environment variable to your project API key"
-            )
-            return
-
         if api_key and not exporter and not processor and not headers:
             headers = {
                 "Authorization": f"Bearer {api_key}",

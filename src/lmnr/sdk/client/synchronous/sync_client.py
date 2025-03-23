@@ -2,8 +2,8 @@
 Laminar HTTP client. Used to send data to/from the Laminar API.
 """
 
-import re
 import httpx
+import re
 from typing import Optional, TypeVar
 from types import TracebackType
 
@@ -14,6 +14,7 @@ from lmnr.sdk.client.synchronous.resources import (
     Pipeline,
     SemanticSearch,
 )
+from lmnr.sdk.utils import from_env
 
 _T = TypeVar("_T", bound="LaminarClient")
 
@@ -46,13 +47,20 @@ class LaminarClient:
                 be used.
         """
         # If port is already in the base URL, use it as is
-        if re.search(r":\d{1,5}$", base_url):
-            self.__base_url = base_url
-        else:
-            self.__base_url = f"{base_url}:{port or 443}"
-        # Remove trailing slash from base URL
-        self.__base_url = re.sub(r"/$", "", self.__base_url)
-        self.__project_api_key = project_api_key
+        base_url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai:443"
+        if match := re.search(r":(\d{1,5})$", base_url):
+            base_url = base_url[: -len(match.group(0))]
+            if port is None:
+                port = int(match.group(1))
+
+        base_url = base_url.rstrip("/")
+        self.__base_url = f"{base_url}:{port or 443}"
+        self.__project_api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
+        if not self.__project_api_key:
+            raise ValueError(
+                "Project API key is not set. Please set the LMNR_PROJECT_API_KEY environment "
+                "variable or pass project_api_key to the initializer."
+            )
         self.__client = httpx.Client(
             headers=self._headers(),
             timeout=350,

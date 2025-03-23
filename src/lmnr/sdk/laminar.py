@@ -24,7 +24,6 @@ from typing import Any, Literal, Optional, Set, Union
 
 import copy
 import datetime
-import dotenv
 import logging
 import os
 import random
@@ -44,6 +43,7 @@ from lmnr.openllmetry_sdk.tracing.tracing import (
     set_association_properties,
     update_association_properties,
 )
+from lmnr.sdk.utils import from_env
 
 from .log import VerboseColorfulFormatter
 
@@ -107,32 +107,31 @@ class Laminar:
         Raises:
             ValueError: If project API key is not set
         """
-        cls.__project_api_key = project_api_key or os.environ.get(
-            "LMNR_PROJECT_API_KEY"
-        )
-        if not cls.__project_api_key:
-            dotenv_path = dotenv.find_dotenv(usecwd=True)
-            cls.__project_api_key = dotenv.get_key(
-                dotenv_path=dotenv_path, key_to_get="LMNR_PROJECT_API_KEY"
-            )
+        cls.__project_api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
         if not cls.__project_api_key:
             raise ValueError(
                 "Please initialize the Laminar object with"
                 " your project API key or set the LMNR_PROJECT_API_KEY"
                 " environment variable in your environment or .env file"
             )
-        url = re.sub(r"/$", "", base_url or "https://api.lmnr.ai")
-        if re.search(r":\d{1,5}$", url):
-            raise ValueError(
-                "Please provide the `base_url` without the port number. "
-                "Use the `http_port` and `grpc_port` arguments instead."
-            )
+
+        cls._initialize_logger()
+
+        url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
+        url = url.rstrip("/")
+        if match := re.search(r":(\d{1,5})$", url):
+            url = url[: -len(match.group(0))]
+            if http_port is None:
+                cls.__logger.info(f"Using HTTP port from base URL: {match.group(1)}")
+                http_port = int(match.group(1))
+            else:
+                cls.__logger.info(f"Using HTTP port passed as an argument: {http_port}")
+
         cls.__base_http_url = f"{url}:{http_port or 443}"
         cls.__base_grpc_url = f"{url}:{grpc_port or 8443}"
 
         cls.__initialized = True
-        cls._initialize_logger()
-        if not os.environ.get("OTEL_ATTRIBUTE_COUNT_LIMIT"):
+        if not os.getenv("OTEL_ATTRIBUTE_COUNT_LIMIT"):
             # each message is at least 2 attributes: role and content,
             # but the default attribute limit is 128, so raise it
             os.environ["OTEL_ATTRIBUTE_COUNT_LIMIT"] = "10000"

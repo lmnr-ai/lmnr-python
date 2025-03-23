@@ -1,7 +1,7 @@
 from lmnr.openllmetry_sdk.decorators.base import json_dumps
 from lmnr.sdk.browser.utils import with_tracer_wrapper
 from lmnr.sdk.utils import get_input_from_func_args
-from lmnr.version import SDK_VERSION
+from lmnr.version import __version__
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
@@ -86,7 +86,7 @@ class BrowserUseInstrumentor(BaseInstrumentor):
 
     def _instrument(self, **kwargs):
         tracer_provider = kwargs.get("tracer_provider")
-        tracer = get_tracer(__name__, SDK_VERSION, tracer_provider)
+        tracer = get_tracer(__name__, __version__, tracer_provider)
 
         for wrapped_method in WRAPPED_METHODS:
             wrap_package = wrapped_method.get("package")

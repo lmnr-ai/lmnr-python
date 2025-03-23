@@ -3,14 +3,18 @@ Laminar HTTP client. Used to send data to/from the Laminar API.
 """
 
 import httpx
+import re
 from typing import Optional, TypeVar
 from types import TracebackType
 
-from lmnr.sdk.client.asynchronous.resources.agent import Agent
-from lmnr.sdk.client.asynchronous.resources.browser_events import BrowserEvents
-from lmnr.sdk.client.asynchronous.resources.evals import Evals
-from lmnr.sdk.client.asynchronous.resources.pipeline import Pipeline
-from lmnr.sdk.client.asynchronous.resources.semantic_search import SemanticSearch
+from lmnr.sdk.client.asynchronous.resources import (
+    Agent,
+    BrowserEvents,
+    Evals,
+    Pipeline,
+    SemanticSearch,
+)
+from lmnr.sdk.utils import from_env
 
 _T = TypeVar("_T", bound="AsyncLaminarClient")
 
@@ -20,9 +24,38 @@ class AsyncLaminarClient:
     __project_api_key: str
     __client: httpx.AsyncClient = None
 
-    def __init__(self, base_url: str, project_api_key: str):
-        self.__base_url = base_url
-        self.__project_api_key = project_api_key
+    def __init__(
+        self,
+        base_url: str,
+        project_api_key: str,
+        port: Optional[int] = None,
+    ):
+        """Initializer for the Laminar HTTP client.
+
+        Args:
+            base_url (str): base URL of the Laminar API. If you include a port,
+                the `port` argument will be ignored.
+            project_api_key (str): Laminar project API key
+            port (Optional[int], optional): port of the Laminar API HTTP server.
+                Defaults to None. If none is provided, the default port (443) will
+                be used.
+        """
+        # If port is already in the base URL, use it as is
+        base_url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
+        if match := re.search(r":(\d{1,5})$", base_url):
+            base_url = base_url[: -len(match.group(0))]
+            if port is None:
+                port = int(match.group(1))
+
+        base_url = base_url.rstrip("/")
+        self.__base_url = f"{base_url}:{port or 443}"
+        self.__project_api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
+        if not self.__project_api_key:
+            raise ValueError(
+                "Project API key is not set. Please set the LMNR_PROJECT_API_KEY environment "
+                "variable or pass project_api_key to the initializer."
+            )
+
         self.__client = httpx.AsyncClient(
             headers=self._headers(),
             timeout=350,

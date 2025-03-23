@@ -5,7 +5,7 @@ import json
 
 from lmnr.sdk.client.synchronous.resources.base import BaseResource
 
-from lmnr.version import PYTHON_VERSION, SDK_VERSION
+from lmnr.version import PYTHON_VERSION, __version__
 
 
 class BrowserEvents(BaseResource):
@@ -23,7 +23,7 @@ class BrowserEvents(BaseResource):
             "traceId": trace_id,
             "events": events,
             "source": f"python@{PYTHON_VERSION}",
-            "sdkVersion": SDK_VERSION,
+            "sdkVersion": __version__,
         }
         compressed_payload = gzip.compress(json.dumps(payload).encode("utf-8"))
         response = self._client.post(

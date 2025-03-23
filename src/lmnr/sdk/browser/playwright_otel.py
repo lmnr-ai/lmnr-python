@@ -5,7 +5,7 @@ from lmnr.sdk.browser.pw_utils import handle_navigation_async, handle_navigation
 from lmnr.sdk.browser.utils import with_tracer_and_client_wrapper
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
-from lmnr.version import SDK_VERSION
+from lmnr.version import __version__
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
@@ -276,7 +276,7 @@ class PlaywrightInstrumentor(BaseInstrumentor):
 
     def _instrument(self, **kwargs):
         tracer_provider = kwargs.get("tracer_provider")
-        tracer = get_tracer(__name__, SDK_VERSION, tracer_provider)
+        tracer = get_tracer(__name__, __version__, tracer_provider)
 
         for wrapped_method in WRAPPED_METHODS:
             wrap_package = wrapped_method.get("package")

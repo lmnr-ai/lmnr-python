@@ -43,7 +43,7 @@ from opentelemetry.trace import get_tracer_provider, ProxyTracerProvider
 
 from typing import Dict, Optional, Set
 
-from lmnr.version import SDK_VERSION, PYTHON_VERSION
+from lmnr.version import __version__, PYTHON_VERSION
 
 module_logger = logging.getLogger(__name__)
 console_log_handler = logging.StreamHandler()
@@ -197,7 +197,7 @@ class TracerWrapper(object):
         self.__span_id_lists[span.get_span_context().span_id] = span_ids_path
 
         span.set_attribute(SPAN_INSTRUMENTATION_SOURCE, "python")
-        span.set_attribute(SPAN_SDK_VERSION, SDK_VERSION)
+        span.set_attribute(SPAN_SDK_VERSION, __version__)
         span.set_attribute(SPAN_LANGUAGE_VERSION, f"python@{PYTHON_VERSION}")
 
         association_properties = get_value("association_properties")
