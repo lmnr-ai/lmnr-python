@@ -25,7 +25,6 @@ from typing import Any, Literal, Optional, Set, Union
 import copy
 import datetime
 import dotenv
-import json
 import logging
 import os
 import random
@@ -683,7 +682,7 @@ class Laminar:
         span_context = cls.get_laminar_span_context(span)
         if span_context is None:
             return None
-        return json.dumps(span_context.to_dict())
+        return str(span_context)
 
     @classmethod
     def deserialize_span_context(

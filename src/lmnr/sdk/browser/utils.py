@@ -1,61 +1,12 @@
 import asyncio
 import logging
 import time
+from typing import Union
 
-from lmnr.sdk.client.sync_client import LaminarClient
+from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
+from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 
 logger = logging.getLogger(__name__)
-
-INJECT_PLACEHOLDER = """
-() => {
-    const BATCH_SIZE = 1000;  // Maximum events to store in memory
-    
-    window.lmnrRrwebEventsBatch = [];
-    
-    // Utility function to compress individual event data
-    async function compressEventData(data) {
-        const jsonString = JSON.stringify(data);
-        const blob = new Blob([jsonString], { type: 'application/json' });
-        const compressedStream = blob.stream().pipeThrough(new CompressionStream('gzip'));
-        const compressedResponse = new Response(compressedStream);
-        const compressedData = await compressedResponse.arrayBuffer();
-        return Array.from(new Uint8Array(compressedData));
-    }
-    
-    window.lmnrGetAndClearEvents = () => {
-        const events = window.lmnrRrwebEventsBatch;
-        window.lmnrRrwebEventsBatch = [];
-        return events;
-    };
-
-    // Add heartbeat events
-    setInterval(async () => {
-        const heartbeat = {
-            type: 6,
-            data: await compressEventData({ source: 'heartbeat' }),
-            timestamp: Date.now()
-        };
-        
-        window.lmnrRrwebEventsBatch.push(heartbeat);
-        
-        // Prevent memory issues by limiting batch size
-        if (window.lmnrRrwebEventsBatch.length > BATCH_SIZE) {
-            window.lmnrRrwebEventsBatch = window.lmnrRrwebEventsBatch.slice(-BATCH_SIZE);
-        }
-    }, 1000);
-
-    window.lmnrRrweb.record({
-        async emit(event) {
-            // Compress the data field
-            const compressedEvent = {
-                ...event,
-                data: await compressEventData(event.data)
-            };
-            window.lmnrRrwebEventsBatch.push(compressedEvent);
-        }
-    });
-}
-"""
 
 
 def with_tracer_wrapper(func):
@@ -73,7 +24,7 @@ def with_tracer_wrapper(func):
 def with_tracer_and_client_wrapper(func):
     """Helper for providing tracer and client for wrapper functions."""
 
-    def _with_tracer(tracer, client: LaminarClient, to_wrap):
+    def _with_tracer(tracer, client: Union[LaminarClient, AsyncLaminarClient], to_wrap):
         def wrapper(wrapped, instance, args, kwargs):
             return func(tracer, client, to_wrap, wrapped, instance, args, kwargs)
 

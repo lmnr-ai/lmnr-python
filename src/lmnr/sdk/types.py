@@ -262,12 +262,15 @@ class LaminarSpanContext(pydantic.BaseModel):
     is_remote: bool = pydantic.Field(default=False)
 
     # uuid is not serializable by default, so we need to convert it to a string
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Union[str, bool]]:
         return {
             "traceId": str(self.trace_id),
             "spanId": str(self.span_id),
             "isRemote": self.is_remote,
         }
+
+    def __str__(self) -> str:
+        return json.dumps(self.to_dict())
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "LaminarSpanContext":

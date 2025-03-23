@@ -4,8 +4,8 @@ import logging
 import uuid
 
 from contextvars import Context
-from lmnr.sdk.client.async_client import AsyncLaminarClient
-from lmnr.sdk.client.sync_client import LaminarClient
+from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
+from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.log import VerboseColorfulFormatter
 from lmnr.openllmetry_sdk.instruments import Instruments
 from lmnr.openllmetry_sdk.tracing.attributes import (

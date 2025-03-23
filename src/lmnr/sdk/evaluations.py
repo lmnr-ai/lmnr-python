@@ -6,17 +6,16 @@ import dotenv
 from tqdm import tqdm
 from typing import Any, Awaitable, Optional, Set, Union
 
-from lmnr.sdk.client.async_client import AsyncLaminarClient
+from lmnr.openllmetry_sdk.instruments import Instruments
+from lmnr.openllmetry_sdk.tracing.attributes import SPAN_TYPE
 
-from ..openllmetry_sdk.instruments import Instruments
-from ..openllmetry_sdk.tracing.attributes import SPAN_TYPE
-
-from .client.sync_client import LaminarClient
-from .datasets import EvaluationDataset, LaminarDataset
-from .eval_control import EVALUATION_INSTANCE, PREPARE_ONLY
-from .laminar import Laminar as L
-from .log import get_default_logger
-from .types import (
+from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
+from lmnr.sdk.client.synchronous.sync_client import LaminarClient
+from lmnr.sdk.datasets import EvaluationDataset, LaminarDataset
+from lmnr.sdk.eval_control import EVALUATION_INSTANCE, PREPARE_ONLY
+from lmnr.sdk.laminar import Laminar as L
+from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.types import (
     Datapoint,
     EvaluationResultDatapoint,
     EvaluatorFunction,
@@ -28,7 +27,7 @@ from .types import (
     SpanType,
     TraceType,
 )
-from .utils import is_async
+from lmnr.sdk.utils import is_async
 
 DEFAULT_BATCH_SIZE = 5
 MAX_EXPORT_BATCH_SIZE = 64
@@ -241,7 +240,7 @@ class Evaluation:
             )
         self.reporter.start(len(self.data))
         try:
-            evaluation = await self.client.init_eval(
+            evaluation = await self.client._evals.init(
                 name=self.name, group_name=self.group_name
             )
             result_datapoints = await self._evaluate_in_batches(evaluation.id)
@@ -321,7 +320,7 @@ class Evaluation:
                     executor_span_id=executor_span_id,
                 )
                 # First, create datapoint with trace_id so that we can show the dp in the UI
-                await self.client.save_eval_datapoints(
+                await self.client._evals.save_datapoints(
                     eval_id, [partial_datapoint], self.group_name
                 )
                 executor_span.set_attribute(SPAN_TYPE, SpanType.EXECUTOR.value)
@@ -378,7 +377,7 @@ class Evaluation:
 
         # Create background upload task without awaiting it
         upload_task = asyncio.create_task(
-            self.client.save_eval_datapoints(eval_id, [datapoint], self.group_name)
+            self.client._evals.save_datapoints(eval_id, [datapoint], self.group_name)
         )
         self.upload_tasks.append(upload_task)
 
