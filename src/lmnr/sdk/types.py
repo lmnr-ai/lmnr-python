@@ -260,24 +260,8 @@ class LaminarSpanContext(pydantic.BaseModel):
     span_id: uuid.UUID
     is_remote: bool = pydantic.Field(default=False)
 
-    # uuid is not serializable by default, so we need to convert it to a string
-    def to_dict(self) -> dict[str, Union[str, bool]]:
-        return {
-            "traceId": str(self.trace_id),
-            "spanId": str(self.span_id),
-            "isRemote": self.is_remote,
-        }
-
     def __str__(self) -> str:
-        return json.dumps(self.to_dict())
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "LaminarSpanContext":
-        return cls(
-            trace_id=uuid.UUID(data.get("traceId") or data.get("trace_id")),
-            span_id=uuid.UUID(data.get("spanId") or data.get("span_id")),
-            is_remote=data.get("isRemote") or data.get("is_remote") or False,
-        )
+        return self.model_dump_json()
 
     @classmethod
     def try_to_otel_span_context(
@@ -322,9 +306,9 @@ class LaminarSpanContext(pydantic.BaseModel):
     @classmethod
     def deserialize(cls, data: Union[dict[str, Any], str]) -> "LaminarSpanContext":
         if isinstance(data, dict):
-            return cls.from_dict(data)
+            return cls.model_validate(data)
         elif isinstance(data, str):
-            return cls.from_dict(json.loads(data))
+            return cls.model_validate(json.loads(data))
         else:
             raise ValueError("Invalid span_context provided")
 
