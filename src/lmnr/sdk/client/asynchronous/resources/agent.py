@@ -31,22 +31,20 @@ class AsyncAgent(BaseAsyncResource):
         self,
         prompt: str,
         stream: Literal[True],
-        span_context: Optional[Union[LaminarSpanContext, str]] = None,
+        parent_span_context: Optional[Union[LaminarSpanContext, str]] = None,
         model_provider: Optional[ModelProvider] = None,
         model: Optional[str] = None,
         enable_thinking: bool = True,
-        cdp_url: Optional[str] = None,
     ) -> AsyncIterator[RunAgentResponseChunk]:
         """Run Laminar index agent in streaming mode.
 
         Args:
             prompt (str): prompt for the agent
             stream (Literal[True]): whether to stream the agent's response
-            span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
+            parent_span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
             model_provider (Optional[ModelProvider], optional): LLM model provider
             model (Optional[str], optional): LLM model name
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
-            cdp_url (Optional[str], optional): CDP URL to connect to an existing browser session.
 
         Returns:
             AsyncIterator[RunAgentResponseChunk]: a generator of response chunks
@@ -57,21 +55,19 @@ class AsyncAgent(BaseAsyncResource):
     async def run(
         self,
         prompt: str,
-        span_context: Optional[Union[LaminarSpanContext, str]] = None,
+        parent_span_context: Optional[Union[LaminarSpanContext, str]] = None,
         model_provider: Optional[ModelProvider] = None,
         model: Optional[str] = None,
         enable_thinking: bool = True,
-        cdp_url: Optional[str] = None,
     ) -> AgentOutput:
         """Run Laminar index agent.
 
         Args:
             prompt (str): prompt for the agent
-            span_context (Optional[LaminarSpanContext], optional): span context if the agent is part of a trace
+            parent_span_context (Optional[LaminarSpanContext], optional): span context if the agent is part of a trace
             model_provider (Optional[ModelProvider], optional): LLM model provider
             model (Optional[str], optional): LLM model name
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
-            cdp_url (Optional[str], optional): CDP URL to connect to an existing browser session.
 
         Returns:
             AgentOutput: agent output
@@ -82,23 +78,21 @@ class AsyncAgent(BaseAsyncResource):
     async def run(
         self,
         prompt: str,
-        span_context: Optional[Union[LaminarSpanContext, str]] = None,
+        parent_span_context: Optional[Union[LaminarSpanContext, str]] = None,
         model_provider: Optional[ModelProvider] = None,
         model: Optional[str] = None,
         stream: Literal[False] = False,
         enable_thinking: bool = True,
-        cdp_url: Optional[str] = None,
     ) -> AgentOutput:
         """Run Laminar index agent.
 
         Args:
             prompt (str): prompt for the agent
-            span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
+            parent_span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
             model_provider (Optional[ModelProvider], optional): LLM model provider
             model (Optional[str], optional): LLM model name
             stream (Literal[False], optional): whether to stream the agent's response
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
-            cdp_url (Optional[str], optional): CDP URL to connect to an existing browser session.
 
         Returns:
             AgentOutput: agent output
@@ -108,33 +102,33 @@ class AsyncAgent(BaseAsyncResource):
     async def run(
         self,
         prompt: str,
-        span_context: Optional[Union[LaminarSpanContext, str]] = None,
+        parent_span_context: Optional[Union[LaminarSpanContext, str]] = None,
         model_provider: Optional[ModelProvider] = None,
         model: Optional[str] = None,
         stream: bool = False,
         enable_thinking: bool = True,
-        cdp_url: Optional[str] = None,
     ) -> Union[AgentOutput, Awaitable[AsyncIterator[RunAgentResponseChunk]]]:
         """Run Laminar index agent.
 
         Args:
             prompt (str): prompt for the agent
-            span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
+            parent_span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
             model_provider (Optional[ModelProvider], optional): LLM model provider
             model (Optional[str], optional): LLM model name
             stream (bool, optional): whether to stream the agent's response
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
-            cdp_url (Optional[str], optional): CDP URL to connect to an existing browser session.
 
         Returns:
             Union[AgentOutput, AsyncIterator[RunAgentResponseChunk]]: agent output or a generator of response chunks
         """
 
-        if span_context is not None and isinstance(span_context, LaminarSpanContext):
-            span_context = str(span_context)
+        if parent_span_context is not None and isinstance(
+            parent_span_context, LaminarSpanContext
+        ):
+            parent_span_context = str(parent_span_context)
         request = RunAgentRequest(
             prompt=prompt,
-            span_context=span_context,
+            parent_span_context=parent_span_context,
             model_provider=model_provider,
             model=model,
             # We always connect to stream, because our TLS listeners on AWS
@@ -145,7 +139,6 @@ class AsyncAgent(BaseAsyncResource):
             # https://aws.amazon.com/blogs/networking-and-content-delivery/introducing-nlb-tcp-configurable-idle-timeout/
             stream=True,
             enable_thinking=enable_thinking,
-            cdp_url=cdp_url,
         )
 
         # For streaming case, use a generator function
