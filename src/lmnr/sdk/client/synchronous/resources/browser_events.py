@@ -1,4 +1,4 @@
-"""Pipeline resource for running Laminar pipelines."""
+"""Pipeline resource for sending browser events."""
 
 import gzip
 import json
@@ -9,7 +9,7 @@ from lmnr.version import PYTHON_VERSION, __version__
 
 
 class BrowserEvents(BaseResource):
-    """Resource for interacting with Laminar pipelines."""
+    """Resource for sending browser events."""
 
     def send(
         self,
