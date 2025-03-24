@@ -3,8 +3,11 @@
 import gzip
 import json
 from typing import Generator, Literal, Optional, Union, overload
+import uuid
 
 from lmnr.sdk.client.synchronous.resources.base import BaseResource
+from opentelemetry import trace
+
 from lmnr.sdk.types import (
     AgentOutput,
     LaminarSpanContext,
@@ -115,6 +118,14 @@ class Agent(BaseResource):
         Returns:
             Union[AgentOutput, Generator[RunAgentResponseChunk, None, None]]: agent output or a generator of response chunks
         """
+        if parent_span_context is None:
+            span = trace.get_current_span()
+            if span != trace.INVALID_SPAN:
+                parent_span_context = LaminarSpanContext(
+                    trace_id=uuid.UUID(int=span.get_span_context().trace_id),
+                    span_id=uuid.UUID(int=span.get_span_context().span_id),
+                    is_remote=span.get_span_context().is_remote,
+                )
         if parent_span_context is not None and isinstance(
             parent_span_context, LaminarSpanContext
         ):

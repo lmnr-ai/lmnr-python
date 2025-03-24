@@ -2,6 +2,7 @@
 
 import gzip
 import json
+
 from typing import (
     AsyncGenerator,
     AsyncIterator,
@@ -11,6 +12,7 @@ from typing import (
     Union,
     overload,
 )
+import uuid
 
 from lmnr.sdk.client.asynchronous.resources.base import BaseAsyncResource
 from lmnr.sdk.types import (
@@ -21,6 +23,7 @@ from lmnr.sdk.types import (
     RunAgentResponseChunk,
 )
 from lmnr.version import PYTHON_VERSION, __version__
+from opentelemetry import trace
 
 
 class AsyncAgent(BaseAsyncResource):
@@ -121,7 +124,14 @@ class AsyncAgent(BaseAsyncResource):
         Returns:
             Union[AgentOutput, AsyncIterator[RunAgentResponseChunk]]: agent output or a generator of response chunks
         """
-
+        if parent_span_context is None:
+            span = trace.get_current_span()
+            if span != trace.INVALID_SPAN:
+                parent_span_context = LaminarSpanContext(
+                    trace_id=uuid.UUID(int=span.get_span_context().trace_id),
+                    span_id=uuid.UUID(int=span.get_span_context().span_id),
+                    is_remote=span.get_span_context().is_remote,
+                )
         if parent_span_context is not None and isinstance(
             parent_span_context, LaminarSpanContext
         ):
