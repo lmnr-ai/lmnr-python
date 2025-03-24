@@ -27,7 +27,7 @@ from lmnr.sdk.types import (
     SpanType,
     TraceType,
 )
-from lmnr.sdk.utils import is_async
+from lmnr.sdk.utils import from_env, is_async
 
 DEFAULT_BATCH_SIZE = 5
 MAX_EXPORT_BATCH_SIZE = 64
@@ -176,6 +176,8 @@ class Evaluation:
                     "Keys must only contain letters, digits, hyphens,"
                     "underscores, or spaces."
                 )
+
+        base_url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
 
         self.is_finished = False
         self.reporter = EvaluationReporter(base_url)
