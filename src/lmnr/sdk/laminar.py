@@ -596,7 +596,7 @@ class Laminar:
         span_context = cls.get_laminar_span_context(span)
         if span_context is None:
             return None
-        return span_context.to_dict()
+        return span_context.model_dump()
 
     @classmethod
     def serialize_span_context(cls, span: Optional[trace.Span] = None) -> Optional[str]:
