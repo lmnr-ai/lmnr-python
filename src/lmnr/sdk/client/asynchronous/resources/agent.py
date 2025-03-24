@@ -1,8 +1,5 @@
 """Agent resource for interacting with Laminar agents."""
 
-import gzip
-import json
-
 from typing import (
     AsyncGenerator,
     AsyncIterator,
@@ -22,7 +19,7 @@ from lmnr.sdk.types import (
     RunAgentRequest,
     RunAgentResponseChunk,
 )
-from lmnr.version import PYTHON_VERSION, __version__
+
 from opentelemetry import trace
 
 
@@ -216,31 +213,3 @@ class AsyncAgent(BaseAsyncResource):
                         final_chunk = chunk.root
 
         return final_chunk.content if final_chunk is not None else AgentOutput()
-
-    async def _send_browser_events(
-        self,
-        session_id: str,
-        trace_id: str,
-        events: list[dict],
-    ):
-        url = self._base_url + "/v1/browser-sessions/events"
-        payload = {
-            "sessionId": session_id,
-            "traceId": trace_id,
-            "events": events,
-            "source": f"python@{PYTHON_VERSION}",
-            "sdkVersion": __version__,
-        }
-        compressed_payload = gzip.compress(json.dumps(payload).encode("utf-8"))
-        response = await self._client.post(
-            url,
-            content=compressed_payload,
-            headers={
-                **self._headers(),
-                "Content-Encoding": "gzip",
-            },
-        )
-        if response.status_code != 200:
-            raise ValueError(
-                f"Failed to send events: [{response.status_code}] {response.text}"
-            )
