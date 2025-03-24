@@ -229,7 +229,6 @@ class SpanType(Enum):
 
 class TraceType(Enum):
     DEFAULT = "DEFAULT"
-    EVENT = "EVENT"  # deprecated
     EVALUATION = "EVALUATION"
 
 
@@ -335,50 +334,51 @@ class ModelProvider(str, Enum):
     BEDROCK = "bedrock"
 
 
-class AgentChatMessageContentTextBlock(pydantic.BaseModel):
-    type: Literal["text"]
-    text: str
+# class AgentChatMessageContentTextBlock(pydantic.BaseModel):
+#     type: Literal["text"]
+#     text: str
 
 
-class AgentChatMessageImageUrlBlock(pydantic.BaseModel):
-    type: Literal["image"]
-    imageUrl: str
+# class AgentChatMessageImageUrlBlock(pydantic.BaseModel):
+#     type: Literal["image"]
+#     imageUrl: str
 
 
-class AgentChatMessageImageBase64Block(pydantic.BaseModel):
-    type: Literal["image"]
-    imageB64: str
+# class AgentChatMessageImageBase64Block(pydantic.BaseModel):
+#     type: Literal["image"]
+#     imageB64: str
 
 
-class AgentChatMessageImageBlock(pydantic.RootModel):
-    root: Union[AgentChatMessageImageUrlBlock, AgentChatMessageImageBase64Block]
+# class AgentChatMessageImageBlock(pydantic.RootModel):
+#     root: Union[AgentChatMessageImageUrlBlock, AgentChatMessageImageBase64Block]
 
 
-class AgentChatMessageContentBlock(pydantic.RootModel):
-    root: Union[AgentChatMessageContentTextBlock, AgentChatMessageImageBlock]
+# class AgentChatMessageContentBlock(pydantic.RootModel):
+#     root: Union[AgentChatMessageContentTextBlock, AgentChatMessageImageBlock]
 
 
-class AgentChatMessageContent(pydantic.RootModel):
-    root: Union[str, list[AgentChatMessageContentBlock]]
+# class AgentChatMessageContent(pydantic.RootModel):
+#     root: Union[str, list[AgentChatMessageContentBlock]]
 
 
-class AgentChatMessage(pydantic.BaseModel):
-    role: str
-    content: AgentChatMessageContent
-    name: Optional[str] = None
-    toolCallId: Optional[str] = None
-    isStateMessage: bool = False
+# class AgentChatMessage(pydantic.BaseModel):
+#     role: str
+#     content: AgentChatMessageContent
+#     name: Optional[str] = None
+#     toolCallId: Optional[str] = None
+#     isStateMessage: bool = False
 
 
-class AgentState(pydantic.BaseModel):
-    messages: list[AgentChatMessage] = pydantic.Field(default_factory=list)
-    # browser_state: Optional[BrowserState] = None
+# class AgentState(pydantic.BaseModel):
+# messages: str = pydantic.Field(default="")
+# messages: list[AgentChatMessage] = pydantic.Field(default_factory=list)
+# browser_state: Optional[BrowserState] = None
 
 
 class RunAgentRequest(pydantic.BaseModel):
     prompt: str
-    state: Optional[AgentState] = None
-    span_context: Optional[LaminarSpanContext] = None
+    state: Optional[str] = None
+    span_context: Optional[str] = None
     model_provider: Optional[ModelProvider] = None
     model: Optional[str] = None
     stream: bool = False
@@ -392,9 +392,9 @@ class RunAgentRequest(pydantic.BaseModel):
             "enableThinking": self.enable_thinking,
         }
         if self.state:
-            result["state"] = self.state.model_dump()
+            result["state"] = self.state
         if self.span_context:
-            result["spanContext"] = self.span_context.to_dict()
+            result["spanContext"] = self.span_context
         if self.model_provider:
             result["modelProvider"] = self.model_provider.value
         if self.model:
@@ -411,7 +411,7 @@ class ActionResult(pydantic.BaseModel):
 
 
 class AgentOutput(pydantic.BaseModel):
-    state: AgentState = pydantic.Field(default_factory=AgentState)
+    state: str = pydantic.Field(default="")
     result: ActionResult = pydantic.Field(default_factory=ActionResult)
 
 

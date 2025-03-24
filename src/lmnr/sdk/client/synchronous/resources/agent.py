@@ -22,13 +22,53 @@ class Agent(BaseResource):
     def run(
         self,
         prompt: str,
+        stream: Literal[True],
         span_context: Optional[Union[LaminarSpanContext, str]] = None,
         model_provider: Optional[ModelProvider] = None,
         model: Optional[str] = None,
-        stream: Literal[True] = True,
         enable_thinking: bool = True,
         cdp_url: Optional[str] = None,
-    ) -> Generator[RunAgentResponseChunk, None, None]: ...
+    ) -> Generator[RunAgentResponseChunk, None, None]:
+        """Run Laminar index agent in streaming mode.
+
+        Args:
+            prompt (str): prompt for the agent
+            stream (Literal[True]): whether to stream the agent's response
+            span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
+            model_provider (Optional[ModelProvider], optional): LLM model provider
+            model (Optional[str], optional): LLM model name
+            enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
+            cdp_url (Optional[str], optional): CDP URL to connect to an existing browser session.
+
+        Returns:
+            Generator[RunAgentResponseChunk, None, None]: a generator of response chunks
+        """
+        pass
+
+    @overload
+    def run(
+        self,
+        prompt: str,
+        span_context: Optional[Union[LaminarSpanContext, str]] = None,
+        model_provider: Optional[ModelProvider] = None,
+        model: Optional[str] = None,
+        enable_thinking: bool = True,
+        cdp_url: Optional[str] = None,
+    ) -> AgentOutput:
+        """Run Laminar index agent.
+
+        Args:
+            prompt (str): prompt for the agent
+            span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
+            model_provider (Optional[ModelProvider], optional): LLM model provider
+            model (Optional[str], optional): LLM model name
+            enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
+            cdp_url (Optional[str], optional): CDP URL to connect to an existing browser session.
+
+        Returns:
+            AgentOutput: agent output
+        """
+        pass
 
     @overload
     def run(
@@ -40,7 +80,22 @@ class Agent(BaseResource):
         stream: Literal[False] = False,
         enable_thinking: bool = True,
         cdp_url: Optional[str] = None,
-    ) -> AgentOutput: ...
+    ) -> AgentOutput:
+        """Run Laminar index agent.
+
+        Args:
+            prompt (str): prompt for the agent
+            span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
+            model_provider (Optional[ModelProvider], optional): LLM model provider
+            model (Optional[str], optional): LLM model name
+            stream (Literal[False], optional): whether to stream the agent's response
+            enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
+            cdp_url (Optional[str], optional): CDP URL to connect to an existing browser session.
+
+        Returns:
+            AgentOutput: agent output
+        """
+        pass
 
     def run(
         self,
@@ -56,8 +111,7 @@ class Agent(BaseResource):
 
         Args:
             prompt (str): prompt for the agent
-            state (Optional[AgentState], optional): state as returned by the previous agent run
-            span_context (Optional[LaminarSpanContext], optional): span context if the agent is part of a trace
+            span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
             model_provider (Optional[ModelProvider], optional): LLM model provider
             model (Optional[str], optional): LLM model name
             stream (bool, optional): whether to stream the agent's response
@@ -151,22 +205,12 @@ class Agent(BaseResource):
 
         return final_chunk.content if final_chunk is not None else AgentOutput()
 
-    def send_browser_events(
+    def _send_browser_events(
         self,
         session_id: str,
         trace_id: str,
         events: list[dict],
     ):
-        """Send browser events.
-
-        Args:
-            session_id (str): The browser session ID.
-            trace_id (str): The trace ID.
-            events (list[dict]): The events to send.
-
-        Raises:
-            ValueError: If there's an error sending the events.
-        """
         url = self._base_url + "/v1/browser-sessions/events"
         payload = {
             "sessionId": session_id,

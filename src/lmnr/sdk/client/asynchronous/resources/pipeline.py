@@ -13,7 +13,7 @@ from lmnr.sdk.types import (
 )
 
 
-class Pipeline(BaseAsyncResource):
+class AsyncPipeline(BaseAsyncResource):
     """Resource for interacting with Laminar pipelines."""
 
     async def run(

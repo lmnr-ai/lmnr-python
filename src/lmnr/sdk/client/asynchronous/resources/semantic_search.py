@@ -10,7 +10,7 @@ from lmnr.sdk.types import (
 )
 
 
-class SemanticSearch(BaseAsyncResource):
+class AsyncSemanticSearch(BaseAsyncResource):
     """Resource for interacting with Laminar semantic search API."""
 
     async def search(

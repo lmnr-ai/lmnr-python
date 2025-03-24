@@ -390,7 +390,6 @@ def evaluate(
     evaluators: dict[str, EvaluatorFunction],
     human_evaluators: list[HumanEvaluator] = [],
     name: Optional[str] = None,
-    group_id: Optional[str] = None,  # Deprecated
     group_name: Optional[str] = None,
     concurrency_limit: int = DEFAULT_BATCH_SIZE,
     project_api_key: Optional[str] = None,
@@ -434,11 +433,6 @@ def evaluate(
             Used to identify the evaluation in the group. If not provided, a\
             random name will be generated.
             Defaults to None.
-        group_id (Optional[str], optional): [DEPRECATED] Use group_name instead.
-                        An identifier to group evaluations.\
-                        Only evaluations within the same group_id can be\
-                        visually compared. If not provided, set to "default".
-                        Defaults to None
         group_name (Optional[str], optional): An identifier to group evaluations.\
             Only evaluations within the same group_name can be visually compared.\
             If not provided, set to "default".
@@ -464,11 +458,6 @@ def evaluate(
         trace_export_timeout_seconds (Optional[int], optional): The timeout for\
                         trace export on OpenTelemetry exporter. Defaults to None.
     """
-    if group_id:
-        raise DeprecationWarning("group_id is deprecated. Use group_name instead.")
-
-    group_name = group_name or group_id
-
     evaluation = Evaluation(
         data=data,
         executor=executor,

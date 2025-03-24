@@ -8,7 +8,7 @@ from lmnr.sdk.client.asynchronous.resources.base import BaseAsyncResource
 from lmnr.version import PYTHON_VERSION, __version__
 
 
-class BrowserEvents(BaseAsyncResource):
+class AsyncBrowserEvents(BaseAsyncResource):
     """Resource for interacting with Laminar pipelines."""
 
     async def send(

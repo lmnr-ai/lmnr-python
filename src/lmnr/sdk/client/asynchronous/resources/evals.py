@@ -10,7 +10,7 @@ from lmnr.sdk.types import (
 )
 
 
-class Evals(BaseAsyncResource):
+class AsyncEvals(BaseAsyncResource):
     """Resource for interacting with Laminar evaluations API."""
 
     async def init(

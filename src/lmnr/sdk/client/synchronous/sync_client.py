@@ -35,19 +35,23 @@ class LaminarClient:
         base_url: str,
         project_api_key: str,
         port: Optional[int] = None,
+        timeout: int = 350,
     ):
         """Initializer for the Laminar HTTP client.
 
         Args:
-            base_url (str): base URL of the Laminar API. If you include a port,
-                the `port` argument will be ignored.
+            base_url (str): base URL of the Laminar API.
             project_api_key (str): Laminar project API key
-            port (Optional[int], optional): port of the Laminar API HTTP server.
+            port (Optional[int], optional): port of the Laminar API HTTP server.\
+                Overrides any port in the base URL.
                 Defaults to None. If none is provided, the default port (443) will
                 be used.
+            timeout (int, optional): global timeout seconds for the HTTP client.\
+                Applied to all httpx operations, i.e. connect, read, get_from_pool, etc.
+                Defaults to 350.
         """
         # If port is already in the base URL, use it as is
-        base_url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai:443"
+        base_url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
         if match := re.search(r":(\d{1,5})$", base_url):
             base_url = base_url[: -len(match.group(0))]
             if port is None:
@@ -63,7 +67,7 @@ class LaminarClient:
             )
         self.__client = httpx.Client(
             headers=self._headers(),
-            timeout=350,
+            timeout=timeout,
         )
 
         # Initialize resource objects

@@ -23,8 +23,35 @@ from lmnr.sdk.types import (
 from lmnr.version import PYTHON_VERSION, __version__
 
 
-class Agent(BaseAsyncResource):
+class AsyncAgent(BaseAsyncResource):
     """Resource for interacting with Laminar agents."""
+
+    @overload
+    async def run(
+        self,
+        prompt: str,
+        stream: Literal[True],
+        span_context: Optional[Union[LaminarSpanContext, str]] = None,
+        model_provider: Optional[ModelProvider] = None,
+        model: Optional[str] = None,
+        enable_thinking: bool = True,
+        cdp_url: Optional[str] = None,
+    ) -> AsyncIterator[RunAgentResponseChunk]:
+        """Run Laminar index agent in streaming mode.
+
+        Args:
+            prompt (str): prompt for the agent
+            stream (Literal[True]): whether to stream the agent's response
+            span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
+            model_provider (Optional[ModelProvider], optional): LLM model provider
+            model (Optional[str], optional): LLM model name
+            enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
+            cdp_url (Optional[str], optional): CDP URL to connect to an existing browser session.
+
+        Returns:
+            AsyncIterator[RunAgentResponseChunk]: a generator of response chunks
+        """
+        pass
 
     @overload
     async def run(
@@ -33,10 +60,23 @@ class Agent(BaseAsyncResource):
         span_context: Optional[Union[LaminarSpanContext, str]] = None,
         model_provider: Optional[ModelProvider] = None,
         model: Optional[str] = None,
-        stream: Literal[True] = True,
         enable_thinking: bool = True,
         cdp_url: Optional[str] = None,
-    ) -> AsyncIterator[RunAgentResponseChunk]: ...
+    ) -> AgentOutput:
+        """Run Laminar index agent.
+
+        Args:
+            prompt (str): prompt for the agent
+            span_context (Optional[LaminarSpanContext], optional): span context if the agent is part of a trace
+            model_provider (Optional[ModelProvider], optional): LLM model provider
+            model (Optional[str], optional): LLM model name
+            enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
+            cdp_url (Optional[str], optional): CDP URL to connect to an existing browser session.
+
+        Returns:
+            AgentOutput: agent output
+        """
+        pass
 
     @overload
     async def run(
@@ -48,7 +88,22 @@ class Agent(BaseAsyncResource):
         stream: Literal[False] = False,
         enable_thinking: bool = True,
         cdp_url: Optional[str] = None,
-    ) -> AgentOutput: ...
+    ) -> AgentOutput:
+        """Run Laminar index agent.
+
+        Args:
+            prompt (str): prompt for the agent
+            span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
+            model_provider (Optional[ModelProvider], optional): LLM model provider
+            model (Optional[str], optional): LLM model name
+            stream (Literal[False], optional): whether to stream the agent's response
+            enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
+            cdp_url (Optional[str], optional): CDP URL to connect to an existing browser session.
+
+        Returns:
+            AgentOutput: agent output
+        """
+        pass
 
     async def run(
         self,
@@ -64,8 +119,7 @@ class Agent(BaseAsyncResource):
 
         Args:
             prompt (str): prompt for the agent
-            state (Optional[AgentState], optional): state as returned by the previous agent run
-            span_context (Optional[LaminarSpanContext], optional): span context if the agent is part of a trace
+            span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
             model_provider (Optional[ModelProvider], optional): LLM model provider
             model (Optional[str], optional): LLM model name
             stream (bool, optional): whether to stream the agent's response
@@ -73,7 +127,7 @@ class Agent(BaseAsyncResource):
             cdp_url (Optional[str], optional): CDP URL to connect to an existing browser session.
 
         Returns:
-            Union[AgentOutput, Generator[RunAgentResponseChunk, None, None]]: agent output or a generator of response chunks
+            Union[AgentOutput, AsyncIterator[RunAgentResponseChunk]]: agent output or a generator of response chunks
         """
 
         if span_context is not None and isinstance(span_context, LaminarSpanContext):
@@ -99,7 +153,7 @@ class Agent(BaseAsyncResource):
             return self.__run_streaming(request)
         else:
             # For non-streaming case, process all chunks and return the final result
-            return self.__run_non_streaming(request)
+            return await self.__run_non_streaming(request)
 
     async def __run_streaming(
         self, request: RunAgentRequest
@@ -160,22 +214,12 @@ class Agent(BaseAsyncResource):
 
         return final_chunk.content if final_chunk is not None else AgentOutput()
 
-    async def send_browser_events(
+    async def _send_browser_events(
         self,
         session_id: str,
         trace_id: str,
         events: list[dict],
     ):
-        """Send browser events.
-
-        Args:
-            session_id (str): The browser session ID.
-            trace_id (str): The trace ID.
-            events (list[dict]): The events to send.
-
-        Raises:
-            ValueError: If there's an error sending the events.
-        """
         url = self._base_url + "/v1/browser-sessions/events"
         payload = {
             "sessionId": session_id,

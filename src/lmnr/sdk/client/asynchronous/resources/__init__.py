@@ -1,7 +1,13 @@
-from lmnr.sdk.client.asynchronous.resources.agent import Agent
-from lmnr.sdk.client.asynchronous.resources.browser_events import BrowserEvents
-from lmnr.sdk.client.asynchronous.resources.evals import Evals
-from lmnr.sdk.client.asynchronous.resources.pipeline import Pipeline
-from lmnr.sdk.client.asynchronous.resources.semantic_search import SemanticSearch
+from lmnr.sdk.client.asynchronous.resources.agent import AsyncAgent
+from lmnr.sdk.client.asynchronous.resources.browser_events import AsyncBrowserEvents
+from lmnr.sdk.client.asynchronous.resources.evals import AsyncEvals
+from lmnr.sdk.client.asynchronous.resources.pipeline import AsyncPipeline
+from lmnr.sdk.client.asynchronous.resources.semantic_search import AsyncSemanticSearch
 
-__all__ = ["Pipeline", "SemanticSearch", "Agent", "Evals", "BrowserEvents"]
+__all__ = [
+    "AsyncPipeline",
+    "AsyncSemanticSearch",
+    "AsyncAgent",
+    "AsyncEvals",
+    "AsyncBrowserEvents",
+]

@@ -8,11 +8,11 @@ from typing import Optional, TypeVar
 from types import TracebackType
 
 from lmnr.sdk.client.asynchronous.resources import (
-    Agent,
-    BrowserEvents,
-    Evals,
-    Pipeline,
-    SemanticSearch,
+    AsyncAgent,
+    AsyncBrowserEvents,
+    AsyncEvals,
+    AsyncPipeline,
+    AsyncSemanticSearch,
 )
 from lmnr.sdk.utils import from_env
 
@@ -29,16 +29,20 @@ class AsyncLaminarClient:
         base_url: str,
         project_api_key: str,
         port: Optional[int] = None,
+        timeout: int = 350,
     ):
         """Initializer for the Laminar HTTP client.
 
         Args:
-            base_url (str): base URL of the Laminar API. If you include a port,
-                the `port` argument will be ignored.
+            base_url (str): base URL of the Laminar API.
             project_api_key (str): Laminar project API key
-            port (Optional[int], optional): port of the Laminar API HTTP server.
+            port (Optional[int], optional): port of the Laminar API HTTP server.\
+                Overrides any port in the base URL.
                 Defaults to None. If none is provided, the default port (443) will
                 be used.
+            timeout (int, optional): global timeout seconds for the HTTP client.\
+                Applied to all httpx operations, i.e. connect, read, get_from_pool, etc.
+                Defaults to 350.
         """
         # If port is already in the base URL, use it as is
         base_url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
@@ -58,24 +62,28 @@ class AsyncLaminarClient:
 
         self.__client = httpx.AsyncClient(
             headers=self._headers(),
-            timeout=350,
+            timeout=timeout,
         )
 
         # Initialize resource objects
-        self.__pipeline = Pipeline(
+        self.__pipeline = AsyncPipeline(
             self.__client, self.__base_url, self.__project_api_key
         )
-        self.__semantic_search = SemanticSearch(
+        self.__semantic_search = AsyncSemanticSearch(
             self.__client, self.__base_url, self.__project_api_key
         )
-        self.__agent = Agent(self.__client, self.__base_url, self.__project_api_key)
-        self.__evals = Evals(self.__client, self.__base_url, self.__project_api_key)
-        self.__browser_events = BrowserEvents(
+        self.__agent = AsyncAgent(
+            self.__client, self.__base_url, self.__project_api_key
+        )
+        self.__evals = AsyncEvals(
+            self.__client, self.__base_url, self.__project_api_key
+        )
+        self.__browser_events = AsyncBrowserEvents(
             self.__client, self.__base_url, self.__project_api_key
         )
 
     @property
-    def pipeline(self) -> Pipeline:
+    def pipeline(self) -> AsyncPipeline:
         """Get the Pipeline resource.
 
         Returns:
@@ -84,7 +92,7 @@ class AsyncLaminarClient:
         return self.__pipeline
 
     @property
-    def semantic_search(self) -> SemanticSearch:
+    def semantic_search(self) -> AsyncSemanticSearch:
         """Get the SemanticSearch resource.
 
         Returns:
@@ -93,7 +101,7 @@ class AsyncLaminarClient:
         return self.__semantic_search
 
     @property
-    def agent(self) -> Agent:
+    def agent(self) -> AsyncAgent:
         """Get the Agent resource.
 
         Returns:
@@ -102,7 +110,7 @@ class AsyncLaminarClient:
         return self.__agent
 
     @property
-    def _evals(self) -> Evals:
+    def _evals(self) -> AsyncEvals:
         """Get the Evals resource.
 
         Returns:
@@ -111,7 +119,7 @@ class AsyncLaminarClient:
         return self.__evals
 
     @property
-    def _browser_events(self) -> BrowserEvents:
+    def _browser_events(self) -> AsyncBrowserEvents:
         """Get the BrowserEvents resource.
 
         Returns:
