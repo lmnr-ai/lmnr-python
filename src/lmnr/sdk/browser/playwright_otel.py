@@ -9,7 +9,15 @@ from lmnr.version import __version__
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
-from opentelemetry.trace import get_tracer, Tracer, get_current_span, Span, use_span
+from opentelemetry.trace import (
+    get_tracer,
+    Tracer,
+    get_current_span,
+    Span,
+    INVALID_SPAN,
+    set_span_in_context,
+)
+from opentelemetry.context import get_current
 from typing import Collection
 from wrapt import wrap_function_wrapper
 
@@ -68,17 +76,18 @@ def _wrap_new_browser_sync(
     browser: SyncBrowser = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
     for context in browser.contexts:
-        span = tracer.start_span(
-            name=f"{to_wrap.get('object')}.{to_wrap.get('method')}"
-        )
+        if get_current_span() == INVALID_SPAN:
+            span = tracer.start_span(
+                name=f"{to_wrap.get('object')}.{to_wrap.get('method')}"
+            )
+            set_span_in_context(span, get_current())
+            _context_spans[id(context)] = span
+        else:
+            span = get_current_span()
         span.set_attribute("lmnr.internal.has_browser_session", True)
-        _context_spans[id(context)] = span
-        with use_span(span, end_on_exit=True):
-            for page in context.pages:
-                trace_id = format(
-                    get_current_span().get_span_context().trace_id, "032x"
-                )
-                handle_navigation_sync(page, session_id, trace_id, client)
+        for page in context.pages:
+            trace_id = format(get_current_span().get_span_context().trace_id, "032x")
+            handle_navigation_sync(page, session_id, trace_id, client)
     return browser
 
 
@@ -90,17 +99,18 @@ async def _wrap_new_browser_async(
     browser: Browser = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
     for context in browser.contexts:
-        span = tracer.start_span(
-            name=f"{to_wrap.get('object')}.{to_wrap.get('method')}"
-        )
+        if get_current_span() == INVALID_SPAN:
+            span = tracer.start_span(
+                name=f"{to_wrap.get('object')}.{to_wrap.get('method')}"
+            )
+            set_span_in_context(span, get_current())
+            _context_spans[id(context)] = span
+        else:
+            span = get_current_span()
         span.set_attribute("lmnr.internal.has_browser_session", True)
-        _context_spans[id(context)] = span
-        with use_span(span, end_on_exit=True):
-            for page in context.pages:
-                trace_id = format(
-                    get_current_span().get_span_context().trace_id, "032x"
-                )
-                await handle_navigation_async(page, session_id, trace_id, client)
+        for page in context.pages:
+            trace_id = format(get_current_span().get_span_context().trace_id, "032x")
+            await handle_navigation_async(page, session_id, trace_id, client)
     return browser
 
 
