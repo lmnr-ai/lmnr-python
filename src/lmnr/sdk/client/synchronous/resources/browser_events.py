@@ -1,4 +1,4 @@
-"""Pipeline resource for sending browser events."""
+"""Resource for sending browser events."""
 
 import gzip
 import json
