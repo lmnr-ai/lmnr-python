@@ -80,7 +80,7 @@ class EvaluationReporter:
 
     def stopWithError(self, error: Exception):
         self.cli_progress.close()
-        sys.stderr.write(f"\nError: {error}\n")
+        raise error
 
     def stop(
         self, average_scores: dict[str, Numeric], project_id: str, evaluation_id: str
