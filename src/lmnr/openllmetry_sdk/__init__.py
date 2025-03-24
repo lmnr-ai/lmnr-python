@@ -17,7 +17,7 @@ from typing import Dict
 
 
 class Traceloop:
-    __tracer_wrapper: TracerWrapper
+    __tracer_wrapper: TracerWrapper = None
 
     @staticmethod
     def init(
