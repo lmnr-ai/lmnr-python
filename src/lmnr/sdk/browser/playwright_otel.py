@@ -73,7 +73,7 @@ def _wrap_new_browser_sync(
         )
         span.set_attribute("lmnr.internal.has_browser_session", True)
         _context_spans[id(context)] = span
-        with use_span(span, end_on_exit=False):
+        with use_span(span, end_on_exit=True):
             for page in context.pages:
                 trace_id = format(
                     get_current_span().get_span_context().trace_id, "032x"
@@ -95,53 +95,13 @@ async def _wrap_new_browser_async(
         )
         span.set_attribute("lmnr.internal.has_browser_session", True)
         _context_spans[id(context)] = span
-        with use_span(span, end_on_exit=False):
+        with use_span(span, end_on_exit=True):
             for page in context.pages:
                 trace_id = format(
                     get_current_span().get_span_context().trace_id, "032x"
                 )
                 await handle_navigation_async(page, session_id, trace_id, client)
     return browser
-
-
-@with_tracer_and_client_wrapper
-def _wrap_close_context_sync(
-    tracer: Tracer,
-    client: LaminarClient,
-    to_wrap,
-    wrapped,
-    instance: SyncBrowser,
-    args,
-    kwargs,
-):
-    global _context_spans
-    key = id(instance)
-    span = _context_spans.get(key)
-    if span:
-        if span.is_recording():
-            span.end()
-        _context_spans.pop(key)
-    return wrapped(*args, **kwargs)
-
-
-@with_tracer_and_client_wrapper
-async def _wrap_close_context_async(
-    tracer: Tracer,
-    client: AsyncLaminarClient,
-    to_wrap,
-    wrapped,
-    instance: Browser,
-    args,
-    kwargs,
-):
-    global _context_spans
-    key = id(instance)
-    span = _context_spans.get(key)
-    if span:
-        if span.is_recording():
-            span.end()
-        _context_spans.pop(key)
-    return await wrapped(*args, **kwargs)
 
 
 @with_tracer_and_client_wrapper

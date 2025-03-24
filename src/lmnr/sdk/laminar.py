@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 from contextvars import Context
-from lmnr.openllmetry_sdk import Traceloop
+from lmnr.openllmetry_sdk import TracerManager
 from lmnr.openllmetry_sdk.instruments import Instruments
 from lmnr.openllmetry_sdk.tracing import get_tracer
 from lmnr.openllmetry_sdk.tracing.attributes import (
@@ -141,7 +141,7 @@ class Laminar:
         #         "`pip install --upgrade lmnr`."
         #     )
 
-        Traceloop.init(
+        TracerManager.init(
             base_http_url=cls.__base_http_url,
             project_api_key=cls.__project_api_key,
             exporter=OTLPSpanExporter(
@@ -640,11 +640,11 @@ class Laminar:
 
     @classmethod
     def shutdown(cls):
-        Traceloop.flush()
+        TracerManager.flush()
 
     @classmethod
     async def shutdown_async(cls):
-        Traceloop.flush()
+        TracerManager.flush()
 
     @classmethod
     def set_session(

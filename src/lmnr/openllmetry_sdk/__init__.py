@@ -16,8 +16,8 @@ from lmnr.openllmetry_sdk.tracing.tracing import TracerWrapper
 from typing import Dict
 
 
-class Traceloop:
-    __tracer_wrapper: TracerWrapper = None
+class TracerManager:
+    __tracer_wrapper: TracerWrapper
 
     @staticmethod
     def init(
@@ -54,7 +54,7 @@ class Traceloop:
         TracerWrapper.set_static_params(
             resource_attributes, enable_content_tracing, api_endpoint, headers
         )
-        Traceloop.__tracer_wrapper = TracerWrapper(
+        TracerManager.__tracer_wrapper = TracerWrapper(
             disable_batch=disable_batch,
             processor=processor,
             propagator=propagator,
@@ -68,5 +68,5 @@ class Traceloop:
 
     @staticmethod
     def flush():
-        if Traceloop.__tracer_wrapper:
-            Traceloop.__tracer_wrapper.flush()
+        if getattr(TracerManager, "__tracer_wrapper", None):
+            TracerManager.__tracer_wrapper.flush()
