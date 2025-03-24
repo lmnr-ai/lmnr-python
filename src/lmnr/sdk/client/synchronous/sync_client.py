@@ -32,8 +32,8 @@ class LaminarClient:
 
     def __init__(
         self,
-        base_url: str,
-        project_api_key: str,
+        base_url: Optional[str] = None,
+        project_api_key: Optional[str] = None,
         port: Optional[int] = None,
         timeout: int = 350,
     ):

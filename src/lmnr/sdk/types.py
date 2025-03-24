@@ -362,7 +362,7 @@ class ModelProvider(str, Enum):
 class RunAgentRequest(pydantic.BaseModel):
     prompt: str
     state: Optional[str] = None
-    span_context: Optional[str] = None
+    parent_span_context: Optional[str] = None
     model_provider: Optional[ModelProvider] = None
     model: Optional[str] = None
     stream: bool = False
@@ -377,8 +377,8 @@ class RunAgentRequest(pydantic.BaseModel):
         }
         if self.state:
             result["state"] = self.state
-        if self.span_context:
-            result["spanContext"] = self.span_context
+        if self.parent_span_context:
+            result["parentSpanContext"] = self.parent_span_context
         if self.model_provider:
             result["modelProvider"] = self.model_provider.value
         if self.model:
