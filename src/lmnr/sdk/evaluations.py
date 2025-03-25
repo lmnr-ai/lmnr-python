@@ -1,6 +1,5 @@
 import asyncio
 import re
-import sys
 import uuid
 import dotenv
 from tqdm import tqdm
@@ -266,6 +265,7 @@ class Evaluation:
         await self._shutdown()
 
     async def _shutdown(self):
+        L.shutdown()
         await self.client.close()
         if isinstance(self.data, LaminarDataset) and self.data.client:
             self.data.client.close()

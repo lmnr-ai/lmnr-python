@@ -29,7 +29,7 @@ class AsyncLaminarClient:
         base_url: Optional[str] = None,
         project_api_key: Optional[str] = None,
         port: Optional[int] = None,
-        timeout: int = 350,
+        timeout: int = 3600,
     ):
         """Initializer for the Laminar HTTP client.
 
@@ -42,7 +42,7 @@ class AsyncLaminarClient:
                 be used.
             timeout (int, optional): global timeout seconds for the HTTP client.\
                 Applied to all httpx operations, i.e. connect, read, get_from_pool, etc.
-                Defaults to 350.
+                Defaults to 3600.
         """
         # If port is already in the base URL, use it as is
         base_url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"

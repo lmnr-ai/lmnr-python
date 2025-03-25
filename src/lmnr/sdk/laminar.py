@@ -643,10 +643,6 @@ class Laminar:
         TracerManager.flush()
 
     @classmethod
-    async def shutdown_async(cls):
-        TracerManager.flush()
-
-    @classmethod
     def set_session(
         cls,
         session_id: Optional[str] = None,
