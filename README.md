@@ -255,7 +255,7 @@ client = AsyncLaminarClient(project_api_key="<YOUR_PROJECT_API_KEY>")
 
 # Note that you need to await the operation even though we use `async for` below
 response = await client.agent.run(
-    prompt="What is the weather in London today?"
+    prompt="What is the weather in London today?",
     stream=True
 )
 async for chunk in client.agent.run(
