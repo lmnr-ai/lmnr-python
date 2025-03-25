@@ -113,7 +113,8 @@ dev = [
   "flake8",
   "pytest>=8.3.4",
   "pytest-sugar",
-  "pytest-asyncio>=0.25.2"
+  "pytest-asyncio>=0.25.2",
+  "playwright>=1.51.0"
 ]
 
 [build-system]

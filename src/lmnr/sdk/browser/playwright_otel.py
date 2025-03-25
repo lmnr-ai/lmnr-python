@@ -62,7 +62,7 @@ async def _wrap_new_page_async(
     ) as span:
         page = await wrapped(*args, **kwargs)
         session_id = str(uuid.uuid4().hex)
-        trace_id = format(get_current_span().get_span_context().trace_id, "032x")
+        trace_id = format(span.get_span_context().trace_id, "032x")
         span.set_attribute("lmnr.internal.has_browser_session", True)
         await handle_navigation_async(page, session_id, trace_id, client)
         return page
@@ -76,17 +76,16 @@ def _wrap_new_browser_sync(
     browser: SyncBrowser = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
     for context in browser.contexts:
-        if get_current_span() == INVALID_SPAN:
+        span = get_current_span()
+        if span == INVALID_SPAN:
             span = tracer.start_span(
                 name=f"{to_wrap.get('object')}.{to_wrap.get('method')}"
             )
             set_span_in_context(span, get_current())
             _context_spans[id(context)] = span
-        else:
-            span = get_current_span()
         span.set_attribute("lmnr.internal.has_browser_session", True)
         for page in context.pages:
-            trace_id = format(get_current_span().get_span_context().trace_id, "032x")
+            trace_id = format(span.get_span_context().trace_id, "032x")
             handle_navigation_sync(page, session_id, trace_id, client)
     return browser
 
@@ -99,17 +98,16 @@ async def _wrap_new_browser_async(
     browser: Browser = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
     for context in browser.contexts:
-        if get_current_span() == INVALID_SPAN:
+        span = get_current_span()
+        if span == INVALID_SPAN:
             span = tracer.start_span(
                 name=f"{to_wrap.get('object')}.{to_wrap.get('method')}"
             )
             set_span_in_context(span, get_current())
             _context_spans[id(context)] = span
-        else:
-            span = get_current_span()
         span.set_attribute("lmnr.internal.has_browser_session", True)
         for page in context.pages:
-            trace_id = format(get_current_span().get_span_context().trace_id, "032x")
+            trace_id = format(span.get_span_context().trace_id, "032x")
             await handle_navigation_async(page, session_id, trace_id, client)
     return browser
 
