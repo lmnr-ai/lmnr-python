@@ -226,7 +226,7 @@ for chunk in client.agent.run(
     prompt="What is the weather in London today?",
     stream=True
 ):
-    if chunk.chunkType = 'step':
+    if chunk.chunkType == 'step':
         print(chunk.summary)
     else if chunk.chunkType = 'finalOutput':
         print(chunk.content.result.content)
