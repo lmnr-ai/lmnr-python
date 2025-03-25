@@ -306,9 +306,15 @@ class LaminarSpanContext(pydantic.BaseModel):
     @classmethod
     def deserialize(cls, data: Union[dict[str, Any], str]) -> "LaminarSpanContext":
         if isinstance(data, dict):
-            return cls.model_validate(data)
+            # Convert camelCase to snake_case for known fields
+            converted_data = {
+                "trace_id": data.get("trace_id") or data.get("traceId"),
+                "span_id": data.get("span_id") or data.get("spanId"),
+                "is_remote": data.get("is_remote") or data.get("isRemote", False),
+            }
+            return cls.model_validate(converted_data)
         elif isinstance(data, str):
-            return cls.model_validate(json.loads(data))
+            return cls.deserialize(json.loads(data))
         else:
             raise ValueError("Invalid span_context provided")
 
