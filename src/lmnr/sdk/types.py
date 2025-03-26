@@ -401,7 +401,6 @@ class ActionResult(pydantic.BaseModel):
 
 
 class AgentOutput(pydantic.BaseModel):
-    state: str = pydantic.Field(default="")
     result: ActionResult = pydantic.Field(default_factory=ActionResult)
 
 
