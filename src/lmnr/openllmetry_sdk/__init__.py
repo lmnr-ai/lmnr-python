@@ -16,7 +16,7 @@ from lmnr.openllmetry_sdk.tracing.tracing import TracerWrapper
 from typing import Dict
 
 
-class Traceloop:
+class TracerManager:
     __tracer_wrapper: TracerWrapper
 
     @staticmethod
@@ -44,17 +44,6 @@ class Traceloop:
         if isinstance(headers, str):
             headers = parse_env_headers(headers)
 
-        if (
-            not exporter
-            and not processor
-            and api_endpoint == "https://api.lmnr.ai"
-            and not api_key
-        ):
-            print(
-                "Set the LMNR_PROJECT_API_KEY environment variable to your project API key"
-            )
-            return
-
         if api_key and not exporter and not processor and not headers:
             headers = {
                 "Authorization": f"Bearer {api_key}",
@@ -65,7 +54,7 @@ class Traceloop:
         TracerWrapper.set_static_params(
             resource_attributes, enable_content_tracing, api_endpoint, headers
         )
-        Traceloop.__tracer_wrapper = TracerWrapper(
+        TracerManager.__tracer_wrapper = TracerWrapper(
             disable_batch=disable_batch,
             processor=processor,
             propagator=propagator,
@@ -79,5 +68,5 @@ class Traceloop:
 
     @staticmethod
     def flush():
-        if Traceloop.__tracer_wrapper:
-            Traceloop.__tracer_wrapper.flush()
+        if getattr(TracerManager, "__tracer_wrapper", None):
+            TracerManager.__tracer_wrapper.flush()

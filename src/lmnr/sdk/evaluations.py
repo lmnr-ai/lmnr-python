@@ -1,19 +1,20 @@
 import asyncio
 import re
-import sys
 import uuid
+import dotenv
 from tqdm import tqdm
 from typing import Any, Awaitable, Optional, Set, Union
 
-from ..openllmetry_sdk.instruments import Instruments
-from ..openllmetry_sdk.tracing.attributes import SPAN_TYPE
+from lmnr.openllmetry_sdk.instruments import Instruments
+from lmnr.openllmetry_sdk.tracing.attributes import SPAN_TYPE
 
-from .client import LaminarClient
-from .datasets import EvaluationDataset
-from .eval_control import EVALUATION_INSTANCE, PREPARE_ONLY
-from .laminar import Laminar as L
-from .log import get_default_logger
-from .types import (
+from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
+from lmnr.sdk.client.synchronous.sync_client import LaminarClient
+from lmnr.sdk.datasets import EvaluationDataset, LaminarDataset
+from lmnr.sdk.eval_control import EVALUATION_INSTANCE, PREPARE_ONLY
+from lmnr.sdk.laminar import Laminar as L
+from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.types import (
     Datapoint,
     EvaluationResultDatapoint,
     EvaluatorFunction,
@@ -25,7 +26,7 @@ from .types import (
     SpanType,
     TraceType,
 )
-from .utils import is_async
+from lmnr.sdk.utils import from_env, is_async
 
 DEFAULT_BATCH_SIZE = 5
 MAX_EXPORT_BATCH_SIZE = 64
@@ -78,7 +79,7 @@ class EvaluationReporter:
 
     def stopWithError(self, error: Exception):
         self.cli_progress.close()
-        sys.stderr.write(f"\nError: {error}\n")
+        raise error
 
     def stop(
         self, average_scores: dict[str, Numeric], project_id: str, evaluation_id: str
@@ -175,6 +176,8 @@ class Evaluation:
                     "underscores, or spaces."
                 )
 
+        base_url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
+
         self.is_finished = False
         self.reporter = EvaluationReporter(base_url)
         if isinstance(data, list):
@@ -192,7 +195,27 @@ class Evaluation:
         self.batch_size = concurrency_limit
         self._logger = get_default_logger(self.__class__.__name__)
         self.human_evaluators = human_evaluators
-        self.upload_tasks = []  # Add this line to track upload tasks
+        self.upload_tasks = []
+        self.base_http_url = f"{base_url}:{http_port or 443}"
+
+        api_key = project_api_key
+        if not api_key:
+            dotenv_path = dotenv.find_dotenv(usecwd=True)
+            api_key = dotenv.get_key(
+                dotenv_path=dotenv_path, key_to_get="LMNR_PROJECT_API_KEY"
+            )
+        if not api_key:
+            raise ValueError(
+                "Please initialize the Laminar object with"
+                " your project API key or set the LMNR_PROJECT_API_KEY"
+                " environment variable in your environment or .env file"
+            )
+        self.project_api_key = api_key
+
+        self.client = AsyncLaminarClient(
+            base_url=self.base_http_url,
+            project_api_key=self.project_api_key,
+        )
         L.initialize(
             project_api_key=project_api_key,
             base_url=base_url,
@@ -209,9 +232,16 @@ class Evaluation:
         return await self._run()
 
     async def _run(self) -> None:
+        if isinstance(self.data, LaminarDataset):
+            self.data.set_client(
+                LaminarClient(
+                    self.base_http_url,
+                    self.project_api_key,
+                )
+            )
         self.reporter.start(len(self.data))
         try:
-            evaluation = await LaminarClient.init_eval(
+            evaluation = await self.client._evals.init(
                 name=self.name, group_name=self.group_name
             )
             result_datapoints = await self._evaluate_in_batches(evaluation.id)
@@ -226,12 +256,19 @@ class Evaluation:
         except Exception as e:
             self.reporter.stopWithError(e)
             self.is_finished = True
+            await self._shutdown()
             return
 
         average_scores = get_average_scores(result_datapoints)
         self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
         self.is_finished = True
-        await LaminarClient.shutdown_async()
+        await self._shutdown()
+
+    async def _shutdown(self):
+        L.shutdown()
+        await self.client.close()
+        if isinstance(self.data, LaminarDataset) and self.data.client:
+            self.data.client.close()
 
     async def _evaluate_in_batches(
         self, eval_id: uuid.UUID
@@ -285,7 +322,7 @@ class Evaluation:
                     executor_span_id=executor_span_id,
                 )
                 # First, create datapoint with trace_id so that we can show the dp in the UI
-                await LaminarClient.save_eval_datapoints(
+                await self.client._evals.save_datapoints(
                     eval_id, [partial_datapoint], self.group_name
                 )
                 executor_span.set_attribute(SPAN_TYPE, SpanType.EXECUTOR.value)
@@ -342,7 +379,7 @@ class Evaluation:
 
         # Create background upload task without awaiting it
         upload_task = asyncio.create_task(
-            LaminarClient.save_eval_datapoints(eval_id, [datapoint], self.group_name)
+            self.client._evals.save_datapoints(eval_id, [datapoint], self.group_name)
         )
         self.upload_tasks.append(upload_task)
 
@@ -355,7 +392,6 @@ def evaluate(
     evaluators: dict[str, EvaluatorFunction],
     human_evaluators: list[HumanEvaluator] = [],
     name: Optional[str] = None,
-    group_id: Optional[str] = None,  # Deprecated
     group_name: Optional[str] = None,
     concurrency_limit: int = DEFAULT_BATCH_SIZE,
     project_api_key: Optional[str] = None,
@@ -399,11 +435,6 @@ def evaluate(
             Used to identify the evaluation in the group. If not provided, a\
             random name will be generated.
             Defaults to None.
-        group_id (Optional[str], optional): [DEPRECATED] Use group_name instead.
-                        An identifier to group evaluations.\
-                        Only evaluations within the same group_id can be\
-                        visually compared. If not provided, set to "default".
-                        Defaults to None
         group_name (Optional[str], optional): An identifier to group evaluations.\
             Only evaluations within the same group_name can be visually compared.\
             If not provided, set to "default".
@@ -429,11 +460,6 @@ def evaluate(
         trace_export_timeout_seconds (Optional[int], optional): The timeout for\
                         trace export on OpenTelemetry exporter. Defaults to None.
     """
-    if group_id:
-        raise DeprecationWarning("group_id is deprecated. Use group_name instead.")
-
-    group_name = group_name or group_id
-
     evaluation = Evaluation(
         data=data,
         executor=executor,

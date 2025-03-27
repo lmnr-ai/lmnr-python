@@ -1,13 +1,12 @@
 from contextlib import contextmanager
 from contextvars import Context
-from lmnr.openllmetry_sdk import Traceloop
+from lmnr.openllmetry_sdk import TracerManager
 from lmnr.openllmetry_sdk.instruments import Instruments
 from lmnr.openllmetry_sdk.tracing import get_tracer
 from lmnr.openllmetry_sdk.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     Attributes,
     SPAN_TYPE,
-    OVERRIDE_PARENT_SPAN,
 )
 from lmnr.openllmetry_sdk.config import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 from lmnr.openllmetry_sdk.decorators.base import json_dumps
@@ -20,19 +19,14 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
 from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
 from opentelemetry.util.types import AttributeValue
 
-from typing import Any, Awaitable, Literal, Optional, Set, Union
+from typing import Any, Literal, Optional, Set, Union
 
-import atexit
 import copy
 import datetime
-import dotenv
-import json
 import logging
 import os
-import random
 import re
 import uuid
-import warnings
 
 from lmnr.openllmetry_sdk.tracing.attributes import (
     SESSION_ID,
@@ -46,15 +40,12 @@ from lmnr.openllmetry_sdk.tracing.tracing import (
     set_association_properties,
     update_association_properties,
 )
-from lmnr.sdk.client import LaminarClient
+from lmnr.sdk.utils import from_env
 
 from .log import VerboseColorfulFormatter
 
 from .types import (
     LaminarSpanContext,
-    PipelineRunResponse,
-    NodeInput,
-    SemanticSearchResponse,
     TraceType,
     TracingLevel,
 )
@@ -64,14 +55,12 @@ class Laminar:
     __base_http_url: str
     __base_grpc_url: str
     __project_api_key: Optional[str] = None
-    __env: dict[str, str] = {}
     __initialized: bool = False
 
     @classmethod
     def initialize(
         cls,
         project_api_key: Optional[str] = None,
-        env: dict[str, str] = {},
         base_url: Optional[str] = None,
         http_port: Optional[int] = None,
         grpc_port: Optional[int] = None,
@@ -92,10 +81,6 @@ class Laminar:
                             LMNR_PROJECT_API_KEY environment variable\
                             in os.environ or in .env file.
                             Defaults to None.
-            env (dict[str, str], optional): Default environment passed to\
-                            `run` requests, unless overriden at request time.\
-                            Usually, model provider keys are stored here.
-                            Defaults to {}.
             base_url (Optional[str], optional): Laminar API url. Do NOT include\
                             the port number, use `http_port` and `grpc_port`.\
                             If not specified, defaults to https://api.lmnr.ai.
@@ -119,38 +104,31 @@ class Laminar:
         Raises:
             ValueError: If project API key is not set
         """
-        cls.__project_api_key = project_api_key or os.environ.get(
-            "LMNR_PROJECT_API_KEY"
-        )
-        if not cls.__project_api_key:
-            dotenv_path = dotenv.find_dotenv(usecwd=True)
-            cls.__project_api_key = dotenv.get_key(
-                dotenv_path=dotenv_path, key_to_get="LMNR_PROJECT_API_KEY"
-            )
+        cls.__project_api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
         if not cls.__project_api_key:
             raise ValueError(
                 "Please initialize the Laminar object with"
                 " your project API key or set the LMNR_PROJECT_API_KEY"
                 " environment variable in your environment or .env file"
             )
-        url = re.sub(r"/$", "", base_url or "https://api.lmnr.ai")
-        if re.search(r":\d{1,5}$", url):
-            raise ValueError(
-                "Please provide the `base_url` without the port number. "
-                "Use the `http_port` and `grpc_port` arguments instead."
-            )
+
+        cls._initialize_logger()
+
+        url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
+        url = url.rstrip("/")
+        if match := re.search(r":(\d{1,5})$", url):
+            url = url[: -len(match.group(0))]
+            if http_port is None:
+                cls.__logger.info(f"Using HTTP port from base URL: {match.group(1)}")
+                http_port = int(match.group(1))
+            else:
+                cls.__logger.info(f"Using HTTP port passed as an argument: {http_port}")
+
         cls.__base_http_url = f"{url}:{http_port or 443}"
         cls.__base_grpc_url = f"{url}:{grpc_port or 8443}"
 
-        cls.__env = env
         cls.__initialized = True
-        cls._initialize_logger()
-        LaminarClient.initialize(
-            base_url=cls.__base_http_url,
-            project_api_key=cls.__project_api_key,
-        )
-        atexit.register(LaminarClient.shutdown)
-        if not os.environ.get("OTEL_ATTRIBUTE_COUNT_LIMIT"):
+        if not os.getenv("OTEL_ATTRIBUTE_COUNT_LIMIT"):
             # each message is at least 2 attributes: role and content,
             # but the default attribute limit is 128, so raise it
             os.environ["OTEL_ATTRIBUTE_COUNT_LIMIT"] = "10000"
@@ -163,7 +141,7 @@ class Laminar:
         #         "`pip install --upgrade lmnr`."
         #     )
 
-        Traceloop.init(
+        TracerManager.init(
             base_http_url=cls.__base_http_url,
             project_api_key=cls.__project_api_key,
             exporter=OTLPSpanExporter(
@@ -194,83 +172,6 @@ class Laminar:
         console_log_handler = logging.StreamHandler()
         console_log_handler.setFormatter(VerboseColorfulFormatter())
         cls.__logger.addHandler(console_log_handler)
-
-    @classmethod
-    def run(
-        cls,
-        pipeline: str,
-        inputs: dict[str, NodeInput],
-        env: dict[str, str] = {},
-        metadata: dict[str, str] = {},
-        parent_span_id: Optional[uuid.UUID] = None,
-        trace_id: Optional[uuid.UUID] = None,
-    ) -> Union[PipelineRunResponse, Awaitable[PipelineRunResponse]]:
-        """Runs the pipeline with the given inputs. If called from an async
-        function, must be awaited.
-
-        Args:
-            pipeline (str): name of the Laminar pipeline.\
-                The pipeline must have a target version set.
-            inputs (dict[str, NodeInput]):
-                inputs to the endpoint's target pipeline.\
-                Keys in the dictionary must match input node names
-            env (dict[str, str], optional):
-                Environment variables for the pipeline execution.
-                Defaults to {}.
-            metadata (dict[str, str], optional):
-                any custom metadata to be stored with execution trace.
-                Defaults to {}.
-            parent_span_id (Optional[uuid.UUID], optional): parent span id for\
-                the resulting span.
-                Defaults to None.
-            trace_id (Optional[uuid.UUID], optional): trace id for the\
-                resulting trace.
-                Defaults to None.
-
-        Returns:
-            PipelineRunResponse: response object containing the outputs
-
-        Raises:
-            ValueError: if project API key is not set
-            PipelineRunError: if the endpoint run fails
-        """
-        return LaminarClient.run_pipeline(
-            pipeline=pipeline,
-            inputs=inputs,
-            env=env or cls.__env,
-            metadata=metadata,
-            parent_span_id=parent_span_id,
-            trace_id=trace_id,
-        )
-
-    @classmethod
-    def semantic_search(
-        cls,
-        query: str,
-        dataset_id: uuid.UUID,
-        limit: Optional[int] = None,
-        threshold: Optional[float] = None,
-    ) -> SemanticSearchResponse:
-        """Perform a semantic search on a dataset. If called from an async
-        function, must be awaited.
-
-        Args:
-            query (str): query string to search by
-            dataset_id (uuid.UUID): id of the dataset to search in
-            limit (Optional[int], optional): maximum number of results to\
-                return. Defaults to None.
-            threshold (Optional[float], optional): minimum score for a result\
-                to be returned. Defaults to None.
-
-        Returns:
-            SemanticSearchResponse: response object containing the search results sorted by score in descending order
-        """
-        return LaminarClient.semantic_search(
-            query=query,
-            dataset_id=dataset_id,
-            limit=limit,
-            threshold=threshold,
-        )
 
     @classmethod
     def event(
@@ -326,8 +227,6 @@ class Laminar:
         context: Optional[Context] = None,
         labels: Optional[list[str]] = None,
         parent_span_context: Optional[LaminarSpanContext] = None,
-        # deprecated, use parent_span_context instead
-        trace_id: Optional[uuid.UUID] = None,
     ):
         """Start a new span as the current span. Useful for manual
         instrumentation. If `span_type` is set to `"LLM"`, you should report
@@ -362,9 +261,6 @@ class Laminar:
                 Defaults to None.
             labels (Optional[list[str]], optional): labels to set for the\
                 span. Defaults to None.
-            trace_id (Optional[uuid.UUID], optional): [Deprecated] override\
-                the trace id for the span. If not provided, use the current\
-                trace id. Defaults to None.
         """
 
         if not cls.is_initialized():
@@ -379,26 +275,9 @@ class Laminar:
 
         with get_tracer() as tracer:
             ctx = context or context_api.get_current()
-            if trace_id is not None:
-                warnings.warn(
-                    "trace_id provided to `Laminar.start_as_current_span`"
-                    " is deprecated, use parent_span_context instead",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
             if parent_span_context is not None:
                 span_context = LaminarSpanContext.try_to_otel_span_context(
                     parent_span_context, cls.__logger
-                )
-                ctx = trace.set_span_in_context(
-                    trace.NonRecordingSpan(span_context), ctx
-                )
-            elif trace_id is not None and isinstance(trace_id, uuid.UUID):
-                span_context = trace.SpanContext(
-                    trace_id=int(trace_id),
-                    span_id=random.getrandbits(64),
-                    is_remote=False,
-                    trace_flags=trace.TraceFlags(trace.TraceFlags.SAMPLED),
                 )
                 ctx = trace.set_span_in_context(
                     trace.NonRecordingSpan(span_context), ctx
@@ -421,8 +300,6 @@ class Laminar:
                     **(label_props),
                 },
             ) as span:
-                if trace_id is not None and isinstance(trace_id, uuid.UUID):
-                    span.set_attribute(OVERRIDE_PARENT_SPAN, True)
                 if input is not None:
                     serialized_input = json_dumps(input)
                     if len(serialized_input) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
@@ -493,8 +370,6 @@ class Laminar:
         context: Optional[Context] = None,
         parent_span_context: Optional[LaminarSpanContext] = None,
         labels: Optional[dict[str, str]] = None,
-        # deprecated, use parent_span_context instead
-        trace_id: Optional[uuid.UUID] = None,
     ):
         """Start a new span. Useful for manual instrumentation.
         If `span_type` is set to `"LLM"`, you should report usage and response
@@ -548,9 +423,6 @@ class Laminar:
                 Defaults to None.
             labels (Optional[dict[str, str]], optional): labels to set for the\
                 span. Defaults to None.
-            trace_id (Optional[uuid.UUID], optional): Deprecated, use\
-                `parent_span_context` instead. If provided, it will be used to\
-                set the trace id for the span.
         """
         if not cls.is_initialized():
             return trace.NonRecordingSpan(
@@ -563,26 +435,9 @@ class Laminar:
 
         with get_tracer() as tracer:
             ctx = context or context_api.get_current()
-            if trace_id is not None:
-                warnings.warn(
-                    "trace_id provided to `Laminar.start_span`"
-                    " is deprecated, use parent_span_context instead",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
             if parent_span_context is not None:
                 span_context = LaminarSpanContext.try_to_otel_span_context(
                     parent_span_context, cls.__logger
-                )
-                ctx = trace.set_span_in_context(
-                    trace.NonRecordingSpan(span_context), ctx
-                )
-            elif trace_id is not None and isinstance(trace_id, uuid.UUID):
-                span_context = trace.SpanContext(
-                    trace_id=int(trace_id),
-                    span_id=random.getrandbits(64),
-                    is_remote=False,
-                    trace_flags=trace.TraceFlags(trace.TraceFlags.SAMPLED),
                 )
                 ctx = trace.set_span_in_context(
                     trace.NonRecordingSpan(span_context), ctx
@@ -606,8 +461,6 @@ class Laminar:
                     **(label_props),
                 },
             )
-            if trace_id is not None and isinstance(trace_id, uuid.UUID):
-                span.set_attribute(OVERRIDE_PARENT_SPAN, True)
             if input is not None:
                 serialized_input = json_dumps(input)
                 if len(serialized_input) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
@@ -743,7 +596,7 @@ class Laminar:
         span_context = cls.get_laminar_span_context(span)
         if span_context is None:
             return None
-        return span_context.to_dict()
+        return span_context.model_dump()
 
     @classmethod
     def serialize_span_context(cls, span: Optional[trace.Span] = None) -> Optional[str]:
@@ -777,7 +630,7 @@ class Laminar:
         span_context = cls.get_laminar_span_context(span)
         if span_context is None:
             return None
-        return json.dumps(span_context.to_dict())
+        return str(span_context)
 
     @classmethod
     def deserialize_span_context(
@@ -787,13 +640,7 @@ class Laminar:
 
     @classmethod
     def shutdown(cls):
-        Traceloop.flush()
-        LaminarClient.shutdown()
-
-    @classmethod
-    async def shutdown_async(cls):
-        Traceloop.flush()
-        await LaminarClient.shutdown_async()
+        TracerManager.flush()
 
     @classmethod
     def set_session(

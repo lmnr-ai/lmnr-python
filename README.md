@@ -35,7 +35,28 @@ from lmnr import Laminar
 Laminar.initialize(project_api_key="<PROJECT_API_KEY>")
 ```
 
-Note that you need to only initialize Laminar once in your application.
+You can also skip passing the `project_api_key`, in which case it will be looked
+in the environment (or local .env file) by the key `LMNR_PROJECT_API_KEY`.
+
+Note that you need to only initialize Laminar once in your application. You should
+try to do that as early as possible in your application, e.g. at server startup.
+
+## Set-up for self-hosting
+
+If you self-host a Laminar instance, the default connection settings to it are
+`http://localhost:8000` for HTTP and `http://localhost:8001` for gRPC. Initialize
+the SDK accordingly:
+
+```python
+from lmnr import Laminar
+
+Laminar.initialize(
+    project_api_key="<PROJECT_API_KEY>",
+    base_url="http://localhost",
+    http_port=8000,
+    grpc_port=8001,
+)
+```
 
 ## Instrumentation
 
@@ -171,49 +192,78 @@ You can run evaluations locally by providing executor (part of the logic used in
 
 Read the [docs](https://docs.lmnr.ai/evaluations/introduction) to learn more about evaluations.
 
-## Laminar pipelines as prompt chain managers
+## Client for HTTP operations
 
-You can create Laminar pipelines in the UI and manage chains of LLM calls there.
+Various interactions with Laminar [API](https://docs.lmnr.ai/api-reference/) are available in `LaminarClient`
+and its asynchronous version `AsyncLaminarClient`.
 
-After you are ready to use your pipeline in your code, deploy it in Laminar by selecting the target version for the pipeline.
+### Agent
 
-Once your pipeline target is set, you can call it from Python in just a few lines.
-
-Example use:
-
-```python
-from lmnr import Laminar
-
-Laminar.initialize('<YOUR_PROJECT_API_KEY>', instruments=set())
-
-result = Laminar.run(
-    pipeline = 'my_pipeline_name',
-    inputs = {'input_node_name': 'some_value'},
-    # all environment variables
-    env = {'OPENAI_API_KEY': 'sk-some-key'},
-)
-```
-
-Resulting in:
+To run Laminar agent, you can invoke `client.agent.run`
 
 ```python
->>> result
-PipelineRunResponse(
-    outputs={'output': {'value': [ChatMessage(role='user', content='hello')]}},
-    # useful to locate your trace
-    run_id='53b012d5-5759-48a6-a9c5-0011610e3669'
+from lmnr import LaminarClient
+
+client = LaminarClient(project_api_key="<YOUR_PROJECT_API_KEY>")
+
+response = client.agent.run(
+    prompt="What is the weather in London today?"
 )
+
+print(response.result.content)
 ```
 
-## Semantic search
+#### Streaming
 
-You can perform a semantic search on a dataset in Laminar by calling `Laminar.semantic_search`.
+Agent run supports streaming as well.
 
 ```python
-response = Laminar.semantic_search(
-    query="Greatest Chinese architectural wonders",
-    dataset_id=uuid.UUID("413f8404-724c-4aa4-af16-714d84fd7958"),
-)
+from lmnr import LaminarClient
+
+client = LaminarClient(project_api_key="<YOUR_PROJECT_API_KEY>")
+
+for chunk in client.agent.run(
+    prompt="What is the weather in London today?",
+    stream=True
+):
+    if chunk.chunkType == 'step':
+        print(chunk.summary)
+    elif chunk.chunkType == 'finalOutput':
+        print(chunk.content.result.content)
 ```
 
-[Read more](https://docs.lmnr.ai/datasets/indexing) about indexing and semantic search.
+#### Async mode
+
+```python
+from lmnr import AsyncLaminarClient
+
+client = AsyncLaminarClient(project_api_key="<YOUR_PROJECT_API_KEY>")
+
+response = await client.agent.run(
+    prompt="What is the weather in London today?"
+)
+
+print(response.result.content)
+```
+
+#### Async mode with streaming
+
+```python
+from lmnr import AsyncLaminarClient
+
+client = AsyncLaminarClient(project_api_key="<YOUR_PROJECT_API_KEY>")
+
+# Note that you need to await the operation even though we use `async for` below
+response = await client.agent.run(
+    prompt="What is the weather in London today?",
+    stream=True
+)
+async for chunk in client.agent.run(
+    prompt="What is the weather in London today?",
+    stream=True
+):
+    if chunk.chunkType == 'step':
+        print(chunk.summary)
+    else if chunk.chunkType == 'finalOutput':
+        print(chunk.content.result.content)
+```

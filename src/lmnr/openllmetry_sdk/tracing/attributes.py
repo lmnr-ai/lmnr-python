@@ -9,7 +9,6 @@ SPAN_IDS_PATH = "lmnr.span.ids_path"
 SPAN_INSTRUMENTATION_SOURCE = "lmnr.span.instrumentation_source"
 SPAN_SDK_VERSION = "lmnr.span.sdk_version"
 SPAN_LANGUAGE_VERSION = "lmnr.span.language_version"
-OVERRIDE_PARENT_SPAN = "lmnr.internal.override_parent_span"
 
 ASSOCIATION_PROPERTIES = "lmnr.association.properties"
 SESSION_ID = "session_id"

@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.4.66"
+version = "0.5.0"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -16,20 +16,18 @@ requires-python = ">=3.9,<4"
 license = "Apache-2.0"
 dependencies = [
   "pydantic (>=2.0.3)",
-  "requests (>=2.0)",
   "python-dotenv (>=1.0)",
-  "opentelemetry-api (>=1.28.0)",
-  "opentelemetry-sdk (>=1.28.0)",
-  "opentelemetry-exporter-otlp-proto-http (>=1.28.0)",
-  "opentelemetry-exporter-otlp-proto-grpc (>=1.28.0)",
-  "opentelemetry-instrumentation-requests (>=0.50b0)",
-  "opentelemetry-instrumentation-sqlalchemy (>=0.50b0)",
-  "opentelemetry-instrumentation-urllib3 (>=0.50b0)",
-  "opentelemetry-instrumentation-threading (>=0.50b0)",
+  "opentelemetry-api (>=1.31.1)",
+  "opentelemetry-sdk (>=1.31.1)",
+  "opentelemetry-exporter-otlp-proto-http (>=1.31.1)",
+  "opentelemetry-exporter-otlp-proto-grpc (>=1.31.1)",
+  "opentelemetry-instrumentation-requests (>=0.52b0)",
+  "opentelemetry-instrumentation-sqlalchemy (>=0.52b0)",
+  "opentelemetry-instrumentation-urllib3 (>=0.52b0)",
+  "opentelemetry-instrumentation-threading (>=0.52b0)",
   "opentelemetry-semantic-conventions-ai (>=0.4.2)",
   "tqdm (>=4.0)",
   "argparse (>=1.0)",
-  "aiohttp (>=3.0)",
   "tenacity (>=8.0)",
   # explicitly freeze grpcio. Since 1.68.0, grpcio writes a warning message
   # that looks scary, but is harmless.
@@ -40,6 +38,7 @@ dependencies = [
   # https://discuss.ai.google.dev/t/warning-all-log-messages-before-absl-initializelog-is-called-are-written-to-stderr-e0000-001731955515-629532-17124-init-cc-229-grpc-wait-for-shutdown-with-timeout-timed-out/50020
   # https://github.com/grpc/grpc/issues/38490
   "grpcio<1.68.0",
+  "httpx>=0.28.1",
 ]
 
 [project.scripts]
@@ -114,7 +113,8 @@ dev = [
   "flake8",
   "pytest>=8.3.4",
   "pytest-sugar",
-  "pytest-asyncio>=0.25.2"
+  "pytest-asyncio>=0.25.2",
+  "playwright>=1.51.0"
 ]
 
 [build-system]

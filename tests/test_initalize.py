@@ -25,8 +25,3 @@ def test_initialize_rejects_no_project_api_key():
 
     if old_project_api_key:
         os.environ["LMNR_PROJECT_API_KEY"] = old_project_api_key
-
-
-def test_initialize_rejects_port_in_base_url():
-    with pytest.raises(ValueError):
-        Laminar.initialize(base_url="http://localhost:443")

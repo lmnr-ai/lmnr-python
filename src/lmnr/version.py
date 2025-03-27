@@ -1,15 +1,15 @@
 import sys
-import requests
+import httpx
 from packaging import version
 
 
-SDK_VERSION = "0.4.66"
+__version__ = "0.5.0"
 PYTHON_VERSION = f"{sys.version_info.major}.{sys.version_info.minor}"
 
 
 def is_latest_version() -> bool:
     try:
-        return version.parse(SDK_VERSION) >= version.parse(get_latest_pypi_version())
+        return version.parse(__version__) >= version.parse(get_latest_pypi_version())
     except Exception:
         return True
 
@@ -20,7 +20,7 @@ def get_latest_pypi_version() -> str:
     Returns the version string or raises an exception if unable to fetch.
     """
     try:
-        response = requests.get("https://pypi.org/pypi/lmnr/json")
+        response = httpx.get("https://pypi.org/pypi/lmnr/json")
         response.raise_for_status()
 
         releases = response.json()["releases"]
@@ -35,7 +35,7 @@ def get_latest_pypi_version() -> str:
         if not stable_versions:
             # do not scare the user, assume they are on
             # latest version
-            return SDK_VERSION
+            return __version__
 
         latest_version = max(stable_versions, key=version.parse)
         return latest_version
@@ -43,4 +43,4 @@ def get_latest_pypi_version() -> str:
     except Exception:
         # do not scare the user, assume they are on
         # latest version
-        return SDK_VERSION
+        return __version__

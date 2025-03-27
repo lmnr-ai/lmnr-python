@@ -1,8 +1,10 @@
 import asyncio
 import datetime
 import dataclasses
+import dotenv
 import enum
 import inspect
+import os
 import pydantic
 import queue
 import typing
@@ -97,3 +99,11 @@ def get_input_from_func_args(
         if i < len(func_args):
             res[k] = func_args[i]
     return res
+
+
+def from_env(key: str) -> typing.Optional[str]:
+    if val := os.getenv(key):
+        return val
+    dotenv_path = dotenv.find_dotenv(usecwd=True)
+    # use DotEnv directly so we can set verbose to False
+    return dotenv.main.DotEnv(dotenv_path, verbose=False, encoding="utf-8").get(key)

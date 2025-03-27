@@ -4,6 +4,8 @@ import logging
 import uuid
 
 from contextvars import Context
+from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
+from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.log import VerboseColorfulFormatter
 from lmnr.openllmetry_sdk.instruments import Instruments
 from lmnr.openllmetry_sdk.tracing.attributes import (
@@ -41,7 +43,7 @@ from opentelemetry.trace import get_tracer_provider, ProxyTracerProvider
 
 from typing import Dict, Optional, Set
 
-from lmnr.version import SDK_VERSION, PYTHON_VERSION
+from lmnr.version import __version__, PYTHON_VERSION
 
 module_logger = logging.getLogger(__name__)
 console_log_handler = logging.StreamHandler()
@@ -80,6 +82,8 @@ class TracerWrapper(object):
     __logger: logging.Logger = None
     __span_id_to_path: dict[int, list[str]] = {}
     __span_id_lists: dict[int, list[str]] = {}
+    __client: LaminarClient = None
+    __async_client: AsyncLaminarClient = None
 
     def __new__(
         cls,
@@ -98,6 +102,15 @@ class TracerWrapper(object):
             obj = cls.instance = super(TracerWrapper, cls).__new__(cls)
             if not TracerWrapper.endpoint:
                 return obj
+
+            obj.__client = LaminarClient(
+                base_url=base_http_url,
+                project_api_key=project_api_key,
+            )
+            obj.__async_client = AsyncLaminarClient(
+                base_url=base_http_url,
+                project_api_key=project_api_key,
+            )
 
             obj.__resource = Resource(attributes=TracerWrapper.resource_attributes)
             obj.__tracer_provider = init_tracer_provider(resource=obj.__resource)
@@ -135,8 +148,8 @@ class TracerWrapper(object):
             instrument_set = init_instrumentations(
                 should_enrich_metrics,
                 instruments,
-                base_http_url=base_http_url,
-                project_api_key=project_api_key,
+                client=obj.__client,
+                async_client=obj.__async_client,
             )
 
             if not instrument_set:
@@ -184,7 +197,7 @@ class TracerWrapper(object):
         self.__span_id_lists[span.get_span_context().span_id] = span_ids_path
 
         span.set_attribute(SPAN_INSTRUMENTATION_SOURCE, "python")
-        span.set_attribute(SPAN_SDK_VERSION, SDK_VERSION)
+        span.set_attribute(SPAN_SDK_VERSION, __version__)
         span.set_attribute(SPAN_LANGUAGE_VERSION, f"python@{PYTHON_VERSION}")
 
         association_properties = get_value("association_properties")
@@ -320,8 +333,8 @@ def init_instrumentations(
     should_enrich_metrics: bool,
     instruments: Optional[Set[Instruments]] = None,
     block_instruments: Optional[Set[Instruments]] = None,
-    base_http_url: Optional[str] = None,
-    project_api_key: Optional[str] = None,
+    client: Optional[LaminarClient] = None,
+    async_client: Optional[AsyncLaminarClient] = None,
 ):
     block_instruments = block_instruments or set()
     # These libraries are not instrumented by default,
@@ -434,7 +447,7 @@ def init_instrumentations(
             if init_weaviate_instrumentor():
                 instrument_set = True
         elif instrument == Instruments.PLAYWRIGHT:
-            if init_playwright_instrumentor():
+            if init_playwright_instrumentor(client, async_client):
                 instrument_set = True
         elif instrument == Instruments.BROWSER_USE:
             if init_browser_use_instrumentor():
@@ -465,12 +478,14 @@ def init_browser_use_instrumentor():
         return False
 
 
-def init_playwright_instrumentor():
+def init_playwright_instrumentor(
+    client: LaminarClient, async_client: AsyncLaminarClient
+):
     try:
         if is_package_installed("playwright"):
             from lmnr.sdk.browser.playwright_otel import PlaywrightInstrumentor
 
-            instrumentor = PlaywrightInstrumentor()
+            instrumentor = PlaywrightInstrumentor(client, async_client)
             instrumentor.instrument()
         return True
     except Exception as e:
