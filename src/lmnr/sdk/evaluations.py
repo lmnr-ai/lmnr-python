@@ -482,6 +482,6 @@ def evaluate(
     else:
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            return loop.run_until_complete(evaluation.run())
+            return evaluation.run()
         else:
             return asyncio.run(evaluation.run())
