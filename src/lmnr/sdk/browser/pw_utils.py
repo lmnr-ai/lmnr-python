@@ -36,7 +36,7 @@ INJECT_PLACEHOLDER = """
 () => {
     const BATCH_SIZE = 1000;  // Maximum events to store in memory
     
-    window.lmnrRrwebEventsBatch = [];
+    window.lmnrRrwebEventsBatch = new Set();
     
     // Utility function to compress individual event data
     async function compressEventData(data) {
@@ -50,8 +50,8 @@ INJECT_PLACEHOLDER = """
     
     window.lmnrGetAndClearEvents = () => {
         const events = window.lmnrRrwebEventsBatch;
-        window.lmnrRrwebEventsBatch = [];
-        return events;
+        window.lmnrRrwebEventsBatch = new Set();
+        return Array.from(events);
     };
 
     // Add heartbeat events
@@ -62,11 +62,11 @@ INJECT_PLACEHOLDER = """
             timestamp: Date.now()
         };
         
-        window.lmnrRrwebEventsBatch.push(heartbeat);
+        window.lmnrRrwebEventsBatch.add(heartbeat);
         
         // Prevent memory issues by limiting batch size
-        if (window.lmnrRrwebEventsBatch.length > BATCH_SIZE) {
-            window.lmnrRrwebEventsBatch = window.lmnrRrwebEventsBatch.slice(-BATCH_SIZE);
+        if (window.lmnrRrwebEventsBatch.size > BATCH_SIZE) {
+            window.lmnrRrwebEventsBatch = new Set(Array.from(window.lmnrRrwebEventsBatch).slice(-BATCH_SIZE));
         }
     }, 1000);
 
@@ -81,7 +81,7 @@ INJECT_PLACEHOLDER = """
                 ...event,
                 data: await compressEventData(event.data)
             };
-            window.lmnrRrwebEventsBatch.push(compressedEvent);
+            window.lmnrRrwebEventsBatch.add(compressedEvent);
         }
     });
 }
