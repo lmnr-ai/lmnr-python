@@ -35,6 +35,7 @@ class AsyncAgent(BaseAsyncResource):
         model_provider: Optional[ModelProvider] = None,
         model: Optional[str] = None,
         enable_thinking: bool = True,
+        return_screenshots: bool = False,
     ) -> AsyncIterator[RunAgentResponseChunk]:
         """Run Laminar index agent in streaming mode.
 
@@ -45,7 +46,7 @@ class AsyncAgent(BaseAsyncResource):
             model_provider (Optional[ModelProvider], optional): LLM model provider
             model (Optional[str], optional): LLM model name
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
-
+            return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
         Returns:
             AsyncIterator[RunAgentResponseChunk]: a generator of response chunks
         """
@@ -59,6 +60,7 @@ class AsyncAgent(BaseAsyncResource):
         model_provider: Optional[ModelProvider] = None,
         model: Optional[str] = None,
         enable_thinking: bool = True,
+        return_screenshots: bool = False,
     ) -> AgentOutput:
         """Run Laminar index agent.
 
@@ -68,7 +70,7 @@ class AsyncAgent(BaseAsyncResource):
             model_provider (Optional[ModelProvider], optional): LLM model provider
             model (Optional[str], optional): LLM model name
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
-
+            return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
         Returns:
             AgentOutput: agent output
         """
@@ -83,6 +85,7 @@ class AsyncAgent(BaseAsyncResource):
         model: Optional[str] = None,
         stream: Literal[False] = False,
         enable_thinking: bool = True,
+        return_screenshots: bool = False,
     ) -> AgentOutput:
         """Run Laminar index agent.
 
@@ -93,7 +96,7 @@ class AsyncAgent(BaseAsyncResource):
             model (Optional[str], optional): LLM model name
             stream (Literal[False], optional): whether to stream the agent's response
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
-
+            return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
         Returns:
             AgentOutput: agent output
         """
@@ -107,6 +110,7 @@ class AsyncAgent(BaseAsyncResource):
         model: Optional[str] = None,
         stream: bool = False,
         enable_thinking: bool = True,
+        return_screenshots: bool = False,
     ) -> Union[AgentOutput, Awaitable[AsyncIterator[RunAgentResponseChunk]]]:
         """Run Laminar index agent.
 
@@ -117,7 +121,7 @@ class AsyncAgent(BaseAsyncResource):
             model (Optional[str], optional): LLM model name
             stream (bool, optional): whether to stream the agent's response
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
-
+            return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
         Returns:
             Union[AgentOutput, AsyncIterator[RunAgentResponseChunk]]: agent output or a generator of response chunks
         """
@@ -146,6 +150,7 @@ class AsyncAgent(BaseAsyncResource):
             # https://aws.amazon.com/blogs/networking-and-content-delivery/introducing-nlb-tcp-configurable-idle-timeout/
             stream=True,
             enable_thinking=enable_thinking,
+            return_screenshots=return_screenshots,
         )
 
         # For streaming case, use a generator function
@@ -181,6 +186,7 @@ class AsyncAgent(BaseAsyncResource):
                 line = line[6:]
                 if line:
                     chunk = RunAgentResponseChunk.model_validate_json(line)
+                    print(line)
                     yield chunk.root
 
     async def __run_non_streaming(self, request: RunAgentRequest) -> AgentOutput:

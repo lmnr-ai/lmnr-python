@@ -35,15 +35,13 @@ MAX_EXPORT_BATCH_SIZE = 64
 def get_evaluation_url(
     project_id: str, evaluation_id: str, base_url: Optional[str] = None
 ):
-    if not base_url:
+    if not base_url or base_url == "https://api.lmnr.ai":
         base_url = "https://www.lmnr.ai"
 
     url = base_url
-    if url.endswith("/"):
-        url = url[:-1]
+    url = re.sub(r"\/$", "", url)
     if url.endswith("localhost") or url.endswith("127.0.0.1"):
-        # We best effort assume that the frontend is running on port 3000
-        # TODO: expose the frontend port?
+        # We best effort assume that the frontend is running on port 5667
         url = url + ":5667"
     return f"{url}/project/{project_id}/evaluations/{evaluation_id}"
 
