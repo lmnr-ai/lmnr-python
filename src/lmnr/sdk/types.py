@@ -367,19 +367,21 @@ class ModelProvider(str, Enum):
 
 class RunAgentRequest(pydantic.BaseModel):
     prompt: str
-    state: Optional[str] = None
-    parent_span_context: Optional[str] = None
-    model_provider: Optional[ModelProvider] = None
-    model: Optional[str] = None
-    stream: bool = False
-    enable_thinking: bool = True
-    cdp_url: Optional[str] = None
+    state: Optional[str] = pydantic.Field(default=None)
+    parent_span_context: Optional[str] = pydantic.Field(default=None)
+    model_provider: Optional[ModelProvider] = pydantic.Field(default=None)
+    model: Optional[str] = pydantic.Field(default=None)
+    stream: bool = pydantic.Field(default=False)
+    enable_thinking: bool = pydantic.Field(default=True)
+    cdp_url: Optional[str] = pydantic.Field(default=None)
+    return_screenshots: bool = pydantic.Field(default=False)
 
     def to_dict(self):
         result = {
             "prompt": self.prompt,
             "stream": self.stream,
             "enableThinking": self.enable_thinking,
+            "returnScreenshots": self.return_screenshots,
         }
         if self.state:
             result["state"] = self.state
@@ -409,6 +411,7 @@ class StepChunkContent(pydantic.BaseModel):
     messageId: uuid.UUID
     actionResult: ActionResult
     summary: str
+    screenshot: Optional[str] = pydantic.Field(default=None)
 
 
 class FinalOutputChunkContent(pydantic.BaseModel):

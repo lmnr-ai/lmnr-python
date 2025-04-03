@@ -639,8 +639,13 @@ class Laminar:
         return LaminarSpanContext.deserialize(span_context)
 
     @classmethod
-    def shutdown(cls):
+    def flush(cls):
         TracerManager.flush()
+
+    @classmethod
+    def shutdown(cls):
+        # other shutdown logic could be added here
+        cls.flush()
 
     @classmethod
     def set_session(
