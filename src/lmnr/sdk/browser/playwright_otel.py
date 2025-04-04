@@ -22,8 +22,11 @@ from typing import Collection
 from wrapt import wrap_function_wrapper
 
 try:
-    from playwright.async_api import Browser
-    from playwright.sync_api import Browser as SyncBrowser
+    from playwright.async_api import Browser, BrowserContext
+    from playwright.sync_api import (
+        Browser as SyncBrowser,
+        BrowserContext as SyncBrowserContext,
+    )
 except ImportError as e:
     raise ImportError(
         f"Attempted to import {__file__}, but it is designed "
@@ -84,8 +87,12 @@ def _wrap_new_browser_sync(
             set_span_in_context(span, get_current())
             _context_spans[id(context)] = span
         span.set_attribute("lmnr.internal.has_browser_session", True)
+        trace_id = format(span.get_span_context().trace_id, "032x")
+        context.on(
+            "page",
+            lambda page: handle_navigation_sync(page, session_id, trace_id, client),
+        )
         for page in context.pages:
-            trace_id = format(span.get_span_context().trace_id, "032x")
             handle_navigation_sync(page, session_id, trace_id, client)
     return browser
 
@@ -106,10 +113,65 @@ async def _wrap_new_browser_async(
             set_span_in_context(span, get_current())
             _context_spans[id(context)] = span
         span.set_attribute("lmnr.internal.has_browser_session", True)
+        trace_id = format(span.get_span_context().trace_id, "032x")
+
+        async def handle_page_navigation(page):
+            return await handle_navigation_async(page, session_id, trace_id, client)
+
+        context.on("page", handle_page_navigation)
         for page in context.pages:
-            trace_id = format(span.get_span_context().trace_id, "032x")
             await handle_navigation_async(page, session_id, trace_id, client)
     return browser
+
+
+@with_tracer_and_client_wrapper
+def _wrap_new_context_sync(
+    tracer: Tracer, client: LaminarClient, to_wrap, wrapped, instance, args, kwargs
+):
+    context: SyncBrowserContext = wrapped(*args, **kwargs)
+    session_id = str(uuid.uuid4().hex)
+    span = get_current_span()
+    if span == INVALID_SPAN:
+        span = tracer.start_span(
+            name=f"{to_wrap.get('object')}.{to_wrap.get('method')}"
+        )
+        set_span_in_context(span, get_current())
+        _context_spans[id(context)] = span
+    span.set_attribute("lmnr.internal.has_browser_session", True)
+    trace_id = format(span.get_span_context().trace_id, "032x")
+
+    context.on(
+        "page",
+        lambda page: handle_navigation_sync(page, session_id, trace_id, client),
+    )
+    for page in context.pages:
+        handle_navigation_sync(page, session_id, trace_id, client)
+    return context
+
+
+@with_tracer_and_client_wrapper
+async def _wrap_new_context_async(
+    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
+):
+    context: SyncBrowserContext = await wrapped(*args, **kwargs)
+    session_id = str(uuid.uuid4().hex)
+    span = get_current_span()
+    if span == INVALID_SPAN:
+        span = tracer.start_span(
+            name=f"{to_wrap.get('object')}.{to_wrap.get('method')}"
+        )
+        set_span_in_context(span, get_current())
+        _context_spans[id(context)] = span
+    span.set_attribute("lmnr.internal.has_browser_session", True)
+    trace_id = format(span.get_span_context().trace_id, "032x")
+
+    async def handle_page_navigation(page):
+        return await handle_navigation_async(page, session_id, trace_id, client)
+
+    context.on("page", handle_page_navigation)
+    for page in context.pages:
+        await handle_navigation_async(page, session_id, trace_id, client)
+    return context
 
 
 @with_tracer_and_client_wrapper
@@ -191,6 +253,18 @@ WRAPPED_METHODS = [
         "method": "close",
         "wrapper": _wrap_close_browser_sync,
     },
+    {
+        "package": "playwright.sync_api",
+        "object": "Browser",
+        "method": "new_context",
+        "wrapper": _wrap_new_context_sync,
+    },
+    {
+        "package": "playwright.sync_api",
+        "object": "BrowserType",
+        "method": "launch_persistent_context",
+        "wrapper": _wrap_new_context_sync,
+    },
 ]
 
 WRAPPED_METHODS_ASYNC = [
@@ -229,6 +303,18 @@ WRAPPED_METHODS_ASYNC = [
         "object": "Browser",
         "method": "close",
         "wrapper": _wrap_close_browser_async,
+    },
+    {
+        "package": "playwright.async_api",
+        "object": "Browser",
+        "method": "new_context",
+        "wrapper": _wrap_new_context_async,
+    },
+    {
+        "package": "playwright.sync_api",
+        "object": "BrowserType",
+        "method": "launch_persistent_context",
+        "wrapper": _wrap_new_context_sync,
     },
 ]
 

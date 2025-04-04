@@ -67,6 +67,5 @@ class TracerManager:
         )
 
     @staticmethod
-    def flush():
-        if getattr(TracerManager, "__tracer_wrapper", None):
-            TracerManager.__tracer_wrapper.flush()
+    def flush() -> bool:
+        return TracerManager.__tracer_wrapper.flush()

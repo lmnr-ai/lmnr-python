@@ -35,15 +35,13 @@ MAX_EXPORT_BATCH_SIZE = 64
 def get_evaluation_url(
     project_id: str, evaluation_id: str, base_url: Optional[str] = None
 ):
-    if not base_url:
+    if not base_url or base_url == "https://api.lmnr.ai":
         base_url = "https://www.lmnr.ai"
 
     url = base_url
-    if url.endswith("/"):
-        url = url[:-1]
+    url = re.sub(r"\/$", "", url)
     if url.endswith("localhost") or url.endswith("127.0.0.1"):
-        # We best effort assume that the frontend is running on port 3000
-        # TODO: expose the frontend port?
+        # We best effort assume that the frontend is running on port 5667
         url = url + ":5667"
     return f"{url}/project/{project_id}/evaluations/{evaluation_id}"
 
@@ -408,8 +406,8 @@ def evaluate(
 
     If there is no event loop, creates it and runs the evaluation until
     completion.
-    If there is an event loop, schedules the evaluation as a task in the
-    event loop and returns an awaitable handle.
+    If there is an event loop, returns an awaitable handle immediately. IMPORTANT:
+    You must await the call to `evaluate`.
 
     Parameters:
         data (Union[list[EvaluationDatapoint|dict]], EvaluationDataset]):\

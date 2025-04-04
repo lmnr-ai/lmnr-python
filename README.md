@@ -264,6 +264,6 @@ async for chunk in client.agent.run(
 ):
     if chunk.chunkType == 'step':
         print(chunk.summary)
-    else if chunk.chunkType == 'finalOutput':
+    elif chunk.chunkType == 'finalOutput':
         print(chunk.content.result.content)
 ```

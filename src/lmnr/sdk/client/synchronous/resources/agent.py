@@ -27,6 +27,7 @@ class Agent(BaseResource):
         model_provider: Optional[ModelProvider] = None,
         model: Optional[str] = None,
         enable_thinking: bool = True,
+        return_screenshots: bool = False,
     ) -> Generator[RunAgentResponseChunk, None, None]:
         """Run Laminar index agent in streaming mode.
 
@@ -37,7 +38,7 @@ class Agent(BaseResource):
             model_provider (Optional[ModelProvider], optional): LLM model provider
             model (Optional[str], optional): LLM model name
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
-
+            return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
         Returns:
             Generator[RunAgentResponseChunk, None, None]: a generator of response chunks
         """
@@ -51,6 +52,7 @@ class Agent(BaseResource):
         model_provider: Optional[ModelProvider] = None,
         model: Optional[str] = None,
         enable_thinking: bool = True,
+        return_screenshots: bool = False,
     ) -> AgentOutput:
         """Run Laminar index agent.
 
@@ -60,6 +62,7 @@ class Agent(BaseResource):
             model_provider (Optional[ModelProvider], optional): LLM model provider
             model (Optional[str], optional): LLM model name
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
+            return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
 
         Returns:
             AgentOutput: agent output
@@ -75,6 +78,7 @@ class Agent(BaseResource):
         model: Optional[str] = None,
         stream: Literal[False] = False,
         enable_thinking: bool = True,
+        return_screenshots: bool = False,
     ) -> AgentOutput:
         """Run Laminar index agent.
 
@@ -85,7 +89,7 @@ class Agent(BaseResource):
             model (Optional[str], optional): LLM model name
             stream (Literal[False], optional): whether to stream the agent's response
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
-            cdp_url (Optional[str], optional): CDP URL to connect to an existing browser session.
+            return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
 
         Returns:
             AgentOutput: agent output
@@ -100,6 +104,7 @@ class Agent(BaseResource):
         model: Optional[str] = None,
         stream: bool = False,
         enable_thinking: bool = True,
+        return_screenshots: bool = False,
     ) -> Union[AgentOutput, Generator[RunAgentResponseChunk, None, None]]:
         """Run Laminar index agent.
 
@@ -110,7 +115,7 @@ class Agent(BaseResource):
             model (Optional[str], optional): LLM model name
             stream (bool, optional): whether to stream the agent's response
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
-            cdp_url (Optional[str], optional): CDP URL to connect to an existing browser session.
+            return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
 
         Returns:
             Union[AgentOutput, Generator[RunAgentResponseChunk, None, None]]: agent output or a generator of response chunks
@@ -140,6 +145,7 @@ class Agent(BaseResource):
             # https://aws.amazon.com/blogs/networking-and-content-delivery/introducing-nlb-tcp-configurable-idle-timeout/
             stream=True,
             enable_thinking=enable_thinking,
+            return_screenshots=return_screenshots,
         )
 
         # For streaming case, use a generator function
