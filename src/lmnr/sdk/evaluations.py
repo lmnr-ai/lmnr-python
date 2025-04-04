@@ -406,8 +406,8 @@ def evaluate(
 
     If there is no event loop, creates it and runs the evaluation until
     completion.
-    If there is an event loop, schedules the evaluation as a task in the
-    event loop and returns an awaitable handle.
+    If there is an event loop, returns an awaitable handle immediately. IMPORTANT:
+    You must await the call to `evaluate`.
 
     Parameters:
         data (Union[list[EvaluationDatapoint|dict]], EvaluationDataset]):\
