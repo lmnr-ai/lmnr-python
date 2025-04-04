@@ -236,8 +236,13 @@ class TracerWrapper(object):
         cls.__span_id_to_path = {}
         cls.__span_id_lists = {}
 
-    def flush(self):
+    def shutdown(self):
         self.__spans_processor.force_flush()
+        self.__spans_processor.shutdown()
+        self.__tracer_provider.shutdown()
+
+    def flush(self):
+        return self.__spans_processor.force_flush()
 
     def get_tracer(self):
         return self.__tracer_provider.get_tracer(TRACER_NAME)
