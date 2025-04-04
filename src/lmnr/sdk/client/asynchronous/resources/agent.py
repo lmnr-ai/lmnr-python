@@ -186,7 +186,6 @@ class AsyncAgent(BaseAsyncResource):
                 line = line[6:]
                 if line:
                     chunk = RunAgentResponseChunk.model_validate_json(line)
-                    print(line)
                     yield chunk.root
 
     async def __run_non_streaming(self, request: RunAgentRequest) -> AgentOutput:
