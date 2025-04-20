@@ -84,6 +84,8 @@ class TracerWrapper(object):
     __span_id_lists: dict[int, list[str]] = {}
     __client: LaminarClient = None
     __async_client: AsyncLaminarClient = None
+    __spans_processor: SpanProcessor = None
+    __spans_exporter: SpanExporter = None
 
     def __new__(
         cls,
@@ -115,10 +117,10 @@ class TracerWrapper(object):
             obj.__resource = Resource(attributes=TracerWrapper.resource_attributes)
             obj.__tracer_provider = init_tracer_provider(resource=obj.__resource)
             if processor:
-                obj.__spans_processor: SpanProcessor = processor
+                obj.__spans_processor = processor
                 obj.__spans_processor_original_on_start = processor.on_start
             else:
-                obj.__spans_exporter: SpanExporter = (
+                obj.__spans_exporter = (
                     exporter
                     if exporter
                     else init_spans_exporter(
@@ -126,11 +128,9 @@ class TracerWrapper(object):
                     )
                 )
                 if disable_batch or is_notebook():
-                    obj.__spans_processor: SpanProcessor = SimpleSpanProcessor(
-                        obj.__spans_exporter
-                    )
+                    obj.__spans_processor = SimpleSpanProcessor(obj.__spans_exporter)
                 else:
-                    obj.__spans_processor: SpanProcessor = BatchSpanProcessor(
+                    obj.__spans_processor = BatchSpanProcessor(
                         obj.__spans_exporter,
                         max_export_batch_size=max_export_batch_size,
                     )
@@ -237,8 +237,6 @@ class TracerWrapper(object):
         cls.__span_id_lists = {}
 
     def shutdown(self):
-        self.__spans_processor.force_flush()
-        self.__spans_processor.shutdown()
         self.__tracer_provider.shutdown()
 
     def flush(self):

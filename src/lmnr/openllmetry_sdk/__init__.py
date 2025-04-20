@@ -69,3 +69,7 @@ class TracerManager:
     @staticmethod
     def flush() -> bool:
         return TracerManager.__tracer_wrapper.flush()
+
+    @staticmethod
+    def shutdown():
+        TracerManager.__tracer_wrapper.shutdown()

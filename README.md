@@ -226,9 +226,9 @@ for chunk in client.agent.run(
     prompt="What is the weather in London today?",
     stream=True
 ):
-    if chunk.chunkType == 'step':
+    if chunk.chunk_type == 'step':
         print(chunk.summary)
-    elif chunk.chunkType == 'finalOutput':
+    elif chunk.chunk_type == 'finalOutput':
         print(chunk.content.result.content)
 ```
 
@@ -262,8 +262,8 @@ async for chunk in client.agent.run(
     prompt="What is the weather in London today?",
     stream=True
 ):
-    if chunk.chunkType == 'step':
+    if chunk.chunk_type == 'step':
         print(chunk.summary)
-    elif chunk.chunkType == 'finalOutput':
+    elif chunk.chunk_type == 'finalOutput':
         print(chunk.content.result.content)
 ```

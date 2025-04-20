@@ -1,117 +1,19 @@
 import logging
 import datetime
 from enum import Enum
-import httpx
 import json
 from opentelemetry.trace import SpanContext, TraceFlags
 import pydantic
 from typing import Any, Awaitable, Callable, Literal, Optional, Union
 import uuid
 
+import pydantic.alias_generators
+
 from .utils import serialize
-
-
-class ChatMessage(pydantic.BaseModel):
-    role: str
-    content: str
-
-
-class ConditionedValue(pydantic.BaseModel):
-    condition: str
-    value: "NodeInput"
 
 
 Numeric = Union[int, float]
 NumericTypes = (int, float)  # for use with isinstance
-
-NodeInput = Union[str, list[ChatMessage], ConditionedValue, Numeric, bool]
-PipelineOutput = Union[NodeInput]
-
-
-class PipelineRunRequest(pydantic.BaseModel):
-    inputs: dict[str, NodeInput]
-    pipeline: str
-    env: dict[str, str] = pydantic.Field(default_factory=dict)
-    metadata: dict[str, str] = pydantic.Field(default_factory=dict)
-    stream: bool = pydantic.Field(default=False)
-    parent_span_id: Optional[uuid.UUID] = pydantic.Field(default=None)
-    trace_id: Optional[uuid.UUID] = pydantic.Field(default=None)
-
-    # uuid is not serializable by default, so we need to convert it to a string
-    def to_dict(self):
-        return {
-            "inputs": {
-                k: v.model_dump() if isinstance(v, pydantic.BaseModel) else serialize(v)
-                for k, v in self.inputs.items()
-            },
-            "pipeline": self.pipeline,
-            "env": self.env,
-            "metadata": self.metadata,
-            "stream": self.stream,
-            "parentSpanId": str(self.parent_span_id) if self.parent_span_id else None,
-            "traceId": str(self.trace_id) if self.trace_id else None,
-        }
-
-
-class PipelineRunResponse(pydantic.BaseModel):
-    outputs: dict[str, dict[str, PipelineOutput]]
-    run_id: str
-
-
-class SemanticSearchRequest(pydantic.BaseModel):
-    query: str
-    dataset_id: uuid.UUID
-    limit: Optional[int] = pydantic.Field(default=None)
-    threshold: Optional[float] = pydantic.Field(default=None, ge=0.0, le=1.0)
-
-    def to_dict(self):
-        res = {
-            "query": self.query,
-            "datasetId": str(self.dataset_id),
-        }
-        if self.limit is not None:
-            res["limit"] = self.limit
-        if self.threshold is not None:
-            res["threshold"] = self.threshold
-        return res
-
-
-class SemanticSearchResult(pydantic.BaseModel):
-    dataset_id: uuid.UUID
-    score: float
-    data: dict[str, Any]
-    content: str
-
-
-class SemanticSearchResponse(pydantic.BaseModel):
-    results: list[SemanticSearchResult]
-
-
-class PipelineRunError(Exception):
-    error_code: str
-    error_message: str
-
-    def __init__(self, response: httpx.Response):
-        try:
-            resp_json = response.json()
-            try:
-                resp_dict = dict(resp_json)
-            except Exception:
-                resp_dict = {}
-            self.error_code = resp_dict.get("error_code")
-            self.error_message = resp_dict.get("error_message")
-            super().__init__(self.error_message)
-        except Exception:
-            super().__init__(response.text)
-
-    def __str__(self) -> str:
-        try:
-            return str(
-                {"error_code": self.error_code, "error_message": self.error_message}
-            )
-        except Exception:
-            return super().__str__()
-
 
 EvaluationDatapointData = Any  # non-null, must be JSON-serializable
 EvaluationDatapointTarget = Optional[Any]  # must be JSON-serializable
@@ -324,50 +226,13 @@ class ModelProvider(str, Enum):
     BEDROCK = "bedrock"
 
 
-# class AgentChatMessageContentTextBlock(pydantic.BaseModel):
-#     type: Literal["text"]
-#     text: str
-
-
-# class AgentChatMessageImageUrlBlock(pydantic.BaseModel):
-#     type: Literal["image"]
-#     imageUrl: str
-
-
-# class AgentChatMessageImageBase64Block(pydantic.BaseModel):
-#     type: Literal["image"]
-#     imageB64: str
-
-
-# class AgentChatMessageImageBlock(pydantic.RootModel):
-#     root: Union[AgentChatMessageImageUrlBlock, AgentChatMessageImageBase64Block]
-
-
-# class AgentChatMessageContentBlock(pydantic.RootModel):
-#     root: Union[AgentChatMessageContentTextBlock, AgentChatMessageImageBlock]
-
-
-# class AgentChatMessageContent(pydantic.RootModel):
-#     root: Union[str, list[AgentChatMessageContentBlock]]
-
-
-# class AgentChatMessage(pydantic.BaseModel):
-#     role: str
-#     content: AgentChatMessageContent
-#     name: Optional[str] = None
-#     toolCallId: Optional[str] = None
-#     isStateMessage: bool = False
-
-
-# class AgentState(pydantic.BaseModel):
-# messages: str = pydantic.Field(default="")
-# messages: list[AgentChatMessage] = pydantic.Field(default_factory=list)
-# browser_state: Optional[BrowserState] = None
-
-
 class RunAgentRequest(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(
+        alias_generator=pydantic.alias_generators.to_camel
+    )
     prompt: str
-    state: Optional[str] = pydantic.Field(default=None)
+    storage_state: Optional[str] = pydantic.Field(default=None)
+    agent_state: Optional[str] = pydantic.Field(default=None)
     parent_span_context: Optional[str] = pydantic.Field(default=None)
     model_provider: Optional[ModelProvider] = pydantic.Field(default=None)
     model: Optional[str] = pydantic.Field(default=None)
@@ -375,50 +240,90 @@ class RunAgentRequest(pydantic.BaseModel):
     enable_thinking: bool = pydantic.Field(default=True)
     cdp_url: Optional[str] = pydantic.Field(default=None)
     return_screenshots: bool = pydantic.Field(default=False)
-
-    def to_dict(self):
-        result = {
-            "prompt": self.prompt,
-            "stream": self.stream,
-            "enableThinking": self.enable_thinking,
-            "returnScreenshots": self.return_screenshots,
-        }
-        if self.state:
-            result["state"] = self.state
-        if self.parent_span_context:
-            result["parentSpanContext"] = self.parent_span_context
-        if self.model_provider:
-            result["modelProvider"] = self.model_provider.value
-        if self.model:
-            result["model"] = self.model
-        if self.cdp_url:
-            result["cdpUrl"] = self.cdp_url
-        return result
+    return_storage_state: bool = pydantic.Field(default=False)
+    return_agent_state: bool = pydantic.Field(default=False)
+    timeout: Optional[int] = pydantic.Field(default=None)
+    max_steps: Optional[int] = pydantic.Field(default=None)
+    thinking_token_budget: Optional[int] = pydantic.Field(default=None)
 
 
 class ActionResult(pydantic.BaseModel):
-    isDone: bool = pydantic.Field(default=False)
+    model_config = pydantic.ConfigDict(
+        alias_generator=pydantic.alias_generators.to_camel
+    )
+    is_done: bool = pydantic.Field(default=False)
     content: Optional[str] = pydantic.Field(default=None)
     error: Optional[str] = pydantic.Field(default=None)
 
 
 class AgentOutput(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(
+        alias_generator=pydantic.alias_generators.to_camel
+    )
     result: ActionResult = pydantic.Field(default_factory=ActionResult)
+    # Browser state with data related to auth, such as cookies.
+    # A stringified JSON object.
+    # Only returned if return_storage_state is True.
+    # CAUTION: This object may become large. It also may contain sensitive data.
+    storage_state: Optional[str] = pydantic.Field(default=None)
+    # Agent state with data related to the agent's state, such as the chat history.
+    # A stringified JSON object.
+    # Only returned if return_agent_state is True.
+    # CAUTION: This object is large.
+    agent_state: Optional[str] = pydantic.Field(default=None)
 
 
 class StepChunkContent(pydantic.BaseModel):
-    chunkType: Literal["step"]
-    messageId: uuid.UUID
-    actionResult: ActionResult
-    summary: str
+    model_config = pydantic.ConfigDict(
+        alias_generator=pydantic.alias_generators.to_camel
+    )
+    chunk_type: Literal["step"] = pydantic.Field(default="step")
+    message_id: uuid.UUID = pydantic.Field()
+    action_result: ActionResult = pydantic.Field()
+    summary: str = pydantic.Field()
+    screenshot: Optional[str] = pydantic.Field(default=None)
+
+
+class TimeoutChunkContent(pydantic.BaseModel):
+    """Chunk content to indicate that timeout has been hit. The only difference from a regular step
+    is the chunk type. This is the last chunk in the stream.
+    """
+
+    model_config = pydantic.ConfigDict(
+        alias_generator=pydantic.alias_generators.to_camel
+    )
+    chunk_type: Literal["timeout"] = pydantic.Field(default="timeout")
+    message_id: uuid.UUID = pydantic.Field()
+    summary: str = pydantic.Field()
     screenshot: Optional[str] = pydantic.Field(default=None)
 
 
 class FinalOutputChunkContent(pydantic.BaseModel):
-    chunkType: Literal["finalOutput"]
-    messageId: uuid.UUID
-    content: AgentOutput
+    """Chunk content to indicate that the agent has finished executing. This
+    is the last chunk in the stream.
+    """
+
+    model_config = pydantic.ConfigDict(
+        alias_generator=pydantic.alias_generators.to_camel
+    )
+
+    chunk_type: Literal["finalOutput"] = pydantic.Field(default="finalOutput")
+    message_id: uuid.UUID = pydantic.Field()
+    content: AgentOutput = pydantic.Field()
+
+
+class ErrorChunkContent(pydantic.BaseModel):
+    """Chunk content to indicate that an error has occurred. Typically, this
+    is the last chunk in the stream.
+    """
+
+    model_config = pydantic.ConfigDict(
+        alias_generator=pydantic.alias_generators.to_camel
+    )
+    chunk_type: Literal["error"] = pydantic.Field(default="error")
+    message_id: uuid.UUID = pydantic.Field()
+    error: str = pydantic.Field()
 
 
 class RunAgentResponseChunk(pydantic.RootModel):
-    root: Union[StepChunkContent, FinalOutputChunkContent]
+    root: Union[StepChunkContent, FinalOutputChunkContent, ErrorChunkContent]

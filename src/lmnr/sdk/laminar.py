@@ -652,8 +652,8 @@ class Laminar:
 
     @classmethod
     def shutdown(cls):
-        # other shutdown logic could be added here
-        cls.flush()
+        if cls.is_initialized():
+            TracerManager.shutdown()
 
     @classmethod
     def set_session(
