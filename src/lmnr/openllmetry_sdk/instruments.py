@@ -11,6 +11,7 @@ class Instruments(Enum):
     CHROMA = "chroma"
     COHERE = "cohere"
     GOOGLE_GENERATIVEAI = "google_generativeai"
+    GOOGLE_GENAI = "google_genai"
     GROQ = "groq"
     HAYSTACK = "haystack"
     LANCEDB = "lancedb"

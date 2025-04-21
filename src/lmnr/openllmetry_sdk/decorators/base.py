@@ -40,6 +40,7 @@ def json_dumps(data: dict) -> str:
 def entity_method(
     name: Optional[str] = None,
     ignore_input: bool = False,
+    skip_input_keys: Optional[list[str]] = None,
     ignore_output: bool = False,
     span_type: Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]] = "DEFAULT",
 ):
@@ -60,7 +61,13 @@ def entity_method(
                 try:
                     if _should_send_prompts() and not ignore_input:
                         inp = json_dumps(
-                            get_input_from_func_args(fn, is_method(fn), args, kwargs)
+                            get_input_from_func_args(
+                                fn,
+                                is_method=is_method(fn),
+                                func_args=args,
+                                func_kwargs=kwargs,
+                                skip_input_keys=skip_input_keys,
+                            )
                         )
                         if len(inp) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
                             span.set_attribute(
@@ -108,6 +115,7 @@ def entity_method(
 def aentity_method(
     name: Optional[str] = None,
     ignore_input: bool = False,
+    skip_input_keys: Optional[list[str]] = None,
     ignore_output: bool = False,
     span_type: Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]] = "DEFAULT",
 ):
@@ -128,7 +136,13 @@ def aentity_method(
                 try:
                     if _should_send_prompts() and not ignore_input:
                         inp = json_dumps(
-                            get_input_from_func_args(fn, is_method(fn), args, kwargs)
+                            get_input_from_func_args(
+                                fn,
+                                is_method=is_method(fn),
+                                func_args=args,
+                                func_kwargs=kwargs,
+                                skip_input_keys=skip_input_keys,
+                            )
                         )
                         if len(inp) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
                             span.set_attribute(

@@ -380,6 +380,9 @@ def init_instrumentations(
         elif instrument == Instruments.GOOGLE_GENERATIVEAI:
             if init_google_generativeai_instrumentor():
                 instrument_set = True
+        elif instrument == Instruments.GOOGLE_GENAI:
+            if init_google_genai_instrumentor():
+                instrument_set = True
         elif instrument == Instruments.GROQ:
             if init_groq_instrumentor():
                 instrument_set = True
@@ -612,6 +615,27 @@ def init_google_generativeai_instrumentor():
             )
 
             instrumentor = GoogleGenerativeAiInstrumentor()
+            if not instrumentor.is_instrumented_by_opentelemetry:
+                instrumentor.instrument()
+        return True
+    except Exception as e:
+        module_logger.error(f"Error initializing Gemini instrumentor: {e}")
+        return False
+
+
+def init_google_genai_instrumentor():
+    try:
+        if is_package_installed("google-genai"):
+            # TODO: uncomment this once our otel instrumentation is merged
+            # and is_package_installed(
+            #     "opentelemetry-instrumentation-google-genai"
+            # ):
+            # from opentelemetry.instrumentation.google_genai import (
+            from ..opentelemetry.instrumentation.google_genai import (
+                GoogleGenAiInstrumentor,
+            )
+
+            instrumentor = GoogleGenAiInstrumentor()
             if not instrumentor.is_instrumented_by_opentelemetry:
                 instrumentor.instrument()
         return True

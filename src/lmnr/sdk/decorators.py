@@ -24,6 +24,7 @@ def observe(
     ignore_input: bool = False,
     ignore_output: bool = False,
     span_type: Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]] = "DEFAULT",
+    skip_input_keys: Optional[list[str]] = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """The main decorator entrypoint for Laminar. This is used to wrap
     functions and methods to create spans.
@@ -58,6 +59,7 @@ def observe(
                 ignore_input=ignore_input,
                 ignore_output=ignore_output,
                 span_type=span_type,
+                skip_input_keys=skip_input_keys,
             )(func)
             if is_async(func)
             else entity_method(
@@ -65,6 +67,7 @@ def observe(
                 ignore_input=ignore_input,
                 ignore_output=ignore_output,
                 span_type=span_type,
+                skip_input_keys=skip_input_keys,
             )(func)
         )
 
