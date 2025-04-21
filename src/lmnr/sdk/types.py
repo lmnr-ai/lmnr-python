@@ -326,4 +326,9 @@ class ErrorChunkContent(pydantic.BaseModel):
 
 
 class RunAgentResponseChunk(pydantic.RootModel):
-    root: Union[StepChunkContent, FinalOutputChunkContent, ErrorChunkContent]
+    root: Union[
+        StepChunkContent,
+        FinalOutputChunkContent,
+        ErrorChunkContent,
+        TimeoutChunkContent,
+    ]
