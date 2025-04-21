@@ -92,7 +92,7 @@ def get_input_from_func_args(
 ) -> dict[str, typing.Any]:
     # Remove implicitly passed "self" or "cls" argument for
     # instance or class methods
-    res = func_kwargs.copy()
+    res = {k: v for k, v in func_kwargs.items() if not (skip_input_keys and k in skip_input_keys)}
     for i, k in enumerate(inspect.signature(func).parameters.keys()):
         if is_method and k in ["self", "cls"]:
             continue
