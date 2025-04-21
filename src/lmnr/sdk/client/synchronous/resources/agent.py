@@ -290,6 +290,6 @@ class Agent(BaseResource):
                     elif chunk.root.chunk_type == "error":
                         raise RuntimeError(chunk.root.error)
                     elif chunk.root.chunk_type == "timeout":
-                        raise RuntimeError("Agent timed out")
+                        raise TimeoutError("Agent timed out")
 
         return final_chunk.content if final_chunk is not None else AgentOutput()
