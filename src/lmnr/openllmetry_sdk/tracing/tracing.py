@@ -640,7 +640,7 @@ def init_google_genai_instrumentor():
                 instrumentor.instrument()
         return True
     except Exception as e:
-        module_logger.error(f"Error initializing Gemini instrumentor: {e}")
+        module_logger.error(f"Error initializing Google GenAI instrumentor: {e}")
         return False
 
 
