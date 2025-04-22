@@ -1,14 +1,5 @@
 """OpenTelemetry Google Generative AI API instrumentation"""
 
-# This is temporarily included in our library while we wait for
-# https://github.com/traceloop/openllmetry/pull/2828 to be merged.
-# The PR above may never get merged, as there is a contrib package
-# https://github.com/open-telemetry/opentelemetry-python-contrib/tree/main/instrumentation-genai/opentelemetry-instrumentation-google-genai
-# that implements the instrumentation for Google GenAI. However,
-# that package emits prompts as log events, not span attributes,
-# and our backend is not ready for that yet. We can remove this package
-# and migrate to the contrib package once our backend is ready.
-
 from collections import defaultdict
 import logging
 import os
@@ -16,12 +7,14 @@ from typing import AsyncGenerator, Callable, Collection, Generator, Optional
 
 from google.genai import types
 
-from .config import Config
+from .config import (
+    Config,
+)
 from .utils import (
     dont_throw,
     role_from_content_union,
     set_span_attribute,
-    text_from_content_union,
+    process_content_union,
     to_dict,
     with_tracer_wrapper,
 )
@@ -166,7 +159,7 @@ def _set_request_attributes(span, args, kwargs):
             set_span_attribute(
                 span,
                 f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.content",
-                text_from_content_union(system_instruction),
+                process_content_union(system_instruction),
             )
             set_span_attribute(
                 span, f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.role", "system"
@@ -179,7 +172,7 @@ def _set_request_attributes(span, args, kwargs):
             set_span_attribute(
                 span,
                 f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.content",
-                text_from_content_union(content),
+                process_content_union(content),
             )
             set_span_attribute(
                 span,
@@ -230,7 +223,7 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
                 set_span_attribute(
                     span,
                     f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.content",
-                    text_from_content_union(candidate.content),
+                    process_content_union(candidate.content),
                 )
                 set_span_attribute(
                     span, f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.role", "assistant"
@@ -424,9 +417,16 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
 class GoogleGenAiSdkInstrumentor(BaseInstrumentor):
     """An instrumentor for Google GenAI's client library."""
 
-    def __init__(self, exception_logger=None):
+    def __init__(
+        self,
+        exception_logger=None,
+        upload_base64_image=None,
+        convert_image_to_openai_format=True,
+    ):
         super().__init__()
         Config.exception_logger = exception_logger
+        Config.upload_base64_image = upload_base64_image
+        Config.convert_image_to_openai_format = convert_image_to_openai_format
 
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
