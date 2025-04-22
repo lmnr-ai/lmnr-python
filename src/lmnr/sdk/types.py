@@ -224,6 +224,8 @@ class LaminarSpanContext(pydantic.BaseModel):
 class ModelProvider(str, Enum):
     ANTHROPIC = "anthropic"
     BEDROCK = "bedrock"
+    OPENAI = "openai"
+    GEMINI = "gemini"
 
 
 class RunAgentRequest(pydantic.BaseModel):
