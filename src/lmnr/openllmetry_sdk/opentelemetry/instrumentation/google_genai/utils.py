@@ -203,25 +203,14 @@ def _process_image_item(
     message_index: int,
     content_index: int,
 ):
-
-    if not Config.upload_base64_image:
-        # Convert to openai format, so backends can handle it
-        return (
-            {
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/{blob.get('mime_type').split('/')[1]};base64,{blob.get('data')}",
-                },
-            }
-            if Config.convert_image_to_openai_format
-            else blob
-        )
-
-    image_format = blob.get("mime_type").split("/")[1]
-    image_name = f"message_{message_index}_content_{content_index}.{image_format}"
-    base64_string = blob.get("data")
-    url = _run_async(
-        Config.upload_base64_image(trace_id, span_id, image_name, base64_string)
+    # Convert to openai format, so backends can handle it
+    return (
+        {
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/{blob.get('mime_type').split('/')[1]};base64,{blob.get('data')}",
+            },
+        }
+        if Config.convert_image_to_openai_format
+        else blob
     )
-
-    return {"type": "image_url", "image_url": {"url": url}}
