@@ -198,13 +198,7 @@ def test_observe_skip_input_keys_with_kwargs(exporter: InMemorySpanExporter):
     assert spans[0].name == "observed_foo"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
     assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
-    assert {
-        k: v
-        for k, v in sorted(
-            json.loads(spans[0].attributes["lmnr.span.input"]).items(),
-            key=lambda x: x[0],
-        )
-    } == {
+    assert json.loads(spans[0].attributes["lmnr.span.input"]) == {
         "b": 2,
         "c": 3,
         "e": 5,
