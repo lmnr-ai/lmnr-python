@@ -626,16 +626,16 @@ def init_google_generativeai_instrumentor():
 def init_google_genai_instrumentor():
     try:
         if is_package_installed("google-genai"):
-            # TODO: uncomment this once our otel instrumentation is merged
+            # TODO: uncomment this once we migrate to the contrib package
             # and is_package_installed(
             #     "opentelemetry-instrumentation-google-genai"
             # ):
             # from opentelemetry.instrumentation.google_genai import (
             from ..opentelemetry.instrumentation.google_genai import (
-                GoogleGenAiInstrumentor,
+                GoogleGenAiSdkInstrumentor,
             )
 
-            instrumentor = GoogleGenAiInstrumentor()
+            instrumentor = GoogleGenAiSdkInstrumentor()
             if not instrumentor.is_instrumented_by_opentelemetry:
                 instrumentor.instrument()
         return True

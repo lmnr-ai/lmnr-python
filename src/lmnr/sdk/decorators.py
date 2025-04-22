@@ -24,7 +24,7 @@ def observe(
     ignore_input: bool = False,
     ignore_output: bool = False,
     span_type: Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]] = "DEFAULT",
-    skip_input_keys: Optional[list[str]] = None,
+    ignore_inputs: Optional[list[str]] = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """The main decorator entrypoint for Laminar. This is used to wrap
     functions and methods to create spans.
@@ -33,9 +33,20 @@ def observe(
         name (Optional[str], optional): Name of the span. Function
                         name is used if not specified.
                         Defaults to None.
-        session_id (Optional[str], optional): Session ID to associate with the
+        session_id (Optional[str], optional): Session ID to associate with the\
                         span and the following context. Defaults to None.
-
+        ignore_input (bool, optional): Whether to ignore ALL input of the\
+                        wrapped function. Defaults to False.
+        ignore_output (bool, optional): Whether to ignore ALL output of the\
+                        wrapped function. Defaults to False.
+        span_type (Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]], optional): Type of the span.
+                        Defaults to "DEFAULT".
+        ignore_inputs (Optional[list[str]], optional): List of input keys to ignore.
+                        For example, if the wrapped function takes three arguments,\
+                        def foo(a, b, `sensitive_data`), and you want to ignore the\
+                        `sensitive_data` argument, you can pass ["sensitive_data"] to\
+                        this argument.
+                        Defaults to None.
     Raises:
         Exception: re-raises the exception if the wrapped function raises
                    an exception
@@ -59,7 +70,7 @@ def observe(
                 ignore_input=ignore_input,
                 ignore_output=ignore_output,
                 span_type=span_type,
-                skip_input_keys=skip_input_keys,
+                ignore_inputs=ignore_inputs,
             )(func)
             if is_async(func)
             else entity_method(
@@ -67,7 +78,7 @@ def observe(
                 ignore_input=ignore_input,
                 ignore_output=ignore_output,
                 span_type=span_type,
-                skip_input_keys=skip_input_keys,
+                ignore_inputs=ignore_inputs,
             )(func)
         )
 

@@ -38,7 +38,7 @@ dependencies = [
   # https://discuss.ai.google.dev/t/warning-all-log-messages-before-absl-initializelog-is-called-are-written-to-stderr-e0000-001731955515-629532-17124-init-cc-229-grpc-wait-for-shutdown-with-timeout-timed-out/50020
   # https://github.com/grpc/grpc/issues/38490
   "grpcio<1.68.0",
-  "httpx>=0.28.1",
+  "httpx>=0.25.0",
 ]
 
 [project.scripts]
@@ -111,12 +111,16 @@ all = [
 dev = [
   "autopep8",
   "flake8",
-  "pytest>=8.3.4",
-  "pytest-sugar",
-  "pytest-asyncio>=0.25.2",
+  "pytest>=8.3.5",
+  "pytest-sugar>=1.0.0",
+  "pytest-asyncio>=0.26.0",
   "playwright>=1.51.0"
 ]
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+# we can move to uv_build, once it's more stable
+# https://github.com/astral-sh/uv/issues/3957
+# requires = ["uv_build>=0.6.16,<0.7"]
+# build-backend = "uv_build"

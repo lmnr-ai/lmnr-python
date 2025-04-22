@@ -2,6 +2,12 @@
 
 # This is temporarily included in our library while we wait for
 # https://github.com/traceloop/openllmetry/pull/2828 to be merged.
+# The PR above may never get merged, as there is a contrib package
+# https://github.com/open-telemetry/opentelemetry-python-contrib/tree/main/instrumentation-genai/opentelemetry-instrumentation-google-genai
+# that implements the instrumentation for Google GenAI. However,
+# that package emits prompts as log events, not span attributes,
+# and our backend is not ready for that yet. We can remove this package
+# and migrate to the contrib package once our backend is ready.
 
 from collections import defaultdict
 import logging
@@ -415,7 +421,7 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     return response
 
 
-class GoogleGenAiInstrumentor(BaseInstrumentor):
+class GoogleGenAiSdkInstrumentor(BaseInstrumentor):
     """An instrumentor for Google GenAI's client library."""
 
     def __init__(self, exception_logger=None):

@@ -245,6 +245,7 @@ class RunAgentRequest(pydantic.BaseModel):
     timeout: Optional[int] = pydantic.Field(default=None)
     max_steps: Optional[int] = pydantic.Field(default=None)
     thinking_token_budget: Optional[int] = pydantic.Field(default=None)
+    start_url: Optional[str] = pydantic.Field(default=None)
 
 
 class ActionResult(pydantic.BaseModel):

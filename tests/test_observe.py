@@ -172,7 +172,7 @@ def test_observe_nested(exporter: InMemorySpanExporter):
 
 
 def test_observe_skip_input_keys(exporter: InMemorySpanExporter):
-    @observe(skip_input_keys=["a"])
+    @observe(ignore_inputs=["a"])
     def observed_foo(a, b, c):
         return "foo"
 
@@ -188,7 +188,7 @@ def test_observe_skip_input_keys(exporter: InMemorySpanExporter):
 
 @pytest.mark.asyncio
 async def test_observe_skip_input_keys_async(exporter: InMemorySpanExporter):
-    @observe(skip_input_keys=["a"])
+    @observe(ignore_inputs=["a"])
     async def observed_foo(a, b, c):
         return "foo"
 

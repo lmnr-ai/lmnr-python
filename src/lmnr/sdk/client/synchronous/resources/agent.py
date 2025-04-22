@@ -36,6 +36,7 @@ class Agent(BaseResource):
         cdp_url: Optional[str] = None,
         max_steps: Optional[int] = None,
         thinking_token_budget: Optional[int] = None,
+        start_url: Optional[str] = None,
     ) -> Generator[RunAgentResponseChunk, None, None]:
         """Run Laminar index agent in streaming mode.
 
@@ -55,7 +56,7 @@ class Agent(BaseResource):
             cdp_url (Optional[str], optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
             max_steps (Optional[int], optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
             thinking_token_budget (Optional[int], optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
-
+            start_url (Optional[str], optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
         Returns:
             Generator[RunAgentResponseChunk, None, None]: a generator of response chunks
         """
@@ -78,6 +79,7 @@ class Agent(BaseResource):
         cdp_url: Optional[str] = None,
         max_steps: Optional[int] = None,
         thinking_token_budget: Optional[int] = None,
+        start_url: Optional[str] = None,
     ) -> AgentOutput:
         """Run Laminar index agent.
 
@@ -96,7 +98,7 @@ class Agent(BaseResource):
             cdp_url (Optional[str], optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
             max_steps (Optional[int], optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
             thinking_token_budget (Optional[int], optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
-
+            start_url (Optional[str], optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
         Returns:
             AgentOutput: agent output
         """
@@ -120,6 +122,7 @@ class Agent(BaseResource):
         cdp_url: Optional[str] = None,
         max_steps: Optional[int] = None,
         thinking_token_budget: Optional[int] = None,
+        start_url: Optional[str] = None,
     ) -> AgentOutput:
         """Run Laminar index agent.
 
@@ -139,7 +142,7 @@ class Agent(BaseResource):
             cdp_url (Optional[str], optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
             max_steps (Optional[int], optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
             thinking_token_budget (Optional[int], optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
-
+            start_url (Optional[str], optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
         Returns:
             AgentOutput: agent output
         """
@@ -162,6 +165,7 @@ class Agent(BaseResource):
         cdp_url: Optional[str] = None,
         max_steps: Optional[int] = None,
         thinking_token_budget: Optional[int] = None,
+        start_url: Optional[str] = None,
     ) -> Union[AgentOutput, Generator[RunAgentResponseChunk, None, None]]:
         """Run Laminar index agent.
 
@@ -181,6 +185,7 @@ class Agent(BaseResource):
             cdp_url (Optional[str], optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
             max_steps (Optional[int], optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
             thinking_token_budget (Optional[int], optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
+            start_url (Optional[str], optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
 
         Returns:
             Union[AgentOutput, Generator[RunAgentResponseChunk, None, None]]: agent output or a generator of response chunks
@@ -218,6 +223,7 @@ class Agent(BaseResource):
             cdpUrl=cdp_url,
             maxSteps=max_steps,
             thinkingTokenBudget=thinking_token_budget,
+            startUrl=start_url,
         )
 
         # For streaming case, use a generator function
