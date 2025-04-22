@@ -230,7 +230,8 @@ class ModelProvider(str, Enum):
 
 class RunAgentRequest(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(
-        alias_generator=pydantic.alias_generators.to_camel
+        alias_generator=pydantic.alias_generators.to_camel,
+        populate_by_name=True,
     )
     prompt: str
     storage_state: Optional[str] = pydantic.Field(default=None)

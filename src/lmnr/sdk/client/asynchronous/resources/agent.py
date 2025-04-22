@@ -213,26 +213,26 @@ class AsyncAgent(BaseAsyncResource):
             parent_span_context = str(parent_span_context)
         request = RunAgentRequest(
             prompt=prompt,
-            parentSpanContext=parent_span_context,
-            modelProvider=model_provider,
+            parent_span_context=parent_span_context,
+            model_provider=model_provider,
             model=model,
-            agentState=agent_state,
-            storageState=storage_state,
+            agent_state=agent_state,
+            storage_state=storage_state,
             # We always connect to stream, because our network configuration
             # has a hard fixed idle timeout of 350 seconds.
             # This means that if we don't stream, the connection will be closed.
             # For now, we just return the content of the final chunk if `stream` is
             # `False`.
             stream=True,
-            enableThinking=enable_thinking,
-            returnScreenshots=return_screenshots,
-            returnAgentState=return_agent_state,
-            returnStorageState=return_storage_state,
+            enable_thinking=enable_thinking,
+            return_screenshots=return_screenshots,
+            return_agent_state=return_agent_state,
+            return_storage_state=return_storage_state,
             timeout=timeout,
-            cdpUrl=cdp_url,
-            maxSteps=max_steps,
-            thinkingTokenBudget=thinking_token_budget,
-            startUrl=start_url,
+            cdp_url=cdp_url,
+            max_steps=max_steps,
+            thinking_token_budget=thinking_token_budget,
+            start_url=start_url,
         )
 
         # For streaming case, use a generator function
