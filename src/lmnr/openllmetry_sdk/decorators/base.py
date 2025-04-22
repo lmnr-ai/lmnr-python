@@ -1,7 +1,6 @@
 import json
 from functools import wraps
 import logging
-import os
 import pydantic
 import types
 from typing import Any, Literal, Optional, Union
@@ -40,6 +39,7 @@ def json_dumps(data: dict) -> str:
 def entity_method(
     name: Optional[str] = None,
     ignore_input: bool = False,
+    ignore_inputs: Optional[list[str]] = None,
     ignore_output: bool = False,
     span_type: Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]] = "DEFAULT",
 ):
@@ -58,9 +58,15 @@ def entity_method(
                 ctx_token = context_api.attach(ctx)
 
                 try:
-                    if _should_send_prompts() and not ignore_input:
+                    if not ignore_input:
                         inp = json_dumps(
-                            get_input_from_func_args(fn, is_method(fn), args, kwargs)
+                            get_input_from_func_args(
+                                fn,
+                                is_method=is_method(fn),
+                                func_args=args,
+                                func_kwargs=kwargs,
+                                ignore_inputs=ignore_inputs,
+                            )
                         )
                         if len(inp) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
                             span.set_attribute(
@@ -83,7 +89,7 @@ def entity_method(
                     return _handle_generator(span, res)
 
                 try:
-                    if _should_send_prompts() and not ignore_output:
+                    if not ignore_output:
                         output = json_dumps(res)
                         if len(output) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
                             span.set_attribute(
@@ -108,6 +114,7 @@ def entity_method(
 def aentity_method(
     name: Optional[str] = None,
     ignore_input: bool = False,
+    ignore_inputs: Optional[list[str]] = None,
     ignore_output: bool = False,
     span_type: Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]] = "DEFAULT",
 ):
@@ -126,9 +133,15 @@ def aentity_method(
                 ctx_token = context_api.attach(ctx)
 
                 try:
-                    if _should_send_prompts() and not ignore_input:
+                    if not ignore_input:
                         inp = json_dumps(
-                            get_input_from_func_args(fn, is_method(fn), args, kwargs)
+                            get_input_from_func_args(
+                                fn,
+                                is_method=is_method(fn),
+                                func_args=args,
+                                func_kwargs=kwargs,
+                                ignore_inputs=ignore_inputs,
+                            )
                         )
                         if len(inp) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
                             span.set_attribute(
@@ -151,7 +164,7 @@ def aentity_method(
                     return await _ahandle_generator(span, ctx_token, res)
 
                 try:
-                    if _should_send_prompts() and not ignore_output:
+                    if not ignore_output:
                         output = json_dumps(res)
                         if len(output) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
                             span.set_attribute(
@@ -190,12 +203,6 @@ async def _ahandle_generator(span, ctx_token, res):
 
     span.end()
     context_api.detach(ctx_token)
-
-
-def _should_send_prompts():
-    return (
-        os.getenv("TRACELOOP_TRACE_CONTENT") or "true"
-    ).lower() == "true" or context_api.get_value("override_enable_content_tracing")
 
 
 def _process_exception(span: Span, e: Exception):

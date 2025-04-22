@@ -27,7 +27,16 @@ class Agent(BaseResource):
         model_provider: Optional[ModelProvider] = None,
         model: Optional[str] = None,
         enable_thinking: bool = True,
+        agent_state: Optional[str] = None,
+        storage_state: Optional[str] = None,
         return_screenshots: bool = False,
+        return_agent_state: bool = False,
+        return_storage_state: bool = False,
+        timeout: Optional[int] = None,
+        cdp_url: Optional[str] = None,
+        max_steps: Optional[int] = None,
+        thinking_token_budget: Optional[int] = None,
+        start_url: Optional[str] = None,
     ) -> Generator[RunAgentResponseChunk, None, None]:
         """Run Laminar index agent in streaming mode.
 
@@ -38,7 +47,16 @@ class Agent(BaseResource):
             model_provider (Optional[ModelProvider], optional): LLM model provider
             model (Optional[str], optional): LLM model name
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
+            agent_state (Optional[str], optional): the agent's state as returned by the previous agent run. Default to None.
+            storage_state (Optional[str], optional): the browser's storage state as returned by the previous agent run. Default to None.
             return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
+            return_agent_state (bool, optional): whether to return the agent's state. Default to False.
+            return_storage_state (bool, optional): whether to return the storage state. Default to False.
+            timeout (Optional[int], optional): timeout seconds for the agent's response. Default to None.
+            cdp_url (Optional[str], optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
+            max_steps (Optional[int], optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
+            thinking_token_budget (Optional[int], optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
+            start_url (Optional[str], optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
         Returns:
             Generator[RunAgentResponseChunk, None, None]: a generator of response chunks
         """
@@ -52,7 +70,16 @@ class Agent(BaseResource):
         model_provider: Optional[ModelProvider] = None,
         model: Optional[str] = None,
         enable_thinking: bool = True,
+        agent_state: Optional[str] = None,
+        storage_state: Optional[str] = None,
         return_screenshots: bool = False,
+        return_agent_state: bool = False,
+        return_storage_state: bool = False,
+        timeout: Optional[int] = None,
+        cdp_url: Optional[str] = None,
+        max_steps: Optional[int] = None,
+        thinking_token_budget: Optional[int] = None,
+        start_url: Optional[str] = None,
     ) -> AgentOutput:
         """Run Laminar index agent.
 
@@ -62,8 +89,16 @@ class Agent(BaseResource):
             model_provider (Optional[ModelProvider], optional): LLM model provider
             model (Optional[str], optional): LLM model name
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
+            agent_state (Optional[str], optional): the agent's state as returned by the previous agent run. Default to None.
+            storage_state (Optional[str], optional): the browser's storage state as returned by the previous agent run. Default to None.
             return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
-
+            return_agent_state (bool, optional): whether to return the agent's state. Default to False.
+            return_storage_state (bool, optional): whether to return the storage state. Default to False.
+            timeout (Optional[int], optional): timeout seconds for the agent's response. Default to None.
+            cdp_url (Optional[str], optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
+            max_steps (Optional[int], optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
+            thinking_token_budget (Optional[int], optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
+            start_url (Optional[str], optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
         Returns:
             AgentOutput: agent output
         """
@@ -78,7 +113,16 @@ class Agent(BaseResource):
         model: Optional[str] = None,
         stream: Literal[False] = False,
         enable_thinking: bool = True,
+        agent_state: Optional[str] = None,
+        storage_state: Optional[str] = None,
         return_screenshots: bool = False,
+        return_agent_state: bool = False,
+        return_storage_state: bool = False,
+        timeout: Optional[int] = None,
+        cdp_url: Optional[str] = None,
+        max_steps: Optional[int] = None,
+        thinking_token_budget: Optional[int] = None,
+        start_url: Optional[str] = None,
     ) -> AgentOutput:
         """Run Laminar index agent.
 
@@ -89,8 +133,16 @@ class Agent(BaseResource):
             model (Optional[str], optional): LLM model name
             stream (Literal[False], optional): whether to stream the agent's response
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
+            agent_state (Optional[str], optional): the agent's state as returned by the previous agent run. Default to None.
+            storage_state (Optional[str], optional): the browser's storage state as returned by the previous agent run. Default to None.
             return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
-
+            return_agent_state (bool, optional): whether to return the agent's state. Default to False.
+            return_storage_state (bool, optional): whether to return the storage state. Default to False.
+            timeout (Optional[int], optional): timeout seconds for the agent's response. Default to None.
+            cdp_url (Optional[str], optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
+            max_steps (Optional[int], optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
+            thinking_token_budget (Optional[int], optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
+            start_url (Optional[str], optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
         Returns:
             AgentOutput: agent output
         """
@@ -104,7 +156,16 @@ class Agent(BaseResource):
         model: Optional[str] = None,
         stream: bool = False,
         enable_thinking: bool = True,
+        agent_state: Optional[str] = None,
+        storage_state: Optional[str] = None,
         return_screenshots: bool = False,
+        return_agent_state: bool = False,
+        return_storage_state: bool = False,
+        timeout: Optional[int] = None,
+        cdp_url: Optional[str] = None,
+        max_steps: Optional[int] = None,
+        thinking_token_budget: Optional[int] = None,
+        start_url: Optional[str] = None,
     ) -> Union[AgentOutput, Generator[RunAgentResponseChunk, None, None]]:
         """Run Laminar index agent.
 
@@ -115,7 +176,16 @@ class Agent(BaseResource):
             model (Optional[str], optional): LLM model name
             stream (bool, optional): whether to stream the agent's response
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
+            agent_state (Optional[str], optional): the agent's state as returned by the previous agent run. Default to None.
+            storage_state (Optional[str], optional): the browser's storage state as returned by the previous agent run. Default to None.
             return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
+            return_agent_state (bool, optional): whether to return the agent's state. Default to False.
+            return_storage_state (bool, optional): whether to return the storage state. Default to False.
+            timeout (Optional[int], optional): timeout seconds for the agent's response. Default to None.
+            cdp_url (Optional[str], optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
+            max_steps (Optional[int], optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
+            thinking_token_budget (Optional[int], optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
+            start_url (Optional[str], optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
 
         Returns:
             Union[AgentOutput, Generator[RunAgentResponseChunk, None, None]]: agent output or a generator of response chunks
@@ -137,15 +207,23 @@ class Agent(BaseResource):
             parent_span_context=parent_span_context,
             model_provider=model_provider,
             model=model,
-            # We always connect to stream, because our TLS listeners on AWS
-            # Network load balancers have a hard fixed idle timeout of 350 seconds.
+            agent_state=agent_state,
+            storage_state=storage_state,
+            # We always connect to stream, because our network configuration
+            # has a hard fixed idle timeout of 350 seconds.
             # This means that if we don't stream, the connection will be closed.
             # For now, we just return the content of the final chunk if `stream` is
             # `False`.
-            # https://aws.amazon.com/blogs/networking-and-content-delivery/introducing-nlb-tcp-configurable-idle-timeout/
             stream=True,
             enable_thinking=enable_thinking,
             return_screenshots=return_screenshots,
+            return_agent_state=return_agent_state,
+            return_storage_state=return_storage_state,
+            timeout=timeout,
+            cdp_url=cdp_url,
+            max_steps=max_steps,
+            thinking_token_budget=thinking_token_budget,
+            start_url=start_url,
         )
 
         # For streaming case, use a generator function
@@ -169,7 +247,7 @@ class Agent(BaseResource):
         with self._client.stream(
             "POST",
             self._base_url + "/v1/agent/run",
-            json=request.to_dict(),
+            json=request.model_dump(by_alias=True),
             headers=self._headers(),
         ) as response:
             for line in response.iter_lines():
@@ -182,6 +260,8 @@ class Agent(BaseResource):
                 if line:
                     chunk = RunAgentResponseChunk.model_validate_json(line)
                     yield chunk.root
+                    if chunk.root.chunk_type in ["finalOutput", "error"]:
+                        break
 
     def __run_non_streaming(self, request: RunAgentRequest) -> AgentOutput:
         """Run agent in non-streaming mode.
@@ -197,9 +277,11 @@ class Agent(BaseResource):
         with self._client.stream(
             "POST",
             self._base_url + "/v1/agent/run",
-            json=request.to_dict(),
+            json=request.model_dump(by_alias=True),
             headers=self._headers(),
         ) as response:
+            if response.status_code != 200:
+                raise RuntimeError(response.read())
             for line in response.iter_lines():
                 line = str(line)
                 if line.startswith("[DONE]"):
@@ -209,7 +291,11 @@ class Agent(BaseResource):
                 line = line[6:]
                 if line:
                     chunk = RunAgentResponseChunk.model_validate_json(line)
-                    if chunk.root.chunkType == "finalOutput":
+                    if chunk.root.chunk_type == "finalOutput":
                         final_chunk = chunk.root
+                    elif chunk.root.chunk_type == "error":
+                        raise RuntimeError(chunk.root.error)
+                    elif chunk.root.chunk_type == "timeout":
+                        raise TimeoutError("Agent timed out")
 
         return final_chunk.content if final_chunk is not None else AgentOutput()

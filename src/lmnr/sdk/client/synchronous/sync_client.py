@@ -11,8 +11,6 @@ from lmnr.sdk.client.synchronous.resources import (
     Agent,
     BrowserEvents,
     Evals,
-    Pipeline,
-    SemanticSearch,
 )
 from lmnr.sdk.utils import from_env
 
@@ -25,8 +23,6 @@ class LaminarClient:
     __client: httpx.Client = None
 
     # Resource properties
-    __pipeline: Optional[Pipeline] = None
-    __semantic_search: Optional[SemanticSearch] = None
     __agent: Optional[Agent] = None
     __evals: Optional[Evals] = None
 
@@ -71,35 +67,11 @@ class LaminarClient:
         )
 
         # Initialize resource objects
-        self.__pipeline = Pipeline(
-            self.__client, self.__base_url, self.__project_api_key
-        )
-        self.__semantic_search = SemanticSearch(
-            self.__client, self.__base_url, self.__project_api_key
-        )
         self.__agent = Agent(self.__client, self.__base_url, self.__project_api_key)
         self.__evals = Evals(self.__client, self.__base_url, self.__project_api_key)
         self.__browser_events = BrowserEvents(
             self.__client, self.__base_url, self.__project_api_key
         )
-
-    @property
-    def pipeline(self) -> Pipeline:
-        """Get the Pipeline resource.
-
-        Returns:
-            Pipeline: The Pipeline resource instance.
-        """
-        return self.__pipeline
-
-    @property
-    def semantic_search(self) -> SemanticSearch:
-        """Get the SemanticSearch resource.
-
-        Returns:
-            SemanticSearch: The SemanticSearch resource instance.
-        """
-        return self.__semantic_search
 
     @property
     def agent(self) -> Agent:

@@ -11,8 +11,6 @@ from lmnr.sdk.client.asynchronous.resources import (
     AsyncAgent,
     AsyncBrowserEvents,
     AsyncEvals,
-    AsyncPipeline,
-    AsyncSemanticSearch,
 )
 from lmnr.sdk.utils import from_env
 
@@ -66,12 +64,6 @@ class AsyncLaminarClient:
         )
 
         # Initialize resource objects
-        self.__pipeline = AsyncPipeline(
-            self.__client, self.__base_url, self.__project_api_key
-        )
-        self.__semantic_search = AsyncSemanticSearch(
-            self.__client, self.__base_url, self.__project_api_key
-        )
         self.__agent = AsyncAgent(
             self.__client, self.__base_url, self.__project_api_key
         )
@@ -81,24 +73,6 @@ class AsyncLaminarClient:
         self.__browser_events = AsyncBrowserEvents(
             self.__client, self.__base_url, self.__project_api_key
         )
-
-    @property
-    def pipeline(self) -> AsyncPipeline:
-        """Get the Pipeline resource.
-
-        Returns:
-            Pipeline: The Pipeline resource instance.
-        """
-        return self.__pipeline
-
-    @property
-    def semantic_search(self) -> AsyncSemanticSearch:
-        """Get the SemanticSearch resource.
-
-        Returns:
-            SemanticSearch: The SemanticSearch resource instance.
-        """
-        return self.__semantic_search
 
     @property
     def agent(self) -> AsyncAgent:

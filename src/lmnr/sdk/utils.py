@@ -88,12 +88,19 @@ def get_input_from_func_args(
     is_method: bool = False,
     func_args: list[typing.Any] = [],
     func_kwargs: dict[str, typing.Any] = {},
+    ignore_inputs: typing.Optional[list[str]] = None,
 ) -> dict[str, typing.Any]:
     # Remove implicitly passed "self" or "cls" argument for
     # instance or class methods
-    res = func_kwargs.copy()
+    res = {
+        k: v
+        for k, v in func_kwargs.items()
+        if not (ignore_inputs and k in ignore_inputs)
+    }
     for i, k in enumerate(inspect.signature(func).parameters.keys()):
         if is_method and k in ["self", "cls"]:
+            continue
+        if ignore_inputs and k in ignore_inputs:
             continue
         # If param has default value, then it's not present in func args
         if i < len(func_args):
