@@ -186,6 +186,32 @@ def test_observe_skip_input_keys(exporter: InMemorySpanExporter):
     assert spans[0].attributes["lmnr.span.input"] == json.dumps({"b": 2, "c": 3})
 
 
+def test_observe_skip_input_keys_with_kwargs(exporter: InMemorySpanExporter):
+    @observe(ignore_inputs=["a", "d"])
+    def observed_foo(a, b, c, **kwargs):
+        return "foo"
+
+    result = observed_foo(1, 2, 3, d=4, e=5, f=6)
+    spans = exporter.get_finished_spans()
+    assert result == "foo"
+    assert len(spans) == 1
+    assert spans[0].name == "observed_foo"
+    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
+    assert {
+        k: v
+        for k, v in sorted(
+            json.loads(spans[0].attributes["lmnr.span.input"]).items(),
+            key=lambda x: x[0],
+        )
+    } == {
+        "b": 2,
+        "c": 3,
+        "e": 5,
+        "f": 6,
+    }
+
+
 @pytest.mark.asyncio
 async def test_observe_skip_input_keys_async(exporter: InMemorySpanExporter):
     @observe(ignore_inputs=["a"])
