@@ -32,11 +32,13 @@ class Agent(BaseResource):
         return_screenshots: bool = False,
         return_agent_state: bool = False,
         return_storage_state: bool = False,
+        disable_give_control: bool = False,
         timeout: Optional[int] = None,
         cdp_url: Optional[str] = None,
         max_steps: Optional[int] = None,
         thinking_token_budget: Optional[int] = None,
         start_url: Optional[str] = None,
+        user_agent: Optional[str] = None,
     ) -> Generator[RunAgentResponseChunk, None, None]:
         """Run Laminar index agent in streaming mode.
 
@@ -52,11 +54,13 @@ class Agent(BaseResource):
             return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
             return_agent_state (bool, optional): whether to return the agent's state. Default to False.
             return_storage_state (bool, optional): whether to return the storage state. Default to False.
+            disable_give_control (bool, optional): whether to NOT give the agent additional direction to give control to the user for tasks such as login. Default to False.
             timeout (Optional[int], optional): timeout seconds for the agent's response. Default to None.
             cdp_url (Optional[str], optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
             max_steps (Optional[int], optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
             thinking_token_budget (Optional[int], optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
             start_url (Optional[str], optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
+            user_agent (Optional[str], optional): the user to be sent to the browser. If not specified, Laminar uses the default user agent. Default to None.
         Returns:
             Generator[RunAgentResponseChunk, None, None]: a generator of response chunks
         """
@@ -74,12 +78,14 @@ class Agent(BaseResource):
         storage_state: Optional[str] = None,
         return_screenshots: bool = False,
         return_agent_state: bool = False,
+        disable_give_control: bool = False,
         return_storage_state: bool = False,
         timeout: Optional[int] = None,
         cdp_url: Optional[str] = None,
         max_steps: Optional[int] = None,
         thinking_token_budget: Optional[int] = None,
         start_url: Optional[str] = None,
+        user_agent: Optional[str] = None,
     ) -> AgentOutput:
         """Run Laminar index agent.
 
@@ -94,11 +100,14 @@ class Agent(BaseResource):
             return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
             return_agent_state (bool, optional): whether to return the agent's state. Default to False.
             return_storage_state (bool, optional): whether to return the storage state. Default to False.
+            disable_give_control (bool, optional): whether to NOT give the agent additional direction to give control to the user for tasks such as login. Default to False.
             timeout (Optional[int], optional): timeout seconds for the agent's response. Default to None.
             cdp_url (Optional[str], optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
             max_steps (Optional[int], optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
             thinking_token_budget (Optional[int], optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
             start_url (Optional[str], optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
+            user_agent (Optional[str], optional): the user to be sent to the browser. If not specified, Laminar uses the default user agent. Default to None.
+
         Returns:
             AgentOutput: agent output
         """
@@ -118,11 +127,13 @@ class Agent(BaseResource):
         return_screenshots: bool = False,
         return_agent_state: bool = False,
         return_storage_state: bool = False,
+        disable_give_control: bool = False,
         timeout: Optional[int] = None,
         cdp_url: Optional[str] = None,
         max_steps: Optional[int] = None,
         thinking_token_budget: Optional[int] = None,
         start_url: Optional[str] = None,
+        user_agent: Optional[str] = None,
     ) -> AgentOutput:
         """Run Laminar index agent.
 
@@ -138,11 +149,14 @@ class Agent(BaseResource):
             return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
             return_agent_state (bool, optional): whether to return the agent's state. Default to False.
             return_storage_state (bool, optional): whether to return the storage state. Default to False.
+            disable_give_control (bool, optional): whether to NOT give the agent additional direction to give control to the user for tasks such as login. Default to False.
             timeout (Optional[int], optional): timeout seconds for the agent's response. Default to None.
             cdp_url (Optional[str], optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
             max_steps (Optional[int], optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
             thinking_token_budget (Optional[int], optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
             start_url (Optional[str], optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
+            user_agent (Optional[str], optional): the user to be sent to the browser. If not specified, Laminar uses the default user agent. Default to None.
+
         Returns:
             AgentOutput: agent output
         """
@@ -161,11 +175,13 @@ class Agent(BaseResource):
         return_screenshots: bool = False,
         return_agent_state: bool = False,
         return_storage_state: bool = False,
+        disable_give_control: bool = False,
         timeout: Optional[int] = None,
         cdp_url: Optional[str] = None,
         max_steps: Optional[int] = None,
         thinking_token_budget: Optional[int] = None,
         start_url: Optional[str] = None,
+        user_agent: Optional[str] = None,
     ) -> Union[AgentOutput, Generator[RunAgentResponseChunk, None, None]]:
         """Run Laminar index agent.
 
@@ -181,11 +197,13 @@ class Agent(BaseResource):
             return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
             return_agent_state (bool, optional): whether to return the agent's state. Default to False.
             return_storage_state (bool, optional): whether to return the storage state. Default to False.
+            disable_give_control (bool, optional): whether to NOT give the agent additional direction to give control to the user for tasks such as login. Default to False.
             timeout (Optional[int], optional): timeout seconds for the agent's response. Default to None.
             cdp_url (Optional[str], optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
             max_steps (Optional[int], optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
             thinking_token_budget (Optional[int], optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
             start_url (Optional[str], optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
+            user_agent (Optional[str], optional): the user to be sent to the browser. If not specified, Laminar uses the default user agent. Default to None.
 
         Returns:
             Union[AgentOutput, Generator[RunAgentResponseChunk, None, None]]: agent output or a generator of response chunks
@@ -224,6 +242,8 @@ class Agent(BaseResource):
             max_steps=max_steps,
             thinking_token_budget=thinking_token_budget,
             start_url=start_url,
+            disable_give_control=disable_give_control,
+            user_agent=user_agent,
         )
 
         # For streaming case, use a generator function
