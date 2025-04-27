@@ -35,9 +35,10 @@ with open(os.path.join(current_dir, "rrweb", "rrweb.min.js"), "r") as f:
 INJECT_PLACEHOLDER = """
 () => {
     const BATCH_SIZE = 1000;  // Maximum events to store in memory
-    
+
     window.lmnrRrwebEventsBatch = new Set();
-    
+    window.lmnrIsPageVisible = true;
+
     // Utility function to compress individual event data
     async function compressEventData(data) {
         const jsonString = JSON.stringify(data);
@@ -47,7 +48,7 @@ INJECT_PLACEHOLDER = """
         const compressedData = await compressedResponse.arrayBuffer();
         return Array.from(new Uint8Array(compressedData));
     }
-    
+
     window.lmnrGetAndClearEvents = () => {
         const events = window.lmnrRrwebEventsBatch;
         window.lmnrRrwebEventsBatch = new Set();
@@ -56,14 +57,19 @@ INJECT_PLACEHOLDER = """
 
     // Add heartbeat events
     setInterval(async () => {
+        if (document.visibilityState === 'hidden' || document.hidden || !window.lmnrIsPageVisible) {
+            return;
+        }
+
         const heartbeat = {
             type: 6,
             data: await compressEventData({ source: 'heartbeat' }),
             timestamp: Date.now()
         };
-        
+
         window.lmnrRrwebEventsBatch.add(heartbeat);
-        
+        console.log('heartbeat', window.lmnrRrwebEventsBatch.size);
+
         // Prevent memory issues by limiting batch size
         if (window.lmnrRrwebEventsBatch.size > BATCH_SIZE) {
             window.lmnrRrwebEventsBatch = new Set(Array.from(window.lmnrRrwebEventsBatch).slice(-BATCH_SIZE));
@@ -73,7 +79,7 @@ INJECT_PLACEHOLDER = """
     window.lmnrRrweb.record({
         async emit(event) {
             // Ignore events from all tabs except the current one
-            if (document.visibilityState === 'hidden' || document.hidden) {
+            if (document.visibilityState === 'hidden' || document.hidden || !window.lmnrIsPageVisible) {
                 return;
             }
             // Compress the data field
@@ -107,9 +113,13 @@ async def send_events_async(
             return
 
         await client._browser_events.send(session_id, trace_id, events)
-
     except Exception as e:
-        logger.error(f"Error sending events: {e}")
+        if str(e).startswith("Page.evaluate: Execution context was destroyed"):
+            logger.info("Execution context was destroyed, injecting rrweb again")
+            await inject_rrweb_async(page)
+            await send_events_async(page, session_id, trace_id, client)
+        else:
+            logger.error(f"Error sending events: {e}")
 
 
 def send_events_sync(
@@ -133,7 +143,12 @@ def send_events_sync(
         client._browser_events.send(session_id, trace_id, events)
 
     except Exception as e:
-        logger.error(f"Error sending events: {e}")
+        if str(e).startswith("Page.evaluate: Execution context was destroyed"):
+            logger.info("Execution context was destroyed, injecting rrweb again")
+            inject_rrweb_sync(page)
+            send_events_sync(page, session_id, trace_id, client)
+        else:
+            logger.error(f"Error sending events: {e}")
 
 
 def inject_rrweb_sync(page: SyncPage):
@@ -228,6 +243,16 @@ def handle_navigation_sync(
     if page_id in instrumented_pages:
         return
     instrumented_pages.add(page_id)
+    page.evaluate("window.lmnrIsPageVisible = true;")
+    original_bring_to_front = page.bring_to_front
+
+    def bring_to_front():
+        for p in page.context.pages:
+            p.evaluate("window.lmnrIsPageVisible = false;")
+        original_bring_to_front()
+        page.evaluate("window.lmnrIsPageVisible = true;")
+
+    page.bring_to_front = bring_to_front
 
     def on_load():
         try:
@@ -269,6 +294,16 @@ async def handle_navigation_async(
             logger.error(f"Error in on_load handler: {e}")
 
     page.on("load", lambda: asyncio.create_task(on_load()))
+    await page.evaluate("window.lmnrIsPageVisible = true;")
+    original_bring_to_front = page.bring_to_front
+
+    async def bring_to_front():
+        for p in page.context.pages:
+            await p.evaluate("window.lmnrIsPageVisible = false;")
+        await original_bring_to_front()
+        await page.evaluate("window.lmnrIsPageVisible = true;")
+
+    page.bring_to_front = bring_to_front
     await inject_rrweb_async(page)
 
     async def collection_loop():
