@@ -57,7 +57,7 @@ INJECT_PLACEHOLDER = """
 
     // Add heartbeat events
     setInterval(async () => {
-        if (document.visibilityState === 'hidden' || document.hidden || !window.lmnrIsPageVisible) {
+        if (document.visibilityState === 'hidden' || document.hidden || window.lmnrIsPageVisible === false) {
             return;
         }
 
@@ -79,7 +79,7 @@ INJECT_PLACEHOLDER = """
     window.lmnrRrweb.record({
         async emit(event) {
             // Ignore events from all tabs except the current one
-            if (document.visibilityState === 'hidden' || document.hidden || !window.lmnrIsPageVisible) {
+            if (document.visibilityState === 'hidden' || document.hidden || window.lmnrIsPageVisible === false) {
                 return;
             }
             // Compress the data field
@@ -248,7 +248,10 @@ def handle_navigation_sync(
 
     def bring_to_front():
         for p in page.context.pages:
-            p.evaluate("window.lmnrIsPageVisible = false;")
+            try:
+                p.evaluate("window.lmnrIsPageVisible = false;")
+            except Exception:
+                pass
         original_bring_to_front()
         page.evaluate("window.lmnrIsPageVisible = true;")
 
@@ -259,9 +262,6 @@ def handle_navigation_sync(
             inject_rrweb_sync(page)
         except Exception as e:
             logger.error(f"Error in on_load handler: {e}")
-
-    page.on("load", on_load)
-    inject_rrweb_sync(page)
 
     def collection_loop():
         while not page.is_closed():  # Stop when page closes
@@ -275,6 +275,26 @@ def handle_navigation_sync(
     thread = threading.Thread(target=collection_loop, daemon=True)
     thread.start()
 
+    def on_close():
+        try:
+            async_instrumented_pages.remove(page_id)
+            send_events_sync(page, session_id, trace_id, client)
+            thread.join()
+        except Exception:
+            pass
+        for p in page.context.pages[::-1]:
+            # Force the rightmost tab to the front, to mimic some browser settings.
+            # Otherwise, there is no way for us to know which page becomes active after closing one tab.
+            try:
+                p.bring_to_front()
+                break
+            except Exception:
+                pass
+
+    page.on("load", on_load)
+    page.on("close", on_close)
+    inject_rrweb_sync(page)
+
 
 @observe(name="playwright.page", ignore_input=True, ignore_output=True)
 async def handle_navigation_async(
@@ -286,25 +306,6 @@ async def handle_navigation_async(
     if page_id in async_instrumented_pages:
         return
     async_instrumented_pages.add(page_id)
-
-    async def on_load():
-        try:
-            await inject_rrweb_async(page)
-        except Exception as e:
-            logger.error(f"Error in on_load handler: {e}")
-
-    page.on("load", lambda: asyncio.create_task(on_load()))
-    await page.evaluate("window.lmnrIsPageVisible = true;")
-    original_bring_to_front = page.bring_to_front
-
-    async def bring_to_front():
-        for p in page.context.pages:
-            await p.evaluate("window.lmnrIsPageVisible = false;")
-        await original_bring_to_front()
-        await page.evaluate("window.lmnrIsPageVisible = true;")
-
-    page.bring_to_front = bring_to_front
-    await inject_rrweb_async(page)
 
     async def collection_loop():
         try:
@@ -320,5 +321,39 @@ async def handle_navigation_async(
     # Create and store task
     task = asyncio.create_task(collection_loop())
 
-    # Clean up task when page closes
-    page.on("close", lambda: task.cancel())
+    async def on_load():
+        try:
+            await inject_rrweb_async(page)
+        except Exception as e:
+            logger.error(f"Error in on_load handler: {e}")
+
+    async def on_close():
+        try:
+            async_instrumented_pages.remove(page_id)
+            task.cancel()
+            await send_events_async(page, session_id, trace_id, client)
+        except Exception:
+            pass
+        for p in page.context.pages[::-1]:
+            try:
+                await p.bring_to_front()
+                break
+            except Exception:
+                pass
+
+    page.on("load", lambda: asyncio.create_task(on_load()))
+    page.on("close", lambda: asyncio.create_task(on_close()))
+    await page.evaluate("window.lmnrIsPageVisible = true;")
+    original_bring_to_front = page.bring_to_front
+
+    async def bring_to_front():
+        for p in page.context.pages:
+            try:
+                await p.evaluate("window.lmnrIsPageVisible = false;")
+            except Exception:
+                pass
+        await original_bring_to_front()
+        await page.evaluate("window.lmnrIsPageVisible = true;")
+
+    page.bring_to_front = bring_to_front
+    await inject_rrweb_async(page)
