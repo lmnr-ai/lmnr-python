@@ -2,7 +2,7 @@
 
 ## Installation
 
-### 1. clone the repository
+### 1. Clone the repository
 
 ```
 git clone https://github.com/lmnr-ai/lmnr-python
