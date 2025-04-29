@@ -1,0 +1,16 @@
+[project]
+name = "fastapi-app"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.9, <4"
+dependencies = [
+    "fastapi[standard]>=0.115.12",
+    "lmnr[openai]",
+    "openai>=1.76.0",
+    "pydantic>=2.10.5",
+    "python-dotenv>=1.1.0",
+]
+
+[tool.uv.sources]
+lmnr = { workspace = true }
