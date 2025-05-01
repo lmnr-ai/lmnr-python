@@ -195,12 +195,7 @@ class Evaluation:
         self.upload_tasks = []
         self.base_http_url = f"{base_url}:{http_port or 443}"
 
-        api_key = project_api_key
-        if not api_key:
-            dotenv_path = dotenv.find_dotenv(usecwd=True)
-            api_key = dotenv.get_key(
-                dotenv_path=dotenv_path, key_to_get="LMNR_PROJECT_API_KEY"
-            )
+        api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
         if not api_key:
             raise ValueError(
                 "Please initialize the Laminar object with"
