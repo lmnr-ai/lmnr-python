@@ -1,4 +1,4 @@
-from lmnr.openllmetry_sdk.decorators.base import (
+from lmnr.opentelemetry_lib.decorators.base import (
     entity_method,
     aentity_method,
 )
@@ -7,8 +7,8 @@ from opentelemetry.trace import INVALID_SPAN, get_current_span
 from typing import Callable, Literal, Optional, TypeVar, Union, cast
 from typing_extensions import ParamSpec
 
-from lmnr.openllmetry_sdk.tracing.attributes import SESSION_ID
-from lmnr.openllmetry_sdk.tracing.tracing import update_association_properties
+from lmnr.opentelemetry_lib.tracing.attributes import SESSION_ID
+from lmnr.opentelemetry_lib.tracing.tracing import update_association_properties
 
 from .utils import is_async
 

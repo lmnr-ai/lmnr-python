@@ -1,15 +1,15 @@
 from contextlib import contextmanager
 from contextvars import Context
-from lmnr.openllmetry_sdk import TracerManager
-from lmnr.openllmetry_sdk.instruments import Instruments
-from lmnr.openllmetry_sdk.tracing import get_tracer
-from lmnr.openllmetry_sdk.tracing.attributes import (
+from lmnr.opentelemetry_lib import TracerManager
+from lmnr.opentelemetry_lib.instruments import Instruments
+from lmnr.opentelemetry_lib.tracing import get_tracer
+from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     Attributes,
     SPAN_TYPE,
 )
-from lmnr.openllmetry_sdk.config import MAX_MANUAL_SPAN_PAYLOAD_SIZE
-from lmnr.openllmetry_sdk.decorators.base import json_dumps
+from lmnr.opentelemetry_lib.config import MAX_MANUAL_SPAN_PAYLOAD_SIZE
+from lmnr.opentelemetry_lib.decorators.base import json_dumps
 from opentelemetry import context as context_api, trace
 from opentelemetry.context import attach, detach
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
@@ -28,13 +28,13 @@ import os
 import re
 import uuid
 
-from lmnr.openllmetry_sdk.tracing.attributes import (
+from lmnr.opentelemetry_lib.tracing.attributes import (
     SESSION_ID,
     SPAN_INPUT,
     SPAN_OUTPUT,
     TRACE_TYPE,
 )
-from lmnr.openllmetry_sdk.tracing.tracing import (
+from lmnr.opentelemetry_lib.tracing.tracing import (
     get_association_properties,
     remove_association_properties,
     set_association_properties,

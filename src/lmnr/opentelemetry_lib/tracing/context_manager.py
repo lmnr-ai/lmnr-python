@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 
-from lmnr.openllmetry_sdk.tracing.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.tracing.tracing import TracerWrapper
 
 
 @contextmanager

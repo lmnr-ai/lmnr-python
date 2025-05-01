@@ -13,8 +13,8 @@ from .sdk.types import (
 )
 from .sdk.decorators import observe
 from .sdk.types import LaminarSpanContext
-from .openllmetry_sdk import Instruments
-from .openllmetry_sdk.tracing.attributes import Attributes
+from .opentelemetry_lib import Instruments
+from .opentelemetry_lib.tracing.attributes import Attributes
 from opentelemetry.trace import use_span
 
 __all__ = [

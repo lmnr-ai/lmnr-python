@@ -7,8 +7,8 @@ from contextvars import Context
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.log import VerboseColorfulFormatter
-from lmnr.openllmetry_sdk.instruments import Instruments
-from lmnr.openllmetry_sdk.tracing.attributes import (
+from lmnr.opentelemetry_lib.instruments import Instruments
+from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     SPAN_IDS_PATH,
     SPAN_INSTRUMENTATION_SOURCE,
@@ -17,9 +17,9 @@ from lmnr.openllmetry_sdk.tracing.attributes import (
     SPAN_PATH,
     TRACING_LEVEL,
 )
-from lmnr.openllmetry_sdk.tracing.content_allow_list import ContentAllowList
-from lmnr.openllmetry_sdk.utils import is_notebook
-from lmnr.openllmetry_sdk.utils.package_check import is_package_installed
+from lmnr.opentelemetry_lib.tracing.content_allow_list import ContentAllowList
+from lmnr.opentelemetry_lib.utils import is_notebook
+from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
     OTLPSpanExporter as HTTPExporter,

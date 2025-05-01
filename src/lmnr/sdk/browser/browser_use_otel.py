@@ -1,4 +1,4 @@
-from lmnr.openllmetry_sdk.decorators.base import json_dumps
+from lmnr.opentelemetry_lib.decorators.base import json_dumps
 from lmnr.sdk.browser.utils import with_tracer_wrapper
 from lmnr.sdk.utils import get_input_from_func_args
 from lmnr.version import __version__

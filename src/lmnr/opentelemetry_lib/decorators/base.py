@@ -10,11 +10,11 @@ from opentelemetry import context as context_api
 from opentelemetry.trace import Span
 
 from lmnr.sdk.utils import get_input_from_func_args, is_method
-from lmnr.openllmetry_sdk.tracing import get_tracer
-from lmnr.openllmetry_sdk.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT, SPAN_TYPE
-from lmnr.openllmetry_sdk.tracing.tracing import TracerWrapper
-from lmnr.openllmetry_sdk.utils.json_encoder import JSONEncoder
-from lmnr.openllmetry_sdk.config import MAX_MANUAL_SPAN_PAYLOAD_SIZE
+from lmnr.opentelemetry_lib.tracing import get_tracer
+from lmnr.opentelemetry_lib.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT, SPAN_TYPE
+from lmnr.opentelemetry_lib.tracing.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.utils.json_encoder import JSONEncoder
+from lmnr.opentelemetry_lib.config import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 
 
 class CustomJSONEncoder(JSONEncoder):

@@ -1,8 +1,8 @@
 import pytest
 from unittest.mock import patch
 from lmnr import Laminar
-from lmnr.openllmetry_sdk import TracerManager
-from lmnr.openllmetry_sdk.tracing.tracing import TracerWrapper
+from lmnr.opentelemetry_lib import TracerManager
+from lmnr.opentelemetry_lib.tracing.tracing import TracerWrapper
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter
 
@@ -22,7 +22,7 @@ def exporter() -> SpanExporter:
         orig_tracermanager_init(*args, **kwargs)
 
     with patch(
-        "lmnr.openllmetry_sdk.TracerManager.init",
+        "lmnr.opentelemetry_lib.TracerManager.init",
         side_effect=mock_tracermanager_init,
     ):
         Laminar.initialize(

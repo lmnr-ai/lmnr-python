@@ -1,7 +1,6 @@
 from argparse import ArgumentParser
 import asyncio
 import importlib.util
-import logging
 import os
 import re
 import sys
@@ -28,7 +27,10 @@ async def run_evaluation(args):
             if re.match(r".*_eval\.py$", f) or re.match(r"eval_.*\.py$", f)
         ]
         if len(files) == 0:
-            LOG.error("No evaluation files found in evals directory")
+            LOG.error("No evaluation files found in `evals` directory")
+            LOG.info(
+                "Eval files must be located in the `evals` directory and must be named *_eval.py or eval_*.py"
+            )
             return
         files.sort()
         LOG.info(f"Located {len(files)} evaluation files in {EVAL_DIR}")
