@@ -5,14 +5,14 @@ import logging
 import os
 import re
 import sys
+from typing import Optional
+
+from lmnr.sdk.evaluations import Evaluation
 
 from .sdk.eval_control import PREPARE_ONLY, EVALUATION_INSTANCE
-from .sdk.log import ColorfulFormatter
+from .sdk.log import get_default_logger
 
-LOG = logging.getLogger(__name__)
-console_log_handler = logging.StreamHandler()
-console_log_handler.setFormatter(ColorfulFormatter())
-LOG.addHandler(console_log_handler)
+LOG = get_default_logger(__name__)
 
 
 EVAL_DIR = "evals"
@@ -53,7 +53,7 @@ async def run_evaluation(args):
             sys.modules[name] = mod
 
             spec.loader.exec_module(mod)
-            evaluation = EVALUATION_INSTANCE.get()
+            evaluation: Optional[Evaluation] = EVALUATION_INSTANCE.get()
             if evaluation is None:
                 LOG.warning("Evaluation instance not found")
                 if args.fail_on_error:

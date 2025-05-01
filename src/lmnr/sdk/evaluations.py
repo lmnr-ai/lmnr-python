@@ -263,7 +263,11 @@ class Evaluation:
         await self._shutdown()
 
     async def _shutdown(self):
-        L.shutdown()
+        # We use flush() instead of shutdown() because multiple evaluations
+        # can be run sequentially in the same process. `shutdown()` would
+        # close the OTLP exporter and we wouldn't be able to export traces in
+        # the next evaluation.
+        L.flush()
         await self.client.close()
         if isinstance(self.data, LaminarDataset) and self.data.client:
             self.data.client.close()
