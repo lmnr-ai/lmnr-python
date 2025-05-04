@@ -91,16 +91,14 @@ def _wrap_new_browser_sync(
         trace_id = format(span.get_span_context().trace_id, "032x")
 
         def handle_page_navigation(page: SyncPage):
-            for p in context.pages:
-                p.evaluate("window.lmnrIsPageVisible = false;")
             return handle_navigation_sync(page, session_id, trace_id, client)
 
         context.on(
             "page",
             handle_page_navigation,
         )
+
         for page in context.pages:
-            page.evaluate("window.lmnrIsPageVisible = false;")
             handle_navigation_sync(page, session_id, trace_id, client)
     return browser
 
@@ -124,13 +122,10 @@ async def _wrap_new_browser_async(
         trace_id = format(span.get_span_context().trace_id, "032x")
 
         async def handle_page_navigation(page: Page):
-            for p in context.pages:
-                await p.evaluate("window.lmnrIsPageVisible = false;")
             return await handle_navigation_async(page, session_id, trace_id, client)
 
         context.on("page", handle_page_navigation)
         for page in context.pages:
-            await page.evaluate("window.lmnrIsPageVisible = false;")
             await handle_navigation_async(page, session_id, trace_id, client)
     return browser
 
@@ -152,8 +147,6 @@ def _wrap_new_context_sync(
     trace_id = format(span.get_span_context().trace_id, "032x")
 
     def handle_page_navigation(page: SyncPage):
-        for p in context.pages:
-            p.evaluate("window.lmnrIsPageVisible = false;")
         return handle_navigation_sync(page, session_id, trace_id, client)
 
     context.on(
@@ -182,8 +175,6 @@ async def _wrap_new_context_async(
     trace_id = format(span.get_span_context().trace_id, "032x")
 
     async def handle_page_navigation(page):
-        for p in context.pages:
-            await p.evaluate("window.lmnrIsPageVisible = false;")
         return await handle_navigation_async(page, session_id, trace_id, client)
 
     context.on("page", handle_page_navigation)
