@@ -228,12 +228,14 @@ def handle_navigation_sync(
 
     def bring_to_front():
         original_bring_to_front()
-        page.evaluate("""() => {
+        page.evaluate(
+            """() => {
             if (window.lmnrRrweb) {
                 window.lmnrRrweb.record.takeFullSnapshot();
             }
-        }""")
-        
+        }"""
+        )
+
     page.bring_to_front = bring_to_front
 
     def on_load():
@@ -301,12 +303,13 @@ async def handle_navigation_async(
 
     async def bring_to_front():
         await original_bring_to_front()
-        await page.evaluate("""() => {
+        await page.evaluate(
+            """() => {
             if (window.lmnrRrweb) {
                 window.lmnrRrweb.record.takeFullSnapshot();
             }
-        }""")
-
+        }"""
+        )
 
     page.bring_to_front = bring_to_front
     await inject_rrweb_async(page)
