@@ -22,10 +22,11 @@ from typing import Collection
 from wrapt import wrap_function_wrapper
 
 try:
-    from playwright.async_api import Browser, BrowserContext
+    from playwright.async_api import Browser, BrowserContext, Page
     from playwright.sync_api import (
         Browser as SyncBrowser,
         BrowserContext as SyncBrowserContext,
+        Page as SyncPage,
     )
 except ImportError as e:
     raise ImportError(
@@ -88,10 +89,15 @@ def _wrap_new_browser_sync(
             _context_spans[id(context)] = span
         span.set_attribute("lmnr.internal.has_browser_session", True)
         trace_id = format(span.get_span_context().trace_id, "032x")
+
+        def handle_page_navigation(page: SyncPage):
+            return handle_navigation_sync(page, session_id, trace_id, client)
+
         context.on(
             "page",
-            lambda page: handle_navigation_sync(page, session_id, trace_id, client),
+            handle_page_navigation,
         )
+
         for page in context.pages:
             handle_navigation_sync(page, session_id, trace_id, client)
     return browser
@@ -115,7 +121,7 @@ async def _wrap_new_browser_async(
         span.set_attribute("lmnr.internal.has_browser_session", True)
         trace_id = format(span.get_span_context().trace_id, "032x")
 
-        async def handle_page_navigation(page):
+        async def handle_page_navigation(page: Page):
             return await handle_navigation_async(page, session_id, trace_id, client)
 
         context.on("page", handle_page_navigation)
@@ -140,9 +146,12 @@ def _wrap_new_context_sync(
     span.set_attribute("lmnr.internal.has_browser_session", True)
     trace_id = format(span.get_span_context().trace_id, "032x")
 
+    def handle_page_navigation(page: SyncPage):
+        return handle_navigation_sync(page, session_id, trace_id, client)
+
     context.on(
         "page",
-        lambda page: handle_navigation_sync(page, session_id, trace_id, client),
+        handle_page_navigation,
     )
     for page in context.pages:
         handle_navigation_sync(page, session_id, trace_id, client)
@@ -153,7 +162,7 @@ def _wrap_new_context_sync(
 async def _wrap_new_context_async(
     tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
 ):
-    context: SyncBrowserContext = await wrapped(*args, **kwargs)
+    context: BrowserContext = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
     span = get_current_span()
     if span == INVALID_SPAN:

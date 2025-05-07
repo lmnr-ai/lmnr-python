@@ -394,7 +394,7 @@ def test_1k_attributes_fails_with_default_tracer_provider(
     with patch.dict(os.environ, {"OTEL_ATTRIBUTE_COUNT_LIMIT": "128"}, clear=True):
         default_tracer_provider = get_tracer_provider()
         with patch(
-            "lmnr.openllmetry_sdk.tracing.tracing.init_tracer_provider",
+            "lmnr.opentelemetry_lib.tracing.tracing.init_tracer_provider",
             return_value=default_tracer_provider,
         ):
             with Laminar.start_as_current_span("test") as span:

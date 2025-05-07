@@ -1,4 +1,4 @@
-from lmnr.openllmetry_sdk.decorators.base import json_dumps
+from lmnr.opentelemetry_lib.decorators.base import json_dumps
 from lmnr.sdk.browser.utils import with_tracer_wrapper
 from lmnr.sdk.utils import get_input_from_func_args
 from lmnr.version import __version__
@@ -8,6 +8,16 @@ from opentelemetry.instrumentation.utils import unwrap
 from opentelemetry.trace import get_tracer, Tracer
 from typing import Collection
 from wrapt import wrap_function_wrapper
+import pydantic
+
+try:
+    from browser_use import AgentHistoryList
+except ImportError as e:
+    raise ImportError(
+        f"Attempted to import {__file__}, but it is designed "
+        "to patch Browser Use, which is not installed. Use `pip install browser-use` "
+        "to install Browser Use or remove this import."
+    ) from e
 
 _instruments = ("browser-use >= 0.1.0",)
 
@@ -18,7 +28,7 @@ WRAPPED_METHODS = [
         "method": "run",
         "span_name": "agent.run",
         "ignore_input": False,
-        "ignore_output": True,
+        "ignore_output": False,
         "span_type": "DEFAULT",
     },
     {
@@ -73,7 +83,14 @@ async def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         span.set_attributes(attributes)
         result = await wrapped(*args, **kwargs)
         if not to_wrap.get("ignore_output"):
-            span.set_attribute("lmnr.span.output", json_dumps(result))
+            if isinstance(result, AgentHistoryList):
+                result = result.final_result()
+            serialized = (
+                result.model_dump_json()
+                if isinstance(result, pydantic.BaseModel)
+                else json_dumps(result)
+            )
+            span.set_attribute("lmnr.span.output", serialized)
         return result
 
 

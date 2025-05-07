@@ -5,8 +5,8 @@ import dotenv
 from tqdm import tqdm
 from typing import Any, Awaitable, Optional, Set, Union
 
-from lmnr.openllmetry_sdk.instruments import Instruments
-from lmnr.openllmetry_sdk.tracing.attributes import SPAN_TYPE
+from lmnr.opentelemetry_lib.instruments import Instruments
+from lmnr.opentelemetry_lib.tracing.attributes import SPAN_TYPE
 
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
@@ -176,7 +176,6 @@ class Evaluation:
 
         base_url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
 
-        self.is_finished = False
         self.reporter = EvaluationReporter(base_url)
         if isinstance(data, list):
             self.data = [
@@ -196,12 +195,7 @@ class Evaluation:
         self.upload_tasks = []
         self.base_http_url = f"{base_url}:{http_port or 443}"
 
-        api_key = project_api_key
-        if not api_key:
-            dotenv_path = dotenv.find_dotenv(usecwd=True)
-            api_key = dotenv.get_key(
-                dotenv_path=dotenv_path, key_to_get="LMNR_PROJECT_API_KEY"
-            )
+        api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
         if not api_key:
             raise ValueError(
                 "Please initialize the Laminar object with"
@@ -225,8 +219,6 @@ class Evaluation:
         )
 
     async def run(self) -> Awaitable[None]:
-        if self.is_finished:
-            raise Exception("Evaluation is already finished")
         return await self._run()
 
     async def _run(self) -> None:
@@ -253,17 +245,19 @@ class Evaluation:
                 self._logger.debug("All upload tasks completed")
         except Exception as e:
             self.reporter.stopWithError(e)
-            self.is_finished = True
             await self._shutdown()
             return
 
         average_scores = get_average_scores(result_datapoints)
         self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
-        self.is_finished = True
         await self._shutdown()
 
     async def _shutdown(self):
-        L.shutdown()
+        # We use flush() instead of shutdown() because multiple evaluations
+        # can be run sequentially in the same process. `shutdown()` would
+        # close the OTLP exporter and we wouldn't be able to export traces in
+        # the next evaluation.
+        L.flush()
         await self.client.close()
         if isinstance(self.data, LaminarDataset) and self.data.client:
             self.data.client.close()

@@ -113,7 +113,7 @@ def handle_user_request(topic: str):
 Laminar allows you to automatically instrument majority of the most popular LLM, Vector DB, database, requests, and other libraries.
 
 If you want to automatically instrument a default set of libraries, then simply do NOT pass `instruments` argument to `.initialize()`.
-See the full list of available instrumentations in the [enum](https://github.com/lmnr-ai/lmnr-python/blob/main/src/lmnr/openllmetry_sdk/instruments.py).
+See the full list of available instrumentations in the [enum](https://github.com/lmnr-ai/lmnr-python/blob/main/src/lmnr/opentelemetry_lib/instruments.py).
 
 If you want to automatically instrument only specific LLM, Vector DB, or other
 calls with OpenTelemetry-compatible instrumentation, then pass the appropriate instruments to `.initialize()`.

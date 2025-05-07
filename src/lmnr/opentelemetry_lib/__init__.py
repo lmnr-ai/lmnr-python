@@ -7,12 +7,12 @@ from opentelemetry.sdk.resources import SERVICE_NAME
 from opentelemetry.propagators.textmap import TextMapPropagator
 from opentelemetry.util.re import parse_env_headers
 
-from lmnr.openllmetry_sdk.instruments import Instruments
-from lmnr.openllmetry_sdk.config import (
+from lmnr.opentelemetry_lib.instruments import Instruments
+from lmnr.opentelemetry_lib.config import (
     is_content_tracing_enabled,
     is_tracing_enabled,
 )
-from lmnr.openllmetry_sdk.tracing.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.tracing.tracing import TracerWrapper
 from typing import Dict
 
 
