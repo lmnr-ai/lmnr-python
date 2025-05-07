@@ -105,7 +105,7 @@ async def send_events_async(
             await inject_rrweb_async(page)
             await send_events_async(page, session_id, trace_id, client)
         else:
-            logger.error(f"Error sending events: {e}")
+            logger.warn(f"Could not send events: {e}")
 
 
 def send_events_sync(
@@ -134,7 +134,7 @@ def send_events_sync(
             inject_rrweb_sync(page)
             send_events_sync(page, session_id, trace_id, client)
         else:
-            logger.error(f"Error sending events: {e}")
+            logger.warn(f"Could not send events: {e}")
 
 
 def inject_rrweb_sync(page: SyncPage):
@@ -269,7 +269,6 @@ async def handle_navigation_async(
     page: Page, session_id: str, trace_id: str, client: AsyncLaminarClient
 ):
     trace.get_current_span().set_attribute("lmnr.internal.has_browser_session", True)
-    # Check if we've already instrumented this page
 
     async def collection_loop():
         try:
