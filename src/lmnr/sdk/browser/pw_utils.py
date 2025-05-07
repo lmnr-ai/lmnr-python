@@ -154,7 +154,7 @@ def inject_rrweb_sync(page: SyncPage):
 
             def load_rrweb():
                 try:
-                    out = page.evaluate(RRWEB_CONTENT)
+                    page.evaluate(RRWEB_CONTENT)
                     page.wait_for_function(
                         """(() => typeof window.lmnrRrweb !== 'undefined')""",
                         timeout=5000,
@@ -196,10 +196,10 @@ async def inject_rrweb_async(page: Page):
             async def load_rrweb():
                 try:
                     await page.evaluate(RRWEB_CONTENT)
-                    # await page.wait_for_function(
-                    #     """(() => typeof window.lmnrRrweb !== 'undefined')""",
-                    #     timeout=5000,
-                    # )
+                    await page.wait_for_function(
+                        """(() => typeof window.lmnrRrweb !== 'undefined')""",
+                        timeout=5000,
+                    )
                     return True
                 except Exception as e:
                     logger.debug(f"Failed to load rrweb: {e}")
