@@ -114,10 +114,10 @@ WRAPPED_METHODS_ASYNC = [
         "wrapper": _wrap_new_context_async,
     },
     {
-        "package": "patchright.sync_api",
+        "package": "patchright.async_api",
         "object": "BrowserType",
         "method": "launch_persistent_context",
-        "wrapper": _wrap_new_context_sync,
+        "wrapper": _wrap_new_context_async,
     },
 ]
 
