@@ -32,6 +32,19 @@ INJECT_PLACEHOLDER = """
     const BATCH_SIZE = 1000;  // Maximum events to store in memory
 
     window.lmnrRrwebEventsBatch = new Set();
+    
+    // Track page focus state
+    window.lmnrPageIsFocused = true;
+    
+    window.addEventListener('blur', () => {
+        window.lmnrPageIsFocused = false;
+        console.log('Page lost focus');
+    });
+    
+    window.addEventListener('focus', () => {
+        window.lmnrPageIsFocused = true;
+        console.log('Page gained focus');
+    });
 
     // Utility function to compress individual event data
     async function compressEventData(data) {
@@ -51,7 +64,7 @@ INJECT_PLACEHOLDER = """
 
     // Add heartbeat events
     setInterval(async () => {
-        if (document.visibilityState === 'hidden' || document.hidden) {
+        if (!window.lmnrPageIsFocused) {
             return;
         }
 
@@ -64,10 +77,11 @@ INJECT_PLACEHOLDER = """
 
     window.lmnrRrweb.record({
         async emit(event) {
-            // Ignore events from all tabs except the current one
-            if (document.visibilityState === 'hidden' || document.hidden) {
+            // Ignore events when page is not focused
+            if (!window.lmnrPageIsFocused) {
                 return;
             }
+            
             // Compress the data field
             const compressedEvent = {
                 ...event,
@@ -86,15 +100,15 @@ async def send_events_async(
     """Fetch events from the page and send them to the server"""
     try:
         # Check if function exists first
-        has_function = await page.evaluate(
-            """
-            () => typeof window.lmnrGetAndClearEvents === 'function'
-        """
-        )
-        if not has_function:
-            return
+        events = await page.evaluate("""
+        () => {
+            if (!window.lmnrPageIsFocused || typeof window.lmnrGetAndClearEvents !== 'function') {
+                return [];
+            }
+            return window.lmnrGetAndClearEvents();
+        }
+        """)
 
-        events = await page.evaluate("window.lmnrGetAndClearEvents()")
         if not events or len(events) == 0:
             return
 
@@ -113,16 +127,14 @@ def send_events_sync(
 ):
     """Synchronous version of send_events"""
     try:
-        # Check if function exists first
-        has_function = page.evaluate(
-            """
-            () => typeof window.lmnrGetAndClearEvents === 'function'
-        """
-        )
-        if not has_function:
-            return
-
-        events = page.evaluate("window.lmnrGetAndClearEvents()")
+        events = page.evaluate("""
+        () => {
+            if (!window.lmnrPageIsFocused || typeof window.lmnrGetAndClearEvents !== 'function') {
+                return [];
+            }
+            return window.lmnrGetAndClearEvents();
+        }
+        """)
         if not events or len(events) == 0:
             return
 
@@ -298,6 +310,7 @@ async def handle_navigation_async(
 
     async def bring_to_front():
         await original_bring_to_front()
+
         await page.evaluate(
             """() => {
             if (window.lmnrRrweb) {
