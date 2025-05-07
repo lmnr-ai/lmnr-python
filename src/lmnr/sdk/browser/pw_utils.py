@@ -105,7 +105,7 @@ async def send_events_async(
             await inject_rrweb_async(page)
             await send_events_async(page, session_id, trace_id, client)
         else:
-            logger.warn(f"Could not send events: {e}")
+            logger.debug(f"Could not send events: {e}")
 
 
 def send_events_sync(
@@ -134,7 +134,7 @@ def send_events_sync(
             inject_rrweb_sync(page)
             send_events_sync(page, session_id, trace_id, client)
         else:
-            logger.warn(f"Could not send events: {e}")
+            logger.debug(f"Could not send events: {e}")
 
 
 def inject_rrweb_sync(page: SyncPage):
@@ -155,10 +155,6 @@ def inject_rrweb_sync(page: SyncPage):
             def load_rrweb():
                 try:
                     page.evaluate(RRWEB_CONTENT)
-                    page.wait_for_function(
-                        """(() => typeof window.lmnrRrweb !== 'undefined')""",
-                        timeout=5000,
-                    )
                     return True
                 except Exception as e:
                     logger.debug(f"Failed to load rrweb: {e}")
@@ -196,10 +192,6 @@ async def inject_rrweb_async(page: Page):
             async def load_rrweb():
                 try:
                     await page.evaluate(RRWEB_CONTENT)
-                    await page.wait_for_function(
-                        """(() => typeof window.lmnrRrweb !== 'undefined')""",
-                        timeout=5000,
-                    )
                     return True
                 except Exception as e:
                     logger.debug(f"Failed to load rrweb: {e}")
@@ -231,7 +223,11 @@ def handle_navigation_sync(
         page.evaluate(
             """() => {
             if (window.lmnrRrweb) {
-                window.lmnrRrweb.record.takeFullSnapshot();
+                try {
+                    window.lmnrRrweb.record.takeFullSnapshot();
+                } catch (e) {
+                    console.error("Error taking full snapshot:", e);
+                }
             }
         }"""
         )
@@ -305,7 +301,11 @@ async def handle_navigation_async(
         await page.evaluate(
             """() => {
             if (window.lmnrRrweb) {
-                window.lmnrRrweb.record.takeFullSnapshot();
+                try {
+                    window.lmnrRrweb.record.takeFullSnapshot();
+                } catch (e) {
+                    console.error("Error taking full snapshot:", e);
+                }
             }
         }"""
         )
