@@ -24,7 +24,7 @@ except ImportError as e:
 logger = logging.getLogger(__name__)
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
-with open(os.path.join(current_dir, "rrweb", "rrweb.min.js"), "r") as f:
+with open(os.path.join(current_dir, "rrweb", "rrweb.umd.min.cjs"), "r") as f:
     RRWEB_CONTENT = f"() => {{ {f.read()} }}"
 
 INJECT_PLACEHOLDER = """
@@ -154,7 +154,7 @@ def inject_rrweb_sync(page: SyncPage):
 
             def load_rrweb():
                 try:
-                    page.evaluate(RRWEB_CONTENT)
+                    out = page.evaluate(RRWEB_CONTENT)
                     page.wait_for_function(
                         """(() => typeof window.lmnrRrweb !== 'undefined')""",
                         timeout=5000,
@@ -196,10 +196,10 @@ async def inject_rrweb_async(page: Page):
             async def load_rrweb():
                 try:
                     await page.evaluate(RRWEB_CONTENT)
-                    await page.wait_for_function(
-                        """(() => typeof window.lmnrRrweb !== 'undefined')""",
-                        timeout=5000,
-                    )
+                    # await page.wait_for_function(
+                    #     """(() => typeof window.lmnrRrweb !== 'undefined')""",
+                    #     timeout=5000,
+                    # )
                     return True
                 except Exception as e:
                     logger.debug(f"Failed to load rrweb: {e}")
