@@ -455,6 +455,9 @@ def init_instrumentations(
         elif instrument == Instruments.PLAYWRIGHT:
             if init_playwright_instrumentor(client, async_client):
                 instrument_set = True
+        elif instrument == Instruments.PATCHRIGHT:
+            if init_patchright_instrumentor(client, async_client):
+                instrument_set = True
         elif instrument == Instruments.BROWSER_USE:
             if init_browser_use_instrumentor():
                 instrument_set = True
@@ -496,6 +499,21 @@ def init_playwright_instrumentor(
         return True
     except Exception as e:
         module_logger.error(f"Error initializing Playwright instrumentor: {e}")
+        return False
+
+
+def init_patchright_instrumentor(
+    client: LaminarClient, async_client: AsyncLaminarClient
+):
+    try:
+        if is_package_installed("patchright"):
+            from lmnr.sdk.browser.patchright_otel import PatchrightInstrumentor
+
+            instrumentor = PatchrightInstrumentor(client, async_client)
+            instrumentor.instrument()
+        return True
+    except Exception as e:
+        module_logger.error(f"Error initializing patchright instrumentor: {e}")
         return False
 
 

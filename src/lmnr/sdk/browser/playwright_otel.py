@@ -320,10 +320,10 @@ WRAPPED_METHODS_ASYNC = [
         "wrapper": _wrap_new_context_async,
     },
     {
-        "package": "playwright.sync_api",
+        "package": "playwright.async_api",
         "object": "BrowserType",
         "method": "launch_persistent_context",
-        "wrapper": _wrap_new_context_sync,
+        "wrapper": _wrap_new_context_async,
     },
 ]
 
