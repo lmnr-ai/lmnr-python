@@ -57,7 +57,6 @@ class LaminarSpanProcessor(SpanProcessor):
 
     def on_start(self, span: Span, parent_context: Optional[Context] = None):
         span_path_in_context = get_value("span_path", parent_context or get_current())
-        span_path_in_context = None
         parent_span_path = span_path_in_context or (
             self.__span_id_to_path.get(span.parent.span_id) if span.parent else None
         )
