@@ -1,4 +1,4 @@
-from lmnr.opentelemetry_lib.decorators.base import (
+from lmnr.opentelemetry_lib.decorators import (
     entity_method,
     aentity_method,
 )
@@ -8,7 +8,9 @@ from typing import Callable, Literal, Optional, TypeVar, Union, cast
 from typing_extensions import ParamSpec
 
 from lmnr.opentelemetry_lib.tracing.attributes import SESSION_ID
-from lmnr.opentelemetry_lib.tracing.tracing import update_association_properties
+from lmnr.opentelemetry_lib.tracing.context_properties import (
+    update_association_properties,
+)
 
 from .utils import is_async
 

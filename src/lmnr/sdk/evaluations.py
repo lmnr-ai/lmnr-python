@@ -1,11 +1,11 @@
 import asyncio
 import re
 import uuid
-import dotenv
+
 from tqdm import tqdm
 from typing import Any, Awaitable, Optional, Set, Union
 
-from lmnr.opentelemetry_lib.instruments import Instruments
+from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.opentelemetry_lib.tracing.attributes import SPAN_TYPE
 
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient

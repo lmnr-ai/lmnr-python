@@ -1,6 +1,11 @@
 from contextlib import contextmanager
 
-from lmnr.opentelemetry_lib.tracing.tracing import TracerWrapper
+from opentelemetry import trace
+from lmnr.opentelemetry_lib.tracing import TracerWrapper
+
+
+def get_laminar_tracer_provider() -> trace.TracerProvider:
+    return TracerWrapper.instance.__tracer_provider or trace.get_tracer_provider()
 
 
 @contextmanager

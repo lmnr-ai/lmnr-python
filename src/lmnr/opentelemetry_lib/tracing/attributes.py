@@ -1,4 +1,12 @@
 from enum import Enum
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_SYSTEM,
+    GEN_AI_REQUEST_MODEL,
+    GEN_AI_RESPONSE_MODEL,
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
+    GEN_AI_RESPONSE_ID,
+)
 from opentelemetry.semconv_ai import SpanAttributes
 
 SPAN_INPUT = "lmnr.span.input"
@@ -21,14 +29,12 @@ TRACING_LEVEL = "tracing_level"
 class Attributes(Enum):
     # == This is the minimum set of attributes for a proper LLM span ==
     #
-    # not SpanAttributes.LLM_USAGE_PROMPT_TOKENS,
-    INPUT_TOKEN_COUNT = "gen_ai.usage.input_tokens"
-    # not SpanAttributes.LLM_USAGE_COMPLETION_TOKENS,
-    OUTPUT_TOKEN_COUNT = "gen_ai.usage.output_tokens"
+    INPUT_TOKEN_COUNT = GEN_AI_USAGE_INPUT_TOKENS
+    OUTPUT_TOKEN_COUNT = GEN_AI_USAGE_OUTPUT_TOKENS
     TOTAL_TOKEN_COUNT = SpanAttributes.LLM_USAGE_TOTAL_TOKENS
-    PROVIDER = SpanAttributes.LLM_SYSTEM
-    REQUEST_MODEL = SpanAttributes.LLM_REQUEST_MODEL
-    RESPONSE_MODEL = SpanAttributes.LLM_RESPONSE_MODEL
+    PROVIDER = GEN_AI_SYSTEM
+    REQUEST_MODEL = GEN_AI_REQUEST_MODEL
+    RESPONSE_MODEL = GEN_AI_RESPONSE_MODEL
     #
     ## == End of minimum set ==
     # == Additional attributes ==
@@ -36,5 +42,6 @@ class Attributes(Enum):
     INPUT_COST = "gen_ai.usage.input_cost"
     OUTPUT_COST = "gen_ai.usage.output_cost"
     TOTAL_COST = "gen_ai.usage.cost"
+    RESPONSE_ID = GEN_AI_RESPONSE_ID
     #
     # == End of additional attributes ==

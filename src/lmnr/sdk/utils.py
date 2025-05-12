@@ -37,10 +37,9 @@ def is_async(func: typing.Callable) -> bool:
         return True
 
     # Fallback: check if the function's code object contains 'async'.
-    # This is for cases when a decorator did not properly use
+    # This is for cases when a decorator (not ours) did not properly use
     # `functools.wraps` or `functools.update_wrapper`
-    CO_COROUTINE = inspect.CO_COROUTINE
-    return (func.__code__.co_flags & CO_COROUTINE) != 0
+    return (func.__code__.co_flags & inspect.CO_COROUTINE) != 0
 
 
 def is_async_iterator(o: typing.Any) -> bool:

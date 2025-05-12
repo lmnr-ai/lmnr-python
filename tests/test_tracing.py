@@ -384,31 +384,6 @@ def test_1k_attributes(exporter: InMemorySpanExporter):
         assert spans[0].attributes[f"foo_{i}"] == f"bar{i}"
 
 
-def test_1k_attributes_fails_with_default_tracer_provider(
-    exporter: InMemorySpanExporter,
-):
-    from opentelemetry.trace import get_tracer_provider
-    from unittest.mock import patch
-    import os
-
-    with patch.dict(os.environ, {"OTEL_ATTRIBUTE_COUNT_LIMIT": "128"}, clear=True):
-        default_tracer_provider = get_tracer_provider()
-        with patch(
-            "lmnr.opentelemetry_lib.tracing.tracing.init_tracer_provider",
-            return_value=default_tracer_provider,
-        ):
-            with Laminar.start_as_current_span("test") as span:
-                for i in range(1000):
-                    span.set_attribute(f"foo_{i}", f"bar{i}")
-
-    spans = exporter.get_finished_spans()
-    assert len(spans) == 1
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("test",)
-    with pytest.raises(KeyError):
-        spans[0].attributes[f"foo_{1000}"]
-
-
 def test_span_context(exporter: InMemorySpanExporter):
     def foo(context: LaminarSpanContext):
         with Laminar.start_as_current_span("inner", parent_span_context=context):
