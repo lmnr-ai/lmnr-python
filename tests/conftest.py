@@ -13,7 +13,7 @@ pytest_plugins = ("pytest_asyncio",)
 def exporter() -> SpanExporter:
     exporter = InMemorySpanExporter()
 
-    # Set up a partial mock of TracerManager.init to inject our processor
+    # Set up a partial mock of TracerManager.init to inject our exporter
     orig_tracermanager_init = TracerManager.init
 
     def mock_tracermanager_init(*args, **kwargs):

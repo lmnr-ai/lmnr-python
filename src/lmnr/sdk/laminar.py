@@ -660,7 +660,7 @@ class Laminar:
         """Set the metadata for the current trace.
 
         Args:
-            metadata (dict[str, str]): Metadata to set for the trace. Willl be\
+            metadata (dict[str, str]): Metadata to set for the trace. Will be\
                 sent as attributes, so must be json serializable.
         """
         props = {f"metadata.{k}": json_dumps(v) for k, v in metadata.items()}

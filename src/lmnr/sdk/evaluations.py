@@ -111,7 +111,7 @@ class Evaluation:
         trace_export_timeout_seconds: Optional[int] = None,
     ):
         """
-        Initializes an instance of the Evaluations class.
+        Initializes an instance of the Evaluation class.
 
         Parameters:
             data (Union[List[EvaluationDatapoint|dict], EvaluationDataset]):\
