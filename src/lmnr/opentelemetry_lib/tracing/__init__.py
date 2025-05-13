@@ -10,6 +10,7 @@ from lmnr.opentelemetry_lib.tracing.instruments import (
     init_instrumentations,
 )
 
+from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider, SpanProcessor
 from opentelemetry.sdk.trace.export import SpanExporter
@@ -31,7 +32,7 @@ MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN = 5000
 class TracerWrapper(object):
     resource_attributes: dict = {}
     enable_content_tracing: bool = True
-    __tracer_provider: TracerProvider
+    __tracer_provider: Optional[TracerProvider] = None
     __logger: logging.Logger
     __client: LaminarClient
     __async_client: AsyncLaminarClient
@@ -125,10 +126,14 @@ class TracerWrapper(object):
             cls.instance.__span_processor.clear()
 
     def shutdown(self):
+        if self.__tracer_provider is None:
+            return
         self.__tracer_provider.shutdown()
 
     def flush(self):
         return self.__span_processor.force_flush()
 
     def get_tracer(self):
+        if self.__tracer_provider is None:
+            return trace.get_tracer_provider().get_tracer(TRACER_NAME)
         return self.__tracer_provider.get_tracer(TRACER_NAME)

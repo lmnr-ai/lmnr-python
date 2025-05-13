@@ -113,5 +113,9 @@ def init_instrumentations(
             if not instrumentor.is_instrumented_by_opentelemetry:
                 instrumentor.instrument(tracer_provider=tracer_provider)
         except Exception as e:
+            if "No module named 'langchain_community'" in str(e):
+                # LangChain instrumentor does not require langchain_community,
+                # but throws this error if it's not installed.
+                continue
             module_logger.error(f"Error initializing instrumentor: {e}")
             continue
