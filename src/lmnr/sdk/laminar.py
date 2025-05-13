@@ -110,7 +110,7 @@ class Laminar:
 
         url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
         url = url.rstrip("/")
-        if not base_url.startswith("http"):
+        if not url.startswith("http"):
             url = f"https://{url}"
         if match := re.search(r":(\d{1,5})$", url):
             url = url[: -len(match.group(0))]
