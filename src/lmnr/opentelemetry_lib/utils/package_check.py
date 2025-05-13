@@ -1,7 +1,7 @@
 from importlib.metadata import distributions
 
 installed_packages = {
-    dist.name or dist.metadata.get("Name", "").lower() for dist in distributions()
+    (dist.name or dist.metadata.get("Name", "")).lower() for dist in distributions()
 }
 
 
