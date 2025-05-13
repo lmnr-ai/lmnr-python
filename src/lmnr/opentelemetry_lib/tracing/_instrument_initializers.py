@@ -265,7 +265,7 @@ class OpenAIInstrumentorInitializer(InstrumentorInitializer):
 
 class PatchrightInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(
-        self, client=None, async_client=None, *args, **kwargs
+        self, client, async_client, *args, **kwargs
     ) -> Optional[BaseInstrumentor]:
         if not is_package_installed("patchright"):
             return None
@@ -289,7 +289,7 @@ class PineconeInstrumentorInitializer(InstrumentorInitializer):
 
 class PlaywrightInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(
-        self, client=None, async_client=None, *args, **kwargs
+        self, client, async_client, *args, **kwargs
     ) -> Optional[BaseInstrumentor]:
         if not is_package_installed("playwright"):
             return None

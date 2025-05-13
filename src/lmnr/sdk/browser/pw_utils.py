@@ -100,14 +100,16 @@ async def send_events_async(
     """Fetch events from the page and send them to the server"""
     try:
         # Check if function exists first
-        events = await page.evaluate("""
+        events = await page.evaluate(
+            """
         () => {
             if (!window.lmnrPageIsFocused || typeof window.lmnrGetAndClearEvents !== 'function') {
                 return [];
             }
             return window.lmnrGetAndClearEvents();
         }
-        """)
+        """
+        )
 
         if not events or len(events) == 0:
             return
@@ -127,14 +129,16 @@ def send_events_sync(
 ):
     """Synchronous version of send_events"""
     try:
-        events = page.evaluate("""
+        events = page.evaluate(
+            """
         () => {
             if (!window.lmnrPageIsFocused || typeof window.lmnrGetAndClearEvents !== 'function') {
                 return [];
             }
             return window.lmnrGetAndClearEvents();
         }
-        """)
+        """
+        )
         if not events or len(events) == 0:
             return
 

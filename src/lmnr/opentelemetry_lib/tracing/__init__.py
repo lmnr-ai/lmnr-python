@@ -52,7 +52,7 @@ class TracerWrapper(object):
         force_http: bool = False,
         timeout_seconds: int = 10,
     ) -> "TracerWrapper":
-        base_http_url = f"http://{base_url}:{http_port}"
+        base_http_url = f"{base_url}:{http_port}"
         cls._initialize_logger(cls)
         if not hasattr(cls, "instance"):
             obj = cls.instance = super(TracerWrapper, cls).__new__(cls)
