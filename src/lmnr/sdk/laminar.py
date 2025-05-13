@@ -1,21 +1,17 @@
 from contextlib import contextmanager
 from contextvars import Context
 from lmnr.opentelemetry_lib import TracerManager
-from lmnr.opentelemetry_lib.instruments import Instruments
-from lmnr.opentelemetry_lib.tracing import get_tracer
+from lmnr.opentelemetry_lib.tracing.instruments import Instruments
+from lmnr.opentelemetry_lib.tracing.tracer import get_tracer
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     Attributes,
     SPAN_TYPE,
 )
-from lmnr.opentelemetry_lib.config import MAX_MANUAL_SPAN_PAYLOAD_SIZE
-from lmnr.opentelemetry_lib.decorators.base import json_dumps
+from lmnr.opentelemetry_lib import MAX_MANUAL_SPAN_PAYLOAD_SIZE
+from lmnr.opentelemetry_lib.decorators import json_dumps
 from opentelemetry import context as context_api, trace
 from opentelemetry.context import attach, detach
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
-    OTLPSpanExporter,
-    Compression,
-)
 from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
 from opentelemetry.util.types import AttributeValue
 
@@ -34,7 +30,7 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
     SPAN_OUTPUT,
     TRACE_TYPE,
 )
-from lmnr.opentelemetry_lib.tracing.tracing import (
+from lmnr.opentelemetry_lib.tracing.context_properties import (
     get_association_properties,
     remove_association_properties,
     set_association_properties,
@@ -52,8 +48,6 @@ from .types import (
 
 
 class Laminar:
-    __base_http_url: str
-    __base_grpc_url: str
     __project_api_key: Optional[str] = None
     __initialized: bool = False
 
@@ -116,6 +110,8 @@ class Laminar:
 
         url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
         url = url.rstrip("/")
+        if not url.startswith("http"):
+            url = f"https://{url}"
         if match := re.search(r":(\d{1,5})$", url):
             url = url[: -len(match.group(0))]
             if http_port is None:
@@ -124,36 +120,22 @@ class Laminar:
             else:
                 cls.__logger.info(f"Using HTTP port passed as an argument: {http_port}")
 
-        cls.__base_http_url = f"{url}:{http_port or 443}"
-        cls.__base_grpc_url = f"{url}:{grpc_port or 8443}"
-
         cls.__initialized = True
+
         if not os.getenv("OTEL_ATTRIBUTE_COUNT_LIMIT"):
             # each message is at least 2 attributes: role and content,
             # but the default attribute limit is 128, so raise it
             os.environ["OTEL_ATTRIBUTE_COUNT_LIMIT"] = "10000"
 
-        # if not is_latest_version():
-        #     cls.__logger.warning(
-        #         "You are using an older version of the Laminar SDK. "
-        #         f"Latest version: {get_latest_pypi_version()}, current version: {SDK_VERSION}.\n"
-        #         "Please update to the latest version by running "
-        #         "`pip install --upgrade lmnr`."
-        #     )
-
         TracerManager.init(
-            base_http_url=cls.__base_http_url,
+            base_url=url,
+            http_port=http_port or 443,
+            port=grpc_port or 8443,
             project_api_key=cls.__project_api_key,
-            exporter=OTLPSpanExporter(
-                endpoint=cls.__base_grpc_url,
-                headers={"authorization": f"Bearer {cls.__project_api_key}"},
-                compression=Compression.Gzip,
-                # default timeout is 10 seconds, increase it to 30 seconds
-                timeout=export_timeout_seconds or 30,
-            ),
             instruments=instruments,
             disable_batch=disable_batch,
             max_export_batch_size=max_export_batch_size,
+            timeout_seconds=export_timeout_seconds,
         )
 
     @classmethod
@@ -680,7 +662,7 @@ class Laminar:
         """Set the metadata for the current trace.
 
         Args:
-            metadata (dict[str, str]): Metadata to set for the trace. Willl be\
+            metadata (dict[str, str]): Metadata to set for the trace. Will be\
                 sent as attributes, so must be json serializable.
         """
         props = {f"metadata.{k}": json_dumps(v) for k, v in metadata.items()}

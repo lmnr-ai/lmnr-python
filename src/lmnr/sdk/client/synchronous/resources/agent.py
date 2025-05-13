@@ -270,6 +270,8 @@ class Agent(BaseResource):
             json=request.model_dump(by_alias=True),
             headers=self._headers(),
         ) as response:
+            if response.status_code != 200:
+                raise RuntimeError(response.read())
             for line in response.iter_lines():
                 line = str(line)
                 if line.startswith("[DONE]"):
@@ -280,7 +282,7 @@ class Agent(BaseResource):
                 if line:
                     chunk = RunAgentResponseChunk.model_validate_json(line)
                     yield chunk.root
-                    if chunk.root.chunk_type in ["finalOutput", "error"]:
+                    if chunk.root.chunk_type in ["finalOutput", "error", "timeout"]:
                         break
 
     def __run_non_streaming(self, request: RunAgentRequest) -> AgentOutput:
