@@ -6,19 +6,31 @@ import threading
 
 from opentelemetry import trace
 
+from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from lmnr.sdk.decorators import observe
 from lmnr.sdk.browser.utils import retry_sync, retry_async
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 
+
 try:
-    from playwright.async_api import Page
-    from playwright.sync_api import Page as SyncPage
+    if is_package_installed("playwright"):
+        from playwright.async_api import Page
+        from playwright.sync_api import Page as SyncPage
+    elif is_package_installed("patchright"):
+        from patchright.async_api import Page
+        from patchright.sync_api import Page as SyncPage
+    else:
+        raise ImportError(
+            "Attempted to import lmnr.sdk.browser.pw_utils, but neither "
+            "playwright nor patchright is installed. Use `pip install playwright` "
+            "or `pip install patchright` to install one of the supported browsers."
+        )
 except ImportError as e:
     raise ImportError(
-        f"Attempted to import {__file__}, but it is designed "
-        "to patch Playwright, which is not installed. Use `pip install playwright` "
-        "to install Playwright or remove this import."
+        "Attempted to import lmnr.sdk.browser.pw_utils, but neither "
+        "playwright nor patchright is installed. Use `pip install playwright` "
+        "or `pip install patchright` to install one of the supported browsers."
     ) from e
 
 logger = logging.getLogger(__name__)

@@ -1,6 +1,7 @@
 import logging
 import uuid
 
+from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from lmnr.sdk.browser.pw_utils import handle_navigation_async, handle_navigation_sync
 from lmnr.sdk.browser.utils import with_tracer_and_client_wrapper
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
@@ -22,17 +23,31 @@ from typing import Collection
 from wrapt import wrap_function_wrapper
 
 try:
-    from playwright.async_api import Browser, BrowserContext, Page
-    from playwright.sync_api import (
-        Browser as SyncBrowser,
-        BrowserContext as SyncBrowserContext,
-        Page as SyncPage,
-    )
+    if is_package_installed("playwright"):
+        from playwright.async_api import Browser, BrowserContext, Page
+        from playwright.sync_api import (
+            Browser as SyncBrowser,
+            BrowserContext as SyncBrowserContext,
+            Page as SyncPage,
+        )
+    elif is_package_installed("patchright"):
+        from patchright.async_api import Browser, BrowserContext, Page
+        from patchright.sync_api import (
+            Browser as SyncBrowser,
+            BrowserContext as SyncBrowserContext,
+            Page as SyncPage,
+        )
+    else:
+        raise ImportError(
+            "Attempted to import lmnr.sdk.browser.playwright_otel, but neither "
+            "playwright nor patchright is installed. Use `pip install playwright` "
+            "or `pip install patchright` to install one of the supported browsers."
+        )
 except ImportError as e:
     raise ImportError(
         f"Attempted to import {__file__}, but it is designed "
         "to patch Playwright, which is not installed. Use `pip install playwright` "
-        "to install Playwright or remove this import."
+        "or `pip install patchright` to install Playwright or remove this import."
     ) from e
 
 # all available versions at https://pypi.org/project/playwright/#history

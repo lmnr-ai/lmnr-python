@@ -1,3 +1,4 @@
+import logging
 import sys
 
 from typing import Optional, Set
@@ -20,6 +21,7 @@ class TracerManager:
         exporter: Optional[SpanExporter] = None,
         resource_attributes: dict = {},
         instruments: Optional[Set[Instruments]] = None,
+        block_instruments: Optional[Set[Instruments]] = None,
         base_url: str = "https://api.lmnr.ai",
         port: int = 8443,
         http_port: int = 443,
@@ -27,6 +29,8 @@ class TracerManager:
         max_export_batch_size: Optional[int] = None,
         force_http: bool = False,
         timeout_seconds: int = 30,
+        set_global_tracer_provider: bool = True,
+        otel_logger_level: int = logging.ERROR,
     ) -> None:
         enable_content_tracing = True
 
@@ -37,6 +41,7 @@ class TracerManager:
             disable_batch=disable_batch,
             exporter=exporter,
             instruments=instruments,
+            block_instruments=block_instruments,
             base_url=base_url,
             port=port,
             http_port=http_port,
@@ -44,6 +49,8 @@ class TracerManager:
             max_export_batch_size=max_export_batch_size,
             force_http=force_http,
             timeout_seconds=timeout_seconds,
+            set_global_tracer_provider=set_global_tracer_provider,
+            otel_logger_level=otel_logger_level,
         )
 
     @staticmethod
