@@ -11,12 +11,11 @@ from lmnr.opentelemetry_lib.tracing.instruments import (
 )
 
 from opentelemetry import trace
+from opentelemetry.instrumentation.threading import ThreadingInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider, SpanProcessor
 from opentelemetry.sdk.trace.export import SpanExporter
-
 from typing import Optional, Set
-
 
 module_logger = logging.getLogger(__name__)
 console_log_handler = logging.StreamHandler()
@@ -52,7 +51,12 @@ class TracerWrapper(object):
         max_export_batch_size: Optional[int] = None,
         force_http: bool = False,
         timeout_seconds: int = 10,
+        set_global_tracer_provider: bool = True,
+        otel_logger_level: int = logging.ERROR,
     ) -> "TracerWrapper":
+        # Silence some opentelemetry warnings
+        logging.getLogger("opentelemetry.trace").setLevel(otel_logger_level)
+
         base_http_url = f"{base_url}:{http_port}"
         cls._initialize_logger(cls)
         if not hasattr(cls, "instance"):
@@ -68,7 +72,6 @@ class TracerWrapper(object):
             )
 
             obj.__resource = Resource(attributes=TracerWrapper.resource_attributes)
-            obj.__tracer_provider = TracerProvider(resource=obj.__resource)
 
             obj.__span_processor = LaminarSpanProcessor(
                 base_url=base_url,
@@ -81,7 +84,23 @@ class TracerWrapper(object):
                 disable_batch=disable_batch,
             )
 
+            lmnr_provider = TracerProvider(resource=obj.__resource)
+            global_provider = trace.get_tracer_provider()
+            if set_global_tracer_provider and isinstance(
+                global_provider, trace.ProxyTracerProvider
+            ):
+                trace.set_tracer_provider(lmnr_provider)
+
+            obj.__tracer_provider = lmnr_provider
+
             obj.__tracer_provider.add_span_processor(obj.__span_processor)
+
+            # This is not a real instrumentation and does not generate telemetry
+            # data, but it is required to ensure that OpenTelemetry context
+            # propagation is enabled.
+            # See the README at:
+            # https://pypi.org/project/opentelemetry-instrumentation-threading/
+            ThreadingInstrumentor().instrument()
 
             init_instrumentations(
                 tracer_provider=obj.__tracer_provider,

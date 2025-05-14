@@ -59,9 +59,12 @@ class Laminar:
         http_port: Optional[int] = None,
         grpc_port: Optional[int] = None,
         instruments: Optional[Set[Instruments]] = None,
+        disabled_instruments: Optional[Set[Instruments]] = None,
         disable_batch: bool = False,
         max_export_batch_size: Optional[int] = None,
         export_timeout_seconds: Optional[int] = None,
+        set_global_tracer_provider: bool = True,
+        otel_logger_level: int = logging.ERROR,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -86,6 +89,8 @@ class Laminar:
                         enable. Defaults to all instruments. You can pass\
                         an empty set to disable all instruments. Read more:\
                         https://docs.lmnr.ai/tracing/automatic-instrumentation
+            disabled_instruments (Optional[Set[Instruments]], optional): Instruments to\
+                        disable. Defaults to None.
             disable_batch (bool, optional): If set to True, spans will be sent\
                         immediately to the backend. Useful for debugging, but\
                         may cause performance overhead in production.
@@ -94,6 +99,13 @@ class Laminar:
                         exporter. Defaults to 30 seconds (unlike the\
                         OpenTelemetry default of 10 seconds).
                         Defaults to None.
+            set_global_tracer_provider (bool, optional): If set to True, the\
+                        Laminar tracer provider will be set as the global\
+                        tracer provider. OpenTelemetry allows only one tracer\
+                        provider per app, so set this to False, if you are using\
+                        another tracing library. Setting this to False may break\
+                        some external instrumentations, e.g. LiteLLM.
+                        Defaults to True.
 
         Raises:
             ValueError: If project API key is not set
@@ -133,9 +145,12 @@ class Laminar:
             port=grpc_port or 8443,
             project_api_key=cls.__project_api_key,
             instruments=instruments,
+            block_instruments=disabled_instruments,
             disable_batch=disable_batch,
             max_export_batch_size=max_export_batch_size,
             timeout_seconds=export_timeout_seconds,
+            set_global_tracer_provider=set_global_tracer_provider,
+            otel_logger_level=otel_logger_level,
         )
 
     @classmethod

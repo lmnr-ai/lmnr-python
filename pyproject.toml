@@ -36,6 +36,7 @@ dependencies = [
   # https://github.com/grpc/grpc/issues/38490
   "grpcio<1.68.0",
   "httpx>=0.25.0",
+  "opentelemetry-instrumentation-threading>=0.54b0",
 ]
 
 [project.scripts]
@@ -117,10 +118,11 @@ dev = [
   "pytest>=8.3.5",
   "pytest-sugar>=1.0.0",
   "pytest-asyncio>=0.26.0",
-  "playwright>=1.51.0",
+  "playwright>=1.52.0",
   "vcrpy>=7.0.0",
   "openai>=1.77.0",
   "pytest-recording>=0.13.4",
+  "patchright>=1.52.3",
 ]
 
 [build-system]
