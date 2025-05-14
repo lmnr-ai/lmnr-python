@@ -26,7 +26,7 @@ try:
             "playwright nor patchright is installed. Use `pip install playwright` "
             "or `pip install patchright` to install one of the supported browsers."
         )
-except Exception as e:
+except ImportError as e:
     raise ImportError(
         "Attempted to import lmnr.sdk.browser.pw_utils, but neither "
         "playwright nor patchright is installed. Use `pip install playwright` "
