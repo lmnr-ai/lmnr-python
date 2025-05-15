@@ -83,12 +83,13 @@ async def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         span.set_attributes(attributes)
         result = await wrapped(*args, **kwargs)
         if not to_wrap.get("ignore_output"):
+            to_serialize = result
             if isinstance(result, AgentHistoryList):
-                result = result.final_result()
+                to_serialize = result.final_result()
             serialized = (
-                result.model_dump_json()
-                if isinstance(result, pydantic.BaseModel)
-                else json_dumps(result)
+                to_serialize.model_dump_json()
+                if isinstance(to_serialize, pydantic.BaseModel)
+                else json_dumps(to_serialize)
             )
             span.set_attribute("lmnr.span.output", serialized)
         return result
