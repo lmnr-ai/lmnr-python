@@ -70,7 +70,7 @@ async def run_evaluation(args):
                 except Exception as e:
                     LOG.error(f"Error running evaluation: {e}")
                     if args.fail_on_error:
-                        raise
+                        raise e
     finally:
         PREPARE_ONLY.reset(prep_token)
 
