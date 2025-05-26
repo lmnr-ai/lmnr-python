@@ -50,6 +50,7 @@ from .types import (
 class Laminar:
     __project_api_key: Optional[str] = None
     __initialized: bool = False
+    __base_http_url: Optional[str] = None
 
     @classmethod
     def initialize(
@@ -133,6 +134,7 @@ class Laminar:
                 cls.__logger.info(f"Using HTTP port passed as an argument: {http_port}")
 
         cls.__initialized = True
+        cls.__base_http_url = f"{url}:{http_port or 443}"
 
         if not os.getenv("OTEL_ATTRIBUTE_COUNT_LIMIT"):
             # each message is at least 2 attributes: role and content,
@@ -699,6 +701,14 @@ class Laminar:
         props.pop("session_id", None)
         props.pop("user_id", None)
         set_association_properties(props)
+
+    @classmethod
+    def get_base_http_url(cls):
+        return cls.__base_http_url
+
+    @classmethod
+    def get_project_api_key(cls):
+        return cls.__project_api_key
 
     @classmethod
     def _headers(cls):
