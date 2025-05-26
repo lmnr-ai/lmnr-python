@@ -1,6 +1,6 @@
 """Agent resource for interacting with Laminar agents."""
 
-from typing import Generator, Literal, Optional, Union, overload
+from typing import Generator, Literal, Optional, overload
 import uuid
 
 from lmnr.sdk.client.synchronous.resources.base import BaseResource
@@ -23,7 +23,7 @@ class Agent(BaseResource):
         self,
         prompt: str,
         stream: Literal[True],
-        parent_span_context: Optional[Union[LaminarSpanContext, str]] = None,
+        parent_span_context: Optional[LaminarSpanContext | str] = None,
         model_provider: Optional[ModelProvider] = None,
         model: Optional[str] = None,
         enable_thinking: bool = True,
@@ -45,7 +45,7 @@ class Agent(BaseResource):
         Args:
             prompt (str): prompt for the agent
             stream (Literal[True]): whether to stream the agent's response
-            parent_span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
+            parent_span_context (Optional[LaminarSpanContext | str], optional): span context if the agent is part of a trace
             model_provider (Optional[ModelProvider], optional): LLM model provider
             model (Optional[str], optional): LLM model name
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
@@ -70,7 +70,7 @@ class Agent(BaseResource):
     def run(
         self,
         prompt: str,
-        parent_span_context: Optional[Union[LaminarSpanContext, str]] = None,
+        parent_span_context: Optional[LaminarSpanContext | str] = None,
         model_provider: Optional[ModelProvider] = None,
         model: Optional[str] = None,
         enable_thinking: bool = True,
@@ -91,7 +91,7 @@ class Agent(BaseResource):
 
         Args:
             prompt (str): prompt for the agent
-            parent_span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
+            parent_span_context (Optional[LaminarSpanContext | str], optional): span context if the agent is part of a trace
             model_provider (Optional[ModelProvider], optional): LLM model provider
             model (Optional[str], optional): LLM model name
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
@@ -117,7 +117,7 @@ class Agent(BaseResource):
     def run(
         self,
         prompt: str,
-        parent_span_context: Optional[Union[LaminarSpanContext, str]] = None,
+        parent_span_context: Optional[LaminarSpanContext | str] = None,
         model_provider: Optional[ModelProvider] = None,
         model: Optional[str] = None,
         stream: Literal[False] = False,
@@ -139,7 +139,7 @@ class Agent(BaseResource):
 
         Args:
             prompt (str): prompt for the agent
-            parent_span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
+            parent_span_context (Optional[LaminarSpanContext | str], optional): span context if the agent is part of a trace
             model_provider (Optional[ModelProvider], optional): LLM model provider
             model (Optional[str], optional): LLM model name
             stream (Literal[False], optional): whether to stream the agent's response
@@ -165,7 +165,7 @@ class Agent(BaseResource):
     def run(
         self,
         prompt: str,
-        parent_span_context: Optional[Union[LaminarSpanContext, str]] = None,
+        parent_span_context: Optional[LaminarSpanContext | str] = None,
         model_provider: Optional[ModelProvider] = None,
         model: Optional[str] = None,
         stream: bool = False,
@@ -182,12 +182,12 @@ class Agent(BaseResource):
         thinking_token_budget: Optional[int] = None,
         start_url: Optional[str] = None,
         user_agent: Optional[str] = None,
-    ) -> Union[AgentOutput, Generator[RunAgentResponseChunk, None, None]]:
+    ) -> AgentOutput | Generator[RunAgentResponseChunk, None, None]:
         """Run Laminar index agent.
 
         Args:
             prompt (str): prompt for the agent
-            parent_span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
+            parent_span_context (Optional[LaminarSpanContext | str], optional): span context if the agent is part of a trace
             model_provider (Optional[ModelProvider], optional): LLM model provider
             model (Optional[str], optional): LLM model name
             stream (bool, optional): whether to stream the agent's response
@@ -206,7 +206,7 @@ class Agent(BaseResource):
             user_agent (Optional[str], optional): the user to be sent to the browser. If not specified, Laminar uses the default user agent. Default to None.
 
         Returns:
-            Union[AgentOutput, Generator[RunAgentResponseChunk, None, None]]: agent output or a generator of response chunks
+            AgentOutput | Generator[RunAgentResponseChunk, None, None]: agent output or a generator of response chunks
         """
         if parent_span_context is None:
             span = trace.get_current_span()

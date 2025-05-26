@@ -9,13 +9,13 @@ from opentelemetry.exporter.otlp.proto.http import Compression
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
     OTLPSpanExporter as HTTPOTLPSpanExporter,
 )
-from typing import Optional, Union
+from typing import Optional
 
 from lmnr.sdk.utils import from_env
 
 
 class LaminarSpanExporter(SpanExporter):
-    instance: Union[OTLPSpanExporter, HTTPOTLPSpanExporter]
+    instance: OTLPSpanExporter | HTTPOTLPSpanExporter
 
     def __init__(
         self,

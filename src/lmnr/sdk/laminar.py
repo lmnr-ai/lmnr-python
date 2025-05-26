@@ -15,7 +15,7 @@ from opentelemetry.context import attach, detach
 from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
 from opentelemetry.util.types import AttributeValue
 
-from typing import Any, Literal, Optional, Set, Union
+from typing import Any, Literal, Optional, Set
 
 import copy
 import datetime
@@ -177,7 +177,7 @@ class Laminar:
         cls,
         name: str,
         value: Optional[AttributeValue] = None,
-        timestamp: Optional[Union[datetime.datetime, int]] = None,
+        timestamp: Optional[datetime.datetime | int] = None,
     ):
         """Associate an event with the current span. If using manual\
         instrumentation, use raw OpenTelemetry `span.add_event()` instead.\
@@ -189,7 +189,7 @@ class Laminar:
                             type. Boolean true is assumed in the backend if\
                             `value` is None.
                             Defaults to None.
-            timestamp (Optional[Union[datetime.datetime, int]], optional):\
+            timestamp (Optional[datetime.datetime | int], optional):\
                             If int, must be epoch nanoseconds. If not\
                             specified, relies on the underlying OpenTelemetry\
                             implementation. Defaults to None.
@@ -220,9 +220,7 @@ class Laminar:
         cls,
         name: str,
         input: Any = None,
-        span_type: Union[
-            Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]
-        ] = "DEFAULT",
+        span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
         context: Optional[Context] = None,
         labels: Optional[list[str]] = None,
         parent_span_context: Optional[LaminarSpanContext] = None,
@@ -243,7 +241,7 @@ class Laminar:
             name (str): name of the span
             input (Any, optional): input to the span. Will be sent as an\
                 attribute, so must be json serializable. Defaults to None.
-            span_type (Union[Literal["DEFAULT"], Literal["LLM"]], optional):\
+            span_type (Literal["DEFAULT", "LLM", "TOOL"], optional):\
                 type of the span. If you use `"LLM"`, you should report usage\
                 and response attributes manually. Defaults to "DEFAULT".
             context (Optional[Context], optional): raw OpenTelemetry context\
@@ -363,9 +361,7 @@ class Laminar:
         cls,
         name: str,
         input: Any = None,
-        span_type: Union[
-            Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]
-        ] = "DEFAULT",
+        span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
         context: Optional[Context] = None,
         parent_span_context: Optional[LaminarSpanContext] = None,
         labels: Optional[dict[str, str]] = None,
@@ -405,7 +401,7 @@ class Laminar:
             name (str): name of the span
             input (Any, optional): input to the span. Will be sent as an\
                 attribute, so must be json serializable. Defaults to None.
-            span_type (Union[Literal["DEFAULT"], Literal["LLM"]], optional):\
+            span_type (Literal["DEFAULT", "LLM", "TOOL"], optional):\
                 type of the span. If you use `"LLM"`, you should report usage\
                 and response attributes manually. Defaults to "DEFAULT".
             context (Optional[Context], optional): raw OpenTelemetry context\
@@ -632,9 +628,7 @@ class Laminar:
         return str(span_context)
 
     @classmethod
-    def deserialize_span_context(
-        cls, span_context: Union[dict, str]
-    ) -> LaminarSpanContext:
+    def deserialize_span_context(cls, span_context: dict | str) -> LaminarSpanContext:
         return LaminarSpanContext.deserialize(span_context)
 
     @classmethod

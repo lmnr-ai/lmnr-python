@@ -9,7 +9,7 @@ from google.genai import types
 from google.genai._common import BaseModel
 import pydantic
 from opentelemetry.trace import Span
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 
 def set_span_attribute(span: Span, name: str, value: str):
@@ -44,7 +44,7 @@ def dont_throw(func):
     return wrapper
 
 
-def to_dict(obj: Union[BaseModel, pydantic.BaseModel, dict]) -> dict[str, Any]:
+def to_dict(obj: BaseModel | pydantic.BaseModel | dict) -> dict[str, Any]:
     try:
         if isinstance(obj, BaseModel):
             return obj.model_dump()
@@ -59,7 +59,7 @@ def to_dict(obj: Union[BaseModel, pydantic.BaseModel, dict]) -> dict[str, Any]:
 
 
 def process_content_union(
-    content: Union[types.ContentUnion, types.ContentUnionDict],
+    content: types.ContentUnion | types.ContentUnionDict,
     trace_id: Optional[str] = None,
     span_id: Optional[str] = None,
     message_index: int = 0,
@@ -83,11 +83,11 @@ def process_content_union(
 
 
 def _process_content_union(
-    content: Union[types.ContentUnion, types.ContentUnionDict],
+    content: types.ContentUnion | types.ContentUnionDict,
     trace_id: Optional[str] = None,
     span_id: Optional[str] = None,
     message_index: int = 0,
-) -> Union[str, list[str], None]:
+) -> Optional[str | list[str]]:
     if isinstance(content, types.Content):
         parts = to_dict(content).get("parts", [])
         return [_process_part(part) for part in parts]
@@ -111,7 +111,7 @@ def _process_content_union(
 
 
 def _process_part_union(
-    content: Union[types.PartDict, types.File, types.Part, str],
+    content: types.PartDict | types.File | types.Part | str,
     trace_id: Optional[str] = None,
     span_id: Optional[str] = None,
     message_index: int = 0,
@@ -157,7 +157,7 @@ def _process_part(
 
 
 def role_from_content_union(
-    content: Union[types.ContentUnion, types.ContentUnionDict],
+    content: types.ContentUnion | types.ContentUnionDict,
 ) -> Optional[str]:
     if isinstance(content, types.Content):
         return to_dict(content).get("role")

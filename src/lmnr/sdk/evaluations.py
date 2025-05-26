@@ -3,7 +3,7 @@ import re
 import uuid
 
 from tqdm import tqdm
-from typing import Any, Awaitable, Optional, Set, Union
+from typing import Any, Awaitable, Optional, Set
 
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.opentelemetry_lib.tracing.attributes import SPAN_TYPE
@@ -95,7 +95,7 @@ class EvaluationReporter:
 class Evaluation:
     def __init__(
         self,
-        data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
+        data: EvaluationDataset | list[Datapoint | dict],
         executor: Any,
         evaluators: dict[str, EvaluatorFunction],
         human_evaluators: list[HumanEvaluator] = [],
@@ -114,7 +114,7 @@ class Evaluation:
         Initializes an instance of the Evaluation class.
 
         Parameters:
-            data (Union[List[EvaluationDatapoint|dict], EvaluationDataset]):\
+            data (list[EvaluationDatapoint|dict] | EvaluationDataset):\
                 List of data points to evaluate or an evaluation dataset.
                             `data` is the input to the executor function,
                             `target` is the input to the evaluator function.
@@ -393,7 +393,7 @@ class Evaluation:
 
 
 def evaluate(
-    data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
+    data: EvaluationDataset | list[Datapoint | dict],
     executor: ExecutorFunction,
     evaluators: dict[str, EvaluatorFunction],
     human_evaluators: list[HumanEvaluator] = [],
@@ -418,7 +418,7 @@ def evaluate(
     You must await the call to `evaluate`.
 
     Parameters:
-        data (Union[list[EvaluationDatapoint|dict]], EvaluationDataset]):\
+        data (list[EvaluationDatapoint|dict] | EvaluationDataset):\
             List of data points to evaluate or an evaluation dataset.
                 `data` is the input to the executor function,
                 `target` is the input to the evaluator function.

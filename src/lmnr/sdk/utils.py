@@ -50,7 +50,7 @@ def is_iterator(o: typing.Any) -> bool:
     return hasattr(o, "__iter__") and hasattr(o, "__next__")
 
 
-def serialize(obj: typing.Any) -> typing.Union[str, dict[str, typing.Any]]:
+def serialize(obj: typing.Any) -> str | dict[str, typing.Any]:
     def serialize_inner(o: typing.Any):
         if isinstance(o, (datetime.datetime, datetime.date)):
             return o.strftime("%Y-%m-%dT%H:%M:%S.%f%z")

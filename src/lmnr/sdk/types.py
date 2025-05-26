@@ -4,7 +4,7 @@ from enum import Enum
 import json
 from opentelemetry.trace import SpanContext, TraceFlags
 import pydantic
-from typing import Any, Awaitable, Callable, Literal, Optional, Union
+from typing import Any, Awaitable, Callable, Literal, Optional
 import uuid
 
 import pydantic.alias_generators
@@ -12,7 +12,7 @@ import pydantic.alias_generators
 from .utils import serialize
 
 
-Numeric = Union[int, float]
+Numeric = int | float
 NumericTypes = (int, float)  # for use with isinstance
 
 EvaluationDatapointData = Any  # non-null, must be JSON-serializable
@@ -30,11 +30,11 @@ class Datapoint(pydantic.BaseModel):
 
 
 ExecutorFunctionReturnType = Any
-EvaluatorFunctionReturnType = Union[Numeric, dict[str, Numeric]]
+EvaluatorFunctionReturnType = Numeric | dict[str, Numeric]
 
 ExecutorFunction = Callable[
     [EvaluationDatapointData, Any],
-    Union[ExecutorFunctionReturnType, Awaitable[ExecutorFunctionReturnType]],
+    ExecutorFunctionReturnType | Awaitable[ExecutorFunctionReturnType],
 ]
 
 # EvaluatorFunction is a function that takes the output of the executor and the
@@ -43,7 +43,7 @@ ExecutorFunction = Callable[
 # multiple criteria in one go instead of running multiple evaluators.
 EvaluatorFunction = Callable[
     [ExecutorFunctionReturnType, Any],
-    Union[EvaluatorFunctionReturnType, Awaitable[EvaluatorFunctionReturnType]],
+    EvaluatorFunctionReturnType | Awaitable[EvaluatorFunctionReturnType],
 ]
 
 
@@ -78,7 +78,9 @@ class PartialEvaluationDatapoint(pydantic.BaseModel):
                 "index": self.index,
                 "traceId": str(self.trace_id),
                 "executorSpanId": str(self.executor_span_id),
-                "metadata": serialize(self.metadata) if self.metadata is not None else None,
+                "metadata": (
+                    serialize(self.metadata) if self.metadata is not None else None
+                ),
             }
         except Exception as e:
             raise ValueError(f"Error serializing PartialEvaluationDatapoint: {e}")
@@ -118,7 +120,9 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
                 ],
                 "executorSpanId": str(self.executor_span_id),
                 "index": self.index,
-                "metadata": serialize(self.metadata) if self.metadata is not None else None,
+                "metadata": (
+                    serialize(self.metadata) if self.metadata is not None else None
+                ),
             }
         except Exception as e:
             raise ValueError(f"Error serializing EvaluationResultDatapoint: {e}")
@@ -172,7 +176,7 @@ class LaminarSpanContext(pydantic.BaseModel):
     @classmethod
     def try_to_otel_span_context(
         cls,
-        span_context: Union["LaminarSpanContext", dict[str, Any], str, SpanContext],
+        span_context: "LaminarSpanContext" | dict[str, Any] | str | SpanContext,
         logger: Optional[logging.Logger] = None,
     ) -> SpanContext:
         if logger is None:
@@ -210,7 +214,7 @@ class LaminarSpanContext(pydantic.BaseModel):
             raise ValueError("Invalid span_context provided")
 
     @classmethod
-    def deserialize(cls, data: Union[dict[str, Any], str]) -> "LaminarSpanContext":
+    def deserialize(cls, data: dict[str, Any] | str) -> "LaminarSpanContext":
         if isinstance(data, dict):
             # Convert camelCase to snake_case for known fields
             converted_data = {
@@ -336,9 +340,9 @@ class ErrorChunkContent(pydantic.BaseModel):
 
 
 class RunAgentResponseChunk(pydantic.RootModel):
-    root: Union[
-        StepChunkContent,
-        FinalOutputChunkContent,
-        ErrorChunkContent,
-        TimeoutChunkContent,
-    ]
+    root: (
+        StepChunkContent
+        | FinalOutputChunkContent
+        | ErrorChunkContent
+        | TimeoutChunkContent
+    )

@@ -1,6 +1,6 @@
 import uuid
 
-from typing import Optional, Union
+from typing import Optional
 from opentelemetry.sdk.trace.export import (
     SpanProcessor,
     SpanExporter,
@@ -25,7 +25,7 @@ from lmnr.version import PYTHON_VERSION, __version__
 
 
 class LaminarSpanProcessor(SpanProcessor):
-    instance: Union[BatchSpanProcessor, SimpleSpanProcessor]
+    instance: BatchSpanProcessor | SimpleSpanProcessor
     __span_id_to_path: dict[int, list[str]] = {}
     __span_id_lists: dict[int, list[str]] = {}
 

@@ -5,7 +5,7 @@ from lmnr.opentelemetry_lib.decorators import (
 )
 from opentelemetry.trace import INVALID_SPAN, get_current_span
 
-from typing import Any, Callable, Literal, Optional, TypeVar, Union, cast
+from typing import Any, Callable, Literal, Optional, TypeVar, cast
 from typing_extensions import ParamSpec
 
 from lmnr.opentelemetry_lib.tracing.attributes import SESSION_ID
@@ -24,7 +24,7 @@ def observe(
     user_id: Optional[str] = None,
     ignore_input: bool = False,
     ignore_output: bool = False,
-    span_type: Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]] = "DEFAULT",
+    span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
     ignore_inputs: Optional[list[str]] = None,
     metadata: Optional[dict[str, Any]] = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
@@ -44,7 +44,7 @@ def observe(
                         wrapped function. Defaults to False.
         ignore_output (bool, optional): Whether to ignore ALL output of the\
                         wrapped function. Defaults to False.
-        span_type (Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]], optional): Type of the span.
+        span_type (Literal["DEFAULT", "LLM", "TOOL"], optional): Type of the span.
                         Defaults to "DEFAULT".
         ignore_inputs (Optional[list[str]], optional): List of input keys to ignore.
                         For example, if the wrapped function takes three arguments,\

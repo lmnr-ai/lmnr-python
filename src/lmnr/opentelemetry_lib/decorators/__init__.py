@@ -3,7 +3,7 @@ import json
 import logging
 import pydantic
 import types
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal, Optional
 
 from opentelemetry import trace
 from opentelemetry import context as context_api
@@ -45,7 +45,7 @@ def entity_method(
     ignore_input: bool = False,
     ignore_inputs: Optional[list[str]] = None,
     ignore_output: bool = False,
-    span_type: Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]] = "DEFAULT",
+    span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
     association_properties: Optional[dict[str, Any]] = None,
 ):
     def decorate(fn):
@@ -134,7 +134,7 @@ def aentity_method(
     ignore_input: bool = False,
     ignore_inputs: Optional[list[str]] = None,
     ignore_output: bool = False,
-    span_type: Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]] = "DEFAULT",
+    span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
     association_properties: Optional[dict[str, Any]] = None,
 ):
     def decorate(fn):

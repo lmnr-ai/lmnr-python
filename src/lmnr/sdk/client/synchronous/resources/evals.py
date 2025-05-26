@@ -2,7 +2,7 @@
 
 import uuid
 import urllib.parse
-from typing import Optional, Union
+from typing import Optional
 
 from lmnr.sdk.client.synchronous.resources.base import BaseResource
 from lmnr.sdk.types import (
@@ -42,14 +42,14 @@ class Evals(BaseResource):
     def save_datapoints(
         self,
         eval_id: uuid.UUID,
-        datapoints: list[Union[EvaluationResultDatapoint, PartialEvaluationDatapoint]],
+        datapoints: list[EvaluationResultDatapoint | PartialEvaluationDatapoint],
         group_name: Optional[str] = None,
     ):
         """Save evaluation datapoints.
 
         Args:
             eval_id (uuid.UUID): The evaluation ID.
-            datapoints (list[Union[EvaluationResultDatapoint, PartialEvaluationDatapoint]]): The datapoints to save.
+            datapoints (list[EvaluationResultDatapoint | PartialEvaluationDatapoint]): The datapoints to save.
             group_name (Optional[str], optional): Group name for the datapoints. Defaults to None.
 
         Raises:
