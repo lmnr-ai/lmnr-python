@@ -1,16 +1,14 @@
 from lmnr.opentelemetry_lib.decorators import (
     entity_method,
     aentity_method,
+    json_dumps,
 )
 from opentelemetry.trace import INVALID_SPAN, get_current_span
 
-from typing import Callable, Literal, Optional, TypeVar, Union, cast
+from typing import Any, Callable, Literal, Optional, TypeVar, Union, cast
 from typing_extensions import ParamSpec
 
 from lmnr.opentelemetry_lib.tracing.attributes import SESSION_ID
-from lmnr.opentelemetry_lib.tracing.context_properties import (
-    update_association_properties,
-)
 
 from .utils import is_async
 
@@ -23,10 +21,12 @@ def observe(
     *,
     name: Optional[str] = None,
     session_id: Optional[str] = None,
+    user_id: Optional[str] = None,
     ignore_input: bool = False,
     ignore_output: bool = False,
     span_type: Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]] = "DEFAULT",
     ignore_inputs: Optional[list[str]] = None,
+    metadata: Optional[dict[str, Any]] = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """The main decorator entrypoint for Laminar. This is used to wrap
     functions and methods to create spans.
@@ -37,6 +37,9 @@ def observe(
                         Defaults to None.
         session_id (Optional[str], optional): Session ID to associate with the\
                         span and the following context. Defaults to None.
+        user_id (Optional[str], optional): User ID to associate with the\
+                        span and the following context. This is different from \
+                        ID of a Laminar user. Defaults to None.
         ignore_input (bool, optional): Whether to ignore ALL input of the\
                         wrapped function. Defaults to False.
         ignore_output (bool, optional): Whether to ignore ALL output of the\
@@ -49,6 +52,8 @@ def observe(
                         `sensitive_data` argument, you can pass ["sensitive_data"] to\
                         this argument.
                         Defaults to None.
+        metadata (Optional[dict[str, Any]], optional): Metadata to associate with the\
+                        trace. Must be JSON serializable. Defaults to None.
     Raises:
         Exception: re-raises the exception if the wrapped function raises
                    an exception
@@ -65,14 +70,25 @@ def observe(
         association_properties = {}
         if session_id is not None:
             association_properties["session_id"] = session_id
-        update_association_properties(association_properties)
-        return (
+        if user_id is not None:
+            association_properties["user_id"] = user_id
+        if metadata is not None:
+            association_properties.update(
+                {
+                    f"metadata.{k}": (
+                        v if isinstance(v, (str, int, float, bool)) else json_dumps(v)
+                    )
+                    for k, v in metadata.items()
+                }
+            )
+        result = (
             aentity_method(
                 name=name,
                 ignore_input=ignore_input,
                 ignore_output=ignore_output,
                 span_type=span_type,
                 ignore_inputs=ignore_inputs,
+                association_properties=association_properties,
             )(func)
             if is_async(func)
             else entity_method(
@@ -81,7 +97,9 @@ def observe(
                 ignore_output=ignore_output,
                 span_type=span_type,
                 ignore_inputs=ignore_inputs,
+                association_properties=association_properties,
             )(func)
         )
+        return result
 
     return cast(Callable, decorator)

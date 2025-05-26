@@ -8,7 +8,7 @@ from typing import Optional
 
 from lmnr.sdk.evaluations import Evaluation
 
-from .sdk.eval_control import PREPARE_ONLY, EVALUATION_INSTANCE
+from .sdk.eval_control import PREPARE_ONLY, EVALUATION_INSTANCES
 from .sdk.log import get_default_logger
 
 LOG = get_default_logger(__name__)
@@ -38,10 +38,10 @@ async def run_evaluation(args):
     else:
         files = [args.file]
 
-    for file in files:
-        prep_token = PREPARE_ONLY.set(True)
-        LOG.info(f"Running evaluation from {file}")
-        try:
+    prep_token = PREPARE_ONLY.set(True)
+    try:
+        for file in files:
+            LOG.info(f"Running evaluation from {file}")
             file = os.path.abspath(file)
             name = "user_module" + file
 
@@ -55,16 +55,24 @@ async def run_evaluation(args):
             sys.modules[name] = mod
 
             spec.loader.exec_module(mod)
-            evaluation: Optional[Evaluation] = EVALUATION_INSTANCE.get()
-            if evaluation is None:
+            evaluations: Optional[list[Evaluation]] = EVALUATION_INSTANCES.get()
+            if evaluations is None:
                 LOG.warning("Evaluation instance not found")
                 if args.fail_on_error:
                     return
                 continue
 
-            await evaluation.run()
-        finally:
-            PREPARE_ONLY.reset(prep_token)
+            LOG.info(f"Loaded {len(evaluations)} evaluations from {file}")
+
+            for evaluation in evaluations:
+                try:
+                    await evaluation.run()
+                except Exception as e:
+                    LOG.error(f"Error running evaluation: {e}")
+                    if args.fail_on_error:
+                        raise
+    finally:
+        PREPARE_ONLY.reset(prep_token)
 
 
 def cli():

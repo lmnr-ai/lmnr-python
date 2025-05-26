@@ -57,6 +57,37 @@ def test_observe_session_id(exporter: InMemorySpanExporter):
     assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
 
 
+def test_observe_user_id(exporter: InMemorySpanExporter):
+    @observe(user_id="123")
+    def observed_foo(x, y, z, **kwargs):
+        return "foo"
+
+    result = observed_foo("arg", "arg2", "arg3", a=1, b=2, c=3)
+    spans = exporter.get_finished_spans()
+    assert result == "foo"
+    assert len(spans) == 1
+    assert spans[0].attributes["lmnr.association.properties.user_id"] == "123"
+    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
+
+
+def test_observe_metadata(exporter: InMemorySpanExporter):
+    @observe(metadata={"key": "value", "nested": {"key2": "value2"}})
+    def observed_foo(x, y, z, **kwargs):
+        return "foo"
+
+    result = observed_foo("arg", "arg2", "arg3", a=1, b=2, c=3)
+    spans = exporter.get_finished_spans()
+    assert result == "foo"
+    assert len(spans) == 1
+    assert spans[0].attributes["lmnr.association.properties.metadata.key"] == "value"
+    assert json.loads(
+        spans[0].attributes["lmnr.association.properties.metadata.nested"]
+    ) == {"key2": "value2"}
+    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
+
+
 def test_observe_exception(exporter: InMemorySpanExporter):
     @observe()
     def observed_foo():
