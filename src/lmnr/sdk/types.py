@@ -66,6 +66,7 @@ class PartialEvaluationDatapoint(pydantic.BaseModel):
     index: int
     trace_id: uuid.UUID
     executor_span_id: uuid.UUID
+    metadata: EvaluationDatapointMetadata = pydantic.Field(default=None)
 
     # uuid is not serializable by default, so we need to convert it to a string
     def to_dict(self):
@@ -77,6 +78,7 @@ class PartialEvaluationDatapoint(pydantic.BaseModel):
                 "index": self.index,
                 "traceId": str(self.trace_id),
                 "executorSpanId": str(self.executor_span_id),
+                "metadata": serialize(self.metadata) if self.metadata is not None else None,
             }
         except Exception as e:
             raise ValueError(f"Error serializing PartialEvaluationDatapoint: {e}")
@@ -92,6 +94,7 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
     human_evaluators: list[HumanEvaluator] = pydantic.Field(default_factory=list)
     trace_id: uuid.UUID
     executor_span_id: uuid.UUID
+    metadata: EvaluationDatapointMetadata = pydantic.Field(default=None)
 
     # uuid is not serializable by default, so we need to convert it to a string
     def to_dict(self):
@@ -115,6 +118,7 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
                 ],
                 "executorSpanId": str(self.executor_span_id),
                 "index": self.index,
+                "metadata": serialize(self.metadata) if self.metadata is not None else None,
             }
         except Exception as e:
             raise ValueError(f"Error serializing EvaluationResultDatapoint: {e}")
