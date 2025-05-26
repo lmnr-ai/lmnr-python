@@ -65,7 +65,12 @@ async def run_evaluation(args):
             LOG.info(f"Loaded {len(evaluations)} evaluations from {file}")
 
             for evaluation in evaluations:
-                await evaluation.run()
+                try:
+                    await evaluation.run()
+                except Exception as e:
+                    LOG.error(f"Error running evaluation: {e}")
+                    if args.fail_on_error:
+                        raise
     finally:
         PREPARE_ONLY.reset(prep_token)
 
