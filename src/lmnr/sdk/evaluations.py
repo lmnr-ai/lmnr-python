@@ -312,6 +312,7 @@ class Evaluation:
                     index=index,
                     trace_id=trace_id,
                     executor_span_id=executor_span_id,
+                    metadata=datapoint.metadata,
                 )
                 # First, create datapoint with trace_id so that we can show the dp in the UI
                 await self.client._evals.save_datapoints(
@@ -367,6 +368,7 @@ class Evaluation:
             human_evaluators=self.human_evaluators,
             executor_span_id=executor_span_id,
             index=index,
+            metadata=datapoint.metadata,
         )
 
         # Create background upload task without awaiting it
