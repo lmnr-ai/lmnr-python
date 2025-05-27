@@ -112,7 +112,8 @@ class AsyncLaminarClient:
 
         The client will *not* be usable after this.
         """
-        await self.__client.aclose()
+        if hasattr(self, "__client"):
+            await self.__client.aclose()
 
     async def __aenter__(self: _T) -> _T:
         return self

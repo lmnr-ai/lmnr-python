@@ -122,7 +122,7 @@ class LaminarClient:
         """
         # If an error is thrown while constructing a client, self._client
         # may not be present
-        if hasattr(self, "_client"):
+        if hasattr(self, "__client"):
             self.__client.close()
 
     def __enter__(self: _T) -> _T:
