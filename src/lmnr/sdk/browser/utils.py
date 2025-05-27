@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import time
-from typing import Union
 
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
@@ -24,13 +23,15 @@ def with_tracer_wrapper(func):
 def with_tracer_and_client_wrapper(func):
     """Helper for providing tracer and client for wrapper functions."""
 
-    def _with_tracer(tracer, client: Union[LaminarClient, AsyncLaminarClient], to_wrap):
+    def _with_tracer_and_client(
+        tracer, client: LaminarClient | AsyncLaminarClient, to_wrap
+    ):
         def wrapper(wrapped, instance, args, kwargs):
             return func(tracer, client, to_wrap, wrapped, instance, args, kwargs)
 
         return wrapper
 
-    return _with_tracer
+    return _with_tracer_and_client
 
 
 def retry_sync(func, retries=5, delay=0.5, error_message="Operation failed"):

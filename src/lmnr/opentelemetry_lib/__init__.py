@@ -1,7 +1,6 @@
 import logging
 import sys
 
-from typing import Optional, Set
 from opentelemetry.sdk.trace.export import SpanExporter
 from opentelemetry.sdk.resources import SERVICE_NAME
 
@@ -16,17 +15,17 @@ class TracerManager:
 
     @staticmethod
     def init(
-        app_name: Optional[str] = sys.argv[0],
+        app_name: str | None = sys.argv[0],
         disable_batch=False,
-        exporter: Optional[SpanExporter] = None,
+        exporter: SpanExporter | None = None,
         resource_attributes: dict = {},
-        instruments: Optional[Set[Instruments]] = None,
-        block_instruments: Optional[Set[Instruments]] = None,
+        instruments: set[Instruments] | None = None,
+        block_instruments: set[Instruments] | None = None,
         base_url: str = "https://api.lmnr.ai",
         port: int = 8443,
         http_port: int = 443,
-        project_api_key: Optional[str] = None,
-        max_export_batch_size: Optional[int] = None,
+        project_api_key: str | None = None,
+        max_export_batch_size: int | None = None,
         force_http: bool = False,
         timeout_seconds: int = 30,
         set_global_tracer_provider: bool = True,

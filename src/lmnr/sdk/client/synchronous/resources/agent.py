@@ -1,6 +1,6 @@
 """Agent resource for interacting with Laminar agents."""
 
-from typing import Generator, Literal, Optional, Union, overload
+from typing import Generator, Literal, overload
 import uuid
 
 from lmnr.sdk.client.synchronous.resources.base import BaseResource
@@ -23,44 +23,44 @@ class Agent(BaseResource):
         self,
         prompt: str,
         stream: Literal[True],
-        parent_span_context: Optional[Union[LaminarSpanContext, str]] = None,
-        model_provider: Optional[ModelProvider] = None,
-        model: Optional[str] = None,
+        parent_span_context: LaminarSpanContext | str | None = None,
+        model_provider: ModelProvider | None = None,
+        model: str | None = None,
         enable_thinking: bool = True,
-        agent_state: Optional[str] = None,
-        storage_state: Optional[str] = None,
+        agent_state: str | None = None,
+        storage_state: str | None = None,
         return_screenshots: bool = False,
         return_agent_state: bool = False,
         return_storage_state: bool = False,
         disable_give_control: bool = False,
-        timeout: Optional[int] = None,
-        cdp_url: Optional[str] = None,
-        max_steps: Optional[int] = None,
-        thinking_token_budget: Optional[int] = None,
-        start_url: Optional[str] = None,
-        user_agent: Optional[str] = None,
+        timeout: int | None = None,
+        cdp_url: str | None = None,
+        max_steps: int | None = None,
+        thinking_token_budget: int | None = None,
+        start_url: str | None = None,
+        user_agent: str | None = None,
     ) -> Generator[RunAgentResponseChunk, None, None]:
         """Run Laminar index agent in streaming mode.
 
         Args:
             prompt (str): prompt for the agent
             stream (Literal[True]): whether to stream the agent's response
-            parent_span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
-            model_provider (Optional[ModelProvider], optional): LLM model provider
-            model (Optional[str], optional): LLM model name
+            parent_span_context (LaminarSpanContext | str | None, optional): span context if the agent is part of a trace
+            model_provider (ModelProvider | None, optional): LLM model provider
+            model (str | None, optional): LLM model name
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
-            agent_state (Optional[str], optional): the agent's state as returned by the previous agent run. Default to None.
-            storage_state (Optional[str], optional): the browser's storage state as returned by the previous agent run. Default to None.
+            agent_state (str | None, optional): the agent's state as returned by the previous agent run. Default to None.
+            storage_state (str | None, optional): the browser's storage state as returned by the previous agent run. Default to None.
             return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
             return_agent_state (bool, optional): whether to return the agent's state. Default to False.
             return_storage_state (bool, optional): whether to return the storage state. Default to False.
             disable_give_control (bool, optional): whether to NOT give the agent additional direction to give control to the user for tasks such as login. Default to False.
-            timeout (Optional[int], optional): timeout seconds for the agent's response. Default to None.
-            cdp_url (Optional[str], optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
-            max_steps (Optional[int], optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
-            thinking_token_budget (Optional[int], optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
-            start_url (Optional[str], optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
-            user_agent (Optional[str], optional): the user to be sent to the browser. If not specified, Laminar uses the default user agent. Default to None.
+            timeout (int | None, optional): timeout seconds for the agent's response. Default to None.
+            cdp_url (str | None, optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
+            max_steps (int | None, optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
+            thinking_token_budget (int | None, optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
+            start_url (str | None, optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
+            user_agent (str | None, optional): the user to be sent to the browser. If not specified, Laminar uses the default user agent. Default to None.
         Returns:
             Generator[RunAgentResponseChunk, None, None]: a generator of response chunks
         """
@@ -70,43 +70,43 @@ class Agent(BaseResource):
     def run(
         self,
         prompt: str,
-        parent_span_context: Optional[Union[LaminarSpanContext, str]] = None,
-        model_provider: Optional[ModelProvider] = None,
-        model: Optional[str] = None,
+        parent_span_context: LaminarSpanContext | str | None = None,
+        model_provider: ModelProvider | None = None,
+        model: str | None = None,
         enable_thinking: bool = True,
-        agent_state: Optional[str] = None,
-        storage_state: Optional[str] = None,
+        agent_state: str | None = None,
+        storage_state: str | None = None,
         return_screenshots: bool = False,
         return_agent_state: bool = False,
         disable_give_control: bool = False,
         return_storage_state: bool = False,
-        timeout: Optional[int] = None,
-        cdp_url: Optional[str] = None,
-        max_steps: Optional[int] = None,
-        thinking_token_budget: Optional[int] = None,
-        start_url: Optional[str] = None,
-        user_agent: Optional[str] = None,
+        timeout: int | None = None,
+        cdp_url: str | None = None,
+        max_steps: int | None = None,
+        thinking_token_budget: int | None = None,
+        start_url: str | None = None,
+        user_agent: str | None = None,
     ) -> AgentOutput:
         """Run Laminar index agent.
 
         Args:
             prompt (str): prompt for the agent
-            parent_span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
-            model_provider (Optional[ModelProvider], optional): LLM model provider
-            model (Optional[str], optional): LLM model name
+            parent_span_context (LaminarSpanContext | str | None, optional): span context if the agent is part of a trace
+            model_provider (ModelProvider | None, optional): LLM model provider
+            model (str | None, optional): LLM model name
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
-            agent_state (Optional[str], optional): the agent's state as returned by the previous agent run. Default to None.
-            storage_state (Optional[str], optional): the browser's storage state as returned by the previous agent run. Default to None.
+            agent_state (str | None, optional): the agent's state as returned by the previous agent run. Default to None.
+            storage_state (str | None, optional): the browser's storage state as returned by the previous agent run. Default to None.
             return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
             return_agent_state (bool, optional): whether to return the agent's state. Default to False.
             return_storage_state (bool, optional): whether to return the storage state. Default to False.
             disable_give_control (bool, optional): whether to NOT give the agent additional direction to give control to the user for tasks such as login. Default to False.
-            timeout (Optional[int], optional): timeout seconds for the agent's response. Default to None.
-            cdp_url (Optional[str], optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
-            max_steps (Optional[int], optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
-            thinking_token_budget (Optional[int], optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
-            start_url (Optional[str], optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
-            user_agent (Optional[str], optional): the user to be sent to the browser. If not specified, Laminar uses the default user agent. Default to None.
+            timeout (int | None, optional): timeout seconds for the agent's response. Default to None.
+            cdp_url (str | None, optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
+            max_steps (int | None, optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
+            thinking_token_budget (int | None, optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
+            start_url (str | None, optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
+            user_agent (str | None, optional): the user to be sent to the browser. If not specified, Laminar uses the default user agent. Default to None.
 
         Returns:
             AgentOutput: agent output
@@ -117,45 +117,45 @@ class Agent(BaseResource):
     def run(
         self,
         prompt: str,
-        parent_span_context: Optional[Union[LaminarSpanContext, str]] = None,
-        model_provider: Optional[ModelProvider] = None,
-        model: Optional[str] = None,
+        parent_span_context: LaminarSpanContext | str | None = None,
+        model_provider: ModelProvider | None = None,
+        model: str | None = None,
         stream: Literal[False] = False,
         enable_thinking: bool = True,
-        agent_state: Optional[str] = None,
-        storage_state: Optional[str] = None,
+        agent_state: str | None = None,
+        storage_state: str | None = None,
         return_screenshots: bool = False,
         return_agent_state: bool = False,
         return_storage_state: bool = False,
         disable_give_control: bool = False,
-        timeout: Optional[int] = None,
-        cdp_url: Optional[str] = None,
-        max_steps: Optional[int] = None,
-        thinking_token_budget: Optional[int] = None,
-        start_url: Optional[str] = None,
-        user_agent: Optional[str] = None,
+        timeout: int | None = None,
+        cdp_url: str | None = None,
+        max_steps: int | None = None,
+        thinking_token_budget: int | None = None,
+        start_url: str | None = None,
+        user_agent: str | None = None,
     ) -> AgentOutput:
         """Run Laminar index agent.
 
         Args:
             prompt (str): prompt for the agent
-            parent_span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
-            model_provider (Optional[ModelProvider], optional): LLM model provider
-            model (Optional[str], optional): LLM model name
+            parent_span_context (LaminarSpanContext | str | None, optional): span context if the agent is part of a trace
+            model_provider (ModelProvider | None, optional): LLM model provider
+            model (str | None, optional): LLM model name
             stream (Literal[False], optional): whether to stream the agent's response
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
-            agent_state (Optional[str], optional): the agent's state as returned by the previous agent run. Default to None.
-            storage_state (Optional[str], optional): the browser's storage state as returned by the previous agent run. Default to None.
+            agent_state (str | None, optional): the agent's state as returned by the previous agent run. Default to None.
+            storage_state (str | None, optional): the browser's storage state as returned by the previous agent run. Default to None.
             return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
             return_agent_state (bool, optional): whether to return the agent's state. Default to False.
             return_storage_state (bool, optional): whether to return the storage state. Default to False.
             disable_give_control (bool, optional): whether to NOT give the agent additional direction to give control to the user for tasks such as login. Default to False.
-            timeout (Optional[int], optional): timeout seconds for the agent's response. Default to None.
-            cdp_url (Optional[str], optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
-            max_steps (Optional[int], optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
-            thinking_token_budget (Optional[int], optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
-            start_url (Optional[str], optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
-            user_agent (Optional[str], optional): the user to be sent to the browser. If not specified, Laminar uses the default user agent. Default to None.
+            timeout (int | None, optional): timeout seconds for the agent's response. Default to None.
+            cdp_url (str | None, optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
+            max_steps (int | None, optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
+            thinking_token_budget (int | None, optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
+            start_url (str | None, optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
+            user_agent (str | None, optional): the user to be sent to the browser. If not specified, Laminar uses the default user agent. Default to None.
 
         Returns:
             AgentOutput: agent output
@@ -165,48 +165,48 @@ class Agent(BaseResource):
     def run(
         self,
         prompt: str,
-        parent_span_context: Optional[Union[LaminarSpanContext, str]] = None,
-        model_provider: Optional[ModelProvider] = None,
-        model: Optional[str] = None,
+        parent_span_context: LaminarSpanContext | str | None = None,
+        model_provider: ModelProvider | None = None,
+        model: str | None = None,
         stream: bool = False,
         enable_thinking: bool = True,
-        agent_state: Optional[str] = None,
-        storage_state: Optional[str] = None,
+        agent_state: str | None = None,
+        storage_state: str | None = None,
         return_screenshots: bool = False,
         return_agent_state: bool = False,
         return_storage_state: bool = False,
         disable_give_control: bool = False,
-        timeout: Optional[int] = None,
-        cdp_url: Optional[str] = None,
-        max_steps: Optional[int] = None,
-        thinking_token_budget: Optional[int] = None,
-        start_url: Optional[str] = None,
-        user_agent: Optional[str] = None,
-    ) -> Union[AgentOutput, Generator[RunAgentResponseChunk, None, None]]:
+        timeout: int | None = None,
+        cdp_url: str | None = None,
+        max_steps: int | None = None,
+        thinking_token_budget: int | None = None,
+        start_url: str | None = None,
+        user_agent: str | None = None,
+    ) -> AgentOutput | Generator[RunAgentResponseChunk, None, None]:
         """Run Laminar index agent.
 
         Args:
             prompt (str): prompt for the agent
-            parent_span_context (Optional[Union[LaminarSpanContext, str]], optional): span context if the agent is part of a trace
-            model_provider (Optional[ModelProvider], optional): LLM model provider
-            model (Optional[str], optional): LLM model name
+            parent_span_context (LaminarSpanContext | str | None, optional): span context if the agent is part of a trace
+            model_provider (ModelProvider | None, optional): LLM model provider
+            model (str | None, optional): LLM model name
             stream (bool, optional): whether to stream the agent's response
             enable_thinking (bool, optional): whether to enable thinking on the underlying LLM. Default to True.
-            agent_state (Optional[str], optional): the agent's state as returned by the previous agent run. Default to None.
-            storage_state (Optional[str], optional): the browser's storage state as returned by the previous agent run. Default to None.
+            agent_state (str | None, optional): the agent's state as returned by the previous agent run. Default to None.
+            storage_state (str | None, optional): the browser's storage state as returned by the previous agent run. Default to None.
             return_screenshots (bool, optional): whether to return screenshots of the agent's states at every step. Default to False.
             return_agent_state (bool, optional): whether to return the agent's state. Default to False.
             return_storage_state (bool, optional): whether to return the storage state. Default to False.
             disable_give_control (bool, optional): whether to NOT give the agent additional direction to give control to the user for tasks such as login. Default to False.
-            timeout (Optional[int], optional): timeout seconds for the agent's response. Default to None.
-            cdp_url (Optional[str], optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
-            max_steps (Optional[int], optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
-            thinking_token_budget (Optional[int], optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
-            start_url (Optional[str], optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
-            user_agent (Optional[str], optional): the user to be sent to the browser. If not specified, Laminar uses the default user agent. Default to None.
+            timeout (int | None, optional): timeout seconds for the agent's response. Default to None.
+            cdp_url (str | None, optional): Chrome DevTools Protocol URL of an existing browser session. Default to None.
+            max_steps (int | None, optional): maximum number of steps the agent can take. If not set, the backend will use a default value (currently 100). Default to None.
+            thinking_token_budget (int | None, optional): maximum number of tokens the underlying LLM can spend on thinking in each step, if supported by the model. Default to None.
+            start_url (str | None, optional): the URL to start the agent on. Must be a valid URL - refer to https://playwright.dev/docs/api/class-page#page-goto. If not specified, the agent infers this from the prompt. Default to None.
+            user_agent (str | None, optional): the user to be sent to the browser. If not specified, Laminar uses the default user agent. Default to None.
 
         Returns:
-            Union[AgentOutput, Generator[RunAgentResponseChunk, None, None]]: agent output or a generator of response chunks
+            AgentOutput | Generator[RunAgentResponseChunk, None, None]: agent output or a generator of response chunks
         """
         if parent_span_context is None:
             span = trace.get_current_span()

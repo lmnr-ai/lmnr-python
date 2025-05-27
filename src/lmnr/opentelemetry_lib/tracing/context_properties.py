@@ -1,5 +1,4 @@
 import copy
-from typing import Optional
 
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
@@ -18,14 +17,14 @@ def set_association_properties(properties: dict) -> None:
     _set_association_properties_attributes(span, properties)
 
 
-def get_association_properties(context: Optional[Context] = None) -> dict:
+def get_association_properties(context: Context | None = None) -> dict:
     return get_value("association_properties", context) or {}
 
 
 def update_association_properties(
     properties: dict,
     set_on_current_span: bool = True,
-    context: Optional[Context] = None,
+    context: Context | None = None,
 ) -> None:
     """Only adds or updates properties that are not already present"""
     association_properties = get_value("association_properties", context) or {}

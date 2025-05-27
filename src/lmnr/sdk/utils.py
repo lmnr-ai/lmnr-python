@@ -50,7 +50,7 @@ def is_iterator(o: typing.Any) -> bool:
     return hasattr(o, "__iter__") and hasattr(o, "__next__")
 
 
-def serialize(obj: typing.Any) -> typing.Union[str, dict[str, typing.Any]]:
+def serialize(obj: typing.Any) -> str | dict[str, typing.Any]:
     def serialize_inner(o: typing.Any):
         if isinstance(o, (datetime.datetime, datetime.date)):
             return o.strftime("%Y-%m-%dT%H:%M:%S.%f%z")
@@ -87,7 +87,7 @@ def get_input_from_func_args(
     is_method: bool = False,
     func_args: list[typing.Any] = [],
     func_kwargs: dict[str, typing.Any] = {},
-    ignore_inputs: typing.Optional[list[str]] = None,
+    ignore_inputs: list[str] | None = None,
 ) -> dict[str, typing.Any]:
     # Remove implicitly passed "self" or "cls" argument for
     # instance or class methods
@@ -107,7 +107,7 @@ def get_input_from_func_args(
     return res
 
 
-def from_env(key: str) -> typing.Optional[str]:
+def from_env(key: str) -> str | None:
     if val := os.getenv(key):
         return val
     dotenv_path = dotenv.find_dotenv(usecwd=True)

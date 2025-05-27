@@ -9,7 +9,7 @@ from google.genai import types
 from google.genai._common import BaseModel
 import pydantic
 from opentelemetry.trace import Span
-from typing import Any, Optional, Union
+from typing import Any
 
 
 def set_span_attribute(span: Span, name: str, value: str):
@@ -44,7 +44,7 @@ def dont_throw(func):
     return wrapper
 
 
-def to_dict(obj: Union[BaseModel, pydantic.BaseModel, dict]) -> dict[str, Any]:
+def to_dict(obj: BaseModel | pydantic.BaseModel | dict) -> dict[str, Any]:
     try:
         if isinstance(obj, BaseModel):
             return obj.model_dump()
@@ -59,11 +59,11 @@ def to_dict(obj: Union[BaseModel, pydantic.BaseModel, dict]) -> dict[str, Any]:
 
 
 def process_content_union(
-    content: Union[types.ContentUnion, types.ContentUnionDict],
-    trace_id: Optional[str] = None,
-    span_id: Optional[str] = None,
+    content: types.ContentUnion | types.ContentUnionDict,
+    trace_id: str | None = None,
+    span_id: str | None = None,
     message_index: int = 0,
-) -> Optional[str]:
+) -> str | None:
     parts = _process_content_union(content, trace_id, span_id, message_index)
     if parts is None:
         return None
@@ -83,11 +83,11 @@ def process_content_union(
 
 
 def _process_content_union(
-    content: Union[types.ContentUnion, types.ContentUnionDict],
-    trace_id: Optional[str] = None,
-    span_id: Optional[str] = None,
+    content: types.ContentUnion | types.ContentUnionDict,
+    trace_id: str | None = None,
+    span_id: str | None = None,
     message_index: int = 0,
-) -> Union[str, list[str], None]:
+) -> str | list[str] | None:
     if isinstance(content, types.Content):
         parts = to_dict(content).get("parts", [])
         return [_process_part(part) for part in parts]
@@ -111,12 +111,12 @@ def _process_content_union(
 
 
 def _process_part_union(
-    content: Union[types.PartDict, types.File, types.Part, str],
-    trace_id: Optional[str] = None,
-    span_id: Optional[str] = None,
+    content: types.PartDict | types.File | types.Part | str,
+    trace_id: str | None = None,
+    span_id: str | None = None,
     message_index: int = 0,
     content_index: int = 0,
-) -> Optional[str]:
+) -> str | None:
     if isinstance(content, str):
         return content
     elif isinstance(content, types.File):
@@ -135,11 +135,11 @@ def _process_part_union(
 
 def _process_part(
     content: types.Part,
-    trace_id: Optional[str] = None,
-    span_id: Optional[str] = None,
+    trace_id: str | None = None,
+    span_id: str | None = None,
     message_index: int = 0,
     content_index: int = 0,
-) -> Optional[str]:
+) -> str | None:
     part_dict = to_dict(content)
     if part_dict.get("text") is not None:
         return part_dict.get("text")
@@ -157,8 +157,8 @@ def _process_part(
 
 
 def role_from_content_union(
-    content: Union[types.ContentUnion, types.ContentUnionDict],
-) -> Optional[str]:
+    content: types.ContentUnion | types.ContentUnionDict,
+) -> str | None:
     if isinstance(content, types.Content):
         return to_dict(content).get("role")
     elif isinstance(content, list) and len(content) > 0:

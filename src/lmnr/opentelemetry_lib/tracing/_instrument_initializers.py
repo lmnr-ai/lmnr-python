@@ -1,6 +1,5 @@
 import abc
 
-from typing import Optional
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
@@ -8,12 +7,12 @@ from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 
 class InstrumentorInitializer(abc.ABC):
     @abc.abstractmethod
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         pass
 
 
 class AlephAlphaInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("aleph_alpha_client"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-alephalpha"):
@@ -25,7 +24,7 @@ class AlephAlphaInstrumentorInitializer(InstrumentorInitializer):
 
 
 class AnthropicInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("anthropic"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-anthropic"):
@@ -39,7 +38,7 @@ class AnthropicInstrumentorInitializer(InstrumentorInitializer):
 
 
 class BedrockInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("boto3"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-bedrock"):
@@ -51,7 +50,7 @@ class BedrockInstrumentorInitializer(InstrumentorInitializer):
 
 
 class BrowserUseInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("browser-use"):
             return None
 
@@ -61,7 +60,7 @@ class BrowserUseInstrumentorInitializer(InstrumentorInitializer):
 
 
 class ChromaInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("chromadb"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-chromadb"):
@@ -73,7 +72,7 @@ class ChromaInstrumentorInitializer(InstrumentorInitializer):
 
 
 class CohereInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("cohere"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-cohere"):
@@ -85,7 +84,7 @@ class CohereInstrumentorInitializer(InstrumentorInitializer):
 
 
 class CrewAIInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("crewai"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-crewai"):
@@ -97,7 +96,7 @@ class CrewAIInstrumentorInitializer(InstrumentorInitializer):
 
 
 class GoogleGenerativeAIInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("google-generativeai"):
             return None
         if not is_package_installed(
@@ -113,7 +112,7 @@ class GoogleGenerativeAIInstrumentorInitializer(InstrumentorInitializer):
 
 
 class GoogleGenAIInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("google-genai"):
             return None
 
@@ -125,7 +124,7 @@ class GoogleGenAIInstrumentorInitializer(InstrumentorInitializer):
 
 
 class GroqInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("groq"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-groq"):
@@ -137,7 +136,7 @@ class GroqInstrumentorInitializer(InstrumentorInitializer):
 
 
 class HaystackInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("haystack"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-haystack"):
@@ -149,7 +148,7 @@ class HaystackInstrumentorInitializer(InstrumentorInitializer):
 
 
 class LanceDBInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("lancedb"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-lancedb"):
@@ -161,7 +160,7 @@ class LanceDBInstrumentorInitializer(InstrumentorInitializer):
 
 
 class LangchainInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("langchain"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-langchain"):
@@ -173,7 +172,7 @@ class LangchainInstrumentorInitializer(InstrumentorInitializer):
 
 
 class LlamaIndexInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not (
             is_package_installed("llama-index") or is_package_installed("llama_index")
         ):
@@ -187,7 +186,7 @@ class LlamaIndexInstrumentorInitializer(InstrumentorInitializer):
 
 
 class MarqoInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("marqo"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-marqo"):
@@ -199,7 +198,7 @@ class MarqoInstrumentorInitializer(InstrumentorInitializer):
 
 
 class MCPInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("mcp"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-mcp"):
@@ -211,7 +210,7 @@ class MCPInstrumentorInitializer(InstrumentorInitializer):
 
 
 class MilvusInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("pymilvus"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-milvus"):
@@ -223,7 +222,7 @@ class MilvusInstrumentorInitializer(InstrumentorInitializer):
 
 
 class MistralInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("mistralai"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-mistralai"):
@@ -235,7 +234,7 @@ class MistralInstrumentorInitializer(InstrumentorInitializer):
 
 
 class OllamaInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("ollama"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-ollama"):
@@ -247,7 +246,7 @@ class OllamaInstrumentorInitializer(InstrumentorInitializer):
 
 
 class OpenAIInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("openai"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-openai"):
@@ -266,7 +265,7 @@ class OpenAIInstrumentorInitializer(InstrumentorInitializer):
 class PatchrightInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(
         self, client, async_client, *args, **kwargs
-    ) -> Optional[BaseInstrumentor]:
+    ) -> BaseInstrumentor | None:
         if not is_package_installed("patchright"):
             return None
 
@@ -276,7 +275,7 @@ class PatchrightInstrumentorInitializer(InstrumentorInitializer):
 
 
 class PineconeInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("pinecone"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-pinecone"):
@@ -290,7 +289,7 @@ class PineconeInstrumentorInitializer(InstrumentorInitializer):
 class PlaywrightInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(
         self, client, async_client, *args, **kwargs
-    ) -> Optional[BaseInstrumentor]:
+    ) -> BaseInstrumentor | None:
         if not is_package_installed("playwright"):
             return None
 
@@ -300,7 +299,7 @@ class PlaywrightInstrumentorInitializer(InstrumentorInitializer):
 
 
 class QdrantInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("qdrant_client"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-qdrant"):
@@ -312,7 +311,7 @@ class QdrantInstrumentorInitializer(InstrumentorInitializer):
 
 
 class ReplicateInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("replicate"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-replicate"):
@@ -324,7 +323,7 @@ class ReplicateInstrumentorInitializer(InstrumentorInitializer):
 
 
 class SageMakerInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("boto3"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-sagemaker"):
@@ -336,7 +335,7 @@ class SageMakerInstrumentorInitializer(InstrumentorInitializer):
 
 
 class TogetherInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("together"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-together"):
@@ -348,7 +347,7 @@ class TogetherInstrumentorInitializer(InstrumentorInitializer):
 
 
 class TransformersInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("transformers"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-transformers"):
@@ -360,7 +359,7 @@ class TransformersInstrumentorInitializer(InstrumentorInitializer):
 
 
 class VertexAIInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("vertexai"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-vertexai"):
@@ -372,7 +371,7 @@ class VertexAIInstrumentorInitializer(InstrumentorInitializer):
 
 
 class WatsonxInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not (
             is_package_installed("ibm-watsonx-ai")
             or is_package_installed("ibm-watson-machine-learning")
@@ -387,7 +386,7 @@ class WatsonxInstrumentorInitializer(InstrumentorInitializer):
 
 
 class WeaviateInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> Optional[BaseInstrumentor]:
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("weaviate"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-weaviate"):

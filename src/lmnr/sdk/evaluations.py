@@ -3,7 +3,7 @@ import re
 import uuid
 
 from tqdm import tqdm
-from typing import Any, Awaitable, Optional, Set, Union
+from typing import Any, Awaitable
 
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.opentelemetry_lib.tracing.attributes import SPAN_TYPE
@@ -33,7 +33,7 @@ MAX_EXPORT_BATCH_SIZE = 64
 
 
 def get_evaluation_url(
-    project_id: str, evaluation_id: str, base_url: Optional[str] = None
+    project_id: str, evaluation_id: str, base_url: str | None = None
 ):
     if not base_url or base_url == "https://api.lmnr.ai":
         base_url = "https://www.lmnr.ai"
@@ -95,32 +95,34 @@ class EvaluationReporter:
 class Evaluation:
     def __init__(
         self,
-        data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
+        data: EvaluationDataset | list[Datapoint | dict],
         executor: Any,
         evaluators: dict[str, EvaluatorFunction],
         human_evaluators: list[HumanEvaluator] = [],
-        name: Optional[str] = None,
-        group_name: Optional[str] = None,
+        name: str | None = None,
+        group_name: str | None = None,
         concurrency_limit: int = DEFAULT_BATCH_SIZE,
-        project_api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
-        http_port: Optional[int] = None,
-        grpc_port: Optional[int] = None,
-        instruments: Optional[Set[Instruments]] = None,
-        max_export_batch_size: Optional[int] = MAX_EXPORT_BATCH_SIZE,
-        trace_export_timeout_seconds: Optional[int] = None,
+        project_api_key: str | None = None,
+        base_url: str | None = None,
+        http_port: int | None = None,
+        grpc_port: int | None = None,
+        instruments: set[Instruments] | None = None,
+        max_export_batch_size: int | None = MAX_EXPORT_BATCH_SIZE,
+        trace_export_timeout_seconds: int | None = None,
     ):
         """
         Initializes an instance of the Evaluation class.
 
         Parameters:
-            data (Union[List[EvaluationDatapoint|dict], EvaluationDataset]):\
+            data (list[Datapoint|dict] | EvaluationDataset):\
                 List of data points to evaluate or an evaluation dataset.
-                            `data` is the input to the executor function,
-                            `target` is the input to the evaluator function.
+                    `data` is the input to the executor function.
+                    `target` is the input to the evaluator function.
+                    `metadata` is optional metadata to associate with the\
+                        datapoint.
             executor (Callable[..., Any]): The executor function.\
-                            Takes the data point + any additional arguments\
-                            and returns the output to evaluate.
+                    Takes the data point + any additional arguments and returns\
+                    the output to evaluate.
             evaluators (dict[str, Callable[..., Any]]): Evaluator functions and\
                 names. Each evaluator function takes the output of the executor\
                 _and_ the target data, and returns a score. The score can be a\
@@ -132,30 +134,31 @@ class Evaluation:
                 [Beta] List of instances of HumanEvaluator. For now, human\
                 evaluator only holds the queue name.
                 Defaults to an empty list.
-            name (Optional[str], optional): Optional name of the evaluation.\
+            name (str | None, optional): Optional name of the evaluation.\
                 Used to identify the evaluation in the group.\
                 If not provided, a random name will be generated.
                 Defaults to None.
-            group_name (Optional[str], optional): an identifier to group\
+            group_name (str | None, optional): an identifier to group\
                 evaluations. Only evaluations within the same group_name can be\
                 visually compared. If not provided, "default" is assigned.
                 Defaults to None
-            concurrency_limit (int, optional): The concurrency limit for evaluation. This many\
-                data points will be evaluated in parallel with a pool of workers.
+            concurrency_limit (int, optional): The concurrency limit for\
+                evaluation. This many data points will be evaluated in parallel\
+                with a pool of workers.
                 Defaults to DEFAULT_BATCH_SIZE.
-            project_api_key (Optional[str], optional): The project API key.\
+            project_api_key (str | None, optional): The project API key.\
                 If not provided, LMNR_PROJECT_API_KEY environment variable is\
                 used.
                 Defaults to an empty string.
-            base_url (Optional[str], optional): The base URL for Laminar API.\
+            base_url (str | None, optional): The base URL for Laminar API.\
                 Useful if self-hosted. Do NOT include the port, use `http_port`\
                 and `grpc_port` instead.
                 Defaults to "https://api.lmnr.ai".
-            http_port (Optional[int], optional): The port for Laminar API\
+            http_port (int | None, optional): The port for Laminar API\
                 HTTP service. Defaults to 443 if not specified.
-            grpc_port (Optional[int], optional): The port for Laminar API\
+            grpc_port (int | None, optional): The port for Laminar API\
                 gRPC service. Defaults to 8443 if not specified.
-            instruments (Optional[Set[Instruments]], optional): Set of modules\
+            instruments (set[Instruments] | None, optional): Set of modules\
                 to auto-instrument. If None, all available instruments will be\
                 used.
                 See https://docs.lmnr.ai/tracing/automatic-instrumentation
@@ -393,21 +396,21 @@ class Evaluation:
 
 
 def evaluate(
-    data: Union[EvaluationDataset, list[Union[Datapoint, dict]]],
+    data: EvaluationDataset | list[Datapoint | dict],
     executor: ExecutorFunction,
     evaluators: dict[str, EvaluatorFunction],
     human_evaluators: list[HumanEvaluator] = [],
-    name: Optional[str] = None,
-    group_name: Optional[str] = None,
+    name: str | None = None,
+    group_name: str | None = None,
     concurrency_limit: int = DEFAULT_BATCH_SIZE,
-    project_api_key: Optional[str] = None,
-    base_url: Optional[str] = None,
-    http_port: Optional[int] = None,
-    grpc_port: Optional[int] = None,
-    instruments: Optional[Set[Instruments]] = None,
-    max_export_batch_size: Optional[int] = MAX_EXPORT_BATCH_SIZE,
-    trace_export_timeout_seconds: Optional[int] = None,
-) -> Optional[Awaitable[None]]:
+    project_api_key: str | None = None,
+    base_url: str | None = None,
+    http_port: int | None = None,
+    grpc_port: int | None = None,
+    instruments: set[Instruments] | None = None,
+    max_export_batch_size: int | None = MAX_EXPORT_BATCH_SIZE,
+    trace_export_timeout_seconds: int | None = None,
+) -> Awaitable[None] | None:
     """
     If added to the file which is called through `lmnr eval` command, then
     registers the evaluation; otherwise, runs the evaluation.
@@ -418,7 +421,7 @@ def evaluate(
     You must await the call to `evaluate`.
 
     Parameters:
-        data (Union[list[EvaluationDatapoint|dict]], EvaluationDataset]):\
+        data (list[EvaluationDatapoint|dict] | EvaluationDataset):\
             List of data points to evaluate or an evaluation dataset.
                 `data` is the input to the executor function,
                 `target` is the input to the evaluator function.
@@ -437,33 +440,33 @@ def evaluate(
             [Beta] List of instances of HumanEvaluator. For now, human\
             evaluator only holds the queue name.
             Defaults to an empty list.
-        name (Optional[str], optional): Optional name of the evaluation.\
+        name (str | None, optional): Optional name of the evaluation.\
             Used to identify the evaluation in the group. If not provided, a\
             random name will be generated.
             Defaults to None.
-        group_name (Optional[str], optional): An identifier to group evaluations.\
+        group_name (str | None, optional): An identifier to group evaluations.\
             Only evaluations within the same group_name can be visually compared.\
             If not provided, set to "default".
             Defaults to None
         concurrency_limit (int, optional): The concurrency limit for evaluation.
                         Defaults to DEFAULT_BATCH_SIZE.
-        project_api_key (Optional[str], optional): The project API key.
+        project_api_key (str | None, optional): The project API key.
                         Defaults to None.
-        base_url (Optional[str], optional): The base URL for Laminar API.\
+        base_url (str | None, optional): The base URL for Laminar API.\
                         Useful if self-hosted elsewhere. Do NOT include the\
                         port, use `http_port` and `grpc_port` instead.
                         Defaults to "https://api.lmnr.ai".
-        http_port (Optional[int], optional): The port for Laminar API's HTTP\
+        http_port (int | None, optional): The port for Laminar API's HTTP\
                         service. 443 is used if not specified.
                         Defaults to None.
-        grpc_port (Optional[int], optional): The port for Laminar API's gRPC\
+        grpc_port (int | None, optional): The port for Laminar API's gRPC\
                         service. 8443 is used if not specified.
                         Defaults to None.
-        instruments (Optional[Set[Instruments]], optional): Set of modules to\
+        instruments (set[Instruments] | None, optional): Set of modules to\
                         auto-instrument. If None, all available instruments\
                         will be used.
                         Defaults to None.
-        trace_export_timeout_seconds (Optional[int], optional): The timeout for\
+        trace_export_timeout_seconds (int | None, optional): The timeout for\
                         trace export on OpenTelemetry exporter. Defaults to None.
     """
     evaluation = Evaluation(

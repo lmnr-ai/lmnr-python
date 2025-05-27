@@ -3,7 +3,7 @@ import json
 import logging
 import pydantic
 import types
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal
 
 from opentelemetry import trace
 from opentelemetry import context as context_api
@@ -41,12 +41,12 @@ def json_dumps(data: dict) -> str:
 
 
 def entity_method(
-    name: Optional[str] = None,
+    name: str | None = None,
     ignore_input: bool = False,
-    ignore_inputs: Optional[list[str]] = None,
+    ignore_inputs: list[str] | None = None,
     ignore_output: bool = False,
-    span_type: Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]] = "DEFAULT",
-    association_properties: Optional[dict[str, Any]] = None,
+    span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
+    association_properties: dict[str, Any] | None = None,
 ):
     def decorate(fn):
         @wraps(fn)
@@ -130,12 +130,12 @@ def entity_method(
 
 # Async Decorators
 def aentity_method(
-    name: Optional[str] = None,
+    name: str | None = None,
     ignore_input: bool = False,
-    ignore_inputs: Optional[list[str]] = None,
+    ignore_inputs: list[str] | None = None,
     ignore_output: bool = False,
-    span_type: Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]] = "DEFAULT",
-    association_properties: Optional[dict[str, Any]] = None,
+    span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
+    association_properties: dict[str, Any] | None = None,
 ):
     def decorate(fn):
         @wraps(fn)

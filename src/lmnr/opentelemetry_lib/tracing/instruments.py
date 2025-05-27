@@ -1,7 +1,6 @@
 import logging
 
 from enum import Enum
-from typing import Optional, Set, Dict
 
 from opentelemetry.trace import TracerProvider
 import lmnr.opentelemetry_lib.tracing._instrument_initializers as initializers
@@ -47,7 +46,7 @@ class Instruments(Enum):
     WEAVIATE = "weaviate"
 
 
-INSTRUMENTATION_INITIALIZERS: Dict[
+INSTRUMENTATION_INITIALIZERS: dict[
     Instruments, initializers.InstrumentorInitializer
 ] = {
     Instruments.ALEPHALPHA: initializers.AlephAlphaInstrumentorInitializer(),
@@ -86,10 +85,10 @@ INSTRUMENTATION_INITIALIZERS: Dict[
 
 def init_instrumentations(
     tracer_provider: TracerProvider,
-    instruments: Optional[Set[Instruments]] = None,
-    block_instruments: Optional[Set[Instruments]] = None,
-    client: Optional[LaminarClient] = None,
-    async_client: Optional[AsyncLaminarClient] = None,
+    instruments: set[Instruments] | None = None,
+    block_instruments: set[Instruments] | None = None,
+    client: LaminarClient | None = None,
+    async_client: AsyncLaminarClient | None = None,
 ):
     block_instruments = block_instruments or set()
     if instruments is None:

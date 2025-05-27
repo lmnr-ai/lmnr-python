@@ -5,7 +5,7 @@ from lmnr.opentelemetry_lib.decorators import (
 )
 from opentelemetry.trace import INVALID_SPAN, get_current_span
 
-from typing import Any, Callable, Literal, Optional, TypeVar, Union, cast
+from typing import Any, Callable, Literal, TypeVar, cast
 from typing_extensions import ParamSpec
 
 from lmnr.opentelemetry_lib.tracing.attributes import SESSION_ID
@@ -19,44 +19,42 @@ R = TypeVar("R")
 
 def observe(
     *,
-    name: Optional[str] = None,
-    session_id: Optional[str] = None,
-    user_id: Optional[str] = None,
+    name: str | None = None,
+    session_id: str | None = None,
+    user_id: str | None = None,
     ignore_input: bool = False,
     ignore_output: bool = False,
-    span_type: Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]] = "DEFAULT",
-    ignore_inputs: Optional[list[str]] = None,
-    metadata: Optional[dict[str, Any]] = None,
+    span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
+    ignore_inputs: list[str] | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """The main decorator entrypoint for Laminar. This is used to wrap
     functions and methods to create spans.
 
     Args:
-        name (Optional[str], optional): Name of the span. Function
-                        name is used if not specified.
-                        Defaults to None.
-        session_id (Optional[str], optional): Session ID to associate with the\
-                        span and the following context. Defaults to None.
-        user_id (Optional[str], optional): User ID to associate with the\
-                        span and the following context. This is different from \
-                        ID of a Laminar user. Defaults to None.
+        name (str | None, optional): Name of the span. Function name is used if\
+            not specified. Defaults to None.
+        session_id (str | None, optional): Session ID to associate with the\
+            span and the following context. Defaults to None.
+        user_id (str | None, optional): User ID to associate with the span and\
+            the following context. This is different from ID of a Laminar user.
+            Defaults to None.
         ignore_input (bool, optional): Whether to ignore ALL input of the\
-                        wrapped function. Defaults to False.
+            wrapped function. Defaults to False.
         ignore_output (bool, optional): Whether to ignore ALL output of the\
-                        wrapped function. Defaults to False.
-        span_type (Union[Literal["DEFAULT"], Literal["LLM"], Literal["TOOL"]], optional): Type of the span.
-                        Defaults to "DEFAULT".
-        ignore_inputs (Optional[list[str]], optional): List of input keys to ignore.
-                        For example, if the wrapped function takes three arguments,\
-                        def foo(a, b, `sensitive_data`), and you want to ignore the\
-                        `sensitive_data` argument, you can pass ["sensitive_data"] to\
-                        this argument.
-                        Defaults to None.
-        metadata (Optional[dict[str, Any]], optional): Metadata to associate with the\
-                        trace. Must be JSON serializable. Defaults to None.
+            wrapped function. Defaults to False.
+        span_type (Literal["DEFAULT", "LLM", "TOOL"], optional): Type of the span.
+            Defaults to "DEFAULT".
+        ignore_inputs (list[str] | None, optional): List of input keys to\
+            ignore. For example, if the wrapped function takes three arguments\
+            def foo(a, b, `sensitive_data`), and you want to ignore the\
+            `sensitive_data` argument, you can pass ["sensitive_data"] to\
+            this argument. Defaults to None.
+        metadata (dict[str, Any] | None, optional): Metadata to associate with\
+            the trace. Must be JSON serializable. Defaults to None.
     Raises:
-        Exception: re-raises the exception if the wrapped function raises
-                   an exception
+        Exception: re-raises the exception if the wrapped function raises an\
+            exception
 
     Returns:
         R: Returns the result of the wrapped function
