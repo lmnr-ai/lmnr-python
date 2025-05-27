@@ -4,7 +4,7 @@ Laminar HTTP client. Used to send data to/from the Laminar API.
 
 import httpx
 import re
-from typing import Optional, TypeVar
+from typing import TypeVar
 from types import TracebackType
 
 from lmnr.sdk.client.asynchronous.resources import (
@@ -24,17 +24,20 @@ class AsyncLaminarClient:
 
     def __init__(
         self,
-        base_url: Optional[str] = None,
-        project_api_key: Optional[str] = None,
-        port: Optional[int] = None,
+        base_url: str | None = None,
+        project_api_key: str | None = None,
+        port: int | None = None,
         timeout: int = 3600,
     ):
         """Initializer for the Laminar HTTP client.
 
         Args:
-            base_url (str): base URL of the Laminar API.
-            project_api_key (str): Laminar project API key
-            port (Optional[int], optional): port of the Laminar API HTTP server.\
+            base_url (str | None): base URL of the Laminar API. If not
+                provided, the LMNR_BASE_URL environment variable is used or we
+                default to "https://api.lmnr.ai".
+            project_api_key (str | None): Laminar project API key. If not
+                provided, the LMNR_PROJECT_API_KEY environment variable is used.
+            port (int | None, optional): port of the Laminar API HTTP server.\
                 Overrides any port in the base URL.
                 Defaults to None. If none is provided, the default port (443) will
                 be used.
@@ -116,9 +119,9 @@ class AsyncLaminarClient:
 
     async def __aexit__(
         self,
-        exc_type: Optional[type[BaseException]],
-        exc: Optional[BaseException],
-        exc_tb: Optional[TracebackType],
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        exc_tb: TracebackType | None,
     ) -> None:
         await self.close()
 

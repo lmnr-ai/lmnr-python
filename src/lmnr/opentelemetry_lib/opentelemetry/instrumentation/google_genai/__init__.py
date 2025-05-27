@@ -3,7 +3,7 @@
 from collections import defaultdict
 import logging
 import os
-from typing import AsyncGenerator, Callable, Collection, Generator, Optional
+from typing import AsyncGenerator, Callable, Collection, Generator
 
 from google.genai import types
 
@@ -152,7 +152,7 @@ def _set_request_attributes(span, args, kwargs):
 
     if should_send_prompts():
         i = 0
-        system_instruction: Optional[types.ContentUnion] = config_dict.get(
+        system_instruction: types.ContentUnion | None = config_dict.get(
             "system_instruction"
         )
         if system_instruction:

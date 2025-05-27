@@ -87,7 +87,7 @@ def get_input_from_func_args(
     is_method: bool = False,
     func_args: list[typing.Any] = [],
     func_kwargs: dict[str, typing.Any] = {},
-    ignore_inputs: typing.Optional[list[str]] = None,
+    ignore_inputs: list[str] | None = None,
 ) -> dict[str, typing.Any]:
     # Remove implicitly passed "self" or "cls" argument for
     # instance or class methods
@@ -107,7 +107,7 @@ def get_input_from_func_args(
     return res
 
 
-def from_env(key: str) -> typing.Optional[str]:
+def from_env(key: str) -> str | None:
     if val := os.getenv(key):
         return val
     dotenv_path = dotenv.find_dotenv(usecwd=True)

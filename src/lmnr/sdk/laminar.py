@@ -15,7 +15,7 @@ from opentelemetry.context import attach, detach
 from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
 from opentelemetry.util.types import AttributeValue
 
-from typing import Any, Literal, Optional, Set
+from typing import Any, Literal
 
 import copy
 import datetime
@@ -48,22 +48,22 @@ from .types import (
 
 
 class Laminar:
-    __project_api_key: Optional[str] = None
+    __project_api_key: str | None = None
     __initialized: bool = False
-    __base_http_url: Optional[str] = None
+    __base_http_url: str | None = None
 
     @classmethod
     def initialize(
         cls,
-        project_api_key: Optional[str] = None,
-        base_url: Optional[str] = None,
-        http_port: Optional[int] = None,
-        grpc_port: Optional[int] = None,
-        instruments: Optional[Set[Instruments]] = None,
-        disabled_instruments: Optional[Set[Instruments]] = None,
+        project_api_key: str | None = None,
+        base_url: str | None = None,
+        http_port: int | None = None,
+        grpc_port: int | None = None,
+        instruments: set[Instruments] | None = None,
+        disabled_instruments: set[Instruments] | None = None,
         disable_batch: bool = False,
-        max_export_batch_size: Optional[int] = None,
-        export_timeout_seconds: Optional[int] = None,
+        max_export_batch_size: int | None = None,
+        export_timeout_seconds: int | None = None,
         set_global_tracer_provider: bool = True,
         otel_logger_level: int = logging.ERROR,
     ):
@@ -72,31 +72,31 @@ class Laminar:
         decorators.
 
         Args:
-            project_api_key (Optional[str], optional): Laminar project api key.\
+            project_api_key (str | None, optional): Laminar project api key.\
                             You can generate one by going to the projects\
                             settings page on the Laminar dashboard.\
                             If not specified, it will try to read from the\
                             LMNR_PROJECT_API_KEY environment variable\
                             in os.environ or in .env file.
                             Defaults to None.
-            base_url (Optional[str], optional): Laminar API url. Do NOT include\
+            base_url (str | None, optional): Laminar API url. Do NOT include\
                             the port number, use `http_port` and `grpc_port`.\
                             If not specified, defaults to https://api.lmnr.ai.
-            http_port (Optional[int], optional): Laminar API http port.\
+            http_port (int | None, optional): Laminar API http port.\
                             If not specified, defaults to 443.
-            grpc_port (Optional[int], optional): Laminar API grpc port.\
+            grpc_port (int | None, optional): Laminar API grpc port.\
                             If not specified, defaults to 8443.
-            instruments (Optional[Set[Instruments]], optional): Instruments to\
+            instruments (set[Instruments] | None, optional): Instruments to\
                         enable. Defaults to all instruments. You can pass\
                         an empty set to disable all instruments. Read more:\
                         https://docs.lmnr.ai/tracing/automatic-instrumentation
-            disabled_instruments (Optional[Set[Instruments]], optional): Instruments to\
+            disabled_instruments (set[Instruments] | None, optional): Instruments to\
                         disable. Defaults to None.
             disable_batch (bool, optional): If set to True, spans will be sent\
                         immediately to the backend. Useful for debugging, but\
                         may cause performance overhead in production.
                         Defaults to False.
-            export_timeout_seconds (Optional[int], optional): Timeout for the OTLP\
+            export_timeout_seconds (int | None, optional): Timeout for the OTLP\
                         exporter. Defaults to 30 seconds (unlike the\
                         OpenTelemetry default of 10 seconds).
                         Defaults to None.
@@ -176,8 +176,8 @@ class Laminar:
     def event(
         cls,
         name: str,
-        value: Optional[AttributeValue] = None,
-        timestamp: Optional[datetime.datetime | int] = None,
+        value: AttributeValue | None = None,
+        timestamp: datetime.datetime | int | None = None,
     ):
         """Associate an event with the current span. If using manual\
         instrumentation, use raw OpenTelemetry `span.add_event()` instead.\
@@ -185,14 +185,13 @@ class Laminar:
 
         Args:
             name (str): event name
-            value (Optional[AttributeValue]): event value. Must be a primitive\
-                            type. Boolean true is assumed in the backend if\
-                            `value` is None.
-                            Defaults to None.
-            timestamp (Optional[datetime.datetime | int], optional):\
-                            If int, must be epoch nanoseconds. If not\
-                            specified, relies on the underlying OpenTelemetry\
-                            implementation. Defaults to None.
+            value (AttributeValue | None, optional): event value. Must be a\
+                primitive type. Boolean `True` is assumed in the backend if\
+                `value` is None.
+                Defaults to None.
+            timestamp (datetime.datetime | int | None, optional): If int, must\
+                be epoch nanoseconds. If not specified, relies on the underlying\
+                OpenTelemetry implementation. Defaults to None.
         """
         if timestamp and isinstance(timestamp, datetime.datetime):
             timestamp = int(timestamp.timestamp() * 1e9)
@@ -221,9 +220,9 @@ class Laminar:
         name: str,
         input: Any = None,
         span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
-        context: Optional[Context] = None,
-        labels: Optional[list[str]] = None,
-        parent_span_context: Optional[LaminarSpanContext] = None,
+        context: Context | None = None,
+        labels: list[str] | None = None,
+        parent_span_context: LaminarSpanContext | None = None,
     ):
         """Start a new span as the current span. Useful for manual
         instrumentation. If `span_type` is set to `"LLM"`, you should report
@@ -244,9 +243,9 @@ class Laminar:
             span_type (Literal["DEFAULT", "LLM", "TOOL"], optional):\
                 type of the span. If you use `"LLM"`, you should report usage\
                 and response attributes manually. Defaults to "DEFAULT".
-            context (Optional[Context], optional): raw OpenTelemetry context\
+            context (Context | None, optional): raw OpenTelemetry context\
                 to attach the span to. Defaults to None.
-            parent_span_context (Optional[LaminarSpanContext], optional): parent\
+            parent_span_context (LaminarSpanContext | None, optional): parent\
                 span context to use for the span. Useful for continuing traces\
                 across services. If parent_span_context is a\
                 raw OpenTelemetry span context, or if it is a dictionary or string\
@@ -256,7 +255,7 @@ class Laminar:
                 `Laminar.get_span_context`, `Laminar.get_span_context_dict` and\
                 `Laminar.get_span_context_str` for more information.
                 Defaults to None.
-            labels (Optional[list[str]], optional): labels to set for the\
+            labels (list[str] | None, optional): labels to set for the\
                 span. Defaults to None.
         """
 
@@ -319,7 +318,7 @@ class Laminar:
 
     @classmethod
     @contextmanager
-    def with_labels(cls, labels: list[str], context: Optional[Context] = None):
+    def with_labels(cls, labels: list[str], context: Context | None = None):
         """Set labels for spans within this `with` context. This is useful for
         adding labels to the spans created in the auto-instrumentations.
 
@@ -362,9 +361,9 @@ class Laminar:
         name: str,
         input: Any = None,
         span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
-        context: Optional[Context] = None,
-        parent_span_context: Optional[LaminarSpanContext] = None,
-        labels: Optional[dict[str, str]] = None,
+        context: Context | None = None,
+        parent_span_context: LaminarSpanContext | None = None,
+        labels: dict[str, str] | None = None,
     ):
         """Start a new span. Useful for manual instrumentation.
         If `span_type` is set to `"LLM"`, you should report usage and response
@@ -404,9 +403,9 @@ class Laminar:
             span_type (Literal["DEFAULT", "LLM", "TOOL"], optional):\
                 type of the span. If you use `"LLM"`, you should report usage\
                 and response attributes manually. Defaults to "DEFAULT".
-            context (Optional[Context], optional): raw OpenTelemetry context\
+            context (Context | None, optional): raw OpenTelemetry context\
                 to attach the span to. Defaults to None.
-            parent_span_context (Optional[LaminarSpanContext], optional): parent\
+            parent_span_context (LaminarSpanContext | None, optional): parent\
                 span context to use for the span. Useful for continuing traces\
                 across services. If parent_span_context is a\
                 raw OpenTelemetry span context, or if it is a dictionary or string\
@@ -416,7 +415,7 @@ class Laminar:
                 `Laminar.get_span_context`, `Laminar.get_span_context_dict` and\
                 `Laminar.get_span_context_str` for more information.
                 Defaults to None.
-            labels (Optional[dict[str, str]], optional): labels to set for the\
+            labels (dict[str, str] | None, optional): labels to set for the\
                 span. Defaults to None.
         """
         if not cls.is_initialized():
@@ -570,8 +569,8 @@ class Laminar:
 
     @classmethod
     def get_laminar_span_context(
-        cls, span: Optional[trace.Span] = None
-    ) -> Optional[LaminarSpanContext]:
+        cls, span: trace.Span | None = None
+    ) -> LaminarSpanContext | None:
         """Get the laminar span context for a given span.
         If no span is provided, the current active span will be used.
         """
@@ -586,15 +585,15 @@ class Laminar:
 
     @classmethod
     def get_laminar_span_context_dict(
-        cls, span: Optional[trace.Span] = None
-    ) -> Optional[dict]:
+        cls, span: trace.Span | None = None
+    ) -> dict | None:
         span_context = cls.get_laminar_span_context(span)
         if span_context is None:
             return None
         return span_context.model_dump()
 
     @classmethod
-    def serialize_span_context(cls, span: Optional[trace.Span] = None) -> Optional[str]:
+    def serialize_span_context(cls, span: trace.Span | None = None) -> str | None:
         """Get the laminar span context for a given span as a string.
         If no span is provided, the current active span will be used.
 
@@ -651,14 +650,14 @@ class Laminar:
     @classmethod
     def set_session(
         cls,
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
     ):
         """Set the session and user id for the current span and the context
         (i.e. any children spans created from the current span in the current
         thread).
 
         Args:
-            session_id (Optional[str], optional): Custom session id.\
+            session_id (str | None, optional): Custom session id.\
                             Useful to debug and group long-running\
                             sessions/conversations.
                             Defaults to None.

@@ -1,6 +1,5 @@
 import uuid
 
-from typing import Optional
 from opentelemetry.sdk.trace.export import (
     SpanProcessor,
     SpanExporter,
@@ -31,14 +30,14 @@ class LaminarSpanProcessor(SpanProcessor):
 
     def __init__(
         self,
-        base_url: Optional[str] = None,
-        port: Optional[int] = None,
-        api_key: Optional[str] = None,
+        base_url: str | None = None,
+        port: int | None = None,
+        api_key: str | None = None,
         timeout_seconds: int = 30,
         force_http: bool = False,
         max_export_batch_size: int = 512,
         disable_batch: bool = False,
-        exporter: Optional[SpanExporter] = None,
+        exporter: SpanExporter | None = None,
     ):
         self.exporter = exporter or LaminarSpanExporter(
             base_url=base_url,
@@ -55,7 +54,7 @@ class LaminarSpanProcessor(SpanProcessor):
             )
         )
 
-    def on_start(self, span: Span, parent_context: Optional[Context] = None):
+    def on_start(self, span: Span, parent_context: Context | None = None):
         span_path_in_context = get_value("span_path", parent_context or get_current())
         parent_span_path = span_path_in_context or (
             self.__span_id_to_path.get(span.parent.span_id) if span.parent else None

@@ -1,13 +1,15 @@
+from __future__ import annotations  # For "Self" | str | ... type hint
+
+import json
 import logging
 import datetime
-from enum import Enum
-import json
-from opentelemetry.trace import SpanContext, TraceFlags
 import pydantic
-from typing import Any, Awaitable, Callable, Literal, Optional
+import pydantic.alias_generators
 import uuid
 
-import pydantic.alias_generators
+from enum import Enum
+from opentelemetry.trace import SpanContext, TraceFlags
+from typing import Any, Awaitable, Callable, Literal
 
 from .utils import serialize
 
@@ -16,8 +18,8 @@ Numeric = int | float
 NumericTypes = (int, float)  # for use with isinstance
 
 EvaluationDatapointData = Any  # non-null, must be JSON-serializable
-EvaluationDatapointTarget = Optional[Any]  # must be JSON-serializable
-EvaluationDatapointMetadata = Optional[Any]  # must be JSON-serializable
+EvaluationDatapointTarget = Any | None  # must be JSON-serializable
+EvaluationDatapointMetadata = Any | None  # must be JSON-serializable
 
 
 # EvaluationDatapoint is a single data point in the evaluation
@@ -177,7 +179,7 @@ class LaminarSpanContext(pydantic.BaseModel):
     def try_to_otel_span_context(
         cls,
         span_context: "LaminarSpanContext" | dict[str, Any] | str | SpanContext,
-        logger: Optional[logging.Logger] = None,
+        logger: logging.Logger | None = None,
     ) -> SpanContext:
         if logger is None:
             logger = logging.getLogger(__name__)
@@ -242,23 +244,23 @@ class RunAgentRequest(pydantic.BaseModel):
         populate_by_name=True,
     )
     prompt: str
-    storage_state: Optional[str] = pydantic.Field(default=None)
-    agent_state: Optional[str] = pydantic.Field(default=None)
-    parent_span_context: Optional[str] = pydantic.Field(default=None)
-    model_provider: Optional[ModelProvider] = pydantic.Field(default=None)
-    model: Optional[str] = pydantic.Field(default=None)
+    storage_state: str | None = pydantic.Field(default=None)
+    agent_state: str | None = pydantic.Field(default=None)
+    parent_span_context: str | None = pydantic.Field(default=None)
+    model_provider: ModelProvider | None = pydantic.Field(default=None)
+    model: str | None = pydantic.Field(default=None)
     stream: bool = pydantic.Field(default=False)
     enable_thinking: bool = pydantic.Field(default=True)
-    cdp_url: Optional[str] = pydantic.Field(default=None)
+    cdp_url: str | None = pydantic.Field(default=None)
     return_screenshots: bool = pydantic.Field(default=False)
     return_storage_state: bool = pydantic.Field(default=False)
     return_agent_state: bool = pydantic.Field(default=False)
-    timeout: Optional[int] = pydantic.Field(default=None)
-    max_steps: Optional[int] = pydantic.Field(default=None)
-    thinking_token_budget: Optional[int] = pydantic.Field(default=None)
-    start_url: Optional[str] = pydantic.Field(default=None)
+    timeout: int | None = pydantic.Field(default=None)
+    max_steps: int | None = pydantic.Field(default=None)
+    thinking_token_budget: int | None = pydantic.Field(default=None)
+    start_url: str | None = pydantic.Field(default=None)
     disable_give_control: bool = pydantic.Field(default=False)
-    user_agent: Optional[str] = pydantic.Field(default=None)
+    user_agent: str | None = pydantic.Field(default=None)
 
 
 class ActionResult(pydantic.BaseModel):
@@ -266,8 +268,8 @@ class ActionResult(pydantic.BaseModel):
         alias_generator=pydantic.alias_generators.to_camel
     )
     is_done: bool = pydantic.Field(default=False)
-    content: Optional[str] = pydantic.Field(default=None)
-    error: Optional[str] = pydantic.Field(default=None)
+    content: str | None = pydantic.Field(default=None)
+    error: str | None = pydantic.Field(default=None)
 
 
 class AgentOutput(pydantic.BaseModel):
@@ -279,12 +281,12 @@ class AgentOutput(pydantic.BaseModel):
     # A stringified JSON object.
     # Only returned if return_storage_state is True.
     # CAUTION: This object may become large. It also may contain sensitive data.
-    storage_state: Optional[str] = pydantic.Field(default=None)
+    storage_state: str | None = pydantic.Field(default=None)
     # Agent state with data related to the agent's state, such as the chat history.
     # A stringified JSON object.
     # Only returned if return_agent_state is True.
     # CAUTION: This object is large.
-    agent_state: Optional[str] = pydantic.Field(default=None)
+    agent_state: str | None = pydantic.Field(default=None)
 
 
 class StepChunkContent(pydantic.BaseModel):
@@ -295,7 +297,7 @@ class StepChunkContent(pydantic.BaseModel):
     message_id: uuid.UUID = pydantic.Field()
     action_result: ActionResult = pydantic.Field()
     summary: str = pydantic.Field()
-    screenshot: Optional[str] = pydantic.Field(default=None)
+    screenshot: str | None = pydantic.Field(default=None)
 
 
 class TimeoutChunkContent(pydantic.BaseModel):
@@ -309,7 +311,7 @@ class TimeoutChunkContent(pydantic.BaseModel):
     chunk_type: Literal["timeout"] = pydantic.Field(default="timeout")
     message_id: uuid.UUID = pydantic.Field()
     summary: str = pydantic.Field()
-    screenshot: Optional[str] = pydantic.Field(default=None)
+    screenshot: str | None = pydantic.Field(default=None)
 
 
 class FinalOutputChunkContent(pydantic.BaseModel):

@@ -4,7 +4,6 @@ import importlib.util
 import os
 import re
 import sys
-from typing import Optional
 
 from lmnr.sdk.evaluations import Evaluation
 
@@ -55,7 +54,7 @@ async def run_evaluation(args):
             sys.modules[name] = mod
 
             spec.loader.exec_module(mod)
-            evaluations: Optional[list[Evaluation]] = EVALUATION_INSTANCES.get()
+            evaluations: list[Evaluation] | None = EVALUATION_INSTANCES.get()
             if evaluations is None:
                 LOG.warning("Evaluation instance not found")
                 if args.fail_on_error:

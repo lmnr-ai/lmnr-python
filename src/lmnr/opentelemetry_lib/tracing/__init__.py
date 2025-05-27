@@ -15,7 +15,6 @@ from opentelemetry.instrumentation.threading import ThreadingInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider, SpanProcessor
 from opentelemetry.sdk.trace.export import SpanExporter
-from typing import Optional, Set
 
 module_logger = logging.getLogger(__name__)
 console_log_handler = logging.StreamHandler()
@@ -31,7 +30,7 @@ MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN = 5000
 class TracerWrapper(object):
     resource_attributes: dict = {}
     enable_content_tracing: bool = True
-    __tracer_provider: Optional[TracerProvider] = None
+    __tracer_provider: TracerProvider | None = None
     __logger: logging.Logger
     __client: LaminarClient
     __async_client: AsyncLaminarClient
@@ -41,14 +40,14 @@ class TracerWrapper(object):
     def __new__(
         cls,
         disable_batch=False,
-        exporter: Optional[SpanExporter] = None,
-        instruments: Optional[Set[Instruments]] = None,
-        block_instruments: Optional[Set[Instruments]] = None,
+        exporter: SpanExporter | None = None,
+        instruments: set[Instruments] | None = None,
+        block_instruments: set[Instruments] | None = None,
         base_url: str = "https://api.lmnr.ai",
         port: int = 8443,
         http_port: int = 443,
-        project_api_key: Optional[str] = None,
-        max_export_batch_size: Optional[int] = None,
+        project_api_key: str | None = None,
+        max_export_batch_size: int | None = None,
         force_http: bool = False,
         timeout_seconds: int = 10,
         set_global_tracer_provider: bool = True,

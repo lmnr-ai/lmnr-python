@@ -1,7 +1,6 @@
 """Evals resource for interacting with Laminar evaluations API."""
 
 import uuid
-from typing import Optional
 
 from lmnr.sdk.client.asynchronous.resources.base import BaseAsyncResource
 from lmnr.sdk.types import (
@@ -15,13 +14,13 @@ class AsyncEvals(BaseAsyncResource):
     """Resource for interacting with Laminar evaluations API."""
 
     async def init(
-        self, name: Optional[str] = None, group_name: Optional[str] = None
+        self, name: str | None = None, group_name: str | None = None
     ) -> InitEvaluationResponse:
         """Initialize a new evaluation.
 
         Args:
-            name (Optional[str], optional): Name of the evaluation. Defaults to None.
-            group_name (Optional[str], optional): Group name for the evaluation. Defaults to None.
+            name (str | None, optional): Name of the evaluation. Defaults to None.
+            group_name (str | None, optional): Group name for the evaluation. Defaults to None.
 
         Returns:
             InitEvaluationResponse: The response from the initialization request.
@@ -41,14 +40,14 @@ class AsyncEvals(BaseAsyncResource):
         self,
         eval_id: uuid.UUID,
         datapoints: list[EvaluationResultDatapoint | PartialEvaluationDatapoint],
-        group_name: Optional[str] = None,
+        group_name: str | None = None,
     ):
         """Save evaluation datapoints.
 
         Args:
             eval_id (uuid.UUID): The evaluation ID.
             datapoints (list[EvaluationResultDatapoint | PartialEvaluationDatapoint]): The datapoints to save.
-            group_name (Optional[str], optional): Group name for the datapoints. Defaults to None.
+            group_name (str | None, optional): Group name for the datapoints. Defaults to None.
 
         Raises:
             ValueError: If there's an error saving the datapoints.
