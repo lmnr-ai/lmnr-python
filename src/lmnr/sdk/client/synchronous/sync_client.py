@@ -11,6 +11,7 @@ from lmnr.sdk.client.synchronous.resources import (
     Agent,
     BrowserEvents,
     Evals,
+    Tags,
 )
 from lmnr.sdk.utils import from_env
 
@@ -25,6 +26,7 @@ class LaminarClient:
     # Resource properties
     __agent: Agent | None = None
     __evals: Evals | None = None
+    __tags: Tags | None = None
 
     def __init__(
         self,
@@ -75,6 +77,7 @@ class LaminarClient:
         self.__browser_events = BrowserEvents(
             self.__client, self.__base_url, self.__project_api_key
         )
+        self.__tags = Tags(self.__client, self.__base_url, self.__project_api_key)
 
     @property
     def agent(self) -> Agent:
@@ -102,6 +105,15 @@ class LaminarClient:
             BrowserEvents: The BrowserEvents resource instance.
         """
         return self.__browser_events
+
+    @property
+    def tags(self) -> Tags:
+        """Get the Tags resource.
+
+        Returns:
+            Tags: The Tags resource instance.
+        """
+        return self.__tags
 
     def shutdown(self):
         """Shutdown the client by closing underlying connections."""

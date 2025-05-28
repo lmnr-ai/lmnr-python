@@ -12,6 +12,7 @@ from lmnr.opentelemetry_lib import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 from lmnr.opentelemetry_lib.decorators import json_dumps
 from opentelemetry import context as context_api, trace
 from opentelemetry.context import attach, detach
+from opentelemetry.trace import INVALID_TRACE_ID
 from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
 from opentelemetry.util.types import AttributeValue
 
@@ -702,6 +703,20 @@ class Laminar:
     @classmethod
     def get_project_api_key(cls):
         return cls.__project_api_key
+
+    @classmethod
+    def get_trace_id(cls) -> uuid.UUID | None:
+        """Get the trace id for the current active span represented as a UUID.
+        Returns None if there is no active span.
+
+        Returns:
+            uuid.UUID | None: The trace id for the current span, or None if\
+            there is no active span.
+        """
+        trace_id = trace.get_current_span().get_span_context().trace_id
+        if trace_id == INVALID_TRACE_ID:
+            return None
+        return uuid.UUID(int=trace_id)
 
     @classmethod
     def _headers(cls):
