@@ -59,7 +59,7 @@ class Tags(BaseResource):
         elif isinstance(trace_id, int):
             trace_id = str(uuid.UUID(int=trace_id))
         elif isinstance(trace_id, str):
-            pass
+            uuid.UUID(trace_id)
         else:
             raise ValueError(f"Invalid trace id: {trace_id}")
 
