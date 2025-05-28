@@ -59,7 +59,7 @@ class AsyncTags(BaseAsyncResource):
         elif isinstance(trace_id, int):
             trace_id = str(uuid.UUID(int=trace_id))
         elif isinstance(trace_id, str):
-            pass
+            uuid.UUID(trace_id)  # Will raise ValueError if invalid
         else:
             raise ValueError(f"Invalid trace id: {trace_id}")
 
