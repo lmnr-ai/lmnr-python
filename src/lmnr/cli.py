@@ -19,7 +19,7 @@ LOG = get_default_logger(__name__)
 EVAL_DIR = "evals"
 
 
-def add_cursor_rules(args):
+def add_cursor_rules():
     """Download laminar.mdc file from a hardcoded public URL and save it to .cursor/rules/laminar.mdc"""
     # Hardcoded URL for the laminar.mdc file
     url = "https://raw.githubusercontent.com/lmnr-ai/lmnr/dev/rules/laminar.mdc"
@@ -141,14 +141,14 @@ def cli():
 
     parser_download = subparsers.add_parser(
         "add-cursor-rules",
-        description="Download laminar.mdc file from a hardcoded public URL",
-        help="Download laminar.mdc file from a hardcoded public URL",
+        description="Download laminar.mdc file and add it to .cursor/rules",
+        help="Download laminar.mdc file and add it to .cursor/rules",
     )
 
     parsed = parser.parse_args()
     if parsed.subcommand == "eval":
         asyncio.run(run_evaluation(parsed))
     elif parsed.subcommand == "add-cursor-rules":
-        add_cursor_rules(parsed)
+        add_cursor_rules()
     else:
         parser.print_help()
