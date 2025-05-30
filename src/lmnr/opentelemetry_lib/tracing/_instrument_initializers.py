@@ -204,9 +204,9 @@ class MCPInstrumentorInitializer(InstrumentorInitializer):
         if not is_package_installed("opentelemetry-instrumentation-mcp"):
             return None
 
-        from opentelemetry.instrumentation.mcp import MCPInstrumentor
+        from opentelemetry.instrumentation.mcp import McpInstrumentor
 
-        return MCPInstrumentor()
+        return McpInstrumentor()
 
 
 class MilvusInstrumentorInitializer(InstrumentorInitializer):

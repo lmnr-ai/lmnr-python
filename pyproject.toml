@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.6.4"
+version = "0.6.5"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
