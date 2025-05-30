@@ -1,0 +1,26 @@
+[project]
+name = "eval-bundle"
+version = "0.1.0"
+description = "Evaluation bundle for Laminar remote execution"
+dependencies = [
+  "argparse (>=1.0)",
+  "lmnr",
+  "opentelemetry-api (>=1.33.0)",
+  "opentelemetry-exporter-otlp-proto-grpc (>=1.33.0)",
+  "opentelemetry-exporter-otlp-proto-http (>=1.33.0)",
+  "opentelemetry-sdk (>=1.33.0)",
+  "opentelemetry-semantic-conventions (>=0.54b0)",
+  "opentelemetry-semantic-conventions-ai (>=0.4.8)",
+  "pydantic (>=2.0.3,<3.0.0)",
+  "python-dotenv (>=1.0)",
+  "tenacity (>=8.0)",
+  "tqdm (>=4.0)"
+]
+requires-python = ">=3.10,<4"
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+dev-dependencies = []

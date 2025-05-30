@@ -1,0 +1,17 @@
+Metadata-Version: 2.4
+Name: eval-bundle
+Version: 0.1.0
+Summary: Evaluation bundle for Laminar remote execution
+Requires-Python: <4,>=3.10
+Requires-Dist: argparse>=1.0
+Requires-Dist: lmnr
+Requires-Dist: opentelemetry-api>=1.33.0
+Requires-Dist: opentelemetry-exporter-otlp-proto-grpc>=1.33.0
+Requires-Dist: opentelemetry-exporter-otlp-proto-http>=1.33.0
+Requires-Dist: opentelemetry-sdk>=1.33.0
+Requires-Dist: opentelemetry-semantic-conventions>=0.54b0
+Requires-Dist: opentelemetry-semantic-conventions-ai>=0.4.8
+Requires-Dist: pydantic<3.0.0,>=2.0.3
+Requires-Dist: python-dotenv>=1.0
+Requires-Dist: tenacity>=8.0
+Requires-Dist: tqdm>=4.0

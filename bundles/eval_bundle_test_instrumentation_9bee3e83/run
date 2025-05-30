@@ -1,0 +1,10 @@
+#!/bin/bash
+# Bundle executable script
+BUNDLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$BUNDLE_DIR"
+
+# Set Python path to include site-packages
+export PYTHONPATH="$BUNDLE_DIR/site-packages:$BUNDLE_DIR:$PYTHONPATH"
+
+# Execute the CLI with all arguments
+python3 run_evaluation.py "$@"

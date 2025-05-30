@@ -1,0 +1,66 @@
+{
+  "bundle_version": "1.0",
+  "eval_file_name": "test_improved_workflow.py",
+  "eval_file_hash": "ce4b374510300b6f3a905f051ada4604f2727a08d996e791a50e301d76ab1ee7",
+  "created_at": "4bd388a3-8cb1-4e31-a1c2-d3856b172a3e",
+  "python_version": "3.13",
+  "analysis": {
+    "functions": [
+      {
+        "name": "simple_executor",
+        "is_async": true,
+        "line_number": 7,
+        "decorator": "executor"
+      },
+      {
+        "name": "simple_executor",
+        "is_async": true,
+        "line_number": 8,
+        "decorator": null
+      },
+      {
+        "name": "accuracy_check",
+        "is_async": true,
+        "line_number": 16,
+        "decorator": "evaluator",
+        "evaluator_name": "accuracy"
+      },
+      {
+        "name": "accuracy_check",
+        "is_async": true,
+        "line_number": 17,
+        "decorator": null
+      },
+      {
+        "name": "length_check",
+        "is_async": true,
+        "line_number": 22,
+        "decorator": "evaluator",
+        "evaluator_name": null
+      },
+      {
+        "name": "length_check",
+        "is_async": true,
+        "line_number": 23,
+        "decorator": null
+      }
+    ],
+    "executor_funcs": [
+      "simple_executor"
+    ],
+    "evaluator_funcs": [
+      "accuracy_check",
+      "length_check"
+    ],
+    "evaluator_names": {
+      "accuracy_check": "accuracy",
+      "length_check": "length_check"
+    },
+    "executor_func": "simple_executor",
+    "evaluators_config": {
+      "accuracy": "accuracy_check",
+      "length_check": "length_check"
+    },
+    "has_decorators": true
+  }
+}

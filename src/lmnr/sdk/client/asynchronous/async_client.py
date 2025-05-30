@@ -11,6 +11,7 @@ from lmnr.sdk.client.asynchronous.resources import (
     AsyncAgent,
     AsyncBrowserEvents,
     AsyncEvals,
+    AsyncRemoteEvals,
     AsyncTags,
 )
 from lmnr.sdk.utils import from_env
@@ -74,6 +75,9 @@ class AsyncLaminarClient:
         self.__evals = AsyncEvals(
             self.__client, self.__base_url, self.__project_api_key
         )
+        self.__remote_evals = AsyncRemoteEvals(
+            self.__client, self.__base_url, self.__project_api_key
+        )
         self.__browser_events = AsyncBrowserEvents(
             self.__client, self.__base_url, self.__project_api_key
         )
@@ -96,6 +100,15 @@ class AsyncLaminarClient:
             Evals: The Evals resource instance.
         """
         return self.__evals
+
+    @property
+    def _remote_evals(self) -> AsyncRemoteEvals:
+        """Get the Remote Evals resource.
+
+        Returns:
+            AsyncRemoteEvals: The Remote Evals resource instance.
+        """
+        return self.__remote_evals
 
     @property
     def _browser_events(self) -> AsyncBrowserEvents:

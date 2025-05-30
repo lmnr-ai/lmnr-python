@@ -16,7 +16,7 @@ from opentelemetry.trace import INVALID_TRACE_ID
 from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
 from opentelemetry.util.types import AttributeValue
 
-from typing import Any, Literal
+from typing import Any, Literal, Callable
 
 import copy
 import datetime
@@ -24,6 +24,7 @@ import logging
 import os
 import re
 import uuid
+import asyncio
 
 from lmnr.opentelemetry_lib.tracing.attributes import (
     SESSION_ID,
@@ -739,3 +740,189 @@ class Laminar:
             TRACE_TYPE: trace_type.value,
         }
         update_association_properties(association_properties)
+
+    @classmethod
+    async def eval(
+        cls,
+        bundle_function: Callable,
+        dataset_name: str,
+        parent_span_context: LaminarSpanContext | dict[str, Any] | str | None = None,
+        evaluation_name: str | None = None,
+        group_name: str | None = None,
+        project_api_key: str | None = None,
+        base_url: str | None = None,
+        num_datapoints: int | None = None,
+        start_index: int = 0,
+    ) -> dict[str, Any]:
+        """
+        Static evaluation function for running remote evaluations with proper instrumentation.
+        
+        This is designed to be called from serverless orchestrator functions that need to:
+        1. Accept span context from the orchestrator
+        2. Iterate over a dataset 
+        3. Call bundled evaluation code
+        4. Maintain proper tracing continuity
+        
+        Args:
+            bundle_function: Callable function that executes evaluation for a single datapoint
+                            Should accept (datapoint_data: dict) and return evaluation results
+            dataset_name: Name of the LaminarDataset to evaluate against
+            parent_span_context: Parent span context for tracing continuity
+            evaluation_name: Name for the evaluation run
+            group_name: Group name for organizing evaluations
+            project_api_key: Laminar project API key
+            base_url: Laminar API base URL
+            num_datapoints: Number of datapoints to process (None = all)
+            start_index: Starting index in the dataset (for parallel processing)
+            
+        Returns:
+            Dictionary with evaluation results and metadata
+        """
+        from .datasets import LaminarDataset
+        from .client.synchronous.sync_client import LaminarClient
+        from .utils import from_env
+        from .types import Datapoint
+        
+        # Initialize Laminar if not already initialized
+        if not cls.is_initialized():
+            api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
+            if not api_key:
+                raise ValueError("Project API key required for remote evaluation")
+            
+            cls.initialize(
+                project_api_key=api_key,
+                base_url=base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
+            )
+        
+        # Parse parent span context if provided
+        parsed_parent_context = None
+        if parent_span_context:
+            if isinstance(parent_span_context, (dict, str)):
+                parsed_parent_context = LaminarSpanContext.deserialize(parent_span_context)
+            elif isinstance(parent_span_context, LaminarSpanContext):
+                parsed_parent_context = parent_span_context
+        
+        # Set trace type for evaluation
+        cls._set_trace_type(TraceType.EVALUATION)
+        
+        # Start main evaluation span
+        with cls.start_as_current_span(
+            name=f"evaluation.{evaluation_name or 'remote_eval'}",
+            span_type="EVALUATION",
+            parent_span_context=parsed_parent_context,
+            input={
+                "dataset_name": dataset_name,
+                "evaluation_name": evaluation_name,
+                "group_name": group_name,
+                "start_index": start_index,
+            }
+        ):
+            
+            try:
+                # Set up dataset
+                api_key = cls.get_project_api_key()
+                client = LaminarClient(cls.get_base_http_url(), api_key)
+                
+                dataset = LaminarDataset(dataset_name)
+                dataset.set_client(client)
+                
+                # Get dataset slice
+                dataset_size = len(dataset)
+                end_index = start_index + (num_datapoints or dataset_size)
+                end_index = min(end_index, dataset_size)
+                
+                if start_index >= dataset_size:
+                    raise ValueError(f"Start index {start_index} exceeds dataset size {dataset_size}")
+                
+                datapoints = dataset.slice(start_index, end_index)
+                actual_count = len(datapoints)
+                
+                cls.__logger.info(f"Processing {actual_count} datapoints from dataset '{dataset_name}' ({start_index}:{end_index})")
+                
+                # Process each datapoint
+                results = []
+                success_count = 0
+                
+                for i, datapoint in enumerate(datapoints):
+                    datapoint_index = start_index + i
+
+                    try:
+                        # Call the bundle function
+                        if asyncio.iscoroutinefunction(bundle_function):
+                            result = await bundle_function({
+                                "data": datapoint.data,
+                                "target": datapoint.target,
+                                "metadata": datapoint.metadata
+                            })
+                        else:
+                            result = bundle_function({
+                                "data": datapoint.data,
+                                "target": datapoint.target,
+                                "metadata": datapoint.metadata
+                            })
+                        
+                        # Set the result as span output
+                        cls.set_span_output(result)
+                        
+                        if result.get("success", False):
+                            success_count += 1
+                        
+                        results.append({
+                            "index": datapoint_index,
+                            "success": result.get("success", False),
+                            "executor_output": result.get("executor_output"),
+                            "scores": result.get("scores", {}),
+                            "error": result.get("error")
+                        })
+                        
+                    except Exception as e:
+                        cls.__logger.error(f"Error processing datapoint {datapoint_index}: {e}")
+                        cls.set_span_output({"error": str(e)})
+                        
+                        results.append({
+                            "index": datapoint_index,
+                            "success": False,
+                            "executor_output": None,
+                            "scores": {},
+                            "error": str(e)
+                        })
+                
+                # Calculate final results
+                evaluation_result = {
+                    "evaluation_name": evaluation_name,
+                    "group_name": group_name,
+                    "dataset_name": dataset_name,
+                    "start_index": start_index,
+                    "processed_count": actual_count,
+                    "success_count": success_count,
+                    "success_rate": success_count / actual_count if actual_count > 0 else 0,
+                    "results": results,
+                    "metadata": {
+                        "dataset_size": dataset_size,
+                        "processed_range": f"{start_index}:{end_index}"
+                    }
+                }
+                
+                # Set final output
+                cls.set_span_output(evaluation_result)
+                
+                cls.__logger.info(f"Evaluation completed: {success_count}/{actual_count} datapoints successful")
+                
+                return evaluation_result
+                
+            except Exception as e:
+                cls.__logger.error(f"Evaluation failed: {e}")
+                error_result = {
+                    "evaluation_name": evaluation_name,
+                    "dataset_name": dataset_name,
+                    "success": False,
+                    "error": str(e)
+                }
+                cls.set_span_output(error_result)
+                raise
+            finally:
+                try:
+                    if 'client' in locals():
+                        client.close()
+                except:
+                    pass
