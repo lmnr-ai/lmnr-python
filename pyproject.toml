@@ -26,11 +26,12 @@ dependencies = [
   "tqdm (>=4.0)",
   "argparse (>=1.0)",
   "tenacity (>=8.0)",
-  # explicitly freeze grpcio. Since 1.68.0, grpcio writes a warning message
+  # Since 1.68.0, grpcio writes a warning message
   # that looks scary, but is harmless.
   # WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
   # E0000 00:00:1737439981.199902 9456033 init.cc:229] grpc_wait_for_shutdown_with_timeout() timed out.
   #
+  # Remove this comment when we make sure that grpcio has resolved this.
   # Related issue:
   # https://discuss.ai.google.dev/t/warning-all-log-messages-before-absl-initializelog-is-called-are-written-to-stderr-e0000-001731955515-629532-17124-init-cc-229-grpc-wait-for-shutdown-with-timeout-timed-out/50020
   # https://github.com/grpc/grpc/issues/38490
