@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.6.6"
+version = "0.6.7"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -34,7 +34,7 @@ dependencies = [
   # Related issue:
   # https://discuss.ai.google.dev/t/warning-all-log-messages-before-absl-initializelog-is-called-are-written-to-stderr-e0000-001731955515-629532-17124-init-cc-229-grpc-wait-for-shutdown-with-timeout-timed-out/50020
   # https://github.com/grpc/grpc/issues/38490
-  "grpcio<1.68.0",
+  "grpcio>=1",
   "httpx>=0.25.0",
   "opentelemetry-instrumentation-threading>=0.54b0",
 ]
