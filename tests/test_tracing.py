@@ -2,7 +2,7 @@ import json
 import pytest
 import uuid
 
-from lmnr import Attributes, Laminar, observe, TracingLevel, use_span
+from lmnr import Attributes, Laminar, TracingLevel, use_span
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from lmnr.sdk.types import LaminarSpanContext
