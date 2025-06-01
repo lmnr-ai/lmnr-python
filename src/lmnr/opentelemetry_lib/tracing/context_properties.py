@@ -10,6 +10,7 @@ from opentelemetry.trace import Span
 from opentelemetry import trace
 
 
+# TODO: delete this once deprecated Laminar.with_labels is removed
 def set_association_properties(properties: dict) -> None:
     attach(set_value("association_properties", properties))
 
@@ -17,6 +18,7 @@ def set_association_properties(properties: dict) -> None:
     _set_association_properties_attributes(span, properties)
 
 
+# TODO: delete this once deprecated Laminar.with_labels is removed
 def get_association_properties(context: Context | None = None) -> dict:
     return get_value("association_properties", context) or {}
 

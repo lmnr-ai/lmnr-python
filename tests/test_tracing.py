@@ -213,8 +213,8 @@ def test_use_span_suppress_exception(exporter: InMemorySpanExporter):
 
 
 def test_session_id(exporter: InMemorySpanExporter):
-    Laminar.set_session("123")
     with Laminar.start_as_current_span("test"):
+        Laminar.set_trace_session_id("123")
         pass
 
     spans = exporter.get_finished_spans()
@@ -225,13 +225,12 @@ def test_session_id(exporter: InMemorySpanExporter):
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
-def test_session_id_clear(exporter: InMemorySpanExporter):
-    Laminar.set_session("123")
-    with Laminar.start_as_current_span("in_session"):
-        pass
-    Laminar.clear_session()
-
+def test_session_id_doesnt_leak(exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("no_session"):
+        pass
+
+    with Laminar.start_as_current_span("in_session"):
+        Laminar.set_trace_session_id("123")
         pass
 
     spans = exporter.get_finished_spans()
@@ -250,80 +249,36 @@ def test_session_id_clear(exporter: InMemorySpanExporter):
     assert no_session_span.attributes["lmnr.span.path"] == ("no_session",)
 
 
-def test_with_labels(exporter: InMemorySpanExporter):
-    with Laminar.with_labels(labels=["foo", "bar"]):
-        with Laminar.start_as_current_span("test1"):
-            pass
-        with Laminar.start_as_current_span("test2"):
-            pass
-
-    with Laminar.start_as_current_span("test3"):
-        pass
-
-    spans = exporter.get_finished_spans()
-    assert len(spans) == 3
-    first_span = [span for span in spans if span.name == "test1"][0]
-    second_span = [span for span in spans if span.name == "test2"][0]
-    third_span = [span for span in spans if span.name == "test3"][0]
-    assert first_span.attributes["lmnr.association.properties.labels"] == (
-        "foo",
-        "bar",
-    )
-    assert second_span.attributes["lmnr.association.properties.labels"] == (
-        "foo",
-        "bar",
-    )
-    assert third_span.attributes.get("lmnr.association.properties.labels") == tuple()
-
-    assert first_span.attributes["lmnr.span.instrumentation_source"] == "python"
-    assert second_span.attributes["lmnr.span.instrumentation_source"] == "python"
-    assert third_span.attributes["lmnr.span.instrumentation_source"] == "python"
-
-    assert first_span.attributes["lmnr.span.path"] == ("test1",)
-    assert second_span.attributes["lmnr.span.path"] == ("test2",)
-    assert third_span.attributes["lmnr.span.path"] == ("test3",)
-
-
-def test_with_labels_observe(exporter: InMemorySpanExporter):
-    @observe()
-    def foo():
-        pass
-
-    with Laminar.with_labels(labels=["foo", "bar"]):
-        foo()
-
-    spans = exporter.get_finished_spans()
-    assert len(spans) == 1
-    assert spans[0].name == "foo"
-    assert spans[0].attributes["lmnr.association.properties.labels"] == (
-        "foo",
-        "bar",
-    )
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("foo",)
-
-
-def test_metadata(exporter: InMemorySpanExporter):
-    Laminar.set_metadata({"foo": "bar"})
+def test_user_id(exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("test"):
+        Laminar.set_trace_user_id("123")
         pass
 
     spans = exporter.get_finished_spans()
     assert len(spans) == 1
-    assert (
-        json.loads(spans[0].attributes["lmnr.association.properties.metadata.foo"])
-        == "bar"
-    )
+    assert spans[0].attributes["lmnr.association.properties.user_id"] == "123"
     assert spans[0].name == "test"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
-def test_metadata_clear(exporter: InMemorySpanExporter):
-    Laminar.set_metadata({"foo": "bar"})
-    with Laminar.start_as_current_span("with_metadata"):
+def test_metadata(exporter: InMemorySpanExporter):
+    with Laminar.start_as_current_span("test"):
+        Laminar.set_trace_metadata({"foo": "bar"})
         pass
-    Laminar.clear_metadata()
+
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].attributes["lmnr.association.properties.metadata.foo"] == "bar"
+    assert spans[0].name == "test"
+    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("test",)
+
+
+def test_metadata_does_not_leak(exporter: InMemorySpanExporter):
+    with Laminar.start_as_current_span("with_metadata"):
+        Laminar.set_trace_metadata({"foo": "bar"})
+        pass
 
     with Laminar.start_as_current_span("no_metadata"):
         pass
@@ -335,9 +290,7 @@ def test_metadata_clear(exporter: InMemorySpanExporter):
     no_metadata_span = [span for span in spans if span.name == "no_metadata"][0]
 
     assert (
-        json.loads(
-            with_metadata_span.attributes["lmnr.association.properties.metadata.foo"]
-        )
+        with_metadata_span.attributes["lmnr.association.properties.metadata.foo"]
         == "bar"
     )
 
@@ -348,6 +301,19 @@ def test_metadata_clear(exporter: InMemorySpanExporter):
     assert with_metadata_span.attributes["lmnr.span.instrumentation_source"] == "python"
     assert no_metadata_span.attributes["lmnr.span.instrumentation_source"] == "python"
     assert no_metadata_span.attributes["lmnr.span.path"] == ("no_metadata",)
+
+
+def test_tags(exporter: InMemorySpanExporter):
+    with Laminar.start_as_current_span("test"):
+        Laminar.set_span_tags(["foo", "bar"])
+        pass
+
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].attributes["lmnr.association.properties.tags"] == ("foo", "bar")
+    assert spans[0].name == "test"
+    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
 def test_tracing_level_attribute(exporter: InMemorySpanExporter):

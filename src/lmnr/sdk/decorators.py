@@ -9,9 +9,11 @@ from typing import Any, Callable, Literal, TypeVar, cast
 from typing_extensions import ParamSpec
 
 from lmnr.opentelemetry_lib.tracing.attributes import SESSION_ID
+from lmnr.sdk.log import get_default_logger
 
 from .utils import is_async
 
+logger = get_default_logger(__name__)
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -27,6 +29,7 @@ def observe(
     span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
     ignore_inputs: list[str] | None = None,
     metadata: dict[str, Any] | None = None,
+    tags: list[str] | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """The main decorator entrypoint for Laminar. This is used to wrap
     functions and methods to create spans.
@@ -52,6 +55,8 @@ def observe(
             this argument. Defaults to None.
         metadata (dict[str, Any] | None, optional): Metadata to associate with\
             the trace. Must be JSON serializable. Defaults to None.
+        tags (list[str] | None, optional): Tags to associate with the trace.
+            Defaults to None.
     Raises:
         Exception: re-raises the exception if the wrapped function raises an\
             exception
@@ -79,6 +84,13 @@ def observe(
                     for k, v in metadata.items()
                 }
             )
+        if tags is not None:
+            if not isinstance(tags, list) or not all(
+                isinstance(tag, str) for tag in tags
+            ):
+                logger.warning("Tags must be a list of strings. Tags will be ignored.")
+            else:
+                association_properties["tags"] = tags
         result = (
             aentity_method(
                 name=name,
