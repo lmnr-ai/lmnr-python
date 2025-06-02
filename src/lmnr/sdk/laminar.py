@@ -733,7 +733,13 @@ class Laminar:
         association_properties = {}
         if session_id is not None:
             association_properties[SESSION_ID] = session_id
-        update_association_properties(association_properties)
+        # update_association_properties(association_properties)
+        span = trace.get_current_span()
+        if span == trace.INVALID_SPAN:
+            cls.__logger.warning("No active span to set session id on")
+            return
+        if session_id is not None:
+            span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}", session_id)
 
     @classmethod
     def set_trace_session_id(cls, session_id: str | None = None):
@@ -779,7 +785,13 @@ class Laminar:
             DeprecationWarning,
         )
         props = {f"metadata.{k}": json_dumps(v) for k, v in metadata.items()}
-        update_association_properties(props)
+        # update_association_properties(props)
+        span = trace.get_current_span()
+        if span == trace.INVALID_SPAN:
+            cls.__logger.warning("No active span to set metadata on")
+            return
+        for key, value in props.items():
+            span.set_attribute(key, value)
 
     @classmethod
     def set_trace_metadata(cls, metadata: dict[str, AttributeValue]):
