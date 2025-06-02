@@ -9,14 +9,15 @@ from opentelemetry import trace
 from opentelemetry import context as context_api
 from opentelemetry.trace import Span
 
-from lmnr.opentelemetry_lib.tracing.context_properties import (
-    remove_association_properties,
-    update_association_properties,
-)
 from lmnr.sdk.utils import get_input_from_func_args, is_method
 from lmnr.opentelemetry_lib import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer
-from lmnr.opentelemetry_lib.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT, SPAN_TYPE
+from lmnr.opentelemetry_lib.tracing.attributes import (
+    ASSOCIATION_PROPERTIES,
+    SPAN_INPUT,
+    SPAN_OUTPUT,
+    SPAN_TYPE,
+)
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
 from lmnr.opentelemetry_lib.utils.json_encoder import JSONEncoder
 
@@ -56,11 +57,11 @@ def entity_method(
 
             span_name = name or fn.__name__
 
-            if association_properties is not None:
-                update_association_properties(association_properties)
-
             with get_tracer() as tracer:
                 span = tracer.start_span(span_name, attributes={SPAN_TYPE: span_type})
+                if association_properties is not None:
+                    for key, value in association_properties.items():
+                        span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)
 
                 ctx = trace.set_span_in_context(span, context_api.get_current())
                 ctx_token = context_api.attach(ctx)
@@ -119,8 +120,6 @@ def entity_method(
 
                 span.end()
                 context_api.detach(ctx_token)
-                if association_properties is not None:
-                    remove_association_properties(association_properties)
                 return res
 
         return wrap
@@ -145,11 +144,11 @@ def aentity_method(
 
             span_name = name or fn.__name__
 
-            if association_properties is not None:
-                update_association_properties(association_properties)
-
             with get_tracer() as tracer:
                 span = tracer.start_span(span_name, attributes={SPAN_TYPE: span_type})
+                if association_properties is not None:
+                    for key, value in association_properties.items():
+                        span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)
 
                 ctx = trace.set_span_in_context(span, context_api.get_current())
                 ctx_token = context_api.attach(ctx)
@@ -200,8 +199,6 @@ def aentity_method(
                     pass
 
                 span.end()
-                if association_properties is not None:
-                    remove_association_properties(association_properties)
                 context_api.detach(ctx_token)
 
                 return res

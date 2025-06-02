@@ -188,7 +188,6 @@ def test_observe_nested(exporter: InMemorySpanExporter):
     assert bar_span.parent.span_id == foo_span.context.span_id
 
     assert foo_span.attributes["lmnr.association.properties.session_id"] == "123"
-    assert bar_span.attributes["lmnr.association.properties.session_id"] == "123"
 
     assert foo_span.attributes["lmnr.span.input"] == json.dumps({})
     assert foo_span.attributes["lmnr.span.path"] == ("observed_foo",)
@@ -251,3 +250,35 @@ async def test_observe_skip_input_keys_async(exporter: InMemorySpanExporter):
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
     assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
     assert spans[0].attributes["lmnr.span.input"] == json.dumps({"b": 2, "c": 3})
+
+
+def test_observe_tags(exporter: InMemorySpanExporter):
+    @observe(tags=["foo", "bar"])
+    def observed_foo(x, y, z, **kwargs):
+        return "foo"
+
+    result = observed_foo("arg", "arg2", "arg3", a=1, b=2, c=3)
+    spans = exporter.get_finished_spans()
+    assert result == "foo"
+    assert len(spans) == 1
+    span = spans[0]
+
+    assert span.attributes["lmnr.association.properties.tags"] == ("foo", "bar")
+    assert span.attributes["lmnr.span.instrumentation_source"] == "python"
+    assert span.attributes["lmnr.span.path"] == ("observed_foo",)
+
+
+def test_observe_tags_invalid_type(exporter: InMemorySpanExporter):
+    @observe(tags=["foo", "bar", 1])
+    def observed_foo(x, y, z, **kwargs):
+        return "foo"
+
+    result = observed_foo("arg", "arg2", "arg3", a=1, b=2, c=3)
+    spans = exporter.get_finished_spans()
+    assert result == "foo"
+    assert len(spans) == 1
+    span = spans[0]
+
+    assert span.attributes.get("lmnr.association.properties.tags") is None
+    assert span.attributes["lmnr.span.instrumentation_source"] == "python"
+    assert span.attributes["lmnr.span.path"] == ("observed_foo",)

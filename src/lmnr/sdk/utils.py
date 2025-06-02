@@ -113,3 +113,18 @@ def from_env(key: str) -> str | None:
     dotenv_path = dotenv.find_dotenv(usecwd=True)
     # use DotEnv directly so we can set verbose to False
     return dotenv.main.DotEnv(dotenv_path, verbose=False, encoding="utf-8").get(key)
+
+
+def is_otel_attribute_value_type(value: typing.Any) -> bool:
+    def is_primitive_type(value: typing.Any) -> bool:
+        return isinstance(value, (int, float, str, bool))
+
+    if is_primitive_type(value):
+        return True
+    elif isinstance(value, typing.Sequence):
+        if len(value) > 0:
+            return is_primitive_type(value[0]) and all(
+                isinstance(v, type(value[0])) for v in value
+            )
+        return True
+    return False
