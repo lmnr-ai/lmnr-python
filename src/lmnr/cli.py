@@ -477,7 +477,7 @@ async def run_remote_evaluation(args):
     try:
         result = await runner.run_remote_evaluation(
             bundle_id=args.bundle_id,
-            dataset_name=args.dataset_name,
+            dataset_name=args.dataset,  # Changed from args.dataset_name to args.dataset
             evaluation_name=args.name,
             group_name=args.group_name,
             concurrency_limit=args.concurrency_limit
@@ -521,6 +521,74 @@ async def bundle_evaluation_remote(args):
         return None
 
 
+async def run_local_decorator_evaluation(args):
+    """Run local decorator-based evaluation with dataset"""
+    # Check if the evaluation file has decorator pattern
+    from .sdk.decorators import evaluate, executor
+    
+    # Import the evaluation file to detect decorators
+    if not args.file:
+        LOG.error("File argument is required for decorator-based evaluations")
+        return
+        
+    try:
+        # Dynamic import logic similar to run_evaluation
+        sys.path.append(os.getcwd())
+        file = os.path.abspath(args.file)
+        name = "user_module" + file
+
+        spec = importlib.util.spec_from_file_location(name, file)
+        if spec is None or spec.loader is None:
+            LOG.error(f"Could not load module specification from {file}")
+            return
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[name] = mod
+        spec.loader.exec_module(mod)
+        
+        # Check if any decorators were found
+        # This would need to check for registered executors/evaluators
+        # For now, let's provide a clear error message
+        LOG.error("❌ ERROR: No decorator pattern detected in the evaluation file.")
+        LOG.error("💡 Decorator-based evaluations require @executor and @evaluator decorators.")
+        LOG.error("💡 Use 'lmnr eval filename.py' for regular evaluations instead.")
+        LOG.error("💡 See documentation for decorator pattern examples.")
+        
+    except Exception as e:
+        LOG.error(f"Error checking evaluation file: {e}")
+        if args.fail_on_error:
+            raise
+
+
+async def create_remote_bundle(args):
+    """Create remote bundle using create_remote_bundle"""
+    bundler = RemoteEvaluationBundler()
+    
+    try:
+        result = await bundler.create_remote_bundle(
+            eval_file=args.file,
+            pyproject_file=getattr(args, 'pyproject', None),
+            base_url=getattr(args, 'base_url', None)
+        )
+        
+        if not result:
+            LOG.error("Remote bundling failed")
+            return None
+        
+        bundle_id = result.get("bundle_id")
+        LOG.info(f"✅ Bundle created successfully!")
+        LOG.info(f"Bundle ID: {bundle_id}")
+        LOG.info("💡 Next steps:")
+        LOG.info(f"  • Run evaluation: lmnr eval --bundle-id {bundle_id} --dataset <dataset_name>")
+        
+        return result
+        
+    except Exception as e:
+        LOG.error(f"Failed to create remote bundle: {e}")
+        if args.fail_on_error:
+            raise
+        return None
+
+
 def cli():
     parser = ArgumentParser(
         prog="lmnr",
@@ -529,295 +597,68 @@ def cli():
 
     subparsers = parser.add_subparsers(title="subcommands", dest="subcommand")
 
-    # Main eval parser
+    # Eval command - simplified
     parser_eval = subparsers.add_parser(
         "eval",
-        description="Run, bundle, or manage evaluations",
-        help="Run, bundle, or manage evaluations",
+        description="Run an evaluation locally or remotely",
+        help="Run an evaluation locally or remotely",
     )
-    
-    eval_subparsers = parser_eval.add_subparsers(title="eval subcommands", dest="eval_subcommand")
-
-    # Original eval run command (now as a subcommand)
-    parser_eval_run = eval_subparsers.add_parser(
-        "run",
-        description="Run an evaluation locally",
-        help="Run an evaluation locally",
-    )
-    parser_eval_run.add_argument(
+    parser_eval.add_argument(
         "file",
         nargs="?",
-        help="A file containing the evaluation to run."
-        + "If no file name is provided, all evaluation files in the `evals` directory are run as long"
+        help="A file containing the evaluation to run. "
+        + "If no file name is provided, all evaluation files in the `evals` directory are run as long "
         + "as they match *_eval.py or eval_*.py",
         default=None,
     )
-    parser_eval_run.add_argument(
+    parser_eval.add_argument(
+        "--dataset",
+        help="Dataset name for decorator-based evaluations (enables local bundled eval execution)",
+    )
+    parser_eval.add_argument(
+        "--bundle-id",
+        help="Bundle ID for remote evaluation execution",
+    )
+    parser_eval.add_argument(
+        "--name",
+        help="Name for the evaluation run (used with --bundle-id)",
+    )
+    parser_eval.add_argument(
+        "--group-name",
+        help="Group name for the evaluation (used with --bundle-id)",
+    )
+    parser_eval.add_argument(
+        "--concurrency-limit",
+        type=int,
+        default=50,
+        help="Maximum number of concurrent evaluations (used with --bundle-id, default: 50)",
+    )
+    parser_eval.add_argument(
         "--fail-on-error",
         action="store_true",
         default=False,
         help="Fail on error",
     )
 
-    # Bundle command
-    parser_eval_bundle = eval_subparsers.add_parser(
+    # Bundle command - simplified
+    parser_bundle = subparsers.add_parser(
         "bundle",
-        description="Bundle evaluation code for remote execution (creates directory)",
-        help="Bundle evaluation code for remote execution",
+        description="Create a remote bundle for evaluation",
+        help="Create a remote bundle for evaluation",
     )
-    parser_eval_bundle.add_argument(
+    parser_bundle.add_argument(
         "file",
         help="Path to the evaluation file",
     )
-    parser_eval_bundle.add_argument(
-        "--output-dir",
-        default="./bundles",
-        help="Output directory for the bundle (default: ./bundles)",
-    )
-    parser_eval_bundle.add_argument(
+    parser_bundle.add_argument(
         "--pyproject",
         help="Path to pyproject.toml file for dependencies",
     )
-    parser_eval_bundle.add_argument(
-        "--include-current-env",
-        action="store_true",
-        help="Include current environment dependencies",
-    )
-    parser_eval_bundle.add_argument(
-        "--inspect",
-        action="store_true",
-        help="Inspect bundle contents after creation",
-    )
-    parser_eval_bundle.add_argument(
-        "--fail-on-error",
-        action="store_true",
-        default=False,
-        help="Fail on error",
-    )
-
-    # Bundle-remote command (NEW!)
-    parser_eval_bundle_remote = eval_subparsers.add_parser(
-        "bundle-remote",
-        description="Send source files to Laminar for optimized remote bundling",
-        help="Bundle evaluation code remotely (optimized for production environments)",
-    )
-    parser_eval_bundle_remote.add_argument(
-        "file",
-        help="Path to the evaluation file",
-    )
-    parser_eval_bundle_remote.add_argument(
-        "--pyproject",
-        help="Path to pyproject.toml file for dependencies",
-    )
-    parser_eval_bundle_remote.add_argument(
+    parser_bundle.add_argument(
         "--base-url",
         help="Laminar API base URL",
     )
-    parser_eval_bundle_remote.add_argument(
-        "--fail-on-error",
-        action="store_true",
-        default=False,
-        help="Fail on error",
-    )
-
-    # Dry-run command
-    parser_eval_dry_run = eval_subparsers.add_parser(
-        "dry-run",
-        description="Test bundled evaluation locally before upload",
-        help="Test bundled evaluation locally",
-    )
-    parser_eval_dry_run.add_argument(
-        "bundle_path",
-        help="Path to the bundle directory or zip file to test",
-    )
-    parser_eval_dry_run.add_argument(
-        "--test-datapoint",
-        help="JSON string of test datapoint (alternative to --dataset-name)",
-    )
-    parser_eval_dry_run.add_argument(
-        "--dataset-name",
-        help="Name of LaminarDataset to test against (requires --num-points)",
-    )
-    parser_eval_dry_run.add_argument(
-        "--num-points",
-        type=int,
-        default=5,
-        help="Number of datapoints to test when using --dataset-name (default: 5)",
-    )
-    parser_eval_dry_run.add_argument(
-        "--output-dir",
-        default="./temp",
-        help="Output directory for extracted files (default: ./temp)",
-    )
-    parser_eval_dry_run.add_argument(
-        "--keep-extracted",
-        action="store_true",
-        default=False,
-        help="Keep extracted files after dry run (for debugging)",
-    )
-    parser_eval_dry_run.add_argument(
-        "--fail-on-error",
-        action="store_true",
-        default=False,
-        help="Fail on error",
-    )
-
-    # Submit command (upload and run)
-    parser_eval_submit = eval_subparsers.add_parser(
-        "submit",
-        description="Upload bundle and run remote evaluation",
-        help="Upload bundle and run remote evaluation",
-    )
-    parser_eval_submit.add_argument(
-        "bundle_path",
-        help="Path to the bundle directory or zip file to upload and run",
-    )
-    parser_eval_submit.add_argument(
-        "dataset_name",
-        help="Name of the LaminarDataset to evaluate",
-    )
-    parser_eval_submit.add_argument(
-        "--name",
-        help="Name for the evaluation run",
-    )
-    parser_eval_submit.add_argument(
-        "--group-name",
-        help="Group name for the evaluation",
-    )
-    parser_eval_submit.add_argument(
-        "--concurrency-limit",
-        type=int,
-        default=50,
-        help="Maximum concurrent evaluations (default: 50)",
-    )
-    parser_eval_submit.add_argument(
-        "--fail-on-error",
-        action="store_true",
-        help="Fail if any error occurs during submission",
-    )
-
-    # Push command (create zip and upload)
-    parser_eval_push = eval_subparsers.add_parser(
-        "push",
-        description="Create zip from bundle directory and upload to Laminar servers",
-        help="Create zip from bundle directory and upload to Laminar servers",
-    )
-    parser_eval_push.add_argument(
-        "bundle_path",
-        help="Path to the bundle directory or zip file to upload",
-    )
-    parser_eval_push.add_argument(
-        "--fail-on-error",
-        action="store_true",
-        default=False,
-        help="Fail on error",
-    )
-
-    # Zip command (create zip from bundle directory)
-    parser_eval_zip = eval_subparsers.add_parser(
-        "zip",
-        description="Create zip file from bundle directory",
-        help="Create zip file from bundle directory",
-    )
-    parser_eval_zip.add_argument(
-        "bundle_path",
-        help="Path to the bundle directory to zip",
-    )
-    parser_eval_zip.add_argument(
-        "--fail-on-error",
-        action="store_true",
-        default=False,
-        help="Fail on error",
-    )
-
-    # Upload command (kept for manual workflow)
-    parser_eval_upload = eval_subparsers.add_parser(
-        "upload",
-        description="Upload evaluation bundle to Laminar servers",
-        help="Upload evaluation bundle to Laminar servers",
-    )
-    parser_eval_upload.add_argument(
-        "bundle_file",
-        help="Path to the bundle file to upload",
-    )
-    parser_eval_upload.add_argument(
-        "--fail-on-error",
-        action="store_true",
-        default=False,
-        help="Fail on error",
-    )
-
-    # Run remote command (kept for manual workflow)  
-    parser_eval_remote = eval_subparsers.add_parser(
-        "run-remote",
-        description="Run evaluation remotely on Laminar servers",
-        help="Run evaluation remotely on Laminar servers",
-    )
-    parser_eval_remote.add_argument(
-        "bundle_id",
-        help="ID of the uploaded bundle to run",
-    )
-    parser_eval_remote.add_argument(
-        "dataset_name",
-        help="Name of the LaminarDataset to evaluate",
-    )
-    parser_eval_remote.add_argument(
-        "--name",
-        help="Name for the evaluation run",
-    )
-    parser_eval_remote.add_argument(
-        "--group-name",
-        help="Group name for the evaluation",
-    )
-    parser_eval_remote.add_argument(
-        "--concurrency-limit",
-        type=int,
-        default=50,
-        help="Maximum number of concurrent serverless function calls (default: 50)",
-    )
-    parser_eval_remote.add_argument(
-        "--fail-on-error",
-        action="store_true",
-        default=False,
-        help="Fail on error",
-    )
-
-    # Inspect command
-    parser_eval_inspect = eval_subparsers.add_parser(
-        "inspect",
-        description="Inspect the contents of an evaluation bundle",
-        help="Inspect the contents of an evaluation bundle",
-    )
-    parser_eval_inspect.add_argument(
-        "bundle_path",
-        help="Path to the bundle directory or zip file to inspect",
-    )
-    parser_eval_inspect.add_argument(
-        "--extract",
-        action="store_true",
-        default=False,
-        help="Extract bundle contents for detailed inspection",
-    )
-    parser_eval_inspect.add_argument(
-        "--fail-on-error",
-        action="store_true",
-        default=False,
-        help="Fail on error",
-    )
-
-    # For backward compatibility, also support the old direct eval command
-    parser_eval_legacy = subparsers.add_parser(
-        "eval-legacy",
-        description="Run an evaluation (legacy command)",
-        help="Run an evaluation (legacy command)",
-    )
-    parser_eval_legacy.add_argument(
-        "file",
-        nargs="?",
-        help="A file containing the evaluation to run.",
-        default=None,
-    )
-    parser_eval_legacy.add_argument(
+    parser_bundle.add_argument(
         "--fail-on-error",
         action="store_true",
         default=False,
@@ -827,30 +668,17 @@ def cli():
     parsed = parser.parse_args()
     
     if parsed.subcommand == "eval":
-        if parsed.eval_subcommand == "run":
-            asyncio.run(run_evaluation(parsed))
-        elif parsed.eval_subcommand == "bundle":
-            asyncio.run(bundle_evaluation(parsed))
-        elif parsed.eval_subcommand == "bundle-remote":
-            asyncio.run(bundle_evaluation_remote(parsed))
-        elif parsed.eval_subcommand == "dry-run":
-            asyncio.run(dry_run_evaluation(parsed))
-        elif parsed.eval_subcommand == "submit":
-            asyncio.run(submit_evaluation(parsed))
-        elif parsed.eval_subcommand == "push":
-            asyncio.run(push_bundle(parsed))
-        elif parsed.eval_subcommand == "zip":
-            asyncio.run(zip_bundle(parsed))
-        elif parsed.eval_subcommand == "upload":
-            asyncio.run(upload_bundle(parsed))
-        elif parsed.eval_subcommand == "run-remote":
+        if parsed.bundle_id and parsed.dataset:
+            # Remote evaluation: lmnr eval --bundle-id ... --dataset ...
             asyncio.run(run_remote_evaluation(parsed))
-        elif parsed.eval_subcommand == "inspect":
-            asyncio.run(inspect_bundle(parsed))
+        elif parsed.dataset:
+            # Local decorator-based evaluation: lmnr eval filename.py --dataset "dataset name"
+            asyncio.run(run_local_decorator_evaluation(parsed))
         else:
-            # If no subcommand, show help
-            parser_eval.print_help()
-    elif parsed.subcommand == "eval-legacy":
-        asyncio.run(run_evaluation(parsed))
+            # Regular evaluation: lmnr eval filename.py
+            asyncio.run(run_evaluation(parsed))
+    elif parsed.subcommand == "bundle":
+        # Remote bundle creation: lmnr bundle filename.py
+        asyncio.run(create_remote_bundle(parsed))
     else:
         parser.print_help()
