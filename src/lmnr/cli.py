@@ -4,8 +4,6 @@ import importlib.util
 import os
 import re
 import sys
-import tempfile
-import zipfile
 import shutil
 import subprocess
 import json
@@ -492,6 +490,37 @@ async def run_remote_evaluation(args):
             raise
 
 
+async def bundle_evaluation_remote(args):
+    """Send source files to Laminar for optimized remote bundling"""
+    bundler = RemoteEvaluationBundler()
+    
+    try:
+        result = await bundler.create_remote_bundle(
+            eval_file=args.file,
+            pyproject_file=getattr(args, 'pyproject', None),
+            base_url=getattr(args, 'base_url', None)
+        )
+        
+        if not result:
+            LOG.error("Remote bundling failed")
+            return None
+        
+        bundle_id = result.get("bundle_id")
+        bundle_size = result.get("bundle_size", 0)
+        
+        LOG.info("💡 Next steps:")
+        LOG.info(f"  • Run evaluation: lmnr eval run-remote {bundle_id} <dataset_name>")
+        LOG.info(f"  • View in dashboard: Open your Laminar project")
+        
+        return result
+        
+    except Exception as e:
+        LOG.error(f"Failed to create remote bundle: {e}")
+        if args.fail_on_error:
+            raise
+        return None
+
+
 def cli():
     parser = ArgumentParser(
         prog="lmnr",
@@ -560,6 +589,31 @@ def cli():
         help="Inspect bundle contents after creation",
     )
     parser_eval_bundle.add_argument(
+        "--fail-on-error",
+        action="store_true",
+        default=False,
+        help="Fail on error",
+    )
+
+    # Bundle-remote command (NEW!)
+    parser_eval_bundle_remote = eval_subparsers.add_parser(
+        "bundle-remote",
+        description="Send source files to Laminar for optimized remote bundling",
+        help="Bundle evaluation code remotely (optimized for production environments)",
+    )
+    parser_eval_bundle_remote.add_argument(
+        "file",
+        help="Path to the evaluation file",
+    )
+    parser_eval_bundle_remote.add_argument(
+        "--pyproject",
+        help="Path to pyproject.toml file for dependencies",
+    )
+    parser_eval_bundle_remote.add_argument(
+        "--base-url",
+        help="Laminar API base URL",
+    )
+    parser_eval_bundle_remote.add_argument(
         "--fail-on-error",
         action="store_true",
         default=False,
@@ -777,6 +831,8 @@ def cli():
             asyncio.run(run_evaluation(parsed))
         elif parsed.eval_subcommand == "bundle":
             asyncio.run(bundle_evaluation(parsed))
+        elif parsed.eval_subcommand == "bundle-remote":
+            asyncio.run(bundle_evaluation_remote(parsed))
         elif parsed.eval_subcommand == "dry-run":
             asyncio.run(dry_run_evaluation(parsed))
         elif parsed.eval_subcommand == "submit":

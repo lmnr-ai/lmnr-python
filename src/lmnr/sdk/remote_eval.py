@@ -537,7 +537,7 @@ build-backend = "setuptools.build_meta"
         return content
     
     async def _install_dependencies_with_uv(self, bundle_dir: Path, dependencies: list[str], python_requirement: str | None) -> bool:
-        """Install dependencies using UV package manager"""
+        """Install dependencies using UV package manager for local bundling"""
         try:
             self._logger.info(f"Installing {len(dependencies)} dependencies with UV")
             self._logger.debug(f"Dependencies to install: {dependencies}")
@@ -547,72 +547,62 @@ build-backend = "setuptools.build_meta"
             pyproject_path = bundle_dir / "pyproject.toml"
             pyproject_path.write_text(pyproject_content)
             self._logger.debug(f"Generated pyproject.toml at {pyproject_path}")
-            self._logger.debug(f"Pyproject.toml content:\n{pyproject_content}")
             
-            # Run uv lock
-            self._logger.debug("Running uv lock...")
+            # Create virtual environment for dependencies
+            self._logger.debug("Creating virtual environment...")
             result = await asyncio.create_subprocess_exec(
-                "uv", "lock",
+                "uv", "venv", ".venv",
                 cwd=bundle_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
             stdout, stderr = await result.communicate()
-            self._logger.debug(f"uv lock - Return code: {result.returncode}")
-            if stdout:
-                self._logger.debug(f"uv lock stdout: {stdout.decode()}")
-            if stderr:
-                self._logger.debug(f"uv lock stderr: {stderr.decode()}")
             
             if result.returncode != 0:
-                self._logger.error(f"UV lock failed: {stderr.decode()}")
+                self._logger.error(f"UV venv creation failed: {stderr.decode()}")
                 return False
             
-            # Run uv sync to install dependencies
-            self._logger.debug("Running uv sync to install dependencies...")
+            # Install dependencies using UV pip
+            self._logger.debug(f"Installing {len(dependencies)} dependencies...")
+            cmd_args = [
+                "uv", "pip", "install",
+                "--python", ".venv/bin/python",  # Use the venv Python
+            ] + dependencies  # Add all dependencies as arguments
+            
             result = await asyncio.create_subprocess_exec(
-                "uv", "sync", "--no-dev",
+                *cmd_args,
                 cwd=bundle_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
             stdout, stderr = await result.communicate()
-            self._logger.debug(f"uv sync - Return code: {result.returncode}")
+            self._logger.debug(f"uv pip install - Return code: {result.returncode}")
             if stdout:
-                self._logger.debug(f"uv sync stdout: {stdout.decode()}")
+                self._logger.debug(f"uv pip install stdout: {stdout.decode()}")
             if stderr:
-                self._logger.debug(f"uv sync stderr: {stderr.decode()}")
+                self._logger.debug(f"uv pip install stderr: {stderr.decode()}")
             
             if result.returncode != 0:
-                self._logger.error(f"UV sync failed: {stderr.decode()}")
+                self._logger.error(f"UV pip install failed: {stderr.decode()}")
                 return False
             
             # Check if site-packages was created
-            site_packages = bundle_dir / ".venv" / "lib" / "python3.11" / "site-packages"
-            if not site_packages.exists():
-                # Try other python versions
-                venv_lib = bundle_dir / ".venv" / "lib"
-                if venv_lib.exists():
-                    python_dirs = [d for d in venv_lib.iterdir() if d.name.startswith('python')]
-                    if python_dirs:
-                        site_packages = python_dirs[0] / "site-packages"
+            venv_lib = bundle_dir / ".venv" / "lib"
+            site_packages = None
             
-            if site_packages.exists():
+            if venv_lib.exists():
+                python_dirs = [d for d in venv_lib.iterdir() if d.name.startswith('python')]
+                if python_dirs:
+                    site_packages = python_dirs[0] / "site-packages"
+            
+            if site_packages and site_packages.exists():
                 # Count installed packages
                 installed_packages = [d for d in site_packages.iterdir() if d.is_dir() and not d.name.startswith('_')]
                 self._logger.info(f"Successfully installed {len(installed_packages)} packages in site-packages")
                 self._logger.debug(f"Installed packages: {[p.name for p in installed_packages[:10]]}...")  # Show first 10
-                
-                # Check specifically for lmnr
-                lmnr_packages = [p for p in installed_packages if 'lmnr' in p.name.lower()]
-                if lmnr_packages:
-                    self._logger.debug(f"LMNR packages found: {[p.name for p in lmnr_packages]}")
-                else:
-                    self._logger.warning("No LMNR packages found in site-packages!")
-                
                 return True
             else:
-                self._logger.error(f"site-packages directory not found at {site_packages}")
+                self._logger.error(f"site-packages directory not found")
                 return False
             
         except Exception as e:
@@ -633,11 +623,25 @@ import argparse
 from pathlib import Path
 import os
 
-# Add site-packages to Python path for dependencies
+# Add dependencies to Python path - check for UV-style .venv first
 bundle_dir = Path(__file__).parent
-site_packages = bundle_dir / "site-packages"
-if site_packages.exists():
-    sys.path.insert(0, str(site_packages))
+
+# Check for UV-style .venv structure first (preferred)
+uv_site_packages_found = False
+venv_lib_dir = bundle_dir / ".venv" / "lib"
+if venv_lib_dir.exists():
+    for python_dir in venv_lib_dir.glob("python*"):
+        uv_site_packages = python_dir / "site-packages"
+        if uv_site_packages.exists():
+            sys.path.insert(0, str(uv_site_packages))
+            uv_site_packages_found = True
+            break
+
+# Fallback to direct site-packages directory
+if not uv_site_packages_found:
+    site_packages = bundle_dir / "site-packages"
+    if site_packages.exists():
+        sys.path.insert(0, str(site_packages))
 
 # Add bundle directory to path for evaluation imports
 sys.path.insert(0, str(bundle_dir))
@@ -881,17 +885,42 @@ if __name__ == "__main__":
 BUNDLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$BUNDLE_DIR"
 
-# Set Python path to include site-packages
-export PYTHONPATH="$BUNDLE_DIR/site-packages:$BUNDLE_DIR:$PYTHONPATH"
+# Find and set up Python path to include bundled dependencies
+export PYTHONPATH="$BUNDLE_DIR"
+
+# Check for UV-style .venv structure first (preferred)
+if [ -d "$BUNDLE_DIR/.venv/lib" ]; then
+    # Find the correct Python version directory
+    for python_dir in "$BUNDLE_DIR/.venv/lib"/python*; do
+        if [ -d "$python_dir/site-packages" ]; then
+            export PYTHONPATH="$python_dir/site-packages:$PYTHONPATH"
+            echo "Using UV site-packages: $python_dir/site-packages"
+            break
+        fi
+    done
+fi
+
+# Check for direct site-packages directory (fallback)
+if [ -d "$BUNDLE_DIR/site-packages" ]; then
+    export PYTHONPATH="$BUNDLE_DIR/site-packages:$PYTHONPATH"
+    echo "Using direct site-packages: $BUNDLE_DIR/site-packages"
+fi
+
+# Add any existing PYTHONPATH from environment
+if [ -n "$PYTHONPATH_ORIG" ]; then
+    export PYTHONPATH="$PYTHONPATH:$PYTHONPATH_ORIG"
+fi
+
+echo "Final PYTHONPATH: $PYTHONPATH"
 
 # Execute the CLI with all arguments
-python3 run_evaluation.py "$@"
+exec python3 run_evaluation.py "$@"
 '''
         
         executable_path = bundle_dir / "run"
         executable_path.write_text(executable_content)
         executable_path.chmod(0o755)
-        self._logger.debug("Created bundle executable script")
+        self._logger.debug("Created bundle executable script with UV environment support")
     
     async def _create_bundle_metadata(self, bundle_dir: Path, eval_file: Path):
         """Create metadata file for the bundle"""
@@ -1391,19 +1420,143 @@ python3 run_evaluation.py "$@"
         dest_path.write_text(content)
         self._logger.debug(f"Copied evaluation file to {dest_path}")
 
-    def _remove_evaluate_calls(self, content: str) -> str:
-        """Remove evaluate() function calls from the content (deprecated with decorators)"""
-        # This method is kept for backward compatibility but no longer used
-        # with the decorator approach
-        return content
 
-    def _is_evaluate_call_start(self, line: str) -> bool:
-        """Check if a line starts an evaluate() function call (deprecated)"""
-        return False
 
-    def _skip_evaluate_call(self, lines: list[str], start_idx: int) -> int:
-        """Skip lines until the evaluate() call is complete (deprecated)"""
-        return start_idx + 1
+    async def create_remote_bundle(
+        self,
+        eval_file: str,
+        pyproject_file: str | None = None,
+        base_url: str | None = None
+    ) -> Dict[str, Any] | None:
+        """
+        Create evaluation bundle remotely via Laminar API.
+        
+        Args:
+            eval_file: Path to the evaluation file
+            pyproject_file: Optional path to pyproject.toml file for dependencies
+            base_url: Optional Laminar API base URL
+            
+        Returns:
+            Dictionary with bundle information or None on failure
+        """
+        import base64
+        import tempfile
+        import requests
+        
+        try:
+            eval_path = Path(eval_file).resolve()
+            if not eval_path.exists():
+                raise FileNotFoundError(f"Evaluation file not found: {eval_file}")
+            
+            self._logger.info(f"📦 Preparing source files for remote bundling...")
+            
+            # Create temporary zip of source files
+            with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as temp_zip:
+                temp_zip_path = Path(temp_zip.name)
+            
+            try:
+                with zipfile.ZipFile(temp_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    # Add evaluation file
+                    zipf.write(eval_path, eval_path.name)
+                    
+                    # Add pyproject.toml if it exists nearby
+                    pyproject_path = None
+                    if pyproject_file:
+                        pyproject_path = Path(pyproject_file)
+                    else:
+                        # Auto-detect pyproject.toml
+                        pyproject_path = self._find_pyproject_toml(eval_path)
+                    
+                    if pyproject_path and pyproject_path.exists():
+                        zipf.write(pyproject_path, "pyproject.toml")
+                        self._logger.info(f"📄 Including pyproject.toml from {pyproject_path}")
+                
+                # Read zip data and encode as base64
+                zip_data = temp_zip_path.read_bytes()
+                zip_base64 = base64.b64encode(zip_data).decode('utf-8')
+                
+                # Use Laminar API endpoint
+                api_key = from_env("LMNR_PROJECT_API_KEY")
+                if not api_key:
+                    raise ValueError("Project API key not found. Set LMNR_PROJECT_API_KEY environment variable")
+                
+                base_url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
+                # laminar_url = f"{base_url}/v1/evaluations/bundle"
+                laminar_url = "https://lmnr-ai--laminar-evaluation-bundler-create-remote-bundle-dev.modal.run"
+                
+                # Extract dependencies from pyproject.toml if available
+                dependencies = ["lmnr"]  # Default
+                python_requirement = ">=3.10"
+                
+                if pyproject_path and pyproject_path.exists():
+                    self._logger.info("🔍 Analyzing dependencies from pyproject.toml...")
+                    pyproject_deps, python_req = await self._get_dependencies_from_pyproject(eval_path, str(pyproject_path))
+                    if pyproject_deps:
+                        dependencies.extend(pyproject_deps)
+                        dependencies = sorted(list(set(dependencies)))  # Remove duplicates
+                    if python_req:
+                        python_requirement = python_req
+                
+                request_data = {
+                    "source_zip_data": zip_base64,
+                    "dependencies": dependencies,
+                    "python_requirement": python_requirement,
+                    "bundle_name": f"remote_{eval_path.stem}_{uuid.uuid4().hex[:8]}"
+                }
+                
+                headers = {
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                }
+                
+                self._logger.info(f"🚀 Sending to Laminar for optimized bundling...")
+                self._logger.info(f"   Source size: {len(zip_data):,} bytes")
+                self._logger.info(f"   Dependencies: {len(dependencies)} packages")
+                self._logger.info(f"   Laminar endpoint: {laminar_url}")
+                
+                # Send to Laminar bundling service
+                response = requests.post(
+                    laminar_url,
+                    json=request_data,
+                    headers=headers,
+                    timeout=1200  # 20 minutes timeout
+                )
+                
+                if response.status_code != 200:
+                    self._logger.error(f"Laminar bundling request failed: {response.status_code} - {response.text}")
+                    return None
+                
+                result = response.json()
+                
+                if not result.get("success"):
+                    self._logger.error(f"Remote bundling failed: {result.get('error')}")
+                    return None
+                
+                # Success!
+                bundle_id = result.get("bundle_id")
+                bundle_size = result.get("bundle_size", 0)
+                
+                self._logger.info(f"✅ Remote bundle created successfully!")
+                self._logger.info(f"   Bundle ID: {bundle_id}")
+                self._logger.info(f"   Size: {bundle_size:,} bytes")
+                self._logger.info(f"   Optimized for: Linux x86_64")
+                
+                return {
+                    "bundle_id": bundle_id,
+                    "bundle_size": bundle_size,
+                    "bundled_remotely": True,
+                    "dependencies": dependencies,
+                    "python_requirement": python_requirement
+                }
+                
+            finally:
+                # Clean up temp file
+                if temp_zip_path.exists():
+                    temp_zip_path.unlink()
+                    
+        except Exception as e:
+            self._logger.error(f"Failed to create remote bundle: {e}")
+            return None
 
 
 class RemoteEvaluationRunner:

@@ -1,7 +1,0 @@
-evaluation.py
-pyproject.toml
-eval_bundle.egg-info/PKG-INFO
-eval_bundle.egg-info/SOURCES.txt
-eval_bundle.egg-info/dependency_links.txt
-eval_bundle.egg-info/requires.txt
-eval_bundle.egg-info/top_level.txt
