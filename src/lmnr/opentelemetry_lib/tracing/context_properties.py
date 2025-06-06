@@ -6,7 +6,7 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
 )
 
 from opentelemetry.context import Context, attach, set_value, get_value
-from opentelemetry.trace import Span
+from opentelemetry.sdk.trace import Span
 from opentelemetry import trace
 
 
@@ -51,8 +51,15 @@ def remove_association_properties(properties: dict) -> None:
 
 
 def _set_association_properties_attributes(span: Span, properties: dict) -> None:
+    if not span.is_recording():
+        return
     for key, value in properties.items():
         if key == TRACING_LEVEL:
             span.set_attribute(f"lmnr.internal.{TRACING_LEVEL}", value)
+            continue
+        if (
+            key in ["langgraph.edges", "langgraph.nodes"]
+            and span.name != "LangGraph.workflow"
+        ):
             continue
         span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)
