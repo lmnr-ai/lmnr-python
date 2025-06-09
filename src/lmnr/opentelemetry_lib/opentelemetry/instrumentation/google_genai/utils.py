@@ -159,12 +159,17 @@ def _process_part(
 def role_from_content_union(
     content: types.ContentUnion | types.ContentUnionDict,
 ) -> str | None:
+    role = None
     if isinstance(content, types.Content):
-        return to_dict(content).get("role")
+        role = to_dict(content).get("role")
     elif isinstance(content, list) and len(content) > 0:
-        return role_from_content_union(content[0])
+        role = role_from_content_union(content[0])
+    elif isinstance(content, dict):
+        role = content.get("role")
     else:
         return None
+    return role
+    # return "assistant" if role == "model" else role
 
 
 def with_tracer_wrapper(func):
