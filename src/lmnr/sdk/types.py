@@ -81,7 +81,7 @@ class PartialEvaluationDatapoint(pydantic.BaseModel):
                 "traceId": str(self.trace_id),
                 "executorSpanId": str(self.executor_span_id),
                 "metadata": (
-                    serialize(self.metadata) if self.metadata is not None else None
+                    serialize(self.metadata) if self.metadata is not None else {}
                 ),
             }
         except Exception as e:
@@ -123,7 +123,7 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
                 "executorSpanId": str(self.executor_span_id),
                 "index": self.index,
                 "metadata": (
-                    serialize(self.metadata) if self.metadata is not None else None
+                    serialize(self.metadata) if self.metadata is not None else {}
                 ),
             }
         except Exception as e:
