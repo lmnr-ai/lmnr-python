@@ -110,6 +110,10 @@ class LanggraphInstrumentor(BaseInstrumentor):
 
     def _uninstrument(self, **kwargs):
         unwrap(
-            module="langgraph.graph",
-            name="Graph.invoke",
+            module="langgraph.pregel",
+            name="Pregel.stream",
+        )
+        unwrap(
+            module="langgraph.pregel",
+            name="Pregel.astream",
         )
