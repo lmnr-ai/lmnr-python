@@ -126,6 +126,7 @@ dev = [
   "patchright>=1.52.3",
   "langgraph>=0.4.8",
   "langchain-core>=0.3.64",
+  "langchain>=0.3.25",
 ]
 
 [build-system]
