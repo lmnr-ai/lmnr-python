@@ -1,6 +1,5 @@
 import logging
 import traceback
-import json
 
 from .config import (
     Config,
@@ -9,7 +8,28 @@ from google.genai import types
 from google.genai._common import BaseModel
 import pydantic
 from opentelemetry.trace import Span
-from typing import Any
+from typing import Any, Literal
+
+
+class ToolCall(pydantic.BaseModel):
+    name: str | None = pydantic.Field(default=None)
+    id: str | None = pydantic.Field(default=None)
+    arguments: dict[str, Any] = pydantic.Field(default={})
+
+
+class ImageUrlInner(pydantic.BaseModel):
+    url: str = pydantic.Field(default="")
+
+
+class ImageUrl(pydantic.BaseModel):
+    type: Literal["image_url"] = pydantic.Field(default="image_url")
+    image_url: ImageUrlInner = pydantic.Field(default=ImageUrlInner())
+
+
+class ProcessedContentPart(pydantic.BaseModel):
+    content: str | None = pydantic.Field(default=None)
+    function_call: ToolCall | None = pydantic.Field(default=None)
+    image_url: ImageUrl | None = pydantic.Field(default=None)
 
 
 def set_span_attribute(span: Span, name: str, value: str):
@@ -58,36 +78,40 @@ def to_dict(obj: BaseModel | pydantic.BaseModel | dict) -> dict[str, Any]:
         return dict(obj)
 
 
+def get_content(
+    content: (
+        ProcessedContentPart | dict | list[ProcessedContentPart | dict] | str | None
+    ),
+) -> list[Any] | None:
+    if isinstance(content, dict):
+        return content.get("content") or content.get("image_url")
+    if isinstance(content, ProcessedContentPart):
+        if content.content and isinstance(content.content, str):
+            return {
+                "type": "text",
+                "text": content.content,
+            }
+        elif content.image_url:
+            return content.image_url.model_dump()
+        else:
+            return None
+    elif isinstance(content, list):
+        return [get_content(item) or "" for item in content if item is not None]
+    elif isinstance(content, str):
+        return {
+            "type": "text",
+            "text": content,
+        }
+    else:
+        return None
+
+
 def process_content_union(
     content: types.ContentUnion | types.ContentUnionDict,
     trace_id: str | None = None,
     span_id: str | None = None,
     message_index: int = 0,
-) -> str | None:
-    parts = _process_content_union(content, trace_id, span_id, message_index)
-    if parts is None:
-        return None
-    if isinstance(parts, str):
-        return parts
-    elif isinstance(parts, list):
-        if len(parts) == 1 and isinstance(parts[0], str):
-            return parts[0]
-        return json.dumps(
-            [
-                {"type": "text", "text": part} if isinstance(part, str) else part
-                for part in parts
-            ]
-        )
-    else:
-        return None
-
-
-def _process_content_union(
-    content: types.ContentUnion | types.ContentUnionDict,
-    trace_id: str | None = None,
-    span_id: str | None = None,
-    message_index: int = 0,
-) -> str | list[str] | None:
+) -> ProcessedContentPart | dict | list[ProcessedContentPart | dict] | None:
     if isinstance(content, types.Content):
         parts = to_dict(content).get("parts", [])
         return [_process_part(part) for part in parts]
@@ -116,9 +140,9 @@ def _process_part_union(
     span_id: str | None = None,
     message_index: int = 0,
     content_index: int = 0,
-) -> str | None:
+) -> ProcessedContentPart | dict | None:
     if isinstance(content, str):
-        return content
+        return ProcessedContentPart(content=content)
     elif isinstance(content, types.File):
         content_dict = to_dict(content)
         name = (
@@ -126,7 +150,7 @@ def _process_part_union(
             or content_dict.get("display_name")
             or content_dict.get("uri")
         )
-        return f"files/{name}"
+        return ProcessedContentPart(content=f"files/{name}")
     elif isinstance(content, (types.Part, dict)):
         return _process_part(content, trace_id, span_id, message_index, content_index)
     else:
@@ -139,11 +163,9 @@ def _process_part(
     span_id: str | None = None,
     message_index: int = 0,
     content_index: int = 0,
-) -> str | None:
+) -> ProcessedContentPart | dict | None:
     part_dict = to_dict(content)
-    if part_dict.get("text") is not None:
-        return part_dict.get("text")
-    elif part_dict.get("inline_data"):
+    if part_dict.get("inline_data"):
         blob = to_dict(part_dict.get("inline_data"))
         if blob.get("mime_type").startswith("image/"):
             return _process_image_item(
@@ -151,7 +173,19 @@ def _process_part(
             )
         else:
             # currently, only images are supported
-            return blob.get("mime_type") or "unknown_media"
+            return ProcessedContentPart(
+                content=blob.get("mime_type") or "unknown_media"
+            )
+    elif part_dict.get("function_call"):
+        return ProcessedContentPart(
+            function_call=ToolCall(
+                name=part_dict.get("function_call").get("name"),
+                id=part_dict.get("function_call").get("id"),
+                arguments=part_dict.get("function_call").get("args", {}),
+            )
+        )
+    elif part_dict.get("text") is not None:
+        return ProcessedContentPart(content=part_dict.get("text"))
     else:
         return None
 
@@ -184,38 +218,22 @@ def with_tracer_wrapper(func):
     return _with_tracer
 
 
-def _run_async(method):
-    import asyncio
-    import threading
-
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-
-    if loop and loop.is_running():
-        thread = threading.Thread(target=lambda: asyncio.run(method))
-        thread.start()
-        thread.join()
-    else:
-        asyncio.run(method)
-
-
 def _process_image_item(
     blob: dict[str, Any],
     trace_id: str,
     span_id: str,
     message_index: int,
     content_index: int,
-):
+) -> ProcessedContentPart | dict | None:
     # Convert to openai format, so backends can handle it
     return (
-        {
-            "type": "image_url",
-            "image_url": {
-                "url": f"data:image/{blob.get('mime_type').split('/')[1]};base64,{blob.get('data')}",
-            },
-        }
+        ProcessedContentPart(
+            image_url=ImageUrl(
+                image_url=ImageUrlInner(
+                    url=f"data:image/{blob.get('mime_type').split('/')[1]};base64,{blob.get('data')}",
+                )
+            )
+        )
         if Config.convert_image_to_openai_format
         else blob
     )

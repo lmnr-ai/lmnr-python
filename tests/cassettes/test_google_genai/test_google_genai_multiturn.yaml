@@ -1,0 +1,127 @@
+interactions:
+- request:
+    body: '{"contents": [{"parts": [{"text": "Come up with an adjective in English.
+      Respond with only the adjective."}], "role": "user"}], "systemInstruction":
+      {"parts": [{"text": "Be concise and to the point. Use tools as much as possible."}],
+      "role": "user"}, "generationConfig": {}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '274'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - google-genai-sdk/1.19.0 gl-python/3.12.3
+      x-goog-api-client:
+      - google-genai-sdk/1.19.0 gl-python/3.12.3
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/12QUU+DMBSF3/kVpM+iiOFB38xY4hKNi6IxMYtp5A4aS9u1d5OF8N9tYbAiD6S9
+        59zbe742CEPyTUXBCopgyF34aSth2PZ/p0mBINAKY8kWFdV49g5f652tBaFxTWSpKqhBU048vZvO
+        m4vzVC05uJZaFjDZu9FAtkwwU70ANVI422v+vCaTykQBjS3HwfhAP5rsDS3hCZDafHRKQZSWtcJc
+        /oBYyH2f7yYehnk4Zvr1SUaJlM+UdOz0pprMvsm4T8kDaCNSzvDocuTLj5x4GHC+1Mgh8HARrOS+
+        rPDfgrfBideA8B20YQOr/m6uSqgtxCi5TKMtp6aKlIYDg98oTqMk7pcgGoySwsCqcI3qwB/o4/Et
+        2+2yxsTr5Gsh4/sVCbrgD3xqzk47AgAA
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Tue, 10 Jun 2025 09:23:50 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=371
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"contents": [{"parts": [{"text": "Come up with an adjective in English.
+      Respond with only the adjective."}], "role": "user"}, {"parts": [{"text": "Ephemeral"}],
+      "role": "model"}, {"parts": [{"text": "Now generate a haiku using this adjective."}],
+      "role": "user"}], "systemInstruction": {"parts": [{"text": "Be concise and to
+      the point. Use tools as much as possible."}], "role": "user"}, "generationConfig":
+      {}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '412'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - google-genai-sdk/1.19.0 gl-python/3.12.3
+      x-goog-api-client:
+      - google-genai-sdk/1.19.0 gl-python/3.12.3
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/1WRXU/CMBSG7/crml4zhAFKvBWiiyGgLsZEvajusDZ07ezp+Ajhv9ttDLpe9OO8
+        b885fXoMCKG/TKUiZRaQ3pNPFyHkWM+VppUFZZ3QhlywYMZevc04entnsbCvLtF5wSEHwyRJYdf7
+        UktFcm2UUBnJDEPskR8jYC0PBLlQgM6ScFDEciBYupVtAImwferlP132371rV0ZLqErmOgXZ2k+t
+        ga6FEshfgaFWle0tWa7oRRUqhb0LD4K2QJ2alsgyWIBljg+7UKCF0XlhE70B9aDLms84apJ5ODv6
+        cHrWrbZMdqTRbat5eXHmqgrpc/a+wD2SSWEP1UuS+UdCPRC221ZLIvCAUct1mXHbbXE0mAZnZA3F
+        dzAoGlz1GW8yyB3HMOpPwrVkyMPCwFbALhxMwmhQd0ENYKEVQpxWF/9W8onF0ez57nGxTeOVtMlw
+        /BLT4BT8A006io9+AgAA
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Tue, 10 Jun 2025 09:23:52 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=2436
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1
