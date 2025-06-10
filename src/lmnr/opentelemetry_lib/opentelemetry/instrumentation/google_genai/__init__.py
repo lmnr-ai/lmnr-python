@@ -162,7 +162,7 @@ def _set_request_attributes(span, args, kwargs):
             set_span_attribute(
                 span,
                 f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.content",
-                get_content(process_content_union(system_instruction))["text"],
+                (get_content(process_content_union(system_instruction)) or {}).get("text", ""),
             )
             set_span_attribute(
                 span, f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.role", "system"
