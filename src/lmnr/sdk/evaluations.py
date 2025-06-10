@@ -233,10 +233,10 @@ class Evaluation:
             export_timeout_seconds=trace_export_timeout_seconds,
         )
 
-    async def run(self) -> Awaitable[None]:
+    async def run(self) -> Awaitable[dict[str, int | float]]:
         return await self._run()
 
-    async def _run(self) -> None:
+    async def _run(self) -> dict[str, int | float]:
         if isinstance(self.data, LaminarDataset):
             self.data.set_client(
                 LaminarClient(
@@ -261,11 +261,12 @@ class Evaluation:
         except Exception as e:
             self.reporter.stopWithError(e)
             await self._shutdown()
-            return
+            return {}
 
         average_scores = get_average_scores(result_datapoints)
         self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
         await self._shutdown()
+        return average_scores
 
     async def _shutdown(self):
         # We use flush() instead of shutdown() because multiple evaluations

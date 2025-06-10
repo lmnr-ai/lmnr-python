@@ -6,7 +6,7 @@ from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
     SimpleSpanProcessor,
 )
-from opentelemetry.trace import Span
+from opentelemetry.sdk.trace import Span
 from opentelemetry.context import Context, get_value, get_current, set_value
 
 from lmnr.opentelemetry_lib.tracing.attributes import (
