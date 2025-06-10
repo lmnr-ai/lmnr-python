@@ -157,7 +157,7 @@ def cli():
         "--continue-on-error",
         action="store_true",
         default=False,
-        help="Fail on error",
+        help="Continue execution upon errors",
     )
 
     parser_eval.add_argument(
