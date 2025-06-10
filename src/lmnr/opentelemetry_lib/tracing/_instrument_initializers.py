@@ -171,6 +171,18 @@ class LangchainInstrumentorInitializer(InstrumentorInitializer):
         return LangchainInstrumentor()
 
 
+class LanggraphInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("langgraph"):
+            return None
+        if not is_package_installed("langchain-core"):
+            return None
+
+        from ..opentelemetry.instrumentation.langgraph import LanggraphInstrumentor
+
+        return LanggraphInstrumentor()
+
+
 class LlamaIndexInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not (

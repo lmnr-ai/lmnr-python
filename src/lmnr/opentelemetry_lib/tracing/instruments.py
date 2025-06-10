@@ -26,6 +26,7 @@ class Instruments(Enum):
     HAYSTACK = "haystack"
     LANCEDB = "lancedb"
     LANGCHAIN = "langchain"
+    LANGGRAPH = "langgraph"
     LLAMA_INDEX = "llama_index"
     MARQO = "marqo"
     MCP = "mcp"
@@ -62,6 +63,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.HAYSTACK: initializers.HaystackInstrumentorInitializer(),
     Instruments.LANCEDB: initializers.LanceDBInstrumentorInitializer(),
     Instruments.LANGCHAIN: initializers.LangchainInstrumentorInitializer(),
+    Instruments.LANGGRAPH: initializers.LanggraphInstrumentorInitializer(),
     Instruments.LLAMA_INDEX: initializers.LlamaIndexInstrumentorInitializer(),
     Instruments.MARQO: initializers.MarqoInstrumentorInitializer(),
     Instruments.MCP: initializers.MCPInstrumentorInitializer(),
