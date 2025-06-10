@@ -1,0 +1,67 @@
+interactions:
+- request:
+    body: '{"contents": [{"parts": [{"text": "What is the weather in Tokyo?"}], "role":
+      "user"}], "systemInstruction": {"parts": [{"text": "Be concise and to the point.
+      Use tools as much as possible."}], "role": "user"}, "tools": [{"functionDeclarations":
+      [{"description": "Gets the weather in a given city.", "name": "get_weather",
+      "parameters": {"properties": {"location": {"description": "The location to get
+      the weather for.", "type": "STRING"}}, "required": ["location"], "type": "OBJECT"}}]}],
+      "generationConfig": {}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '512'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - google-genai-sdk/1.19.0 gl-python/3.12.3
+      x-goog-api-client:
+      - google-genai-sdk/1.19.0 gl-python/3.12.3
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/3VRYUvDMBD93l9R8nnVbloHfhtTmYg4dA5BRI712oalSUmuzjH2303Tdmun9kNJ
+        7r179/Ju5/k+W4GMeQyEhl3777bi+zv3rzAlCSVZoC3ZYgGajtz623XOlpKUckVcySkI0WtucAk5
+        2jpLkT43CJShZoNTEujU/NFsEaFWUMlXEgu13ip2wtl7/92O54/jQKaVcH5yFaNoxfYtgSVccpM9
+        I5h65sviaX7wy7iM8duWQ68d4KRZaSDFRySw4cLhIazQKi/I2kY5VaULdxzWYp1d9PBh1OCkCEQf
+        urga/NI1N3YqF90ldfZnHwmC09ald/u26CRvB/RstUl4ncAYZapMM+pbjIZek1gd4hK1aTbk7uY8
+        xdzGGIzOoiARYLKg0PjFcROEUTAKnQmm0RRKGryPq8bx+m4GD/lkhjBfx69zSrbAJ5fM23s/T1/r
+        n7oCAAA=
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Mon, 09 Jun 2025 20:19:58 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=718
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1

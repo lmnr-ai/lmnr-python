@@ -1,6 +1,7 @@
 """OpenTelemetry Google Generative AI API instrumentation"""
 
 from collections import defaultdict
+import json
 import logging
 import os
 from typing import AsyncGenerator, Callable, Collection, Generator
@@ -11,7 +12,9 @@ from .config import (
     Config,
 )
 from .utils import (
+    ProcessedContentPart,
     dont_throw,
+    get_content,
     role_from_content_union,
     set_span_attribute,
     process_content_union,
@@ -159,7 +162,7 @@ def _set_request_attributes(span, args, kwargs):
             set_span_attribute(
                 span,
                 f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.content",
-                process_content_union(system_instruction),
+                (get_content(process_content_union(system_instruction)) or {}).get("text", ""),
             )
             set_span_attribute(
                 span, f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.role", "system"
@@ -169,11 +172,42 @@ def _set_request_attributes(span, args, kwargs):
         if not isinstance(contents, list):
             contents = [contents]
         for content in contents:
+            processed_content = process_content_union(content)
+            content_str = get_content(processed_content)
             set_span_attribute(
                 span,
                 f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.content",
-                process_content_union(content),
+                (
+                    content_str
+                    if isinstance(content_str, str)
+                    else json.dumps(content_str)
+                ),
             )
+            blocks = (
+                processed_content
+                if isinstance(processed_content, list)
+                else [processed_content]
+            )
+            for j, block in enumerate(blocks):
+                block_dict = to_dict(block)
+                if not block_dict.get("function_call"):
+                    continue
+                function_call = to_dict(block_dict.get("function_call", {}))
+                set_span_attribute(
+                    span,
+                    f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.tool_calls.{j}.name",
+                    function_call.get("name"),
+                )
+                set_span_attribute(
+                    span,
+                    f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.tool_calls.{j}.id",
+                    function_call.get("id"),
+                )
+                set_span_attribute(
+                    span,
+                    f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.tool_calls.{j}.arguments",
+                    json.dumps(function_call.get("arguments")),
+                )
             set_span_attribute(
                 span,
                 f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.role",
@@ -218,23 +252,64 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
         )
 
     if should_send_prompts():
-        if len(candidates) > 1:
-            for i, candidate in enumerate(candidates):
+        set_span_attribute(
+            span, f"{gen_ai_attributes.GEN_AI_COMPLETION}.0.role", "model"
+        )
+        candidates_list = candidates if isinstance(candidates, list) else [candidates]
+        for i, candidate in enumerate(candidates_list):
+            processed_content = process_content_union(candidate.content)
+            if isinstance(processed_content, list):
+                if all(
+                    isinstance(item, dict) and item.get("type") == "text"
+                    for item in processed_content
+                ):
+                    content_str = processed_content[0]["text"]
+                elif all(
+                    isinstance(item, ProcessedContentPart) and item.content
+                    for item in processed_content
+                ):
+                    content_str = processed_content[0].content
+                else:
+                    content_str = get_content(processed_content)
+            else:
+                content_str = get_content(processed_content)
+            set_span_attribute(
+                span, f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.role", "model"
+            )
+            set_span_attribute(
+                span,
+                f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.content",
+                (
+                    content_str
+                    if isinstance(content_str, str)
+                    else json.dumps(content_str)
+                ),
+            )
+            blocks = (
+                processed_content
+                if isinstance(processed_content, list)
+                else [processed_content]
+            )
+            for j, block in enumerate(blocks):
+                block_dict = to_dict(block)
+                if not block_dict.get("function_call"):
+                    continue
+                function_call = to_dict(block_dict.get("function_call", {}))
                 set_span_attribute(
                     span,
-                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.content",
-                    process_content_union(candidate.content),
+                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.{j}.name",
+                    function_call.get("name"),
                 )
                 set_span_attribute(
-                    span, f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.role", "assistant"
+                    span,
+                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.{j}.id",
+                    function_call.get("id"),
                 )
-        else:
-            set_span_attribute(
-                span, f"{gen_ai_attributes.GEN_AI_COMPLETION}.0.content", response.text
-            )
-            set_span_attribute(
-                span, f"{gen_ai_attributes.GEN_AI_COMPLETION}.0.role", "assistant"
-            )
+                set_span_attribute(
+                    span,
+                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.{j}.arguments",
+                    json.dumps(function_call.get("arguments")),
+                )
 
 
 @dont_throw
@@ -433,7 +508,7 @@ class GoogleGenAiSdkInstrumentor(BaseInstrumentor):
 
     def _instrument(self, **kwargs):
         tracer_provider = kwargs.get("tracer_provider")
-        tracer = get_tracer(__name__, "0.0.1a0", tracer_provider)
+        tracer = get_tracer(__name__, "0.0.1a1", tracer_provider)
 
         for wrapped_method in WRAPPED_METHODS:
             wrap_function_wrapper(
