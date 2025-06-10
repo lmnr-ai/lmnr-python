@@ -125,7 +125,6 @@ async def run_evaluation(args):
 
         if args.output_file:
             with open(args.output_file, "w") as f:
-                print(scores)
                 json.dump(scores, f, indent=2)
     finally:
         PREPARE_ONLY.reset(prep_token)
