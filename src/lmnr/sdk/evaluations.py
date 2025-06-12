@@ -201,9 +201,9 @@ class Evaluation:
         api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
         if not api_key and not L.is_initialized():
             raise ValueError(
-                "Please initialize the evaluation object with"
-                " your project API key or set the LMNR_PROJECT_API_KEY"
-                " environment variable in your environment or .env file"
+                "Please pass the project API key to `evaluate`"
+                " or set the LMNR_PROJECT_API_KEY environment variable"
+                " in your environment or .env file"
             )
         self.project_api_key = api_key
 
