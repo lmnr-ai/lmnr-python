@@ -53,7 +53,7 @@ class TracerWrapper(object):
         base_http_url = f"{base_url}:{http_port}"
         if not hasattr(cls, "instance"):
             cls._initialize_logger(cls)
-            obj = cls.instance = super(TracerWrapper, cls).__new__(cls)
+            obj = super(TracerWrapper, cls).__new__(cls)
 
             obj._client = LaminarClient(
                 base_url=base_http_url,
@@ -102,6 +102,8 @@ class TracerWrapper(object):
                 client=obj._client,
                 async_client=obj._async_client,
             )
+
+            cls.instance = obj
 
             # Force flushes for debug environments (e.g. local development)
             atexit.register(obj.exit_handler)
