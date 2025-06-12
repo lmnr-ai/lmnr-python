@@ -261,7 +261,7 @@ class Evaluation:
         except Exception as e:
             self.reporter.stopWithError(e)
             await self._shutdown()
-            return {}
+            raise
 
         average_scores = get_average_scores(result_datapoints)
         self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)

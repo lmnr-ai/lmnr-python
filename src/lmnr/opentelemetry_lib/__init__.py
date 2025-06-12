@@ -54,6 +54,8 @@ class TracerManager:
 
     @staticmethod
     def flush() -> bool:
+        if not hasattr(TracerManager, "_TracerManager__tracer_wrapper"):
+            return False
         return TracerManager.__tracer_wrapper.flush()
 
     @staticmethod
