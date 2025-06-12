@@ -114,6 +114,12 @@ class Laminar:
         Raises:
             ValueError: If project API key is not set
         """
+        if cls.is_initialized():
+            cls.__logger.info(
+                "Laminar is already initialized. Skipping initialization."
+            )
+            return
+
         cls.__project_api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
         if not cls.__project_api_key:
             raise ValueError(
@@ -691,6 +697,7 @@ class Laminar:
     def shutdown(cls):
         if cls.is_initialized():
             TracerManager.shutdown()
+            cls.__initialized = False
 
     @classmethod
     def set_span_tags(cls, tags: list[str]):

@@ -1,5 +1,6 @@
 import atexit
 import logging
+import threading
 
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
@@ -24,6 +25,7 @@ MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN = 5000
 class TracerWrapper(object):
     resource_attributes: dict = {}
     enable_content_tracing: bool = True
+    _lock = threading.Lock()
     _tracer_provider: TracerProvider | None = None
     _logger: logging.Logger
     _client: LaminarClient
@@ -51,64 +53,65 @@ class TracerWrapper(object):
         logging.getLogger("opentelemetry.trace").setLevel(otel_logger_level)
 
         base_http_url = f"{base_url}:{http_port}"
-        if not hasattr(cls, "instance"):
-            cls._initialize_logger(cls)
-            obj = super(TracerWrapper, cls).__new__(cls)
+        with cls._lock:
+            if not hasattr(cls, "instance"):
+                cls._initialize_logger(cls)
+                obj = super(TracerWrapper, cls).__new__(cls)
 
-            obj._client = LaminarClient(
-                base_url=base_http_url,
-                project_api_key=project_api_key,
-            )
-            obj._async_client = AsyncLaminarClient(
-                base_url=base_http_url,
-                project_api_key=project_api_key,
-            )
+                obj._client = LaminarClient(
+                    base_url=base_http_url,
+                    project_api_key=project_api_key,
+                )
+                obj._async_client = AsyncLaminarClient(
+                    base_url=base_http_url,
+                    project_api_key=project_api_key,
+                )
 
-            obj._resource = Resource(attributes=TracerWrapper.resource_attributes)
+                obj._resource = Resource(attributes=TracerWrapper.resource_attributes)
 
-            obj._span_processor = LaminarSpanProcessor(
-                base_url=base_url,
-                api_key=project_api_key,
-                port=http_port if force_http else port,
-                exporter=exporter,
-                max_export_batch_size=max_export_batch_size,
-                timeout_seconds=timeout_seconds,
-                force_http=force_http,
-                disable_batch=disable_batch,
-            )
+                obj._span_processor = LaminarSpanProcessor(
+                    base_url=base_url,
+                    api_key=project_api_key,
+                    port=http_port if force_http else port,
+                    exporter=exporter,
+                    max_export_batch_size=max_export_batch_size,
+                    timeout_seconds=timeout_seconds,
+                    force_http=force_http,
+                    disable_batch=disable_batch,
+                )
 
-            lmnr_provider = TracerProvider(resource=obj._resource)
-            global_provider = trace.get_tracer_provider()
-            if set_global_tracer_provider and isinstance(
-                global_provider, trace.ProxyTracerProvider
-            ):
-                trace.set_tracer_provider(lmnr_provider)
+                lmnr_provider = TracerProvider(resource=obj._resource)
+                global_provider = trace.get_tracer_provider()
+                if set_global_tracer_provider and isinstance(
+                    global_provider, trace.ProxyTracerProvider
+                ):
+                    trace.set_tracer_provider(lmnr_provider)
 
-            obj._tracer_provider = lmnr_provider
+                obj._tracer_provider = lmnr_provider
 
-            obj._tracer_provider.add_span_processor(obj._span_processor)
+                obj._tracer_provider.add_span_processor(obj._span_processor)
 
-            # This is not a real instrumentation and does not generate telemetry
-            # data, but it is required to ensure that OpenTelemetry context
-            # propagation is enabled.
-            # See the README at:
-            # https://pypi.org/project/opentelemetry-instrumentation-threading/
-            ThreadingInstrumentor().instrument()
+                # This is not a real instrumentation and does not generate telemetry
+                # data, but it is required to ensure that OpenTelemetry context
+                # propagation is enabled.
+                # See the README at:
+                # https://pypi.org/project/opentelemetry-instrumentation-threading/
+                ThreadingInstrumentor().instrument()
 
-            init_instrumentations(
-                tracer_provider=obj._tracer_provider,
-                instruments=instruments,
-                block_instruments=block_instruments,
-                client=obj._client,
-                async_client=obj._async_client,
-            )
+                init_instrumentations(
+                    tracer_provider=obj._tracer_provider,
+                    instruments=instruments,
+                    block_instruments=block_instruments,
+                    client=obj._client,
+                    async_client=obj._async_client,
+                )
 
-            cls.instance = obj
+                cls.instance = obj
 
-            # Force flushes for debug environments (e.g. local development)
-            atexit.register(obj.exit_handler)
+                # Force flushes for debug environments (e.g. local development)
+                atexit.register(obj.exit_handler)
 
-        return cls.instance
+            return cls.instance
 
     def exit_handler(self):
         if isinstance(self._span_processor, LaminarSpanProcessor):
@@ -131,6 +134,7 @@ class TracerWrapper(object):
 
     @classmethod
     def verify_initialized(cls) -> bool:
+        # with cls._lock:
         return hasattr(cls, "instance") and hasattr(cls.instance, "_span_processor")
 
     @classmethod

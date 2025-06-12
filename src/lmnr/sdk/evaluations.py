@@ -207,18 +207,6 @@ class Evaluation:
             )
         self.project_api_key = api_key
 
-        if L.is_initialized():
-            self.client = AsyncLaminarClient(
-                base_url=L.get_base_http_url(),
-                project_api_key=L.get_project_api_key(),
-            )
-            if project_api_key and project_api_key != L.get_project_api_key():
-                self._logger.warning(
-                    "Project API key is different from the one used to initialize"
-                    " Laminar. Ignoring the project API key passed to the evaluation."
-                )
-            return
-
         self.client = AsyncLaminarClient(
             base_url=self.base_http_url,
             project_api_key=self.project_api_key,
