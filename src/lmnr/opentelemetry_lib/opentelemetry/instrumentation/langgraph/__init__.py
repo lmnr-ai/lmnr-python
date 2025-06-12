@@ -11,7 +11,7 @@ from .utils import (
 from langchain_core.runnables.graph import Graph
 from opentelemetry.trace import Tracer
 from wrapt import wrap_function_wrapper
-from opentelemetry.trace import get_tracer, get_current_span
+from opentelemetry.trace import get_tracer
 
 from lmnr.opentelemetry_lib.tracing.context_properties import (
     update_association_properties,
@@ -81,7 +81,9 @@ async def async_wrap_pregel_stream(
             "langgraph.nodes": json.dumps(nodes),
         },
     )
-    return await wrapped(*args, **kwargs)
+
+    async for item in wrapped(*args, **kwargs):
+        yield item
 
 
 class LanggraphInstrumentor(BaseInstrumentor):
