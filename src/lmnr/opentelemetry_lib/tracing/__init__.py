@@ -134,8 +134,8 @@ class TracerWrapper(object):
 
     @classmethod
     def verify_initialized(cls) -> bool:
-        # with cls._lock:
-        return hasattr(cls, "instance") and hasattr(cls.instance, "_span_processor")
+        with cls._lock:
+            return hasattr(cls, "instance") and hasattr(cls.instance, "_span_processor")
 
     @classmethod
     def clear(cls):

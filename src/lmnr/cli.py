@@ -100,9 +100,24 @@ async def run_evaluation(args):
             sys.modules[name] = mod
 
             spec.loader.exec_module(mod)
-            evaluations: list[Evaluation] | None = EVALUATION_INSTANCES.get()
-            if evaluations is None:
-                LOG.warning("Evaluation instance not found")
+            evaluations = []
+            try:
+                evaluations: list[Evaluation] | None = EVALUATION_INSTANCES.get()
+                if evaluations is None:
+                    LOG.warning(
+                        "Evaluation instance not found. "
+                        "`evaluate` must be called at the top level of the file, "
+                        "not inside a function when running evaluations from the CLI."
+                    )
+                    if args.continue_on_error:
+                        continue
+                    return
+            except LookupError:
+                LOG.warning(
+                    "Evaluation instance not found. "
+                    "`evaluate` must be called at the top level of the file, "
+                    "not inside a function when running evaluations from the CLI."
+                )
                 if args.continue_on_error:
                     continue
                 return

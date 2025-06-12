@@ -53,13 +53,13 @@ def test_start_as_current_span_span_type(exporter: InMemorySpanExporter):
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
-def test_start_as_current_span_labels(exporter: InMemorySpanExporter):
-    with Laminar.start_as_current_span("test", labels=["foo", "bar"]):
+def test_start_as_current_span_tags(exporter: InMemorySpanExporter):
+    with Laminar.start_as_current_span("test", tags=["foo", "bar"]):
         pass
 
     spans = exporter.get_finished_spans()
     assert len(spans) == 1
-    assert spans[0].attributes["lmnr.association.properties.labels"] == (
+    assert spans[0].attributes["lmnr.association.properties.tags"] == (
         "foo",
         "bar",
     )
