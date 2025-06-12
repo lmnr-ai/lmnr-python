@@ -35,6 +35,10 @@ class Evals(BaseResource):
             },
             headers=self._headers(),
         )
+        if response.status_code != 200:
+            if response.status_code == 401:
+                raise ValueError("Unauthorized. Please check your project API key.")
+            raise ValueError(f"Error initializing evaluation: {response.text}")
         resp_json = response.json()
         return InitEvaluationResponse.model_validate(resp_json)
 

@@ -199,11 +199,11 @@ class Evaluation:
         self.base_http_url = f"{base_url}:{http_port or 443}"
 
         api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
-        if not api_key:
+        if not api_key and not L.is_initialized():
             raise ValueError(
-                "Please initialize the Laminar object with"
-                " your project API key or set the LMNR_PROJECT_API_KEY"
-                " environment variable in your environment or .env file"
+                "Please pass the project API key to `evaluate`"
+                " or set the LMNR_PROJECT_API_KEY environment variable"
+                " in your environment or .env file"
             )
         self.project_api_key = api_key
 
@@ -212,17 +212,12 @@ class Evaluation:
                 base_url=L.get_base_http_url(),
                 project_api_key=L.get_project_api_key(),
             )
-            if project_api_key and project_api_key != L.get_project_api_key():
-                self._logger.warning(
-                    "Project API key is different from the one used to initialize"
-                    " Laminar. Ignoring the project API key passed to the evaluation."
-                )
-            return
+        else:
+            self.client = AsyncLaminarClient(
+                base_url=self.base_http_url,
+                project_api_key=self.project_api_key,
+            )
 
-        self.client = AsyncLaminarClient(
-            base_url=self.base_http_url,
-            project_api_key=self.project_api_key,
-        )
         L.initialize(
             project_api_key=project_api_key,
             base_url=base_url,
@@ -261,7 +256,7 @@ class Evaluation:
         except Exception as e:
             self.reporter.stopWithError(e)
             await self._shutdown()
-            return {}
+            raise
 
         average_scores = get_average_scores(result_datapoints)
         self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
