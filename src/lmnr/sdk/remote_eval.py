@@ -1584,38 +1584,7 @@ class RemoteEvaluationRunner:
             project_api_key=api_key,
             port=http_port
         )
-    
-    async def upload_bundle(self, bundle_file: str) -> str:
-        """
-        Upload evaluation bundle to Laminar servers.
         
-        Args:
-            bundle_file: Path to the bundle zip file
-            
-        Returns:
-            Bundle ID for referencing the uploaded bundle
-        """
-        bundle_path = Path(bundle_file)
-        if not bundle_path.exists():
-            raise FileNotFoundError(f"Bundle file not found: {bundle_file}")
-        
-        # Read bundle file
-        bundle_data = bundle_path.read_bytes()
-        
-        self._logger.info(f"Uploading bundle {bundle_path.name} ({len(bundle_data)} bytes)")
-        
-        try:
-            response = await self.client._remote_evals.upload_bundle(bundle_data)
-            bundle_id = response.get("bundle_id")
-            if not bundle_id:
-                raise ValueError("Invalid response: missing bundle_id")
-            
-            self._logger.info(f"Bundle uploaded successfully with ID: {bundle_id}")
-            return bundle_id
-        except Exception as e:
-            self._logger.error(f"Failed to upload bundle: {e}")
-            raise
-    
     async def run_remote_evaluation(
         self,
         bundle_id: str,
