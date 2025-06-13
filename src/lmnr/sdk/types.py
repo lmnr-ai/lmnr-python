@@ -50,7 +50,7 @@ EvaluatorFunction = Callable[
 
 
 class HumanEvaluator(pydantic.BaseModel):
-    queueName: str
+    pass
 
 
 class InitEvaluationResponse(pydantic.BaseModel):
@@ -136,6 +136,7 @@ class SpanType(Enum):
     PIPELINE = "PIPELINE"  # must not be set manually
     EXECUTOR = "EXECUTOR"
     EVALUATOR = "EVALUATOR"
+    HUMAN_EVALUATOR = "HUMAN_EVALUATOR"
     EVALUATION = "EVALUATION"
 
 
