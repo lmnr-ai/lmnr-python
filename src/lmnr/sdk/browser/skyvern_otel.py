@@ -22,18 +22,21 @@ except ImportError as e:
 _instruments = ("skyvern >= 0.1.0",)
 
 WRAPPED_METHODS = [
+    # Class method example
     {
         "package": "skyvern.library.skyvern",
-        "object": "Skyvern",
-        "method": "run_task",
+        "object": "Skyvern",  # Class name
+        "method": "run_task", # Method name
         "span_name": "Skyvern.run_task",
         "ignore_input": False,
         "ignore_output": False,
         "span_type": "DEFAULT",
     },
+    # Module-level function example
     {
-        "package": "skyvern.webeye.scraper",
-        "method": "get_interactable_element_tree",
+        "package": "skyvern.webeye.scraper.scraper",
+        # No "object" field for module-level functions
+        "method": "get_interactable_element_tree", # Function name
         "span_name": "get_interactable_element_tree",
         "ignore_input": False,
         "ignore_output": False,
@@ -54,7 +57,7 @@ async def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
             get_input_from_func_args(wrapped, True, args, kwargs)
         )
     
-    with tracer.start_as_current_span(span_name, attributes=attributes) as span:
+    with tracer.start_as_current_span(span_name) as span:
         span.set_attributes(attributes)
         result = await wrapped(*args, **kwargs)
         if not to_wrap.get("ignore_output"):
@@ -81,12 +84,19 @@ class SkyvernInstrumentor(BaseInstrumentor):
 
         for wrapped_method in WRAPPED_METHODS:
             wrap_package = wrapped_method.get("package")
-            span_name = wrapped_method.get("span_name")
+            wrap_object = wrapped_method.get("object")
+            wrap_method = wrapped_method.get("method")
+
+            # For class methods: "Class.method", for module functions: just "function_name"
+            if wrap_object:
+                target = f"{wrap_object}.{wrap_method}"
+            else:
+                target = wrap_method
 
             try:
                 wrap_function_wrapper(
                     wrap_package,
-                    span_name,
+                    target,
                     _wrap(
                         tracer,
                         wrapped_method,
@@ -98,11 +108,14 @@ class SkyvernInstrumentor(BaseInstrumentor):
     def _uninstrument(self, **kwargs):
         for wrapped_method in WRAPPED_METHODS:
             wrap_package = wrapped_method.get("package")
-            span_name = wrapped_method.get("span_name")
+            wrap_object = wrapped_method.get("object")
             wrap_method = wrapped_method.get("method")
 
-            unwrap(
-                f"{wrap_package}.{span_name}" if span_name else wrap_package,
-                wrap_method,
-            )
+            # For class methods: "package.Class", for module functions: just "package"
+            if wrap_object:
+                module_path = f"{wrap_package}.{wrap_object}"
+            else:
+                module_path = wrap_package
+
+            unwrap(module_path, wrap_method)
 
