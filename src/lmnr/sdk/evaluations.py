@@ -56,7 +56,11 @@ def get_average_scores(results: list[EvaluationResultDatapoint]) -> dict[str, Nu
 
     average_scores = {}
     for key, values in per_score_values.items():
-        average_scores[key] = sum(v if v is not None else 0 for v in values) / len(values)
+        scores = [v for v in values if v is not None]
+        
+        # If there are no scores, we don't want to include the key in the average scores
+        if len(scores) > 0:
+            average_scores[key] = sum(scores) / len(scores)
 
     return average_scores
 
