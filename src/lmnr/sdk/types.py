@@ -9,7 +9,7 @@ import uuid
 
 from enum import Enum
 from opentelemetry.trace import SpanContext, TraceFlags
-from typing import Any, Awaitable, Callable, Literal
+from typing import Any, Awaitable, Callable, Literal, Optional
 
 from .utils import serialize
 
@@ -94,7 +94,7 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
     data: EvaluationDatapointData
     target: EvaluationDatapointTarget
     executor_output: ExecutorFunctionReturnType
-    scores: dict[str, Numeric]
+    scores: dict[str, Optional[Numeric]]
     human_evaluators: list[HumanEvaluator] = pydantic.Field(default_factory=list)
     trace_id: uuid.UUID
     executor_span_id: uuid.UUID

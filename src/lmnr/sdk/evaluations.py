@@ -56,7 +56,7 @@ def get_average_scores(results: list[EvaluationResultDatapoint]) -> dict[str, Nu
 
     average_scores = {}
     for key, values in per_score_values.items():
-        average_scores[key] = sum(values) / len(values)
+        average_scores[key] = sum(v if v is not None else 0 for v in values) / len(values)
 
     return average_scores
 
@@ -357,6 +357,9 @@ class Evaluation:
                         human_evaluator_span.set_attribute(SPAN_TYPE, SpanType.HUMAN_EVALUATOR.value)
                         # Human evaluators don't execute automatically, just create the span
                         L.set_span_output(None)
+                    
+                    # We don't want to save the score for human evaluators
+                    scores[evaluator_name] = None
                 else:
                     # Regular evaluator function
                     with L.start_as_current_span(
