@@ -34,6 +34,7 @@ class Instruments(Enum):
     MISTRAL = "mistral"
     OLLAMA = "ollama"
     OPENAI = "openai"
+    OPENAI_RESPONSES = "openai_responses"
     PATCHRIGHT = "patchright"
     PINECONE = "pinecone"
     PLAYWRIGHT = "playwright"
@@ -71,6 +72,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.MISTRAL: initializers.MistralInstrumentorInitializer(),
     Instruments.OLLAMA: initializers.OllamaInstrumentorInitializer(),
     Instruments.OPENAI: initializers.OpenAIInstrumentorInitializer(),
+    Instruments.OPENAI_RESPONSES: initializers.OpenAIResponsesInstrumentorInitializer(),
     Instruments.PATCHRIGHT: initializers.PatchrightInstrumentorInitializer(),
     Instruments.PINECONE: initializers.PineconeInstrumentorInitializer(),
     Instruments.PLAYWRIGHT: initializers.PlaywrightInstrumentorInitializer(),
