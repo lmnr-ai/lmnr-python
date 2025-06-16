@@ -22,7 +22,6 @@ except ImportError as e:
 _instruments = ("skyvern >= 0.1.0",)
 
 WRAPPED_METHODS = [
-    # Class method example
     {
         "package": "skyvern.library.skyvern",
         "object": "Skyvern",  # Class name
@@ -32,7 +31,6 @@ WRAPPED_METHODS = [
         "ignore_output": False,
         "span_type": "DEFAULT",
     },
-    # Module-level function example
     {
         "package": "skyvern.webeye.scraper.scraper",
         # No "object" field for module-level functions
@@ -42,6 +40,15 @@ WRAPPED_METHODS = [
         "ignore_output": False,
         "span_type": "DEFAULT",
     },
+    {
+        "package": "skyvern.forge.agent",
+        "object": "ForgeAgent",
+        "method": "execute_step",
+        "span_name": "ForgeAgent.execute_step",
+        "ignore_input": False,
+        "ignore_output": False,
+        "span_type": "DEFAULT",
+    }
 ]
 
 
