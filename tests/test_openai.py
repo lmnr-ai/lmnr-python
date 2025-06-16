@@ -19,7 +19,6 @@ def test_openai_completion(exporter: InMemorySpanExporter):
     assert len(spans) == 1
     assert spans[0].name == "openai.chat"
     assert spans[0].attributes["gen_ai.request.model"] == "gpt-4.1-nano"
-    assert spans[0].name == "openai.chat"
     assert spans[0].attributes["lmnr.span.path"] == ("openai.chat",)
 
 

@@ -3,10 +3,8 @@ import logging
 import openai
 import os
 import re
-import threading
 import traceback
 
-from contextlib import asynccontextmanager
 from importlib.metadata import version
 from opentelemetry import context as context_api
 
@@ -24,7 +22,7 @@ def is_azure_openai(instance):
     )
 
 
-def _with_tracer_wrapper(func):
+def with_tracer_wrapper(func):
     def _with_tracer(tracer):
         def wrapper(wrapped, instance, args, kwargs):
             return func(tracer, wrapped, instance, args, kwargs)
@@ -32,12 +30,6 @@ def _with_tracer_wrapper(func):
         return wrapper
 
     return _with_tracer
-
-
-@asynccontextmanager
-async def start_as_current_span_async(tracer, *args, **kwargs):
-    with tracer.start_as_current_span(*args, **kwargs) as span:
-        yield span
 
 
 def dont_throw(func):
@@ -61,7 +53,7 @@ def dont_throw(func):
 
     def _handle_exception(e, func, logger):
         logger.debug(
-            "OpenLLMetry failed to trace in %s, error: %s",
+            "Laminar failed to trace in %s, error: %s",
             func.__name__,
             traceback.format_exc(),
         )
@@ -69,21 +61,7 @@ def dont_throw(func):
     return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
 
 
-def run_async(method):
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-
-    if loop and loop.is_running():
-        thread = threading.Thread(target=lambda: asyncio.run(method))
-        thread.start()
-        thread.join()
-    else:
-        asyncio.run(method)
-
-
-def _set_span_attribute(span, name, value):
+def set_span_attribute(span, name, value):
     if value is None or value == "":
         return
 

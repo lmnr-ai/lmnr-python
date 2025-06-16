@@ -27,8 +27,8 @@ from opentelemetry.trace import SpanKind, Span, StatusCode, Tracer
 from typing_extensions import TypeAlias
 
 from .utils import (
-    _set_span_attribute,
-    _with_tracer_wrapper,
+    set_span_attribute,
+    with_tracer_wrapper,
     dont_throw,
     is_validator_iterator,
     model_as_dict,
@@ -99,17 +99,17 @@ def process_content_block(
 
 @dont_throw
 def set_data_attributes(traced_response: TracedData, span: Span):
-    _set_span_attribute(span, GEN_AI_REQUEST_MODEL, traced_response.request_model)
-    _set_span_attribute(span, GEN_AI_RESPONSE_ID, traced_response.response_id)
-    _set_span_attribute(span, GEN_AI_RESPONSE_MODEL, traced_response.response_model)
+    set_span_attribute(span, GEN_AI_REQUEST_MODEL, traced_response.request_model)
+    set_span_attribute(span, GEN_AI_RESPONSE_ID, traced_response.response_id)
+    set_span_attribute(span, GEN_AI_RESPONSE_MODEL, traced_response.response_model)
     if usage := traced_response.usage:
-        _set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, usage.input_tokens)
-        _set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, usage.output_tokens)
-        _set_span_attribute(
+        set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, usage.input_tokens)
+        set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, usage.output_tokens)
+        set_span_attribute(
             span, SpanAttributes.LLM_USAGE_TOTAL_TOKENS, usage.total_tokens
         )
         if usage.input_tokens_details:
-            _set_span_attribute(
+            set_span_attribute(
                 span,
                 SpanAttributes.LLM_USAGE_CACHE_READ_INPUT_TOKENS,
                 usage.input_tokens_details.cached_tokens,
@@ -119,19 +119,19 @@ def set_data_attributes(traced_response: TracedData, span: Span):
     if should_send_prompts():
         prompt_index = 0
         if traced_response.instructions:
-            _set_span_attribute(
+            set_span_attribute(
                 span,
                 f"{GEN_AI_PROMPT}.{prompt_index}.content",
                 traced_response.instructions,
             )
-            _set_span_attribute(span, f"{GEN_AI_PROMPT}.{prompt_index}.role", "system")
+            set_span_attribute(span, f"{GEN_AI_PROMPT}.{prompt_index}.role", "system")
             prompt_index += 1
 
         if isinstance(traced_response.input, str):
-            _set_span_attribute(
+            set_span_attribute(
                 span, f"{GEN_AI_PROMPT}.{prompt_index}.content", traced_response.input
             )
-            _set_span_attribute(span, f"{GEN_AI_PROMPT}.{prompt_index}.role", "user")
+            set_span_attribute(span, f"{GEN_AI_PROMPT}.{prompt_index}.role", "user")
             prompt_index += 1
         else:
             for block in traced_response.input:
@@ -149,24 +149,24 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                         stringified_content = (
                             str(content) if content is not None else ""
                         )
-                    _set_span_attribute(
+                    set_span_attribute(
                         span,
                         f"{GEN_AI_PROMPT}.{prompt_index}.content",
                         stringified_content,
                     )
-                    _set_span_attribute(
+                    set_span_attribute(
                         span,
                         f"{GEN_AI_PROMPT}.{prompt_index}.role",
                         block_dict.get("role"),
                     )
                     prompt_index += 1
                 elif block_dict.get("type") == "computer_call_output":
-                    _set_span_attribute(
+                    set_span_attribute(
                         span, f"{GEN_AI_PROMPT}.{prompt_index}.role", "computer-call"
                     )
                     output_image_url = block_dict.get("output", {}).get("image_url")
                     if output_image_url:
-                        _set_span_attribute(
+                        set_span_attribute(
                             span,
                             f"{GEN_AI_PROMPT}.{prompt_index}.content",
                             json.dumps(
@@ -180,7 +180,7 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                         )
                     prompt_index += 1
                 elif block_dict.get("type") == "computer_call":
-                    _set_span_attribute(
+                    set_span_attribute(
                         span, f"{GEN_AI_PROMPT}.{prompt_index}.role", "assistant"
                     )
                     call_content = {}
@@ -190,7 +190,7 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                         call_content["call_id"] = block_dict.get("call_id")
                     if block_dict.get("action"):
                         call_content["action"] = block_dict.get("action")
-                    _set_span_attribute(
+                    set_span_attribute(
                         span,
                         f"{GEN_AI_PROMPT}.{prompt_index}.content",
                         json.dumps(call_content),
@@ -198,9 +198,9 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                     prompt_index += 1
                 # TODO: handle other block types
 
-        _set_span_attribute(span, f"{GEN_AI_COMPLETION}.0.role", "assistant")
+        set_span_attribute(span, f"{GEN_AI_COMPLETION}.0.role", "assistant")
         if traced_response.output_text:
-            _set_span_attribute(
+            set_span_attribute(
                 span, f"{GEN_AI_COMPLETION}.0.content", traced_response.output_text
             )
         tool_call_index = 0
@@ -210,71 +210,71 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                 # either a refusal or handled in output_text above
                 continue
             if block_dict.get("type") == "function_call":
-                _set_span_attribute(
+                set_span_attribute(
                     span,
                     f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.id",
                     block_dict.get("id"),
                 )
-                _set_span_attribute(
+                set_span_attribute(
                     span,
                     f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.name",
                     block_dict.get("name"),
                 )
-                _set_span_attribute(
+                set_span_attribute(
                     span,
                     f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.arguments",
                     block_dict.get("arguments"),
                 )
                 tool_call_index += 1
             elif block_dict.get("type") == "file_search_call":
-                _set_span_attribute(
+                set_span_attribute(
                     span,
                     f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.id",
                     block_dict.get("id"),
                 )
-                _set_span_attribute(
+                set_span_attribute(
                     span,
                     f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.name",
                     "file_search_call",
                 )
                 tool_call_index += 1
             elif block_dict.get("type") == "web_search_call":
-                _set_span_attribute(
+                set_span_attribute(
                     span,
                     f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.id",
                     block_dict.get("id"),
                 )
-                _set_span_attribute(
+                set_span_attribute(
                     span,
                     f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.name",
                     "web_search_call",
                 )
                 tool_call_index += 1
             elif block_dict.get("type") == "computer_call":
-                _set_span_attribute(
+                set_span_attribute(
                     span,
                     f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.id",
                     block_dict.get("call_id"),
                 )
-                _set_span_attribute(
+                set_span_attribute(
                     span,
                     f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.name",
                     "computer_call",
                 )
-                _set_span_attribute(
+                set_span_attribute(
                     span,
                     f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.arguments",
                     json.dumps(block_dict.get("action")),
                 )
                 tool_call_index += 1
             elif block_dict.get("type") == "reasoning":
-                _set_span_attribute(
+                set_span_attribute(
                     span, f"{GEN_AI_COMPLETION}.0.reasoning", block_dict.get("summary")
                 )
             # TODO: handle other block types, in particular other calls
 
 
-@_with_tracer_wrapper
+@with_tracer_wrapper
 def responses_get_or_create_wrapper(tracer: Tracer, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
@@ -349,7 +349,7 @@ def responses_get_or_create_wrapper(tracer: Tracer, wrapped, instance, args, kwa
     return response
 
 
-@_with_tracer_wrapper
+@with_tracer_wrapper
 async def async_responses_get_or_create_wrapper(
     tracer: Tracer, wrapped, instance, args, kwargs
 ):
@@ -428,7 +428,7 @@ async def async_responses_get_or_create_wrapper(
     return response
 
 
-@_with_tracer_wrapper
+@with_tracer_wrapper
 def responses_cancel_wrapper(tracer: Tracer, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
@@ -449,7 +449,7 @@ def responses_cancel_wrapper(tracer: Tracer, wrapped, instance, args, kwargs):
     return response
 
 
-@_with_tracer_wrapper
+@with_tracer_wrapper
 async def async_responses_cancel_wrapper(
     tracer: Tracer, wrapped, instance, args, kwargs
 ):
