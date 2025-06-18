@@ -38,7 +38,7 @@ class LaminarDataset(EvaluationDataset):
             f"dataset {self.name}. Fetching batch from {self._offset} to "
             + f"{self._offset + self._fetch_size}"
         )
-        resp = self.client._evals.get_datapoints(
+        resp = self.client.evals.get_datapoints(
             self.name, self._offset, self._fetch_size
         )
         self._fetched_items += resp.items

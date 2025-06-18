@@ -241,7 +241,7 @@ class Evaluation:
             )
         self.reporter.start(len(self.data))
         try:
-            evaluation = await self.client._evals.init(
+            evaluation = await self.client.evals.init(
                 name=self.name, group_name=self.group_name
             )
             result_datapoints = await self._evaluate_in_batches(evaluation.id)
@@ -326,7 +326,7 @@ class Evaluation:
                     metadata=datapoint.metadata,
                 )
                 # First, create datapoint with trace_id so that we can show the dp in the UI
-                await self.client._evals.save_datapoints(
+                await self.client.evals.save_datapoints(
                     eval_id, [partial_datapoint], self.group_name
                 )
                 executor_span.set_attribute(SPAN_TYPE, SpanType.EXECUTOR.value)
@@ -384,7 +384,7 @@ class Evaluation:
 
         # Create background upload task without awaiting it
         upload_task = asyncio.create_task(
-            self.client._evals.save_datapoints(eval_id, [datapoint], self.group_name)
+            self.client.evals.save_datapoints(eval_id, [datapoint], self.group_name)
         )
         self.upload_tasks.append(upload_task)
 

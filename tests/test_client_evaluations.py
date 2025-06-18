@@ -35,27 +35,27 @@ class TestAsyncLaminarClientEvaluations:
     @pytest.mark.asyncio
     async def test_create_evaluation_success(self, async_client, mock_eval_response):
         """Test successful evaluation creation."""
-        with patch.object(async_client._evals, 'init', new_callable=AsyncMock) as mock_init:
-            mock_init.return_value = mock_eval_response
+        with patch.object(async_client.evals, 'create_evaluation', new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_eval_response.id
             
-            eval_id = await async_client.create_evaluation(
+            eval_id = await async_client.evals.create_evaluation(
                 name="Test Evaluation",
                 group_name="test_group"
             )
             
             assert eval_id == mock_eval_response.id
-            mock_init.assert_called_once_with(name="Test Evaluation", group_name="test_group")
+            mock_create.assert_called_once_with(name="Test Evaluation", group_name="test_group")
 
     @pytest.mark.asyncio
     async def test_create_evaluation_with_defaults(self, async_client, mock_eval_response):
         """Test evaluation creation with default parameters."""
-        with patch.object(async_client._evals, 'init', new_callable=AsyncMock) as mock_init:
-            mock_init.return_value = mock_eval_response
+        with patch.object(async_client.evals, 'create_evaluation', new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_eval_response.id
             
-            eval_id = await async_client.create_evaluation()
+            eval_id = await async_client.evals.create_evaluation()
             
             assert eval_id == mock_eval_response.id
-            mock_init.assert_called_once_with(name=None, group_name=None)
+            mock_create.assert_called_once_with()
 
     @pytest.mark.asyncio
     async def test_create_datapoint_success(self, async_client):
@@ -65,9 +65,12 @@ class TestAsyncLaminarClientEvaluations:
         test_target = {"expected": "test output"}
         test_metadata = {"custom": "value"}
         custom_trace_id = uuid.UUID("87654321-4321-8765-cba9-987654321abc")
+        expected_datapoint_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
         
-        with patch.object(async_client._evals, 'save_datapoints', new_callable=AsyncMock) as mock_save:
-            datapoint_id = await async_client.create_datapoint(
+        with patch.object(async_client.evals, 'create_datapoint', new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = expected_datapoint_id
+            
+            datapoint_id = await async_client.evals.create_datapoint(
                 eval_id=eval_id,
                 data=test_data,
                 target=test_target,
@@ -76,49 +79,42 @@ class TestAsyncLaminarClientEvaluations:
                 trace_id=custom_trace_id
             )
             
-            # Verify datapoint_id is a UUID
-            assert isinstance(datapoint_id, uuid.UUID)
+            # Verify datapoint_id is correct
+            assert datapoint_id == expected_datapoint_id
             
-            # Verify save_datapoints was called correctly
-            mock_save.assert_called_once()
-            call_args = mock_save.call_args
-            assert call_args[0][0] == eval_id  # First positional arg is eval_id
-            assert len(call_args[0][1]) == 1  # Second arg is list with one datapoint
-            
-            # Verify the datapoint structure
-            datapoint = call_args[0][1][0]
-            assert datapoint.id == datapoint_id
-            assert datapoint.data == test_data
-            assert datapoint.target == test_target
-            assert datapoint.metadata == test_metadata
-            assert datapoint.index == 1
-            assert datapoint.trace_id == custom_trace_id
+            # Verify create_datapoint was called correctly
+            mock_create.assert_called_once_with(
+                eval_id=eval_id,
+                data=test_data,
+                target=test_target,
+                metadata=test_metadata,
+                index=1,
+                trace_id=custom_trace_id
+            )
 
     @pytest.mark.asyncio
     async def test_create_datapoint_with_defaults(self, async_client):
         """Test datapoint creation with minimal parameters."""
         eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
         test_data = {"input": "test input"}
+        expected_datapoint_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
         
-        with patch.object(async_client._evals, 'save_datapoints', new_callable=AsyncMock) as mock_save:
-            datapoint_id = await async_client.create_datapoint(
+        with patch.object(async_client.evals, 'create_datapoint', new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = expected_datapoint_id
+            
+            datapoint_id = await async_client.evals.create_datapoint(
                 eval_id=eval_id,
                 data=test_data
             )
             
-            # Verify datapoint_id is a UUID
-            assert isinstance(datapoint_id, uuid.UUID)
+            # Verify datapoint_id is correct
+            assert datapoint_id == expected_datapoint_id
             
-            # Verify save_datapoints was called correctly
-            mock_save.assert_called_once()
-            call_args = mock_save.call_args
-            datapoint = call_args[0][1][0]
-            assert datapoint.id == datapoint_id
-            assert datapoint.data == test_data
-            assert datapoint.target is None
-            assert datapoint.metadata is None
-            assert datapoint.index == 0
-            assert isinstance(datapoint.trace_id, uuid.UUID)
+            # Verify create_datapoint was called correctly
+            mock_create.assert_called_once_with(
+                eval_id=eval_id,
+                data=test_data
+            )
 
     @pytest.mark.asyncio
     async def test_update_datapoint_success(self, async_client):
@@ -128,16 +124,19 @@ class TestAsyncLaminarClientEvaluations:
         executor_output = {"result": "processed output"}
         scores = {"accuracy": 0.95, "relevance": 0.88}
         
-        with patch.object(async_client._evals, 'update_datapoint', new_callable=AsyncMock) as mock_update:
-            await async_client.update_datapoint(
+        with patch.object(async_client.evals, 'update_datapoint', new_callable=AsyncMock) as mock_update:
+            await async_client.evals.update_datapoint(
                 eval_id=eval_id,
                 datapoint_id=datapoint_id,
-                executor_output=executor_output,
-                scores=scores
+                scores=scores,
+                executor_output=executor_output
             )
             
             mock_update.assert_called_once_with(
-                eval_id, datapoint_id, scores, executor_output
+                eval_id=eval_id,
+                datapoint_id=datapoint_id,
+                scores=scores,
+                executor_output=executor_output
             )
 
     @pytest.mark.asyncio
@@ -147,15 +146,17 @@ class TestAsyncLaminarClientEvaluations:
         datapoint_id = uuid.UUID("87654321-4321-8765-cba9-987654321abc")
         scores = {"accuracy": 0.95}
         
-        with patch.object(async_client._evals, 'update_datapoint', new_callable=AsyncMock) as mock_update:
-            await async_client.update_datapoint(
+        with patch.object(async_client.evals, 'update_datapoint', new_callable=AsyncMock) as mock_update:
+            await async_client.evals.update_datapoint(
                 eval_id=eval_id,
                 datapoint_id=datapoint_id,
                 scores=scores
             )
             
             mock_update.assert_called_once_with(
-                eval_id, datapoint_id, scores, None
+                eval_id=eval_id,
+                datapoint_id=datapoint_id,
+                scores=scores
             )
 
 
@@ -182,26 +183,26 @@ class TestLaminarClientEvaluations:
 
     def test_create_evaluation_success(self, sync_client, mock_eval_response):
         """Test successful evaluation creation."""
-        with patch.object(sync_client._evals, 'init') as mock_init:
-            mock_init.return_value = mock_eval_response
+        with patch.object(sync_client.evals, 'create_evaluation') as mock_create:
+            mock_create.return_value = mock_eval_response.id
             
-            eval_id = sync_client.create_evaluation(
+            eval_id = sync_client.evals.create_evaluation(
                 name="Test Evaluation",
                 group_name="test_group"
             )
             
             assert eval_id == mock_eval_response.id
-            mock_init.assert_called_once_with(name="Test Evaluation", group_name="test_group")
+            mock_create.assert_called_once_with(name="Test Evaluation", group_name="test_group")
 
     def test_create_evaluation_with_defaults(self, sync_client, mock_eval_response):
         """Test evaluation creation with default parameters."""
-        with patch.object(sync_client._evals, 'init') as mock_init:
-            mock_init.return_value = mock_eval_response
+        with patch.object(sync_client.evals, 'create_evaluation') as mock_create:
+            mock_create.return_value = mock_eval_response.id
             
-            eval_id = sync_client.create_evaluation()
+            eval_id = sync_client.evals.create_evaluation()
             
             assert eval_id == mock_eval_response.id
-            mock_init.assert_called_once_with(name=None, group_name=None)
+            mock_create.assert_called_once_with()
 
     def test_create_datapoint_success(self, sync_client):
         """Test successful datapoint creation."""
@@ -210,9 +211,12 @@ class TestLaminarClientEvaluations:
         test_target = {"expected": "test output"}
         test_metadata = {"custom": "value"}
         custom_trace_id = uuid.UUID("87654321-4321-8765-cba9-987654321abc")
+        expected_datapoint_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
         
-        with patch.object(sync_client._evals, 'save_datapoints') as mock_save:
-            datapoint_id = sync_client.create_datapoint(
+        with patch.object(sync_client.evals, 'create_datapoint') as mock_create:
+            mock_create.return_value = expected_datapoint_id
+            
+            datapoint_id = sync_client.evals.create_datapoint(
                 eval_id=eval_id,
                 data=test_data,
                 target=test_target,
@@ -221,48 +225,41 @@ class TestLaminarClientEvaluations:
                 trace_id=custom_trace_id
             )
             
-            # Verify datapoint_id is a UUID
-            assert isinstance(datapoint_id, uuid.UUID)
+            # Verify datapoint_id is correct
+            assert datapoint_id == expected_datapoint_id
             
-            # Verify save_datapoints was called correctly
-            mock_save.assert_called_once()
-            call_args = mock_save.call_args
-            assert call_args[0][0] == eval_id  # First positional arg is eval_id
-            assert len(call_args[0][1]) == 1  # Second arg is list with one datapoint
-            
-            # Verify the datapoint structure
-            datapoint = call_args[0][1][0]
-            assert datapoint.id == datapoint_id
-            assert datapoint.data == test_data
-            assert datapoint.target == test_target
-            assert datapoint.metadata == test_metadata
-            assert datapoint.index == 1
-            assert datapoint.trace_id == custom_trace_id
+            # Verify create_datapoint was called correctly
+            mock_create.assert_called_once_with(
+                eval_id=eval_id,
+                data=test_data,
+                target=test_target,
+                metadata=test_metadata,
+                index=1,
+                trace_id=custom_trace_id
+            )
 
     def test_create_datapoint_with_defaults(self, sync_client):
         """Test datapoint creation with minimal parameters."""
         eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
         test_data = {"input": "test input"}
+        expected_datapoint_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
         
-        with patch.object(sync_client._evals, 'save_datapoints') as mock_save:
-            datapoint_id = sync_client.create_datapoint(
+        with patch.object(sync_client.evals, 'create_datapoint') as mock_create:
+            mock_create.return_value = expected_datapoint_id
+            
+            datapoint_id = sync_client.evals.create_datapoint(
                 eval_id=eval_id,
                 data=test_data
             )
             
-            # Verify datapoint_id is a UUID
-            assert isinstance(datapoint_id, uuid.UUID)
+            # Verify datapoint_id is correct
+            assert datapoint_id == expected_datapoint_id
             
-            # Verify save_datapoints was called correctly
-            mock_save.assert_called_once()
-            call_args = mock_save.call_args
-            datapoint = call_args[0][1][0]
-            assert datapoint.id == datapoint_id
-            assert datapoint.data == test_data
-            assert datapoint.target is None
-            assert datapoint.metadata is None
-            assert datapoint.index == 0
-            assert isinstance(datapoint.trace_id, uuid.UUID)
+            # Verify create_datapoint was called correctly
+            mock_create.assert_called_once_with(
+                eval_id=eval_id,
+                data=test_data
+            )
 
     def test_update_datapoint_success(self, sync_client):
         """Test successful datapoint update."""
@@ -271,16 +268,19 @@ class TestLaminarClientEvaluations:
         executor_output = {"result": "processed output"}
         scores = {"accuracy": 0.95, "relevance": 0.88}
         
-        with patch.object(sync_client._evals, 'update_datapoint') as mock_update:
-            sync_client.update_datapoint(
+        with patch.object(sync_client.evals, 'update_datapoint') as mock_update:
+            sync_client.evals.update_datapoint(
                 eval_id=eval_id,
                 datapoint_id=datapoint_id,
-                executor_output=executor_output,
-                scores=scores
+                scores=scores,
+                executor_output=executor_output
             )
             
             mock_update.assert_called_once_with(
-                eval_id, datapoint_id, scores, executor_output
+                eval_id=eval_id,
+                datapoint_id=datapoint_id,
+                scores=scores,
+                executor_output=executor_output
             )
 
     def test_update_datapoint_with_minimal_params(self, sync_client):
@@ -289,15 +289,17 @@ class TestLaminarClientEvaluations:
         datapoint_id = uuid.UUID("87654321-4321-8765-cba9-987654321abc")
         scores = {"accuracy": 0.95}
         
-        with patch.object(sync_client._evals, 'update_datapoint') as mock_update:
-            sync_client.update_datapoint(
+        with patch.object(sync_client.evals, 'update_datapoint') as mock_update:
+            sync_client.evals.update_datapoint(
                 eval_id=eval_id,
                 datapoint_id=datapoint_id,
                 scores=scores
             )
             
             mock_update.assert_called_once_with(
-                eval_id, datapoint_id, scores, None
+                eval_id=eval_id,
+                datapoint_id=datapoint_id,
+                scores=scores
             )
 
 
@@ -317,33 +319,34 @@ class TestClientEvaluationIntegration:
         mock_eval_response.projectId = "test-project-id"
         
         try:
-            with patch.object(client._evals, 'init', new_callable=AsyncMock) as mock_init, \
-                 patch.object(client._evals, 'save_datapoints', new_callable=AsyncMock) as mock_save, \
-                 patch.object(client._evals, 'update_datapoint', new_callable=AsyncMock) as mock_update:
+            with patch.object(client.evals, 'create_evaluation', new_callable=AsyncMock) as mock_create_eval, \
+                 patch.object(client.evals, 'create_datapoint', new_callable=AsyncMock) as mock_create_dp, \
+                 patch.object(client.evals, 'update_datapoint', new_callable=AsyncMock) as mock_update:
                 
-                mock_init.return_value = mock_eval_response
+                mock_create_eval.return_value = mock_eval_response.id
+                mock_create_dp.return_value = uuid.UUID("22222222-2222-2222-2222-222222222222")
                 
                 # Create evaluation
-                eval_id = await client.create_evaluation(name="Integration Test")
+                eval_id = await client.evals.create_evaluation(name="Integration Test")
                 
                 # Create datapoint
-                datapoint_id = await client.create_datapoint(
+                datapoint_id = await client.evals.create_datapoint(
                     eval_id=eval_id,
                     data={"query": "What is AI?"},
                     target={"answer": "Artificial Intelligence"}
                 )
                 
                 # Update datapoint
-                await client.update_datapoint(
+                await client.evals.update_datapoint(
                     eval_id=eval_id,
                     datapoint_id=datapoint_id,
-                    executor_output={"response": "AI is artificial intelligence"},
-                    scores={"accuracy": 0.9}
+                    scores={"accuracy": 0.9},
+                    executor_output={"response": "AI is artificial intelligence"}
                 )
                 
                 # Verify all calls were made
-                mock_init.assert_called_once()
-                mock_save.assert_called_once()
+                mock_create_eval.assert_called_once()
+                mock_create_dp.assert_called_once()
                 mock_update.assert_called_once()
                 
         finally:
@@ -361,33 +364,34 @@ class TestClientEvaluationIntegration:
         mock_eval_response.projectId = "test-project-id"
         
         try:
-            with patch.object(client._evals, 'init') as mock_init, \
-                 patch.object(client._evals, 'save_datapoints') as mock_save, \
-                 patch.object(client._evals, 'update_datapoint') as mock_update:
+            with patch.object(client.evals, 'create_evaluation') as mock_create_eval, \
+                 patch.object(client.evals, 'create_datapoint') as mock_create_dp, \
+                 patch.object(client.evals, 'update_datapoint') as mock_update:
                 
-                mock_init.return_value = mock_eval_response
+                mock_create_eval.return_value = mock_eval_response.id
+                mock_create_dp.return_value = uuid.UUID("22222222-2222-2222-2222-222222222222")
                 
                 # Create evaluation
-                eval_id = client.create_evaluation(name="Integration Test")
+                eval_id = client.evals.create_evaluation(name="Integration Test")
                 
                 # Create datapoint
-                datapoint_id = client.create_datapoint(
+                datapoint_id = client.evals.create_datapoint(
                     eval_id=eval_id,
                     data={"query": "What is AI?"},
                     target={"answer": "Artificial Intelligence"}
                 )
                 
                 # Update datapoint
-                client.update_datapoint(
+                client.evals.update_datapoint(
                     eval_id=eval_id,
                     datapoint_id=datapoint_id,
-                    executor_output={"response": "AI is artificial intelligence"},
-                    scores={"accuracy": 0.9}
+                    scores={"accuracy": 0.9},
+                    executor_output={"response": "AI is artificial intelligence"}
                 )
                 
                 # Verify all calls were made
-                mock_init.assert_called_once()
-                mock_save.assert_called_once()
+                mock_create_eval.assert_called_once()
+                mock_create_dp.assert_called_once()
                 mock_update.assert_called_once()
                 
         finally:
@@ -406,11 +410,11 @@ class TestClientEvaluationErrorHandling:
         )
         
         try:
-            with patch.object(client._evals, 'init', new_callable=AsyncMock) as mock_init:
-                mock_init.side_effect = ValueError("API Error")
+            with patch.object(client.evals, 'create_evaluation', new_callable=AsyncMock) as mock_create:
+                mock_create.side_effect = ValueError("API Error")
                 
                 with pytest.raises(ValueError, match="API Error"):
-                    await client.create_evaluation()
+                    await client.evals.create_evaluation()
         finally:
             await client.close()
 
@@ -423,11 +427,11 @@ class TestClientEvaluationErrorHandling:
         )
         
         try:
-            with patch.object(client._evals, 'update_datapoint', new_callable=AsyncMock) as mock_update:
+            with patch.object(client.evals, 'update_datapoint', new_callable=AsyncMock) as mock_update:
                 mock_update.side_effect = ValueError("Update failed")
                 
                 with pytest.raises(ValueError, match="Update failed"):
-                    await client.update_datapoint(
+                    await client.evals.update_datapoint(
                         eval_id=uuid.uuid4(),
                         datapoint_id=uuid.uuid4(),
                         scores={"test": 1.0}
@@ -443,11 +447,11 @@ class TestClientEvaluationErrorHandling:
         )
         
         try:
-            with patch.object(client._evals, 'init') as mock_init:
-                mock_init.side_effect = ValueError("API Error")
+            with patch.object(client.evals, 'create_evaluation') as mock_create:
+                mock_create.side_effect = ValueError("API Error")
                 
                 with pytest.raises(ValueError, match="API Error"):
-                    client.create_evaluation()
+                    client.evals.create_evaluation()
         finally:
             client.close()
 
@@ -459,11 +463,11 @@ class TestClientEvaluationErrorHandling:
         )
         
         try:
-            with patch.object(client._evals, 'update_datapoint') as mock_update:
+            with patch.object(client.evals, 'update_datapoint') as mock_update:
                 mock_update.side_effect = ValueError("Update failed")
                 
                 with pytest.raises(ValueError, match="Update failed"):
-                    client.update_datapoint(
+                    client.evals.update_datapoint(
                         eval_id=uuid.uuid4(),
                         datapoint_id=uuid.uuid4(),
                         scores={"test": 1.0}
