@@ -7,19 +7,9 @@ import traceback
 
 from importlib.metadata import version
 from opentelemetry import context as context_api
+from openai.types.responses import ResponseInputItemParam, ResponseInputParam
 
-_OPENAI_VERSION = version("openai")
 _PYDANTIC_VERSION = version("pydantic")
-
-
-def is_openai_v1():
-    return _OPENAI_VERSION >= "1.0.0"
-
-
-def is_azure_openai(instance):
-    return is_openai_v1() and isinstance(
-        instance._client, (openai.AsyncAzureOpenAI, openai.AzureOpenAI)
-    )
 
 
 def with_tracer_wrapper(func):
@@ -92,3 +82,27 @@ def model_as_dict(model):
 
 def is_validator_iterator(content):
     return re.search(r"pydantic.*ValidatorIterator'>$", str(type(content)))
+
+
+# Looks like OpenAI API infers the type "message" if the shape is correct,
+# but it is marked as required on the message types. We add this to our
+# traced data to make it work.
+def prepare_input_param(input_param: ResponseInputItemParam) -> ResponseInputItemParam:
+    try:
+        d = model_as_dict(input_param)
+        if "type" not in d:
+            d["type"] = "message"
+        return ResponseInputItemParam(**d)
+    except Exception:
+        return input_param
+
+
+def process_input(inp: ResponseInputParam) -> ResponseInputParam:
+    if not isinstance(inp, list):
+        return inp
+    return [prepare_input_param(item) for item in inp]
+
+
+def trim_error_message(error_message: str) -> str:
+    # No-op for now, but can be trimmed for debugging
+    return error_message

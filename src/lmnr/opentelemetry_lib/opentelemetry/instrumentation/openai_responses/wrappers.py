@@ -1,15 +1,17 @@
 import json
-from typing import Any, Optional, Union
 import pydantic
 import time
 
 from openai._legacy_response import LegacyAPIResponse
 from openai.types.responses import (
     Response,
-    ResponseInputParam,
+    ResponseInputItemParam,
     ResponseOutputItem,
     ResponseUsage,
     ToolParam,
+)
+from openai.types.responses.response_output_message_param import (
+    ResponseOutputMessageParam,
 )
 from opentelemetry import context as context_api
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
@@ -24,20 +26,36 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_RESPONSE_MODEL,
 )
 from opentelemetry.trace import SpanKind, Span, StatusCode, Tracer
-from typing_extensions import TypeAlias
+from typing import Any, Optional, Union
+from typing_extensions import NotRequired, TypeAlias
+
+from lmnr.sdk.log import get_default_logger
 
 from .utils import (
-    set_span_attribute,
-    with_tracer_wrapper,
     dont_throw,
     is_validator_iterator,
     model_as_dict,
+    process_input,
+    set_span_attribute,
     should_send_prompts,
+    trim_error_message,
+    with_tracer_wrapper,
 )
 
+logger = get_default_logger(__name__)
 
+
+# OpenAI API accepts output messages without an ID in its inputs, but
+# the ID is marked as required in the output type.
+class ResponseOutputMessageParamWithoutId(ResponseOutputMessageParam):
+    id: NotRequired[str]
+
+
+# Pipe operator or Union type can't join a type and a TypeAlias
 StringAlias: TypeAlias = str
-InputClass: TypeAlias = StringAlias | ResponseInputParam
+InputClass: TypeAlias = (
+    StringAlias | list[ResponseInputItemParam | ResponseOutputMessageParamWithoutId]
+)
 
 
 class TracedData(pydantic.BaseModel):
@@ -287,22 +305,39 @@ def responses_get_or_create_wrapper(tracer: Tracer, wrapped, instance, args, kwa
         existing_data = {}
         if response_id and response_id in responses:
             existing_data = responses[response_id].model_dump()
-        traced_data = TracedData(
-            start_time=existing_data.get("start_time", start_time),
-            response_id=response_id or "",
-            input=kwargs.get("input", existing_data.get("input", [])),
-            instructions=kwargs.get("instructions", existing_data.get("instructions")),
-            tools=get_tools_from_kwargs(kwargs) or existing_data.get("tools", {}),
-            output_blocks=existing_data.get("output_blocks", {}),
-            usage=existing_data.get("usage"),
-            output_text=kwargs.get("output_text", existing_data.get("output_text", "")),
-            request_model=kwargs.get("model", existing_data.get("request_model", "")),
-            response_model=existing_data.get("response_model", ""),
-        )
+        try:
+            traced_data = TracedData(
+                start_time=existing_data.get("start_time", start_time),
+                response_id=response_id or "",
+                input=process_input(
+                    kwargs.get("input", existing_data.get("input", []))
+                ),
+                instructions=kwargs.get(
+                    "instructions", existing_data.get("instructions")
+                ),
+                tools=get_tools_from_kwargs(kwargs) or existing_data.get("tools", {}),
+                output_blocks=existing_data.get("output_blocks", {}),
+                usage=existing_data.get("usage"),
+                output_text=kwargs.get(
+                    "output_text", existing_data.get("output_text", "")
+                ),
+                request_model=kwargs.get(
+                    "model", existing_data.get("request_model", "")
+                ),
+                response_model=existing_data.get("response_model", ""),
+            )
+        except Exception as traced_data_error:
+            logger.debug(
+                f"Failed to initialize TracedData: {trim_error_message(traced_data_error)}"
+            )
+            traced_data = None
+
         span = tracer.start_span(
             "openai.responses",
             kind=SpanKind.CLIENT,
-            start_time=int(traced_data.start_time),
+            start_time=(
+                start_time if traced_data is None else int(traced_data.start_time)
+            ),
         )
         span.record_exception(e)
         span.set_status(StatusCode.ERROR, str(e))
@@ -322,20 +357,26 @@ def responses_get_or_create_wrapper(tracer: Tracer, wrapped, instance, args, kwa
 
     merged_tools = existing_data.get("tools", {}) | request_tools
 
-    traced_data = TracedData(
-        start_time=existing_data.get("start_time", start_time),
-        response_id=parsed_response.id,
-        input=existing_data.get("input", kwargs.get("input")),
-        instructions=existing_data.get("instructions", kwargs.get("instructions")),
-        tools=merged_tools if merged_tools else None,
-        output_blocks={block.id: block for block in parsed_response.output}
-        | existing_data.get("output_blocks", {}),
-        usage=existing_data.get("usage", parsed_response.usage),
-        output_text=existing_data.get("output_text", parsed_response.output_text),
-        request_model=existing_data.get("request_model", kwargs.get("model")),
-        response_model=existing_data.get("response_model", parsed_response.model),
-    )
-    responses[parsed_response.id] = traced_data
+    try:
+        traced_data = TracedData(
+            start_time=existing_data.get("start_time", start_time),
+            response_id=parsed_response.id,
+            input=process_input(existing_data.get("input", kwargs.get("input"))),
+            instructions=existing_data.get("instructions", kwargs.get("instructions")),
+            tools=merged_tools if merged_tools else None,
+            output_blocks={block.id: block for block in parsed_response.output}
+            | existing_data.get("output_blocks", {}),
+            usage=existing_data.get("usage", parsed_response.usage),
+            output_text=existing_data.get("output_text", parsed_response.output_text),
+            request_model=existing_data.get("request_model", kwargs.get("model")),
+            response_model=existing_data.get("response_model", parsed_response.model),
+        )
+        responses[parsed_response.id] = traced_data
+    except Exception as traced_data_error:
+        logger.debug(
+            f"Failed to initialize TracedData: {trim_error_message(traced_data_error)}"
+        )
+        return response
 
     if parsed_response.status == "completed":
         span = tracer.start_span(
@@ -364,24 +405,35 @@ async def async_responses_get_or_create_wrapper(
         existing_data = {}
         if response_id and response_id in responses:
             existing_data = responses[response_id].model_dump()
-        traced_data = TracedData(
-            start_time=existing_data.get("start_time", start_time),
-            response_id=response_id or "",
-            input=kwargs.get("input", existing_data.get("input", [])),
-            instructions=kwargs.get(
-                "instructions", existing_data.get("instructions", "")
-            ),
-            tools=get_tools_from_kwargs(kwargs) or existing_data.get("tools", {}),
-            output_blocks=existing_data.get("output_blocks", {}),
-            usage=existing_data.get("usage"),
-            output_text=kwargs.get("output_text", existing_data.get("output_text")),
-            request_model=kwargs.get("model", existing_data.get("request_model")),
-            response_model=existing_data.get("response_model"),
-        )
+        try:
+            traced_data = TracedData(
+                start_time=existing_data.get("start_time", start_time),
+                response_id=response_id or "",
+                input=process_input(
+                    kwargs.get("input", existing_data.get("input", []))
+                ),
+                instructions=kwargs.get(
+                    "instructions", existing_data.get("instructions", "")
+                ),
+                tools=get_tools_from_kwargs(kwargs) or existing_data.get("tools", {}),
+                output_blocks=existing_data.get("output_blocks", {}),
+                usage=existing_data.get("usage"),
+                output_text=kwargs.get("output_text", existing_data.get("output_text")),
+                request_model=kwargs.get("model", existing_data.get("request_model")),
+                response_model=existing_data.get("response_model"),
+            )
+        except Exception as traced_data_error:
+            logger.debug(
+                f"Failed to initialize TracedData: {trim_error_message(traced_data_error)}"
+            )
+            traced_data = None
+
         span = tracer.start_span(
             "openai.responses",
             kind=SpanKind.CLIENT,
-            start_time=int(traced_data.start_time),
+            start_time=(
+                start_time if traced_data is None else int(traced_data.start_time)
+            ),
         )
         span.record_exception(e)
         span.set_status(StatusCode.ERROR, str(e))
@@ -401,20 +453,26 @@ async def async_responses_get_or_create_wrapper(
 
     merged_tools = existing_data.get("tools", {}) | request_tools
 
-    traced_data = TracedData(
-        start_time=existing_data.get("start_time", start_time),
-        response_id=parsed_response.id,
-        input=existing_data.get("input", kwargs.get("input")),
-        instructions=existing_data.get("instructions", kwargs.get("instructions")),
-        tools=merged_tools if merged_tools else None,
-        output_blocks={block.id: block for block in parsed_response.output}
-        | existing_data.get("output_blocks", {}),
-        usage=existing_data.get("usage", parsed_response.usage),
-        output_text=existing_data.get("output_text", parsed_response.output_text),
-        request_model=existing_data.get("request_model", kwargs.get("model")),
-        response_model=existing_data.get("response_model", parsed_response.model),
-    )
-    responses[parsed_response.id] = traced_data
+    try:
+        traced_data = TracedData(
+            start_time=existing_data.get("start_time", start_time),
+            response_id=parsed_response.id,
+            input=process_input(existing_data.get("input", kwargs.get("input"))),
+            instructions=existing_data.get("instructions", kwargs.get("instructions")),
+            tools=merged_tools if merged_tools else None,
+            output_blocks={block.id: block for block in parsed_response.output}
+            | existing_data.get("output_blocks", {}),
+            usage=existing_data.get("usage", parsed_response.usage),
+            output_text=existing_data.get("output_text", parsed_response.output_text),
+            request_model=existing_data.get("request_model", kwargs.get("model")),
+            response_model=existing_data.get("response_model", parsed_response.model),
+        )
+        responses[parsed_response.id] = traced_data
+    except Exception as traced_data_error:
+        logger.debug(
+            f"Failed to initialize TracedData: {trim_error_message(traced_data_error)}"
+        )
+        return response
 
     if parsed_response.status == "completed":
         span = tracer.start_span(
