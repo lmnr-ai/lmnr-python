@@ -1,5 +1,6 @@
 """Evals resource for interacting with Laminar evaluations API."""
 
+from typing import Any
 import uuid
 
 from lmnr.sdk.client.asynchronous.resources.base import BaseAsyncResource
@@ -66,3 +67,34 @@ class AsyncEvals(BaseAsyncResource):
         )
         if response.status_code != 200:
             raise ValueError(f"Error saving evaluation datapoints: {response.text}")
+        
+    
+    async def update_datapoint(
+        self,
+        eval_id: uuid.UUID,
+        datapoint_id: uuid.UUID,
+        scores: dict[str, float | int],
+        executor_output: Any | None = None,
+    ) -> None:
+        """Update a datapoint with evaluation results.
+
+        Args:
+            eval_id (uuid.UUID): The evaluation ID.
+            datapoint_id (uuid.UUID): The datapoint ID.
+            executor_output (Any): The executor output.
+            scores (dict[str, float | int] | None, optional): The scores. Defaults to None.
+        """
+        
+        response = await self._client.post(
+            self._base_url + f"/v1/evals/{eval_id}/datapoints/{datapoint_id}",
+            json={
+                "executorOutput": executor_output,
+                "scores": scores,
+            },
+            headers=self._headers(),
+        )
+
+        if response.status_code != 200:
+            raise ValueError(f"Error updating evaluation datapoint: {response.text}")
+        
+    

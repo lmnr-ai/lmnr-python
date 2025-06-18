@@ -4,7 +4,8 @@ Laminar HTTP client. Used to send data to/from the Laminar API.
 
 import httpx
 import re
-from typing import TypeVar
+import uuid
+from typing import Any, TypeVar
 from types import TracebackType
 
 from lmnr.sdk.client.asynchronous.resources import (
@@ -14,6 +15,7 @@ from lmnr.sdk.client.asynchronous.resources import (
     AsyncTags,
 )
 from lmnr.sdk.utils import from_env
+from lmnr.sdk.types import PartialEvaluationDatapoint, EvaluationResultDatapoint
 
 _T = TypeVar("_T", bound="AsyncLaminarClient")
 
@@ -144,3 +146,85 @@ class AsyncLaminarClient:
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
+
+    # Evaluation methods for customers who manage their own iteration logic
+    
+    async def create_evaluation(
+        self,
+        name: str | None = None,
+        group_name: str | None = None,
+    ) -> uuid.UUID:
+        """
+        Create a new evaluation and return its ID.
+        
+        Parameters:
+            name (str | None, optional): Optional name of the evaluation.
+            group_name (str | None, optional): An identifier to group evaluations.
+        
+        Returns:
+            uuid.UUID: The evaluation ID.
+        """
+        evaluation = await self._evals.init(name=name, group_name=group_name)
+        return evaluation.id
+
+    async def create_datapoint(
+        self,
+        eval_id: uuid.UUID,
+        data: Any,
+        target: Any = None,
+        metadata: dict[str, Any] | None = None,
+        index: int | None = None,
+        trace_id: uuid.UUID | None = None,
+    ) -> uuid.UUID:
+        """
+        Create a datapoint for an evaluation.
+        
+        Parameters:
+            eval_id (uuid.UUID): The evaluation ID.
+            data: The input data for the executor.
+            target: The target/expected output for evaluators.
+            metadata (dict[str, Any] | None, optional): Optional metadata.
+            index (int | None, optional): Optional index of the datapoint.
+            group_name (str | None, optional): Group name for the evaluation.
+        
+        Returns:
+            uuid.UUID: The datapoint ID.
+        """
+        
+        datapoint_id = uuid.uuid4()
+        
+        # Create a minimal datapoint first
+        partial_datapoint = PartialEvaluationDatapoint(
+            id=datapoint_id,
+            data=data,
+            target=target,
+            index=index or 0,
+            trace_id=trace_id or uuid.uuid4(),
+            executor_span_id=uuid.uuid4(),  # Will be updated when executor runs
+            metadata=metadata,
+        )
+        
+        await self._evals.save_datapoints(eval_id, [partial_datapoint])
+        return datapoint_id
+
+    async def update_datapoint(
+        self,
+        eval_id: uuid.UUID,
+        datapoint_id: uuid.UUID,
+        executor_output: Any | None = None,
+        scores: dict[str, float | int] | None = None,
+    ) -> None:
+        """
+        Update a datapoint with evaluation results.
+        
+        Parameters:
+            eval_id (uuid.UUID): The evaluation ID.
+            datapoint_id (uuid.UUID): The datapoint ID.
+            scores (dict[str, float | int]): The scores.
+            executor_output (Any | None, optional): The executor output.
+
+        Returns:
+            None
+        """
+        
+        await self._evals.update_datapoint(eval_id, datapoint_id, scores, executor_output)
