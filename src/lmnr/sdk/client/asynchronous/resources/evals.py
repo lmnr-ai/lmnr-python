@@ -1,5 +1,6 @@
 """Evals resource for interacting with Laminar evaluations API."""
 
+from typing import Any
 import uuid
 
 from lmnr.sdk.client.asynchronous.resources.base import BaseAsyncResource
@@ -40,6 +41,64 @@ class AsyncEvals(BaseAsyncResource):
         resp_json = response.json()
         return InitEvaluationResponse.model_validate(resp_json)
 
+    async def create_evaluation(
+        self,
+        name: str | None = None,
+        group_name: str | None = None,
+    ) -> uuid.UUID:
+        """
+        Create a new evaluation and return its ID.
+        
+        Parameters:
+            name (str | None, optional): Optional name of the evaluation.
+            group_name (str | None, optional): An identifier to group evaluations.
+        
+        Returns:
+            uuid.UUID: The evaluation ID.
+        """
+        evaluation = await self.init(name=name, group_name=group_name)
+        return evaluation.id
+
+    async def create_datapoint(
+        self,
+        eval_id: uuid.UUID,
+        data: Any,
+        target: Any = None,
+        metadata: dict[str, Any] | None = None,
+        index: int | None = None,
+        trace_id: uuid.UUID | None = None,
+    ) -> uuid.UUID:
+        """
+        Create a datapoint for an evaluation.
+        
+        Parameters:
+            eval_id (uuid.UUID): The evaluation ID.
+            data: The input data for the executor.
+            target: The target/expected output for evaluators.
+            metadata (dict[str, Any] | None, optional): Optional metadata.
+            index (int | None, optional): Optional index of the datapoint.
+            trace_id (uuid.UUID | None, optional): Optional trace ID.
+        
+        Returns:
+            uuid.UUID: The datapoint ID.
+        """
+        
+        datapoint_id = uuid.uuid4()
+        
+        # Create a minimal datapoint first
+        partial_datapoint = PartialEvaluationDatapoint(
+            id=datapoint_id,
+            data=data,
+            target=target,
+            index=index or 0,
+            trace_id=trace_id or uuid.uuid4(),
+            executor_span_id=uuid.uuid4(),  # Will be updated when executor runs
+            metadata=metadata,
+        )
+        
+        await self.save_datapoints(eval_id, [partial_datapoint])
+        return datapoint_id
+
     async def save_datapoints(
         self,
         eval_id: uuid.UUID,
@@ -66,3 +125,34 @@ class AsyncEvals(BaseAsyncResource):
         )
         if response.status_code != 200:
             raise ValueError(f"Error saving evaluation datapoints: {response.text}")
+        
+    
+    async def update_datapoint(
+        self,
+        eval_id: uuid.UUID,
+        datapoint_id: uuid.UUID,
+        scores: dict[str, float | int],
+        executor_output: Any | None = None,
+    ) -> None:
+        """Update a datapoint with evaluation results.
+
+        Args:
+            eval_id (uuid.UUID): The evaluation ID.
+            datapoint_id (uuid.UUID): The datapoint ID.
+            executor_output (Any): The executor output.
+            scores (dict[str, float | int] | None, optional): The scores. Defaults to None.
+        """
+        
+        response = await self._client.post(
+            self._base_url + f"/v1/evals/{eval_id}/datapoints/{datapoint_id}",
+            json={
+                "executorOutput": executor_output,
+                "scores": scores,
+            },
+            headers=self._headers(),
+        )
+
+        if response.status_code != 200:
+            raise ValueError(f"Error updating evaluation datapoint: {response.text}")
+        
+    
