@@ -101,6 +101,9 @@ try:
                 span_name,
                 kind=SpanKind.CLIENT,
                 start_time=int(start_time.timestamp() * 1e9),
+                attributes={
+                    "lmnr.internal.provider": "litellm",
+                },
             )
             try:
                 model = kwargs.get("model", "unknown")
