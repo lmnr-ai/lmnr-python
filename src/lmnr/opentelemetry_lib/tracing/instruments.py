@@ -45,6 +45,7 @@ class Instruments(Enum):
     VERTEXAI = "vertexai"
     WATSONX = "watsonx"
     WEAVIATE = "weaviate"
+    SKYVERN = "skyvern"
 
 
 INSTRUMENTATION_INITIALIZERS: dict[
@@ -82,6 +83,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.VERTEXAI: initializers.VertexAIInstrumentorInitializer(),
     Instruments.WATSONX: initializers.WatsonxInstrumentorInitializer(),
     Instruments.WEAVIATE: initializers.WeaviateInstrumentorInitializer(),
+    Instruments.SKYVERN: initializers.SkyvernInstrumentorInitializer(),
 }
 
 

@@ -407,3 +407,13 @@ class WeaviateInstrumentorInitializer(InstrumentorInitializer):
         from opentelemetry.instrumentation.weaviate import WeaviateInstrumentor
 
         return WeaviateInstrumentor()
+
+
+class SkyvernInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("skyvern"):
+            return None
+
+        from lmnr.sdk.browser.skyvern_otel import SkyvernInstrumentor
+
+        return SkyvernInstrumentor()

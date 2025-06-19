@@ -6,6 +6,8 @@ from lmnr.opentelemetry_lib.tracing import TracerWrapper
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.export import SpanExporter
 
+from lmnr.opentelemetry_lib.litellm import LaminarLiteLLMCallback
+
 pytest_plugins = ("pytest_asyncio",)
 
 
@@ -33,6 +35,11 @@ def exporter() -> SpanExporter:
     return exporter
 
 
+@pytest.fixture(scope="session")
+def litellm_callback() -> LaminarLiteLLMCallback:
+    return LaminarLiteLLMCallback()
+
+
 @pytest.fixture(scope="function", autouse=True)
 def clear_exporter(exporter: InMemorySpanExporter):
     exporter.clear()
@@ -46,5 +53,6 @@ def vcr_config():
             "authorization",
             "api-key",
             "x-goog-api-key",
+            "x-api-key",
         ]
     }
