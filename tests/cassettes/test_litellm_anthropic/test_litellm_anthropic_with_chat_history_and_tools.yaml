@@ -1,0 +1,188 @@
+interactions:
+- request:
+    body: '{"model": "claude-3-5-haiku-latest", "messages": [{"role": "user", "content":
+      [{"type": "text", "text": "What is the weather in San Francisco? Also, any news
+      in town?"}]}], "tools": [{"name": "get_weather", "input_schema": {"type": "object",
+      "properties": {"city": {"type": "string"}}}, "description": "Get the weather
+      in a given city"}, {"name": "get_news", "input_schema": {"type": "object", "properties":
+      {"city": {"type": "string"}}}, "description": "Get the news in a given city"}],
+      "max_tokens": 4096}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate, zstd
+      anthropic-version:
+      - '2023-06-01'
+      connection:
+      - keep-alive
+      content-length:
+      - '507'
+      content-type:
+      - application/json
+      host:
+      - api.anthropic.com
+      user-agent:
+      - litellm/1.72.6
+    method: POST
+    uri: https://api.anthropic.com/v1/messages
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA2RRwW7bMAz9FYGXXpTBdlO00a0I0G7DsEuLDcM6CKzMRVoUyRWpZkbgfx+crliD
+        nQjy8T0+kgcIPRjY8cY27edye1nu1x8vursv48/b998ex2e/Ag0yDjR3ETNuCDSUHOcCMgcWTAIa
+        drmnCAZcxNrT4nxxsfAYtnXRNd2ybboONLichJKA+X541RT6PbOPwcCHsxiVpzioMVe1D+KVeFJ7
+        QvFUFKZeJdqzCkndYVI3BZML7LIqYeNF4R7Hdw/pId2EwqJVJDlj5Ty57VsdA5P+ZyDnaCvPWx1P
+        MefVNu3X+19Sn8L1ahnW3aehbblbXyFoSLibeRsS+1dvpqahCpgDuCAjGDhxB9P0QwNLHmwh5JxO
+        xx4BpqdKyRGYVGPUUI+XNocXZSt5S4nBnF8tNTh0nqwrhBJysqcdzSteCPv/sVzlbeVypYGpPAdH
+        VgIVMDA/tMfSwzT9AQAA//8DALD0v/geAgAA
+    headers:
+      CF-RAY:
+      - 9513c2f62c3af664-LHR
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 17 Jun 2025 16:00:46 GMT
+      Server:
+      - cloudflare
+      Transfer-Encoding:
+      - chunked
+      X-Robots-Tag:
+      - none
+      anthropic-organization-id:
+      - 04aa8588-6567-40cb-9042-a54b20ebaf4f
+      anthropic-ratelimit-input-tokens-limit:
+      - '400000'
+      anthropic-ratelimit-input-tokens-remaining:
+      - '400000'
+      anthropic-ratelimit-input-tokens-reset:
+      - '2025-06-17T16:00:46Z'
+      anthropic-ratelimit-output-tokens-limit:
+      - '80000'
+      anthropic-ratelimit-output-tokens-remaining:
+      - '80000'
+      anthropic-ratelimit-output-tokens-reset:
+      - '2025-06-17T16:00:46Z'
+      anthropic-ratelimit-requests-limit:
+      - '4000'
+      anthropic-ratelimit-requests-remaining:
+      - '3999'
+      anthropic-ratelimit-requests-reset:
+      - '2025-06-17T16:00:44Z'
+      anthropic-ratelimit-tokens-limit:
+      - '480000'
+      anthropic-ratelimit-tokens-remaining:
+      - '480000'
+      anthropic-ratelimit-tokens-reset:
+      - '2025-06-17T16:00:46Z'
+      cf-cache-status:
+      - DYNAMIC
+      request-id:
+      - req_011CQE5A5SEbHg3xh4cyzSEJ
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      via:
+      - 1.1 google
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"model": "claude-3-5-haiku-latest", "messages": [{"role": "user", "content":
+      [{"type": "text", "text": "What is the weather in San Francisco? Also, any news
+      in town?"}]}, {"role": "assistant", "content": [{"type": "text", "text": "I''ll
+      help you with the weather and news in San Francisco right away.\n\nFirst, let''s
+      check the weather:"}, {"type": "tool_use", "id": "toolu_01WTjtuqiA94iC2Lp11s2C8a",
+      "name": "get_weather", "input": {"city": "San Francisco"}}]}, {"role": "user",
+      "content": [{"type": "tool_result", "tool_use_id": "toolu_01WTjtuqiA94iC2Lp11s2C8a",
+      "content": "Sunny as always!"}]}], "tools": [{"name": "get_weather", "input_schema":
+      {"type": "object", "properties": {"city": {"type": "string"}}}, "description":
+      "Get the weather in a given city"}, {"name": "get_news", "input_schema": {"type":
+      "object", "properties": {"city": {"type": "string"}}}, "description": "Get the
+      news in a given city"}], "max_tokens": 4096}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate, zstd
+      anthropic-version:
+      - '2023-06-01'
+      connection:
+      - keep-alive
+      content-length:
+      - '933'
+      content-type:
+      - application/json
+      host:
+      - api.anthropic.com
+      user-agent:
+      - litellm/1.72.6
+    method: POST
+    uri: https://api.anthropic.com/v1/messages
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAAwAAAP//ZFFNSwMxEP0rYS5eUtiu9Su3ivVQwYsW/EBCSIbdtLvJmplYtex/l1RE
+        i6dh5s17bz524B0o6KnR1XS+7PMC+8XD3adreb2+37aYrkACfwxYupDINAgSUuxKwRB5YhMYJPTR
+        YQcKbGeyw8nx5GTSGr/Jk7qqZ9OqrkGCjYExMKjn3Y8m43th74OC27iVokM+IkGIYtsaFgG3JDyJ
+        1gwDBh8a4YO4M0FcJxOsJxsVjPJXMMZOZypT7lcredbV9HLp2maeVqvV0+otWze7Wa4fH0BCMH3h
+        Nci6WBVeGDKD2oH1/AEKDsxgHF8kEMdBJzQUw6HnHiB8zRgsggq56yTk/dnU7ltZc9xgIFCzs3MJ
+        1tgWtU1o2MegDzuqHzyhcf+xmPlv5fRCAmF68xY1e0ygoHzHmeRgHL8AAAD//wMAZAYCE+sBAAA=
+    headers:
+      CF-RAY:
+      - 9513c302fb84edee-LHR
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 17 Jun 2025 16:00:48 GMT
+      Server:
+      - cloudflare
+      Transfer-Encoding:
+      - chunked
+      X-Robots-Tag:
+      - none
+      anthropic-organization-id:
+      - 04aa8588-6567-40cb-9042-a54b20ebaf4f
+      anthropic-ratelimit-input-tokens-limit:
+      - '400000'
+      anthropic-ratelimit-input-tokens-remaining:
+      - '400000'
+      anthropic-ratelimit-input-tokens-reset:
+      - '2025-06-17T16:00:47Z'
+      anthropic-ratelimit-output-tokens-limit:
+      - '80000'
+      anthropic-ratelimit-output-tokens-remaining:
+      - '80000'
+      anthropic-ratelimit-output-tokens-reset:
+      - '2025-06-17T16:00:48Z'
+      anthropic-ratelimit-requests-limit:
+      - '4000'
+      anthropic-ratelimit-requests-remaining:
+      - '3999'
+      anthropic-ratelimit-requests-reset:
+      - '2025-06-17T16:00:46Z'
+      anthropic-ratelimit-tokens-limit:
+      - '480000'
+      anthropic-ratelimit-tokens-remaining:
+      - '480000'
+      anthropic-ratelimit-tokens-reset:
+      - '2025-06-17T16:00:47Z'
+      cf-cache-status:
+      - DYNAMIC
+      request-id:
+      - req_011CQE5AEDptjeoNLBMp9dks
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      via:
+      - 1.1 google
+    status:
+      code: 200
+      message: OK
+version: 1
