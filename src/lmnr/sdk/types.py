@@ -9,7 +9,7 @@ import uuid
 
 from enum import Enum
 from opentelemetry.trace import SpanContext, TraceFlags
-from typing import Any, Awaitable, Callable, Literal
+from typing import Any, Awaitable, Callable, Literal, Optional
 
 from .utils import serialize
 
@@ -50,7 +50,7 @@ EvaluatorFunction = Callable[
 
 
 class HumanEvaluator(pydantic.BaseModel):
-    queueName: str
+    pass
 
 
 class InitEvaluationResponse(pydantic.BaseModel):
@@ -94,8 +94,7 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
     data: EvaluationDatapointData
     target: EvaluationDatapointTarget
     executor_output: ExecutorFunctionReturnType
-    scores: dict[str, Numeric]
-    human_evaluators: list[HumanEvaluator] = pydantic.Field(default_factory=list)
+    scores: dict[str, Optional[Numeric]]
     trace_id: uuid.UUID
     executor_span_id: uuid.UUID
     metadata: EvaluationDatapointMetadata = pydantic.Field(default=None)
@@ -112,14 +111,6 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
                 "executorOutput": str(serialize(self.executor_output))[:100],
                 "scores": self.scores,
                 "traceId": str(self.trace_id),
-                "humanEvaluators": [
-                    (
-                        v.model_dump()
-                        if isinstance(v, pydantic.BaseModel)
-                        else serialize(v)
-                    )
-                    for v in self.human_evaluators
-                ],
                 "executorSpanId": str(self.executor_span_id),
                 "index": self.index,
                 "metadata": (
@@ -136,6 +127,7 @@ class SpanType(Enum):
     PIPELINE = "PIPELINE"  # must not be set manually
     EXECUTOR = "EXECUTOR"
     EVALUATOR = "EVALUATOR"
+    HUMAN_EVALUATOR = "HUMAN_EVALUATOR"
     EVALUATION = "EVALUATION"
 
 
