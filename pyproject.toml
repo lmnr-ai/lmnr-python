@@ -78,6 +78,7 @@ transformers=["opentelemetry-instrumentation-transformers>=0.40.8"]
 vertexai=["opentelemetry-instrumentation-vertexai>=0.40.8"]
 watsonx=["opentelemetry-instrumentation-watsonx>=0.40.8"]
 weaviate=["opentelemetry-instrumentation-weaviate>=0.40.8"]
+litellm=["litellm>=1.0.0"]
 # `all` is the group added for convenience, if you want to install all
 # the instrumentations.
 # we suggest using package-manager-specific commands instead,
@@ -128,6 +129,7 @@ dev = [
   "langgraph>=0.4.8",
   "langchain-core>=0.3.64",
   "langchain>=0.3.25",
+  "litellm>=1.72.6",
 ]
 
 [build-system]

@@ -1,0 +1,175 @@
+interactions:
+- request:
+    body: '{"model": "claude-3-5-haiku-latest", "messages": [{"role": "user", "content":
+      [{"type": "text", "text": "Generate a random adjective in English. Respond with
+      only the adjective."}]}], "max_tokens": 4096}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate, zstd
+      anthropic-version:
+      - '2023-06-01'
+      connection:
+      - keep-alive
+      content-length:
+      - '203'
+      content-type:
+      - application/json
+      host:
+      - api.anthropic.com
+      user-agent:
+      - litellm/1.72.6
+    method: POST
+    uri: https://api.anthropic.com/v1/messages
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAAwAAAP//ZI/BasMwEET/Zc4yOEp90SeUthRKLy1FCGmTqHZWtrRKGoz/vTg00NLT
+        wryZYWdGDDA4lr1tN8/dax+n3XTu9cPTaXo77z4fX+6hIJeRVheV4vYEhZyGVXClxCKOBQrHFGiA
+        gR9cDdRsm645uNjXRrf6btNqDQWfWIgF5n2+dQp9renrMZhqzP0Fy4dCkTTaTK4khgFxsFIz4wcU
+        miqxJxiuw6BQr4+ZGZHHKlZST1xg9FbBO38g6zM5iYntX0N745lc+M9Sld9Kp1Aon6InK5EyDNb1
+        weWAZfkGAAD//wMATTxvVksBAAA=
+    headers:
+      CF-RAY:
+      - 9513c059afa09488-LHR
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 17 Jun 2025 15:58:58 GMT
+      Server:
+      - cloudflare
+      Transfer-Encoding:
+      - chunked
+      X-Robots-Tag:
+      - none
+      anthropic-organization-id:
+      - 04aa8588-6567-40cb-9042-a54b20ebaf4f
+      anthropic-ratelimit-input-tokens-limit:
+      - '400000'
+      anthropic-ratelimit-input-tokens-remaining:
+      - '400000'
+      anthropic-ratelimit-input-tokens-reset:
+      - '2025-06-17T15:58:57Z'
+      anthropic-ratelimit-output-tokens-limit:
+      - '80000'
+      anthropic-ratelimit-output-tokens-remaining:
+      - '80000'
+      anthropic-ratelimit-output-tokens-reset:
+      - '2025-06-17T15:58:58Z'
+      anthropic-ratelimit-requests-limit:
+      - '4000'
+      anthropic-ratelimit-requests-remaining:
+      - '3999'
+      anthropic-ratelimit-requests-reset:
+      - '2025-06-17T15:58:57Z'
+      anthropic-ratelimit-tokens-limit:
+      - '480000'
+      anthropic-ratelimit-tokens-remaining:
+      - '480000'
+      anthropic-ratelimit-tokens-reset:
+      - '2025-06-17T15:58:57Z'
+      cf-cache-status:
+      - DYNAMIC
+      request-id:
+      - req_011CQE52CEYFg3ZALArj9Evj
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      via:
+      - 1.1 google
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"model": "claude-3-5-haiku-latest", "messages": [{"role": "user", "content":
+      [{"type": "text", "text": "Generate a random adjective in English. Respond with
+      only the adjective."}]}, {"role": "assistant", "content": [{"type": "text",
+      "text": "quirky"}]}, {"role": "user", "content": [{"type": "text", "text": "Generate
+      a sentence using the adjective."}]}], "max_tokens": 4096}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate, zstd
+      anthropic-version:
+      - '2023-06-01'
+      connection:
+      - keep-alive
+      content-length:
+      - '376'
+      content-type:
+      - application/json
+      host:
+      - api.anthropic.com
+      user-agent:
+      - litellm/1.72.6
+    method: POST
+    uri: https://api.anthropic.com/v1/messages
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAAwAAAP//ZJDNasMwEIRfRezZLq6dUKpHKG1P/TmUYhZp4wgrK0e7CnFD3r04NNDS
+        08B8s8swJwgeLOxk6Jvb169uHeThbnruyso/vQk+vu+PUIHOEy0pEsGBoIKc4mKgSBBFVqhglzxF
+        sOAiFk91V6/rLYax1G3Trm6btoUKXGIlVrAfp+tPpeNyfRELL1sy+xLyOBvMGkTNhIGVvInIXhxO
+        JKZI4MEkjrMp7BIfiDUkxmh2qJQDRjExjGRc2myIzJBTYS8G2ZtMbnaRvJlwonwD588KRNPUZ0JJ
+        DBaIfa8lM/wAoX0hdgSWS4wVlMsE9gSBp6K9ppFYwHb3FTh0W+pdJlz69H8DzZVnQv+fpaK/nbar
+        QCgfgqNeA2WwsAztMXs4n78BAAD//wMANYGkyrYBAAA=
+    headers:
+      CF-RAY:
+      - 9513c0607c502534-LHR
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 17 Jun 2025 15:59:00 GMT
+      Server:
+      - cloudflare
+      Transfer-Encoding:
+      - chunked
+      X-Robots-Tag:
+      - none
+      anthropic-organization-id:
+      - 04aa8588-6567-40cb-9042-a54b20ebaf4f
+      anthropic-ratelimit-input-tokens-limit:
+      - '400000'
+      anthropic-ratelimit-input-tokens-remaining:
+      - '400000'
+      anthropic-ratelimit-input-tokens-reset:
+      - '2025-06-17T15:58:59Z'
+      anthropic-ratelimit-output-tokens-limit:
+      - '80000'
+      anthropic-ratelimit-output-tokens-remaining:
+      - '80000'
+      anthropic-ratelimit-output-tokens-reset:
+      - '2025-06-17T15:58:59Z'
+      anthropic-ratelimit-requests-limit:
+      - '4000'
+      anthropic-ratelimit-requests-remaining:
+      - '3999'
+      anthropic-ratelimit-requests-reset:
+      - '2025-06-17T15:58:58Z'
+      anthropic-ratelimit-tokens-limit:
+      - '480000'
+      anthropic-ratelimit-tokens-remaining:
+      - '480000'
+      anthropic-ratelimit-tokens-reset:
+      - '2025-06-17T15:58:59Z'
+      cf-cache-status:
+      - DYNAMIC
+      request-id:
+      - req_011CQE52GVXY5XywG7mDFgc8
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      via:
+      - 1.1 google
+    status:
+      code: 200
+      message: OK
+version: 1
