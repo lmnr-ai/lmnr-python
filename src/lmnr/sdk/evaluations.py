@@ -102,7 +102,6 @@ class Evaluation:
         data: EvaluationDataset | list[Datapoint | dict],
         executor: Any,
         evaluators: dict[str, EvaluatorFunction | HumanEvaluator],
-        human_evaluators: list[HumanEvaluator] = [],
         name: str | None = None,
         group_name: str | None = None,
         concurrency_limit: int = DEFAULT_BATCH_SIZE,
@@ -136,10 +135,6 @@ class Evaluation:
                 HumanEvaluator instances create empty spans for manual evaluation.\
                 Evaluator names must contain only letters, digits, hyphens,\
                 underscores, or spaces.
-            human_evaluators (list[HumanEvaluator], optional):\
-                [Beta] List of instances of HumanEvaluator. For now, human\
-                evaluator only holds the queue name.
-                Defaults to an empty list.
             name (str | None, optional): Optional name of the evaluation.\
                 Used to identify the evaluation in the group.\
                 If not provided, a random name will be generated.
@@ -200,7 +195,6 @@ class Evaluation:
         self.concurrency_limit = concurrency_limit
         self.batch_size = concurrency_limit
         self._logger = get_default_logger(self.__class__.__name__)
-        self.human_evaluators = human_evaluators
         self.upload_tasks = []
         self.base_http_url = f"{base_url}:{http_port or 443}"
 
@@ -395,10 +389,6 @@ class Evaluation:
             executor_output=output,
             scores=scores,
             trace_id=trace_id,
-            # For now add all human evaluators to all result datapoints
-            # In the future, we will add ways to specify which human evaluators
-            # to add to which result datapoints, e.g. sample some randomly
-            human_evaluators=self.human_evaluators,
             executor_span_id=executor_span_id,
             index=index,
             metadata=datapoint.metadata,
@@ -417,7 +407,6 @@ def evaluate(
     data: EvaluationDataset | list[Datapoint | dict],
     executor: ExecutorFunction,
     evaluators: dict[str, EvaluatorFunction | HumanEvaluator],
-    human_evaluators: list[HumanEvaluator] = [],
     name: str | None = None,
     group_name: str | None = None,
     concurrency_limit: int = DEFAULT_BATCH_SIZE,
@@ -455,10 +444,6 @@ def evaluate(
             HumanEvaluator instances create empty spans for manual evaluation.\
             Evaluator function names must contain only letters, digits, hyphens,\
             underscores, or spaces.
-        human_evaluators (list[HumanEvaluator], optional):\
-            [Beta] List of instances of HumanEvaluator. For now, human\
-            evaluator only holds the queue name.
-            Defaults to an empty list.
         name (str | None, optional): Optional name of the evaluation.\
             Used to identify the evaluation in the group. If not provided, a\
             random name will be generated.
@@ -493,7 +478,6 @@ def evaluate(
         executor=executor,
         evaluators=evaluators,
         group_name=group_name,
-        human_evaluators=human_evaluators,
         name=name,
         concurrency_limit=concurrency_limit,
         project_api_key=project_api_key,

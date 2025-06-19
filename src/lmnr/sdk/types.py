@@ -95,7 +95,6 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
     target: EvaluationDatapointTarget
     executor_output: ExecutorFunctionReturnType
     scores: dict[str, Optional[Numeric]]
-    human_evaluators: list[HumanEvaluator] = pydantic.Field(default_factory=list)
     trace_id: uuid.UUID
     executor_span_id: uuid.UUID
     metadata: EvaluationDatapointMetadata = pydantic.Field(default=None)
@@ -112,14 +111,6 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
                 "executorOutput": str(serialize(self.executor_output))[:100],
                 "scores": self.scores,
                 "traceId": str(self.trace_id),
-                "humanEvaluators": [
-                    (
-                        v.model_dump()
-                        if isinstance(v, pydantic.BaseModel)
-                        else serialize(v)
-                    )
-                    for v in self.human_evaluators
-                ],
                 "executorSpanId": str(self.executor_span_id),
                 "index": self.index,
                 "metadata": (
