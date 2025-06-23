@@ -130,27 +130,29 @@ def _set_request_attributes(span, args, kwargs):
     )
 
     tools: list[types.FunctionDeclaration] = []
-    if kwargs.get("tools"):
-        for tool in kwargs.get("tools"):
+    if config_dict.get("tools"):
+        for tool in config_dict.get("tools"):
             if isinstance(tool, types.Tool):
                 tools += tool.function_declarations or []
             elif isinstance(tool, Callable):
                 tools.append(types.FunctionDeclaration.from_callable(tool))
+
     for tool_num, tool in enumerate(tools):
+        tool_dict = to_dict(tool)
         set_span_attribute(
             span,
             f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.{tool_num}.name",
-            to_dict(tool).get("name"),
+            tool_dict.get("name"),
         )
         set_span_attribute(
             span,
             f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.{tool_num}.description",
-            to_dict(tool).get("description"),
+            tool_dict.get("description"),
         )
         set_span_attribute(
             span,
             f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.{tool_num}.parameters",
-            to_dict(tool).get("parameters"),
+            json.dumps(tool_dict.get("parameters")),
         )
 
     if should_send_prompts():
@@ -174,6 +176,7 @@ def _set_request_attributes(span, args, kwargs):
         for content in contents:
             processed_content = process_content_union(content)
             content_str = get_content(processed_content)
+
             set_span_attribute(
                 span,
                 f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.content",
@@ -188,26 +191,29 @@ def _set_request_attributes(span, args, kwargs):
                 if isinstance(processed_content, list)
                 else [processed_content]
             )
-            for j, block in enumerate(blocks):
+            for block in blocks:
                 block_dict = to_dict(block)
+
                 if not block_dict.get("function_call"):
                     continue
                 function_call = to_dict(block_dict.get("function_call", {}))
+
                 set_span_attribute(
                     span,
-                    f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.tool_calls.{j}.name",
+                    f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.tool_calls.0.name",
                     function_call.get("name"),
                 )
                 set_span_attribute(
                     span,
-                    f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.tool_calls.{j}.id",
-                    function_call.get("id"),
+                    f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.tool_calls.0.id",
+                    function_call.get("id") if function_call.get("id") is not None else function_call.get("name"), # google genai doesn't support tool call ids
                 )
                 set_span_attribute(
                     span,
-                    f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.tool_calls.{j}.arguments",
+                    f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.tool_calls.0.arguments",
                     json.dumps(function_call.get("arguments")),
                 )
+
             set_span_attribute(
                 span,
                 f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.role",
@@ -258,21 +264,8 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
         candidates_list = candidates if isinstance(candidates, list) else [candidates]
         for i, candidate in enumerate(candidates_list):
             processed_content = process_content_union(candidate.content)
-            if isinstance(processed_content, list):
-                if all(
-                    isinstance(item, dict) and item.get("type") == "text"
-                    for item in processed_content
-                ):
-                    content_str = processed_content[0]["text"]
-                elif all(
-                    isinstance(item, ProcessedContentPart) and item.content
-                    for item in processed_content
-                ):
-                    content_str = processed_content[0].content
-                else:
-                    content_str = get_content(processed_content)
-            else:
-                content_str = get_content(processed_content)
+            content_str = get_content(processed_content)
+
             set_span_attribute(
                 span, f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.role", "model"
             )
@@ -290,24 +283,25 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
                 if isinstance(processed_content, list)
                 else [processed_content]
             )
-            for j, block in enumerate(blocks):
+
+            for block in blocks:
                 block_dict = to_dict(block)
                 if not block_dict.get("function_call"):
                     continue
                 function_call = to_dict(block_dict.get("function_call", {}))
                 set_span_attribute(
                     span,
-                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.{j}.name",
+                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.0.name",
                     function_call.get("name"),
                 )
                 set_span_attribute(
                     span,
-                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.{j}.id",
-                    function_call.get("id"),
+                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.0.id",
+                    function_call.get("id") if function_call.get("id") is not None else function_call.get("name"), # google genai doesn't support tool call ids
                 )
                 set_span_attribute(
                     span,
-                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.{j}.arguments",
+                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.0.arguments",
                     json.dumps(function_call.get("arguments")),
                 )
 
