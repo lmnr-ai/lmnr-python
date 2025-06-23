@@ -56,7 +56,11 @@ def get_average_scores(results: list[EvaluationResultDatapoint]) -> dict[str, Nu
 
     average_scores = {}
     for key, values in per_score_values.items():
-        average_scores[key] = sum(values) / len(values)
+        scores = [v for v in values if v is not None]
+        
+        # If there are no scores, we don't want to include the key in the average scores
+        if len(scores) > 0:
+            average_scores[key] = sum(scores) / len(scores)
 
     return average_scores
 
@@ -97,8 +101,7 @@ class Evaluation:
         self,
         data: EvaluationDataset | list[Datapoint | dict],
         executor: Any,
-        evaluators: dict[str, EvaluatorFunction],
-        human_evaluators: list[HumanEvaluator] = [],
+        evaluators: dict[str, EvaluatorFunction | HumanEvaluator],
         name: str | None = None,
         group_name: str | None = None,
         concurrency_limit: int = DEFAULT_BATCH_SIZE,
@@ -123,17 +126,15 @@ class Evaluation:
             executor (Callable[..., Any]): The executor function.\
                     Takes the data point + any additional arguments and returns\
                     the output to evaluate.
-            evaluators (dict[str, Callable[..., Any]]): Evaluator functions and\
-                names. Each evaluator function takes the output of the executor\
-                _and_ the target data, and returns a score. The score can be a\
-                single number or a dict of string keys and number values.\
-                If the score is a single number, it will be named after the\
-                evaluator function. Evaluator function names must contain only\
-                letters, digits, hyphens, underscores, or spaces.
-            human_evaluators (list[HumanEvaluator], optional):\
-                [Beta] List of instances of HumanEvaluator. For now, human\
-                evaluator only holds the queue name.
-                Defaults to an empty list.
+            evaluators (dict[str, Callable[..., Any] | HumanEvaluator]): Evaluator\
+                functions and HumanEvaluator instances with names. Each evaluator\
+                function takes the output of the executor _and_ the target data,\
+                and returns a score. The score can be a single number or a dict\
+                of string keys and number values. If the score is a single number,\
+                it will be named after the evaluator function.\
+                HumanEvaluator instances create empty spans for manual evaluation.\
+                Evaluator names must contain only letters, digits, hyphens,\
+                underscores, or spaces.
             name (str | None, optional): Optional name of the evaluation.\
                 Used to identify the evaluation in the group.\
                 If not provided, a random name will be generated.
@@ -194,7 +195,6 @@ class Evaluation:
         self.concurrency_limit = concurrency_limit
         self.batch_size = concurrency_limit
         self._logger = get_default_logger(self.__class__.__name__)
-        self.human_evaluators = human_evaluators
         self.upload_tasks = []
         self.base_http_url = f"{base_url}:{http_port or 443}"
 
@@ -241,7 +241,7 @@ class Evaluation:
             )
         self.reporter.start(len(self.data))
         try:
-            evaluation = await self.client._evals.init(
+            evaluation = await self.client.evals.init(
                 name=self.name, group_name=self.group_name
             )
             result_datapoints = await self._evaluate_in_batches(evaluation.id)
@@ -326,7 +326,7 @@ class Evaluation:
                     metadata=datapoint.metadata,
                 )
                 # First, create datapoint with trace_id so that we can show the dp in the UI
-                await self.client._evals.save_datapoints(
+                await self.client.evals.save_datapoints(
                     eval_id, [partial_datapoint], self.group_name
                 )
                 executor_span.set_attribute(SPAN_TYPE, SpanType.EXECUTOR.value)
@@ -345,24 +345,40 @@ class Evaluation:
             # Iterate over evaluators
             scores: dict[str, Numeric] = {}
             for evaluator_name, evaluator in self.evaluators.items():
-                with L.start_as_current_span(
-                    evaluator_name, input={"output": output, "target": target}
-                ) as evaluator_span:
-                    evaluator_span.set_attribute(SPAN_TYPE, SpanType.EVALUATOR.value)
-                    if is_async(evaluator):
-                        value = await evaluator(output, target)
-                    else:
-                        loop = asyncio.get_event_loop()
-                        value = await loop.run_in_executor(
-                            None, evaluator, output, target
-                        )
-                    L.set_span_output(value)
-
-                # If evaluator returns a single number, use evaluator name as key
-                if isinstance(value, NumericTypes):
-                    scores[evaluator_name] = value
+                # Check if evaluator is a HumanEvaluator instance
+                if isinstance(evaluator, HumanEvaluator):
+                    # Create an empty span for human evaluators
+                    with L.start_as_current_span(
+                        evaluator_name,
+                        input={"output": output, "target": target}
+                    ) as human_evaluator_span:
+                        human_evaluator_span.set_attribute(SPAN_TYPE, SpanType.HUMAN_EVALUATOR.value)
+                        # Human evaluators don't execute automatically, just create the span
+                        L.set_span_output(None)
+                    
+                    # We don't want to save the score for human evaluators
+                    scores[evaluator_name] = None
                 else:
-                    scores.update(value)
+                    # Regular evaluator function
+                    with L.start_as_current_span(
+                        evaluator_name,
+                        input={"output": output, "target": target}
+                    ) as evaluator_span:
+                        evaluator_span.set_attribute(SPAN_TYPE, SpanType.EVALUATOR.value)
+                        if is_async(evaluator):
+                            value = await evaluator(output, target)
+                        else:
+                            loop = asyncio.get_event_loop()
+                            value = await loop.run_in_executor(
+                                None, evaluator, output, target
+                            )
+                        L.set_span_output(value)
+
+                    # If evaluator returns a single number, use evaluator name as key
+                    if isinstance(value, NumericTypes):
+                        scores[evaluator_name] = value
+                    else:
+                        scores.update(value)
 
             trace_id = uuid.UUID(int=evaluation_span.get_span_context().trace_id)
 
@@ -373,10 +389,6 @@ class Evaluation:
             executor_output=output,
             scores=scores,
             trace_id=trace_id,
-            # For now add all human evaluators to all result datapoints
-            # In the future, we will add ways to specify which human evaluators
-            # to add to which result datapoints, e.g. sample some randomly
-            human_evaluators=self.human_evaluators,
             executor_span_id=executor_span_id,
             index=index,
             metadata=datapoint.metadata,
@@ -384,7 +396,7 @@ class Evaluation:
 
         # Create background upload task without awaiting it
         upload_task = asyncio.create_task(
-            self.client._evals.save_datapoints(eval_id, [datapoint], self.group_name)
+            self.client.evals.save_datapoints(eval_id, [datapoint], self.group_name)
         )
         self.upload_tasks.append(upload_task)
 
@@ -394,8 +406,7 @@ class Evaluation:
 def evaluate(
     data: EvaluationDataset | list[Datapoint | dict],
     executor: ExecutorFunction,
-    evaluators: dict[str, EvaluatorFunction],
-    human_evaluators: list[HumanEvaluator] = [],
+    evaluators: dict[str, EvaluatorFunction | HumanEvaluator],
     name: str | None = None,
     group_name: str | None = None,
     concurrency_limit: int = DEFAULT_BATCH_SIZE,
@@ -424,18 +435,15 @@ def evaluate(
         executor (Callable[..., Any]): The executor function.\
             Takes the data point + any additional arguments\
             and returns the output to evaluate.
-        evaluators (List[Callable[..., Any]]): 
-            evaluators (dict[str, Callable[..., Any]]): Evaluator functions and\
-                names. Each evaluator function takes the output of the executor\
-                _and_ the target data, and returns a score. The score can be a\
-                single number or a dict of string keys and number values.\
-                If the score is a single number, it will be named after the\
-                evaluator function. Evaluator function names must contain only\
-                letters, digits, hyphens, underscores, or spaces.
-        human_evaluators (list[HumanEvaluator], optional):\
-            [Beta] List of instances of HumanEvaluator. For now, human\
-            evaluator only holds the queue name.
-            Defaults to an empty list.
+        evaluators (dict[str, Callable[..., Any] | HumanEvaluator]): Evaluator\
+            functions and HumanEvaluator instances with names. Each evaluator\
+            function takes the output of the executor _and_ the target data,\
+            and returns a score. The score can be a single number or a dict\
+            of string keys and number values. If the score is a single number,\
+            it will be named after the evaluator function.\
+            HumanEvaluator instances create empty spans for manual evaluation.\
+            Evaluator function names must contain only letters, digits, hyphens,\
+            underscores, or spaces.
         name (str | None, optional): Optional name of the evaluation.\
             Used to identify the evaluation in the group. If not provided, a\
             random name will be generated.
@@ -470,7 +478,6 @@ def evaluate(
         executor=executor,
         evaluators=evaluators,
         group_name=group_name,
-        human_evaluators=human_evaluators,
         name=name,
         concurrency_limit=concurrency_limit,
         project_api_key=project_api_key,

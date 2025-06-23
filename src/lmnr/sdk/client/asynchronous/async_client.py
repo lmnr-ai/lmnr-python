@@ -89,11 +89,11 @@ class AsyncLaminarClient:
         return self.__agent
 
     @property
-    def _evals(self) -> AsyncEvals:
+    def evals(self) -> AsyncEvals:
         """Get the Evals resource.
 
         Returns:
-            Evals: The Evals resource instance.
+            AsyncEvals: The Evals resource instance.
         """
         return self.__evals
 
@@ -144,3 +144,5 @@ class AsyncLaminarClient:
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
+
+

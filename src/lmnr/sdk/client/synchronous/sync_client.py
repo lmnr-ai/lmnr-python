@@ -89,7 +89,7 @@ class LaminarClient:
         return self.__agent
 
     @property
-    def _evals(self) -> Evals:
+    def evals(self) -> Evals:
         """Get the Evals resource.
 
         Returns:
@@ -155,3 +155,5 @@ class LaminarClient:
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
+
+
