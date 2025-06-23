@@ -1,0 +1,217 @@
+interactions:
+- request:
+    body: '{"messages":[{"role":"user","content":"What is the weather in San Francisco?
+      Also, any news in town?"}],"model":"gpt-4.1-nano","tools":[{"type":"function","function":{"name":"get_weather","description":"Get
+      the weather in a given city","parameters":{"type":"object","properties":{"city":{"type":"string"}}}}},{"type":"function","function":{"name":"get_news","description":"Get
+      the news in a given city","parameters":{"type":"object","properties":{"city":{"type":"string"}}}}}]}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '477'
+      content-type:
+      - application/json
+      cookie:
+      - __cf_bm=8JL8FZmd.PctT6sPovqTMnGkPxvJzS_U2nPRK1Axh_I-1750178955-1.0.1.1-38.ks.yEZWRHhZD_7QTO1Ti0qNtU0FbS5iuuzSNSVO5.Vu32cnfLaEuZ0NSUuamrSlbdmFwbCOXNTorOJ0vViAKOW6v30v44H5UGq1athEc;
+        _cfuvid=._BiLUai_DgRyLwoR3Pk0E6DfHs9nut.NIIoHQGUbio-1750178955176-0.0.1.1-604800000
+      host:
+      - api.openai.com
+      traceparent:
+      - 00-cbdf737aeaf62a83cc51d99e41f6d90b-25ad250833ac67d7-01
+      user-agent:
+      - OpenAI/Python 1.86.0
+      x-stainless-arch:
+      - arm64
+      x-stainless-async:
+      - 'false'
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - MacOS
+      x-stainless-package-version:
+      - 1.86.0
+      x-stainless-raw-response:
+      - 'true'
+      x-stainless-read-timeout:
+      - '600.0'
+      x-stainless-retry-count:
+      - '0'
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.12.3
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAAwAAAP//tFTLbtswELzrK4g924ElP6NjUqdw0iJ9JA3cOhBoaiXTpkiWpOo6hv+9
+        kBRbspMCuUQHgdrh7M6sltx6hACPISTAFtSxTIv2xfIu0+PLm7suVU8PVNnx7+vBNzXoTr8ES2gV
+        DDVfInN71hlTmRbouJIVzAxSh0VWf9jv+MPRef+8BDIVoyhoqXbt3pnfllSqdtAJ+u1Or+33nukL
+        xRlaCMkvjxBCtuW7ECpj/Ash6bT2kQytpSlCeNhECBglighQa7l1VDpo1SBT0qEstMtciAbglBIR
+        o0LUhatn21jX3aJCRJ+erj7E/td1Nvn8czq5HbD4uicmetWoV6Xe6FJQkkt26FIDP8TDk2KEgKRZ
+        yU3RRWukboHmhE4IUJPmGUpXSIftDBh3mxmEZAbfqSRXhkrGLVMz2MERddf42rXe5DkYO34/SHDV
+        uR/+yFNzeTF9uLn9iO/lWeLavpPhw/qxMQYGk9xS8XI+qJTK0UJyOSCP3knbQKhUGzW3J1RIuOR2
+        ERmktrTbnDRvL6SUAPnRMIM2KtMucmqFZdFRUCWF+sDVYG/wDDrlqKjjfjBqvZIuitFRXg774Xwx
+        yhYY19T6nNE85qoBeA3rL9W8lruyz2X6lvQ1wBhqh3GkDcacHTuutxks7qP/bTs0uRQMFs0fzjBy
+        HE3xO2JMaC6qSwLsxjrMooTLFI02vLwpINFR4gf+YDjvDjvg7bx/AAAA//8DAAdPdXc4BQAA
+    headers:
+      CF-RAY:
+      - 95140a1cd84193e4-LHR
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 17 Jun 2025 16:49:19 GMT
+      Server:
+      - cloudflare
+      Transfer-Encoding:
+      - chunked
+      X-Content-Type-Options:
+      - nosniff
+      access-control-expose-headers:
+      - X-Request-ID
+      alt-svc:
+      - h3=":443"; ma=86400
+      cf-cache-status:
+      - DYNAMIC
+      openai-organization:
+      - user-xzaeeoqlanzncr8pomspsknu
+      openai-processing-ms:
+      - '699'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      x-envoy-upstream-service-time:
+      - '707'
+      x-ratelimit-limit-requests:
+      - '30000'
+      x-ratelimit-limit-tokens:
+      - '150000000'
+      x-ratelimit-remaining-requests:
+      - '29999'
+      x-ratelimit-remaining-tokens:
+      - '149999981'
+      x-ratelimit-reset-requests:
+      - 2ms
+      x-ratelimit-reset-tokens:
+      - 0s
+      x-request-id:
+      - req_110fff552e0b8c7c2ee1dde4d1a6461b
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"messages":[{"role":"user","content":"What is the weather in San Francisco?
+      Also, any news in town?"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"city\":
+      \"San Francisco\"}","name":"get_weather"},"id":"call_LzFDd1QwmIMZYIO6cdJ4lIpk","type":"function"},{"function":{"arguments":"{\"city\":
+      \"San Francisco\"}","name":"get_news"},"id":"call_2EtiU6fek0U7VugrCBYWKOGe","type":"function"}],"annotations":[]},{"role":"tool","content":"Sunny
+      as always!","tool_call_id":"call_LzFDd1QwmIMZYIO6cdJ4lIpk"}],"model":"gpt-4.1-nano","tools":[{"type":"function","function":{"name":"get_weather","description":"Get
+      the weather in a given city","parameters":{"type":"object","properties":{"city":{"type":"string"}}}}},{"type":"function","function":{"name":"get_news","description":"Get
+      the news in a given city","parameters":{"type":"object","properties":{"city":{"type":"string"}}}}}]}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '889'
+      content-type:
+      - application/json
+      cookie:
+      - __cf_bm=8JL8FZmd.PctT6sPovqTMnGkPxvJzS_U2nPRK1Axh_I-1750178955-1.0.1.1-38.ks.yEZWRHhZD_7QTO1Ti0qNtU0FbS5iuuzSNSVO5.Vu32cnfLaEuZ0NSUuamrSlbdmFwbCOXNTorOJ0vViAKOW6v30v44H5UGq1athEc;
+        _cfuvid=._BiLUai_DgRyLwoR3Pk0E6DfHs9nut.NIIoHQGUbio-1750178955176-0.0.1.1-604800000
+      host:
+      - api.openai.com
+      traceparent:
+      - 00-4fba2fd4464304995045093a2cbf6c98-608c5662872f5ba5-01
+      user-agent:
+      - OpenAI/Python 1.86.0
+      x-stainless-arch:
+      - arm64
+      x-stainless-async:
+      - 'false'
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - MacOS
+      x-stainless-package-version:
+      - 1.86.0
+      x-stainless-raw-response:
+      - 'true'
+      x-stainless-read-timeout:
+      - '600.0'
+      x-stainless-retry-count:
+      - '0'
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.12.3
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: "{\n  \"error\": {\n    \"message\": \"An assistant message with 'tool_calls'
+        must be followed by tool messages responding to each 'tool_call_id'. The following
+        tool_call_ids did not have response messages: call_2EtiU6fek0U7VugrCBYWKOGe\",\n
+        \   \"type\": \"invalid_request_error\",\n    \"param\": \"messages\",\n    \"code\":
+        null\n  }\n}"
+    headers:
+      CF-RAY:
+      - 95140a230fe893e4-LHR
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '315'
+      Content-Type:
+      - application/json
+      Date:
+      - Tue, 17 Jun 2025 16:49:20 GMT
+      Server:
+      - cloudflare
+      X-Content-Type-Options:
+      - nosniff
+      access-control-expose-headers:
+      - X-Request-ID
+      alt-svc:
+      - h3=":443"; ma=86400
+      cf-cache-status:
+      - DYNAMIC
+      openai-organization:
+      - user-xzaeeoqlanzncr8pomspsknu
+      openai-processing-ms:
+      - '115'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      x-envoy-upstream-service-time:
+      - '137'
+      x-ratelimit-limit-requests:
+      - '30000'
+      x-ratelimit-limit-tokens:
+      - '150000000'
+      x-ratelimit-remaining-requests:
+      - '29999'
+      x-ratelimit-remaining-tokens:
+      - '149999976'
+      x-ratelimit-reset-requests:
+      - 2ms
+      x-ratelimit-reset-tokens:
+      - 0s
+      x-request-id:
+      - req_db109ba1b86ef49d016be2d53532dcec
+    status:
+      code: 400
+      message: Bad Request
+version: 1

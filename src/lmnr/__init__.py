@@ -13,6 +13,7 @@ from .sdk.types import (
 )
 from .sdk.decorators import observe
 from .sdk.types import LaminarSpanContext
+from .opentelemetry_lib.litellm import LaminarLiteLLMCallback
 from .opentelemetry_lib.tracing.attributes import Attributes
 from .opentelemetry_lib.tracing.instruments import Instruments
 from .opentelemetry_lib.tracing.processor import LaminarSpanProcessor
@@ -30,6 +31,7 @@ __all__ = [
     "Laminar",
     "LaminarClient",
     "LaminarDataset",
+    "LaminarLiteLLMCallback",
     "LaminarSpanContext",
     "LaminarSpanProcessor",
     "RunAgentResponseChunk",
