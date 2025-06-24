@@ -347,7 +347,7 @@ try:
                 self._process_response_choices(span, response_dict.get("choices"))
 
 except ImportError as e:
-    logger.warning(f"LiteLLM callback unavailable: {e}")
+    logger.debug(f"LiteLLM callback unavailable: {e}")
 
     # Create a no-op logger when LiteLLM is not available
     class LaminarLiteLLMCallback:
