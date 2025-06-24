@@ -129,8 +129,9 @@ def _set_request_attributes(span, args, kwargs):
     )
 
     tools: list[types.FunctionDeclaration] = []
-    if config_dict.get("tools"):
-        for tool in config_dict.get("tools"):
+    arg_tools = config_dict.get("tools", kwargs.get("tools"))
+    if arg_tools:
+        for tool in arg_tools:
             if isinstance(tool, types.Tool):
                 tools += tool.function_declarations or []
             elif isinstance(tool, Callable):
