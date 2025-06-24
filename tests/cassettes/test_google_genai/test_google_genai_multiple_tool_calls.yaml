@@ -1,0 +1,67 @@
+interactions:
+- request:
+    body: '{"contents": [{"parts": [{"text": "What is the weather in Tokyo and Paris?"}],
+      "role": "user"}], "systemInstruction": {"parts": [{"text": "Be concise and to
+      the point. Use tools as much as possible."}], "role": "user"}, "tools": [{"functionDeclarations":
+      [{"description": "Gets the weather in a given city.", "name": "get_weather",
+      "parameters": {"properties": {"location": {"description": "The location to get
+      the weather for.", "type": "STRING"}}, "required": ["location"], "type": "OBJECT"}}]}],
+      "generationConfig": {}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '522'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - google-genai-sdk/1.20.0 gl-python/3.12.3
+      x-goog-api-client:
+      - google-genai-sdk/1.20.0 gl-python/3.12.3
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/81Sy07DMBC8+ysinxsIRS2IWxU4VAiIoEJICKFVs40tHDuynZa26r/jOo8mBQ7c
+        yCGyd9az4/FsSRDQOciUp2DR0Kvg1VWCYOv/e0xJi9I6oCm5YgHaHnqrb9tZu5ZFKeeWKxmDEL3D
+        NS4hR1enGdr3FYJlqOnguAl0Zn447BCh5rCn31PM1Mda0aOeHflttxv8C9UJaG7+oLpdvx0GUq2E
+        15OrFEVD1l6QLrjkhj0imGrm0+whafVSLlP8dOWINAM8NS0NZHiHFlwkoL0ILbTKC+vMRhmr0kfi
+        YliRdRLUw8+jGrfKguhBZ+PLwTdec+2mctGNVid17pIguF37N795mXWcdwN6shonSMcwapkqM2b7
+        EsdjUjtWmfiM2tQv5PfmNMPc2RgOT0bhQoBhYaFxyXEVRqNwGHkRVKMplDQ4TX06JAO4TeJJGd8v
+        02myKTYsnFxSsiNfLpXlNnADAAA=
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Tue, 24 Jun 2025 10:05:54 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=729
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1

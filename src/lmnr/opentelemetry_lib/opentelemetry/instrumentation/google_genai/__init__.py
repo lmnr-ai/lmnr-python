@@ -12,7 +12,6 @@ from .config import (
     Config,
 )
 from .utils import (
-    ProcessedContentPart,
     dont_throw,
     get_content,
     role_from_content_union,
@@ -164,7 +163,9 @@ def _set_request_attributes(span, args, kwargs):
             set_span_attribute(
                 span,
                 f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.content",
-                (get_content(process_content_union(system_instruction)) or {}).get("text", ""),
+                (get_content(process_content_union(system_instruction)) or {}).get(
+                    "text", ""
+                ),
             )
             set_span_attribute(
                 span, f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.role", "system"
@@ -191,6 +192,7 @@ def _set_request_attributes(span, args, kwargs):
                 if isinstance(processed_content, list)
                 else [processed_content]
             )
+            tool_call_index = 0
             for block in blocks:
                 block_dict = to_dict(block)
 
@@ -200,19 +202,24 @@ def _set_request_attributes(span, args, kwargs):
 
                 set_span_attribute(
                     span,
-                    f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.tool_calls.0.name",
+                    f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.tool_calls.{tool_call_index}.name",
                     function_call.get("name"),
                 )
                 set_span_attribute(
                     span,
-                    f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.tool_calls.0.id",
-                    function_call.get("id") if function_call.get("id") is not None else function_call.get("name"), # google genai doesn't support tool call ids
+                    f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.tool_calls.{tool_call_index}.id",
+                    (
+                        function_call.get("id")
+                        if function_call.get("id") is not None
+                        else function_call.get("name")
+                    ),  # google genai doesn't support tool call ids
                 )
                 set_span_attribute(
                     span,
-                    f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.tool_calls.0.arguments",
+                    f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.tool_calls.{tool_call_index}.arguments",
                     json.dumps(function_call.get("arguments")),
                 )
+                tool_call_index += 1
 
             set_span_attribute(
                 span,
@@ -284,6 +291,7 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
                 else [processed_content]
             )
 
+            tool_call_index = 0
             for block in blocks:
                 block_dict = to_dict(block)
                 if not block_dict.get("function_call"):
@@ -291,19 +299,24 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
                 function_call = to_dict(block_dict.get("function_call", {}))
                 set_span_attribute(
                     span,
-                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.0.name",
+                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.{tool_call_index}.name",
                     function_call.get("name"),
                 )
                 set_span_attribute(
                     span,
-                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.0.id",
-                    function_call.get("id") if function_call.get("id") is not None else function_call.get("name"), # google genai doesn't support tool call ids
+                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.{tool_call_index}.id",
+                    (
+                        function_call.get("id")
+                        if function_call.get("id") is not None
+                        else function_call.get("name")
+                    ),  # google genai doesn't support tool call ids
                 )
                 set_span_attribute(
                     span,
-                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.0.arguments",
+                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.{tool_call_index}.arguments",
                     json.dumps(function_call.get("arguments")),
                 )
+                tool_call_index += 1
 
 
 @dont_throw

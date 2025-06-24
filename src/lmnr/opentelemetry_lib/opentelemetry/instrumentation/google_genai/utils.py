@@ -1,3 +1,4 @@
+import base64
 import logging
 import traceback
 
@@ -227,11 +228,15 @@ def _process_image_item(
     content_index: int,
 ) -> ProcessedContentPart | dict | None:
     # Convert to openai format, so backends can handle it
+    data = blob.get("data")
+    encoded_data = (
+        base64.b64encode(data).decode("utf-8") if isinstance(data, bytes) else data
+    )
     return (
         ProcessedContentPart(
             image_url=ImageUrl(
                 image_url=ImageUrlInner(
-                    url=f"data:image/{blob.get('mime_type').split('/')[1]};base64,{blob.get('data')}",
+                    url=f"data:image/{blob.get('mime_type').split('/')[1]};base64,{encoded_data}",
                 )
             )
         )
