@@ -104,6 +104,7 @@ class Evaluation:
         evaluators: dict[str, EvaluatorFunction | HumanEvaluator],
         name: str | None = None,
         group_name: str | None = None,
+        metadata: dict[str, Any] | None = None,
         concurrency_limit: int = DEFAULT_BATCH_SIZE,
         project_api_key: str | None = None,
         base_url: str | None = None,
@@ -143,6 +144,7 @@ class Evaluation:
                 evaluations. Only evaluations within the same group_name can be\
                 visually compared. If not provided, "default" is assigned.
                 Defaults to None
+            metadata (dict[str, Any] | None): optional metadata to associate with\
             concurrency_limit (int, optional): The concurrency limit for\
                 evaluation. This many data points will be evaluated in parallel\
                 with a pool of workers.
@@ -192,6 +194,7 @@ class Evaluation:
         self.evaluators = evaluators
         self.group_name = group_name
         self.name = name
+        self.metadata = metadata
         self.concurrency_limit = concurrency_limit
         self.batch_size = concurrency_limit
         self._logger = get_default_logger(self.__class__.__name__)
@@ -242,7 +245,7 @@ class Evaluation:
         self.reporter.start(len(self.data))
         try:
             evaluation = await self.client.evals.init(
-                name=self.name, group_name=self.group_name
+                name=self.name, group_name=self.group_name, metadata=self.metadata
             )
             result_datapoints = await self._evaluate_in_batches(evaluation.id)
 
@@ -409,6 +412,7 @@ def evaluate(
     evaluators: dict[str, EvaluatorFunction | HumanEvaluator],
     name: str | None = None,
     group_name: str | None = None,
+    metadata: dict[str, Any] | None = None,
     concurrency_limit: int = DEFAULT_BATCH_SIZE,
     project_api_key: str | None = None,
     base_url: str | None = None,
@@ -452,6 +456,7 @@ def evaluate(
             Only evaluations within the same group_name can be visually compared.\
             If not provided, set to "default".
             Defaults to None
+        metadata (dict[str, Any] | None, optional): Optional metadata to associate with\
         concurrency_limit (int, optional): The concurrency limit for evaluation.
                         Defaults to DEFAULT_BATCH_SIZE.
         project_api_key (str | None, optional): The project API key.
@@ -478,6 +483,7 @@ def evaluate(
         executor=executor,
         evaluators=evaluators,
         group_name=group_name,
+        metadata=metadata,
         name=name,
         concurrency_limit=concurrency_limit,
         project_api_key=project_api_key,

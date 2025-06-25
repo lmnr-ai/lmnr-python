@@ -17,13 +17,14 @@ class Evals(BaseResource):
     """Resource for interacting with Laminar evaluations API."""
 
     def init(
-        self, name: str | None = None, group_name: str | None = None
+        self, name: str | None = None, group_name: str | None = None, metadata: dict[str, Any] | None = None
     ) -> InitEvaluationResponse:
         """Initialize a new evaluation.
 
         Args:
             name (str | None, optional): Name of the evaluation. Defaults to None.
             group_name (str | None, optional): Group name for the evaluation. Defaults to None.
+            metadata (dict[str, Any] | None, optional): Metadata to associate with. Defaults to None.
 
         Returns:
             InitEvaluationResponse: The response from the initialization request.
@@ -33,6 +34,7 @@ class Evals(BaseResource):
             json={
                 "name": name,
                 "groupName": group_name,
+                "metadata": metadata,
             },
             headers=self._headers(),
         )
@@ -47,6 +49,7 @@ class Evals(BaseResource):
         self,
         name: str | None = None,
         group_name: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> uuid.UUID:
         """
         Create a new evaluation and return its ID.
@@ -54,11 +57,12 @@ class Evals(BaseResource):
         Parameters:
             name (str | None, optional): Optional name of the evaluation.
             group_name (str | None, optional): An identifier to group evaluations.
-        
+            metadata (dict[str, Any] | None, optional): Metadata to associate with. Defaults to None.
+
         Returns:
             uuid.UUID: The evaluation ID.
         """
-        evaluation = self.init(name=name, group_name=group_name)
+        evaluation = self.init(name=name, group_name=group_name, metadata=metadata)
         return evaluation.id
 
     def create_datapoint(
