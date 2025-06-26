@@ -40,7 +40,8 @@ class TestAsyncLaminarClientEvaluations:
             
             eval_id = await async_client.evals.create_evaluation(
                 name="Test Evaluation",
-                group_name="test_group"
+                group_name="test_group",
+                metadata={"metadata": "test metadata"}
             )
             
             assert eval_id == mock_eval_response.id
@@ -188,7 +189,8 @@ class TestLaminarClientEvaluations:
             
             eval_id = sync_client.evals.create_evaluation(
                 name="Test Evaluation",
-                group_name="test_group"
+                group_name="test_group",
+                metadata={"metadata": "test metadata"}
             )
             
             assert eval_id == mock_eval_response.id
