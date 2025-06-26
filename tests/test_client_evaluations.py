@@ -40,11 +40,12 @@ class TestAsyncLaminarClientEvaluations:
             
             eval_id = await async_client.evals.create_evaluation(
                 name="Test Evaluation",
-                group_name="test_group"
+                group_name="test_group",
+                metadata={"metadata": "test metadata"}
             )
             
             assert eval_id == mock_eval_response.id
-            mock_create.assert_called_once_with(name="Test Evaluation", group_name="test_group")
+            mock_create.assert_called_once_with(name="Test Evaluation", group_name="test_group", metadata={"metadata": "test metadata"})
 
     @pytest.mark.asyncio
     async def test_create_evaluation_with_defaults(self, async_client, mock_eval_response):
@@ -188,11 +189,12 @@ class TestLaminarClientEvaluations:
             
             eval_id = sync_client.evals.create_evaluation(
                 name="Test Evaluation",
-                group_name="test_group"
+                group_name="test_group",
+                metadata={"metadata": "test metadata"}
             )
             
             assert eval_id == mock_eval_response.id
-            mock_create.assert_called_once_with(name="Test Evaluation", group_name="test_group")
+            mock_create.assert_called_once_with(name="Test Evaluation", group_name="test_group", metadata={"metadata": "test metadata"})
 
     def test_create_evaluation_with_defaults(self, sync_client, mock_eval_response):
         """Test evaluation creation with default parameters."""
