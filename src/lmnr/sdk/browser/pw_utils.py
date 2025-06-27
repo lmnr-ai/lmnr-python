@@ -45,19 +45,6 @@ INJECT_PLACEHOLDER = """
 
     window.lmnrRrwebEventsBatch = new Set();
     
-    // Track page focus state
-    window.lmnrPageIsFocused = true;
-    
-    window.addEventListener('blur', () => {
-        window.lmnrPageIsFocused = false;
-        console.log('Page lost focus');
-    });
-    
-    window.addEventListener('focus', () => {
-        window.lmnrPageIsFocused = true;
-        console.log('Page gained focus');
-    });
-
     // Utility function to compress individual event data
     async function compressEventData(data) {
         const jsonString = JSON.stringify(data);
@@ -76,10 +63,6 @@ INJECT_PLACEHOLDER = """
 
     // Add heartbeat events
     setInterval(async () => {
-        if (!window.lmnrPageIsFocused) {
-            return;
-        }
-
         window.lmnrRrweb.record.addCustomEvent('heartbeat', {
             title: document.title,
             url: document.URL,
@@ -88,19 +71,17 @@ INJECT_PLACEHOLDER = """
     }, 1000);
 
     window.lmnrRrweb.record({
-        async emit(event) {
-            // Ignore events when page is not focused
-            if (!window.lmnrPageIsFocused) {
-                return;
-            }
-            
+        async emit(event) {    
             // Compress the data field
             const compressedEvent = {
                 ...event,
                 data: await compressEventData(event.data)
             };
             window.lmnrRrwebEventsBatch.add(compressedEvent);
-        }
+        },
+        recordCanvas: true,
+        collectFonts: true,
+        recordCrossOriginIframes: true
     });
 }
 """
@@ -115,7 +96,7 @@ async def send_events_async(
         events = await page.evaluate(
             """
         () => {
-            if (!window.lmnrPageIsFocused || typeof window.lmnrGetAndClearEvents !== 'function') {
+            if (typeof window.lmnrGetAndClearEvents !== 'function') {
                 return [];
             }
             return window.lmnrGetAndClearEvents();
@@ -124,6 +105,7 @@ async def send_events_async(
         )
 
         if not events or len(events) == 0:
+            logger.info("No events to send, length: %s", len(events))
             return
 
         await client._browser_events.send(session_id, trace_id, events)
@@ -144,7 +126,7 @@ def send_events_sync(
         events = page.evaluate(
             """
         () => {
-            if (!window.lmnrPageIsFocused || typeof window.lmnrGetAndClearEvents !== 'function') {
+            if (typeof window.lmnrGetAndClearEvents !== 'function') {
                 return [];
             }
             return window.lmnrGetAndClearEvents();
