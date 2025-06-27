@@ -105,7 +105,6 @@ async def send_events_async(
         )
 
         if not events or len(events) == 0:
-            logger.info("No events to send, length: %s", len(events))
             return
 
         await client._browser_events.send(session_id, trace_id, events)
