@@ -76,9 +76,16 @@ async def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         )
     else:
         if not to_wrap.get("ignore_input"):
-            attributes["lmnr.span.input"] = json_dumps(
-                get_input_from_func_args(wrapped, True, args, kwargs)
-            )
+            inp_dict = get_input_from_func_args(wrapped, True, args, kwargs)
+            # Add task to the `agent.run` span input
+            if to_wrap.get("method") == "run" and hasattr(instance, "task"):
+                inp_dict["task"] = instance.task
+            attributes["lmnr.span.input"] = json_dumps(inp_dict)
+    if to_wrap.get("method") == "step" and to_wrap.get("object") == "Agent":
+        # Add step number to the `agent.step` span name
+        step_info = kwargs.get("step_info", args[0] if len(args) > 0 else None)
+        if step_info and hasattr(step_info, "step_number"):
+            span_name = f"agent.step.{step_info.step_number}"
     with tracer.start_as_current_span(span_name, attributes=attributes) as span:
         span.set_attributes(attributes)
         result = await wrapped(*args, **kwargs)
