@@ -274,6 +274,18 @@ class OpenAIInstrumentorInitializer(InstrumentorInitializer):
         )
 
 
+class OpenAIResponsesInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("openai"):
+            return None
+
+        from ..opentelemetry.instrumentation.openai_responses import (
+            OpenAIResponsesInstrumentor,
+        )
+
+        return OpenAIResponsesInstrumentor()
+
+
 class PatchrightInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(
         self, client, async_client, *args, **kwargs
