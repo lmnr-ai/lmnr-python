@@ -40,12 +40,12 @@ class Instruments(Enum):
     QDRANT = "qdrant"
     REPLICATE = "replicate"
     SAGEMAKER = "sagemaker"
+    SKYVERN = "skyvern"
     TOGETHER = "together"
     TRANSFORMERS = "transformers"
     VERTEXAI = "vertexai"
     WATSONX = "watsonx"
     WEAVIATE = "weaviate"
-
 
 INSTRUMENTATION_INITIALIZERS: dict[
     Instruments, initializers.InstrumentorInitializer
@@ -77,6 +77,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.QDRANT: initializers.QdrantInstrumentorInitializer(),
     Instruments.REPLICATE: initializers.ReplicateInstrumentorInitializer(),
     Instruments.SAGEMAKER: initializers.SageMakerInstrumentorInitializer(),
+    Instruments.SKYVERN: initializers.SkyvernInstrumentorInitializer(),
     Instruments.TOGETHER: initializers.TogetherInstrumentorInitializer(),
     Instruments.TRANSFORMERS: initializers.TransformersInstrumentorInitializer(),
     Instruments.VERTEXAI: initializers.VertexAIInstrumentorInitializer(),
