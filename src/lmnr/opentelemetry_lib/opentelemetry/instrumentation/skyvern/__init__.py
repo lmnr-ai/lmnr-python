@@ -98,7 +98,7 @@ async def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
                 
         except Exception as e:  
             span.record_exception(e)  
-            raise e
+            raise
 
 
 def instrument_llm_handler(tracer: Tracer):  
@@ -135,7 +135,7 @@ def instrument_llm_handler(tracer: Tracer):
                 return result  
             except Exception as e:  
                 span.record_exception(e)  
-                raise e
+                raise
       
     # Replace the global handler  
     app.LLM_API_HANDLER = wrapped_llm_handler
@@ -175,9 +175,7 @@ class SkyvernInstrumentor(BaseInstrumentor):
                         wrapped_method,
                     ),
                 )
-                print(f"Wrapped {wrap_package}.{wrap_object}.{wrap_method}")
             except ModuleNotFoundError:
-                print(f"ModuleNotFoundError: {wrap_package}.{wrap_object}.{wrap_method}")
                 pass  # that's ok, we're not instrumenting everything
 
     def _uninstrument(self, **kwargs):
