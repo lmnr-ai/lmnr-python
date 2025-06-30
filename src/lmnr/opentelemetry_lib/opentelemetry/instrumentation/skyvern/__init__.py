@@ -82,8 +82,7 @@ async def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         get_input_from_func_args(wrapped, True, args, kwargs)
     )
     
-    with tracer.start_as_current_span(span_name) as span:
-        span.set_attributes(attributes)
+    with tracer.start_as_current_span(span_name, attributes=attributes) as span:
         try:  
             result = await wrapped(*args, **kwargs)  
                 
@@ -120,8 +119,7 @@ def instrument_llm_handler(tracer: Tracer):
             "lmnr.span.type": "DEFAULT",  
         }  
 
-        with tracer.start_as_current_span(span_name) as span:  
-            span.set_attributes(attributes)  
+        with tracer.start_as_current_span(span_name, attributes=attributes) as span:  
             try:  
                 result = await original_handler(*args, **kwargs)  
 
