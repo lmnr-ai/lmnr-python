@@ -13,7 +13,9 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
     - name: Install uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@v6
+      with:
+        activate-environment: true
     - name: Install toml-cli
       run: uv add toml-cli
     - name: Ensure version match
