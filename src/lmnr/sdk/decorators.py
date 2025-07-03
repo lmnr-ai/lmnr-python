@@ -1,6 +1,6 @@
 from lmnr.opentelemetry_lib.decorators import (
-    entity_method,
-    aentity_method,
+    observe_base,
+    async_observe_base,
     json_dumps,
 )
 from opentelemetry.trace import INVALID_SPAN, get_current_span
@@ -28,6 +28,8 @@ def observe(
     ignore_output: bool = False,
     span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
     ignore_inputs: list[str] | None = None,
+    input_formatter: Callable[P, str] | None = None,
+    output_formatter: Callable[[R], str] | None = None,
     metadata: dict[str, Any] | None = None,
     tags: list[str] | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
@@ -53,6 +55,16 @@ def observe(
             def foo(a, b, `sensitive_data`), and you want to ignore the\
             `sensitive_data` argument, you can pass ["sensitive_data"] to\
             this argument. Defaults to None.
+        input_formatter (Callable[P, str] | None, optional): A custom function\
+            to format the input of the wrapped function. All function arguments\
+            are passed to this function. Must return a string. Ignored if\
+            `ignore_input` is True. Does not respect `ignore_inputs` argument.
+            Defaults to None.
+        output_formatter (Callable[[R], str] | None, optional): A custom function\
+            to format the output of the wrapped function. The output is passed\
+            to this function. Must return a string. Ignored if `ignore_output`
+            is True. Does not respect `ignore_inputs` argument.
+            Defaults to None.
         metadata (dict[str, Any] | None, optional): Metadata to associate with\
             the trace. Must be JSON serializable. Defaults to None.
         tags (list[str] | None, optional): Tags to associate with the trace.
@@ -91,22 +103,45 @@ def observe(
                 logger.warning("Tags must be a list of strings. Tags will be ignored.")
             else:
                 association_properties["tags"] = tags
+        if input_formatter is not None and ignore_input:
+            logger.warning(
+                f"observe, function {func.__name__}: Input formatter"
+                " is ignored because `ignore_input` is True. Specify only one of"
+                " `ignore_input` or `input_formatter`."
+            )
+        if input_formatter is not None and ignore_inputs is not None:
+            logger.warning(
+                f"observe, function {func.__name__}: Both input formatter and"
+                " `ignore_inputs` are specified. Input formatter"
+                " will pass all arguments to the formatter regardless of"
+                " `ignore_inputs`."
+            )
+        if output_formatter is not None and ignore_output:
+            logger.warning(
+                f"observe, function {func.__name__}: Output formatter"
+                " is ignored because `ignore_output` is True. Specify only one of"
+                " `ignore_output` or `output_formatter`."
+            )
         result = (
-            aentity_method(
+            async_observe_base(
                 name=name,
                 ignore_input=ignore_input,
                 ignore_output=ignore_output,
                 span_type=span_type,
                 ignore_inputs=ignore_inputs,
+                input_formatter=input_formatter,
+                output_formatter=output_formatter,
                 association_properties=association_properties,
             )(func)
             if is_async(func)
-            else entity_method(
+            else observe_base(
                 name=name,
                 ignore_input=ignore_input,
                 ignore_output=ignore_output,
                 span_type=span_type,
                 ignore_inputs=ignore_inputs,
+                input_formatter=input_formatter,
+                output_formatter=output_formatter,
                 association_properties=association_properties,
             )(func)
         )
