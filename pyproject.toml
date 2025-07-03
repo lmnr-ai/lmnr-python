@@ -139,12 +139,8 @@ dev = [
 ]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["uv_build>=0.7.19,<0.8"]
+build-backend = "uv_build"
 
 [tool.uv.workspace]
 members = ["examples/fastapi-app"]
-# we can move to uv_build, once it's more stable
-# https://github.com/astral-sh/uv/issues/3957
-# requires = ["uv_build>=0.6.16,<0.7"]
-# build-backend = "uv_build"
