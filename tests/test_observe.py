@@ -458,6 +458,39 @@ async def test_observe_skip_input_keys_with_kwargs_async(
     }
 
 
+def test_observe_input_formatter(exporter: InMemorySpanExporter):
+    def input_formatter(x):
+        return {"x": x + 1}
+
+    @observe(input_formatter=input_formatter)
+    def observed_foo(x):
+        return x
+
+    result = observed_foo(1)
+    spans = exporter.get_finished_spans()
+    assert result == 1
+    assert len(spans) == 1
+    assert json.loads(spans[0].attributes["lmnr.span.input"]) == {"x": 2}
+
+
+def test_observe_input_formatter_with_kwargs(exporter: InMemorySpanExporter):
+    def input_formatter(x, **kwargs):
+        return {"x": x + 1, "custom-A": f"{kwargs.get("a")}--"}
+
+    @observe(input_formatter=input_formatter)
+    def observed_foo(x, **kwargs):
+        return x
+
+    result = observed_foo(1, a=1, b=2)
+    spans = exporter.get_finished_spans()
+    assert result == 1
+    assert len(spans) == 1
+    assert json.loads(spans[0].attributes["lmnr.span.input"]) == {
+        "x": 2,
+        "custom-A": "1--",
+    }
+
+
 @pytest.mark.asyncio
 async def test_observe_tags_async(span_exporter: InMemorySpanExporter):
     @observe(tags=["foo", "bar"])
@@ -514,3 +547,71 @@ def test_observe_sequential_spans(span_exporter: InMemorySpanExporter):
     assert bar_span.parent is None or bar_span.parent.span_id == 0
 
     assert foo_span.get_span_context().trace_id != bar_span.get_span_context().trace_id
+
+
+@pytest.mark.asyncio
+async def test_observe_input_formatter_async(exporter: InMemorySpanExporter):
+    def input_formatter(x):
+        return {"x": x + 1}
+
+    @observe(input_formatter=input_formatter)
+    async def observed_foo(x):
+        return x
+
+    result = await observed_foo(1)
+    spans = exporter.get_finished_spans()
+    assert result == 1
+    assert len(spans) == 1
+    assert spans[0].attributes["lmnr.span.input"] == json.dumps({"x": 2})
+
+
+@pytest.mark.asyncio
+async def test_observe_input_formatter_with_kwargs_async(
+    exporter: InMemorySpanExporter,
+):
+    def input_formatter(x, **kwargs):
+        return {"x": x + 1, "custom-A": f"{kwargs.get("a")}--"}
+
+    @observe(input_formatter=input_formatter)
+    async def observed_foo(x, **kwargs):
+        return x
+
+    result = await observed_foo(1, a=1, b=2)
+    spans = exporter.get_finished_spans()
+    assert result == 1
+    assert len(spans) == 1
+    assert json.loads(spans[0].attributes["lmnr.span.input"]) == {
+        "x": 2,
+        "custom-A": "1--",
+    }
+
+
+def test_observe_output_formatter(exporter: InMemorySpanExporter):
+    def output_formatter(x):
+        return {"x": x + 1}
+
+    @observe(output_formatter=output_formatter)
+    def observed_foo(x):
+        return x
+
+    result = observed_foo(1)
+    spans = exporter.get_finished_spans()
+    assert result == 1
+    assert len(spans) == 1
+    assert json.loads(spans[0].attributes["lmnr.span.output"]) == {"x": 2}
+
+
+@pytest.mark.asyncio
+async def test_observe_output_formatter_async(exporter: InMemorySpanExporter):
+    def output_formatter(x):
+        return {"x": x + 1}
+
+    @observe(output_formatter=output_formatter)
+    async def observed_foo(x):
+        return x
+
+    result = await observed_foo(1)
+    spans = exporter.get_finished_spans()
+    assert result == 1
+    assert len(spans) == 1
+    assert json.loads(spans[0].attributes["lmnr.span.output"]) == {"x": 2}
