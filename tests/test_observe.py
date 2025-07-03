@@ -475,7 +475,7 @@ def test_observe_input_formatter(exporter: InMemorySpanExporter):
 
 def test_observe_input_formatter_with_kwargs(exporter: InMemorySpanExporter):
     def input_formatter(x, **kwargs):
-        return {"x": x + 1, "custom-A": f"{kwargs.get("a")}--"}
+        return {"x": x + 1, "custom-A": f"{kwargs.get('a')}--"}
 
     @observe(input_formatter=input_formatter)
     def observed_foo(x, **kwargs):
@@ -570,7 +570,7 @@ async def test_observe_input_formatter_with_kwargs_async(
     exporter: InMemorySpanExporter,
 ):
     def input_formatter(x, **kwargs):
-        return {"x": x + 1, "custom-A": f"{kwargs.get("a")}--"}
+        return {"x": x + 1, "custom-A": f"{kwargs.get('a')}--"}
 
     @observe(input_formatter=input_formatter)
     async def observed_foo(x, **kwargs):
