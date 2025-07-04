@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.6.16"
+version = "0.6.17"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -24,7 +24,6 @@ dependencies = [
   "opentelemetry-semantic-conventions (>=0.54b0)",
   "opentelemetry-semantic-conventions-ai (>=0.4.8)",
   "tqdm (>=4.0)",
-  "argparse (>=1.0)",
   "tenacity (>=8.0)",
   # Since 1.68.0, grpcio writes a warning message
   # that looks scary, but is harmless.
