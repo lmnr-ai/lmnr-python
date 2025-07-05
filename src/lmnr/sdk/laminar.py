@@ -15,7 +15,7 @@ from lmnr.opentelemetry_lib import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 from lmnr.opentelemetry_lib.decorators import json_dumps
 from opentelemetry import context as context_api, trace
 from opentelemetry.context import attach, detach
-from opentelemetry.trace import INVALID_TRACE_ID
+from opentelemetry.trace import INVALID_TRACE_ID, NonRecordingSpan, SpanContext
 from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
 from opentelemetry.util.types import AttributeValue
 
@@ -39,7 +39,12 @@ from lmnr.opentelemetry_lib.tracing.context_properties import (
     set_association_properties,
     update_association_properties,
 )
-from lmnr.sdk.utils import from_env, is_otel_attribute_value_type
+from lmnr.sdk.utils import (
+    fix_span_context_trace_flags,
+    from_env,
+    is_otel_attribute_value_type,
+    is_span_context_trace_flags_valid,
+)
 
 from .log import VerboseColorfulFormatter
 
@@ -313,6 +318,17 @@ class Laminar:
                         f"`start_as_current_span` Could not set tags: {tags}. Tags must be a list of strings. "
                         "Tags will be ignored."
                     )
+            fix_token = None
+            current_span = trace.get_current_span()
+            if not is_span_context_trace_flags_valid(current_span):
+                # If we are currently in a broken span, we need to create a
+                # non-recording span and activate it. This will prevent errors
+                # in start_span.
+                ctx = trace.set_span_in_context(
+                    fix_span_context_trace_flags(current_span),
+                    context_api.get_current(),
+                )
+                fix_token = attach(ctx)
             with tracer.start_as_current_span(
                 name,
                 context=ctx,
@@ -339,6 +355,8 @@ class Laminar:
             # TODO: Figure out if this is necessary
             try:
                 detach(ctx_token)
+                if fix_token is not None:
+                    detach(fix_token)
             except Exception:
                 pass
 
@@ -498,6 +516,17 @@ class Laminar:
                         f"`start_span` Could not set tags: {tags}. Tags must be a list of strings. "
                         + "Tags will be ignored."
                     )
+            current_span = trace.get_current_span()
+            if not is_span_context_trace_flags_valid(current_span):
+                # If we are currently in a broken span, we need to create a
+                # non-recording span and activate it. This will prevent errors
+                # in start_span. Side effect: new spans from now on will live
+                # in a separate trace, as if we started from a blank state.
+                ctx = trace.set_span_in_context(
+                    fix_span_context_trace_flags(current_span),
+                    context_api.get_current(),
+                )
+                attach(ctx)
             span = tracer.start_span(
                 name,
                 context=ctx,

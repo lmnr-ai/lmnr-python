@@ -7,9 +7,14 @@ from typing import Any, Literal
 
 from opentelemetry import trace
 from opentelemetry import context as context_api
-from opentelemetry.trace import Span
+from opentelemetry.trace import Span, NonRecordingSpan
 
-from lmnr.sdk.utils import get_input_from_func_args, is_method
+from lmnr.sdk.utils import (
+    fix_span_context_trace_flags,
+    get_input_from_func_args,
+    is_method,
+    is_span_context_trace_flags_valid,
+)
 from lmnr.opentelemetry_lib import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer
 from lmnr.opentelemetry_lib.tracing.attributes import (
@@ -55,9 +60,21 @@ def entity_method(
             if not TracerWrapper.verify_initialized():
                 return fn(*args, **kwargs)
 
+            fix_token = None
             span_name = name or fn.__name__
 
             with get_tracer() as tracer:
+                current_span = trace.get_current_span()
+                if not is_span_context_trace_flags_valid(current_span):
+                    # If we are currently in a broken span, we need to create a
+                    # non-recording span and activate it. This will prevent errors
+                    # in start_span. Side effect: new spans from now on will live
+                    # in a separate trace, as if we started from a blank state.
+                    ctx = trace.set_span_in_context(
+                        fix_span_context_trace_flags(current_span),
+                        context_api.get_current(),
+                    )
+                    fix_token = context_api.attach(ctx)
                 span = tracer.start_span(span_name, attributes={SPAN_TYPE: span_type})
                 if association_properties is not None:
                     for key, value in association_properties.items():
@@ -91,6 +108,9 @@ def entity_method(
                 except Exception as e:
                     _process_exception(span, e)
                     span.end()
+                    context_api.detach(ctx_token)
+                    if fix_token is not None:
+                        context_api.detach(fix_token)
                     raise e
 
                 # span will be ended in the generator
@@ -120,6 +140,8 @@ def entity_method(
 
                 span.end()
                 context_api.detach(ctx_token)
+                if fix_token is not None:
+                    context_api.detach(fix_token)
                 return res
 
         return wrap
@@ -143,8 +165,19 @@ def aentity_method(
                 return await fn(*args, **kwargs)
 
             span_name = name or fn.__name__
-
+            fix_token = None
             with get_tracer() as tracer:
+                current_span = trace.get_current_span()
+                if not is_span_context_trace_flags_valid(current_span):
+                    # If we are currently in a broken span, we need to create a
+                    # non-recording span and activate it. This will prevent errors
+                    # in start_span. Side effect: new spans from now on will live
+                    # in a separate trace, as if we started from a blank state.
+                    ctx = trace.set_span_in_context(
+                        fix_span_context_trace_flags(current_span),
+                        context_api.get_current(),
+                    )
+                    fix_token = context_api.attach(ctx)
                 span = tracer.start_span(span_name, attributes={SPAN_TYPE: span_type})
                 if association_properties is not None:
                     for key, value in association_properties.items():
@@ -178,6 +211,9 @@ def aentity_method(
                 except Exception as e:
                     _process_exception(span, e)
                     span.end()
+                    context_api.detach(ctx_token)
+                    if fix_token is not None:
+                        context_api.detach(fix_token)
                     raise e
 
                 # span will be ended in the generator
@@ -200,7 +236,8 @@ def aentity_method(
 
                 span.end()
                 context_api.detach(ctx_token)
-
+                if fix_token is not None:
+                    context_api.detach(fix_token)
                 return res
 
         return wrap

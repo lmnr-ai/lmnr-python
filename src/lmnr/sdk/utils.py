@@ -10,6 +10,36 @@ import queue
 import typing
 import uuid
 
+from opentelemetry.trace import Span, NonRecordingSpan, SpanContext, TraceFlags
+
+
+def is_span_context_trace_flags_valid(span: Span) -> bool:
+    """As of writing this function, some telemetry library,
+    possibly datadog lambda handler, returns `trace_flags` as a raw
+    int, not a `TraceFlags(int)` object. But tracer.start_span() checks for
+    `TraceFlags(int).sampled` on the current (parent) span when creating a span.
+
+    To avoid errors in start_span/start_as_current_span, we check for the
+    presence of `TraceFlags(int).sampled` on the span.
+    """
+    result = hasattr(span.get_span_context().trace_flags, "sampled")
+    print(f"\n\n\n{result}\n\n\n")
+    return result
+
+
+def fix_span_context_trace_flags(span: Span) -> Span:
+    """Fix the span context trace flags if they are not a `TraceFlags(int)` object."""
+    print("\n\n\nhealing span context\n\n\n")
+    return NonRecordingSpan(
+        SpanContext(
+            trace_id=span.get_span_context().trace_id,
+            span_id=span.get_span_context().span_id,
+            is_remote=span.get_span_context().is_remote,
+            trace_state=span.get_span_context().trace_state,
+            trace_flags=TraceFlags(span.get_span_context().trace_flags),
+        )
+    )
+
 
 def is_method(func: typing.Callable) -> bool:
     # inspect.ismethod is True for bound methods only, but in the decorator,
