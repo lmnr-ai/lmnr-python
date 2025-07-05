@@ -23,13 +23,11 @@ def is_span_context_trace_flags_valid(span: Span) -> bool:
     presence of `TraceFlags(int).sampled` on the span.
     """
     result = hasattr(span.get_span_context().trace_flags, "sampled")
-    print(f"\n\n\n{result}\n\n\n")
     return result
 
 
 def fix_span_context_trace_flags(span: Span) -> Span:
     """Fix the span context trace flags if they are not a `TraceFlags(int)` object."""
-    print("\n\n\nhealing span context\n\n\n")
     return NonRecordingSpan(
         SpanContext(
             trace_id=span.get_span_context().trace_id,
