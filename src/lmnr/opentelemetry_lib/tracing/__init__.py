@@ -1,6 +1,8 @@
 import atexit
 import logging
 import threading
+from contextlib import contextmanager
+from typing import Optional
 
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
@@ -12,6 +14,8 @@ from lmnr.opentelemetry_lib.tracing.instruments import (
 )
 
 from opentelemetry import trace
+from opentelemetry import context as context_api
+from opentelemetry.context import Context
 from opentelemetry.instrumentation.threading import ThreadingInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider, SpanProcessor
@@ -20,6 +24,9 @@ from opentelemetry.sdk.trace.export import SpanExporter
 TRACER_NAME = "lmnr.tracer"
 
 MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN = 5000
+
+# Thread-local storage for isolated context
+_isolated_context_storage = threading.local()
 
 
 class TracerWrapper(object):
@@ -123,6 +130,16 @@ class TracerWrapper(object):
         console_log_handler = logging.StreamHandler()
         console_log_handler.setFormatter(VerboseColorfulFormatter())
         self._logger.addHandler(console_log_handler)
+
+    def get_isolated_context(self) -> Context:
+        """Get the isolated context for this tracer."""
+        if not hasattr(_isolated_context_storage, "context"):
+            _isolated_context_storage.context = context_api.Context()
+        return _isolated_context_storage.context
+
+    def set_isolated_context(self, context: Context) -> None:
+        """Set the isolated context for this tracer."""
+        _isolated_context_storage.context = context
 
     @staticmethod
     def set_static_params(

@@ -4,7 +4,7 @@ import warnings
 from typing_extensions import deprecated
 from lmnr.opentelemetry_lib import TracerManager
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
-from lmnr.opentelemetry_lib.tracing.tracer import get_tracer
+from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     USER_ID,
@@ -103,7 +103,7 @@ class Laminar:
                         exporter. Defaults to 30 seconds (unlike the\
                         OpenTelemetry default of 10 seconds).
                         Defaults to None.
-            set_global_tracer_provider (bool, optional): If set to True, the\
+                            set_global_tracer_provider (bool, optional): If set to True, the\
                         Laminar tracer provider will be set as the global\
                         tracer provider. OpenTelemetry allows only one tracer\
                         provider per app, so set this to False, if you are using\
@@ -281,8 +281,8 @@ class Laminar:
             )
             return
 
-        with get_tracer() as tracer:
-            ctx = context or context_api.get_current()
+        with get_tracer_with_context() as (tracer, isolated_context):
+            ctx = context or isolated_context
             if parent_span_context is not None:
                 span_context = LaminarSpanContext.try_to_otel_span_context(
                     parent_span_context, cls.__logger
@@ -313,6 +313,12 @@ class Laminar:
                         f"`start_as_current_span` Could not set tags: {tags}. Tags must be a list of strings. "
                         "Tags will be ignored."
                     )
+
+            # Get the wrapper to manage isolated context
+            from lmnr.opentelemetry_lib.tracing import TracerWrapper
+
+            wrapper = TracerWrapper()
+
             with tracer.start_as_current_span(
                 name,
                 context=ctx,
@@ -322,6 +328,10 @@ class Laminar:
                     **(tag_props),
                 },
             ) as span:
+                # Update the isolated context with the new active span
+                new_context = trace.set_span_in_context(span, isolated_context)
+                wrapper.set_isolated_context(new_context)
+
                 if input is not None:
                     serialized_input = json_dumps(input)
                     if len(serialized_input) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
@@ -372,7 +382,7 @@ class Laminar:
             yield
             return
 
-        with get_tracer():
+        with get_tracer_with_context() as (tracer, isolated_context):
             label_props = labels.copy()
             prev_labels = get_association_properties(context).get("labels", [])
             update_association_properties(
@@ -465,8 +475,8 @@ class Laminar:
                 )
             )
 
-        with get_tracer() as tracer:
-            ctx = context or context_api.get_current()
+        with get_tracer_with_context() as (tracer, isolated_context):
+            ctx = context or isolated_context
             if parent_span_context is not None:
                 span_context = LaminarSpanContext.try_to_otel_span_context(
                     parent_span_context, cls.__logger
@@ -498,6 +508,12 @@ class Laminar:
                         f"`start_span` Could not set tags: {tags}. Tags must be a list of strings. "
                         + "Tags will be ignored."
                     )
+
+            # Get the wrapper to manage isolated context
+            from lmnr.opentelemetry_lib.tracing import TracerWrapper
+
+            wrapper = TracerWrapper()
+
             span = tracer.start_span(
                 name,
                 context=ctx,
@@ -507,6 +523,11 @@ class Laminar:
                     **(tag_props),
                 },
             )
+
+            # Update the isolated context with the new active span
+            new_context = trace.set_span_in_context(span, ctx)
+            wrapper.set_isolated_context(new_context)
+
             if input is not None:
                 serialized_input = json_dumps(input)
                 if len(serialized_input) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:

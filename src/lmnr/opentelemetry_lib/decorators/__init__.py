@@ -11,7 +11,7 @@ from opentelemetry.trace import Span
 
 from lmnr.sdk.utils import get_input_from_func_args, is_method
 from lmnr.opentelemetry_lib import MAX_MANUAL_SPAN_PAYLOAD_SIZE
-from lmnr.opentelemetry_lib.tracing.tracer import get_tracer
+from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     SPAN_INPUT,
@@ -56,15 +56,26 @@ def entity_method(
                 return fn(*args, **kwargs)
 
             span_name = name or fn.__name__
+            wrapper = TracerWrapper()
 
-            with get_tracer() as tracer:
-                span = tracer.start_span(span_name, attributes={SPAN_TYPE: span_type})
+            with get_tracer_with_context() as (tracer, isolated_context):
+                # Create span in isolated context
+                span = tracer.start_span(
+                    span_name,
+                    context=isolated_context,
+                    attributes={SPAN_TYPE: span_type},
+                )
+
                 if association_properties is not None:
                     for key, value in association_properties.items():
                         span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)
 
-                ctx = trace.set_span_in_context(span, context_api.get_current())
-                ctx_token = context_api.attach(ctx)
+                # Set up context for this span and update isolated context
+                new_context = trace.set_span_in_context(span, isolated_context)
+                wrapper.set_isolated_context(new_context)
+
+                # Also set up global context for nested OpenTelemetry instrumentation
+                ctx_token = context_api.attach(new_context)
 
                 try:
                     if not ignore_input:
@@ -92,19 +103,15 @@ def entity_method(
                     _process_exception(span, e)
                     span.end()
                     raise e
+                finally:
+                    # Always restore context
+                    context_api.detach(ctx_token)
 
                 # span will be ended in the generator
                 if isinstance(res, types.GeneratorType):
-                    return _handle_generator(span, ctx_token, res)
+                    return _handle_generator(span, res)
                 if isinstance(res, types.AsyncGeneratorType):
-                    # async def foo() -> AsyncGenerator[int, None]:
-                    # is not considered async in a classical sense in Python,
-                    # so we handle this inside the sync wrapper.
-                    # In particular, CO_COROUTINE is different from CO_ASYNC_GENERATOR.
-                    # Flags are listed from LSB here:
-                    # https://docs.python.org/3/library/inspect.html#inspect-module-co-flags
-                    # See also: https://groups.google.com/g/python-tulip/c/6rWweGXLutU?pli=1
-                    return _ahandle_generator(span, ctx_token, res)
+                    return _ahandle_generator(span, res)
 
                 try:
                     if not ignore_output:
@@ -119,7 +126,6 @@ def entity_method(
                     pass
 
                 span.end()
-                context_api.detach(ctx_token)
                 return res
 
         return wrap
@@ -143,15 +149,26 @@ def aentity_method(
                 return await fn(*args, **kwargs)
 
             span_name = name or fn.__name__
+            wrapper = TracerWrapper()
 
-            with get_tracer() as tracer:
-                span = tracer.start_span(span_name, attributes={SPAN_TYPE: span_type})
+            with get_tracer_with_context() as (tracer, isolated_context):
+                # Create span in isolated context
+                span = tracer.start_span(
+                    span_name,
+                    context=isolated_context,
+                    attributes={SPAN_TYPE: span_type},
+                )
+
                 if association_properties is not None:
                     for key, value in association_properties.items():
                         span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)
 
-                ctx = trace.set_span_in_context(span, context_api.get_current())
-                ctx_token = context_api.attach(ctx)
+                # Set up context for this span and update isolated context
+                new_context = trace.set_span_in_context(span, isolated_context)
+                wrapper.set_isolated_context(new_context)
+
+                # Also set up global context for nested OpenTelemetry instrumentation
+                ctx_token = context_api.attach(new_context)
 
                 try:
                     if not ignore_input:
@@ -179,12 +196,13 @@ def aentity_method(
                     _process_exception(span, e)
                     span.end()
                     raise e
+                finally:
+                    # Always restore context
+                    context_api.detach(ctx_token)
 
                 # span will be ended in the generator
                 if isinstance(res, types.AsyncGeneratorType):
-                    # probably unreachable, read the comment in the similar
-                    # part of the sync wrapper.
-                    return await _ahandle_generator(span, ctx_token, res)
+                    return await _ahandle_generator(span, res)
 
                 try:
                     if not ignore_output:
@@ -199,8 +217,6 @@ def aentity_method(
                     pass
 
                 span.end()
-                context_api.detach(ctx_token)
-
                 return res
 
         return wrap
@@ -208,22 +224,16 @@ def aentity_method(
     return decorate
 
 
-def _handle_generator(span, ctx_token, res):
+def _handle_generator(span, res):
     yield from res
-
     span.end()
-    if ctx_token is not None:
-        context_api.detach(ctx_token)
 
 
-async def _ahandle_generator(span, ctx_token, res):
+async def _ahandle_generator(span, res):
     # async with contextlib.aclosing(res) as closing_gen:
     async for part in res:
         yield part
-
     span.end()
-    if ctx_token is not None:
-        context_api.detach(ctx_token)
 
 
 def _process_exception(span: Span, e: Exception):
