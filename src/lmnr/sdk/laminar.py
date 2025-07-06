@@ -3,6 +3,7 @@ from contextvars import Context
 import warnings
 from typing_extensions import deprecated
 from lmnr.opentelemetry_lib import TracerManager
+from lmnr.opentelemetry_lib.tracing import TracerWrapper
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.attributes import (
@@ -13,7 +14,7 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
 )
 from lmnr.opentelemetry_lib import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 from lmnr.opentelemetry_lib.decorators import json_dumps
-from opentelemetry import context as context_api, trace
+from opentelemetry import trace
 from opentelemetry.context import attach, detach
 from opentelemetry.trace import INVALID_TRACE_ID
 from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
@@ -281,6 +282,8 @@ class Laminar:
             )
             return
 
+        wrapper = TracerWrapper()
+
         with get_tracer_with_context() as (tracer, isolated_context):
             ctx = context or isolated_context
             if parent_span_context is not None:
@@ -323,6 +326,7 @@ class Laminar:
                     **(tag_props),
                 },
             ) as span:
+                wrapper.push_span_context(span)
                 if input is not None:
                     serialized_input = json_dumps(input)
                     if len(serialized_input) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
@@ -337,6 +341,7 @@ class Laminar:
                         )
                 yield span
 
+            wrapper.pop_span_context()
             # TODO: Figure out if this is necessary
             try:
                 detach(ctx_token)

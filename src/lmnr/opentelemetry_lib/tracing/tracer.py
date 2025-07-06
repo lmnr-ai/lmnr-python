@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from typing import Tuple
+from typing import Generator, Tuple
 
 from opentelemetry import trace
 from opentelemetry.context import Context
@@ -23,7 +23,7 @@ def get_tracer(flush_on_exit: bool = False):
 @contextmanager
 def get_tracer_with_context(
     flush_on_exit: bool = False,
-) -> Tuple[trace.Tracer, Context]:
+) -> Generator[Tuple[trace.Tracer, Context], None, None]:
     """Get tracer with isolated context. Returns (tracer, context) tuple."""
     wrapper = TracerWrapper()
     try:
@@ -33,3 +33,15 @@ def get_tracer_with_context(
     finally:
         if flush_on_exit:
             wrapper.flush()
+
+
+def copy_current_context() -> Context:
+    """Copy the current isolated context for use in threads/tasks."""
+    wrapper = TracerWrapper()
+    return wrapper.get_isolated_context()
+
+
+def set_context_for_thread(context: Context) -> None:
+    """Set the isolated context for the current thread."""
+    wrapper = TracerWrapper()
+    wrapper.set_isolated_context(context)

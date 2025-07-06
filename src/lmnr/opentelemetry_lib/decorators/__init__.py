@@ -5,7 +5,6 @@ import pydantic
 import types
 from typing import Any, Literal
 
-from opentelemetry import trace
 from opentelemetry import context as context_api
 from opentelemetry.trace import Span
 
@@ -71,10 +70,9 @@ def entity_method(
                         span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)
 
                 # Push this span's context onto the stack for nested calls
-                wrapper.push_span_context(span)
+                new_context = wrapper.push_span_context(span)
 
                 # Also set up global context for nested OpenTelemetry instrumentation
-                new_context = trace.set_span_in_context(span, isolated_context)
                 ctx_token = context_api.attach(new_context)
 
                 try:
@@ -166,10 +164,9 @@ def aentity_method(
                         span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)
 
                 # Push this span's context onto the stack for nested calls
-                wrapper.push_span_context(span)
+                new_context = wrapper.push_span_context(span)
 
                 # Also set up global context for nested OpenTelemetry instrumentation
-                new_context = trace.set_span_in_context(span, isolated_context)
                 ctx_token = context_api.attach(new_context)
 
                 try:

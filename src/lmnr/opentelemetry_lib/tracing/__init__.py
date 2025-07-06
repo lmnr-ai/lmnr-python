@@ -1,8 +1,8 @@
 import atexit
 import logging
 import threading
-from contextlib import contextmanager
-from typing import Optional
+from contextvars import ContextVar
+from typing import List
 
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
@@ -25,36 +25,68 @@ TRACER_NAME = "lmnr.tracer"
 
 MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN = 5000
 
-# Thread-local storage for isolated context stack
+# Context variable for asyncio concurrency support (stack of contexts)
+_isolated_context_stack_var: ContextVar[List[Context]] = ContextVar(
+    "lmnr_isolated_context_stack", default=[]
+)
+
+# Thread-local storage for threading concurrency support
 _isolated_context_storage = threading.local()
 
 
-def _get_context_stack():
-    """Get the context stack for the current thread."""
-    if not hasattr(_isolated_context_storage, "context_stack"):
-        # Initialize with empty context as the base
-        _isolated_context_storage.context_stack = [context_api.Context()]
-    return _isolated_context_storage.context_stack
+def _get_context_stack() -> List[Context]:
+    """Get the context stack, supporting both asyncio and threading."""
+    try:
+        # Try to get from context variable first (asyncio)
+        return _isolated_context_stack_var.get()
+    except LookupError:
+        # Fall back to thread-local storage (threading)
+        if not hasattr(_isolated_context_storage, "context_stack"):
+            # Initialize with empty stack
+            _isolated_context_storage.context_stack = []
+        return _isolated_context_storage.context_stack
 
 
-def _push_context(context: Context):
-    """Push a new context onto the stack."""
+def _set_context_stack(stack: List[Context]) -> None:
+    """Set the context stack, supporting both asyncio and threading."""
+    try:
+        # Try to set in context variable (asyncio)
+        _isolated_context_stack_var.set(stack)
+    except LookupError:
+        # Fall back to thread-local storage (threading)
+        _isolated_context_storage.context_stack = stack
+
+
+def _get_current_context() -> Context:
+    """Get the current isolated context from the top of the stack."""
     stack = _get_context_stack()
+    if stack:
+        return stack[-1]
+    else:
+        # Return fresh context if stack is empty
+        return context_api.Context()
+
+
+def _push_context(context: Context) -> None:
+    """Push a new context onto the stack."""
+    stack = (
+        _get_context_stack().copy()
+    )  # Copy to avoid mutation issues with contextvars
     stack.append(context)
+    _set_context_stack(stack)
 
 
 def _pop_context() -> Context:
-    """Pop a context from the stack, but never pop the base context."""
-    stack = _get_context_stack()
-    if len(stack) > 1:
-        return stack.pop()
-    return stack[0]  # Return base context if stack is at minimum
-
-
-def _current_context() -> Context:
-    """Get the current context from the top of the stack."""
-    stack = _get_context_stack()
-    return stack[-1]
+    """Pop the top context from the stack."""
+    stack = (
+        _get_context_stack().copy()
+    )  # Copy to avoid mutation issues with contextvars
+    if stack:
+        popped = stack.pop()
+        _set_context_stack(stack)
+        return popped
+    else:
+        return context_api.Context()
 
 
 class TracerWrapper(object):
@@ -67,6 +99,7 @@ class TracerWrapper(object):
     _async_client: AsyncLaminarClient
     _resource: Resource
     _span_processor: SpanProcessor
+    _original_thread_init = None
 
     def __new__(
         cls,
@@ -126,6 +159,9 @@ class TracerWrapper(object):
 
                 obj._tracer_provider.add_span_processor(obj._span_processor)
 
+                # Setup threading context inheritance
+                obj._setup_threading_inheritance()
+
                 # This is not a real instrumentation and does not generate telemetry
                 # data, but it is required to ensure that OpenTelemetry context
                 # propagation is enabled.
@@ -148,6 +184,41 @@ class TracerWrapper(object):
 
             return cls.instance
 
+    def _setup_threading_inheritance(self):
+        """Setup threading inheritance for isolated context."""
+        if TracerWrapper._original_thread_init is None:
+            # Monkey patch Thread.__init__ to capture context inheritance
+            TracerWrapper._original_thread_init = threading.Thread.__init__
+
+            def patched_thread_init(thread_self, *args, **kwargs):
+                # Capture current isolated context stack for inheritance
+                current_stack = _get_context_stack().copy()
+
+                # Get the original target function
+                original_target = kwargs.get("target")
+                if not original_target and args:
+                    original_target = args[0]
+
+                # Only inherit if there are contexts in the stack and we have a target
+                if current_stack and original_target:
+                    # Create a wrapper function that sets up context
+                    def thread_wrapper(*target_args, **target_kwargs):
+                        # Set inherited context stack in the new thread
+                        _set_context_stack(current_stack)
+                        # Run original target
+                        return original_target(*target_args, **target_kwargs)
+
+                    # Replace the target with our wrapper
+                    if "target" in kwargs:
+                        kwargs["target"] = thread_wrapper
+                    elif args:
+                        args = (thread_wrapper,) + args[1:]
+
+                # Call original init
+                TracerWrapper._original_thread_init(thread_self, *args, **kwargs)
+
+            threading.Thread.__init__ = patched_thread_init
+
     def exit_handler(self):
         if isinstance(self._span_processor, LaminarSpanProcessor):
             self._span_processor.clear()
@@ -160,17 +231,18 @@ class TracerWrapper(object):
         self._logger.addHandler(console_log_handler)
 
     def get_isolated_context(self) -> Context:
-        """Get the current isolated context from the context stack."""
-        return _current_context()
+        """Get the current isolated context from the top of the stack."""
+        return _get_current_context()
 
-    def push_span_context(self, span: trace.Span) -> None:
-        """Push a new context with the given span onto the context stack."""
-        current_ctx = _current_context()
+    def push_span_context(self, span: trace.Span) -> Context:
+        """Push a new context with the given span onto the stack."""
+        current_ctx = self.get_isolated_context()
         new_context = trace.set_span_in_context(span, current_ctx)
         _push_context(new_context)
+        return new_context
 
     def pop_span_context(self) -> None:
-        """Pop the current span context from the context stack."""
+        """Pop the current span context from the stack."""
         _pop_context()
 
     @staticmethod
@@ -193,9 +265,13 @@ class TracerWrapper(object):
         # Any state cleanup. Now used in between tests
         if isinstance(cls.instance._span_processor, LaminarSpanProcessor):
             cls.instance._span_processor.clear()
-        # Clear the context stack for clean test state
+        # Clear the context stacks for clean test state
+        try:
+            _isolated_context_stack_var.set([])
+        except LookupError:
+            pass
         if hasattr(_isolated_context_storage, "context_stack"):
-            _isolated_context_storage.context_stack = [context_api.Context()]
+            _isolated_context_storage.context_stack = []
 
     def shutdown(self):
         if self._tracer_provider is None:
