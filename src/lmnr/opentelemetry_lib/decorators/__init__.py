@@ -155,7 +155,7 @@ def observe_base(
                 res = fn(*args, **kwargs)
             except Exception as e:
                 _process_exception(span, e)
-                span.end()
+                _cleanup_span(span, ctx_token)
                 raise e
 
             # span will be ended in the generator
