@@ -34,12 +34,6 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
     SPAN_OUTPUT,
     TRACE_TYPE,
 )
-from lmnr.opentelemetry_lib.tracing.context_properties import (
-    get_association_properties,
-    remove_association_properties,
-    set_association_properties,
-    update_association_properties,
-)
 from lmnr.sdk.utils import from_env, is_otel_attribute_value_type
 
 from .log import VerboseColorfulFormatter
@@ -47,7 +41,6 @@ from .log import VerboseColorfulFormatter
 from .types import (
     LaminarSpanContext,
     TraceType,
-    TracingLevel,
 )
 
 
@@ -349,54 +342,6 @@ class Laminar:
                 pass
 
     @classmethod
-    @contextmanager
-    @deprecated(
-        "Use `Laminar.set_span_tags` or the `tags` argument of "
-        "`Laminar.start_as_current_span` or `Laminar.start_span` instead"
-    )
-    def with_labels(cls, labels: list[str], context: Context | None = None):
-        """Set labels for spans within this `with` context. This is useful for
-        adding labels to the spans created in the auto-instrumentations.
-
-        Requirements:
-        - Labels must be created in your project in advance.
-        - Keys must be strings from your label names.
-        - Values must be strings matching the label's allowed values.
-
-        Usage example:
-        ```python
-        with Laminar.with_labels({"sentiment": "positive"}):
-            openai_client.chat.completions.create()
-        ```
-        """
-        warnings.warn(
-            "`Laminar.with_labels` is deprecated. Use `Laminar.set_span_tags` or the `tags` argument of "
-            "`Laminar.start_as_current_span` or `Laminar.start_span` instead",
-            DeprecationWarning,
-        )
-        if not cls.is_initialized():
-            yield
-            return
-
-        with get_tracer_with_context() as (tracer, isolated_context):
-            label_props = labels.copy()
-            prev_labels = get_association_properties(context).get("labels", [])
-            update_association_properties(
-                {"labels": prev_labels + label_props},
-                set_on_current_span=False,
-                context=context,
-            )
-            yield
-            try:
-                set_association_properties({"labels": prev_labels})
-            except Exception:
-                cls.__logger.warning(
-                    f"`with_labels` Could not remove labels: {labels}. They will be "
-                    "propagated to the next span."
-                )
-                pass
-
-    @classmethod
     def start_span(
         cls,
         name: str,
@@ -548,44 +493,6 @@ class Laminar:
                 )
             else:
                 span.set_attribute(SPAN_OUTPUT, serialized_output)
-
-    @classmethod
-    @contextmanager
-    def set_tracing_level(self, level: TracingLevel):
-        """Set the tracing level for the current span and the context
-        (i.e. any children spans created from the current span in the current
-        thread).
-
-        Tracing level can be one of:
-        - `TracingLevel.ALL`: Enable tracing for the current span and all
-            children spans.
-        - `TracingLevel.META_ONLY`: Enable tracing for the current span and all
-            children spans, but only record metadata, e.g. tokens, costs.
-        - `TracingLevel.OFF`: Disable recording any spans.
-
-        Example:
-        ```python
-        from lmnr import Laminar, TracingLevel
-
-        with Laminar.set_tracing_level(TracingLevel.META_ONLY):
-            openai_client.chat.completions.create()
-        ```
-        """
-        if level == TracingLevel.ALL:
-            yield
-        else:
-            with get_tracer_with_context() as (_tracer, isolated_context):
-                level = "meta_only" if level == TracingLevel.META_ONLY else "off"
-                update_association_properties(
-                    {"tracing_level": level}, context=isolated_context
-                )
-                yield
-                try:
-                    remove_association_properties(
-                        {"tracing_level": level}, context=isolated_context
-                    )
-                except Exception:
-                    pass
 
     @classmethod
     def set_span_attributes(

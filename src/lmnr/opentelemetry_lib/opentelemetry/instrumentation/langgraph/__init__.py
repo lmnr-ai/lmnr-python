@@ -12,10 +12,7 @@ from langchain_core.runnables.graph import Graph
 from opentelemetry.trace import Tracer
 from wrapt import wrap_function_wrapper
 from opentelemetry.trace import get_tracer
-
-from lmnr.opentelemetry_lib.tracing.context_properties import (
-    update_association_properties,
-)
+from opentelemetry.context import get_value, attach, set_value
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
@@ -45,12 +42,13 @@ def wrap_pregel_stream(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs)
         }
         for edge in graph.edges
     ]
-    update_association_properties(
-        {
-            "langgraph.edges": json.dumps(edges),
-            "langgraph.nodes": json.dumps(nodes),
-        },
-    )
+    d = {
+        "langgraph.edges": json.dumps(edges),
+        "langgraph.nodes": json.dumps(nodes),
+    }
+    association_properties = get_value("lmnr.langgraph.graph") or {}
+    association_properties.update(d)
+    attach(set_value("lmnr.langgraph.graph", association_properties))
     return wrapped(*args, **kwargs)
 
 
@@ -75,12 +73,14 @@ async def async_wrap_pregel_stream(
         }
         for edge in graph.edges
     ]
-    update_association_properties(
-        {
-            "langgraph.edges": json.dumps(edges),
-            "langgraph.nodes": json.dumps(nodes),
-        },
-    )
+
+    d = {
+        "langgraph.edges": json.dumps(edges),
+        "langgraph.nodes": json.dumps(nodes),
+    }
+    association_properties = get_value("lmnr.langgraph.graph") or {}
+    association_properties.update(d)
+    attach(set_value("lmnr.langgraph.graph", association_properties))
 
     async for item in wrapped(*args, **kwargs):
         yield item

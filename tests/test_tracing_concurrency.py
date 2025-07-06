@@ -1,10 +1,8 @@
 import asyncio
 import concurrent.futures
-import json
 import pytest
 import threading
 import time
-from typing import List
 
 from lmnr import Laminar
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -129,7 +127,7 @@ async def test_asyncio_deeply_nested_with_parallelism(exporter: InMemorySpanExpo
             Laminar.set_span_output(results)
             return results
 
-    result = await root_task()
+    await root_task()
 
     spans = exporter.get_finished_spans()
     assert len(spans) == 7  # 1 root + 2 branches + 4 leaves
@@ -227,7 +225,7 @@ def test_threading_parallel_spans_same_parent(exporter: InMemorySpanExporter):
             Laminar.set_span_output(child_results)
             return child_results
 
-    result = parent_task()
+    parent_task()
 
     spans = exporter.get_finished_spans()
     assert len(spans) == 4  # 1 parent + 3 children
@@ -300,7 +298,7 @@ def test_threading_deeply_nested_with_parallelism(exporter: InMemorySpanExporter
             Laminar.set_span_output(result)
             return result
 
-    result = root_task()
+    root_task()
 
     spans = exporter.get_finished_spans()
     assert len(spans) == 7  # 1 root + 2 branches + 4 leaves
@@ -446,7 +444,7 @@ def test_threadpool_deeply_nested_with_parallelism(exporter: InMemorySpanExporte
             Laminar.set_span_output(results)
             return results
 
-    result = root_task()
+    root_task()
 
     spans = exporter.get_finished_spans()
     assert len(spans) == 7  # 1 root + 2 branches + 4 leaves
@@ -512,9 +510,9 @@ async def test_mixed_concurrency_isolation(exporter: InMemorySpanExporter):
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         threadpool_future = executor.submit(threadpool_task)
-        threadpool_result = threadpool_future.result()
+        threadpool_future.result()
 
-    async_result_val = await async_future
+    await async_future
     thread.join()
 
     spans = exporter.get_finished_spans()

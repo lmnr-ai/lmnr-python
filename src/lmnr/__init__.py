@@ -9,7 +9,6 @@ from .sdk.types import (
     HumanEvaluator,
     RunAgentResponseChunk,
     StepChunkContent,
-    TracingLevel,
 )
 from .sdk.decorators import observe
 from .sdk.types import LaminarSpanContext
@@ -36,7 +35,6 @@ __all__ = [
     "LaminarSpanProcessor",
     "RunAgentResponseChunk",
     "StepChunkContent",
-    "TracingLevel",
     "get_laminar_tracer_provider",
     "get_tracer",
     "evaluate",

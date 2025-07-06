@@ -2,7 +2,7 @@ import json
 import pytest
 import uuid
 
-from lmnr import Attributes, Laminar, TracingLevel, use_span
+from lmnr import Attributes, Laminar, use_span
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from lmnr.sdk.types import LaminarSpanContext
@@ -322,27 +322,6 @@ def test_tags(exporter: InMemorySpanExporter):
     assert spans[0].name == "test"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
-
-
-def test_tracing_level_attribute(exporter: InMemorySpanExporter):
-    with Laminar.set_tracing_level(TracingLevel.META_ONLY):
-        with Laminar.start_as_current_span("test"):
-            pass
-
-    with Laminar.set_tracing_level(TracingLevel.OFF):
-        with Laminar.start_as_current_span("test2"):
-            pass
-
-    spans = exporter.get_finished_spans()
-    assert len(spans) == 2
-    first_span = [span for span in spans if span.name == "test"][0]
-    second_span = [span for span in spans if span.name == "test2"][0]
-    assert first_span.attributes["lmnr.internal.tracing_level"] == "meta_only"
-    assert second_span.attributes["lmnr.internal.tracing_level"] == "off"
-    assert first_span.attributes["lmnr.span.instrumentation_source"] == "python"
-    assert second_span.attributes["lmnr.span.instrumentation_source"] == "python"
-    assert first_span.attributes["lmnr.span.path"] == ("test",)
-    assert second_span.attributes["lmnr.span.path"] == ("test2",)
 
 
 def test_1k_attributes(exporter: InMemorySpanExporter):
