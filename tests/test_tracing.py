@@ -301,6 +301,12 @@ def test_metadata_does_not_leak(exporter: InMemorySpanExporter):
     assert with_metadata_span.attributes["lmnr.span.instrumentation_source"] == "python"
     assert no_metadata_span.attributes["lmnr.span.instrumentation_source"] == "python"
     assert no_metadata_span.attributes["lmnr.span.path"] == ("no_metadata",)
+    assert with_metadata_span.parent is None or with_metadata_span.parent.span_id == 0
+    assert no_metadata_span.parent is None or no_metadata_span.parent.span_id == 0
+    assert (
+        with_metadata_span.get_span_context().trace_id
+        != no_metadata_span.get_span_context().trace_id
+    )
 
 
 def test_tags(exporter: InMemorySpanExporter):
