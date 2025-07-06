@@ -20,6 +20,9 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
 )
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
 from lmnr.opentelemetry_lib.utils.json_encoder import JSONEncoder
+from lmnr.sdk.log import get_default_logger
+
+logger = get_default_logger(__name__)
 
 
 class CustomJSONEncoder(JSONEncoder):
@@ -91,7 +94,8 @@ def _process_input(
             span.set_attribute(SPAN_INPUT, "Laminar: input too large to record")
         else:
             span.set_attribute(SPAN_INPUT, inp)
-    except TypeError:
+    except Exception:
+        logger.debug("Failed to process input, ignoring", exc_info=True)
         pass
 
 
@@ -117,7 +121,8 @@ def _process_output(
             span.set_attribute(SPAN_OUTPUT, "Laminar: output too large to record")
         else:
             span.set_attribute(SPAN_OUTPUT, output)
-    except TypeError:
+    except Exception:
+        logger.debug("Failed to process output, ignoring", exc_info=True)
         pass
 
 

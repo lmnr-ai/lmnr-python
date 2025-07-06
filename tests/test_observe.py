@@ -473,6 +473,24 @@ def test_observe_input_formatter(exporter: InMemorySpanExporter):
     assert json.loads(spans[0].attributes["lmnr.span.input"]) == {"x": 2}
 
 
+def test_observe_input_formatter_exception(exporter: InMemorySpanExporter):
+    def input_formatter(x):
+        raise ValueError("test")
+
+    @observe(input_formatter=input_formatter)
+    def observed_foo(x):
+        return x
+
+    result = observed_foo(1)
+    spans = exporter.get_finished_spans()
+    assert result == 1
+    assert len(spans) == 1
+    assert spans[0].name == "observed_foo"
+    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
+    assert "lmnr.span.input" not in spans[0].attributes
+
+
 def test_observe_input_formatter_with_kwargs(exporter: InMemorySpanExporter):
     def input_formatter(x, **kwargs):
         return {"x": x + 1, "custom-A": f"{kwargs.get('a')}--"}
@@ -599,6 +617,21 @@ def test_observe_output_formatter(exporter: InMemorySpanExporter):
     assert result == 1
     assert len(spans) == 1
     assert json.loads(spans[0].attributes["lmnr.span.output"]) == {"x": 2}
+
+
+def test_observe_output_formatter_exception(exporter: InMemorySpanExporter):
+    def output_formatter(x):
+        raise ValueError("test")
+
+    @observe(output_formatter=output_formatter)
+    def observed_foo(x):
+        return x
+
+    result = observed_foo(1)
+    spans = exporter.get_finished_spans()
+    assert result == 1
+    assert len(spans) == 1
+    assert "lmnr.span.output" not in spans[0].attributes
 
 
 @pytest.mark.asyncio
