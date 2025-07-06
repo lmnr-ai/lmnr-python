@@ -314,11 +314,6 @@ class Laminar:
                         "Tags will be ignored."
                     )
 
-            # Get the wrapper to manage isolated context
-            from lmnr.opentelemetry_lib.tracing import TracerWrapper
-
-            wrapper = TracerWrapper()
-
             with tracer.start_as_current_span(
                 name,
                 context=ctx,
@@ -328,10 +323,6 @@ class Laminar:
                     **(tag_props),
                 },
             ) as span:
-                # Update the isolated context with the new active span
-                new_context = trace.set_span_in_context(span, isolated_context)
-                wrapper.set_isolated_context(new_context)
-
                 if input is not None:
                     serialized_input = json_dumps(input)
                     if len(serialized_input) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
@@ -509,11 +500,6 @@ class Laminar:
                         + "Tags will be ignored."
                     )
 
-            # Get the wrapper to manage isolated context
-            from lmnr.opentelemetry_lib.tracing import TracerWrapper
-
-            wrapper = TracerWrapper()
-
             span = tracer.start_span(
                 name,
                 context=ctx,
@@ -523,10 +509,6 @@ class Laminar:
                     **(tag_props),
                 },
             )
-
-            # Update the isolated context with the new active span
-            new_context = trace.set_span_in_context(span, ctx)
-            wrapper.set_isolated_context(new_context)
 
             if input is not None:
                 serialized_input = json_dumps(input)
@@ -587,13 +569,18 @@ class Laminar:
         if level == TracingLevel.ALL:
             yield
         else:
-            level = "meta_only" if level == TracingLevel.META_ONLY else "off"
-            update_association_properties({"tracing_level": level})
-            yield
-            try:
-                remove_association_properties({"tracing_level": level})
-            except Exception:
-                pass
+            with get_tracer_with_context() as (_tracer, isolated_context):
+                level = "meta_only" if level == TracingLevel.META_ONLY else "off"
+                update_association_properties(
+                    {"tracing_level": level}, context=isolated_context
+                )
+                yield
+                try:
+                    remove_association_properties(
+                        {"tracing_level": level}, context=isolated_context
+                    )
+                except Exception:
+                    pass
 
     @classmethod
     def set_span_attributes(

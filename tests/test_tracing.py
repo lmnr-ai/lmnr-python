@@ -289,6 +289,14 @@ def test_metadata_does_not_leak(exporter: InMemorySpanExporter):
     with_metadata_span = [span for span in spans if span.name == "with_metadata"][0]
     no_metadata_span = [span for span in spans if span.name == "no_metadata"][0]
 
+    assert with_metadata_span.parent is None or with_metadata_span.parent.span_id == 0
+    assert no_metadata_span.parent is None or no_metadata_span.parent.span_id == 0
+
+    assert (
+        with_metadata_span.get_span_context().trace_id
+        != no_metadata_span.get_span_context().trace_id
+    )
+
     assert (
         with_metadata_span.attributes["lmnr.association.properties.metadata.foo"]
         == "bar"

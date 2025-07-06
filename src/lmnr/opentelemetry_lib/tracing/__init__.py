@@ -25,8 +25,36 @@ TRACER_NAME = "lmnr.tracer"
 
 MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN = 5000
 
-# Thread-local storage for isolated context
+# Thread-local storage for isolated context stack
 _isolated_context_storage = threading.local()
+
+
+def _get_context_stack():
+    """Get the context stack for the current thread."""
+    if not hasattr(_isolated_context_storage, "context_stack"):
+        # Initialize with empty context as the base
+        _isolated_context_storage.context_stack = [context_api.Context()]
+    return _isolated_context_storage.context_stack
+
+
+def _push_context(context: Context):
+    """Push a new context onto the stack."""
+    stack = _get_context_stack()
+    stack.append(context)
+
+
+def _pop_context() -> Context:
+    """Pop a context from the stack, but never pop the base context."""
+    stack = _get_context_stack()
+    if len(stack) > 1:
+        return stack.pop()
+    return stack[0]  # Return base context if stack is at minimum
+
+
+def _current_context() -> Context:
+    """Get the current context from the top of the stack."""
+    stack = _get_context_stack()
+    return stack[-1]
 
 
 class TracerWrapper(object):
@@ -132,14 +160,18 @@ class TracerWrapper(object):
         self._logger.addHandler(console_log_handler)
 
     def get_isolated_context(self) -> Context:
-        """Get the isolated context for this tracer."""
-        if not hasattr(_isolated_context_storage, "context"):
-            _isolated_context_storage.context = context_api.Context()
-        return _isolated_context_storage.context
+        """Get the current isolated context from the context stack."""
+        return _current_context()
 
-    def set_isolated_context(self, context: Context) -> None:
-        """Set the isolated context for this tracer."""
-        _isolated_context_storage.context = context
+    def push_span_context(self, span: trace.Span) -> None:
+        """Push a new context with the given span onto the context stack."""
+        current_ctx = _current_context()
+        new_context = trace.set_span_in_context(span, current_ctx)
+        _push_context(new_context)
+
+    def pop_span_context(self) -> None:
+        """Pop the current span context from the context stack."""
+        _pop_context()
 
     @staticmethod
     def set_static_params(
@@ -161,6 +193,9 @@ class TracerWrapper(object):
         # Any state cleanup. Now used in between tests
         if isinstance(cls.instance._span_processor, LaminarSpanProcessor):
             cls.instance._span_processor.clear()
+        # Clear the context stack for clean test state
+        if hasattr(_isolated_context_storage, "context_stack"):
+            _isolated_context_storage.context_stack = [context_api.Context()]
 
     def shutdown(self):
         if self._tracer_provider is None:

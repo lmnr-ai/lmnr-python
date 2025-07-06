@@ -282,3 +282,27 @@ def test_observe_tags_invalid_type(exporter: InMemorySpanExporter):
     assert span.attributes.get("lmnr.association.properties.tags") is None
     assert span.attributes["lmnr.span.instrumentation_source"] == "python"
     assert span.attributes["lmnr.span.path"] == ("observed_foo",)
+
+
+def test_observe_sequential_spans(exporter: InMemorySpanExporter):
+    @observe()
+    def observed_foo():
+        return "foo"
+
+    @observe()
+    def observed_bar():
+        return "bar"
+
+    foo_result = observed_foo()
+    bar_result = observed_bar()
+
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 2
+
+    foo_span = [span for span in spans if span.name == "observed_foo"][0]
+    bar_span = [span for span in spans if span.name == "observed_bar"][0]
+
+    assert foo_span.parent is None or foo_span.parent.span_id == 0
+    assert bar_span.parent is None or bar_span.parent.span_id == 0
+
+    assert foo_span.get_span_context().trace_id != bar_span.get_span_context().trace_id

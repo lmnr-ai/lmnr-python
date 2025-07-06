@@ -70,11 +70,11 @@ def entity_method(
                     for key, value in association_properties.items():
                         span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)
 
-                # Set up context for this span and update isolated context
-                new_context = trace.set_span_in_context(span, isolated_context)
-                wrapper.set_isolated_context(new_context)
+                # Push this span's context onto the stack for nested calls
+                wrapper.push_span_context(span)
 
                 # Also set up global context for nested OpenTelemetry instrumentation
+                new_context = trace.set_span_in_context(span, isolated_context)
                 ctx_token = context_api.attach(new_context)
 
                 try:
@@ -102,16 +102,17 @@ def entity_method(
                 except Exception as e:
                     _process_exception(span, e)
                     span.end()
+                    wrapper.pop_span_context()  # Pop on exception
                     raise e
                 finally:
-                    # Always restore context
+                    # Always restore global context
                     context_api.detach(ctx_token)
 
                 # span will be ended in the generator
                 if isinstance(res, types.GeneratorType):
-                    return _handle_generator(span, res)
+                    return _handle_generator(span, wrapper, res)
                 if isinstance(res, types.AsyncGeneratorType):
-                    return _ahandle_generator(span, res)
+                    return _ahandle_generator(span, wrapper, res)
 
                 try:
                     if not ignore_output:
@@ -126,6 +127,7 @@ def entity_method(
                     pass
 
                 span.end()
+                wrapper.pop_span_context()  # Pop when span ends normally
                 return res
 
         return wrap
@@ -163,11 +165,11 @@ def aentity_method(
                     for key, value in association_properties.items():
                         span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)
 
-                # Set up context for this span and update isolated context
-                new_context = trace.set_span_in_context(span, isolated_context)
-                wrapper.set_isolated_context(new_context)
+                # Push this span's context onto the stack for nested calls
+                wrapper.push_span_context(span)
 
                 # Also set up global context for nested OpenTelemetry instrumentation
+                new_context = trace.set_span_in_context(span, isolated_context)
                 ctx_token = context_api.attach(new_context)
 
                 try:
@@ -195,14 +197,15 @@ def aentity_method(
                 except Exception as e:
                     _process_exception(span, e)
                     span.end()
+                    wrapper.pop_span_context()  # Pop on exception
                     raise e
                 finally:
-                    # Always restore context
+                    # Always restore global context
                     context_api.detach(ctx_token)
 
                 # span will be ended in the generator
                 if isinstance(res, types.AsyncGeneratorType):
-                    return await _ahandle_generator(span, res)
+                    return await _ahandle_generator(span, wrapper, res)
 
                 try:
                     if not ignore_output:
@@ -217,6 +220,7 @@ def aentity_method(
                     pass
 
                 span.end()
+                wrapper.pop_span_context()  # Pop when span ends normally
                 return res
 
         return wrap
@@ -224,16 +228,21 @@ def aentity_method(
     return decorate
 
 
-def _handle_generator(span, res):
-    yield from res
-    span.end()
+def _handle_generator(span, wrapper, res):
+    try:
+        yield from res
+    finally:
+        span.end()
+        wrapper.pop_span_context()
 
 
-async def _ahandle_generator(span, res):
-    # async with contextlib.aclosing(res) as closing_gen:
-    async for part in res:
-        yield part
-    span.end()
+async def _ahandle_generator(span, wrapper, res):
+    try:
+        async for part in res:
+            yield part
+    finally:
+        span.end()
+        wrapper.pop_span_context()
 
 
 def _process_exception(span: Span, e: Exception):

@@ -12,8 +12,10 @@ from opentelemetry import trace
 
 # TODO: delete this once deprecated Laminar.with_labels is removed. The logic
 # should be moved into Laminar.set_tracing_level
-def set_association_properties(properties: dict) -> None:
-    attach(set_value("association_properties", properties))
+def set_association_properties(
+    properties: dict, context: Context | None = None
+) -> None:
+    attach(set_value("association_properties", properties, context))
 
     span = trace.get_current_span()
     _set_association_properties_attributes(span, properties)
@@ -43,8 +45,10 @@ def update_association_properties(
 
 
 # TODO: this logic should be moved into Laminar.set_tracing_level
-def remove_association_properties(properties: dict) -> None:
-    props: dict = copy.copy(get_value("association_properties") or {})
+def remove_association_properties(
+    properties: dict, context: Context | None = None
+) -> None:
+    props: dict = copy.copy(get_value("association_properties", context) or {})
     for k in properties.keys():
         props.pop(k, None)
     set_association_properties(props)
