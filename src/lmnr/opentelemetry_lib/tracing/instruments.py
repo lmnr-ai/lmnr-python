@@ -47,6 +47,7 @@ class Instruments(Enum):
     WATSONX = "watsonx"
     WEAVIATE = "weaviate"
 
+
 INSTRUMENTATION_INITIALIZERS: dict[
     Instruments, initializers.InstrumentorInitializer
 ] = {

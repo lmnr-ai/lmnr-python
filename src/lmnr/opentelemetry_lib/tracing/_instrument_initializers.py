@@ -345,6 +345,7 @@ class SageMakerInstrumentorInitializer(InstrumentorInitializer):
 
         return SageMakerInstrumentor()
 
+
 class SkyvernInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("skyvern"):
@@ -353,6 +354,7 @@ class SkyvernInstrumentorInitializer(InstrumentorInitializer):
         from ..opentelemetry.instrumentation.skyvern import SkyvernInstrumentor
 
         return SkyvernInstrumentor()
+
 
 class TogetherInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
