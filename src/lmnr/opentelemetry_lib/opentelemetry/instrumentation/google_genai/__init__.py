@@ -24,6 +24,7 @@ from opentelemetry.trace import Tracer, set_span_in_context
 from wrapt import wrap_function_wrapper
 
 from lmnr.version import __version__
+from lmnr.sdk.laminar import Laminar
 
 from opentelemetry import context as context_api
 from opentelemetry.trace import get_tracer, SpanKind, Span
@@ -444,7 +445,7 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     ):
         return wrapped(*args, **kwargs)
 
-    with tracer.start_as_current_span(
+    with Laminar.start_as_current_span(
         to_wrap.get("span_name"),
         kind=SpanKind.CLIENT,
         attributes={
@@ -476,7 +477,7 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     ):
         return await wrapped(*args, **kwargs)
 
-    with tracer.start_as_current_span(
+    with Laminar.start_as_current_span(
         to_wrap.get("span_name"),
         kind=SpanKind.CLIENT,
         attributes={
