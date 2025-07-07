@@ -487,6 +487,7 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
 
     if span.is_recording():
         _set_request_attributes(span, args, kwargs)
+        set_span_in_context(span)
 
     if to_wrap.get("is_streaming"):
         return _abuild_from_streaming_response(span, await wrapped(*args, **kwargs))
