@@ -444,29 +444,29 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     ):
         return wrapped(*args, **kwargs)
 
-    span = tracer.start_span(
+    with tracer.start_as_current_span(
         to_wrap.get("span_name"),
         kind=SpanKind.CLIENT,
         attributes={
             SpanAttributes.LLM_SYSTEM: "gemini",
             SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
         },
-    )
+    ) as span:
 
-    if span.is_recording():
-        _set_request_attributes(span, args, kwargs)
-        set_span_in_context(span)
+        if span.is_recording():
+            _set_request_attributes(span, args, kwargs)
+            set_span_in_context(span)
 
-    if to_wrap.get("is_streaming"):
-        return _build_from_streaming_response(span, wrapped(*args, **kwargs))
-    else:
-        response = wrapped(*args, **kwargs)
+        if to_wrap.get("is_streaming"):
+            return _build_from_streaming_response(span, wrapped(*args, **kwargs))
+        else:
+            response = wrapped(*args, **kwargs)
 
-    if span.is_recording():
-        _set_response_attributes(span, response)
+        if span.is_recording():
+            _set_response_attributes(span, response)
 
-    span.end()
-    return response
+        # span.end()
+        return response
 
 
 @with_tracer_wrapper
@@ -476,29 +476,29 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     ):
         return await wrapped(*args, **kwargs)
 
-    span = tracer.start_span(
+    with tracer.start_as_current_span(
         to_wrap.get("span_name"),
         kind=SpanKind.CLIENT,
         attributes={
             SpanAttributes.LLM_SYSTEM: "gemini",
             SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
         },
-    )
+    ) as span:
 
-    if span.is_recording():
-        _set_request_attributes(span, args, kwargs)
-        set_span_in_context(span)
+        if span.is_recording():
+            _set_request_attributes(span, args, kwargs)
+            set_span_in_context(span)
 
-    if to_wrap.get("is_streaming"):
-        return _abuild_from_streaming_response(span, await wrapped(*args, **kwargs))
-    else:
-        response = await wrapped(*args, **kwargs)
+        if to_wrap.get("is_streaming"):
+            return _abuild_from_streaming_response(span, await wrapped(*args, **kwargs))
+        else:
+            response = await wrapped(*args, **kwargs)
 
-    if span.is_recording():
-        _set_response_attributes(span, response)
+        if span.is_recording():
+            _set_response_attributes(span, response)
 
-    span.end()
-    return response
+        # span.end()
+        return response
 
 
 class GoogleGenAiSdkInstrumentor(BaseInstrumentor):
