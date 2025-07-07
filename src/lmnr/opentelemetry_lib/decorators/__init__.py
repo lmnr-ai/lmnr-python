@@ -204,31 +204,28 @@ def async_observe_base(
 
             span_name = name or fn.__name__
 
-            with get_tracer() as tracer:
-                span, ctx_token = _setup_span(
-                    span_name, span_type, association_properties
-                )
+            span, ctx_token = _setup_span(span_name, span_type, association_properties)
 
-                _process_input(
-                    span, fn, args, kwargs, ignore_input, ignore_inputs, input_formatter
-                )
+            _process_input(
+                span, fn, args, kwargs, ignore_input, ignore_inputs, input_formatter
+            )
 
-                try:
-                    res = await fn(*args, **kwargs)
-                except Exception as e:
-                    _process_exception(span, e)
-                    span.end()
-                    raise e
-
-                # span will be ended in the generator
-                if isinstance(res, types.AsyncGeneratorType):
-                    # probably unreachable, read the comment in the similar
-                    # part of the sync wrapper.
-                    return await _ahandle_generator(span, ctx_token, res)
-
-                _process_output(span, res, ignore_output, output_formatter)
+            try:
+                res = await fn(*args, **kwargs)
+            except Exception as e:
+                _process_exception(span, e)
                 _cleanup_span(span, ctx_token)
-                return res
+                raise e
+
+            # span will be ended in the generator
+            if isinstance(res, types.AsyncGeneratorType):
+                # probably unreachable, read the comment in the similar
+                # part of the sync wrapper.
+                return await _ahandle_generator(span, ctx_token, res)
+
+            _process_output(span, res, ignore_output, output_formatter)
+            _cleanup_span(span, ctx_token)
+            return res
 
         return wrap
 
