@@ -20,8 +20,10 @@ from .utils import (
     to_dict,
     with_tracer_wrapper,
 )
-from opentelemetry.trace import Tracer
+from opentelemetry.trace import Tracer, set_span_in_context
 from wrapt import wrap_function_wrapper
+
+from lmnr.version import __version__
 
 from opentelemetry import context as context_api
 from opentelemetry.trace import get_tracer, SpanKind, Span
@@ -453,6 +455,7 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
 
     if span.is_recording():
         _set_request_attributes(span, args, kwargs)
+        set_span_in_context(span)
 
     if to_wrap.get("is_streaming"):
         return _build_from_streaming_response(span, wrapped(*args, **kwargs))
@@ -516,7 +519,7 @@ class GoogleGenAiSdkInstrumentor(BaseInstrumentor):
 
     def _instrument(self, **kwargs):
         tracer_provider = kwargs.get("tracer_provider")
-        tracer = get_tracer(__name__, "0.0.1a1", tracer_provider)
+        tracer = get_tracer(__name__, __version__, tracer_provider)
 
         for wrapped_method in WRAPPED_METHODS:
             wrap_function_wrapper(
