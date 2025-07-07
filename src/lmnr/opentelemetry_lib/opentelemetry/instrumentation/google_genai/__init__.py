@@ -447,12 +447,14 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
 
     with Laminar.start_as_current_span(
         to_wrap.get("span_name"),
-        kind=SpanKind.CLIENT,
-        attributes={
-            SpanAttributes.LLM_SYSTEM: "gemini",
-            SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
-        },
     ) as span:
+        span.set_attributes(
+            {
+                "lmnr.span.type": "LLM",
+                SpanAttributes.LLM_SYSTEM: "gemini",
+                SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
+            }
+        )
 
         if span.is_recording():
             _set_request_attributes(span, args, kwargs)
@@ -479,12 +481,14 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
 
     with Laminar.start_as_current_span(
         to_wrap.get("span_name"),
-        kind=SpanKind.CLIENT,
-        attributes={
-            SpanAttributes.LLM_SYSTEM: "gemini",
-            SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
-        },
     ) as span:
+        span.set_attributes(
+            {
+                "lmnr.span.type": "LLM",
+                SpanAttributes.LLM_SYSTEM: "gemini",
+                SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
+            }
+        )
 
         if span.is_recording():
             _set_request_attributes(span, args, kwargs)
