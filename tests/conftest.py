@@ -5,6 +5,8 @@ from lmnr.opentelemetry_lib import TracerManager
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.export import SpanExporter
+from opentelemetry import context as context_api
+from opentelemetry.context import Context
 
 from lmnr.opentelemetry_lib.litellm import LaminarLiteLLMCallback
 
@@ -42,8 +44,29 @@ def litellm_callback() -> LaminarLiteLLMCallback:
 
 @pytest.fixture(scope="function", autouse=True)
 def clear_exporter(exporter: InMemorySpanExporter):
+    # Clear before test
     exporter.clear()
     TracerWrapper.clear()
+
+    # Clear OpenTelemetry context to ensure clean state between tests
+    # This prevents spans from one test from becoming parents of spans in another test
+    # Create a fresh empty context and attach it
+    fresh_context = Context()
+    token = context_api.attach(fresh_context)
+
+    yield
+
+    # Clear after test as well for good measure
+    exporter.clear()
+    TracerWrapper.clear()
+
+    # Restore and create fresh context again
+    try:
+        context_api.detach(token)
+    except Exception:
+        pass
+    fresh_context = Context()
+    context_api.attach(fresh_context)
 
 
 @pytest.fixture(scope="module")

@@ -34,6 +34,11 @@ class Instruments(Enum):
     MISTRAL = "mistral"
     OLLAMA = "ollama"
     OPENAI = "openai"
+    # Patch OpenTelemetry to fix DataDog's broken Span context
+    # See lmnr.opentelemetry_lib.opentelemetry.instrumentation.opentelemetry
+    # for more details.
+    OPENTELEMETRY = "opentelemetry"
+    ###
     PATCHRIGHT = "patchright"
     PINECONE = "pinecone"
     PLAYWRIGHT = "playwright"
@@ -72,6 +77,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.MISTRAL: initializers.MistralInstrumentorInitializer(),
     Instruments.OLLAMA: initializers.OllamaInstrumentorInitializer(),
     Instruments.OPENAI: initializers.OpenAIInstrumentorInitializer(),
+    Instruments.OPENTELEMETRY: initializers.OpenTelemetryInstrumentorInitializer(),
     Instruments.PATCHRIGHT: initializers.PatchrightInstrumentorInitializer(),
     Instruments.PINECONE: initializers.PineconeInstrumentorInitializer(),
     Instruments.PLAYWRIGHT: initializers.PlaywrightInstrumentorInitializer(),
