@@ -271,6 +271,7 @@ class OpenAIInstrumentorInitializer(InstrumentorInitializer):
             # results in dropping the image data if we don't explicitly
             # set it to None.
             upload_base64_image=None,
+            enable_trace_context_propagation=False,
         )
 
 
