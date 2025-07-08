@@ -261,10 +261,8 @@ class OpenAIInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("openai"):
             return None
-        if not is_package_installed("opentelemetry-instrumentation-openai"):
-            return None
 
-        from opentelemetry.instrumentation.openai import OpenAIInstrumentor
+        from ..opentelemetry.instrumentation.openai import OpenAIInstrumentor
 
         return OpenAIInstrumentor(
             # Default in the package provided is an empty function, which
