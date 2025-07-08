@@ -11,7 +11,6 @@ from lmnr.sdk.decorators import observe
 from lmnr.sdk.browser.utils import retry_sync, retry_async
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
-from lmnr.sdk import get_current_context
 from lmnr.opentelemetry_lib.tracing import _get_current_context
 
 try:
