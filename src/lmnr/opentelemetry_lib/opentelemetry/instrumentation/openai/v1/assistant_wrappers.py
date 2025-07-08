@@ -279,11 +279,11 @@ def runs_create_and_stream_wrapper(tracer, wrapped, instance, args, kwargs):
             span, f"{SpanAttributes.LLM_PROMPTS}.{i}.content", instructions
         )
 
-    from .v1.event_handler_wrapper import (
-        EventHandleWrapper,
+    from ..v1.event_handler_wrapper import (
+        EventHandlerWrapper,
     )
 
-    kwargs["event_handler"] = EventHandleWrapper(
+    kwargs["event_handler"] = EventHandlerWrapper(
         original_handler=kwargs["event_handler"],
         span=span,
     )
