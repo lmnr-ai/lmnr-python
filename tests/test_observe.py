@@ -648,3 +648,25 @@ async def test_observe_output_formatter_async(exporter: InMemorySpanExporter):
     assert result == 1
     assert len(spans) == 1
     assert json.loads(spans[0].attributes["lmnr.span.output"]) == {"x": 2}
+
+
+def test_observe_non_serializable_input(exporter: InMemorySpanExporter):
+    class NonSerializable:
+        def __init__(self, x: int):
+            self.x = x
+
+    @observe()
+    def observed_foo(x: NonSerializable, y: int):
+        return x
+
+    observed_foo(NonSerializable(1), 2)
+    spans = exporter.get_finished_spans()
+
+    assert len(spans) == 1
+    span = spans[0]
+    span_input = json.loads(span.attributes["lmnr.span.input"])
+    assert span_input["y"] == 2
+    assert "NonSerializable object at 0x" in span_input["x"]
+    assert "NonSerializable object at 0x" in json.loads(
+        span.attributes["lmnr.span.output"]
+    )
