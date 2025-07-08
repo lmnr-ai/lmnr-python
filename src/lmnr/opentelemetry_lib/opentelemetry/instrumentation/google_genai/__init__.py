@@ -20,11 +20,8 @@ from .utils import (
     to_dict,
     with_tracer_wrapper,
 )
-from opentelemetry.trace import Tracer, set_span_in_context
+from opentelemetry.trace import Tracer
 from wrapt import wrap_function_wrapper
-
-from lmnr.version import __version__
-from lmnr.sdk.laminar import Laminar
 
 from opentelemetry import context as context_api
 from opentelemetry.trace import get_tracer, SpanKind, Span
@@ -445,30 +442,28 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     ):
         return wrapped(*args, **kwargs)
 
-    with Laminar.start_as_current_span(
+    span = tracer.start_span(
         to_wrap.get("span_name"),
-    ) as span:
-        span.set_attributes(
-            {
-                "lmnr.span.type": "LLM",
-                SpanAttributes.LLM_SYSTEM: "gemini",
-                SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
-            }
-        )
+        kind=SpanKind.CLIENT,
+        attributes={
+            SpanAttributes.LLM_SYSTEM: "gemini",
+            SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
+        },
+    )
 
-        if span.is_recording():
-            _set_request_attributes(span, args, kwargs)
+    if span.is_recording():
+        _set_request_attributes(span, args, kwargs)
 
-        if to_wrap.get("is_streaming"):
-            return _build_from_streaming_response(span, wrapped(*args, **kwargs))
-        else:
-            response = wrapped(*args, **kwargs)
+    if to_wrap.get("is_streaming"):
+        return _build_from_streaming_response(span, wrapped(*args, **kwargs))
+    else:
+        response = wrapped(*args, **kwargs)
 
-        if span.is_recording():
-            _set_response_attributes(span, response)
+    if span.is_recording():
+        _set_response_attributes(span, response)
 
-        # span.end()
-        return response
+    span.end()
+    return response
 
 
 @with_tracer_wrapper
@@ -478,30 +473,28 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     ):
         return await wrapped(*args, **kwargs)
 
-    with Laminar.start_as_current_span(
+    span = tracer.start_span(
         to_wrap.get("span_name"),
-    ) as span:
-        span.set_attributes(
-            {
-                "lmnr.span.type": "LLM",
-                SpanAttributes.LLM_SYSTEM: "gemini",
-                SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
-            }
-        )
+        kind=SpanKind.CLIENT,
+        attributes={
+            SpanAttributes.LLM_SYSTEM: "gemini",
+            SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
+        },
+    )
 
-        if span.is_recording():
-            _set_request_attributes(span, args, kwargs)
+    if span.is_recording():
+        _set_request_attributes(span, args, kwargs)
 
-        if to_wrap.get("is_streaming"):
-            return _abuild_from_streaming_response(span, await wrapped(*args, **kwargs))
-        else:
-            response = await wrapped(*args, **kwargs)
+    if to_wrap.get("is_streaming"):
+        return _abuild_from_streaming_response(span, await wrapped(*args, **kwargs))
+    else:
+        response = await wrapped(*args, **kwargs)
 
-        if span.is_recording():
-            _set_response_attributes(span, response)
+    if span.is_recording():
+        _set_response_attributes(span, response)
 
-        # span.end()
-        return response
+    span.end()
+    return response
 
 
 class GoogleGenAiSdkInstrumentor(BaseInstrumentor):
@@ -523,7 +516,7 @@ class GoogleGenAiSdkInstrumentor(BaseInstrumentor):
 
     def _instrument(self, **kwargs):
         tracer_provider = kwargs.get("tracer_provider")
-        tracer = get_tracer(__name__, __version__, tracer_provider)
+        tracer = get_tracer(__name__, "0.0.1a1", tracer_provider)
 
         for wrapped_method in WRAPPED_METHODS:
             wrap_function_wrapper(
