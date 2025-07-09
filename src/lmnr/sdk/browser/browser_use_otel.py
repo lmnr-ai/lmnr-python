@@ -88,7 +88,7 @@ async def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         if step_info and hasattr(step_info, "step_number"):
             span_name = f"agent.step.{step_info.step_number}"
 
-    with Laminar.start_as_current_span(span_name, attributes=attributes) as span:
+    with Laminar.start_as_current_span(span_name) as span:
         span.set_attributes(attributes)
         result = await wrapped(*args, **kwargs)
         if not to_wrap.get("ignore_output"):
