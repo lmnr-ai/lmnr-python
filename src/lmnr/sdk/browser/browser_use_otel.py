@@ -1,4 +1,5 @@
 from lmnr.opentelemetry_lib.decorators import json_dumps
+from lmnr.opentelemetry_lib.tracing import _get_current_context
 from lmnr.sdk.browser.utils import with_tracer_wrapper
 from lmnr.sdk.utils import get_input_from_func_args
 from lmnr.version import __version__
@@ -86,7 +87,9 @@ async def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         step_info = kwargs.get("step_info", args[0] if len(args) > 0 else None)
         if step_info and hasattr(step_info, "step_number"):
             span_name = f"agent.step.{step_info.step_number}"
-    with tracer.start_as_current_span(span_name, attributes=attributes) as span:
+
+    ctx = _get_current_context()
+    with tracer.start_as_current_span(span_name, attributes=attributes, context=ctx) as span:
         span.set_attributes(attributes)
         result = await wrapped(*args, **kwargs)
         if not to_wrap.get("ignore_output"):
