@@ -221,11 +221,11 @@ async def inject_rrweb_async(page: Page):
 
 
 @observe(name="playwright.page", ignore_input=True, ignore_output=True)
-def handle_navigation_sync(
-    page: SyncPage, session_id: str, trace_id: str, client: LaminarClient
-):
+def handle_navigation_sync(page: SyncPage, session_id: str, client: LaminarClient):
     ctx = _get_current_context()
-    trace.get_current_span(ctx).set_attribute("lmnr.internal.has_browser_session", True)
+    span = trace.get_current_span(ctx)
+    trace_id = format(span.get_span_context().trace_id, "032x")
+    span.set_attribute("lmnr.internal.has_browser_session", True)
     original_bring_to_front = page.bring_to_front
 
     def bring_to_front():
@@ -272,11 +272,13 @@ def handle_navigation_sync(
 
 @observe(name="playwright.page", ignore_input=True, ignore_output=True)
 async def handle_navigation_async(
-    page: Page, session_id: str, trace_id: str, client: AsyncLaminarClient
+    page: Page, session_id: str, client: AsyncLaminarClient
 ):
-    
+
     ctx = _get_current_context()
-    trace.get_current_span(ctx).set_attribute("lmnr.internal.has_browser_session", True)
+    span = trace.get_current_span(ctx)
+    trace_id = format(span.get_span_context().trace_id, "032x")
+    span.set_attribute("lmnr.internal.has_browser_session", True)
 
     async def collection_loop():
         try:

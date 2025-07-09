@@ -13,12 +13,7 @@ from opentelemetry.instrumentation.utils import unwrap
 from opentelemetry.trace import (
     get_tracer,
     Tracer,
-    get_current_span,
-    Span,
-    INVALID_SPAN,
-    set_span_in_context,
 )
-from opentelemetry.context import get_current
 from typing import Collection
 from wrapt import wrap_function_wrapper
 
@@ -54,59 +49,37 @@ except ImportError as e:
 _instruments = ("playwright >= 1.9.0",)
 logger = logging.getLogger(__name__)
 
-_context_spans: dict[str, Span] = {}
-
 
 @with_tracer_and_client_wrapper
 def _wrap_new_page(
     tracer: Tracer, client: LaminarClient, to_wrap, wrapped, instance, args, kwargs
 ):
-    with tracer.start_as_current_span(
-        f"{to_wrap.get('object')}.{to_wrap.get('method')}"
-    ) as span:
-        page = wrapped(*args, **kwargs)
-        session_id = str(uuid.uuid4().hex)
-        trace_id = format(get_current_span().get_span_context().trace_id, "032x")
-        span.set_attribute("lmnr.internal.has_browser_session", True)
-        handle_navigation_sync(page, session_id, trace_id, client)
-        return page
+    page = wrapped(*args, **kwargs)
+    session_id = str(uuid.uuid4().hex)
+    handle_navigation_sync(page, session_id, client)
+    return page
 
 
 @with_tracer_and_client_wrapper
 async def _wrap_new_page_async(
     tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
 ):
-    with tracer.start_as_current_span(
-        f"{to_wrap.get('object')}.{to_wrap.get('method')}"
-    ) as span:
-        page = await wrapped(*args, **kwargs)
-        session_id = str(uuid.uuid4().hex)
-        trace_id = format(span.get_span_context().trace_id, "032x")
-        span.set_attribute("lmnr.internal.has_browser_session", True)
-        await handle_navigation_async(page, session_id, trace_id, client)
-        return page
+    page = await wrapped(*args, **kwargs)
+    session_id = str(uuid.uuid4().hex)
+    await handle_navigation_async(page, session_id, client)
+    return page
 
 
 @with_tracer_and_client_wrapper
 def _wrap_new_browser_sync(
     tracer: Tracer, client: LaminarClient, to_wrap, wrapped, instance, args, kwargs
 ):
-    global _context_spans
     browser: SyncBrowser = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
     for context in browser.contexts:
-        span = get_current_span()
-        if span == INVALID_SPAN:
-            span = tracer.start_span(
-                name=f"{to_wrap.get('object')}.{to_wrap.get('method')}"
-            )
-            set_span_in_context(span, get_current())
-            _context_spans[id(context)] = span
-        span.set_attribute("lmnr.internal.has_browser_session", True)
-        trace_id = format(span.get_span_context().trace_id, "032x")
 
         def handle_page_navigation(page: SyncPage):
-            return handle_navigation_sync(page, session_id, trace_id, client)
+            return handle_navigation_sync(page, session_id, client)
 
         context.on(
             "page",
@@ -114,7 +87,7 @@ def _wrap_new_browser_sync(
         )
 
         for page in context.pages:
-            handle_navigation_sync(page, session_id, trace_id, client)
+            handle_navigation_sync(page, session_id, client)
     return browser
 
 
@@ -122,26 +95,16 @@ def _wrap_new_browser_sync(
 async def _wrap_new_browser_async(
     tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
 ):
-    global _context_spans
     browser: Browser = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
     for context in browser.contexts:
-        span = get_current_span()
-        if span == INVALID_SPAN:
-            span = tracer.start_span(
-                name=f"{to_wrap.get('object')}.{to_wrap.get('method')}"
-            )
-            set_span_in_context(span, get_current())
-            _context_spans[id(context)] = span
-        span.set_attribute("lmnr.internal.has_browser_session", True)
-        trace_id = format(span.get_span_context().trace_id, "032x")
 
         async def handle_page_navigation(page: Page):
-            return await handle_navigation_async(page, session_id, trace_id, client)
+            return await handle_navigation_async(page, session_id, client)
 
         context.on("page", handle_page_navigation)
         for page in context.pages:
-            await handle_navigation_async(page, session_id, trace_id, client)
+            await handle_navigation_async(page, session_id, client)
     return browser
 
 
@@ -151,25 +114,16 @@ def _wrap_new_context_sync(
 ):
     context: SyncBrowserContext = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
-    span = get_current_span()
-    if span == INVALID_SPAN:
-        span = tracer.start_span(
-            name=f"{to_wrap.get('object')}.{to_wrap.get('method')}"
-        )
-        set_span_in_context(span, get_current())
-        _context_spans[id(context)] = span
-    span.set_attribute("lmnr.internal.has_browser_session", True)
-    trace_id = format(span.get_span_context().trace_id, "032x")
 
     def handle_page_navigation(page: SyncPage):
-        return handle_navigation_sync(page, session_id, trace_id, client)
+        return handle_navigation_sync(page, session_id, client)
 
     context.on(
         "page",
         handle_page_navigation,
     )
     for page in context.pages:
-        handle_navigation_sync(page, session_id, trace_id, client)
+        handle_navigation_sync(page, session_id, client)
     return context
 
 
@@ -179,65 +133,14 @@ async def _wrap_new_context_async(
 ):
     context: BrowserContext = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
-    span = get_current_span()
-    if span == INVALID_SPAN:
-        span = tracer.start_span(
-            name=f"{to_wrap.get('object')}.{to_wrap.get('method')}"
-        )
-        set_span_in_context(span, get_current())
-        _context_spans[id(context)] = span
-    span.set_attribute("lmnr.internal.has_browser_session", True)
-    trace_id = format(span.get_span_context().trace_id, "032x")
 
     async def handle_page_navigation(page):
-        return await handle_navigation_async(page, session_id, trace_id, client)
+        return await handle_navigation_async(page, session_id, client)
 
     context.on("page", handle_page_navigation)
     for page in context.pages:
-        await handle_navigation_async(page, session_id, trace_id, client)
+        await handle_navigation_async(page, session_id, client)
     return context
-
-
-@with_tracer_and_client_wrapper
-def _wrap_close_browser_sync(
-    tracer: Tracer,
-    client: LaminarClient,
-    to_wrap,
-    wrapped,
-    instance: SyncBrowser,
-    args,
-    kwargs,
-):
-    global _context_spans
-    for context in instance.contexts:
-        key = id(context)
-        span = _context_spans.get(key)
-        if span:
-            if span.is_recording():
-                span.end()
-            _context_spans.pop(key)
-    return wrapped(*args, **kwargs)
-
-
-@with_tracer_and_client_wrapper
-async def _wrap_close_browser_async(
-    tracer: Tracer,
-    client: AsyncLaminarClient,
-    to_wrap,
-    wrapped,
-    instance: Browser,
-    args,
-    kwargs,
-):
-    global _context_spans
-    for context in instance.contexts:
-        key = id(context)
-        span = _context_spans.get(key)
-        if span:
-            if span.is_recording():
-                span.end()
-            _context_spans.pop(key)
-    return await wrapped(*args, **kwargs)
 
 
 WRAPPED_METHODS = [
@@ -270,12 +173,6 @@ WRAPPED_METHODS = [
         "object": "BrowserType",
         "method": "connect_over_cdp",
         "wrapper": _wrap_new_browser_sync,
-    },
-    {
-        "package": "playwright.sync_api",
-        "object": "Browser",
-        "method": "close",
-        "wrapper": _wrap_close_browser_sync,
     },
     {
         "package": "playwright.sync_api",
@@ -321,12 +218,6 @@ WRAPPED_METHODS_ASYNC = [
         "object": "BrowserType",
         "method": "connect_over_cdp",
         "wrapper": _wrap_new_browser_async,
-    },
-    {
-        "package": "playwright.async_api",
-        "object": "Browser",
-        "method": "close",
-        "wrapper": _wrap_close_browser_async,
     },
     {
         "package": "playwright.async_api",
@@ -393,13 +284,8 @@ class PlaywrightInstrumentor(BaseInstrumentor):
 
     def _uninstrument(self, **kwargs):
         # Unwrap methods
-        global _context_spans
         for wrapped_method in WRAPPED_METHODS + WRAPPED_METHODS_ASYNC:
             wrap_package = wrapped_method.get("package")
             wrap_object = wrapped_method.get("object")
             wrap_method = wrapped_method.get("method")
             unwrap(wrap_package, f"{wrap_object}.{wrap_method}")
-            for span in _context_spans.values():
-                if span.is_recording():
-                    span.end()
-            _context_spans = {}
