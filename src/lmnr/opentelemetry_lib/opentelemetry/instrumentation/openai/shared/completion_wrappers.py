@@ -1,6 +1,8 @@
 import logging
 
 from opentelemetry import context as context_api
+
+from lmnr.opentelemetry_lib.tracing import _get_current_context
 from ..shared import (
     _set_client_attributes,
     _set_functions_attributes,
@@ -52,6 +54,7 @@ def completion_wrapper(tracer, wrapped, instance, args, kwargs):
     # span needs to be opened and closed manually because the response is a generator
     span = tracer.start_span(
         SPAN_NAME,
+        context=_get_current_context(),
         kind=SpanKind.CLIENT,
         attributes={SpanAttributes.LLM_REQUEST_TYPE: LLM_REQUEST_TYPE.value},
     )
@@ -84,6 +87,7 @@ async def acompletion_wrapper(tracer, wrapped, instance, args, kwargs):
 
     span = tracer.start_span(
         name=SPAN_NAME,
+        context=_get_current_context(),
         kind=SpanKind.CLIENT,
         attributes={SpanAttributes.LLM_REQUEST_TYPE: LLM_REQUEST_TYPE.value},
     )

@@ -5,6 +5,8 @@ import time
 
 from openai import AsyncStream, Stream
 
+from lmnr.opentelemetry_lib.tracing import _get_current_context
+
 # Conditional imports for backward compatibility
 try:
     from openai.types.responses import (
@@ -425,6 +427,7 @@ def responses_get_or_create_wrapper(tracer: Tracer, wrapped, instance, args, kwa
         span = tracer.start_span(
             SPAN_NAME,
             kind=SpanKind.CLIENT,
+            context=_get_current_context(),
             start_time=(
                 start_time if traced_data is None else int(traced_data.start_time)
             ),
@@ -468,6 +471,7 @@ def responses_get_or_create_wrapper(tracer: Tracer, wrapped, instance, args, kwa
     if parsed_response.status == "completed":
         span = tracer.start_span(
             SPAN_NAME,
+            context=_get_current_context(),
             kind=SpanKind.CLIENT,
             start_time=int(traced_data.start_time),
         )
@@ -518,6 +522,7 @@ async def async_responses_get_or_create_wrapper(
         span = tracer.start_span(
             SPAN_NAME,
             kind=SpanKind.CLIENT,
+            context=_get_current_context(),
             start_time=(
                 start_time if traced_data is None else int(traced_data.start_time)
             ),
@@ -562,6 +567,7 @@ async def async_responses_get_or_create_wrapper(
         span = tracer.start_span(
             SPAN_NAME,
             kind=SpanKind.CLIENT,
+            context=_get_current_context(),
             start_time=int(traced_data.start_time),
         )
         set_data_attributes(traced_data, span)
@@ -585,6 +591,7 @@ def responses_cancel_wrapper(tracer: Tracer, wrapped, instance, args, kwargs):
         span = tracer.start_span(
             SPAN_NAME,
             kind=SpanKind.CLIENT,
+            context=_get_current_context(),
             start_time=existing_data.start_time,
             record_exception=True,
         )
@@ -611,6 +618,7 @@ async def async_responses_cancel_wrapper(
         span = tracer.start_span(
             SPAN_NAME,
             kind=SpanKind.CLIENT,
+            context=_get_current_context(),
             start_time=existing_data.start_time,
             record_exception=True,
         )

@@ -5,6 +5,7 @@ import time
 from functools import singledispatch
 from typing import List, Optional, Union
 
+from lmnr.opentelemetry_lib.tracing import _get_current_context
 from opentelemetry import context as context_api
 from ..shared import (
     OPENAI_LLM_USAGE_TOKEN_TYPES,
@@ -84,6 +85,7 @@ def chat_wrapper(
 
     span = tracer.start_span(
         SPAN_NAME,
+        context=_get_current_context(),
         kind=SpanKind.CLIENT,
         attributes={SpanAttributes.LLM_REQUEST_TYPE: LLM_REQUEST_TYPE.value},
     )
@@ -179,6 +181,7 @@ async def achat_wrapper(
 
     span = tracer.start_span(
         SPAN_NAME,
+        context=_get_current_context(),
         kind=SpanKind.CLIENT,
         attributes={SpanAttributes.LLM_REQUEST_TYPE: LLM_REQUEST_TYPE.value},
     )
