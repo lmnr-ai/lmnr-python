@@ -215,7 +215,7 @@ def test_observe_skip_input_keys(span_exporter: InMemorySpanExporter):
     assert spans[0].name == "observed_foo"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
     assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
-    assert spans[0].attributes["lmnr.span.input"] == json.dumps({"b": 2, "c": 3})
+    assert json.loads(spans[0].attributes["lmnr.span.input"]) == {"b": 2, "c": 3}
 
 
 def test_observe_skip_input_keys_with_kwargs(span_exporter: InMemorySpanExporter):
@@ -251,7 +251,7 @@ async def test_observe_skip_input_keys_async(span_exporter: InMemorySpanExporter
     assert spans[0].name == "observed_foo"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
     assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
-    assert spans[0].attributes["lmnr.span.input"] == json.dumps({"b": 2, "c": 3})
+    assert json.loads(spans[0].attributes["lmnr.span.input"]) == {"b": 2, "c": 3}
 
 
 def test_observe_tags(span_exporter: InMemorySpanExporter):
@@ -580,7 +580,7 @@ async def test_observe_input_formatter_async(exporter: InMemorySpanExporter):
     spans = exporter.get_finished_spans()
     assert result == 1
     assert len(spans) == 1
-    assert spans[0].attributes["lmnr.span.input"] == json.dumps({"x": 2})
+    assert json.loads(spans[0].attributes["lmnr.span.input"]) == {"x": 2}
 
 
 @pytest.mark.asyncio
@@ -667,19 +667,11 @@ def test_observe_complex_nested_input(exporter: InMemorySpanExporter):
         address: Address
         hobbies: List[str]
 
-    class CustomObject:
-        def __init__(self, value: str):
-            self.value = value
-
-        def to_json(self):
-            return f'{{"custom_value": "{self.value}_processed"}}'
-
     @observe()
-    def observed_foo(person: Person, data: dict, custom_obj: CustomObject):
+    def observed_foo(person: Person, data: dict):
         return {
             "processed_person": person.name,
             "data_count": len(data),
-            "custom_result": custom_obj.value,
         }
 
     address = Address(street="123 Main St", city="Anytown", zipcode="12345")
@@ -692,9 +684,8 @@ def test_observe_complex_nested_input(exporter: InMemorySpanExporter):
         "set": {7, 8, 9},
         "nested": {"inner": [10, 11, 12]},
     }
-    custom_obj = CustomObject("test_value")
 
-    observed_foo(person, complex_data, custom_obj)
+    observed_foo(person, complex_data)
     spans = exporter.get_finished_spans()
 
     assert len(spans) == 1
@@ -715,14 +706,10 @@ def test_observe_complex_nested_input(exporter: InMemorySpanExporter):
     assert set(span_input["data"]["set"]) == {7, 8, 9}  # set order may vary
     assert span_input["data"]["nested"]["inner"] == [10, 11, 12]
 
-    # Check custom object with to_json method (no double serialization)
-    assert span_input["custom_obj"]["custom_value"] == "test_value_processed"
-
     # Check output serialization
     span_output = json.loads(span.attributes["lmnr.span.output"])
     assert span_output["processed_person"] == "Alice"
     assert span_output["data_count"] == 4
-    assert span_output["custom_result"] == "test_value"
 
 
 def test_observe_complex_nested_output(exporter: InMemorySpanExporter):

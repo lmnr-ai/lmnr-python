@@ -1,9 +1,7 @@
 from functools import wraps
 import logging
-import json
 import pydantic
-import dataclasses
-import collections.abc
+import orjson
 import types
 from typing import Any, AsyncGenerator, Callable, Generator, Literal
 
@@ -25,80 +23,34 @@ from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
 
+DEFAULT_PLACEHOLDER = {}
 
-class CustomJSONEncoder(json.JSONEncoder):
-    def default(self, o):
-        if isinstance(o, (int, float, str, bool, type(None))):
-            return o
 
-        if isinstance(o, pydantic.BaseModel):
-            return o.model_dump()
+def default_json(o):
+    if isinstance(o, pydantic.BaseModel):
+        return o.model_dump()
 
-        if dataclasses.is_dataclass(o):
-            return dataclasses.asdict(o)
+    # Handle various sequence types, but not strings or bytes
+    if isinstance(o, (list, tuple, set, frozenset)):
+        return list(o)
 
-        # Handle various sequence types, but not strings or bytes
-        if isinstance(o, (list, tuple, set, frozenset)) or (
-            isinstance(o, collections.abc.Sequence) and not isinstance(o, (str, bytes))
-        ):
-            return [self.default(v) for v in o]
-
-        # Handle other iterable types but avoid consuming iterators/generators
-        if hasattr(o, "__iter__") and not isinstance(o, (str, bytes, dict)):
-            # Check if it's a generator or iterator by checking if it has __next__
-            if hasattr(o, "__next__"):
-                # It's an iterator/generator, don't consume it
-                return str(o)
-
-            # It's an iterable but not an iterator, convert to list
-            try:
-                return [self.default(v) for v in o]
-            except (TypeError, ValueError):
-                # If iteration fails, fall back to string
-                return str(o)
-
-        if isinstance(o, dict):
-            return {k: self.default(v) for k, v in o.items()}
-
-        if hasattr(o, "to_json"):
-            try:
-                result = o.to_json()
-                # Only parse back if it's a string (likely JSON)
-                if isinstance(result, str):
-                    try:
-                        return json.loads(result)
-                    except (json.JSONDecodeError, TypeError):
-                        return result
-                return result
-            except Exception:
-                pass
-
-        # Handle objects with json method - parse back JSON strings to avoid double serialization
-        if hasattr(o, "json"):
-            try:
-                result = o.json()
-                # Only parse back if it's a string (likely JSON)
-                if isinstance(result, str):
-                    try:
-                        return json.loads(result)
-                    except (json.JSONDecodeError, TypeError):
-                        return result
-                return result
-            except Exception:
-                pass
-
-        try:
-            return super().default(o)
-        except Exception:
-            try:
-                return str(o)
-            except Exception:
-                return o
+    try:
+        return str(o)
+    except Exception:
+        pass
+    return DEFAULT_PLACEHOLDER
 
 
 def json_dumps(data: dict) -> str:
     try:
-        return json.dumps(data, cls=CustomJSONEncoder)
+        return orjson.dumps(
+            data,
+            default=default_json,
+            option=orjson.OPT_SERIALIZE_DATACLASS
+            | orjson.OPT_SERIALIZE_UUID
+            | orjson.OPT_UTC_Z
+            | orjson.OPT_NON_STR_KEYS,
+        ).decode("utf-8")
     except Exception:
         # Log the exception and return a placeholder if serialization completely fails
         logging.warning("Failed to serialize data to JSON, type: %s", type(data))

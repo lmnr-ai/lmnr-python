@@ -53,22 +53,6 @@ class NestedDataClass:
     items: List[str]
 
 
-class ObjectWithToJson:
-    def __init__(self, name: str):
-        self.name = name
-
-    def to_json(self):
-        return f'{{"to_json_name": "{self.name}"}}'
-
-
-class ObjectWithJson:
-    def __init__(self, name: str):
-        self.name = name
-
-    def json(self):
-        return f'{{"json_name": "{self.name}"}}'
-
-
 class CircularRef:
     def __init__(self, name: str):
         self.name = name
@@ -210,26 +194,6 @@ def test_json_dumps_dataclass():
     assert parsed["simple"]["name"] == "test"
     assert parsed["simple"]["value"] == 42
     assert parsed["items"] == ["a", "b"]
-
-
-def test_json_dumps_object_with_to_json():
-    """Test object with to_json method - potential double serialization"""
-    obj = ObjectWithToJson("test")
-    result = json_dumps(obj)
-
-    # This should NOT result in double serialization
-    parsed = json.loads(result)
-    assert isinstance(parsed, dict)
-
-
-def test_json_dumps_object_with_json():
-    """Test object with json method - potential double serialization"""
-    obj = ObjectWithJson("test")
-    result = json_dumps(obj)
-
-    # This should NOT result in double serialization
-    parsed = json.loads(result)
-    assert isinstance(parsed, dict)
 
 
 def test_json_dumps_circular_reference():
@@ -573,7 +537,7 @@ def test_json_dumps_pydantic_edge_cases():
     assert parsed["number"] == 42
     # Dates should be serialized as strings
     assert parsed["date_val"] == "2024-01-15"
-    assert parsed["datetime_val"] == "2024-01-15 10:30:45"
+    assert parsed["datetime_val"] == "2024-01-15T10:30:45"
     assert parsed["uuid_val"] == str(test_uuid)
     assert parsed["empty_list"] == []
     assert parsed["empty_dict"] == {}
@@ -632,7 +596,12 @@ def test_json_dumps_failing_objects_in_nested_structures():
     result = json_dumps(complex_data)
 
     # When any object in the structure fails to serialize, the entire thing fails
-    assert result == "{}"
+    assert json.loads(result) == {
+        "normal": "value",
+        "failing_str": {},
+        "list_with_failing": [1, 2, {}, 4],
+        "nested_dict": {"inner": {}, "normal": "still_works"},
+    }
 
 
 def test_json_dumps_fallback_hierarchy():
@@ -693,7 +662,11 @@ def test_json_dumps_mixed_failing_and_working():
 
     result = json_dumps(mixed_data)
     # Should return the fallback empty object
-    assert result == "{}"
+    assert json.loads(result) == {
+        "dataclass": {"name": "working", "value": 100},
+        "failing": {},
+        "normal_list": [1, 2, 3],
+    }
 
 
 def test_json_dumps_encoder_fallback_success():
