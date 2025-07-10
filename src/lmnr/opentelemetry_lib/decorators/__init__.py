@@ -156,7 +156,13 @@ def _process_input(
         else:
             span.set_attribute(SPAN_INPUT, inp)
     except Exception:
-        logger.debug("Failed to process input, ignoring", exc_info=True)
+        msg = "Failed to process input, ignoring"
+        if input_formatter is not None:
+            # Only warn the user if they provided an input formatter
+            # because it's their responsibility to make sure it works.
+            logger.warning(msg, exc_info=True)
+        else:
+            logger.debug(msg, exc_info=True)
         pass
 
 
@@ -183,7 +189,13 @@ def _process_output(
         else:
             span.set_attribute(SPAN_OUTPUT, output)
     except Exception:
-        logger.debug("Failed to process output, ignoring", exc_info=True)
+        msg = "Failed to process output, ignoring"
+        if output_formatter is not None:
+            # Only warn the user if they provided an output formatter
+            # because it's their responsibility to make sure it works.
+            logger.warning(msg, exc_info=True)
+        else:
+            logger.debug(msg, exc_info=True)
         pass
 
 
