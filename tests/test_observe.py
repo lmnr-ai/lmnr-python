@@ -650,7 +650,166 @@ async def test_observe_output_formatter_async(exporter: InMemorySpanExporter):
     assert json.loads(spans[0].attributes["lmnr.span.output"]) == {"x": 2}
 
 
-def test_observe_non_serializable_input(exporter: InMemorySpanExporter):
+def test_observe_complex_nested_input(exporter: InMemorySpanExporter):
+    import dataclasses
+    from typing import List
+
+    @dataclasses.dataclass
+    class Address:
+        street: str
+        city: str
+        zipcode: str
+
+    @dataclasses.dataclass
+    class Person:
+        name: str
+        age: int
+        address: Address
+        hobbies: List[str]
+
+    class CustomObject:
+        def __init__(self, value: str):
+            self.value = value
+
+        def to_json(self):
+            return f'{{"custom_value": "{self.value}_processed"}}'
+
+    @observe()
+    def observed_foo(person: Person, data: dict, custom_obj: CustomObject):
+        return {
+            "processed_person": person.name,
+            "data_count": len(data),
+            "custom_result": custom_obj.value,
+        }
+
+    address = Address(street="123 Main St", city="Anytown", zipcode="12345")
+    person = Person(
+        name="Alice", age=30, address=address, hobbies=["reading", "coding"]
+    )
+    complex_data = {
+        "list": [1, 2, 3],
+        "tuple": (4, 5, 6),
+        "set": {7, 8, 9},
+        "nested": {"inner": [10, 11, 12]},
+    }
+    custom_obj = CustomObject("test_value")
+
+    observed_foo(person, complex_data, custom_obj)
+    spans = exporter.get_finished_spans()
+
+    assert len(spans) == 1
+    span = spans[0]
+
+    # Check input serialization
+    span_input = json.loads(span.attributes["lmnr.span.input"])
+    assert span_input["person"]["name"] == "Alice"
+    assert span_input["person"]["age"] == 30
+    assert span_input["person"]["address"]["street"] == "123 Main St"
+    assert span_input["person"]["address"]["city"] == "Anytown"
+    assert span_input["person"]["address"]["zipcode"] == "12345"
+    assert span_input["person"]["hobbies"] == ["reading", "coding"]
+
+    # Check various data types in the input
+    assert span_input["data"]["list"] == [1, 2, 3]
+    assert span_input["data"]["tuple"] == [4, 5, 6]  # tuple becomes list in JSON
+    assert set(span_input["data"]["set"]) == {7, 8, 9}  # set order may vary
+    assert span_input["data"]["nested"]["inner"] == [10, 11, 12]
+
+    # Check custom object with to_json method (no double serialization)
+    assert span_input["custom_obj"]["custom_value"] == "test_value_processed"
+
+    # Check output serialization
+    span_output = json.loads(span.attributes["lmnr.span.output"])
+    assert span_output["processed_person"] == "Alice"
+    assert span_output["data_count"] == 4
+    assert span_output["custom_result"] == "test_value"
+
+
+def test_observe_complex_nested_output(exporter: InMemorySpanExporter):
+    import dataclasses
+    from typing import List
+
+    @dataclasses.dataclass
+    class Result:
+        success: bool
+        message: str
+        data: List[int]
+
+    class ProcessedData:
+        def __init__(self, items: List[str]):
+            self.items = items
+            self.count = len(items)
+
+    @observe()
+    def observed_foo(input_data: dict):
+        # Return complex nested structure
+        result = Result(
+            success=True, message="Processing complete", data=[1, 2, 3, 4, 5]
+        )
+        processed = ProcessedData(["item1", "item2", "item3"])
+
+        return {
+            "result": result,
+            "processed": processed,
+            "mixed_data": {
+                "tuples": [(1, 2), (3, 4), (5, 6)],
+                "sets": [{"a", "b"}, {"c", "d"}],
+                "nested_dict": {"level1": {"level2": [result, processed]}},
+            },
+            "simple_types": [1, "string", True, None, 3.14],
+        }
+
+    input_data = {"simple": "input"}
+    observed_foo(input_data)
+    spans = exporter.get_finished_spans()
+
+    assert len(spans) == 1
+    span = spans[0]
+
+    # Check input serialization (simple case)
+    span_input = json.loads(span.attributes["lmnr.span.input"])
+    assert span_input["input_data"]["simple"] == "input"
+
+    # Check complex output serialization
+    span_output = json.loads(span.attributes["lmnr.span.output"])
+
+    # Check dataclass serialization
+    assert span_output["result"]["success"] is True
+    assert span_output["result"]["message"] == "Processing complete"
+    assert span_output["result"]["data"] == [1, 2, 3, 4, 5]
+
+    # Check custom object serialization (falls back to string)
+    assert isinstance(span_output["processed"], str)
+    assert "ProcessedData" in span_output["processed"]
+
+    # Check mixed data types
+    assert span_output["mixed_data"]["tuples"] == [
+        [1, 2],
+        [3, 4],
+        [5, 6],
+    ]  # tuples become lists
+
+    # Sets become lists (order may vary)
+    sets_data = span_output["mixed_data"]["sets"]
+    assert len(sets_data) == 2
+    assert set(sets_data[0]) in [{"a", "b"}, {"c", "d"}]
+    assert set(sets_data[1]) in [{"a", "b"}, {"c", "d"}]
+
+    # Check deeply nested structure
+    nested_level2 = span_output["mixed_data"]["nested_dict"]["level1"]["level2"]
+    assert len(nested_level2) == 2
+    # First item should be the dataclass (serialized)
+    assert nested_level2[0]["success"] is True
+    assert nested_level2[0]["message"] == "Processing complete"
+    # Second item should be the custom object (string representation)
+    assert isinstance(nested_level2[1], str)
+    assert "ProcessedData" in nested_level2[1]
+
+    # Check simple types
+    assert span_output["simple_types"] == [1, "string", True, None, 3.14]
+
+
+def test_observe_non_serializable_fallback(exporter: InMemorySpanExporter):
     class NonSerializable:
         def __init__(self, x: int):
             self.x = x

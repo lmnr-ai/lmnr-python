@@ -1,4 +1,6 @@
+import collections.abc
 from functools import wraps
+import dataclasses
 import json
 import logging
 import pydantic
@@ -19,20 +21,79 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
     SPAN_TYPE,
 )
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
-from lmnr.opentelemetry_lib.utils.json_encoder import JSONEncoder
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
 
 
-class CustomJSONEncoder(JSONEncoder):
-    def default(self, o: Any) -> Any:
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, (int, float, str, bool, type(None))):
+            return o
+
         if isinstance(o, pydantic.BaseModel):
-            return o.model_dump_json()
+            return o.model_dump()
+
+        if dataclasses.is_dataclass(o):
+            return dataclasses.asdict(o)
+
+        # Handle various sequence types, but not strings or bytes
+        if isinstance(o, (list, tuple, set, frozenset)) or (
+            isinstance(o, collections.abc.Sequence) and not isinstance(o, (str, bytes))
+        ):
+            return [self.default(v) for v in o]
+
+        # Handle other iterable types but avoid consuming iterators/generators
+        if hasattr(o, "__iter__") and not isinstance(o, (str, bytes, dict)):
+            # Check if it's a generator or iterator by checking if it has __next__
+            if hasattr(o, "__next__"):
+                # It's an iterator/generator, don't consume it
+                return str(o)
+
+            # It's an iterable but not an iterator, convert to list
+            try:
+                return [self.default(v) for v in o]
+            except (TypeError, ValueError):
+                # If iteration fails, fall back to string
+                return str(o)
+
+        if isinstance(o, dict):
+            return {k: self.default(v) for k, v in o.items()}
+
+        if hasattr(o, "to_json"):
+            try:
+                result = o.to_json()
+                # Only parse back if it's a string (likely JSON)
+                if isinstance(result, str):
+                    try:
+                        return json.loads(result)
+                    except (json.JSONDecodeError, TypeError):
+                        return result
+                return result
+            except Exception:
+                pass
+
+        # Handle objects with json method - parse back JSON strings to avoid double serialization
+        if hasattr(o, "json"):
+            try:
+                result = o.json()
+                # Only parse back if it's a string (likely JSON)
+                if isinstance(result, str):
+                    try:
+                        return json.loads(result)
+                    except (json.JSONDecodeError, TypeError):
+                        return result
+                return result
+            except Exception:
+                pass
+
         try:
             return super().default(o)
-        except TypeError:
-            return str(o)  # Fallback to string representation for unsupported types
+        except Exception:
+            try:
+                return str(o)
+            except Exception:
+                return o
 
 
 def json_dumps(data: dict) -> str:
