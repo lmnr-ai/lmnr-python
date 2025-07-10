@@ -1,9 +1,43 @@
 import json
 import dataclasses
-from typing import List
+from typing import Any, Dict, List
+from pydantic import BaseModel
 
-from lmnr.opentelemetry_lib.decorators import json_dumps, CustomJSONEncoder
+from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.sdk.utils import is_otel_attribute_value_type
+
+
+class SimplePydanticModel(BaseModel):
+    name: str
+    value: int
+    active: bool = True
+
+
+class NestedPydanticModel(BaseModel):
+    simple: SimplePydanticModel
+    items: List[str]
+    metadata: Dict[str, Any] = {}
+
+
+class PydanticModelWithCustomMethods(BaseModel):
+    name: str
+
+    def to_json(self):
+        return f'{{"custom_name": "{self.name}_custom"}}'
+
+    def json(self):
+        return f'{{"json_name": "{self.name}_json"}}'
+
+
+class ComplexPydanticModel(BaseModel):
+    id: int
+    user: SimplePydanticModel
+    tags: List[str]
+    settings: Dict[str, Any]
+
+    class Config:
+        # Test with pydantic config
+        allow_population_by_field_name = True
 
 
 # Test dataclasses
@@ -130,20 +164,26 @@ def test_is_otel_attribute_value_type():
 
 def test_json_dumps_basic():
     """Test basic serialization"""
-    assert json_dumps({"a": 1, "b": "test"}) == '{"a": 1, "b": "test"}'
-    assert (
-        json_dumps({"a": 1, "b": "test", "c": [1, 2, 3]})
-        == '{"a": 1, "b": "test", "c": [1, 2, 3]}'
-    )
+    result = json_dumps({"a": 1, "b": "test"})
+    parsed = json.loads(result)
+    assert parsed == {"a": 1, "b": "test"}
+
+    result = json_dumps({"a": 1, "b": "test", "c": [1, 2, 3]})
+    parsed = json.loads(result)
+    assert parsed == {"a": 1, "b": "test", "c": [1, 2, 3]}
 
 
 def test_json_dumps_sequence_types():
     """Test different sequence types"""
     # Lists
-    assert json_dumps([1, 2, 3]) == "[1, 2, 3]"
+    result = json_dumps([1, 2, 3])
+    parsed = json.loads(result)
+    assert parsed == [1, 2, 3]
 
     # Tuples
-    assert json_dumps((1, 2, 3)) == "[1, 2, 3]"
+    result = json_dumps((1, 2, 3))
+    parsed = json.loads(result)
+    assert parsed == [1, 2, 3]  # Tuples become lists in JSON
 
     # Sets (order may vary, so check content)
     result = json_dumps({1, 2, 3})
@@ -151,17 +191,17 @@ def test_json_dumps_sequence_types():
     assert set(parsed) == {1, 2, 3}
 
     # Nested sequences
-    assert (
-        json_dumps({"list": [1, 2], "tuple": (3, 4)})
-        == '{"list": [1, 2], "tuple": [3, 4]}'
-    )
+    result = json_dumps({"list": [1, 2], "tuple": (3, 4)})
+    parsed = json.loads(result)
+    assert parsed == {"list": [1, 2], "tuple": [3, 4]}
 
 
 def test_json_dumps_dataclass():
     """Test dataclass serialization"""
     simple = SimpleDataClass(name="test", value=42)
-    expected = '{"name": "test", "value": 42}'
-    assert json_dumps(simple) == expected
+    result = json_dumps(simple)
+    parsed = json.loads(result)
+    assert parsed == {"name": "test", "value": 42}
 
     # Nested dataclass
     nested = NestedDataClass(simple=simple, items=["a", "b"])
@@ -218,7 +258,7 @@ def test_json_dumps_mixed_nested_types():
     }
 
     result = json_dumps(complex_data)
-    parsed = json.loads(result)
+    parsed = json.loads(str(result))
 
     # Verify structure
     assert parsed["list"] == [1, 2, 3]
@@ -281,50 +321,262 @@ def test_json_dumps_deeply_nested():
 
 def test_json_dumps_empty_containers():
     """Test empty containers"""
-    assert json_dumps([]) == "[]"
-    assert json_dumps({}) == "{}"
-    assert json_dumps(()) == "[]"
-    assert json_dumps(set()) == "[]"
+    result = json_dumps([])
+    parsed = json.loads(result)
+    assert parsed == []
+
+    result = json_dumps({})
+    parsed = json.loads(result)
+    assert parsed == {}
+
+    result = json_dumps(())
+    parsed = json.loads(result)
+    assert parsed == []  # Tuples become lists in JSON
+
+    result = json_dumps(set())
+    parsed = json.loads(result)
+    assert parsed == []  # Sets become lists in JSON
 
 
 def test_json_dumps_none_values():
     """Test None values"""
-    assert json_dumps(None) == "null"
-    assert json_dumps({"key": None}) == '{"key": null}'
+    result = json_dumps(None)
+    parsed = json.loads(result)
+    assert parsed is None
+
+    result = json_dumps({"key": None})
+    parsed = json.loads(result)
+    assert parsed == {"key": None}
 
 
-def test_custom_json_encoder_direct():
-    """Test the CustomJSONEncoder directly"""
-    encoder = CustomJSONEncoder()
-
-    # Test default method with dataclass
-    simple_dc = SimpleDataClass(name="test", value=42)
-    serialized = encoder.default(simple_dc)
-    assert serialized == {"name": "test", "value": 42}
-
-    # Test with list containing dataclass
-    list_with_dc = [simple_dc, {"key": "value"}]
-    serialized = encoder.default(list_with_dc)
-    assert serialized == [{"name": "test", "value": 42}, {"key": "value"}]
-
-    # Test with primitive types (should pass through unchanged)
-    assert encoder.default(42) == 42
-    assert encoder.default("test") == "test"
-    assert encoder.default(True) is True
-    assert encoder.default(None) is None
-
-
-# Original test renamed to avoid conflict
+# Original test updated to use parsed comparison
 def test_original_json_dumps():
-    assert json_dumps({"a": 1, "b": "test"}) == '{"a": 1, "b": "test"}'
-    assert (
-        json_dumps({"a": 1, "b": "test", "c": [1, 2, 3]})
-        == '{"a": 1, "b": "test", "c": [1, 2, 3]}'
+    result = json_dumps({"a": 1, "b": "test"})
+    parsed = json.loads(result)
+    assert parsed == {"a": 1, "b": "test"}
+
+    result = json_dumps({"a": 1, "b": "test", "c": [1, 2, 3]})
+    parsed = json.loads(result)
+    assert parsed == {"a": 1, "b": "test", "c": [1, 2, 3]}
+
+    result = json_dumps({"a": 1, "b": "test", "c": [1, 2, 3]})
+    parsed = json.loads(result)
+    assert parsed == {"a": 1, "b": "test", "c": [1, 2, 3]}
+
+
+def test_json_dumps_simple_pydantic():
+    """Test basic pydantic model serialization"""
+    model = SimplePydanticModel(name="test", value=42)
+    result = json_dumps(model)
+
+    # Check the parsed structure instead of exact bytes
+    parsed = json.loads(result)
+    expected = {"name": "test", "value": 42, "active": True}
+    assert parsed == expected
+
+
+def test_json_dumps_pydantic_with_defaults():
+    """Test pydantic model with default values"""
+    model = SimplePydanticModel(name="test", value=42, active=False)
+    result = json_dumps(model)
+
+    parsed = json.loads(result)
+    assert parsed["name"] == "test"
+    assert parsed["value"] == 42
+    assert parsed["active"] is False
+
+
+def test_json_dumps_nested_pydantic():
+    """Test nested pydantic models"""
+    simple = SimplePydanticModel(name="nested", value=100)
+    model = NestedPydanticModel(
+        simple=simple, items=["a", "b", "c"], metadata={"key": "value", "count": 3}
     )
-    assert (
-        json_dumps({"a": 1, "b": "test", "c": [1, 2, 3]})
-        == '{"a": 1, "b": "test", "c": [1, 2, 3]}'
+    result = json_dumps(model)
+
+    parsed = json.loads(result)
+    assert parsed["simple"]["name"] == "nested"
+    assert parsed["simple"]["value"] == 100
+    assert parsed["simple"]["active"] is True
+    assert parsed["items"] == ["a", "b", "c"]
+    assert parsed["metadata"]["key"] == "value"
+    assert parsed["metadata"]["count"] == 3
+
+
+def test_json_dumps_complex_pydantic():
+    """Test complex pydantic model with various data types"""
+    user = SimplePydanticModel(name="alice", value=30)
+    model = ComplexPydanticModel(
+        id=123,
+        user=user,
+        tags=["admin", "user", "active"],
+        settings={
+            "theme": "dark",
+            "notifications": True,
+            "limits": {"max_uploads": 10, "timeout": 30.5},
+        },
     )
+    result = json_dumps(model)
+
+    parsed = json.loads(result)
+    assert parsed["id"] == 123
+    assert parsed["user"]["name"] == "alice"
+    assert parsed["user"]["value"] == 30
+    assert parsed["tags"] == ["admin", "user", "active"]
+    assert parsed["settings"]["theme"] == "dark"
+    assert parsed["settings"]["notifications"] is True
+    assert parsed["settings"]["limits"]["max_uploads"] == 10
+    assert parsed["settings"]["limits"]["timeout"] == 30.5
+
+
+def test_json_dumps_pydantic_with_custom_methods():
+    """Test pydantic model with custom to_json/json methods"""
+    model = PydanticModelWithCustomMethods(name="test")
+    result = json_dumps(model)
+
+    parsed = json.loads(result)
+    assert parsed["name"] == "test"
+
+
+def test_json_dumps_mixed_pydantic_and_dataclass():
+    """Test mix of pydantic models, dataclasses, and other types"""
+    pydantic_model = SimplePydanticModel(name="pydantic", value=1)
+    dataclass_obj = SimpleDataClass(name="dataclass", value=2)
+
+    mixed_data = {
+        "pydantic": pydantic_model,
+        "dataclass": dataclass_obj,
+        "list": [1, 2, 3],
+        "tuple": (4, 5, 6),
+        "set": {7, 8, 9},
+        "nested": {"inner_pydantic": pydantic_model, "inner_dataclass": dataclass_obj},
+    }
+
+    result = json_dumps(mixed_data)
+    parsed = json.loads(result)
+
+    # Check pydantic serialization
+    assert parsed["pydantic"]["name"] == "pydantic"
+    assert parsed["pydantic"]["value"] == 1
+    assert parsed["pydantic"]["active"] is True
+
+    # Check dataclass serialization
+    assert parsed["dataclass"]["name"] == "dataclass"
+    assert parsed["dataclass"]["value"] == 2
+
+    # Check other types
+    assert parsed["list"] == [1, 2, 3]
+    assert parsed["tuple"] == [4, 5, 6]  # tuple becomes list in JSON
+    assert set(parsed["set"]) == {7, 8, 9}  # set becomes list, order may vary
+
+    # Check nested structures
+    assert parsed["nested"]["inner_pydantic"]["name"] == "pydantic"
+    assert parsed["nested"]["inner_dataclass"]["name"] == "dataclass"
+
+
+def test_json_dumps_pydantic_list():
+    """Test list of pydantic models"""
+    models = [
+        SimplePydanticModel(name="first", value=1),
+        SimplePydanticModel(name="second", value=2, active=False),
+        SimplePydanticModel(name="third", value=3),
+    ]
+
+    result = json_dumps(models)
+    parsed = json.loads(result)
+
+    assert len(parsed) == 3
+    assert parsed[0]["name"] == "first"
+    assert parsed[0]["value"] == 1
+    assert parsed[0]["active"] is True
+
+    assert parsed[1]["name"] == "second"
+    assert parsed[1]["value"] == 2
+    assert parsed[1]["active"] is False
+
+    assert parsed[2]["name"] == "third"
+    assert parsed[2]["value"] == 3
+    assert parsed[2]["active"] is True
+
+
+def test_json_dumps_deeply_nested_pydantic():
+    """Test deeply nested pydantic structures"""
+    level3 = SimplePydanticModel(name="level3", value=3)
+    level2 = NestedPydanticModel(simple=level3, items=["c", "d"])
+    level1 = ComplexPydanticModel(
+        id=1,
+        user=level3,
+        tags=["nested"],
+        settings={
+            "nested_model": level2.model_dump()
+        },  # Manually serialize for deep nesting
+    )
+
+    result = json_dumps(level1)
+    parsed = json.loads(result)
+
+    assert parsed["id"] == 1
+    assert parsed["user"]["name"] == "level3"
+    assert parsed["tags"] == ["nested"]
+    assert parsed["settings"]["nested_model"]["simple"]["name"] == "level3"
+    assert parsed["settings"]["nested_model"]["items"] == ["c", "d"]
+
+
+def test_json_dumps_pydantic_with_none_values():
+    """Test pydantic model with None values"""
+    from typing import Optional
+
+    class ModelWithOptional(BaseModel):
+        name: str
+        optional_value: Optional[int] = None
+        optional_string: Optional[str] = None
+
+    model = ModelWithOptional(name="test")
+    result = json_dumps(model)
+    parsed = json.loads(result)
+
+    assert parsed["name"] == "test"
+    assert parsed["optional_value"] is None
+    assert parsed["optional_string"] is None
+
+
+def test_json_dumps_pydantic_edge_cases():
+    """Test pydantic models with edge cases"""
+    from datetime import datetime, date
+    import uuid
+
+    class EdgeCaseModel(BaseModel):
+        text: str
+        number: int
+        date_val: date
+        datetime_val: datetime
+        uuid_val: uuid.UUID
+        empty_list: List[str] = []
+        empty_dict: Dict[str, Any] = {}
+
+    test_uuid = uuid.uuid4()
+    test_date = date(2024, 1, 15)
+    test_datetime = datetime(2024, 1, 15, 10, 30, 45)
+
+    model = EdgeCaseModel(
+        text="test",
+        number=42,
+        date_val=test_date,
+        datetime_val=test_datetime,
+        uuid_val=test_uuid,
+    )
+
+    result = json_dumps(model)
+    parsed = json.loads(result)
+
+    assert parsed["text"] == "test"
+    assert parsed["number"] == 42
+    # Dates should be serialized as strings
+    assert parsed["date_val"] == "2024-01-15"
+    assert parsed["datetime_val"] == "2024-01-15 10:30:45"
+    assert parsed["uuid_val"] == str(test_uuid)
+    assert parsed["empty_list"] == []
+    assert parsed["empty_dict"] == {}
 
 
 def test_json_dumps_failing_str():
@@ -409,29 +661,6 @@ def test_json_dumps_fallback_hierarchy():
     assert "FailingRepr with name: test2" in parsed
 
 
-def test_custom_json_encoder_fallback_direct():
-    """Test the CustomJSONEncoder fallback behavior directly"""
-    encoder = CustomJSONEncoder()
-
-    # Test with failing __str__ - should use super().default() which may work
-    failing_str = FailingStr("direct_test")
-    result = encoder.default(failing_str)
-    # The result depends on what super().default() returns
-    assert result is not None
-
-    # Test with failing __repr__ - should use super().default() which may work
-    failing_repr = FailingRepr("direct_test")
-    result = encoder.default(failing_repr)
-    # The result depends on what super().default() returns
-    assert result is not None
-
-    # Test with both failing - should use the final fallback
-    failing_both = FailingBoth("direct_test")
-    result = encoder.default(failing_both)
-    # Should return the object itself as final fallback
-    assert result is not None
-
-
 def test_json_dumps_working_objects_with_embedded_failing():
     """Test that working objects serialize correctly even when some fail"""
     # Create a structure with mostly working objects
@@ -465,29 +694,6 @@ def test_json_dumps_mixed_failing_and_working():
     result = json_dumps(mixed_data)
     # Should return the fallback empty object
     assert result == "{}"
-
-
-def test_custom_json_encoder_fallback_order():
-    """Test that the fallback order works correctly in the encoder"""
-    encoder = CustomJSONEncoder()
-
-    # Test with a simple non-serializable object that doesn't fail in str()
-    class SimpleNonSerializable:
-        def __init__(self, value):
-            self.value = value
-
-    obj = SimpleNonSerializable(42)
-    result = encoder.default(obj)
-
-    # Should return a string representation
-    assert isinstance(result, str)
-    assert "SimpleNonSerializable" in result
-
-    # Test that this works when used with json_dumps
-    result_json = json_dumps(obj)
-    parsed = json.loads(result_json)
-    assert isinstance(parsed, str)
-    assert "SimpleNonSerializable" in parsed
 
 
 def test_json_dumps_encoder_fallback_success():

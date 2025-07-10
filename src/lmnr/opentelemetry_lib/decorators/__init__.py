@@ -1,9 +1,9 @@
-import collections.abc
 from functools import wraps
-import dataclasses
-import json
 import logging
+import json
 import pydantic
+import dataclasses
+import collections.abc
 import types
 from typing import Any, AsyncGenerator, Callable, Generator, Literal
 
@@ -116,10 +116,7 @@ def _setup_span(
             for key, value in association_properties.items():
                 span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)
 
-        ctx = trace.set_span_in_context(span, context_api.get_current())
-        ctx_token = context_api.attach(ctx)
-
-        return span, ctx_token
+        return span
 
 
 def _process_input(
@@ -223,7 +220,9 @@ def observe_base(
 
             span_name = name or fn.__name__
 
-            span, ctx_token = _setup_span(span_name, span_type, association_properties)
+            span = _setup_span(span_name, span_type, association_properties)
+            ctx = trace.set_span_in_context(span, context_api.get_current())
+            ctx_token = context_api.attach(ctx)
 
             _process_input(
                 span, fn, args, kwargs, ignore_input, ignore_inputs, input_formatter
@@ -277,7 +276,9 @@ def async_observe_base(
 
             span_name = name or fn.__name__
 
-            span, ctx_token = _setup_span(span_name, span_type, association_properties)
+            span = _setup_span(span_name, span_type, association_properties)
+            ctx = trace.set_span_in_context(span, context_api.get_current())
+            ctx_token = context_api.attach(ctx)
 
             _process_input(
                 span, fn, args, kwargs, ignore_input, ignore_inputs, input_formatter
