@@ -110,11 +110,15 @@ async def send_events_async(
         await client._browser_events.send(session_id, trace_id, events)
     except Exception as e:
         if str(e).startswith("Page.evaluate: Execution context was destroyed"):
-            logger.info("Execution context was destroyed, injecting rrweb again")
-            await inject_rrweb_async(page)
+            await inject_session_recorder_async(page)
             await send_events_async(page, session_id, trace_id, client)
         else:
-            logger.debug(f"Could not send events: {e}")
+            # silence the error if the page has been closed, not an issue
+            if (
+                "Page.evaluate: Target page, context or browser has been closed"
+                not in str(e)
+            ):
+                logger.warning(f"Could not send events: {e}")
 
 
 def send_events_sync(
@@ -139,14 +143,18 @@ def send_events_sync(
 
     except Exception as e:
         if str(e).startswith("Page.evaluate: Execution context was destroyed"):
-            logger.info("Execution context was destroyed, injecting rrweb again")
-            inject_rrweb_sync(page)
+            inject_session_recorder_sync(page)
             send_events_sync(page, session_id, trace_id, client)
         else:
-            logger.debug(f"Could not send events: {e}")
+            # silence the error if the page has been closed, not an issue
+            if (
+                "Page.evaluate: Target page, context or browser has been closed"
+                not in str(e)
+            ):
+                logger.warning(f"Could not send events: {e}")
 
 
-def inject_rrweb_sync(page: SyncPage):
+def inject_session_recorder_sync(page: SyncPage):
     try:
         page.wait_for_load_state("domcontentloaded")
 
@@ -156,34 +164,36 @@ def inject_rrweb_sync(page: SyncPage):
                 """() => typeof window.lmnrRrweb !== 'undefined'"""
             )
         except Exception as e:
-            logger.debug(f"Failed to check if rrweb is loaded: {e}")
+            logger.debug(f"Failed to check if session recorder is loaded: {e}")
             is_loaded = False
 
         if not is_loaded:
 
-            def load_rrweb():
+            def load_session_recorder():
                 try:
                     page.evaluate(RRWEB_CONTENT)
                     return True
                 except Exception as e:
-                    logger.debug(f"Failed to load rrweb: {e}")
+                    logger.debug(f"Failed to load session recorder: {e}")
                     return False
 
             if not retry_sync(
-                load_rrweb, delay=1, error_message="Failed to load rrweb"
+                load_session_recorder,
+                delay=1,
+                error_message="Failed to load session recorder",
             ):
                 return
 
         try:
             page.evaluate(INJECT_PLACEHOLDER)
         except Exception as e:
-            logger.debug(f"Failed to inject rrweb placeholder: {e}")
+            logger.debug(f"Failed to inject session recorder: {e}")
 
     except Exception as e:
-        logger.error(f"Error during rrweb injection: {e}")
+        logger.error(f"Error during session recorder injection: {e}")
 
 
-async def inject_rrweb_async(page: Page):
+async def inject_session_recorder_async(page: Page):
     try:
         await page.wait_for_load_state("domcontentloaded")
 
@@ -193,31 +203,33 @@ async def inject_rrweb_async(page: Page):
                 """() => typeof window.lmnrRrweb !== 'undefined'"""
             )
         except Exception as e:
-            logger.debug(f"Failed to check if rrweb is loaded: {e}")
+            logger.debug(f"Failed to check if session recorder is loaded: {e}")
             is_loaded = False
 
         if not is_loaded:
 
-            async def load_rrweb():
+            async def load_session_recorder():
                 try:
                     await page.evaluate(RRWEB_CONTENT)
                     return True
                 except Exception as e:
-                    logger.debug(f"Failed to load rrweb: {e}")
+                    logger.debug(f"Failed to load session recorder: {e}")
                     return False
 
             if not await retry_async(
-                load_rrweb, delay=1, error_message="Failed to load rrweb"
+                load_session_recorder,
+                delay=1,
+                error_message="Failed to load session recorder",
             ):
                 return
 
         try:
             await page.evaluate(INJECT_PLACEHOLDER)
         except Exception as e:
-            logger.debug(f"Failed to inject rrweb placeholder: {e}")
+            logger.debug(f"Failed to inject session recorder placeholder: {e}")
 
     except Exception as e:
-        logger.error(f"Error during rrweb injection: {e}")
+        logger.error(f"Error during session recorder injection: {e}")
 
 
 @observe(name="playwright.page", ignore_input=True, ignore_output=True)
@@ -246,7 +258,7 @@ def handle_navigation_sync(page: SyncPage, session_id: str, client: LaminarClien
 
     def on_load():
         try:
-            inject_rrweb_sync(page)
+            inject_session_recorder_sync(page)
         except Exception as e:
             logger.error(f"Error in on_load handler: {e}")
 
@@ -267,7 +279,7 @@ def handle_navigation_sync(page: SyncPage, session_id: str, client: LaminarClien
 
     page.on("load", on_load)
     page.on("close", on_close)
-    inject_rrweb_sync(page)
+    inject_session_recorder_sync(page)
 
 
 @observe(name="playwright.page", ignore_input=True, ignore_output=True)
@@ -294,7 +306,7 @@ async def handle_navigation_async(
 
     async def on_load():
         try:
-            await inject_rrweb_async(page)
+            await inject_session_recorder_async(page)
         except Exception as e:
             logger.error(f"Error in on_load handler: {e}")
 
@@ -326,4 +338,4 @@ async def handle_navigation_async(
         )
 
     page.bring_to_front = bring_to_front
-    await inject_rrweb_async(page)
+    await inject_session_recorder_async(page)

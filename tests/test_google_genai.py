@@ -2,10 +2,13 @@ import base64
 import httpx
 import json
 import pytest
+import pydantic
 
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import StatusCode
 
 from google.genai import Client, types
+from google.genai.errors import ClientError
 
 
 image_url = "https://upload.wikimedia.org/wikipedia/commons/8/8e/MuseumOfFineArtsBoston_CopleySquare_19thc.jpg"
@@ -30,7 +33,7 @@ get_weather_declaration = {
 
 
 @pytest.mark.vcr
-def test_google_genai(exporter: InMemorySpanExporter):
+def test_google_genai(span_exporter: InMemorySpanExporter):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
     client = Client(api_key="123")
@@ -50,7 +53,7 @@ def test_google_genai(exporter: InMemorySpanExporter):
         ),
     )
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
@@ -74,7 +77,7 @@ def test_google_genai(exporter: InMemorySpanExporter):
 
 
 @pytest.mark.vcr
-def test_google_genai_multiturn(exporter: InMemorySpanExporter):
+def test_google_genai_multiturn(span_exporter: InMemorySpanExporter):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
     client = Client(api_key="123")
@@ -124,7 +127,7 @@ def test_google_genai_multiturn(exporter: InMemorySpanExporter):
         ),
     )
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     for span in spans:
         assert span.name == "gemini.generate_content"
@@ -190,7 +193,7 @@ def test_google_genai_multiturn(exporter: InMemorySpanExporter):
 
 
 @pytest.mark.vcr
-def test_google_genai_tool_calls(exporter: InMemorySpanExporter):
+def test_google_genai_tool_calls(span_exporter: InMemorySpanExporter):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
     client = Client(api_key="123")
@@ -211,7 +214,7 @@ def test_google_genai_tool_calls(exporter: InMemorySpanExporter):
         ),
     )
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
@@ -235,7 +238,7 @@ def test_google_genai_tool_calls(exporter: InMemorySpanExporter):
 
 
 @pytest.mark.vcr
-def test_google_genai_multiple_tool_calls(exporter: InMemorySpanExporter):
+def test_google_genai_multiple_tool_calls(span_exporter: InMemorySpanExporter):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
     client = Client(api_key="123")
@@ -256,7 +259,7 @@ def test_google_genai_multiple_tool_calls(exporter: InMemorySpanExporter):
         ),
     )
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
@@ -284,7 +287,7 @@ def test_google_genai_multiple_tool_calls(exporter: InMemorySpanExporter):
 
 
 @pytest.mark.vcr
-def test_google_genai_image(exporter: InMemorySpanExporter):
+def test_google_genai_image(span_exporter: InMemorySpanExporter):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
     client = Client(api_key="123")
@@ -310,7 +313,7 @@ def test_google_genai_image(exporter: InMemorySpanExporter):
         ),
     )
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
@@ -341,7 +344,7 @@ def test_google_genai_image(exporter: InMemorySpanExporter):
 
 
 @pytest.mark.vcr
-def test_google_genai_image_raw_bytes(exporter: InMemorySpanExporter):
+def test_google_genai_image_raw_bytes(span_exporter: InMemorySpanExporter):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
     client = Client(api_key="123")
@@ -367,7 +370,7 @@ def test_google_genai_image_raw_bytes(exporter: InMemorySpanExporter):
         ),
     )
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
@@ -395,3 +398,178 @@ def test_google_genai_image_raw_bytes(exporter: InMemorySpanExporter):
         "text": response.text,
     }
     assert spans[0].attributes["gen_ai.completion.0.role"] == "model"
+
+
+class CalendarEvent(pydantic.BaseModel):
+    name: str
+    dayOfWeek: str
+    participants: list[str]
+
+
+EXPECTED_SCHEMA = {
+    "type": "object",
+    "title": "CalendarEvent",
+    "properties": {
+        "name": {"type": "string", "title": "Name"},
+        "dayOfWeek": {"type": "string", "title": "Dayofweek"},
+        "participants": {
+            "type": "array",
+            "title": "Participants",
+            "items": {"type": "string"},
+        },
+    },
+    "required": ["name", "dayOfWeek", "participants"],
+}
+
+
+@pytest.mark.vcr
+def test_google_genai_output_schema(span_exporter: InMemorySpanExporter):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    client = Client(api_key="123")
+    prompt = "Alice and Bob are going to a science fair on Friday. Extract the event information."
+    response = client.models.generate_content(
+        model="gemini-2.5-flash-lite-preview-06-17",
+        contents=[
+            {
+                "role": "user",
+                "parts": [
+                    {"text": prompt},
+                ],
+            }
+        ],
+        config=types.GenerateContentConfig(
+            response_schema=CalendarEvent,
+            response_mime_type="application/json",
+        ),
+    )
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "gemini.generate_content"
+    assert (
+        spans[0].attributes["gen_ai.request.model"]
+        == "gemini-2.5-flash-lite-preview-06-17"
+    )
+    assert (
+        spans[0].attributes["gen_ai.response.model"]
+        == "gemini-2.5-flash-lite-preview-06-17"
+    )
+
+    user_content = json.loads(spans[0].attributes["gen_ai.prompt.0.content"])
+    assert user_content == [
+        {
+            "type": "text",
+            "text": prompt,
+        }
+    ]
+
+    assert spans[0].attributes["gen_ai.prompt.0.role"] == "user"
+    assert json.loads(spans[0].attributes["gen_ai.completion.0.content"])[0] == {
+        "type": "text",
+        "text": response.text,
+    }
+    assert spans[0].attributes["gen_ai.completion.0.role"] == "model"
+    assert (
+        json.loads(spans[0].attributes["gen_ai.request.structured_output_schema"])
+        == EXPECTED_SCHEMA
+    )
+
+
+@pytest.mark.vcr
+def test_google_genai_output_json_schema(span_exporter: InMemorySpanExporter):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    client = Client(api_key="123")
+    prompt = "Alice and Bob are going to a science fair on Friday. Extract the event information."
+    response = client.models.generate_content(
+        model="gemini-2.5-flash-lite-preview-06-17",
+        contents=[
+            {
+                "role": "user",
+                "parts": [
+                    {"text": prompt},
+                ],
+            }
+        ],
+        config=types.GenerateContentConfig(
+            response_json_schema=EXPECTED_SCHEMA,
+            response_mime_type="application/json",
+        ),
+    )
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "gemini.generate_content"
+    assert (
+        spans[0].attributes["gen_ai.request.model"]
+        == "gemini-2.5-flash-lite-preview-06-17"
+    )
+    assert (
+        spans[0].attributes["gen_ai.response.model"]
+        == "gemini-2.5-flash-lite-preview-06-17"
+    )
+
+    user_content = json.loads(spans[0].attributes["gen_ai.prompt.0.content"])
+    assert user_content == [
+        {
+            "type": "text",
+            "text": prompt,
+        }
+    ]
+
+    assert spans[0].attributes["gen_ai.prompt.0.role"] == "user"
+    assert json.loads(spans[0].attributes["gen_ai.completion.0.content"])[0] == {
+        "type": "text",
+        "text": response.text,
+    }
+    assert spans[0].attributes["gen_ai.completion.0.role"] == "model"
+    assert (
+        json.loads(spans[0].attributes["gen_ai.request.structured_output_schema"])
+        == EXPECTED_SCHEMA
+    )
+
+
+def test_google_genai_error(span_exporter: InMemorySpanExporter):
+    # Invalid key on purpose
+    client = Client(api_key="123")
+    system_instruction = "Be concise and to the point. Use tools as much as possible."
+    with pytest.raises(ClientError):
+        client.models.generate_content(
+            model="gemini-2.5-flash-preview-05-20",
+            contents=[
+                {
+                    "role": "user",
+                    "parts": [
+                        {"text": "What is the capital of France?"},
+                    ],
+                }
+            ],
+            config=types.GenerateContentConfig(
+                system_instruction={"text": system_instruction},
+            ),
+        )
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "gemini.generate_content"
+    assert (
+        spans[0].attributes["gen_ai.request.model"] == "gemini-2.5-flash-preview-05-20"
+    )
+    assert spans[0].attributes["gen_ai.prompt.0.content"] == system_instruction
+    assert spans[0].attributes["gen_ai.prompt.0.role"] == "system"
+    user_content = json.loads(spans[0].attributes["gen_ai.prompt.1.content"])
+    assert user_content[0]["type"] == "text"
+    assert user_content[0]["text"] == "What is the capital of France?"
+    assert spans[0].attributes["gen_ai.prompt.1.role"] == "user"
+    assert spans[0].attributes["error.type"] == "ClientError"
+
+    assert spans[0].status.status_code == StatusCode.ERROR
+    events = spans[0].events
+    assert len(events) == 1
+    event = events[0]
+    assert event.name == "exception"
+    assert event.attributes["exception.type"] == "google.genai.errors.ClientError"
+    assert event.attributes["exception.message"].startswith("400")
+    assert (
+        "Traceback (most recent call last):" in event.attributes["exception.stacktrace"]
+    )
+    assert "google.genai.errors.ClientError" in event.attributes["exception.stacktrace"]

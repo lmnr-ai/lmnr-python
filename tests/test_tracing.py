@@ -8,12 +8,12 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from lmnr.sdk.types import LaminarSpanContext
 
 
-def test_start_as_current_span(exporter: InMemorySpanExporter):
+def test_start_as_current_span(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("test", input="my_input"):
         Laminar.set_span_output("foo")
         pass
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "test"
     assert json.loads(spans[0].attributes["lmnr.span.output"]) == "foo"
@@ -22,13 +22,13 @@ def test_start_as_current_span(exporter: InMemorySpanExporter):
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
-def test_start_as_current_span_exception(exporter: InMemorySpanExporter):
+def test_start_as_current_span_exception(span_exporter: InMemorySpanExporter):
     with pytest.raises(ValueError):
         with Laminar.start_as_current_span("test", input="my_input"):
             Laminar.set_span_output("foo")
             raise ValueError("error")
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "test"
     assert json.loads(spans[0].attributes["lmnr.span.input"]) == "my_input"
@@ -42,22 +42,22 @@ def test_start_as_current_span_exception(exporter: InMemorySpanExporter):
     assert events[0].attributes["exception.message"] == "error"
 
 
-def test_start_as_current_span_span_type(exporter: InMemorySpanExporter):
+def test_start_as_current_span_span_type(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("test", span_type="LLM"):
         pass
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].attributes["lmnr.span.type"] == "LLM"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
-def test_start_as_current_span_tags(exporter: InMemorySpanExporter):
+def test_start_as_current_span_tags(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("test", tags=["foo", "bar"]):
         pass
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].attributes["lmnr.association.properties.tags"] == (
         "foo",
@@ -67,7 +67,7 @@ def test_start_as_current_span_tags(exporter: InMemorySpanExporter):
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
-def test_set_span_attributes(exporter: InMemorySpanExporter):
+def test_set_span_attributes(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("test", input="my_input"):
         Laminar.set_span_attributes(
             {
@@ -79,7 +79,7 @@ def test_set_span_attributes(exporter: InMemorySpanExporter):
             },
         )
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "test"
     assert json.loads(spans[0].attributes["lmnr.span.input"]) == "my_input"
@@ -93,7 +93,7 @@ def test_set_span_attributes(exporter: InMemorySpanExporter):
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
-def test_use_span_set_attributes(exporter: InMemorySpanExporter):
+def test_use_span_set_attributes(span_exporter: InMemorySpanExporter):
     span = Laminar.start_span("test", input="my_input")
 
     with use_span(span, end_on_exit=True):
@@ -107,7 +107,7 @@ def test_use_span_set_attributes(exporter: InMemorySpanExporter):
             },
         )
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "test"
     assert json.loads(spans[0].attributes["lmnr.span.input"]) == "my_input"
@@ -121,14 +121,14 @@ def test_use_span_set_attributes(exporter: InMemorySpanExporter):
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
-def test_use_span_end_on_exit(exporter: InMemorySpanExporter):
+def test_use_span_end_on_exit(span_exporter: InMemorySpanExporter):
     span = Laminar.start_span("test", input="my_input")
 
     with use_span(span, end_on_exit=True):
         Laminar.set_span_output("foo")
         pass
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "test"
     assert json.loads(spans[0].attributes["lmnr.span.output"]) == "foo"
@@ -137,14 +137,14 @@ def test_use_span_end_on_exit(exporter: InMemorySpanExporter):
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
-def test_use_span_manual_end(exporter: InMemorySpanExporter):
+def test_use_span_manual_end(span_exporter: InMemorySpanExporter):
     span = Laminar.start_span("test", input="my_input")
 
     with use_span(span) as inner_span:
         Laminar.set_span_output("foo")
         inner_span.end()
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "test"
     assert json.loads(spans[0].attributes["lmnr.span.input"]) == "my_input"
@@ -153,7 +153,7 @@ def test_use_span_manual_end(exporter: InMemorySpanExporter):
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
-def test_use_span_exception(exporter: InMemorySpanExporter):
+def test_use_span_exception(span_exporter: InMemorySpanExporter):
     def foo(span):
         with use_span(span, end_on_exit=True):
             raise ValueError("error")
@@ -162,7 +162,7 @@ def test_use_span_exception(exporter: InMemorySpanExporter):
     with pytest.raises(ValueError):
         foo(span)
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "test"
     assert json.loads(spans[0].attributes["lmnr.span.input"]) == "my_input"
@@ -176,13 +176,13 @@ def test_use_span_exception(exporter: InMemorySpanExporter):
     assert events[0].attributes["exception.message"] == "error"
 
 
-def test_use_span_nested_path(exporter: InMemorySpanExporter):
+def test_use_span_nested_path(span_exporter: InMemorySpanExporter):
     span = Laminar.start_span("test", input="my_input")
     with use_span(span, end_on_exit=True):
         with Laminar.start_as_current_span("foo"):
             pass
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
 
     outer_span = [span for span in spans if span.name == "test"][0]
@@ -192,7 +192,7 @@ def test_use_span_nested_path(exporter: InMemorySpanExporter):
     assert inner_span.attributes["lmnr.span.path"] == ("test", "foo")
 
 
-def test_use_span_suppress_exception(exporter: InMemorySpanExporter):
+def test_use_span_suppress_exception(span_exporter: InMemorySpanExporter):
     def foo(span):
         with use_span(span, end_on_exit=True, record_exception=False):
             raise ValueError("error")
@@ -201,7 +201,7 @@ def test_use_span_suppress_exception(exporter: InMemorySpanExporter):
     with pytest.raises(ValueError):
         foo(span)
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "test"
     assert json.loads(spans[0].attributes["lmnr.span.input"]) == "my_input"
@@ -212,12 +212,12 @@ def test_use_span_suppress_exception(exporter: InMemorySpanExporter):
     assert len(events) == 0
 
 
-def test_session_id(exporter: InMemorySpanExporter):
+def test_session_id(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("test"):
         Laminar.set_trace_session_id("123")
         pass
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].attributes["lmnr.association.properties.session_id"] == "123"
     assert spans[0].name == "test"
@@ -225,7 +225,7 @@ def test_session_id(exporter: InMemorySpanExporter):
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
-def test_session_id_doesnt_leak(exporter: InMemorySpanExporter):
+def test_session_id_doesnt_leak(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("no_session"):
         pass
 
@@ -233,7 +233,7 @@ def test_session_id_doesnt_leak(exporter: InMemorySpanExporter):
         Laminar.set_trace_session_id("123")
         pass
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
 
     in_session_span = [span for span in spans if span.name == "in_session"][0]
@@ -249,12 +249,12 @@ def test_session_id_doesnt_leak(exporter: InMemorySpanExporter):
     assert no_session_span.attributes["lmnr.span.path"] == ("no_session",)
 
 
-def test_user_id(exporter: InMemorySpanExporter):
+def test_user_id(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("test"):
         Laminar.set_trace_user_id("123")
         pass
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].attributes["lmnr.association.properties.user_id"] == "123"
     assert spans[0].name == "test"
@@ -262,12 +262,12 @@ def test_user_id(exporter: InMemorySpanExporter):
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
-def test_metadata(exporter: InMemorySpanExporter):
+def test_metadata(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("test"):
         Laminar.set_trace_metadata({"foo": "bar"})
         pass
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].attributes["lmnr.association.properties.metadata.foo"] == "bar"
     assert spans[0].name == "test"
@@ -275,7 +275,7 @@ def test_metadata(exporter: InMemorySpanExporter):
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
-def test_metadata_does_not_leak(exporter: InMemorySpanExporter):
+def test_metadata_does_not_leak(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("with_metadata"):
         Laminar.set_trace_metadata({"foo": "bar"})
         pass
@@ -283,7 +283,7 @@ def test_metadata_does_not_leak(exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("no_metadata"):
         pass
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
 
     with_metadata_span = [span for span in spans if span.name == "with_metadata"][0]
@@ -317,12 +317,12 @@ def test_metadata_does_not_leak(exporter: InMemorySpanExporter):
     )
 
 
-def test_tags(exporter: InMemorySpanExporter):
+def test_tags(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("test"):
         Laminar.set_span_tags(["foo", "bar"])
         pass
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].attributes["lmnr.association.properties.tags"] == ("foo", "bar")
     assert spans[0].name == "test"
@@ -330,12 +330,12 @@ def test_tags(exporter: InMemorySpanExporter):
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
-def test_1k_attributes(exporter: InMemorySpanExporter):
+def test_1k_attributes(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("test") as span:
         for i in range(1000):
             span.set_attribute(f"foo_{i}", f"bar{i}")
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
@@ -343,7 +343,7 @@ def test_1k_attributes(exporter: InMemorySpanExporter):
         assert spans[0].attributes[f"foo_{i}"] == f"bar{i}"
 
 
-def test_span_context(exporter: InMemorySpanExporter):
+def test_span_context(span_exporter: InMemorySpanExporter):
     def foo(context: LaminarSpanContext):
         with Laminar.start_as_current_span("inner", parent_span_context=context):
             pass
@@ -352,7 +352,7 @@ def test_span_context(exporter: InMemorySpanExporter):
     foo(Laminar.get_laminar_span_context(span))
     span.end()
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     inner_span = [span for span in spans if span.name == "inner"][0]
     outer_span = [span for span in spans if span.name == "test"][0]
@@ -368,7 +368,7 @@ def test_span_context(exporter: InMemorySpanExporter):
     )
 
 
-def test_span_context_dict(exporter: InMemorySpanExporter):
+def test_span_context_dict(span_exporter: InMemorySpanExporter):
     def foo(context: dict):
         parent_span_context = Laminar.deserialize_span_context(context)
         with Laminar.start_as_current_span(
@@ -380,7 +380,7 @@ def test_span_context_dict(exporter: InMemorySpanExporter):
     foo(Laminar.get_laminar_span_context_dict(span))
     span.end()
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     inner_span = [span for span in spans if span.name == "inner"][0]
     outer_span = [span for span in spans if span.name == "test"][0]
@@ -396,7 +396,7 @@ def test_span_context_dict(exporter: InMemorySpanExporter):
     )
 
 
-def test_span_context_str(exporter: InMemorySpanExporter):
+def test_span_context_str(span_exporter: InMemorySpanExporter):
     def foo(context: str):
         parent_span_context = Laminar.deserialize_span_context(context)
         with Laminar.start_as_current_span(
@@ -408,7 +408,7 @@ def test_span_context_str(exporter: InMemorySpanExporter):
     foo(Laminar.get_laminar_span_context_dict(span))
     span.end()
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     inner_span = [span for span in spans if span.name == "inner"][0]
     outer_span = [span for span in spans if span.name == "test"][0]
@@ -424,7 +424,7 @@ def test_span_context_str(exporter: InMemorySpanExporter):
     )
 
 
-def test_span_context_ended_span(exporter: InMemorySpanExporter):
+def test_span_context_ended_span(span_exporter: InMemorySpanExporter):
     # TODO: check with opentelemetry standards if we should allow this
     def foo(context: LaminarSpanContext):
         with Laminar.start_as_current_span("inner", parent_span_context=context):
@@ -434,7 +434,7 @@ def test_span_context_ended_span(exporter: InMemorySpanExporter):
     span.end()
     foo(Laminar.get_laminar_span_context(span))
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     inner_span = [span for span in spans if span.name == "inner"][0]
     outer_span = [span for span in spans if span.name == "test"][0]
@@ -450,7 +450,7 @@ def test_span_context_ended_span(exporter: InMemorySpanExporter):
     )
 
 
-def test_span_context_otel_fallback(exporter: InMemorySpanExporter):
+def test_span_context_otel_fallback(span_exporter: InMemorySpanExporter):
     def foo(context: LaminarSpanContext):
         with Laminar.start_as_current_span("inner", parent_span_context=context):
             pass
@@ -459,7 +459,7 @@ def test_span_context_otel_fallback(exporter: InMemorySpanExporter):
     foo(span.get_span_context())
     span.end()
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     inner_span = [span for span in spans if span.name == "inner"][0]
     outer_span = [span for span in spans if span.name == "test"][0]
@@ -475,7 +475,7 @@ def test_span_context_otel_fallback(exporter: InMemorySpanExporter):
     )
 
 
-def test_span_context_dict_fallback(exporter: InMemorySpanExporter):
+def test_span_context_dict_fallback(span_exporter: InMemorySpanExporter):
     def foo(context: LaminarSpanContext):
         with Laminar.start_as_current_span("inner", parent_span_context=context):
             pass
@@ -484,7 +484,7 @@ def test_span_context_dict_fallback(exporter: InMemorySpanExporter):
     foo(Laminar.get_laminar_span_context_dict(span))
     span.end()
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     inner_span = [span for span in spans if span.name == "inner"][0]
     outer_span = [span for span in spans if span.name == "test"][0]

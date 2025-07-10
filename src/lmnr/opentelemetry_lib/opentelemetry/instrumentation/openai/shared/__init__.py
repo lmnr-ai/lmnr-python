@@ -156,34 +156,62 @@ def _set_request_attributes(span, kwargs, instance=None):
             if schema:
                 _set_span_attribute(
                     span,
+                    # TODO: change to SpanAttributes.LLM_REQUEST_STRUCTURED_OUTPUT_SCHEMA
+                    # when we upgrade to opentelemetry-semantic-conventions-ai>=0.4.10
                     "gen_ai.request.structured_output_schema",
                     json.dumps(schema),
                 )
-        elif isinstance(response_format, pydantic.BaseModel) or (
-            hasattr(response_format, "model_json_schema")
-            and callable(response_format.model_json_schema)
-        ):
-            _set_span_attribute(
-                span,
-                "gen_ai.request.structured_output_schema",
-                json.dumps(response_format.model_json_schema()),
-            )
         else:
-            schema = None
             try:
-                schema = json.dumps(pydantic.TypeAdapter(response_format).json_schema())
-            except Exception:
-                try:
-                    schema = json.dumps(response_format)
-                except Exception:
-                    pass
-
-            if schema:
-                _set_span_attribute(
-                    span,
-                    "gen_ai.request.structured_output_schema",
-                    schema,
+                from openai.lib._parsing._completions import (
+                    type_to_response_format_param,
                 )
+
+                response_format_param = type_to_response_format_param(response_format)
+                if response_format_param.get("type") == "json_schema":
+                    schema = response_format_param.get("json_schema").get("schema")
+                    if schema:
+                        _set_span_attribute(
+                            span,
+                            # TODO: change to SpanAttributes.LLM_REQUEST_STRUCTURED_OUTPUT_SCHEMA
+                            # when we upgrade to opentelemetry-semantic-conventions-ai>=0.4.10
+                            "gen_ai.request.structured_output_schema",
+                            json.dumps(schema),
+                        )
+            except (ImportError, TypeError, AttributeError):
+                # if we fail to import from openai.lib._parsing._completions,
+                # we fallback to the pydantic-based approach
+                if isinstance(response_format, pydantic.BaseModel) or (
+                    hasattr(response_format, "model_json_schema")
+                    and callable(response_format.model_json_schema)
+                ):
+                    _set_span_attribute(
+                        span,
+                        # TODO: change to SpanAttributes.LLM_REQUEST_STRUCTURED_OUTPUT_SCHEMA
+                        # when we upgrade to opentelemetry-semantic-conventions-ai>=0.4.10
+                        "gen_ai.request.structured_output_schema",
+                        json.dumps(response_format.model_json_schema()),
+                    )
+                else:
+                    schema = None
+                    try:
+                        schema = json.dumps(
+                            pydantic.TypeAdapter(response_format).json_schema()
+                        )
+                    except Exception:
+                        try:
+                            schema = json.dumps(response_format)
+                        except Exception:
+                            pass
+
+                    if schema:
+                        _set_span_attribute(
+                            span,
+                            # TODO: change to SpanAttributes.LLM_REQUEST_STRUCTURED_OUTPUT_SCHEMA
+                            # when we upgrade to opentelemetry-semantic-conventions-ai>=0.4.10
+                            "gen_ai.request.structured_output_schema",
+                            schema,
+                        )
 
 
 @dont_throw

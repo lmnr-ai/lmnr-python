@@ -1,6 +1,4 @@
 import asyncio
-import base64
-import httpx
 import json
 import litellm
 import os
@@ -18,7 +16,7 @@ SLEEP_TO_FLUSH_SECONDS = 0.05
 
 @pytest.mark.vcr
 def test_litellm_openai_basic(
-    exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
 ):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
@@ -35,7 +33,7 @@ def test_litellm_openai_basic(
     Laminar.flush()
     time.sleep(SLEEP_TO_FLUSH_SECONDS)
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     span = [s for s in spans if s.name == "litellm.completion"][0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
@@ -58,7 +56,7 @@ def test_litellm_openai_basic(
 
 @pytest.mark.vcr
 def test_litellm_openai_text_block(
-    exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
 ):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
@@ -80,7 +78,7 @@ def test_litellm_openai_text_block(
     Laminar.flush()
     time.sleep(SLEEP_TO_FLUSH_SECONDS)
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     span = [s for s in spans if s.name == "litellm.completion"][0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
@@ -103,7 +101,7 @@ def test_litellm_openai_text_block(
 
 @pytest.mark.vcr
 def test_litellm_openai_with_streaming(
-    exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
 ):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
@@ -125,7 +123,7 @@ def test_litellm_openai_with_streaming(
     Laminar.flush()
     time.sleep(SLEEP_TO_FLUSH_SECONDS)
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     span = [s for s in spans if s.name == "litellm.completion"][0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
@@ -143,7 +141,7 @@ def test_litellm_openai_with_streaming(
 
 @pytest.mark.vcr
 def test_litellm_openai_with_chat_history(
-    exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
 ):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
@@ -179,7 +177,7 @@ def test_litellm_openai_with_chat_history(
     Laminar.flush()
     time.sleep(SLEEP_TO_FLUSH_SECONDS)
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 4
     inner_spans = [s for s in spans if s.name == "litellm.completion"]
     assert len(inner_spans) == 2
@@ -223,7 +221,7 @@ def test_litellm_openai_with_chat_history(
 
 @pytest.mark.vcr
 def test_litellm_openai_with_image_base64(
-    exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
 ):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
@@ -259,7 +257,7 @@ def test_litellm_openai_with_image_base64(
     Laminar.flush()
     time.sleep(SLEEP_TO_FLUSH_SECONDS)
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     span = [s for s in spans if s.name == "litellm.completion"][0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
@@ -282,7 +280,7 @@ def test_litellm_openai_with_image_base64(
 
 @pytest.mark.vcr
 def test_litellm_openai_with_image_url(
-    exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
 ):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
@@ -314,7 +312,7 @@ def test_litellm_openai_with_image_url(
     Laminar.flush()
     time.sleep(SLEEP_TO_FLUSH_SECONDS)
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     span = [s for s in spans if s.name == "litellm.completion"][0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
@@ -339,7 +337,7 @@ def test_litellm_openai_with_image_url(
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_litellm_openai_with_image_base64(
-    exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
 ):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
@@ -375,7 +373,7 @@ async def test_async_litellm_openai_with_image_base64(
     Laminar.flush()
     await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     span = [s for s in spans if s.name == "litellm.completion"][0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
@@ -399,7 +397,7 @@ async def test_async_litellm_openai_with_image_base64(
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_litellm_openai_with_image_url(
-    exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
 ):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
@@ -431,7 +429,7 @@ async def test_async_litellm_openai_with_image_url(
     Laminar.flush()
     await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     span = [s for s in spans if s.name == "litellm.completion"][0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
@@ -456,7 +454,7 @@ async def test_async_litellm_openai_with_image_url(
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_litellm_openai_basic(
-    exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
 ):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
@@ -473,7 +471,7 @@ async def test_async_litellm_openai_basic(
     Laminar.flush()
     await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     span = [s for s in spans if s.name == "litellm.completion"][0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
@@ -497,7 +495,7 @@ async def test_async_litellm_openai_basic(
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_litellm_openai_text_block(
-    exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
 ):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
@@ -519,7 +517,7 @@ async def test_async_litellm_openai_text_block(
     Laminar.flush()
     await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     span = [s for s in spans if s.name == "litellm.completion"][0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
@@ -543,7 +541,7 @@ async def test_async_litellm_openai_text_block(
 @pytest.mark.vcr(record_mode="once")
 @pytest.mark.asyncio
 async def test_async_litellm_openai_with_streaming(
-    exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
 ):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
@@ -565,7 +563,7 @@ async def test_async_litellm_openai_with_streaming(
     Laminar.flush()
     await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     span = [s for s in spans if s.name == "litellm.completion"][0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"

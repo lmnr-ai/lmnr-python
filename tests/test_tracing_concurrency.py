@@ -14,7 +14,9 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 
 @pytest.mark.asyncio
-async def test_asyncio_parallel_spans_separate_traces(exporter: InMemorySpanExporter):
+async def test_asyncio_parallel_spans_separate_traces(
+    span_exporter: InMemorySpanExporter,
+):
     """Test multiple parallel async spans live in separate traces."""
 
     async def task_a():
@@ -38,7 +40,7 @@ async def test_asyncio_parallel_spans_separate_traces(exporter: InMemorySpanExpo
     # Run tasks concurrently
     results = await asyncio.gather(task_a(), task_b(), task_c())
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
     assert set(results) == {"task_a", "task_b", "task_c"}
 
@@ -52,7 +54,7 @@ async def test_asyncio_parallel_spans_separate_traces(exporter: InMemorySpanExpo
 
 
 @pytest.mark.asyncio
-async def test_asyncio_parallel_spans_same_parent(exporter: InMemorySpanExporter):
+async def test_asyncio_parallel_spans_same_parent(span_exporter: InMemorySpanExporter):
     """Test multiple parallel async spans within one parent share the same trace."""
 
     async def child_task(task_id: str):
@@ -74,7 +76,7 @@ async def test_asyncio_parallel_spans_same_parent(exporter: InMemorySpanExporter
 
     result = await parent_task()
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 4  # 1 parent + 3 children
     assert result == ["child_a", "child_b", "child_c"]
 
@@ -98,7 +100,9 @@ async def test_asyncio_parallel_spans_same_parent(exporter: InMemorySpanExporter
 
 
 @pytest.mark.asyncio
-async def test_asyncio_deeply_nested_with_parallelism(exporter: InMemorySpanExporter):
+async def test_asyncio_deeply_nested_with_parallelism(
+    span_exporter: InMemorySpanExporter,
+):
     """Test deeply nested async spans with some parallelism."""
 
     async def leaf_task(task_id: str):
@@ -129,7 +133,7 @@ async def test_asyncio_deeply_nested_with_parallelism(exporter: InMemorySpanExpo
 
     await root_task()
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 7  # 1 root + 2 branches + 4 leaves
 
     # Find spans by name
@@ -158,7 +162,7 @@ async def test_asyncio_deeply_nested_with_parallelism(exporter: InMemorySpanExpo
 # =============================================================================
 
 
-def test_threading_parallel_spans_separate_traces(exporter: InMemorySpanExporter):
+def test_threading_parallel_spans_separate_traces(span_exporter: InMemorySpanExporter):
     """Test multiple parallel thread spans live in separate traces."""
 
     results = []
@@ -182,7 +186,7 @@ def test_threading_parallel_spans_separate_traces(exporter: InMemorySpanExporter
     for thread in threads:
         thread.join()
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
     assert len(results) == 3
 
@@ -195,7 +199,7 @@ def test_threading_parallel_spans_separate_traces(exporter: InMemorySpanExporter
         assert span.parent is None or span.parent.span_id == 0
 
 
-def test_threading_parallel_spans_same_parent(exporter: InMemorySpanExporter):
+def test_threading_parallel_spans_same_parent(span_exporter: InMemorySpanExporter):
     """Test multiple parallel thread spans within one parent share the same trace."""
 
     child_results = []
@@ -227,7 +231,7 @@ def test_threading_parallel_spans_same_parent(exporter: InMemorySpanExporter):
 
     parent_task()
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 4  # 1 parent + 3 children
     assert len(child_results) == 3
 
@@ -250,7 +254,7 @@ def test_threading_parallel_spans_same_parent(exporter: InMemorySpanExporter):
         assert child_span.parent.span_id == parent_span.context.span_id
 
 
-def test_threading_deeply_nested_with_parallelism(exporter: InMemorySpanExporter):
+def test_threading_deeply_nested_with_parallelism(span_exporter: InMemorySpanExporter):
     """Test deeply nested thread spans with some parallelism."""
 
     leaf_results = []
@@ -300,7 +304,7 @@ def test_threading_deeply_nested_with_parallelism(exporter: InMemorySpanExporter
 
     root_task()
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 7  # 1 root + 2 branches + 4 leaves
 
     # Find spans by name
@@ -329,7 +333,7 @@ def test_threading_deeply_nested_with_parallelism(exporter: InMemorySpanExporter
 # =============================================================================
 
 
-def test_threadpool_parallel_spans_separate_traces(exporter: InMemorySpanExporter):
+def test_threadpool_parallel_spans_separate_traces(span_exporter: InMemorySpanExporter):
     """Test multiple parallel ThreadPoolExecutor spans live in separate traces."""
 
     def task_worker(task_id: str):
@@ -346,7 +350,7 @@ def test_threadpool_parallel_spans_separate_traces(exporter: InMemorySpanExporte
             future.result() for future in concurrent.futures.as_completed(futures)
         ]
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
     assert len(results) == 3
 
@@ -359,7 +363,7 @@ def test_threadpool_parallel_spans_separate_traces(exporter: InMemorySpanExporte
         assert span.parent is None or span.parent.span_id == 0
 
 
-def test_threadpool_parallel_spans_same_parent(exporter: InMemorySpanExporter):
+def test_threadpool_parallel_spans_same_parent(span_exporter: InMemorySpanExporter):
     """Test multiple parallel ThreadPoolExecutor spans within one parent share the same trace."""
 
     def child_worker(task_id: str):
@@ -384,7 +388,7 @@ def test_threadpool_parallel_spans_same_parent(exporter: InMemorySpanExporter):
 
     result = parent_task()
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 4  # 1 parent + 3 children
     assert len(result) == 3
 
@@ -407,7 +411,7 @@ def test_threadpool_parallel_spans_same_parent(exporter: InMemorySpanExporter):
         assert child_span.parent.span_id == parent_span.context.span_id
 
 
-def test_threadpool_deeply_nested_with_parallelism(exporter: InMemorySpanExporter):
+def test_threadpool_deeply_nested_with_parallelism(span_exporter: InMemorySpanExporter):
     """Test deeply nested ThreadPoolExecutor spans with some parallelism."""
 
     def leaf_worker(task_id: str):
@@ -446,7 +450,7 @@ def test_threadpool_deeply_nested_with_parallelism(exporter: InMemorySpanExporte
 
     root_task()
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 7  # 1 root + 2 branches + 4 leaves
 
     # Find spans by name
@@ -476,7 +480,7 @@ def test_threadpool_deeply_nested_with_parallelism(exporter: InMemorySpanExporte
 
 
 @pytest.mark.asyncio
-async def test_mixed_concurrency_isolation(exporter: InMemorySpanExporter):
+async def test_mixed_concurrency_isolation(span_exporter: InMemorySpanExporter):
     """Test that different concurrency models don't interfere with each other."""
 
     async_result = []
@@ -515,7 +519,7 @@ async def test_mixed_concurrency_isolation(exporter: InMemorySpanExporter):
     await async_future
     thread.join()
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
 
     # Each should be in a separate trace

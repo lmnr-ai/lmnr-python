@@ -13,6 +13,7 @@ from lmnr.opentelemetry_lib.tracing import _get_current_context
 from .config import (
     Config,
 )
+from .schema_utils import SchemaJSONEncoder, process_schema
 from .utils import (
     dont_throw,
     get_content,
@@ -26,8 +27,9 @@ from opentelemetry.trace import Tracer
 from wrapt import wrap_function_wrapper
 
 from opentelemetry import context as context_api
-from opentelemetry.trace import get_tracer, SpanKind, Span
+from opentelemetry.trace import get_tracer, SpanKind, Span, Status, StatusCode
 from opentelemetry.semconv._incubating.attributes import gen_ai_attributes
+from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
@@ -80,7 +82,7 @@ WRAPPED_METHODS = [
 
 def should_send_prompts():
     return (
-        os.getenv("TRACELOOP_TRACE_CONTENT") or "true"
+        os.getenv("LAMINAR_TRACE_CONTENT") or "true"
     ).lower() == "true" or context_api.get_value("override_enable_content_tracing")
 
 
@@ -129,6 +131,29 @@ def _set_request_attributes(span, args, kwargs):
     set_span_attribute(
         span, gen_ai_attributes.GEN_AI_REQUEST_SEED, config_dict.get("seed")
     )
+
+    if schema := config_dict.get("response_schema"):
+        try:
+            set_span_attribute(
+                span,
+                # TODO: change to SpanAttributes.LLM_REQUEST_STRUCTURED_OUTPUT_SCHEMA
+                # when we upgrade to opentelemetry-semantic-conventions-ai>=0.4.10
+                "gen_ai.request.structured_output_schema",
+                json.dumps(process_schema(schema), cls=SchemaJSONEncoder),
+            )
+        except Exception:
+            pass
+    elif json_schema := config_dict.get("response_json_schema"):
+        try:
+            set_span_attribute(
+                span,
+                # TODO: change to SpanAttributes.LLM_REQUEST_STRUCTURED_OUTPUT_SCHEMA
+                # when we upgrade to opentelemetry-semantic-conventions-ai>=0.4.10
+                "gen_ai.request.structured_output_schema",
+                json.dumps(json_schema),
+            )
+        except Exception:
+            pass
 
     tools: list[types.FunctionDeclaration] = []
     arg_tools = config_dict.get("tools", kwargs.get("tools"))
@@ -457,16 +482,20 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     if span.is_recording():
         _set_request_attributes(span, args, kwargs)
 
-    if to_wrap.get("is_streaming"):
-        return _build_from_streaming_response(span, wrapped(*args, **kwargs))
-    else:
+    try:
         response = wrapped(*args, **kwargs)
-
-    if span.is_recording():
-        _set_response_attributes(span, response)
-
-    span.end()
-    return response
+        if to_wrap.get("is_streaming"):
+            return _build_from_streaming_response(span, response)
+        if span.is_recording():
+            _set_response_attributes(span, response)
+        span.end()
+        return response
+    except Exception as e:
+        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
+        span.record_exception(e)
+        span.set_status(Status(StatusCode.ERROR, str(e)))
+        span.end()
+        raise e
 
 
 @with_tracer_wrapper
@@ -489,16 +518,22 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     if span.is_recording():
         _set_request_attributes(span, args, kwargs)
 
-    if to_wrap.get("is_streaming"):
-        return _abuild_from_streaming_response(span, await wrapped(*args, **kwargs))
-    else:
+    try:
         response = await wrapped(*args, **kwargs)
+        if to_wrap.get("is_streaming"):
+            return _abuild_from_streaming_response(span, response)
+        else:
+            if span.is_recording():
+                _set_response_attributes(span, response)
 
-    if span.is_recording():
-        _set_response_attributes(span, response)
-
-    span.end()
-    return response
+            span.end()
+            return response
+    except Exception as e:
+        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
+        span.record_exception(e)
+        span.set_status(Status(StatusCode.ERROR, str(e)))
+        span.end()
+        raise e
 
 
 class GoogleGenAiSdkInstrumentor(BaseInstrumentor):

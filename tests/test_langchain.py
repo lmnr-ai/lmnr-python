@@ -33,7 +33,7 @@ tools = [
 ]
 
 
-def test_langchain_langgraph(exporter: InMemorySpanExporter):
+def test_langchain_langgraph(span_exporter: InMemorySpanExporter):
     graph_builder = StateGraph(AgentState)
     graph_builder.add_node("assistant", assistant)
     graph_builder.add_node("tools", ToolNode(tools))
@@ -44,7 +44,7 @@ def test_langchain_langgraph(exporter: InMemorySpanExporter):
 
     graph.invoke({"messages": [HumanMessage(content="What is the weather in Tokyo?")]})
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
     workflow_span = [span for span in spans if span.name == "LangGraph.workflow"][0]
     other_spans = [span for span in spans if span.name != "LangGraph.workflow"]
@@ -99,7 +99,7 @@ def test_langchain_langgraph(exporter: InMemorySpanExporter):
 
 
 @pytest.mark.asyncio
-async def test_langchain_langgraph_async(exporter: InMemorySpanExporter):
+async def test_langchain_langgraph_async(span_exporter: InMemorySpanExporter):
     graph_builder = StateGraph(AgentState)
     graph_builder.add_node("assistant", assistant)
     graph_builder.add_node("tools", ToolNode(tools))
@@ -112,7 +112,7 @@ async def test_langchain_langgraph_async(exporter: InMemorySpanExporter):
         {"messages": [HumanMessage(content="What is the weather in Tokyo?")]}
     )
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
     workflow_span = [span for span in spans if span.name == "LangGraph.workflow"][0]
     other_spans = [span for span in spans if span.name != "LangGraph.workflow"]
@@ -166,7 +166,7 @@ async def test_langchain_langgraph_async(exporter: InMemorySpanExporter):
         )
 
 
-def test_langchain_langgraph_stream(exporter: InMemorySpanExporter):
+def test_langchain_langgraph_stream(span_exporter: InMemorySpanExporter):
     graph_builder = StateGraph(AgentState)
     graph_builder.add_node("assistant", assistant)
     graph_builder.add_node("tools", ToolNode(tools))
@@ -180,7 +180,7 @@ def test_langchain_langgraph_stream(exporter: InMemorySpanExporter):
     ):
         pass
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
     workflow_span = [span for span in spans if span.name == "LangGraph.workflow"][0]
     other_spans = [span for span in spans if span.name != "LangGraph.workflow"]
@@ -235,7 +235,7 @@ def test_langchain_langgraph_stream(exporter: InMemorySpanExporter):
 
 
 @pytest.mark.asyncio
-async def test_langchain_langgraph_async_stream(exporter: InMemorySpanExporter):
+async def test_langchain_langgraph_async_stream(span_exporter: InMemorySpanExporter):
     graph_builder = StateGraph(AgentState)
     graph_builder.add_node("assistant", assistant)
     graph_builder.add_node("tools", ToolNode(tools))
@@ -249,7 +249,7 @@ async def test_langchain_langgraph_async_stream(exporter: InMemorySpanExporter):
     ):
         pass
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
     workflow_span = [span for span in spans if span.name == "LangGraph.workflow"][0]
     other_spans = [span for span in spans if span.name != "LangGraph.workflow"]
