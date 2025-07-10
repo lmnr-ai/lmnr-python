@@ -30,7 +30,7 @@ get_weather_declaration = {
 
 
 @pytest.mark.vcr
-def test_google_genai(exporter: InMemorySpanExporter):
+def test_google_genai(span_exporter: InMemorySpanExporter):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
     client = Client(api_key="123")
@@ -50,7 +50,7 @@ def test_google_genai(exporter: InMemorySpanExporter):
         ),
     )
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
@@ -74,7 +74,7 @@ def test_google_genai(exporter: InMemorySpanExporter):
 
 
 @pytest.mark.vcr
-def test_google_genai_multiturn(exporter: InMemorySpanExporter):
+def test_google_genai_multiturn(span_exporter: InMemorySpanExporter):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
     client = Client(api_key="123")
@@ -124,7 +124,7 @@ def test_google_genai_multiturn(exporter: InMemorySpanExporter):
         ),
     )
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     for span in spans:
         assert span.name == "gemini.generate_content"
@@ -190,7 +190,7 @@ def test_google_genai_multiturn(exporter: InMemorySpanExporter):
 
 
 @pytest.mark.vcr
-def test_google_genai_tool_calls(exporter: InMemorySpanExporter):
+def test_google_genai_tool_calls(span_exporter: InMemorySpanExporter):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
     client = Client(api_key="123")
@@ -211,7 +211,7 @@ def test_google_genai_tool_calls(exporter: InMemorySpanExporter):
         ),
     )
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
@@ -235,7 +235,7 @@ def test_google_genai_tool_calls(exporter: InMemorySpanExporter):
 
 
 @pytest.mark.vcr
-def test_google_genai_multiple_tool_calls(exporter: InMemorySpanExporter):
+def test_google_genai_multiple_tool_calls(span_exporter: InMemorySpanExporter):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
     client = Client(api_key="123")
@@ -256,7 +256,7 @@ def test_google_genai_multiple_tool_calls(exporter: InMemorySpanExporter):
         ),
     )
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
@@ -284,7 +284,7 @@ def test_google_genai_multiple_tool_calls(exporter: InMemorySpanExporter):
 
 
 @pytest.mark.vcr
-def test_google_genai_image(exporter: InMemorySpanExporter):
+def test_google_genai_image(span_exporter: InMemorySpanExporter):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
     client = Client(api_key="123")
@@ -310,7 +310,7 @@ def test_google_genai_image(exporter: InMemorySpanExporter):
         ),
     )
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
@@ -341,7 +341,7 @@ def test_google_genai_image(exporter: InMemorySpanExporter):
 
 
 @pytest.mark.vcr
-def test_google_genai_image_raw_bytes(exporter: InMemorySpanExporter):
+def test_google_genai_image_raw_bytes(span_exporter: InMemorySpanExporter):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
     client = Client(api_key="123")
@@ -367,7 +367,7 @@ def test_google_genai_image_raw_bytes(exporter: InMemorySpanExporter):
         ),
     )
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (

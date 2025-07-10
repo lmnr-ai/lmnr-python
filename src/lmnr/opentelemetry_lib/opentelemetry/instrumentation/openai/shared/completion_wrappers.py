@@ -28,6 +28,7 @@ from ..utils import (
     should_send_prompts,
 )
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
+from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.semconv_ai import (
     SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY,
     LLMRequestTypeValues,
@@ -61,9 +62,11 @@ def completion_wrapper(tracer, wrapped, instance, args, kwargs):
     try:
         response = wrapped(*args, **kwargs)
     except Exception as e:
+        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
+        span.record_exception(e)
         span.set_status(Status(StatusCode.ERROR, str(e)))
         span.end()
-        raise e
+        raise
 
     if is_streaming_response(response):
         # span will be closed after the generator is done
@@ -93,9 +96,11 @@ async def acompletion_wrapper(tracer, wrapped, instance, args, kwargs):
     try:
         response = await wrapped(*args, **kwargs)
     except Exception as e:
+        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
+        span.record_exception(e)
         span.set_status(Status(StatusCode.ERROR, str(e)))
         span.end()
-        raise e
+        raise
 
     if is_streaming_response(response):
         # span will be closed after the generator is done

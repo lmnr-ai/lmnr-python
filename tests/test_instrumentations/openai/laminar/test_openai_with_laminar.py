@@ -6,7 +6,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 
 @pytest.mark.vcr
-def test_openai_completion(exporter: InMemorySpanExporter):
+def test_openai_completion(span_exporter: InMemorySpanExporter):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
     client = OpenAI(api_key="test-key")
@@ -15,7 +15,7 @@ def test_openai_completion(exporter: InMemorySpanExporter):
         messages=[{"role": "user", "content": "What is the capital of France?"}],
     )
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "openai.chat"
     assert spans[0].attributes["gen_ai.request.model"] == "gpt-4.1-nano"
@@ -24,7 +24,7 @@ def test_openai_completion(exporter: InMemorySpanExporter):
 
 
 @pytest.mark.vcr
-def test_openai_completion_in_observe(exporter: InMemorySpanExporter):
+def test_openai_completion_in_observe(span_exporter: InMemorySpanExporter):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
     client = OpenAI(api_key="test-123")
@@ -38,7 +38,7 @@ def test_openai_completion_in_observe(exporter: InMemorySpanExporter):
 
     foo()
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     openai_span = [span for span in spans if span.name == "openai.chat"][0]
     outer_span = [span for span in spans if span.name == "foo"][0]

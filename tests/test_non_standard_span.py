@@ -26,7 +26,7 @@ class MyBrokenSpanContext(SpanContext):
         return 1
 
 
-def test_broken_span(exporter: InMemorySpanExporter):
+def test_broken_span(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("outer"):
         trace_id = trace.get_current_span().get_span_context().trace_id
         span = NonRecordingSpan(MyBrokenSpanContext(trace_id, SPAN_ID, False))
@@ -40,7 +40,7 @@ def test_broken_span(exporter: InMemorySpanExporter):
     span.end()
     time.sleep(0.5)
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     inner_span = [span for span in spans if span.name == "inner"][0]
     outer_span = [span for span in spans if span.name == "outer"][0]
@@ -58,7 +58,7 @@ def test_broken_span(exporter: InMemorySpanExporter):
     context.detach(ctx_token)
 
 
-def test_broken_span_observe(exporter: InMemorySpanExporter):
+def test_broken_span_observe(span_exporter: InMemorySpanExporter):
     @observe()
     def test():
         return 1
@@ -77,7 +77,7 @@ def test_broken_span_observe(exporter: InMemorySpanExporter):
     time.sleep(0.5)
     assert result == 1
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     inner_span = [span for span in spans if span.name == "test"][0]
     outer_span = [span for span in spans if span.name == "outer"][0]
@@ -103,7 +103,7 @@ def test_broken_span_observe(exporter: InMemorySpanExporter):
 
 
 @pytest.mark.asyncio
-async def test_broken_span_observe_async(exporter: InMemorySpanExporter):
+async def test_broken_span_observe_async(span_exporter: InMemorySpanExporter):
     @observe()
     async def test():
         return 1
@@ -122,7 +122,7 @@ async def test_broken_span_observe_async(exporter: InMemorySpanExporter):
     await asyncio.sleep(0.5)
     assert result == 1
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     inner_span = [span for span in spans if span.name == "test"][0]
     outer_span = [span for span in spans if span.name == "outer"][0]

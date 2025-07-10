@@ -14,7 +14,7 @@ pytest_plugins = ("pytest_asyncio",)
 
 
 @pytest.fixture(scope="session")
-def exporter() -> SpanExporter:
+def span_exporter() -> SpanExporter:
     exporter = InMemorySpanExporter()
 
     # Set up a partial mock of TracerManager.init to inject our exporter
@@ -43,9 +43,9 @@ def litellm_callback() -> LaminarLiteLLMCallback:
 
 
 @pytest.fixture(scope="function", autouse=True)
-def clear_exporter(exporter: InMemorySpanExporter):
+def clear_span_exporter(span_exporter: InMemorySpanExporter):
     # Clear before test
-    exporter.clear()
+    span_exporter.clear()
     TracerWrapper.clear()
 
     # Clear OpenTelemetry context to ensure clean state between tests
@@ -57,7 +57,7 @@ def clear_exporter(exporter: InMemorySpanExporter):
     yield
 
     # Clear after test as well for good measure
-    exporter.clear()
+    span_exporter.clear()
     TracerWrapper.clear()
 
     # Restore and create fresh context again
