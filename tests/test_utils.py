@@ -258,7 +258,7 @@ def test_json_dumps_mixed_nested_types():
     }
 
     result = json_dumps(complex_data)
-    parsed = json.loads(str(result))
+    parsed = json.loads(result)
 
     # Verify structure
     assert parsed["list"] == [1, 2, 3]
