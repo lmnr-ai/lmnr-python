@@ -4,6 +4,7 @@ import uuid
 from typing import Any
 
 from lmnr.sdk.client.synchronous.resources.base import BaseResource
+from lmnr.sdk.utils import format_id
 
 
 class Evaluators(BaseResource):
@@ -54,7 +55,7 @@ class Evaluators(BaseResource):
             raise ValueError("Either 'trace_id' or 'span_id' must be provided.")
 
         if trace_id is not None:
-            formatted_trace_id = self._format_id(trace_id)
+            formatted_trace_id = format_id(trace_id)
             payload = {
                 "name": name,
                 "traceId": formatted_trace_id,
@@ -63,7 +64,7 @@ class Evaluators(BaseResource):
                 "source": "Code",
             }
         else:
-            formatted_span_id = self._format_id(span_id)
+            formatted_span_id = format_id(span_id)
             payload = {
                 "name": name,
                 "spanId": formatted_span_id,
@@ -82,34 +83,3 @@ class Evaluators(BaseResource):
             if response.status_code == 401:
                 raise ValueError("Unauthorized. Please check your project API key.")
             raise ValueError(f"Error creating evaluator score: {response.text}")
-
-    def _format_id(self, id_value: str | int | uuid.UUID) -> str:
-        """Format trace/span ID to proper UUID string format.
-        
-        Args:
-            id_value: The trace/span ID in various formats
-            
-        Returns:
-            str: UUID string representation
-            
-        Raises:
-            ValueError: If id_value cannot be converted to a valid UUID
-        """
-        if isinstance(id_value, uuid.UUID):
-            return str(id_value)
-        elif isinstance(id_value, int):
-            return str(uuid.UUID(int=id_value))
-        elif isinstance(id_value, str):
-            try:
-                uuid.UUID(id_value)
-                return id_value
-            except ValueError:
-                try:
-                    return str(uuid.UUID(int=int(id_value)))
-                except ValueError:
-                    try:
-                        return str(uuid.UUID(int=int(id_value, 16)))
-                    except ValueError:
-                        raise ValueError(f"Invalid ID format: {id_value}")
-        else:
-            raise ValueError(f"Invalid ID type: {type(id_value)}")

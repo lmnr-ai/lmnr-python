@@ -128,3 +128,26 @@ def is_otel_attribute_value_type(value: typing.Any) -> bool:
             )
         return True
     return False
+
+
+def format_id(id_value: str | int | uuid.UUID) -> str:
+    """Format trace/span/evaluation ID to proper UUID string format.
+    
+    Args:
+        id_value: The ID in various formats (UUID, int, or valid UUID string)
+        
+    Returns:
+        str: UUID string representation
+        
+    Raises:
+        ValueError: If id_value cannot be converted to a valid UUID
+    """
+    if isinstance(id_value, uuid.UUID):
+        return str(id_value)
+    elif isinstance(id_value, int):
+        return str(uuid.UUID(int=id_value))
+    elif isinstance(id_value, str):
+        uuid.UUID(id_value)
+        return id_value
+    else:
+        raise ValueError(f"Invalid ID type: {type(id_value)}")
