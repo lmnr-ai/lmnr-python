@@ -64,7 +64,7 @@ class TestAsyncLaminarClientEvaluators:
             call_args = mock_post.call_args
             
             # Verify URL
-            assert call_args[0][0] == "http://test-api.com:443/v1/evaluator-scores"
+            assert call_args[0][0] == "http://test-api.com:443/v1/evaluators/score"
             
             # Verify payload
             expected_payload = {
@@ -179,7 +179,7 @@ class TestLaminarClientEvaluators:
             call_args = mock_post.call_args
             
             # Verify URL
-            assert call_args[0][0] == "http://test-api.com:443/v1/evaluator-scores"
+            assert call_args[0][0] == "http://test-api.com:443/v1/evaluators/score"
             
             # Verify payload
             expected_payload = {

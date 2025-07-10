@@ -74,7 +74,7 @@ class Evaluators(BaseResource):
             }
 
         response = self._client.post(
-            self._base_url + "/v1/evaluator-scores",
+            self._base_url + "/v1/evaluators/score",
             json=payload,
             headers=self._headers(),
         )
