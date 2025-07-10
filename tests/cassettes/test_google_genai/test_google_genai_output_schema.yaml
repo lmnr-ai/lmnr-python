@@ -1,0 +1,68 @@
+interactions:
+- request:
+    body: '{"contents": [{"parts": [{"text": "Alice and Bob are going to a science
+      fair on Friday. Extract the event information."}], "role": "user"}], "generationConfig":
+      {"responseMimeType": "application/json", "responseSchema": {"properties": {"name":
+      {"title": "Name", "type": "STRING"}, "dayOfWeek": {"title": "Dayofweek", "type":
+      "STRING"}, "participants": {"items": {"type": "STRING"}, "title": "Participants",
+      "type": "ARRAY"}}, "propertyOrdering": ["name", "dayOfWeek", "participants"],
+      "required": ["name", "dayOfWeek", "participants"], "title": "CalendarEvent",
+      "type": "OBJECT"}}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '581'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - google-genai-sdk/1.24.0 gl-python/3.12.9
+      x-goog-api-client:
+      - google-genai-sdk/1.24.0 gl-python/3.12.9
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite-preview-06-17:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/2WRUW+CMBSF3/kVTZ9hURen2dvcXLIsi26SbYn14Q4u2ggtaeuUEP77WhDEjAco
+        95yee/u19AihEYiYx2BQ03uythVCyvrtNCkMCmOFtmSLOShz8TZP2Vtbi8GT20RLJghhVECGzP4z
+        qiOOIkKSAFeM+o0cQ7FIvhD3jedZ2XGKTnXteMRzEEY7w5rRh5RHNtC36kz+MLphoqK9CapuvfEv
+        cyuZohsqkzGmrb1qDTThguvdB4KWwtlW4WJJO5WLGE+2PPDaBnU0PWjY4hsasASh40RzJbPchHKP
+        4lEeaoLDaRPWA36l347OupEG0itpPPD/xeon25Sn/Yvo3ZE9I6TcFO4g4fw7pD0O5nqqFkT93Xhn
+        JA2lT1SaNzi2mFlAwehmHCQp6F1g4zHIFf5yPAaDu2A4qZtQhTqXQuNL7La9Tk4ZLFejmS4KoefL
+        PYA8vk+pV3l/lsxVQX4CAAA=
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Thu, 03 Jul 2025 17:21:47 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=362
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1
