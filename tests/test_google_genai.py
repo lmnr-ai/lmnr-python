@@ -423,7 +423,7 @@ EXPECTED_SCHEMA = {
 
 
 @pytest.mark.vcr
-def test_google_genai_output_schema(exporter: InMemorySpanExporter):
+def test_google_genai_output_schema(span_exporter: InMemorySpanExporter):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
     client = Client(api_key="123")
@@ -443,7 +443,7 @@ def test_google_genai_output_schema(exporter: InMemorySpanExporter):
             response_mime_type="application/json",
         ),
     )
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
@@ -476,7 +476,7 @@ def test_google_genai_output_schema(exporter: InMemorySpanExporter):
 
 
 @pytest.mark.vcr
-def test_google_genai_output_json_schema(exporter: InMemorySpanExporter):
+def test_google_genai_output_json_schema(span_exporter: InMemorySpanExporter):
     # The actual key was used during recording and the request/response was saved
     # to the VCR cassette.
     client = Client(api_key="123")
@@ -496,7 +496,7 @@ def test_google_genai_output_json_schema(exporter: InMemorySpanExporter):
             response_mime_type="application/json",
         ),
     )
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
@@ -528,7 +528,7 @@ def test_google_genai_output_json_schema(exporter: InMemorySpanExporter):
     )
 
 
-def test_google_genai_error(exporter: InMemorySpanExporter):
+def test_google_genai_error(span_exporter: InMemorySpanExporter):
     # Invalid key on purpose
     client = Client(api_key="123")
     system_instruction = "Be concise and to the point. Use tools as much as possible."
@@ -548,7 +548,7 @@ def test_google_genai_error(exporter: InMemorySpanExporter):
             ),
         )
 
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
