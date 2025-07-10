@@ -11,7 +11,7 @@ from lmnr.sdk.decorators import observe
 from lmnr.sdk.browser.utils import retry_sync, retry_async
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
-
+from lmnr.opentelemetry_lib.tracing import _get_current_context
 
 try:
     if is_package_installed("playwright"):
@@ -221,10 +221,11 @@ async def inject_rrweb_async(page: Page):
 
 
 @observe(name="playwright.page", ignore_input=True, ignore_output=True)
-def handle_navigation_sync(
-    page: SyncPage, session_id: str, trace_id: str, client: LaminarClient
-):
-    trace.get_current_span().set_attribute("lmnr.internal.has_browser_session", True)
+def handle_navigation_sync(page: SyncPage, session_id: str, client: LaminarClient):
+    ctx = _get_current_context()
+    span = trace.get_current_span(ctx)
+    trace_id = format(span.get_span_context().trace_id, "032x")
+    span.set_attribute("lmnr.internal.has_browser_session", True)
     original_bring_to_front = page.bring_to_front
 
     def bring_to_front():
@@ -271,9 +272,13 @@ def handle_navigation_sync(
 
 @observe(name="playwright.page", ignore_input=True, ignore_output=True)
 async def handle_navigation_async(
-    page: Page, session_id: str, trace_id: str, client: AsyncLaminarClient
+    page: Page, session_id: str, client: AsyncLaminarClient
 ):
-    trace.get_current_span().set_attribute("lmnr.internal.has_browser_session", True)
+
+    ctx = _get_current_context()
+    span = trace.get_current_span(ctx)
+    trace_id = format(span.get_span_context().trace_id, "032x")
+    span.set_attribute("lmnr.internal.has_browser_session", True)
 
     async def collection_loop():
         try:
