@@ -5,11 +5,12 @@ from google.genai.types import JSONSchemaType
 
 import json
 
+dummy_client = BaseApiClient(api_key="dummy")
+
 
 def process_schema(schema: Any) -> dict[str, Any]:
     # The only thing we need from the client is the t_schema function
-    client = BaseApiClient(api_key="dummy")
-    json_schema = t_schema(client, schema).json_schema.model_dump(
+    json_schema = t_schema(dummy_client, schema).json_schema.model_dump(
         exclude_unset=True, exclude_none=True
     )
     return json_schema
