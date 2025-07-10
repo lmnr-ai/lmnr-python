@@ -1,9 +1,8 @@
 from contextlib import contextmanager
 from contextvars import Context
 import warnings
-from typing_extensions import deprecated
 from lmnr.opentelemetry_lib import TracerManager
-from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.tracing import TracerWrapper, _get_current_context
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.attributes import (
@@ -205,7 +204,7 @@ class Laminar:
         if value is not None:
             event["lmnr.event.value"] = value
 
-        current_span = trace.get_current_span()
+        current_span = trace.get_current_span(context=_get_current_context())
         if current_span == trace.INVALID_SPAN:
             cls.__logger.warning(
                 "`Laminar().event()` called outside of span context. "
@@ -483,7 +482,7 @@ class Laminar:
             output (Any, optional): output of the span. Will be sent as an\
                 attribute, so must be json serializable. Defaults to None.
         """
-        span = trace.get_current_span()
+        span = trace.get_current_span(context=_get_current_context())
         if output is not None and span != trace.INVALID_SPAN:
             serialized_output = json_dumps(output)
             if len(serialized_output) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
@@ -521,7 +520,7 @@ class Laminar:
         Args:
             attributes (dict[ATTRIBUTES, Any]): attributes to set for the span
         """
-        span = trace.get_current_span()
+        span = trace.get_current_span(context=_get_current_context())
         if span == trace.INVALID_SPAN:
             return
 
@@ -545,7 +544,7 @@ class Laminar:
         """Get the laminar span context for a given span.
         If no span is provided, the current active span will be used.
         """
-        span = span or trace.get_current_span()
+        span = span or trace.get_current_span(context=_get_current_context())
         if span == trace.INVALID_SPAN:
             return None
         return LaminarSpanContext(
@@ -626,7 +625,7 @@ class Laminar:
         Args:
             tags (list[str]): Tags to set for the span.
         """
-        span = trace.get_current_span()
+        span = trace.get_current_span(context=_get_current_context())
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set tags on")
             return
@@ -638,37 +637,6 @@ class Laminar:
         span.set_attribute(f"{ASSOCIATION_PROPERTIES}.tags", tags)
 
     @classmethod
-    @deprecated("Use `Laminar.set_trace_session_id` instead")
-    def set_session(
-        cls,
-        session_id: str | None = None,
-    ):
-        """Set the session id for the current span and the context
-        (i.e. any children spans created from the current span in the current
-        thread).
-
-        Args:
-            session_id (str | None, optional): Custom session id.\
-                            Useful to debug and group long-running\
-                            sessions/conversations.
-                            Defaults to None.
-        """
-        warnings.warn(
-            "`Laminar.set_session` is deprecated. Use `Laminar.set_trace_session_id` instead",
-            DeprecationWarning,
-        )
-        association_properties = {}
-        if session_id is not None:
-            association_properties[SESSION_ID] = session_id
-        # update_association_properties(association_properties)
-        span = trace.get_current_span()
-        if span == trace.INVALID_SPAN:
-            cls.__logger.warning("No active span to set session id on")
-            return
-        if session_id is not None:
-            span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}", session_id)
-
-    @classmethod
     def set_trace_session_id(cls, session_id: str | None = None):
         """Set the session id for the current trace.
         Overrides any existing session id.
@@ -676,7 +644,7 @@ class Laminar:
         Args:
             session_id (str | None, optional): Custom session id. Defaults to None.
         """
-        span = trace.get_current_span()
+        span = trace.get_current_span(context=_get_current_context())
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set session id on")
             return
@@ -691,34 +659,12 @@ class Laminar:
         Args:
             user_id (str | None, optional): Custom user id. Defaults to None.
         """
-        span = trace.get_current_span()
+        span = trace.get_current_span(context=_get_current_context())
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set user id on")
             return
         if user_id is not None:
             span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{USER_ID}", user_id)
-
-    @classmethod
-    @deprecated("Use `Laminar.set_trace_metadata` instead")
-    def set_metadata(cls, metadata: dict[str, str]):
-        """Set the metadata for the current trace.
-
-        Args:
-            metadata (dict[str, str]): Metadata to set for the trace. Will be\
-                sent as attributes, so must be json serializable.
-        """
-        warnings.warn(
-            "`Laminar.set_metadata` is deprecated. Use `Laminar.set_trace_metadata` instead",
-            DeprecationWarning,
-        )
-        props = {f"metadata.{k}": json_dumps(v) for k, v in metadata.items()}
-        # update_association_properties(props)
-        span = trace.get_current_span()
-        if span == trace.INVALID_SPAN:
-            cls.__logger.warning("No active span to set metadata on")
-            return
-        for key, value in props.items():
-            span.set_attribute(key, value)
 
     @classmethod
     def set_trace_metadata(cls, metadata: dict[str, AttributeValue]):
@@ -727,7 +673,7 @@ class Laminar:
         Args:
             metadata (dict[str, AttributeValue]): Metadata to set for the trace.
         """
-        span = trace.get_current_span()
+        span = trace.get_current_span(context=_get_current_context())
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set metadata on")
             return
@@ -756,7 +702,11 @@ class Laminar:
             uuid.UUID | None: The trace id for the current span, or None if\
             there is no active span.
         """
-        trace_id = trace.get_current_span().get_span_context().trace_id
+        trace_id = (
+            trace.get_current_span(context=_get_current_context())
+            .get_span_context()
+            .trace_id
+        )
         if trace_id == INVALID_TRACE_ID:
             return None
         return uuid.UUID(int=trace_id)
@@ -778,7 +728,7 @@ class Laminar:
         Args:
             trace_type (TraceType): Type of the trace
         """
-        span = trace.get_current_span()
+        span = trace.get_current_span(context=_get_current_context())
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set trace type on")
             return
