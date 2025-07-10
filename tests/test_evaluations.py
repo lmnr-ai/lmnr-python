@@ -9,7 +9,7 @@ import uuid
 
 
 @pytest.mark.asyncio
-async def test_evaluate_with_mocks_async(exporter: InMemorySpanExporter):
+async def test_evaluate_with_mocks_async(span_exporter: InMemorySpanExporter):
     """
     Test the evaluate function with mocked API calls.
     """
@@ -58,7 +58,7 @@ async def test_evaluate_with_mocks_async(exporter: InMemorySpanExporter):
             assert mock_datapoints.call_count == 2  # Called once for each evaluator
 
             # Get the finished spans
-            spans = exporter.get_finished_spans()
+            spans = span_exporter.get_finished_spans()
 
             # Verify the spans
             assert len(spans) == 4
@@ -92,7 +92,7 @@ async def test_evaluate_with_mocks_async(exporter: InMemorySpanExporter):
             assert sorted([span.name for span in evaluator_spans]) == ["test", "test2"]
 
 
-def test_evaluate_with_mocks(exporter: InMemorySpanExporter):
+def test_evaluate_with_mocks(span_exporter: InMemorySpanExporter):
     """
     Test the evaluate function with mocked API calls.
     """
@@ -141,7 +141,7 @@ def test_evaluate_with_mocks(exporter: InMemorySpanExporter):
             assert mock_datapoints.call_count == 2  # Called once for each evaluator
 
             # Get the finished spans
-            spans = exporter.get_finished_spans()
+            spans = span_exporter.get_finished_spans()
 
             # Verify the spans
             assert len(spans) == 4
@@ -175,7 +175,7 @@ def test_evaluate_with_mocks(exporter: InMemorySpanExporter):
             assert sorted([span.name for span in evaluator_spans]) == ["test", "test2"]
 
 
-def test_evaluate_after_init(exporter: InMemorySpanExporter):
+def test_evaluate_after_init(span_exporter: InMemorySpanExporter):
     """
     Test the evaluate function with mocked API calls.
     """
@@ -228,7 +228,7 @@ def test_evaluate_after_init(exporter: InMemorySpanExporter):
             assert mock_datapoints.call_count == 2  # Called once for each evaluator
 
             # Get the finished spans
-            spans = exporter.get_finished_spans()
+            spans = span_exporter.get_finished_spans()
 
             # Verify the spans
             assert len(spans) == 4
@@ -262,7 +262,7 @@ def test_evaluate_after_init(exporter: InMemorySpanExporter):
             assert sorted([span.name for span in evaluator_spans]) == ["test", "test2"]
 
 
-def test_evaluate_with_flush(exporter: InMemorySpanExporter):
+def test_evaluate_with_flush(span_exporter: InMemorySpanExporter):
     """
     Test the evaluate function with mocked API calls.
     """
@@ -315,7 +315,7 @@ def test_evaluate_with_flush(exporter: InMemorySpanExporter):
             assert mock_datapoints.call_count == 2  # Called once for each evaluator
 
             # Get the finished spans
-            spans = exporter.get_finished_spans()
+            spans = span_exporter.get_finished_spans()
 
             # Verify the spans
             assert len(spans) == 4
@@ -350,7 +350,7 @@ def test_evaluate_with_flush(exporter: InMemorySpanExporter):
 
 
 @pytest.mark.asyncio
-async def test_evaluate_with_human_evaluator_async(exporter: InMemorySpanExporter):
+async def test_evaluate_with_human_evaluator_async(span_exporter: InMemorySpanExporter):
     """
     Test the evaluate function with HumanEvaluator instances (async version).
     """
@@ -401,7 +401,9 @@ async def test_evaluate_with_human_evaluator_async(exporter: InMemorySpanExporte
 
             # Verify the API calls
             mock_init.assert_called_once()
-            assert mock_datapoints.call_count == 2  # Called once for partial, once for final
+            assert (
+                mock_datapoints.call_count == 2
+            )  # Called once for partial, once for final
 
             # Verify return values - human evaluator scores should be None
             assert "accuracy" in result
@@ -411,7 +413,7 @@ async def test_evaluate_with_human_evaluator_async(exporter: InMemorySpanExporte
             assert "human_relevance" not in result
 
             # Get the finished spans
-            spans = exporter.get_finished_spans()
+            spans = span_exporter.get_finished_spans()
 
             # Verify the spans - should have evaluation, executor, regular evaluator, and 2 human evaluator spans
             assert len(spans) == 5
@@ -450,14 +452,17 @@ async def test_evaluate_with_human_evaluator_async(exporter: InMemorySpanExporte
             assert len(evaluator_spans) == 1
             assert evaluator_spans[0].name == "accuracy"
             assert len(human_evaluator_spans) == 2
-            assert sorted([span.name for span in human_evaluator_spans]) == ["human_quality", "human_relevance"]
+            assert sorted([span.name for span in human_evaluator_spans]) == [
+                "human_quality",
+                "human_relevance",
+            ]
 
             # Verify human evaluator spans have correct attributes
             for human_span in human_evaluator_spans:
                 assert human_span.attributes.get("lmnr.span.type") == "HUMAN_EVALUATOR"
 
 
-def test_evaluate_with_human_evaluator(exporter: InMemorySpanExporter):
+def test_evaluate_with_human_evaluator(span_exporter: InMemorySpanExporter):
     """
     Test the evaluate function with HumanEvaluator instances (sync version).
     """
@@ -515,7 +520,7 @@ def test_evaluate_with_human_evaluator(exporter: InMemorySpanExporter):
             assert "human_evaluation" not in result
 
             # Get the finished spans
-            spans = exporter.get_finished_spans()
+            spans = span_exporter.get_finished_spans()
 
             # Verify the spans
             assert len(spans) == 4  # evaluation, executor, evaluator, human_evaluator
@@ -532,7 +537,10 @@ def test_evaluate_with_human_evaluator(exporter: InMemorySpanExporter):
 
             assert human_evaluator_span is not None
             assert human_evaluator_span.name == "human_evaluation"
-            assert human_evaluator_span.attributes.get("lmnr.span.type") == "HUMAN_EVALUATOR"
+            assert (
+                human_evaluator_span.attributes.get("lmnr.span.type")
+                == "HUMAN_EVALUATOR"
+            )
 
 
 def test_get_average_scores_with_human_evaluators():
@@ -545,7 +553,7 @@ def test_get_average_scores_with_human_evaluators():
             id=uuid.uuid4(),
             index=0,
             data="test1",
-            target="target1",  
+            target="target1",
             executor_output="output1",
             scores={"accuracy": 0.8, "human_quality": None, "precision": 0.9},
             trace_id=uuid.uuid4(),
@@ -556,7 +564,7 @@ def test_get_average_scores_with_human_evaluators():
             index=1,
             data="test2",
             target="target2",
-            executor_output="output2", 
+            executor_output="output2",
             scores={"accuracy": 0.6, "human_quality": None, "precision": 0.7},
             trace_id=uuid.uuid4(),
             executor_span_id=uuid.uuid4(),
@@ -572,15 +580,17 @@ def test_get_average_scores_with_human_evaluators():
             executor_span_id=uuid.uuid4(),
         ),
     ]
-    
+
     # Calculate average scores
     average_scores = get_average_scores(datapoints)
-    
+
     # Verify that None scores (from HumanEvaluators) are excluded
     assert "accuracy" in average_scores
     assert "precision" in average_scores
-    assert "human_quality" not in average_scores  # Should not be included since all values are None
-    
+    assert (
+        "human_quality" not in average_scores
+    )  # Should not be included since all values are None
+
     # Verify correct averages
     assert abs(average_scores["accuracy"] - (0.8 + 0.6 + 1.0) / 3) < 1e-10  # ~0.8
     assert abs(average_scores["precision"] - (0.9 + 0.7 + 0.8) / 3) < 1e-10  # ~0.8

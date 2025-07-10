@@ -45,10 +45,10 @@ lmnr = "lmnr.cli:cli"
 [project.optional-dependencies]
 # List of all possible extras. You can specify one or more of these extras
 # when installing the package, using any of the following examples:
-# `pip install 'lmnr[anthropic,openai]'`
-# `uv pip install 'lmnr[anthropic,openai]'`
-# `uv add lmnr --extra anthropic --extra openai`
-# `poetry add 'lmnr[anthropic,openai]'`
+# `pip install 'lmnr[anthropic,groq]'`
+# `uv pip install 'lmnr[anthropic,groq]'`
+# `uv add lmnr --extra anthropic --extra groq`
+# `poetry add 'lmnr[anthropic,groq]'`
 
 alephalpha=["opentelemetry-instrumentation-alephalpha>=0.40.12"]
 anthropic=["opentelemetry-instrumentation-anthropic>=0.40.12"]
@@ -73,7 +73,6 @@ mcp=["opentelemetry-instrumentation-mcp>=0.40.12"]
 milvus=["opentelemetry-instrumentation-milvus>=0.40.12"]
 mistralai=["opentelemetry-instrumentation-mistralai>=0.40.12"]
 ollama=["opentelemetry-instrumentation-ollama>=0.40.12"]
-openai=["opentelemetry-instrumentation-openai>=0.40.12"]
 pinecone=["opentelemetry-instrumentation-pinecone>=0.40.12"]
 qdrant=["opentelemetry-instrumentation-qdrant>=0.40.12"]
 replicate=["opentelemetry-instrumentation-replicate>=0.40.12"]
@@ -106,7 +105,6 @@ all = [
   "opentelemetry-instrumentation-milvus>=0.40.12",
   "opentelemetry-instrumentation-mistralai>=0.40.12",
   "opentelemetry-instrumentation-ollama>=0.40.12",
-  "opentelemetry-instrumentation-openai>=0.40.12",
   "opentelemetry-instrumentation-pinecone>=0.40.12",
   "opentelemetry-instrumentation-qdrant>=0.40.12",
   "opentelemetry-instrumentation-replicate>=0.40.12",
