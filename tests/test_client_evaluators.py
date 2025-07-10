@@ -64,7 +64,7 @@ class TestAsyncLaminarClientEvaluators:
             call_args = mock_post.call_args
             
             # Verify URL
-            assert call_args[0][0] == "http://test-api.com:443/v1/evaluators/score"
+            assert call_args[0][0] == "http://test-api.com:443/v1/evaluator-scores"
             
             # Verify payload
             expected_payload = {
@@ -72,7 +72,7 @@ class TestAsyncLaminarClientEvaluators:
                 "traceId": str(trace_id),
                 "metadata": {"model": "gpt-4"},
                 "score": 0.95,
-                "source": "SDK",
+                "source": "Code",
             }
             assert call_args[1]["json"] == expected_payload
 
@@ -99,7 +99,7 @@ class TestAsyncLaminarClientEvaluators:
                 "spanId": str(span_id),
                 "metadata": None,
                 "score": 0.87,
-                "source": "SDK",
+                "source": "Code",
             }
             assert call_args[1]["json"] == expected_payload
 
@@ -179,7 +179,7 @@ class TestLaminarClientEvaluators:
             call_args = mock_post.call_args
             
             # Verify URL
-            assert call_args[0][0] == "http://test-api.com:443/v1/evaluators/score"
+            assert call_args[0][0] == "http://test-api.com:443/v1/evaluator-scores"
             
             # Verify payload
             expected_payload = {
@@ -187,7 +187,7 @@ class TestLaminarClientEvaluators:
                 "traceId": str(trace_id),
                 "metadata": {"model": "gpt-4"},
                 "score": 0.95,
-                "source": "SDK",
+                "source": "Code",
             }
             assert call_args[1]["json"] == expected_payload
 
@@ -213,7 +213,7 @@ class TestLaminarClientEvaluators:
                 "spanId": str(span_id),
                 "metadata": None,
                 "score": 0.87,
-                "source": "SDK",
+                "source": "Code",
             }
             assert call_args[1]["json"] == expected_payload
 

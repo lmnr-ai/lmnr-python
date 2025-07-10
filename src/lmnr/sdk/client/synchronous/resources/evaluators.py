@@ -33,7 +33,7 @@ class Evaluators(BaseResource):
         Example:
             Score by trace ID (will attach to root span):
 
-            >>> evaluators.score(
+            >>> laminar_client.evaluators.score(
             ...     name="quality",
             ...     trace_id="trace-id-here",
             ...     score=0.95,
@@ -42,7 +42,7 @@ class Evaluators(BaseResource):
 
             Score by span ID:
 
-            >>> evaluators.score(
+            >>> laminar_client.evaluators.score(
             ...     name="relevance",
             ...     span_id="span-id-here", 
             ...     score=0.87
@@ -60,20 +60,20 @@ class Evaluators(BaseResource):
                 "traceId": formatted_trace_id,
                 "metadata": metadata,
                 "score": score,
-                "source": "SDK",
+                "source": "Code",
             }
-        else:  # span_id is not None
+        else:
             formatted_span_id = self._format_id(span_id)
             payload = {
                 "name": name,
                 "spanId": formatted_span_id,
                 "metadata": metadata,
                 "score": score,
-                "source": "SDK",
+                "source": "Code",
             }
 
         response = self._client.post(
-            self._base_url + "/v1/evaluators/score",
+            self._base_url + "/v1/evaluator-scores",
             json=payload,
             headers=self._headers(),
         )
