@@ -458,7 +458,7 @@ async def test_observe_skip_input_keys_with_kwargs_async(
     }
 
 
-def test_observe_input_formatter(exporter: InMemorySpanExporter):
+def test_observe_input_formatter(span_exporter: InMemorySpanExporter):
     def input_formatter(x):
         return {"x": x + 1}
 
@@ -467,13 +467,13 @@ def test_observe_input_formatter(exporter: InMemorySpanExporter):
         return x
 
     result = observed_foo(1)
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert result == 1
     assert len(spans) == 1
     assert json.loads(spans[0].attributes["lmnr.span.input"]) == {"x": 2}
 
 
-def test_observe_input_formatter_exception(exporter: InMemorySpanExporter):
+def test_observe_input_formatter_exception(span_exporter: InMemorySpanExporter):
     def input_formatter(x):
         raise ValueError("test")
 
@@ -482,7 +482,7 @@ def test_observe_input_formatter_exception(exporter: InMemorySpanExporter):
         return x
 
     result = observed_foo(1)
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert result == 1
     assert len(spans) == 1
     assert spans[0].name == "observed_foo"
@@ -491,7 +491,7 @@ def test_observe_input_formatter_exception(exporter: InMemorySpanExporter):
     assert "lmnr.span.input" not in spans[0].attributes
 
 
-def test_observe_input_formatter_with_kwargs(exporter: InMemorySpanExporter):
+def test_observe_input_formatter_with_kwargs(span_exporter: InMemorySpanExporter):
     def input_formatter(x, **kwargs):
         return {"x": x + 1, "custom-A": f"{kwargs.get('a')}--"}
 
@@ -500,7 +500,7 @@ def test_observe_input_formatter_with_kwargs(exporter: InMemorySpanExporter):
         return x
 
     result = observed_foo(1, a=1, b=2)
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert result == 1
     assert len(spans) == 1
     assert json.loads(spans[0].attributes["lmnr.span.input"]) == {
@@ -568,7 +568,7 @@ def test_observe_sequential_spans(span_exporter: InMemorySpanExporter):
 
 
 @pytest.mark.asyncio
-async def test_observe_input_formatter_async(exporter: InMemorySpanExporter):
+async def test_observe_input_formatter_async(span_exporter: InMemorySpanExporter):
     def input_formatter(x):
         return {"x": x + 1}
 
@@ -577,7 +577,7 @@ async def test_observe_input_formatter_async(exporter: InMemorySpanExporter):
         return x
 
     result = await observed_foo(1)
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert result == 1
     assert len(spans) == 1
     assert json.loads(spans[0].attributes["lmnr.span.input"]) == {"x": 2}
@@ -585,7 +585,7 @@ async def test_observe_input_formatter_async(exporter: InMemorySpanExporter):
 
 @pytest.mark.asyncio
 async def test_observe_input_formatter_with_kwargs_async(
-    exporter: InMemorySpanExporter,
+    span_exporter: InMemorySpanExporter,
 ):
     def input_formatter(x, **kwargs):
         return {"x": x + 1, "custom-A": f"{kwargs.get('a')}--"}
@@ -595,7 +595,7 @@ async def test_observe_input_formatter_with_kwargs_async(
         return x
 
     result = await observed_foo(1, a=1, b=2)
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert result == 1
     assert len(spans) == 1
     assert json.loads(spans[0].attributes["lmnr.span.input"]) == {
@@ -604,7 +604,7 @@ async def test_observe_input_formatter_with_kwargs_async(
     }
 
 
-def test_observe_output_formatter(exporter: InMemorySpanExporter):
+def test_observe_output_formatter(span_exporter: InMemorySpanExporter):
     def output_formatter(x):
         return {"x": x + 1}
 
@@ -613,13 +613,13 @@ def test_observe_output_formatter(exporter: InMemorySpanExporter):
         return x
 
     result = observed_foo(1)
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert result == 1
     assert len(spans) == 1
     assert json.loads(spans[0].attributes["lmnr.span.output"]) == {"x": 2}
 
 
-def test_observe_output_formatter_exception(exporter: InMemorySpanExporter):
+def test_observe_output_formatter_exception(span_exporter: InMemorySpanExporter):
     def output_formatter(x):
         raise ValueError("test")
 
@@ -628,14 +628,14 @@ def test_observe_output_formatter_exception(exporter: InMemorySpanExporter):
         return x
 
     result = observed_foo(1)
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert result == 1
     assert len(spans) == 1
     assert "lmnr.span.output" not in spans[0].attributes
 
 
 @pytest.mark.asyncio
-async def test_observe_output_formatter_async(exporter: InMemorySpanExporter):
+async def test_observe_output_formatter_async(span_exporter: InMemorySpanExporter):
     def output_formatter(x):
         return {"x": x + 1}
 
@@ -644,13 +644,13 @@ async def test_observe_output_formatter_async(exporter: InMemorySpanExporter):
         return x
 
     result = await observed_foo(1)
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
     assert result == 1
     assert len(spans) == 1
     assert json.loads(spans[0].attributes["lmnr.span.output"]) == {"x": 2}
 
 
-def test_observe_complex_nested_input(exporter: InMemorySpanExporter):
+def test_observe_complex_nested_input(span_exporter: InMemorySpanExporter):
     import dataclasses
     from typing import List
 
@@ -686,7 +686,7 @@ def test_observe_complex_nested_input(exporter: InMemorySpanExporter):
     }
 
     observed_foo(person, complex_data)
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
 
     assert len(spans) == 1
     span = spans[0]
@@ -712,7 +712,7 @@ def test_observe_complex_nested_input(exporter: InMemorySpanExporter):
     assert span_output["data_count"] == 4
 
 
-def test_observe_complex_nested_output(exporter: InMemorySpanExporter):
+def test_observe_complex_nested_output(span_exporter: InMemorySpanExporter):
     import dataclasses
     from typing import List
 
@@ -748,7 +748,7 @@ def test_observe_complex_nested_output(exporter: InMemorySpanExporter):
 
     input_data = {"simple": "input"}
     observed_foo(input_data)
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
 
     assert len(spans) == 1
     span = spans[0]
@@ -796,7 +796,7 @@ def test_observe_complex_nested_output(exporter: InMemorySpanExporter):
     assert span_output["simple_types"] == [1, "string", True, None, 3.14]
 
 
-def test_observe_non_serializable_fallback(exporter: InMemorySpanExporter):
+def test_observe_non_serializable_fallback(span_exporter: InMemorySpanExporter):
     class NonSerializable:
         def __init__(self, x: int):
             self.x = x
@@ -806,7 +806,7 @@ def test_observe_non_serializable_fallback(exporter: InMemorySpanExporter):
         return x
 
     observed_foo(NonSerializable(1), 2)
-    spans = exporter.get_finished_spans()
+    spans = span_exporter.get_finished_spans()
 
     assert len(spans) == 1
     span = spans[0]
