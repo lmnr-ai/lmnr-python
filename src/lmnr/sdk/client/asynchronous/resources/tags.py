@@ -48,7 +48,7 @@ class AsyncTags(BaseAsyncResource):
         foo()
 
         # or make sure the trace is ended by this point
-        Laminar.flush()4
+        Laminar.flush()
 
         await client.tags.tag(trace_id, "my_tag")
         ```
