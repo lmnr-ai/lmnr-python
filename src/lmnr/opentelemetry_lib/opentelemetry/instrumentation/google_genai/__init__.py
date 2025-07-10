@@ -134,6 +134,8 @@ def _set_request_attributes(span, args, kwargs):
         try:
             set_span_attribute(
                 span,
+                # TODO: change to SpanAttributes.LLM_REQUEST_STRUCTURED_OUTPUT_SCHEMA
+                # when we upgrade to opentelemetry-semantic-conventions-ai>=0.4.10
                 "gen_ai.request.structured_output_schema",
                 json.dumps(process_schema(schema), cls=SchemaJSONEncoder),
             )
@@ -143,6 +145,8 @@ def _set_request_attributes(span, args, kwargs):
         try:
             set_span_attribute(
                 span,
+                # TODO: change to SpanAttributes.LLM_REQUEST_STRUCTURED_OUTPUT_SCHEMA
+                # when we upgrade to opentelemetry-semantic-conventions-ai>=0.4.10
                 "gen_ai.request.structured_output_schema",
                 json.dumps(json_schema),
             )
