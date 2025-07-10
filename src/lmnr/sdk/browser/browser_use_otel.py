@@ -19,7 +19,7 @@ except ImportError as e:
         "to install Browser Use or remove this import."
     ) from e
 
-_instruments = ("browser-use >= 0.1.0",)
+_instruments = ("browser-use < 0.5.0",)
 
 WRAPPED_METHODS = [
     {

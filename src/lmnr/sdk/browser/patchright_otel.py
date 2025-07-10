@@ -5,8 +5,6 @@ from lmnr.sdk.browser.playwright_otel import (
     _wrap_new_browser_async,
     _wrap_new_context_sync,
     _wrap_new_context_async,
-    _wrap_close_browser_sync,
-    _wrap_close_browser_async,
 )
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
@@ -53,12 +51,6 @@ WRAPPED_METHODS = [
     {
         "package": "patchright.sync_api",
         "object": "Browser",
-        "method": "close",
-        "wrapper": _wrap_close_browser_sync,
-    },
-    {
-        "package": "patchright.sync_api",
-        "object": "Browser",
         "method": "new_context",
         "wrapper": _wrap_new_context_sync,
     },
@@ -100,12 +92,6 @@ WRAPPED_METHODS_ASYNC = [
         "object": "BrowserType",
         "method": "connect_over_cdp",
         "wrapper": _wrap_new_browser_async,
-    },
-    {
-        "package": "patchright.async_api",
-        "object": "Browser",
-        "method": "close",
-        "wrapper": _wrap_close_browser_async,
     },
     {
         "package": "patchright.async_api",
