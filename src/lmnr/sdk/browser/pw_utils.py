@@ -35,6 +35,10 @@ except ImportError as e:
 
 logger = logging.getLogger(__name__)
 
+# Track active pages and sessions for cleanup
+_active_sessions = {}  # page_id -> session_info
+_active_threads = {}   # page_id -> thread/task info
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(current_dir, "rrweb", "rrweb.umd.min.cjs"), "r") as f:
     RRWEB_CONTENT = f"() => {{ {f.read()} }}"
@@ -227,6 +231,15 @@ def handle_navigation_sync(page: SyncPage, session_id: str, client: LaminarClien
     span = trace.get_current_span(ctx)
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
+    
+    # Track this page and session
+    page_id = str(id(page))
+    _active_sessions[page_id] = {
+        'session_id': session_id, 
+        'trace_id': trace_id,
+        'client': client,
+        'page': page
+    }
     original_bring_to_front = page.bring_to_front
 
     def bring_to_front():
@@ -251,6 +264,8 @@ def handle_navigation_sync(page: SyncPage, session_id: str, client: LaminarClien
         except Exception as e:
             logger.error(f"Error in on_load handler: {e}")
 
+    stop_event = threading.Event()
+    
     def collection_loop():
         while not page.is_closed():  # Stop when page closes
             send_events_sync(page, session_id, trace_id, client)
@@ -258,13 +273,32 @@ def handle_navigation_sync(page: SyncPage, session_id: str, client: LaminarClien
 
     thread = threading.Thread(target=collection_loop, daemon=True)
     thread.start()
+    
+    # Track the thread for cleanup
+    _active_threads[page_id] = {
+        'thread': thread,
+        'stop_event': stop_event,
+        'type': 'sync'
+    }
 
     def on_close():
         try:
+            # Signal the thread to stop
+            stop_event.set()
+            # Send final events
             send_events_sync(page, session_id, trace_id, client)
-            thread.join()
-        except Exception:
-            pass
+            # Wait for thread to finish with timeout
+            thread.join(timeout=5)
+            if thread.is_alive():
+                logger.warning("Collection thread did not terminate within timeout")
+        except Exception as e:
+            logger.debug(f"Error in on_close handler: {e}")
+            # Still try to stop the thread
+            stop_event.set()
+        finally:
+            # Clean up tracking
+            _active_sessions.pop(page_id, None)
+            _active_threads.pop(page_id, None)
 
     page.on("load", on_load)
     page.on("close", on_close)
@@ -280,6 +314,15 @@ async def handle_navigation_async(
     span = trace.get_current_span(ctx)
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
+    
+    # Track this page and session
+    page_id = str(id(page))
+    _active_sessions[page_id] = {
+        'session_id': session_id, 
+        'trace_id': trace_id,
+        'client': client,
+        'page': page
+    }
 
     async def collection_loop():
         try:
@@ -292,6 +335,12 @@ async def handle_navigation_async(
 
     # Create and store task
     task = asyncio.create_task(collection_loop())
+    
+    # Track the task for cleanup
+    _active_threads[page_id] = {
+        'task': task,
+        'type': 'async'
+    }
 
     async def on_load():
         try:
@@ -301,10 +350,27 @@ async def handle_navigation_async(
 
     async def on_close():
         try:
-            task.cancel()
+            # Cancel the task and wait for it to finish
+            if not task.done():
+                task.cancel()
+                try:
+                    await asyncio.wait_for(task, timeout=5)
+                except asyncio.TimeoutError:
+                    logger.warning("Collection task did not terminate within timeout")
+                except asyncio.CancelledError:
+                    pass  # Expected when task is cancelled
+            
+            # Send final events
             await send_events_async(page, session_id, trace_id, client)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Error in on_close handler: {e}")
+            # Still try to cancel the task
+            if not task.done():
+                task.cancel()
+        finally:
+            # Clean up tracking
+            _active_sessions.pop(page_id, None)
+            _active_threads.pop(page_id, None)
 
     page.on("load", lambda: asyncio.create_task(on_load()))
     page.on("close", lambda: asyncio.create_task(on_close()))
@@ -328,3 +394,36 @@ async def handle_navigation_async(
 
     page.bring_to_front = bring_to_front
     await inject_session_recorder_async(page)
+
+
+def cleanup_all_sessions():
+    """Clean up all active sessions and threads - for emergency cleanup"""
+    logger.info(f"Cleaning up {len(_active_sessions)} active sessions")
+    
+    # Clean up all active threads/tasks
+    for page_id, thread_info in list(_active_threads.items()):
+        try:
+            if thread_info['type'] == 'sync':
+                # Sync thread cleanup
+                stop_event = thread_info.get('stop_event')
+                thread = thread_info.get('thread')
+                if stop_event:
+                    stop_event.set()
+                if thread and thread.is_alive():
+                    thread.join(timeout=2)
+                    if thread.is_alive():
+                        logger.warning(f"Thread for page {page_id} did not terminate")
+            else:
+                # Async task cleanup
+                task = thread_info.get('task')
+                if task and not task.done():
+                    task.cancel()
+                    logger.debug(f"Cancelled task for page {page_id}")
+        except Exception as e:
+            logger.debug(f"Error cleaning up thread for page {page_id}: {e}")
+    
+    # Clear tracking dictionaries
+    _active_sessions.clear()
+    _active_threads.clear()
+    
+    logger.info("Session cleanup completed")
