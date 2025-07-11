@@ -1,4 +1,5 @@
 import json
+import uuid
 import pytest
 
 from lmnr import observe
@@ -203,6 +204,94 @@ def test_observe_nested(span_exporter: InMemorySpanExporter):
     assert bar_span.attributes["lmnr.span.instrumentation_source"] == "python"
 
 
+def test_observe_deeply_nested_and_sequential(span_exporter: InMemorySpanExporter):
+    @observe()
+    def level_4():
+        return "level_4"
+
+    @observe()
+    def level_3():
+        return level_4()
+
+    @observe()
+    def level_2():
+        return level_3()
+
+    @observe()
+    def level_1():
+        return level_2()
+
+    @observe()
+    def after_all():
+        return "after_all"
+
+    result = level_1()
+    after_all()
+    spans = span_exporter.get_finished_spans()
+    assert result == "level_4"
+    assert len(spans) == 5
+
+    level_1_span = [span for span in spans if span.name == "level_1"][0]
+    level_2_span = [span for span in spans if span.name == "level_2"][0]
+    level_3_span = [span for span in spans if span.name == "level_3"][0]
+    level_4_span = [span for span in spans if span.name == "level_4"][0]
+    after_all_span = [span for span in spans if span.name == "after_all"][0]
+
+    assert level_1_span.parent is None or level_1_span.parent.span_id == 0
+    assert level_2_span.parent.span_id == level_1_span.get_span_context().span_id
+    assert level_3_span.parent.span_id == level_2_span.get_span_context().span_id
+    assert level_4_span.parent.span_id == level_3_span.get_span_context().span_id
+    assert after_all_span.parent is None or after_all_span.parent.span_id == 0
+
+    assert level_1_span.attributes["lmnr.span.path"] == ("level_1",)
+    assert level_2_span.attributes["lmnr.span.path"] == ("level_1", "level_2")
+    assert level_3_span.attributes["lmnr.span.path"] == (
+        "level_1",
+        "level_2",
+        "level_3",
+    )
+    assert level_4_span.attributes["lmnr.span.path"] == (
+        "level_1",
+        "level_2",
+        "level_3",
+        "level_4",
+    )
+    assert after_all_span.attributes["lmnr.span.path"] == ("after_all",)
+
+    assert level_1_span.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=level_1_span.get_span_context().span_id)),
+    )
+    assert level_2_span.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=level_1_span.get_span_context().span_id)),
+        str(uuid.UUID(int=level_2_span.get_span_context().span_id)),
+    )
+    assert level_3_span.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=level_1_span.get_span_context().span_id)),
+        str(uuid.UUID(int=level_2_span.get_span_context().span_id)),
+        str(uuid.UUID(int=level_3_span.get_span_context().span_id)),
+    )
+    assert level_4_span.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=level_1_span.get_span_context().span_id)),
+        str(uuid.UUID(int=level_2_span.get_span_context().span_id)),
+        str(uuid.UUID(int=level_3_span.get_span_context().span_id)),
+        str(uuid.UUID(int=level_4_span.get_span_context().span_id)),
+    )
+    assert after_all_span.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=after_all_span.get_span_context().span_id)),
+    )
+
+    assert (
+        level_1_span.get_span_context().trace_id
+        == level_2_span.get_span_context().trace_id
+        == level_3_span.get_span_context().trace_id
+        == level_4_span.get_span_context().trace_id
+    )
+    assert (
+        after_all_span.get_span_context().trace_id
+        != level_4_span.get_span_context().trace_id
+    )
+
+
 def test_observe_skip_input_keys(span_exporter: InMemorySpanExporter):
     @observe(ignore_inputs=["a"])
     def observed_foo(a, b, c):
@@ -284,6 +373,30 @@ def test_observe_tags_invalid_type(span_exporter: InMemorySpanExporter):
     assert span.attributes.get("lmnr.association.properties.tags") is None
     assert span.attributes["lmnr.span.instrumentation_source"] == "python"
     assert span.attributes["lmnr.span.path"] == ("observed_foo",)
+
+
+def test_observe_sequential_spans(span_exporter: InMemorySpanExporter):
+    @observe()
+    def observed_foo():
+        return "foo"
+
+    @observe()
+    def observed_bar():
+        return "bar"
+
+    observed_foo()
+    observed_bar()
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 2
+
+    foo_span = [span for span in spans if span.name == "observed_foo"][0]
+    bar_span = [span for span in spans if span.name == "observed_bar"][0]
+
+    assert foo_span.parent is None or foo_span.parent.span_id == 0
+    assert bar_span.parent is None or bar_span.parent.span_id == 0
+
+    assert foo_span.get_span_context().trace_id != bar_span.get_span_context().trace_id
 
 
 @pytest.mark.asyncio
@@ -436,6 +549,153 @@ async def test_observe_nested_async(span_exporter: InMemorySpanExporter):
 
 
 @pytest.mark.asyncio
+async def test_observe_async_exception(span_exporter: InMemorySpanExporter):
+    @observe()
+    async def observed_foo():
+        raise ValueError("test")
+
+    with pytest.raises(ValueError):
+        await observed_foo()
+
+    spans = span_exporter.get_finished_spans()
+
+    assert len(spans) == 1
+    assert spans[0].name == "observed_foo"
+    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+
+    events = spans[0].events
+    assert len(events) == 1
+    assert events[0].name == "exception"
+    assert events[0].attributes["exception.type"] == "ValueError"
+    assert events[0].attributes["exception.message"] == "test"
+    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
+
+
+def test_observe_nested(span_exporter: InMemorySpanExporter):
+    @observe()
+    def observed_bar():
+        return "bar"
+
+    @observe(session_id="123")
+    def observed_foo():
+        return observed_bar()
+
+    result = observed_foo()
+    spans = span_exporter.get_finished_spans()
+
+    assert result == "bar"
+    assert len(spans) == 2
+
+    foo_span = [span for span in spans if span.name == "observed_foo"][0]
+    bar_span = [span for span in spans if span.name == "observed_bar"][0]
+    assert bar_span.parent.span_id == foo_span.context.span_id
+
+    assert foo_span.attributes["lmnr.association.properties.session_id"] == "123"
+
+    assert foo_span.attributes["lmnr.span.input"] == json.dumps({})
+    assert foo_span.attributes["lmnr.span.path"] == ("observed_foo",)
+    assert bar_span.attributes["lmnr.span.input"] == json.dumps({})
+    assert bar_span.attributes["lmnr.span.path"] == ("observed_foo", "observed_bar")
+
+    assert foo_span.attributes["lmnr.span.output"] == json.dumps("bar")
+    assert bar_span.attributes["lmnr.span.output"] == json.dumps("bar")
+
+    assert foo_span.attributes["lmnr.span.instrumentation_source"] == "python"
+    assert bar_span.attributes["lmnr.span.instrumentation_source"] == "python"
+
+
+@pytest.mark.asyncio
+async def test_observe_deeply_nested_and_sequential_async(
+    span_exporter: InMemorySpanExporter,
+):
+    @observe()
+    async def level_4():
+        return "level_4"
+
+    @observe()
+    async def level_3():
+        return await level_4()
+
+    @observe()
+    async def level_2():
+        return await level_3()
+
+    @observe()
+    async def level_1():
+        return await level_2()
+
+    @observe()
+    async def after_all():
+        return "after_all"
+
+    result = await level_1()
+    await after_all()
+    spans = span_exporter.get_finished_spans()
+    assert result == "level_4"
+    assert len(spans) == 5
+
+    level_1_span = [span for span in spans if span.name == "level_1"][0]
+    level_2_span = [span for span in spans if span.name == "level_2"][0]
+    level_3_span = [span for span in spans if span.name == "level_3"][0]
+    level_4_span = [span for span in spans if span.name == "level_4"][0]
+    after_all_span = [span for span in spans if span.name == "after_all"][0]
+
+    assert level_1_span.parent is None or level_1_span.parent.span_id == 0
+    assert level_2_span.parent.span_id == level_1_span.get_span_context().span_id
+    assert level_3_span.parent.span_id == level_2_span.get_span_context().span_id
+    assert level_4_span.parent.span_id == level_3_span.get_span_context().span_id
+    assert after_all_span.parent is None or after_all_span.parent.span_id == 0
+
+    assert level_1_span.attributes["lmnr.span.path"] == ("level_1",)
+    assert level_2_span.attributes["lmnr.span.path"] == ("level_1", "level_2")
+    assert level_3_span.attributes["lmnr.span.path"] == (
+        "level_1",
+        "level_2",
+        "level_3",
+    )
+    assert level_4_span.attributes["lmnr.span.path"] == (
+        "level_1",
+        "level_2",
+        "level_3",
+        "level_4",
+    )
+    assert after_all_span.attributes["lmnr.span.path"] == ("after_all",)
+
+    assert level_1_span.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=level_1_span.get_span_context().span_id)),
+    )
+    assert level_2_span.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=level_1_span.get_span_context().span_id)),
+        str(uuid.UUID(int=level_2_span.get_span_context().span_id)),
+    )
+    assert level_3_span.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=level_1_span.get_span_context().span_id)),
+        str(uuid.UUID(int=level_2_span.get_span_context().span_id)),
+        str(uuid.UUID(int=level_3_span.get_span_context().span_id)),
+    )
+    assert level_4_span.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=level_1_span.get_span_context().span_id)),
+        str(uuid.UUID(int=level_2_span.get_span_context().span_id)),
+        str(uuid.UUID(int=level_3_span.get_span_context().span_id)),
+        str(uuid.UUID(int=level_4_span.get_span_context().span_id)),
+    )
+    assert after_all_span.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=after_all_span.get_span_context().span_id)),
+    )
+
+    assert (
+        level_1_span.get_span_context().trace_id
+        == level_2_span.get_span_context().trace_id
+        == level_3_span.get_span_context().trace_id
+        == level_4_span.get_span_context().trace_id
+    )
+    assert (
+        after_all_span.get_span_context().trace_id
+        != level_4_span.get_span_context().trace_id
+    )
+
+
+@pytest.mark.asyncio
 async def test_observe_skip_input_keys_with_kwargs_async(
     span_exporter: InMemorySpanExporter,
 ):
@@ -541,30 +801,6 @@ async def test_observe_tags_invalid_type_async(span_exporter: InMemorySpanExport
     assert span.attributes.get("lmnr.association.properties.tags") is None
     assert span.attributes["lmnr.span.instrumentation_source"] == "python"
     assert span.attributes["lmnr.span.path"] == ("observed_foo",)
-
-
-def test_observe_sequential_spans(span_exporter: InMemorySpanExporter):
-    @observe()
-    def observed_foo():
-        return "foo"
-
-    @observe()
-    def observed_bar():
-        return "bar"
-
-    observed_foo()
-    observed_bar()
-
-    spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
-
-    foo_span = [span for span in spans if span.name == "observed_foo"][0]
-    bar_span = [span for span in spans if span.name == "observed_bar"][0]
-
-    assert foo_span.parent is None or foo_span.parent.span_id == 0
-    assert bar_span.parent is None or bar_span.parent.span_id == 0
-
-    assert foo_span.get_span_context().trace_id != bar_span.get_span_context().trace_id
 
 
 @pytest.mark.asyncio
