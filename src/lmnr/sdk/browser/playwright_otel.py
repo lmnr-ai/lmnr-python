@@ -77,15 +77,6 @@ def _wrap_new_browser_sync(
     browser: SyncBrowser = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
     for context in browser.contexts:
-
-        def handle_page_navigation(page: SyncPage):
-            return handle_navigation_sync(page, session_id, client)
-
-        context.on(
-            "page",
-            handle_page_navigation,
-        )
-
         for page in context.pages:
             handle_navigation_sync(page, session_id, client)
     return browser
@@ -97,12 +88,8 @@ async def _wrap_new_browser_async(
 ):
     browser: Browser = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
+    
     for context in browser.contexts:
-
-        async def handle_page_navigation(page: Page):
-            return await handle_navigation_async(page, session_id, client)
-
-        context.on("page", handle_page_navigation)
         for page in context.pages:
             await handle_navigation_async(page, session_id, client)
     return browser
@@ -115,13 +102,6 @@ def _wrap_new_context_sync(
     context: SyncBrowserContext = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
 
-    def handle_page_navigation(page: SyncPage):
-        return handle_navigation_sync(page, session_id, client)
-
-    context.on(
-        "page",
-        handle_page_navigation,
-    )
     for page in context.pages:
         handle_navigation_sync(page, session_id, client)
     return context
@@ -152,10 +132,6 @@ async def _wrap_new_context_async(
     context: BrowserContext = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
 
-    async def handle_page_navigation(page):
-        return await handle_navigation_async(page, session_id, client)
-
-    context.on("page", handle_page_navigation)
     for page in context.pages:
         await handle_navigation_async(page, session_id, client)
     return context
@@ -238,48 +214,48 @@ WRAPPED_METHODS_ASYNC = [
         "method": "new_page",
         "wrapper": _wrap_new_page_async,
     },
-    {
-        "package": "playwright.async_api",
-        "object": "Browser",
-        "method": "new_page",
-        "wrapper": _wrap_new_page_async,
-    },
-    {
-        "package": "playwright.async_api",
-        "object": "BrowserType",
-        "method": "launch",
-        "wrapper": _wrap_new_browser_async,
-    },
-    {
-        "package": "playwright.async_api",
-        "object": "BrowserType",
-        "method": "connect",
-        "wrapper": _wrap_new_browser_async,
-    },
-    {
-        "package": "playwright.async_api",
-        "object": "BrowserType",
-        "method": "connect_over_cdp",
-        "wrapper": _wrap_new_browser_async,
-    },
-    {
-        "package": "playwright.async_api",
-        "object": "Browser",
-        "method": "new_context",
-        "wrapper": _wrap_new_context_async,
-    },
-    {
-        "package": "playwright.async_api",
-        "object": "BrowserType",
-        "method": "launch_persistent_context",
-        "wrapper": _wrap_new_context_async,
-    },
-    {
-        "package": "playwright.async_api",
-        "object": "Page",
-        "method": "bring_to_front",
-        "wrapper": _wrap_bring_to_front_async,
-    },
+    # {
+    #     "package": "playwright.async_api",
+    #     "object": "Browser",
+    #     "method": "new_page",
+    #     "wrapper": _wrap_new_page_async,
+    # },
+    # {
+    #     "package": "playwright.async_api",
+    #     "object": "BrowserType",
+    #     "method": "launch",
+    #     "wrapper": _wrap_new_browser_async,
+    # },
+    # {
+    #     "package": "playwright.async_api",
+    #     "object": "BrowserType",
+    #     "method": "connect",
+    #     "wrapper": _wrap_new_browser_async,
+    # },
+    # {
+    #     "package": "playwright.async_api",
+    #     "object": "BrowserType",
+    #     "method": "connect_over_cdp",
+    #     "wrapper": _wrap_new_browser_async,
+    # },
+    # {
+    #     "package": "playwright.async_api",
+    #     "object": "Browser",
+    #     "method": "new_context",
+    #     "wrapper": _wrap_new_context_async,
+    # },
+    # {
+    #     "package": "playwright.async_api",
+    #     "object": "BrowserType",
+    #     "method": "launch_persistent_context",
+    #     "wrapper": _wrap_new_context_async,
+    # },
+    # {
+    #     "package": "playwright.async_api",
+    #     "object": "Page",
+    #     "method": "bring_to_front",
+    #     "wrapper": _wrap_bring_to_front_async,
+    # },
 ]
 
 
