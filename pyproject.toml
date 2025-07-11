@@ -37,6 +37,7 @@ dependencies = [
   "grpcio>=1",
   "httpx>=0.25.0",
   "opentelemetry-instrumentation-threading>=0.54b0",
+  "orjson>=3.10.18",
 ]
 
 [project.scripts]
