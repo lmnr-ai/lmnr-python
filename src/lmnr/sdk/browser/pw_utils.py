@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import time
 import threading
 
 from opentelemetry import trace
@@ -42,6 +41,7 @@ with open(os.path.join(current_dir, "rrweb", "rrweb.umd.min.cjs"), "r") as f:
 INJECT_PLACEHOLDER = """
 () => {
     const BATCH_SIZE = 1000;  // Maximum events to store in memory
+    const BATCH_TIMEOUT = 2000; // Send events after 2 seconds if batch isn't full
 
     window.lmnrRrwebEventsBatch = new Set();
     
@@ -61,13 +61,29 @@ INJECT_PLACEHOLDER = """
         return Array.from(events);
     };
 
+    // Function to send events when batch is ready
+    async function sendBatchIfReady() {
+        if (window.lmnrRrwebEventsBatch.size > 0 && typeof window.lmnrSendEvents === 'function') {
+            const events = Array.from(window.lmnrRrwebEventsBatch);
+            window.lmnrRrwebEventsBatch = new Set();
+            
+            try {
+                await window.lmnrSendEvents(events);
+            } catch (error) {
+                console.error('Failed to send events:', error);
+            }
+        }
+    }
+
+    // Set up periodic sending every 2 seconds
+    setInterval(sendBatchIfReady, BATCH_TIMEOUT);
+
     // Add heartbeat events
     setInterval(async () => {
         window.lmnrRrweb.record.addCustomEvent('heartbeat', {
             title: document.title,
             url: document.URL,
         })
-
     }, 1000);
 
     window.lmnrRrweb.record({
@@ -78,6 +94,10 @@ INJECT_PLACEHOLDER = """
                 data: await compressEventData(event.data)
             };
             window.lmnrRrwebEventsBatch.add(compressedEvent);
+            // Send immediately if batch is full
+            if (window.lmnrRrwebEventsBatch.size >= BATCH_SIZE) {
+                await sendBatchIfReady();
+            }
         },
         recordCanvas: true,
         collectFonts: true,
@@ -227,23 +247,16 @@ def handle_navigation_sync(page: SyncPage, session_id: str, client: LaminarClien
     span = trace.get_current_span(ctx)
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
-    original_bring_to_front = page.bring_to_front
+ 
+    # Expose function to browser so it can call us when events are ready
+    def send_events_from_browser(events):
+        try:
+            if events and len(events) > 0:
+                client._browser_events.send(session_id, trace_id, events)
+        except Exception as e:
+            logger.debug(f"Could not send events: {e}")
 
-    def bring_to_front():
-        original_bring_to_front()
-        page.evaluate(
-            """() => {
-            if (window.lmnrRrweb) {
-                try {
-                    window.lmnrRrweb.record.takeFullSnapshot();
-                } catch (e) {
-                    console.error("Error taking full snapshot:", e);
-                }
-            }
-        }"""
-        )
-
-    page.bring_to_front = bring_to_front
+    page.expose_function("lmnrSendEvents", send_events_from_browser)
 
     def on_load():
         try:
@@ -251,18 +264,9 @@ def handle_navigation_sync(page: SyncPage, session_id: str, client: LaminarClien
         except Exception as e:
             logger.error(f"Error in on_load handler: {e}")
 
-    def collection_loop():
-        while not page.is_closed():  # Stop when page closes
-            send_events_sync(page, session_id, trace_id, client)
-            time.sleep(2)
-
-    thread = threading.Thread(target=collection_loop, daemon=True)
-    thread.start()
-
     def on_close():
         try:
             send_events_sync(page, session_id, trace_id, client)
-            thread.join()
         except Exception:
             pass
 
@@ -281,17 +285,15 @@ async def handle_navigation_async(
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
 
-    async def collection_loop(p):
+    # Expose function to browser so it can call us when events are ready
+    async def send_events_from_browser(events):
         try:
-            while not p.is_closed():  # Stop when page closes
-                # await send_events_async(p, session_id, trace_id, client)
-                await asyncio.sleep(2)
-            logger.debug("Event collection stopped")
+            if events and len(events) > 0:
+                await client._browser_events.send(session_id, trace_id, events)
         except Exception as e:
-            logger.debug(f"Event collection stopped: {e}")
+            logger.debug(f"Could not send events: {e}")
 
-    # Create and store task
-    asyncio.create_task(collection_loop(page))
+    await page.expose_function("lmnrSendEvents", send_events_from_browser)
 
     async def on_load(p):
         try:
@@ -301,8 +303,8 @@ async def handle_navigation_async(
 
     async def on_close(p):
         try:
-            # await send_events_async(p, session_id, trace_id, client)
-            pass
+            # Send any remaining events before closing
+            await send_events_async(p, session_id, trace_id, client)
         except Exception:
             pass
 

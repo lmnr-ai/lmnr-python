@@ -214,48 +214,48 @@ WRAPPED_METHODS_ASYNC = [
         "method": "new_page",
         "wrapper": _wrap_new_page_async,
     },
-    # {
-    #     "package": "playwright.async_api",
-    #     "object": "Browser",
-    #     "method": "new_page",
-    #     "wrapper": _wrap_new_page_async,
-    # },
-    # {
-    #     "package": "playwright.async_api",
-    #     "object": "BrowserType",
-    #     "method": "launch",
-    #     "wrapper": _wrap_new_browser_async,
-    # },
-    # {
-    #     "package": "playwright.async_api",
-    #     "object": "BrowserType",
-    #     "method": "connect",
-    #     "wrapper": _wrap_new_browser_async,
-    # },
+    {
+        "package": "playwright.async_api",
+        "object": "Browser",
+        "method": "new_page",
+        "wrapper": _wrap_new_page_async,
+    },
+    {
+        "package": "playwright.async_api",
+        "object": "BrowserType",
+        "method": "launch",
+        "wrapper": _wrap_new_browser_async,
+    },
+    {
+        "package": "playwright.async_api",
+        "object": "BrowserType",
+        "method": "connect",
+        "wrapper": _wrap_new_browser_async,
+    },
     {
         "package": "playwright.async_api",
         "object": "BrowserType",
         "method": "connect_over_cdp",
         "wrapper": _wrap_new_browser_async,
     },
-    # {
-    #     "package": "playwright.async_api",
-    #     "object": "Browser",
-    #     "method": "new_context",
-    #     "wrapper": _wrap_new_context_async,
-    # },
-    # {
-    #     "package": "playwright.async_api",
-    #     "object": "BrowserType",
-    #     "method": "launch_persistent_context",
-    #     "wrapper": _wrap_new_context_async,
-    # },
-    # {
-    #     "package": "playwright.async_api",
-    #     "object": "Page",
-    #     "method": "bring_to_front",
-    #     "wrapper": _wrap_bring_to_front_async,
-    # },
+    {
+        "package": "playwright.async_api",
+        "object": "Browser",
+        "method": "new_context",
+        "wrapper": _wrap_new_context_async,
+    },
+    {
+        "package": "playwright.async_api",
+        "object": "BrowserType",
+        "method": "launch_persistent_context",
+        "wrapper": _wrap_new_context_async,
+    },
+    {
+        "package": "playwright.async_api",
+        "object": "Page",
+        "method": "bring_to_front",
+        "wrapper": _wrap_bring_to_front_async,
+    },
 ]
 
 
