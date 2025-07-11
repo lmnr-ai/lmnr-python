@@ -185,7 +185,6 @@ class TestBrowserEvents:
             "new_page",
             "launch",
             "new_context",
-            "close",
             "connect",
             "connect_over_cdp",
             "launch_persistent_context",
