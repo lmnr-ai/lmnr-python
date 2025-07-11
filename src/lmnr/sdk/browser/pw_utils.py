@@ -286,12 +286,12 @@ async def handle_navigation_async(
             while not p.is_closed():  # Stop when page closes
                 await send_events_async(p, session_id, trace_id, client)
                 await asyncio.sleep(2)
-            logger.info("Event collection stopped")
+            logger.debug("Event collection stopped")
         except Exception as e:
-            logger.error(f"Event collection stopped: {e}")
+            logger.debug(f"Event collection stopped: {e}")
 
     # Create and store task
-    task = asyncio.create_task(collection_loop(page))
+    asyncio.create_task(collection_loop(page))
 
     async def on_load(p):
         try:
@@ -301,9 +301,7 @@ async def handle_navigation_async(
 
     async def on_close(p):
         try:
-            task.cancel()
             await send_events_async(p, session_id, trace_id, client)
-
         except Exception:
             pass
 
