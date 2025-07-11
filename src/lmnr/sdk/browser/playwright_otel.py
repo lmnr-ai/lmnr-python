@@ -232,12 +232,12 @@ WRAPPED_METHODS_ASYNC = [
     #     "method": "connect",
     #     "wrapper": _wrap_new_browser_async,
     # },
-    # {
-    #     "package": "playwright.async_api",
-    #     "object": "BrowserType",
-    #     "method": "connect_over_cdp",
-    #     "wrapper": _wrap_new_browser_async,
-    # },
+    {
+        "package": "playwright.async_api",
+        "object": "BrowserType",
+        "method": "connect_over_cdp",
+        "wrapper": _wrap_new_browser_async,
+    },
     # {
     #     "package": "playwright.async_api",
     #     "object": "Browser",
