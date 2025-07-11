@@ -284,7 +284,7 @@ async def handle_navigation_async(
     async def collection_loop(p):
         try:
             while not p.is_closed():  # Stop when page closes
-                await send_events_async(p, session_id, trace_id, client)
+                # await send_events_async(p, session_id, trace_id, client)
                 await asyncio.sleep(2)
             logger.debug("Event collection stopped")
         except Exception as e:
@@ -301,7 +301,8 @@ async def handle_navigation_async(
 
     async def on_close(p):
         try:
-            await send_events_async(p, session_id, trace_id, client)
+            # await send_events_async(p, session_id, trace_id, client)
+            pass
         except Exception:
             pass
 
