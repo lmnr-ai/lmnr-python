@@ -12,7 +12,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.shared.config i
     Config,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
-    TRACELOOP_TRACE_CONTENT,
+    LMNR_TRACE_CONTENT,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.version import (
     __version__,
@@ -139,7 +139,7 @@ def instrument_legacy(reader, tracer_provider, meter_provider):
 def instrument_with_content(
     instrument_legacy, reader, tracer_provider, event_logger_provider, meter_provider
 ):
-    os.environ.update({TRACELOOP_TRACE_CONTENT: "True"})
+    os.environ.update({LMNR_TRACE_CONTENT: "True"})
 
     instrumentor = instrument_legacy
     Config.use_legacy_attributes = False
@@ -151,7 +151,7 @@ def instrument_with_content(
 
     Config.use_legacy_attributes = True
     Config.event_logger = None
-    os.environ.pop(TRACELOOP_TRACE_CONTENT, None)
+    os.environ.pop(LMNR_TRACE_CONTENT, None)
     instrumentor.uninstrument()
 
 
@@ -159,7 +159,7 @@ def instrument_with_content(
 def instrument_with_no_content(
     instrument_legacy, reader, tracer_provider, event_logger_provider, meter_provider
 ):
-    os.environ.update({TRACELOOP_TRACE_CONTENT: "False"})
+    os.environ.update({LMNR_TRACE_CONTENT: "False"})
 
     instrumentor = instrument_legacy
     Config.use_legacy_attributes = False
@@ -171,7 +171,7 @@ def instrument_with_no_content(
 
     Config.use_legacy_attributes = True
     Config.event_logger = None
-    os.environ.pop(TRACELOOP_TRACE_CONTENT, None)
+    os.environ.pop(LMNR_TRACE_CONTENT, None)
     instrumentor.uninstrument()
 
 
