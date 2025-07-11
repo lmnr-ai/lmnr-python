@@ -281,50 +281,33 @@ async def handle_navigation_async(
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
 
-    async def collection_loop():
+    async def collection_loop(p):
         try:
-            while not page.is_closed():  # Stop when page closes
-                await send_events_async(page, session_id, trace_id, client)
+            while not p.is_closed():  # Stop when page closes
+                await send_events_async(p, session_id, trace_id, client)
                 await asyncio.sleep(2)
             logger.info("Event collection stopped")
         except Exception as e:
             logger.error(f"Event collection stopped: {e}")
 
     # Create and store task
-    task = asyncio.create_task(collection_loop())
+    task = asyncio.create_task(collection_loop(page))
 
-    async def on_load():
+    async def on_load(p):
         try:
-            await inject_session_recorder_async(page)
+            await inject_session_recorder_async(p)
         except Exception as e:
             logger.error(f"Error in on_load handler: {e}")
 
-    async def on_close():
+    async def on_close(p):
         try:
             task.cancel()
-            await send_events_async(page, session_id, trace_id, client)
+            await send_events_async(p, session_id, trace_id, client)
+
         except Exception:
             pass
 
-    page.on("load", lambda: asyncio.create_task(on_load()))
-    page.on("close", lambda: asyncio.create_task(on_close()))
+    page.on("load", on_load)
+    page.on("close", on_close)
 
-    original_bring_to_front = page.bring_to_front
-
-    async def bring_to_front():
-        await original_bring_to_front()
-
-        await page.evaluate(
-            """() => {
-            if (window.lmnrRrweb) {
-                try {
-                    window.lmnrRrweb.record.takeFullSnapshot();
-                } catch (e) {
-                    console.error("Error taking full snapshot:", e);
-                }
-            }
-        }"""
-        )
-
-    page.bring_to_front = bring_to_front
     await inject_session_recorder_async(page)

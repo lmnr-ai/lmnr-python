@@ -128,6 +128,24 @@ def _wrap_new_context_sync(
 
 
 @with_tracer_and_client_wrapper
+def _wrap_bring_to_front_sync(
+    tracer: Tracer, client: LaminarClient, to_wrap, wrapped, instance, args, kwargs
+):
+    wrapped(*args, **kwargs)
+    instance.evaluate(
+        """() => {
+        if (window.lmnrRrweb) {
+            try {
+                window.lmnrRrweb.record.takeFullSnapshot();
+            } catch (e) {
+                console.error("Error taking full snapshot:", e);
+            }
+        }
+    }"""
+    )
+
+
+@with_tracer_and_client_wrapper
 async def _wrap_new_context_async(
     tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
 ):
@@ -141,6 +159,25 @@ async def _wrap_new_context_async(
     for page in context.pages:
         await handle_navigation_async(page, session_id, client)
     return context
+
+
+@with_tracer_and_client_wrapper
+async def _wrap_bring_to_front_async(
+    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
+):
+    await wrapped(*args, **kwargs)
+
+    await instance.evaluate(
+        """() => {
+        if (window.lmnrRrweb) {
+            try {
+                window.lmnrRrweb.record.takeFullSnapshot();
+            } catch (e) {
+                console.error("Error taking full snapshot:", e);
+            }
+        }
+    }"""
+    )
 
 
 WRAPPED_METHODS = [
@@ -186,6 +223,12 @@ WRAPPED_METHODS = [
         "method": "launch_persistent_context",
         "wrapper": _wrap_new_context_sync,
     },
+    {
+        "package": "playwright.sync_api",
+        "object": "Page",
+        "method": "bring_to_front",
+        "wrapper": _wrap_bring_to_front_sync,
+    },
 ]
 
 WRAPPED_METHODS_ASYNC = [
@@ -230,6 +273,12 @@ WRAPPED_METHODS_ASYNC = [
         "object": "BrowserType",
         "method": "launch_persistent_context",
         "wrapper": _wrap_new_context_async,
+    },
+    {
+        "package": "playwright.async_api",
+        "object": "Page",
+        "method": "bring_to_front",
+        "wrapper": _wrap_bring_to_front_async,
     },
 ]
 
