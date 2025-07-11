@@ -109,16 +109,10 @@ async def send_events_async(
 
         await client._browser_events.send(session_id, trace_id, events)
     except Exception as e:
-        if str(e).startswith("Page.evaluate: Execution context was destroyed"):
-            await inject_session_recorder_async(page)
-            await send_events_async(page, session_id, trace_id, client)
-        else:
-            # silence the error if the page has been closed, not an issue
-            if (
-                "Page.evaluate: Target page, context or browser has been closed"
-                not in str(e)
-            ):
-                logger.warning(f"Could not send events: {e}")
+        if "Page.evaluate: Target page, context or browser has been closed" not in str(
+            e
+        ):
+            logger.debug(f"Could not send events: {e}")
 
 
 def send_events_sync(
@@ -142,16 +136,10 @@ def send_events_sync(
         client._browser_events.send(session_id, trace_id, events)
 
     except Exception as e:
-        if str(e).startswith("Page.evaluate: Execution context was destroyed"):
-            inject_session_recorder_sync(page)
-            send_events_sync(page, session_id, trace_id, client)
-        else:
-            # silence the error if the page has been closed, not an issue
-            if (
-                "Page.evaluate: Target page, context or browser has been closed"
-                not in str(e)
-            ):
-                logger.warning(f"Could not send events: {e}")
+        if "Page.evaluate: Target page, context or browser has been closed" not in str(
+            e
+        ):
+            logger.debug(f"Could not send events: {e}")
 
 
 def inject_session_recorder_sync(page: SyncPage):
