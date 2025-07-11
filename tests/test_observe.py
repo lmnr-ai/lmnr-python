@@ -188,7 +188,7 @@ def test_observe_nested(span_exporter: InMemorySpanExporter):
 
     foo_span = [span for span in spans if span.name == "observed_foo"][0]
     bar_span = [span for span in spans if span.name == "observed_bar"][0]
-    assert bar_span.parent.span_id == foo_span.context.span_id
+    assert bar_span.parent.span_id == foo_span.get_span_context().span_id
 
     assert foo_span.attributes["lmnr.association.properties.session_id"] == "123"
 
@@ -531,64 +531,8 @@ async def test_observe_nested_async(span_exporter: InMemorySpanExporter):
     foo_span = [span for span in spans if span.name == "observed_foo"][0]
     bar_span = [span for span in spans if span.name == "observed_bar"][0]
     assert foo_span.parent is None or foo_span.parent.span_id == 0
-    assert bar_span.parent.span_id == foo_span.context.span_id
-    assert foo_span.context.trace_id == bar_span.context.trace_id
-
-    assert foo_span.attributes["lmnr.association.properties.session_id"] == "123"
-
-    assert foo_span.attributes["lmnr.span.input"] == json.dumps({})
-    assert foo_span.attributes["lmnr.span.path"] == ("observed_foo",)
-    assert bar_span.attributes["lmnr.span.input"] == json.dumps({})
-    assert bar_span.attributes["lmnr.span.path"] == ("observed_foo", "observed_bar")
-
-    assert foo_span.attributes["lmnr.span.output"] == json.dumps("bar")
-    assert bar_span.attributes["lmnr.span.output"] == json.dumps("bar")
-
-    assert foo_span.attributes["lmnr.span.instrumentation_source"] == "python"
-    assert bar_span.attributes["lmnr.span.instrumentation_source"] == "python"
-
-
-@pytest.mark.asyncio
-async def test_observe_async_exception(span_exporter: InMemorySpanExporter):
-    @observe()
-    async def observed_foo():
-        raise ValueError("test")
-
-    with pytest.raises(ValueError):
-        await observed_foo()
-
-    spans = span_exporter.get_finished_spans()
-
-    assert len(spans) == 1
-    assert spans[0].name == "observed_foo"
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-
-    events = spans[0].events
-    assert len(events) == 1
-    assert events[0].name == "exception"
-    assert events[0].attributes["exception.type"] == "ValueError"
-    assert events[0].attributes["exception.message"] == "test"
-    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
-
-
-def test_observe_nested(span_exporter: InMemorySpanExporter):
-    @observe()
-    def observed_bar():
-        return "bar"
-
-    @observe(session_id="123")
-    def observed_foo():
-        return observed_bar()
-
-    result = observed_foo()
-    spans = span_exporter.get_finished_spans()
-
-    assert result == "bar"
-    assert len(spans) == 2
-
-    foo_span = [span for span in spans if span.name == "observed_foo"][0]
-    bar_span = [span for span in spans if span.name == "observed_bar"][0]
-    assert bar_span.parent.span_id == foo_span.context.span_id
+    assert bar_span.parent.span_id == foo_span.get_span_context().span_id
+    assert foo_span.get_span_context().trace_id == bar_span.get_span_context().trace_id
 
     assert foo_span.attributes["lmnr.association.properties.session_id"] == "123"
 
