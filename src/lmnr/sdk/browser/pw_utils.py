@@ -40,32 +40,259 @@ with open(os.path.join(current_dir, "rrweb", "rrweb.umd.min.cjs"), "r") as f:
 
 INJECT_PLACEHOLDER = """
 () => {
-    const BATCH_SIZE = 1000;  // Maximum events to store in memory
-    const BATCH_TIMEOUT = 2000; // Send events after 2 seconds if batch isn't full
+    const BATCH_TIMEOUT = 2000; // Send events after 2 seconds
 
-    window.lmnrRrwebEventsBatch = new Set();
+    window.lmnrRrwebEventsBatch = [];
     
-    // Utility function to compress individual event data
-    async function compressEventData(data) {
-        const jsonString = JSON.stringify(data);
-        const blob = new Blob([jsonString], { type: 'application/json' });
-        const compressedStream = blob.stream().pipeThrough(new CompressionStream('gzip'));
-        const compressedResponse = new Response(compressedStream);
-        const compressedData = await compressedResponse.arrayBuffer();
-        return Array.from(new Uint8Array(compressedData));
-    }
-
-    window.lmnrGetAndClearEvents = () => {
-        const events = window.lmnrRrwebEventsBatch;
-        window.lmnrRrwebEventsBatch = new Set();
-        return Array.from(events);
+    // Create a Web Worker for heavy JSON processing with chunked processing
+    const createCompressionWorker = () => {
+        const workerCode = `
+            self.onmessage = async function(e) {
+                const { jsonString, buffer, id, useBuffer } = e.data;
+                try {
+                    let uint8Array;
+                    
+                    if (useBuffer && buffer) {
+                        // Use transferred ArrayBuffer (no copying needed!)
+                        uint8Array = new Uint8Array(buffer);
+                    } else {
+                        // Convert JSON string to bytes
+                        const textEncoder = new TextEncoder();
+                        uint8Array = textEncoder.encode(jsonString);
+                    }
+                    
+                    const compressionStream = new CompressionStream('gzip');
+                    const writer = compressionStream.writable.getWriter();
+                    const reader = compressionStream.readable.getReader();
+                    
+                    writer.write(uint8Array);
+                    writer.close();
+                    
+                    const chunks = [];
+                    let totalLength = 0;
+                    
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        chunks.push(value);
+                        totalLength += value.length;
+                    }
+                    
+                    const compressedData = new Uint8Array(totalLength);
+                    let offset = 0;
+                    for (const chunk of chunks) {
+                        compressedData.set(chunk, offset);
+                        offset += chunk.length;
+                    }
+                    
+                    self.postMessage({ id, success: true, data: compressedData });
+                } catch (error) {
+                    self.postMessage({ id, success: false, error: error.message });
+                }
+            };
+        `;
+        
+        const blob = new Blob([workerCode], { type: 'application/javascript' });
+        return new Worker(URL.createObjectURL(blob));
     };
 
-    // Function to send events when batch is ready
+    let compressionWorker = null;
+    let workerPromises = new Map();
+    let workerId = 0;
+
+    // Non-blocking JSON.stringify using chunked processing
+    function stringifyNonBlocking(obj, chunkSize = 10000) {
+        return new Promise((resolve, reject) => {
+            try {
+                // For very large objects, we need to be more careful
+                // Use requestIdleCallback if available, otherwise setTimeout
+                const scheduleWork = window.requestIdleCallback || 
+                    ((cb) => setTimeout(cb, 0));
+                
+                let result = '';
+                let keys = [];
+                let keyIndex = 0;
+                
+                // Pre-process to get all keys if it's an object
+                if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
+                    keys = Object.keys(obj);
+                }
+                
+                function processChunk() {
+                    try {
+                        if (Array.isArray(obj) || typeof obj !== 'object' || obj === null) {
+                            // For arrays and primitives, just stringify directly
+                            result = JSON.stringify(obj);
+                            resolve(result);
+                            return;
+                        }
+                        
+                        // For objects, process in chunks
+                        const endIndex = Math.min(keyIndex + chunkSize, keys.length);
+                        
+                        if (keyIndex === 0) {
+                            result = '{';
+                        }
+                        
+                        for (let i = keyIndex; i < endIndex; i++) {
+                            const key = keys[i];
+                            const value = obj[key];
+                            
+                            if (i > 0) result += ',';
+                            result += JSON.stringify(key) + ':' + JSON.stringify(value);
+                        }
+                        
+                        keyIndex = endIndex;
+                        
+                        if (keyIndex >= keys.length) {
+                            result += '}';
+                            resolve(result);
+                        } else {
+                            // Schedule next chunk
+                            scheduleWork(processChunk);
+                        }
+                    } catch (error) {
+                        reject(error);
+                    }
+                }
+                
+                processChunk();
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
+    // Fast compression for small objects (main thread)
+    async function compressSmallObject(data) {
+        const jsonString = JSON.stringify(data);
+        const textEncoder = new TextEncoder();
+        const uint8Array = textEncoder.encode(jsonString);
+        
+        const compressionStream = new CompressionStream('gzip');
+        const writer = compressionStream.writable.getWriter();
+        const reader = compressionStream.readable.getReader();
+        
+        writer.write(uint8Array);
+        writer.close();
+        
+        const chunks = [];
+        let totalLength = 0;
+        
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            totalLength += value.length;
+        }
+        
+        const compressedData = new Uint8Array(totalLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+            compressedData.set(chunk, offset);
+            offset += chunk.length;
+        }
+        
+        return compressedData;
+    }
+
+    // Alternative: Use transferable objects for maximum efficiency
+    async function compressLargeObjectTransferable(data) {
+        console.log("COMPRESSING LARGE OBJECT WITH TRANSFERABLE", data);
+        try {
+            // Stringify on main thread but non-blocking
+            const jsonString = await stringifyNonBlocking(data);
+            
+            // Convert to ArrayBuffer (transferable)
+            const encoder = new TextEncoder();
+            const uint8Array = encoder.encode(jsonString);
+            const buffer = uint8Array.buffer; // Use the original buffer for transfer
+            
+            return new Promise((resolve, reject) => {
+                if (!compressionWorker) {
+                    compressionWorker = createCompressionWorker();
+                    compressionWorker.onmessage = (e) => {
+                        const { id, success, data: result, error } = e.data;
+                        const promise = workerPromises.get(id);
+                        if (promise) {
+                            workerPromises.delete(id);
+                            if (success) {
+                                promise.resolve(result);
+                            } else {
+                                promise.reject(new Error(error));
+                            }
+                        }
+                    };
+                }
+                
+                const id = ++workerId;
+                workerPromises.set(id, { resolve, reject });
+                
+                // Transfer the ArrayBuffer (no copying!)
+                compressionWorker.postMessage({ 
+                    buffer, 
+                    id,
+                    useBuffer: true 
+                }, [buffer]);
+            });
+        } catch (error) {
+            console.warn('Failed to process large object with transferable:', error);
+            return compressSmallObject(data);
+        }
+    }
+
+    // Worker-based compression for large objects
+    async function compressLargeObject(data, isLarge = true) {
+        console.log("COMPRESSING LARGE OBJECT", data);
+        try {
+            // Use transferable objects for better performance
+            return await compressLargeObjectTransferable(data);
+        } catch (error) {
+            console.warn('Transferable failed, falling back to string method:', error);
+            // Fallback to string method
+            const jsonString = await stringifyNonBlocking(data);
+            
+            return new Promise((resolve, reject) => {
+                if (!compressionWorker) {
+                    compressionWorker = createCompressionWorker();
+                    compressionWorker.onmessage = (e) => {
+                        const { id, success, data: result, error } = e.data;
+                        const promise = workerPromises.get(id);
+                        if (promise) {
+                            workerPromises.delete(id);
+                            if (success) {
+                                promise.resolve(result);
+                            } else {
+                                promise.reject(new Error(error));
+                            }
+                        }
+                    };
+                }
+                
+                const id = ++workerId;
+                workerPromises.set(id, { resolve, reject });
+                compressionWorker.postMessage({ jsonString, id });
+            });
+        }
+    }
+
+    function isLargeEvent(type) {
+        const LARGE_EVENT_TYPES = [
+            2, // FullSnapshot
+            3, // IncrementalSnapshot
+        ];
+        
+        if (LARGE_EVENT_TYPES.includes(type)) {
+            return true;
+        }
+        
+        return false;
+    }
+
     async function sendBatchIfReady() {
-        if (window.lmnrRrwebEventsBatch.size > 0 && typeof window.lmnrSendEvents === 'function') {
-            const events = Array.from(window.lmnrRrwebEventsBatch);
-            window.lmnrRrwebEventsBatch = new Set();
+        if (window.lmnrRrwebEventsBatch.length > 0 && typeof window.lmnrSendEvents === 'function') {
+            const events = window.lmnrRrwebEventsBatch;
+            window.lmnrRrwebEventsBatch = [];
             
             try {
                 await window.lmnrSendEvents(events);
@@ -75,7 +302,6 @@ INJECT_PLACEHOLDER = """
         }
     }
 
-    // Set up periodic sending every 2 seconds
     setInterval(sendBatchIfReady, BATCH_TIMEOUT);
 
     // Add heartbeat events
@@ -88,15 +314,19 @@ INJECT_PLACEHOLDER = """
 
     window.lmnrRrweb.record({
         async emit(event) {    
-            // Compress the data field
-            const compressedEvent = {
-                ...event,
-                data: await compressEventData(event.data)
-            };
-            window.lmnrRrwebEventsBatch.add(compressedEvent);
-            // Send immediately if batch is full
-            if (window.lmnrRrwebEventsBatch.size >= BATCH_SIZE) {
-                await sendBatchIfReady();
+            try {
+                const isLarge = isLargeEvent(event.type);
+                const compressedResult = isLarge ? 
+                    await compressLargeObject(event.data, true) : 
+                    await compressSmallObject(event.data);
+            
+                const eventToSend = {
+                    ...event,
+                    data: compressedResult,
+                };
+                window.lmnrRrwebEventsBatch.push(eventToSend);
+            } catch (error) {
+                console.warn('Failed to push event to batch', error);
             }
         },
         recordCanvas: true,
@@ -164,9 +394,6 @@ def send_events_sync(
 
 def inject_session_recorder_sync(page: SyncPage):
     try:
-        page.wait_for_load_state("domcontentloaded")
-
-        # Wrap the evaluate call in a try-catch
         try:
             is_loaded = page.evaluate(
                 """() => typeof window.lmnrRrweb !== 'undefined'"""
@@ -203,9 +430,6 @@ def inject_session_recorder_sync(page: SyncPage):
 
 async def inject_session_recorder_async(page: Page):
     try:
-        await page.wait_for_load_state("domcontentloaded")
-
-        # Wrap the evaluate call in a try-catch
         try:
             is_loaded = await page.evaluate(
                 """() => typeof window.lmnrRrweb !== 'undefined'"""
@@ -241,22 +465,15 @@ async def inject_session_recorder_async(page: Page):
 
 
 @observe(name="playwright.page", ignore_input=True, ignore_output=True)
-def handle_navigation_sync(page: SyncPage, session_id: str, client: LaminarClient):
+def start_recording_events_sync(page: SyncPage, session_id: str, client: LaminarClient):
     
     ctx = _get_current_context()
     span = trace.get_current_span(ctx)
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
  
-    # Expose function to browser so it can call us when events are ready
-    def send_events_from_browser(events):
-        try:
-            if events and len(events) > 0:
-                client._browser_events.send(session_id, trace_id, events)
-        except Exception as e:
-            logger.debug(f"Could not send events: {e}")
-
-    page.expose_function("lmnrSendEvents", send_events_from_browser)
+    if page.evaluate("""() => typeof window.lmnrSendEvents !== 'undefined'"""):
+        return
 
     def on_load():
         try:
@@ -272,11 +489,26 @@ def handle_navigation_sync(page: SyncPage, session_id: str, client: LaminarClien
 
     page.on("load", on_load)
     page.on("close", on_close)
+
     inject_session_recorder_sync(page)
+
+    # Expose function to browser so it can call us when events are ready
+    def send_events_from_browser(events):
+        try:
+            if events and len(events) > 0:
+                client._browser_events.send(session_id, trace_id, events)
+        except Exception as e:
+            logger.debug(f"Could not send events: {e}")
+
+    try:
+        page.expose_function("lmnrSendEvents", send_events_from_browser)
+    except Exception as e:
+        logger.debug(f"Could not expose function: {e}")
+
 
 
 @observe(name="playwright.page", ignore_input=True, ignore_output=True)
-async def handle_navigation_async(
+async def start_recording_events_async(
     page: Page, session_id: str, client: AsyncLaminarClient
 ):
 
@@ -285,15 +517,9 @@ async def handle_navigation_async(
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
 
-    # Expose function to browser so it can call us when events are ready
-    async def send_events_from_browser(events):
-        try:
-            if events and len(events) > 0:
-                await client._browser_events.send(session_id, trace_id, events)
-        except Exception as e:
-            logger.debug(f"Could not send events: {e}")
-
-    await page.expose_function("lmnrSendEvents", send_events_from_browser)
+    if await page.evaluate("""() => typeof window.lmnrSendEvents !== 'undefined'"""):
+        logger.info("lmnrSendEvents already exposed")
+        return
 
     async def on_load(p):
         try:
@@ -312,3 +538,17 @@ async def handle_navigation_async(
     page.on("close", on_close)
 
     await inject_session_recorder_async(page)
+
+    async def send_events_from_browser(events):
+        try:
+            if events and len(events) > 0:
+                print("SENDING EVENTS", len(events))
+                await client._browser_events.send(session_id, trace_id, events)
+        except Exception as e:
+            logger.debug(f"Could not send events: {e}")
+    try:
+        await page.expose_function("lmnrSendEvents", send_events_from_browser)
+        print("EXPOSED FUNCTION lmnrSendEvents")
+    except Exception as e:
+        logger.debug(f"Could not expose function: {e}")
+

@@ -2,7 +2,7 @@ import logging
 import uuid
 
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
-from lmnr.sdk.browser.pw_utils import handle_navigation_async, handle_navigation_sync
+from lmnr.sdk.browser.pw_utils import start_recording_events_async, start_recording_events_sync
 from lmnr.sdk.browser.utils import with_tracer_and_client_wrapper
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
@@ -56,7 +56,7 @@ def _wrap_new_page(
 ):
     page = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
-    handle_navigation_sync(page, session_id, client)
+    start_recording_events_sync(page, session_id, client)
     return page
 
 
@@ -66,7 +66,7 @@ async def _wrap_new_page_async(
 ):
     page = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
-    await handle_navigation_async(page, session_id, client)
+    await start_recording_events_async(page, session_id, client)
     return page
 
 
@@ -78,7 +78,10 @@ def _wrap_new_browser_sync(
     session_id = str(uuid.uuid4().hex)
     for context in browser.contexts:
         for page in context.pages:
-            handle_navigation_sync(page, session_id, client)
+            start_recording_events_sync(page, session_id, client)
+        
+        context.on("page", lambda p: start_recording_events_sync(p, session_id, client))
+
     return browser
 
 
@@ -91,7 +94,9 @@ async def _wrap_new_browser_async(
     
     for context in browser.contexts:
         for page in context.pages:
-            await handle_navigation_async(page, session_id, client)
+            await start_recording_events_async(page, session_id, client)
+
+        context.on("page", lambda p: start_recording_events_async(p, session_id, client))
     return browser
 
 
@@ -103,7 +108,10 @@ def _wrap_new_context_sync(
     session_id = str(uuid.uuid4().hex)
 
     for page in context.pages:
-        handle_navigation_sync(page, session_id, client)
+        start_recording_events_sync(page, session_id, client)
+
+    context.on("page", lambda p: start_recording_events_sync(p, session_id, client))
+
     return context
 
 
@@ -133,7 +141,10 @@ async def _wrap_new_context_async(
     session_id = str(uuid.uuid4().hex)
 
     for page in context.pages:
-        await handle_navigation_async(page, session_id, client)
+        await start_recording_events_async(page, session_id, client)
+    
+    context.on("page", lambda p: start_recording_events_async(p, session_id, client))
+
     return context
 
 
@@ -154,7 +165,6 @@ async def _wrap_bring_to_front_async(
         }
     }"""
     )
-
 
 WRAPPED_METHODS = [
     {
