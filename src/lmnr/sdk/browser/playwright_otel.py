@@ -57,6 +57,8 @@ def _wrap_new_browser_sync(
     
     for context in browser.contexts:
         context.on("page", lambda p: start_recording_events_sync(p, session_id, client))
+        for page in context.pages:
+            start_recording_events_sync(page, session_id, client)
 
     return browser
 
@@ -70,6 +72,8 @@ async def _wrap_new_browser_async(
     
     for context in browser.contexts:
         context.on("page", lambda p: start_recording_events_async(p, session_id, client))
+        for page in context.pages:
+            await start_recording_events_async(page, session_id, client)
     return browser
 
 
@@ -81,6 +85,22 @@ def _wrap_new_context_sync(
     session_id = str(uuid.uuid4().hex)
 
     context.on("page", lambda p: start_recording_events_sync(p, session_id, client))
+    for page in context.pages:
+        start_recording_events_sync(page, session_id, client)
+
+    return context
+
+
+@with_tracer_and_client_wrapper
+async def _wrap_new_context_async(
+    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
+):
+    context: BrowserContext = await wrapped(*args, **kwargs)
+    session_id = str(uuid.uuid4().hex)
+    
+    context.on("page", lambda p: start_recording_events_async(p, session_id, client))
+    for page in context.pages:
+        await start_recording_events_async(page, session_id, client)
 
     return context
 
@@ -101,18 +121,6 @@ def _wrap_bring_to_front_sync(
         }
     }"""
     )
-
-
-@with_tracer_and_client_wrapper
-async def _wrap_new_context_async(
-    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
-):
-    context: BrowserContext = await wrapped(*args, **kwargs)
-    session_id = str(uuid.uuid4().hex)
-    
-    context.on("page", lambda p: start_recording_events_async(p, session_id, client))
-
-    return context
 
 
 @with_tracer_and_client_wrapper

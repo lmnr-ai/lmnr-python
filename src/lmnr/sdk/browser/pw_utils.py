@@ -464,7 +464,8 @@ async def inject_session_recorder_async(page: Page):
 
 @observe(name="playwright.page", ignore_input=True, ignore_output=True)
 def start_recording_events_sync(page: SyncPage, session_id: str, client: LaminarClient):
-    
+    print("STARTING RECORDING EVENTS SYNC", page)
+
     ctx = _get_current_context()
     span = trace.get_current_span(ctx)
     trace_id = format(span.get_span_context().trace_id, "032x")
