@@ -49,26 +49,6 @@ logger = logging.getLogger(__name__)
 
 
 @with_tracer_and_client_wrapper
-def _wrap_new_page(
-    tracer: Tracer, client: LaminarClient, to_wrap, wrapped, instance, args, kwargs
-):
-    page = wrapped(*args, **kwargs)
-    session_id = str(uuid.uuid4().hex)
-    start_recording_events_sync(page, session_id, client)
-    return page
-
-
-@with_tracer_and_client_wrapper
-async def _wrap_new_page_async(
-    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
-):
-    page = await wrapped(*args, **kwargs)
-    session_id = str(uuid.uuid4().hex)
-    await start_recording_events_async(page, session_id, client)
-    return page
-
-
-@with_tracer_and_client_wrapper
 def _wrap_new_browser_sync(
     tracer: Tracer, client: LaminarClient, to_wrap, wrapped, instance, args, kwargs
 ):
@@ -156,8 +136,32 @@ async def _wrap_bring_to_front_async(
 WRAPPED_METHODS = [
     {
         "package": "playwright.sync_api",
+        "object": "BrowserType",
+        "method": "launch",
+        "wrapper": _wrap_new_browser_sync,
+    },
+    {
+        "package": "playwright.sync_api",
+        "object": "BrowserType",
+        "method": "connect",
+        "wrapper": _wrap_new_browser_sync,
+    },
+    {
+        "package": "playwright.sync_api",
+        "object": "BrowserType",
+        "method": "connect_over_cdp",
+        "wrapper": _wrap_new_browser_sync,
+    },
+    {
+        "package": "playwright.sync_api",
         "object": "Browser",
         "method": "new_context",
+        "wrapper": _wrap_new_context_sync,
+    },
+    {
+        "package": "playwright.sync_api",
+        "object": "BrowserType",
+        "method": "launch_persistent_context",
         "wrapper": _wrap_new_context_sync,
     },
     {
@@ -171,8 +175,32 @@ WRAPPED_METHODS = [
 WRAPPED_METHODS_ASYNC = [
     {
         "package": "playwright.async_api",
+        "object": "BrowserType",
+        "method": "launch",
+        "wrapper": _wrap_new_browser_async,
+    },
+    {
+        "package": "playwright.async_api",
+        "object": "BrowserType",
+        "method": "connect",
+        "wrapper": _wrap_new_browser_async,
+    },
+    {
+        "package": "playwright.async_api",
+        "object": "BrowserType",
+        "method": "connect_over_cdp",
+        "wrapper": _wrap_new_browser_async,
+    },
+    {
+        "package": "playwright.async_api",
         "object": "Browser",
         "method": "new_context",
+        "wrapper": _wrap_new_context_async,
+    },
+    {
+        "package": "playwright.async_api",
+        "object": "BrowserType",
+        "method": "launch_persistent_context",
         "wrapper": _wrap_new_context_async,
     },
     {
