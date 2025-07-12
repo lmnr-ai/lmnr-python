@@ -19,18 +19,16 @@ from wrapt import wrap_function_wrapper
 
 try:
     if is_package_installed("playwright"):
-        from playwright.async_api import Browser, BrowserContext, Page
+        from playwright.async_api import Browser, BrowserContext
         from playwright.sync_api import (
             Browser as SyncBrowser,
             BrowserContext as SyncBrowserContext,
-            Page as SyncPage,
         )
     elif is_package_installed("patchright"):
-        from patchright.async_api import Browser, BrowserContext, Page
+        from patchright.async_api import Browser, BrowserContext
         from patchright.sync_api import (
             Browser as SyncBrowser,
             BrowserContext as SyncBrowserContext,
-            Page as SyncPage,
         )
     else:
         raise ImportError(
@@ -76,10 +74,8 @@ def _wrap_new_browser_sync(
 ):
     browser: SyncBrowser = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
+    
     for context in browser.contexts:
-        for page in context.pages:
-            start_recording_events_sync(page, session_id, client)
-        
         context.on("page", lambda p: start_recording_events_sync(p, session_id, client))
 
     return browser
@@ -93,9 +89,6 @@ async def _wrap_new_browser_async(
     session_id = str(uuid.uuid4().hex)
     
     for context in browser.contexts:
-        for page in context.pages:
-            await start_recording_events_async(page, session_id, client)
-
         context.on("page", lambda p: start_recording_events_async(p, session_id, client))
     return browser
 
@@ -106,9 +99,6 @@ def _wrap_new_context_sync(
 ):
     context: SyncBrowserContext = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
-
-    for page in context.pages:
-        start_recording_events_sync(page, session_id, client)
 
     context.on("page", lambda p: start_recording_events_sync(p, session_id, client))
 
@@ -139,9 +129,6 @@ async def _wrap_new_context_async(
 ):
     context: BrowserContext = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
-
-    for page in context.pages:
-        await start_recording_events_async(page, session_id, client)
     
     context.on("page", lambda p: start_recording_events_async(p, session_id, client))
 
@@ -169,44 +156,8 @@ async def _wrap_bring_to_front_async(
 WRAPPED_METHODS = [
     {
         "package": "playwright.sync_api",
-        "object": "BrowserContext",
-        "method": "new_page",
-        "wrapper": _wrap_new_page,
-    },
-    {
-        "package": "playwright.sync_api",
-        "object": "Browser",
-        "method": "new_page",
-        "wrapper": _wrap_new_page,
-    },
-    {
-        "package": "playwright.sync_api",
-        "object": "BrowserType",
-        "method": "launch",
-        "wrapper": _wrap_new_browser_sync,
-    },
-    {
-        "package": "playwright.sync_api",
-        "object": "BrowserType",
-        "method": "connect",
-        "wrapper": _wrap_new_browser_sync,
-    },
-    {
-        "package": "playwright.sync_api",
-        "object": "BrowserType",
-        "method": "connect_over_cdp",
-        "wrapper": _wrap_new_browser_sync,
-    },
-    {
-        "package": "playwright.sync_api",
         "object": "Browser",
         "method": "new_context",
-        "wrapper": _wrap_new_context_sync,
-    },
-    {
-        "package": "playwright.sync_api",
-        "object": "BrowserType",
-        "method": "launch_persistent_context",
         "wrapper": _wrap_new_context_sync,
     },
     {
@@ -220,44 +171,8 @@ WRAPPED_METHODS = [
 WRAPPED_METHODS_ASYNC = [
     {
         "package": "playwright.async_api",
-        "object": "BrowserContext",
-        "method": "new_page",
-        "wrapper": _wrap_new_page_async,
-    },
-    {
-        "package": "playwright.async_api",
-        "object": "Browser",
-        "method": "new_page",
-        "wrapper": _wrap_new_page_async,
-    },
-    {
-        "package": "playwright.async_api",
-        "object": "BrowserType",
-        "method": "launch",
-        "wrapper": _wrap_new_browser_async,
-    },
-    {
-        "package": "playwright.async_api",
-        "object": "BrowserType",
-        "method": "connect",
-        "wrapper": _wrap_new_browser_async,
-    },
-    {
-        "package": "playwright.async_api",
-        "object": "BrowserType",
-        "method": "connect_over_cdp",
-        "wrapper": _wrap_new_browser_async,
-    },
-    {
-        "package": "playwright.async_api",
         "object": "Browser",
         "method": "new_context",
-        "wrapper": _wrap_new_context_async,
-    },
-    {
-        "package": "playwright.async_api",
-        "object": "BrowserType",
-        "method": "launch_persistent_context",
         "wrapper": _wrap_new_context_async,
     },
     {

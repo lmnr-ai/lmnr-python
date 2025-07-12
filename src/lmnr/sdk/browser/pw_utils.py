@@ -198,7 +198,6 @@ INJECT_PLACEHOLDER = """
 
     // Alternative: Use transferable objects for maximum efficiency
     async function compressLargeObjectTransferable(data) {
-        console.log("COMPRESSING LARGE OBJECT WITH TRANSFERABLE", data);
         try {
             // Stringify on main thread but non-blocking
             const jsonString = await stringifyNonBlocking(data);
@@ -243,7 +242,6 @@ INJECT_PLACEHOLDER = """
 
     // Worker-based compression for large objects
     async function compressLargeObject(data, isLarge = true) {
-        console.log("COMPRESSING LARGE OBJECT", data);
         try {
             // Use transferable objects for better performance
             return await compressLargeObjectTransferable(data);
@@ -511,7 +509,6 @@ def start_recording_events_sync(page: SyncPage, session_id: str, client: Laminar
 async def start_recording_events_async(
     page: Page, session_id: str, client: AsyncLaminarClient
 ):
-
     ctx = _get_current_context()
     span = trace.get_current_span(ctx)
     trace_id = format(span.get_span_context().trace_id, "032x")
@@ -542,13 +539,11 @@ async def start_recording_events_async(
     async def send_events_from_browser(events):
         try:
             if events and len(events) > 0:
-                print("SENDING EVENTS", len(events))
                 await client._browser_events.send(session_id, trace_id, events)
         except Exception as e:
             logger.debug(f"Could not send events: {e}")
     try:
         await page.expose_function("lmnrSendEvents", send_events_from_browser)
-        print("EXPOSED FUNCTION lmnrSendEvents")
     except Exception as e:
         logger.debug(f"Could not expose function: {e}")
 
