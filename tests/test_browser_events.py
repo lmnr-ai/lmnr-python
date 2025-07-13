@@ -182,15 +182,15 @@ class TestBrowserEvents:
 
         # Verify that the wrapped methods have the expected structure
         expected_methods = [
-            "new_page",
             "launch",
             "new_context",
             "connect",
             "connect_over_cdp",
             "launch_persistent_context",
+            "bring_to_front",
         ]
 
-        expected_objects = ["BrowserContext", "Browser", "BrowserType"]
+        expected_objects = ["BrowserContext", "Browser", "BrowserType", "Page"]
 
         # Check sync methods
         sync_methods = set()

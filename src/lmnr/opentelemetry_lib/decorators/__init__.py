@@ -238,9 +238,7 @@ def async_observe_base(
             wrapper = TracerWrapper()
 
             span = _setup_span(span_name, span_type, association_properties)
-            # Push this span's context onto the stack for nested calls
             new_context = wrapper.push_span_context(span)
-            # Also set up global context for nested OpenTelemetry instrumentation
             ctx_token = context_api.attach(new_context)
 
             _process_input(
