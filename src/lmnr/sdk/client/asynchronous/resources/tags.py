@@ -5,6 +5,7 @@ import uuid
 
 from lmnr.sdk.client.asynchronous.resources.base import BaseAsyncResource
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.utils import format_id
 
 logger = get_default_logger(__name__)
 
@@ -54,18 +55,11 @@ class AsyncTags(BaseAsyncResource):
         ```
         """
         trace_tags = tags if isinstance(tags, list) else [tags]
-        if isinstance(trace_id, uuid.UUID):
-            trace_id = str(trace_id)
-        elif isinstance(trace_id, int):
-            trace_id = str(uuid.UUID(int=trace_id))
-        elif isinstance(trace_id, str):
-            uuid.UUID(trace_id)  # Will raise ValueError if invalid
-        else:
-            raise ValueError(f"Invalid trace id: {trace_id}")
+        formatted_trace_id = format_id(trace_id)
 
         url = self._base_url + "/v1/tag"
         payload = {
-            "traceId": trace_id,
+            "traceId": formatted_trace_id,
             "names": trace_tags,
         }
         response = await self._client.post(
@@ -78,7 +72,7 @@ class AsyncTags(BaseAsyncResource):
 
         if response.status_code == 404:
             logger.warning(
-                f"Trace {trace_id} not found. The trace may have not been ended yet."
+                f"Trace {formatted_trace_id} not found. The trace may have not been ended yet."
             )
             return []
 
