@@ -2,7 +2,12 @@ import logging
 import uuid
 
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
-from lmnr.sdk.browser.pw_utils import handle_navigation_async, handle_navigation_sync
+from lmnr.sdk.browser.pw_utils import (
+    start_recording_events_async,
+    start_recording_events_sync,
+    take_full_snapshot,
+    take_full_snapshot_async,
+)
 from lmnr.sdk.browser.utils import with_tracer_and_client_wrapper
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
@@ -19,18 +24,16 @@ from wrapt import wrap_function_wrapper
 
 try:
     if is_package_installed("playwright"):
-        from playwright.async_api import Browser, BrowserContext, Page
+        from playwright.async_api import Browser, BrowserContext
         from playwright.sync_api import (
             Browser as SyncBrowser,
             BrowserContext as SyncBrowserContext,
-            Page as SyncPage,
         )
     elif is_package_installed("patchright"):
-        from patchright.async_api import Browser, BrowserContext, Page
+        from patchright.async_api import Browser, BrowserContext
         from patchright.sync_api import (
             Browser as SyncBrowser,
             BrowserContext as SyncBrowserContext,
-            Page as SyncPage,
         )
     else:
         raise ImportError(
@@ -51,43 +54,17 @@ logger = logging.getLogger(__name__)
 
 
 @with_tracer_and_client_wrapper
-def _wrap_new_page(
-    tracer: Tracer, client: LaminarClient, to_wrap, wrapped, instance, args, kwargs
-):
-    page = wrapped(*args, **kwargs)
-    session_id = str(uuid.uuid4().hex)
-    handle_navigation_sync(page, session_id, client)
-    return page
-
-
-@with_tracer_and_client_wrapper
-async def _wrap_new_page_async(
-    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
-):
-    page = await wrapped(*args, **kwargs)
-    session_id = str(uuid.uuid4().hex)
-    await handle_navigation_async(page, session_id, client)
-    return page
-
-
-@with_tracer_and_client_wrapper
 def _wrap_new_browser_sync(
     tracer: Tracer, client: LaminarClient, to_wrap, wrapped, instance, args, kwargs
 ):
     browser: SyncBrowser = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
+
     for context in browser.contexts:
-
-        def handle_page_navigation(page: SyncPage):
-            return handle_navigation_sync(page, session_id, client)
-
-        context.on(
-            "page",
-            handle_page_navigation,
-        )
-
+        context.on("page", lambda p: start_recording_events_sync(p, session_id, client))
         for page in context.pages:
-            handle_navigation_sync(page, session_id, client)
+            start_recording_events_sync(page, session_id, client)
+
     return browser
 
 
@@ -97,14 +74,13 @@ async def _wrap_new_browser_async(
 ):
     browser: Browser = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
+
     for context in browser.contexts:
-
-        async def handle_page_navigation(page: Page):
-            return await handle_navigation_async(page, session_id, client)
-
-        context.on("page", handle_page_navigation)
+        context.on(
+            "page", lambda p: start_recording_events_async(p, session_id, client)
+        )
         for page in context.pages:
-            await handle_navigation_async(page, session_id, client)
+            await start_recording_events_async(page, session_id, client)
     return browser
 
 
@@ -115,15 +91,10 @@ def _wrap_new_context_sync(
     context: SyncBrowserContext = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
 
-    def handle_page_navigation(page: SyncPage):
-        return handle_navigation_sync(page, session_id, client)
-
-    context.on(
-        "page",
-        handle_page_navigation,
-    )
+    context.on("page", lambda p: start_recording_events_sync(p, session_id, client))
     for page in context.pages:
-        handle_navigation_sync(page, session_id, client)
+        start_recording_events_sync(page, session_id, client)
+
     return context
 
 
@@ -134,28 +105,30 @@ async def _wrap_new_context_async(
     context: BrowserContext = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
 
-    async def handle_page_navigation(page):
-        return await handle_navigation_async(page, session_id, client)
-
-    context.on("page", handle_page_navigation)
+    context.on("page", lambda p: start_recording_events_async(p, session_id, client))
     for page in context.pages:
-        await handle_navigation_async(page, session_id, client)
+        await start_recording_events_async(page, session_id, client)
+
     return context
 
 
+@with_tracer_and_client_wrapper
+def _wrap_bring_to_front_sync(
+    tracer: Tracer, client: LaminarClient, to_wrap, wrapped, instance, args, kwargs
+):
+    wrapped(*args, **kwargs)
+    take_full_snapshot(instance)
+
+
+@with_tracer_and_client_wrapper
+async def _wrap_bring_to_front_async(
+    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
+):
+    await wrapped(*args, **kwargs)
+    await take_full_snapshot_async(instance)
+
+
 WRAPPED_METHODS = [
-    {
-        "package": "playwright.sync_api",
-        "object": "BrowserContext",
-        "method": "new_page",
-        "wrapper": _wrap_new_page,
-    },
-    {
-        "package": "playwright.sync_api",
-        "object": "Browser",
-        "method": "new_page",
-        "wrapper": _wrap_new_page,
-    },
     {
         "package": "playwright.sync_api",
         "object": "BrowserType",
@@ -185,24 +158,18 @@ WRAPPED_METHODS = [
         "object": "BrowserType",
         "method": "launch_persistent_context",
         "wrapper": _wrap_new_context_sync,
+    },
+    {
+        "package": "playwright.sync_api",
+        "object": "Page",
+        "method": "bring_to_front",
+        "wrapper": _wrap_bring_to_front_sync,
     },
 ]
 
 WRAPPED_METHODS_ASYNC = [
     {
         "package": "playwright.async_api",
-        "object": "BrowserContext",
-        "method": "new_page",
-        "wrapper": _wrap_new_page_async,
-    },
-    {
-        "package": "playwright.async_api",
-        "object": "Browser",
-        "method": "new_page",
-        "wrapper": _wrap_new_page_async,
-    },
-    {
-        "package": "playwright.async_api",
         "object": "BrowserType",
         "method": "launch",
         "wrapper": _wrap_new_browser_async,
@@ -230,6 +197,12 @@ WRAPPED_METHODS_ASYNC = [
         "object": "BrowserType",
         "method": "launch_persistent_context",
         "wrapper": _wrap_new_context_async,
+    },
+    {
+        "package": "playwright.async_api",
+        "object": "Page",
+        "method": "bring_to_front",
+        "wrapper": _wrap_bring_to_front_async,
     },
 ]
 

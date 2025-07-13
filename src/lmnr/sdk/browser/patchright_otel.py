@@ -1,6 +1,4 @@
 from lmnr.sdk.browser.playwright_otel import (
-    _wrap_new_page,
-    _wrap_new_page_async,
     _wrap_new_browser_sync,
     _wrap_new_browser_async,
     _wrap_new_context_sync,
@@ -18,18 +16,6 @@ from wrapt import wrap_function_wrapper
 _instruments = ("patchright >= 1.9.0",)
 
 WRAPPED_METHODS = [
-    {
-        "package": "patchright.sync_api",
-        "object": "BrowserContext",
-        "method": "new_page",
-        "wrapper": _wrap_new_page,
-    },
-    {
-        "package": "patchright.sync_api",
-        "object": "Browser",
-        "method": "new_page",
-        "wrapper": _wrap_new_page,
-    },
     {
         "package": "patchright.sync_api",
         "object": "BrowserType",
@@ -63,18 +49,6 @@ WRAPPED_METHODS = [
 ]
 
 WRAPPED_METHODS_ASYNC = [
-    {
-        "package": "patchright.async_api",
-        "object": "BrowserContext",
-        "method": "new_page",
-        "wrapper": _wrap_new_page_async,
-    },
-    {
-        "package": "patchright.async_api",
-        "object": "Browser",
-        "method": "new_page",
-        "wrapper": _wrap_new_page_async,
-    },
     {
         "package": "patchright.async_api",
         "object": "BrowserType",
