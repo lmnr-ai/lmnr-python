@@ -13,6 +13,6 @@ def is_package_installed(package_name: str) -> bool:
 
 def get_package_version(package_name: str) -> Optional[str]:
     for dist in distributions():
-        if dist.name == package_name:
+        if (dist.name or dist.metadata.get("Name", "")).lower() == package_name.lower():
             return dist.version
     return None
