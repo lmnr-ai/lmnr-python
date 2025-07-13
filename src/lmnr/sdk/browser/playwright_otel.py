@@ -5,6 +5,8 @@ from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from lmnr.sdk.browser.pw_utils import (
     start_recording_events_async,
     start_recording_events_sync,
+    take_full_snapshot,
+    take_full_snapshot_async,
 )
 from lmnr.sdk.browser.utils import with_tracer_and_client_wrapper
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
@@ -115,17 +117,7 @@ def _wrap_bring_to_front_sync(
     tracer: Tracer, client: LaminarClient, to_wrap, wrapped, instance, args, kwargs
 ):
     wrapped(*args, **kwargs)
-    instance.evaluate(
-        """() => {
-        if (window.lmnrRrweb) {
-            try {
-                window.lmnrRrweb.record.takeFullSnapshot();
-            } catch (e) {
-                console.error("Error taking full snapshot:", e);
-            }
-        }
-    }"""
-    )
+    take_full_snapshot(instance)
 
 
 @with_tracer_and_client_wrapper
@@ -133,18 +125,7 @@ async def _wrap_bring_to_front_async(
     tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
 ):
     await wrapped(*args, **kwargs)
-
-    await instance.evaluate(
-        """() => {
-        if (window.lmnrRrweb) {
-            try {
-                window.lmnrRrweb.record.takeFullSnapshot();
-            } catch (e) {
-                console.error("Error taking full snapshot:", e);
-            }
-        }
-    }"""
-    )
+    await take_full_snapshot_async(instance)
 
 
 WRAPPED_METHODS = [

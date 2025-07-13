@@ -468,8 +468,11 @@ def start_recording_events_sync(page: SyncPage, session_id: str, client: Laminar
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
 
-    if page.evaluate("""() => typeof window.lmnrSendEvents !== 'undefined'"""):
-        return
+    try:
+        if page.evaluate("""() => typeof window.lmnrSendEvents !== 'undefined'"""):
+            return
+    except Exception:
+        pass
 
     def on_load():
         try:
@@ -511,9 +514,11 @@ async def start_recording_events_async(
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
 
-    if await page.evaluate("""() => typeof window.lmnrSendEvents !== 'undefined'"""):
-        logger.info("lmnrSendEvents already exposed")
-        return
+    try:
+        if await page.evaluate("""() => typeof window.lmnrSendEvents !== 'undefined'"""):
+            return
+    except Exception:
+        pass
 
     async def on_load(p):
         try:
@@ -544,3 +549,36 @@ async def start_recording_events_async(
         await page.expose_function("lmnrSendEvents", send_events_from_browser)
     except Exception as e:
         logger.debug(f"Could not expose function: {e}")
+
+
+def take_full_snapshot(page: Page):
+    return page.evaluate(
+        """() => {
+        if (window.lmnrRrweb) {
+            try {
+                window.lmnrRrweb.record.takeFullSnapshot();
+                return true;
+            } catch (e) {
+                console.error("Error taking full snapshot:", e);
+                return false;
+            }
+        }
+        return false;
+    }"""
+    )
+
+async def take_full_snapshot_async(page: Page):
+    return await page.evaluate(
+        """() => {
+        if (window.lmnrRrweb) {
+            try {
+                window.lmnrRrweb.record.takeFullSnapshot();
+                return true;
+            } catch (e) {
+                console.error("Error taking full snapshot:", e);
+                return false;
+            }
+        }
+        return false;
+    }"""
+    )
