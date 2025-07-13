@@ -2,7 +2,10 @@ import logging
 import uuid
 
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
-from lmnr.sdk.browser.pw_utils import start_recording_events_async, start_recording_events_sync
+from lmnr.sdk.browser.pw_utils import (
+    start_recording_events_async,
+    start_recording_events_sync,
+)
 from lmnr.sdk.browser.utils import with_tracer_and_client_wrapper
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
@@ -54,7 +57,7 @@ def _wrap_new_browser_sync(
 ):
     browser: SyncBrowser = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
-    
+
     for context in browser.contexts:
         context.on("page", lambda p: start_recording_events_sync(p, session_id, client))
         for page in context.pages:
@@ -69,9 +72,11 @@ async def _wrap_new_browser_async(
 ):
     browser: Browser = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
-    
+
     for context in browser.contexts:
-        context.on("page", lambda p: start_recording_events_async(p, session_id, client))
+        context.on(
+            "page", lambda p: start_recording_events_async(p, session_id, client)
+        )
         for page in context.pages:
             await start_recording_events_async(page, session_id, client)
     return browser
@@ -97,7 +102,7 @@ async def _wrap_new_context_async(
 ):
     context: BrowserContext = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
-    
+
     context.on("page", lambda p: start_recording_events_async(p, session_id, client))
     for page in context.pages:
         await start_recording_events_async(page, session_id, client)
@@ -140,6 +145,7 @@ async def _wrap_bring_to_front_async(
         }
     }"""
     )
+
 
 WRAPPED_METHODS = [
     {

@@ -1,7 +1,5 @@
-import asyncio
 import logging
 import os
-import threading
 
 from opentelemetry import trace
 
@@ -43,7 +41,7 @@ INJECT_PLACEHOLDER = """
     const BATCH_TIMEOUT = 2000; // Send events after 2 seconds
 
     window.lmnrRrwebEventsBatch = [];
-    
+
     // Create a Web Worker for heavy JSON processing with chunked processing
     const createCompressionWorker = () => {
         const workerCode = `
@@ -51,7 +49,7 @@ INJECT_PLACEHOLDER = """
                 const { jsonString, buffer, id, useBuffer } = e.data;
                 try {
                     let uint8Array;
-                    
+
                     if (useBuffer && buffer) {
                         // Use transferred ArrayBuffer (no copying needed!)
                         uint8Array = new Uint8Array(buffer);
@@ -60,38 +58,38 @@ INJECT_PLACEHOLDER = """
                         const textEncoder = new TextEncoder();
                         uint8Array = textEncoder.encode(jsonString);
                     }
-                    
+
                     const compressionStream = new CompressionStream('gzip');
                     const writer = compressionStream.writable.getWriter();
                     const reader = compressionStream.readable.getReader();
-                    
+
                     writer.write(uint8Array);
                     writer.close();
-                    
+
                     const chunks = [];
                     let totalLength = 0;
-                    
+
                     while (true) {
                         const { done, value } = await reader.read();
                         if (done) break;
                         chunks.push(value);
                         totalLength += value.length;
                     }
-                    
+
                     const compressedData = new Uint8Array(totalLength);
                     let offset = 0;
                     for (const chunk of chunks) {
                         compressedData.set(chunk, offset);
                         offset += chunk.length;
                     }
-                    
+
                     self.postMessage({ id, success: true, data: compressedData });
                 } catch (error) {
                     self.postMessage({ id, success: false, error: error.message });
                 }
             };
         `;
-        
+
         const blob = new Blob([workerCode], { type: 'application/javascript' });
         return new Worker(URL.createObjectURL(blob));
     };
@@ -106,18 +104,18 @@ INJECT_PLACEHOLDER = """
             try {
                 // For very large objects, we need to be more careful
                 // Use requestIdleCallback if available, otherwise setTimeout
-                const scheduleWork = window.requestIdleCallback || 
+                const scheduleWork = window.requestIdleCallback ||
                     ((cb) => setTimeout(cb, 0));
-                
+
                 let result = '';
                 let keys = [];
                 let keyIndex = 0;
-                
+
                 // Pre-process to get all keys if it's an object
                 if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
                     keys = Object.keys(obj);
                 }
-                
+
                 function processChunk() {
                     try {
                         if (Array.isArray(obj) || typeof obj !== 'object' || obj === null) {
@@ -126,24 +124,24 @@ INJECT_PLACEHOLDER = """
                             resolve(result);
                             return;
                         }
-                        
+
                         // For objects, process in chunks
                         const endIndex = Math.min(keyIndex + chunkSize, keys.length);
-                        
+
                         if (keyIndex === 0) {
                             result = '{';
                         }
-                        
+
                         for (let i = keyIndex; i < endIndex; i++) {
                             const key = keys[i];
                             const value = obj[key];
-                            
+
                             if (i > 0) result += ',';
                             result += JSON.stringify(key) + ':' + JSON.stringify(value);
                         }
-                        
+
                         keyIndex = endIndex;
-                        
+
                         if (keyIndex >= keys.length) {
                             result += '}';
                             resolve(result);
@@ -155,7 +153,7 @@ INJECT_PLACEHOLDER = """
                         reject(error);
                     }
                 }
-                
+
                 processChunk();
             } catch (error) {
                 reject(error);
@@ -168,31 +166,31 @@ INJECT_PLACEHOLDER = """
         const jsonString = JSON.stringify(data);
         const textEncoder = new TextEncoder();
         const uint8Array = textEncoder.encode(jsonString);
-        
+
         const compressionStream = new CompressionStream('gzip');
         const writer = compressionStream.writable.getWriter();
         const reader = compressionStream.readable.getReader();
-        
+
         writer.write(uint8Array);
         writer.close();
-        
+
         const chunks = [];
         let totalLength = 0;
-        
+
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             chunks.push(value);
             totalLength += value.length;
         }
-        
+
         const compressedData = new Uint8Array(totalLength);
         let offset = 0;
         for (const chunk of chunks) {
             compressedData.set(chunk, offset);
             offset += chunk.length;
         }
-        
+
         return compressedData;
     }
 
@@ -201,12 +199,12 @@ INJECT_PLACEHOLDER = """
         try {
             // Stringify on main thread but non-blocking
             const jsonString = await stringifyNonBlocking(data);
-            
+
             // Convert to ArrayBuffer (transferable)
             const encoder = new TextEncoder();
             const uint8Array = encoder.encode(jsonString);
             const buffer = uint8Array.buffer; // Use the original buffer for transfer
-            
+
             return new Promise((resolve, reject) => {
                 if (!compressionWorker) {
                     compressionWorker = createCompressionWorker();
@@ -223,15 +221,15 @@ INJECT_PLACEHOLDER = """
                         }
                     };
                 }
-                
+
                 const id = ++workerId;
                 workerPromises.set(id, { resolve, reject });
-                
+
                 // Transfer the ArrayBuffer (no copying!)
-                compressionWorker.postMessage({ 
-                    buffer, 
+                compressionWorker.postMessage({
+                    buffer,
                     id,
-                    useBuffer: true 
+                    useBuffer: true
                 }, [buffer]);
             });
         } catch (error) {
@@ -249,7 +247,7 @@ INJECT_PLACEHOLDER = """
             console.warn('Transferable failed, falling back to string method:', error);
             // Fallback to string method
             const jsonString = await stringifyNonBlocking(data);
-            
+
             return new Promise((resolve, reject) => {
                 if (!compressionWorker) {
                     compressionWorker = createCompressionWorker();
@@ -266,7 +264,7 @@ INJECT_PLACEHOLDER = """
                         }
                     };
                 }
-                
+
                 const id = ++workerId;
                 workerPromises.set(id, { resolve, reject });
                 compressionWorker.postMessage({ jsonString, id });
@@ -279,11 +277,11 @@ INJECT_PLACEHOLDER = """
             2, // FullSnapshot
             3, // IncrementalSnapshot
         ];
-        
+
         if (LARGE_EVENT_TYPES.includes(type)) {
             return true;
         }
-        
+
         return false;
     }
 
@@ -291,7 +289,7 @@ INJECT_PLACEHOLDER = """
         if (window.lmnrRrwebEventsBatch.length > 0 && typeof window.lmnrSendEvents === 'function') {
             const events = window.lmnrRrwebEventsBatch;
             window.lmnrRrwebEventsBatch = [];
-            
+
             try {
                 await window.lmnrSendEvents(events);
             } catch (error) {
@@ -311,13 +309,13 @@ INJECT_PLACEHOLDER = """
     }, 1000);
 
     window.lmnrRrweb.record({
-        async emit(event) {    
+        async emit(event) {
             try {
                 const isLarge = isLargeEvent(event.type);
-                const compressedResult = isLarge ? 
-                    await compressLargeObject(event.data, true) : 
+                const compressedResult = isLarge ?
+                    await compressLargeObject(event.data, true) :
                     await compressSmallObject(event.data);
-            
+
                 const eventToSend = {
                     ...event,
                     data: compressedResult,
@@ -464,13 +462,12 @@ async def inject_session_recorder_async(page: Page):
 
 @observe(name="playwright.page", ignore_input=True, ignore_output=True)
 def start_recording_events_sync(page: SyncPage, session_id: str, client: LaminarClient):
-    print("STARTING RECORDING EVENTS SYNC", page)
 
     ctx = _get_current_context()
     span = trace.get_current_span(ctx)
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
- 
+
     if page.evaluate("""() => typeof window.lmnrSendEvents !== 'undefined'"""):
         return
 
@@ -503,7 +500,6 @@ def start_recording_events_sync(page: SyncPage, session_id: str, client: Laminar
         page.expose_function("lmnrSendEvents", send_events_from_browser)
     except Exception as e:
         logger.debug(f"Could not expose function: {e}")
-
 
 
 @observe(name="playwright.page", ignore_input=True, ignore_output=True)
@@ -543,8 +539,8 @@ async def start_recording_events_async(
                 await client._browser_events.send(session_id, trace_id, events)
         except Exception as e:
             logger.debug(f"Could not send events: {e}")
+
     try:
         await page.expose_function("lmnrSendEvents", send_events_from_browser)
     except Exception as e:
         logger.debug(f"Could not expose function: {e}")
-
