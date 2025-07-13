@@ -12,6 +12,7 @@ from lmnr.sdk.client.asynchronous.resources import (
     AsyncBrowserEvents,
     AsyncEvals,
     AsyncTags,
+    AsyncEvaluators
 )
 from lmnr.sdk.utils import from_env
 
@@ -74,6 +75,9 @@ class AsyncLaminarClient:
         self.__evals = AsyncEvals(
             self.__client, self.__base_url, self.__project_api_key
         )
+        self.__evaluators = AsyncEvaluators(
+            self.__client, self.__base_url, self.__project_api_key
+        )
         self.__browser_events = AsyncBrowserEvents(
             self.__client, self.__base_url, self.__project_api_key
         )
@@ -114,6 +118,15 @@ class AsyncLaminarClient:
             AsyncTags: The Tags resource instance.
         """
         return self.__tags
+
+    @property
+    def evaluators(self) -> AsyncEvaluators:
+        """Get the Evaluators resource.
+
+        Returns:
+            Evaluators: The Evaluators resource instance.
+        """
+        return self.__evaluators
 
     def is_closed(self) -> bool:
         return self.__client.is_closed
