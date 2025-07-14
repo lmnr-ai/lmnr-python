@@ -2,8 +2,6 @@ import logging
 import time
 
 from opentelemetry import context as context_api
-
-from lmnr.opentelemetry_lib.tracing import _get_current_context
 from ..shared import (
     _set_span_attribute,
     model_as_dict,
@@ -125,7 +123,6 @@ def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
 
     span = tracer.start_span(
         "openai.assistant.run",
-        context=_get_current_context(),
         kind=SpanKind.CLIENT,
         attributes={SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.CHAT.value},
         start_time=run.get("start_time"),
@@ -251,7 +248,6 @@ def runs_create_and_stream_wrapper(tracer, wrapped, instance, args, kwargs):
 
     span = tracer.start_span(
         "openai.assistant.run_stream",
-        context=_get_current_context(),
         kind=SpanKind.CLIENT,
         attributes={SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.CHAT.value},
     )

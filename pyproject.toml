@@ -52,7 +52,6 @@ lmnr = "lmnr.cli:cli"
 # `poetry add 'lmnr[anthropic,groq]'`
 
 alephalpha=["opentelemetry-instrumentation-alephalpha>=0.40.12"]
-anthropic=["opentelemetry-instrumentation-anthropic>=0.40.12"]
 bedrock=["opentelemetry-instrumentation-bedrock>=0.40.12"]
 chromadb=["opentelemetry-instrumentation-chromadb>=0.40.12"]
 cohere=["opentelemetry-instrumentation-cohere>=0.40.12"]
@@ -89,7 +88,6 @@ weaviate=["opentelemetry-instrumentation-weaviate>=0.40.12"]
 # like `uv add lmnr --all-extras`
 all = [
   "opentelemetry-instrumentation-alephalpha>=0.40.12",
-  "opentelemetry-instrumentation-anthropic>=0.40.12",
   "opentelemetry-instrumentation-bedrock>=0.40.12",
   "opentelemetry-instrumentation-chromadb>=0.40.12",
   "opentelemetry-instrumentation-cohere>=0.40.12",
@@ -134,6 +132,7 @@ dev = [
   "langchain-core>=0.3.64",
   "langchain>=0.3.25",
   "litellm>=1.72.6",
+  "anthropic>=0.57.1",
 ]
 
 [build-system]
