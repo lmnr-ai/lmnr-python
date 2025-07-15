@@ -208,6 +208,9 @@ class Laminar:
                 be epoch nanoseconds. If not specified, relies on the underlying\
                 OpenTelemetry implementation. Defaults to None.
         """
+        if not cls.is_initialized():
+            return
+
         if timestamp and isinstance(timestamp, datetime.datetime):
             timestamp = int(timestamp.timestamp() * 1e9)
 
@@ -583,7 +586,7 @@ class Laminar:
     @classmethod
     def set_span_attributes(
         cls,
-        attributes: dict[Attributes, Any],
+        attributes: dict[Attributes | str, Any],
     ):
         """Set attributes for the current span. Useful for manual
         instrumentation.
@@ -605,21 +608,16 @@ class Laminar:
         ```
 
         Args:
-            attributes (dict[ATTRIBUTES, Any]): attributes to set for the span
+            attributes (dict[Attributes | str, Any]): attributes to set for the span
         """
         span = trace.get_current_span()
         if span == trace.INVALID_SPAN:
             return
 
         for key, value in attributes.items():
-            # Python 3.12+ should do: if key not in Attributes:
-            try:
-                Attributes(key.value)
-            except (TypeError, AttributeError):
-                cls.__logger.warning(
-                    f"Attribute {key} is not a valid Laminar attribute."
-                )
-            if not isinstance(value, (str, int, float, bool)):
+            if isinstance(key, Attributes):
+                key = key.value
+            if not is_otel_attribute_value_type(value):
                 span.set_attribute(key.value, json_dumps(value))
             else:
                 span.set_attribute(key.value, value)
@@ -712,6 +710,8 @@ class Laminar:
         Args:
             tags (list[str]): Tags to set for the span.
         """
+        if not cls.is_initialized():
+            return
         span = trace.get_current_span()
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set tags on")
@@ -762,6 +762,8 @@ class Laminar:
         Args:
             session_id (str | None, optional): Custom session id. Defaults to None.
         """
+        if not cls.is_initialized():
+            return
         span = trace.get_current_span()
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set session id on")
@@ -777,6 +779,8 @@ class Laminar:
         Args:
             user_id (str | None, optional): Custom user id. Defaults to None.
         """
+        if not cls.is_initialized():
+            return
         span = trace.get_current_span()
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set user id on")
@@ -813,6 +817,8 @@ class Laminar:
         Args:
             metadata (dict[str, AttributeValue]): Metadata to set for the trace.
         """
+        if not cls.is_initialized():
+            return
         span = trace.get_current_span()
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set metadata on")
@@ -864,6 +870,8 @@ class Laminar:
         Args:
             trace_type (TraceType): Type of the trace
         """
+        if not cls.is_initialized():
+            return
         span = trace.get_current_span()
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set trace type on")
