@@ -62,8 +62,12 @@ class Laminar:
         base_url: str | None = None,
         http_port: int | None = None,
         grpc_port: int | None = None,
-        instruments: set[Instruments] | None = None,
-        disabled_instruments: set[Instruments] | None = None,
+        instruments: (
+            list[Instruments] | set[Instruments] | tuple[Instruments] | None
+        ) = None,
+        disabled_instruments: (
+            list[Instruments] | set[Instruments] | tuple[Instruments] | None
+        ) = None,
         disable_batch: bool = False,
         max_export_batch_size: int | None = None,
         export_timeout_seconds: int | None = None,
@@ -155,8 +159,10 @@ class Laminar:
             http_port=http_port or 443,
             port=grpc_port or 8443,
             project_api_key=cls.__project_api_key,
-            instruments=instruments,
-            block_instruments=disabled_instruments,
+            instruments=set(instruments) if instruments else None,
+            block_instruments=(
+                set(disabled_instruments) if disabled_instruments else None
+            ),
             disable_batch=disable_batch,
             max_export_batch_size=max_export_batch_size,
             timeout_seconds=export_timeout_seconds,
