@@ -1,4 +1,8 @@
+import base64
+import json
 import pytest
+
+from pathlib import Path
 from opentelemetry.sdk._logs import LogData
 from opentelemetry.semconv._incubating.attributes import (
     event_attributes as EventAttributes,
@@ -7,6 +11,24 @@ from opentelemetry.semconv._incubating.attributes import (
     gen_ai_attributes as GenAIAttributes,
 )
 from opentelemetry.semconv_ai import SpanAttributes
+from groq import Groq
+
+
+image_base64 = base64.b64encode(
+    open(
+        Path(__file__).parent.parent.joinpath("data/logo.jpg"),
+        "rb",
+    ).read()
+).decode("utf-8")
+
+
+image_content_block = {
+    "type": "image_url",
+    "image_url": {
+        "url": f"data:image/jpeg;base64,{image_base64}",
+        "detail": "high",
+    },
+}
 
 
 @pytest.mark.vcr
@@ -40,6 +62,53 @@ def test_chat_legacy(instrument_legacy, groq_client, span_exporter, log_exporter
     assert (
         len(logs) == 0
     ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
+
+
+@pytest.mark.vcr
+def test_chat_legacy_image(
+    instrument_legacy, groq_client: Groq, span_exporter, log_exporter
+):
+    response = groq_client.chat.completions.create(
+        model="meta-llama/llama-guard-4-12b",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "What is depicted in this image?"},
+                    image_content_block,
+                ],
+            }
+        ],
+    )
+
+    spans = span_exporter.get_finished_spans()
+
+    assert [span.name for span in spans] == [
+        "groq.chat",
+    ]
+    groq_span = spans[0]
+    assert json.loads(
+        groq_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"]
+    ) == [
+        {"type": "text", "text": "What is depicted in this image?"},
+        image_content_block,
+    ]
+    assert (
+        groq_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+        == response.choices[0].message.content
+    )
+    assert (
+        groq_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.role")
+        == "assistant"
+    )
+    assert groq_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is False
+    assert groq_span.attributes.get(SpanAttributes.LLM_USAGE_PROMPT_TOKENS) > 0
+    assert groq_span.attributes.get(SpanAttributes.LLM_USAGE_COMPLETION_TOKENS) > 0
+    assert groq_span.attributes.get(SpanAttributes.LLM_USAGE_TOTAL_TOKENS) > 0
+    assert (
+        groq_span.attributes.get("gen_ai.response.id")
+        == "chatcmpl-741dc0bb-6df1-4e88-9d35-920d0dddc3c0"
+    )
 
 
 @pytest.mark.vcr
