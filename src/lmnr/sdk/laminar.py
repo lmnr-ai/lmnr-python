@@ -60,6 +60,7 @@ class Laminar:
         cls,
         project_api_key: str | None = None,
         base_url: str | None = None,
+        base_http_url: str | None = None,
         http_port: int | None = None,
         grpc_port: int | None = None,
         instruments: (
@@ -80,40 +81,45 @@ class Laminar:
 
         Args:
             project_api_key (str | None, optional): Laminar project api key.\
-                            You can generate one by going to the projects\
-                            settings page on the Laminar dashboard.\
-                            If not specified, it will try to read from the\
-                            LMNR_PROJECT_API_KEY environment variable\
-                            in os.environ or in .env file.
-                            Defaults to None.
+                You can generate one by going to the projects settings page on\
+                the Laminar dashboard. If not specified, we will try to read\
+                from the LMNR_PROJECT_API_KEY environment variable in os.environ\
+                or in .env file. Defaults to None.
             base_url (str | None, optional): Laminar API url. Do NOT include\
-                            the port number, use `http_port` and `grpc_port`.\
-                            If not specified, defaults to https://api.lmnr.ai.
-            http_port (int | None, optional): Laminar API http port.\
-                            If not specified, defaults to 443.
-            grpc_port (int | None, optional): Laminar API grpc port.\
-                            If not specified, defaults to 8443.
-            instruments (set[Instruments] | None, optional): Instruments to\
-                        enable. Defaults to all instruments. You can pass\
-                        an empty set to disable all instruments. Read more:\
-                        https://docs.lmnr.ai/tracing/automatic-instrumentation
-            disabled_instruments (set[Instruments] | None, optional): Instruments to\
-                        disable. Defaults to None.
+                the port number, use `http_port` and `grpc_port`. If not\
+                specified, defaults to https://api.lmnr.ai.
+            base_http_url (str | None, optional): Laminar API http url. Only\
+                set this if your Laminar backend HTTP is proxied through a\
+                different host. If not specified, defaults to\
+                https://api.lmnr.ai.
+            http_port (int | None, optional): Laminar API http port. If not\
+                specified, defaults to 443.
+            grpc_port (int | None, optional): Laminar API grpc port. If not\
+                specified, defaults to 8443.
+            instruments (set[Instruments] | list[Instruments] | tuple[Instruments] | None, optional):
+                Instruments to enable. Defaults to all instruments. You can pass\
+                an empty set to disable all instruments. Read more:\
+                https://docs.lmnr.ai/tracing/automatic-instrumentation
+            disabled_instruments (set[Instruments] | list[Instruments] | tuple[Instruments] | None, optional):
+                Instruments to disable. Defaults to None.
             disable_batch (bool, optional): If set to True, spans will be sent\
-                        immediately to the backend. Useful for debugging, but\
-                        may cause performance overhead in production.
-                        Defaults to False.
+                immediately to the backend. Useful for debugging, but may cause\
+                performance overhead in production. Defaults to False.
+            max_export_batch_size (int | None, optional): Maximum number of spans\
+                to export in a single batch. If not specified, defaults to 64\
+                (lower than the OpenTelemetry default of 512). If you see\
+                `DEADLINE_EXCEEDED` errors, try reducing this value.
             export_timeout_seconds (int | None, optional): Timeout for the OTLP\
-                        exporter. Defaults to 30 seconds (unlike the\
-                        OpenTelemetry default of 10 seconds).
-                        Defaults to None.
+                exporter. Defaults to 30 seconds (unlike the OpenTelemetry\
+                default of 10 seconds). Defaults to None.
             set_global_tracer_provider (bool, optional): If set to True, the\
-                        Laminar tracer provider will be set as the global\
-                        tracer provider. OpenTelemetry allows only one tracer\
-                        provider per app, so set this to False, if you are using\
-                        another tracing library. Setting this to False may break\
-                        some external instrumentations, e.g. LiteLLM.
-                        Defaults to True.
+                Laminar tracer provider will be set as the global tracer provider.\
+                OpenTelemetry allows only one tracer provider per app, so set this\
+                to False, if you are using another tracing library. Setting this to\
+                False may break some external instrumentations, e.g. LiteLLM.\
+                Defaults to True.
+            otel_logger_level (int, optional): OpenTelemetry logger level. Defaults\
+                to logging.ERROR.
 
         Raises:
             ValueError: If project API key is not set
