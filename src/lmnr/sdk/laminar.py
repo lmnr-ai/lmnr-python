@@ -60,10 +60,15 @@ class Laminar:
         cls,
         project_api_key: str | None = None,
         base_url: str | None = None,
+        base_http_url: str | None = None,
         http_port: int | None = None,
         grpc_port: int | None = None,
-        instruments: set[Instruments] | None = None,
-        disabled_instruments: set[Instruments] | None = None,
+        instruments: (
+            list[Instruments] | set[Instruments] | tuple[Instruments] | None
+        ) = None,
+        disabled_instruments: (
+            list[Instruments] | set[Instruments] | tuple[Instruments] | None
+        ) = None,
         disable_batch: bool = False,
         max_export_batch_size: int | None = None,
         export_timeout_seconds: int | None = None,
@@ -76,40 +81,45 @@ class Laminar:
 
         Args:
             project_api_key (str | None, optional): Laminar project api key.\
-                            You can generate one by going to the projects\
-                            settings page on the Laminar dashboard.\
-                            If not specified, it will try to read from the\
-                            LMNR_PROJECT_API_KEY environment variable\
-                            in os.environ or in .env file.
-                            Defaults to None.
+                You can generate one by going to the projects settings page on\
+                the Laminar dashboard. If not specified, we will try to read\
+                from the LMNR_PROJECT_API_KEY environment variable in os.environ\
+                or in .env file. Defaults to None.
             base_url (str | None, optional): Laminar API url. Do NOT include\
-                            the port number, use `http_port` and `grpc_port`.\
-                            If not specified, defaults to https://api.lmnr.ai.
-            http_port (int | None, optional): Laminar API http port.\
-                            If not specified, defaults to 443.
-            grpc_port (int | None, optional): Laminar API grpc port.\
-                            If not specified, defaults to 8443.
-            instruments (set[Instruments] | None, optional): Instruments to\
-                        enable. Defaults to all instruments. You can pass\
-                        an empty set to disable all instruments. Read more:\
-                        https://docs.lmnr.ai/tracing/automatic-instrumentation
-            disabled_instruments (set[Instruments] | None, optional): Instruments to\
-                        disable. Defaults to None.
+                the port number, use `http_port` and `grpc_port`. If not\
+                specified, defaults to https://api.lmnr.ai.
+            base_http_url (str | None, optional): Laminar API http url. Only\
+                set this if your Laminar backend HTTP is proxied through a\
+                different host. If not specified, defaults to\
+                https://api.lmnr.ai.
+            http_port (int | None, optional): Laminar API http port. If not\
+                specified, defaults to 443.
+            grpc_port (int | None, optional): Laminar API grpc port. If not\
+                specified, defaults to 8443.
+            instruments (set[Instruments] | list[Instruments] | tuple[Instruments] | None, optional):
+                Instruments to enable. Defaults to all instruments. You can pass\
+                an empty set to disable all instruments. Read more:\
+                https://docs.lmnr.ai/tracing/automatic-instrumentation
+            disabled_instruments (set[Instruments] | list[Instruments] | tuple[Instruments] | None, optional):
+                Instruments to disable. Defaults to None.
             disable_batch (bool, optional): If set to True, spans will be sent\
-                        immediately to the backend. Useful for debugging, but\
-                        may cause performance overhead in production.
-                        Defaults to False.
+                immediately to the backend. Useful for debugging, but may cause\
+                performance overhead in production. Defaults to False.
+            max_export_batch_size (int | None, optional): Maximum number of spans\
+                to export in a single batch. If not specified, defaults to 64\
+                (lower than the OpenTelemetry default of 512). If you see\
+                `DEADLINE_EXCEEDED` errors, try reducing this value.
             export_timeout_seconds (int | None, optional): Timeout for the OTLP\
-                        exporter. Defaults to 30 seconds (unlike the\
-                        OpenTelemetry default of 10 seconds).
-                        Defaults to None.
+                exporter. Defaults to 30 seconds (unlike the OpenTelemetry\
+                default of 10 seconds). Defaults to None.
             set_global_tracer_provider (bool, optional): If set to True, the\
-                        Laminar tracer provider will be set as the global\
-                        tracer provider. OpenTelemetry allows only one tracer\
-                        provider per app, so set this to False, if you are using\
-                        another tracing library. Setting this to False may break\
-                        some external instrumentations, e.g. LiteLLM.
-                        Defaults to True.
+                Laminar tracer provider will be set as the global tracer provider.\
+                OpenTelemetry allows only one tracer provider per app, so set this\
+                to False, if you are using another tracing library. Setting this to\
+                False may break some external instrumentations, e.g. LiteLLM.\
+                Defaults to True.
+            otel_logger_level (int, optional): OpenTelemetry logger level. Defaults\
+                to logging.ERROR.
 
         Raises:
             ValueError: If project API key is not set
@@ -132,10 +142,17 @@ class Laminar:
 
         url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
         url = url.rstrip("/")
-        if not url.startswith("http"):
+        if not url.startswith("http:") and not url.startswith("https:"):
             url = f"https://{url}"
         if match := re.search(r":(\d{1,5})$", url):
             url = url[: -len(match.group(0))]
+            cls.__logger.info(f"Ignoring port in base URL: {match.group(1)}")
+
+        http_url = base_http_url or url
+        if not http_url.startswith("http:") and not http_url.startswith("https:"):
+            http_url = f"https://{http_url}"
+        if match := re.search(r":(\d{1,5})$", http_url):
+            http_url = http_url[: -len(match.group(0))]
             if http_port is None:
                 cls.__logger.info(f"Using HTTP port from base URL: {match.group(1)}")
                 http_port = int(match.group(1))
@@ -143,7 +160,7 @@ class Laminar:
                 cls.__logger.info(f"Using HTTP port passed as an argument: {http_port}")
 
         cls.__initialized = True
-        cls.__base_http_url = f"{url}:{http_port or 443}"
+        cls.__base_http_url = f"{http_url}:{http_port or 443}"
 
         if not os.getenv("OTEL_ATTRIBUTE_COUNT_LIMIT"):
             # each message is at least 2 attributes: role and content,
@@ -155,8 +172,10 @@ class Laminar:
             http_port=http_port or 443,
             port=grpc_port or 8443,
             project_api_key=cls.__project_api_key,
-            instruments=instruments,
-            block_instruments=disabled_instruments,
+            instruments=set(instruments) if instruments else None,
+            block_instruments=(
+                set(disabled_instruments) if disabled_instruments else None
+            ),
             disable_batch=disable_batch,
             max_export_batch_size=max_export_batch_size,
             timeout_seconds=export_timeout_seconds,
@@ -202,6 +221,9 @@ class Laminar:
                 be epoch nanoseconds. If not specified, relies on the underlying\
                 OpenTelemetry implementation. Defaults to None.
         """
+        if not cls.is_initialized():
+            return
+
         if timestamp and isinstance(timestamp, datetime.datetime):
             timestamp = int(timestamp.timestamp() * 1e9)
 
@@ -577,7 +599,7 @@ class Laminar:
     @classmethod
     def set_span_attributes(
         cls,
-        attributes: dict[Attributes, Any],
+        attributes: dict[Attributes | str, Any],
     ):
         """Set attributes for the current span. Useful for manual
         instrumentation.
@@ -599,24 +621,19 @@ class Laminar:
         ```
 
         Args:
-            attributes (dict[ATTRIBUTES, Any]): attributes to set for the span
+            attributes (dict[Attributes | str, Any]): attributes to set for the span
         """
         span = trace.get_current_span()
         if span == trace.INVALID_SPAN:
             return
 
         for key, value in attributes.items():
-            # Python 3.12+ should do: if key not in Attributes:
-            try:
-                Attributes(key.value)
-            except (TypeError, AttributeError):
-                cls.__logger.warning(
-                    f"Attribute {key} is not a valid Laminar attribute."
-                )
-            if not isinstance(value, (str, int, float, bool)):
-                span.set_attribute(key.value, json_dumps(value))
+            if isinstance(key, Attributes):
+                key = key.value
+            if not is_otel_attribute_value_type(value):
+                span.set_attribute(key, json_dumps(value))
             else:
-                span.set_attribute(key.value, value)
+                span.set_attribute(key, value)
 
     @classmethod
     def get_laminar_span_context(
@@ -706,6 +723,8 @@ class Laminar:
         Args:
             tags (list[str]): Tags to set for the span.
         """
+        if not cls.is_initialized():
+            return
         span = trace.get_current_span()
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set tags on")
@@ -756,6 +775,8 @@ class Laminar:
         Args:
             session_id (str | None, optional): Custom session id. Defaults to None.
         """
+        if not cls.is_initialized():
+            return
         span = trace.get_current_span()
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set session id on")
@@ -771,6 +792,8 @@ class Laminar:
         Args:
             user_id (str | None, optional): Custom user id. Defaults to None.
         """
+        if not cls.is_initialized():
+            return
         span = trace.get_current_span()
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set user id on")
@@ -807,6 +830,8 @@ class Laminar:
         Args:
             metadata (dict[str, AttributeValue]): Metadata to set for the trace.
         """
+        if not cls.is_initialized():
+            return
         span = trace.get_current_span()
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set metadata on")
@@ -858,6 +883,8 @@ class Laminar:
         Args:
             trace_type (TraceType): Type of the trace
         """
+        if not cls.is_initialized():
+            return
         span = trace.get_current_span()
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set trace type on")
