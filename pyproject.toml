@@ -63,7 +63,6 @@ crewai=["opentelemetry-instrumentation-crewai>=0.40.12"]
 # wrapping google-genai.
 # https://github.com/traceloop/openllmetry/pull/3014
 google-generativeai=["opentelemetry-instrumentation-google-generativeai<0.40.10"]
-groq=["opentelemetry-instrumentation-groq>=0.40.12"]
 haystack=["opentelemetry-instrumentation-haystack>=0.40.12"]
 lancedb=["opentelemetry-instrumentation-lancedb>=0.40.12"]
 langchain=["opentelemetry-instrumentation-langchain>=0.40.12"]
@@ -94,7 +93,6 @@ all = [
   "opentelemetry-instrumentation-crewai>=0.40.12",
   # See comment above on the google-generativeai extra.
   "opentelemetry-instrumentation-google-generativeai<0.40.10",
-  "opentelemetry-instrumentation-groq>=0.40.12",
   "opentelemetry-instrumentation-haystack>=0.40.12",
   "opentelemetry-instrumentation-lancedb>=0.40.12",
   "opentelemetry-instrumentation-langchain>=0.40.12",
@@ -132,6 +130,7 @@ dev = [
   "langchain-core>=0.3.64",
   "langchain>=0.3.25",
   "litellm>=1.72.6",
+  "groq>=0.30.0",
   "anthropic>=0.57.1",
 ]
 
