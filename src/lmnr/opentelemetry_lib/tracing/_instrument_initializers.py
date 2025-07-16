@@ -2,7 +2,10 @@ import abc
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 
-from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
+from lmnr.opentelemetry_lib.utils.package_check import (
+    get_package_version,
+    is_package_installed,
+)
 
 
 class InstrumentorInitializer(abc.ABC):
@@ -50,6 +53,12 @@ class BedrockInstrumentorInitializer(InstrumentorInitializer):
 class BrowserUseInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("browser-use"):
+            return None
+
+        version = get_package_version("browser-use")
+        from packaging.version import parse
+
+        if version and parse(version) >= parse("0.5.0"):
             return None
 
         from lmnr.sdk.browser.browser_use_otel import BrowserUseInstrumentor
