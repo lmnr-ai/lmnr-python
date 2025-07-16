@@ -39,6 +39,7 @@ from ..utils import (
     should_emit_events,
     should_send_prompts,
 )
+from lmnr.opentelemetry_lib.tracing import _get_current_context
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.metrics import Counter, Histogram
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
@@ -87,6 +88,7 @@ def chat_wrapper(
         SPAN_NAME,
         kind=SpanKind.CLIENT,
         attributes={SpanAttributes.LLM_REQUEST_TYPE: LLM_REQUEST_TYPE.value},
+        context=_get_current_context(),
     )
 
     run_async(_handle_request(span, kwargs, instance))
@@ -184,6 +186,7 @@ async def achat_wrapper(
         SPAN_NAME,
         kind=SpanKind.CLIENT,
         attributes={SpanAttributes.LLM_REQUEST_TYPE: LLM_REQUEST_TYPE.value},
+        context=_get_current_context(),
     )
 
     await _handle_request(span, kwargs, instance)
