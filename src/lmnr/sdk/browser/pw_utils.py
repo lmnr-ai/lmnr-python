@@ -39,7 +39,9 @@ with open(os.path.join(current_dir, "rrweb", "rrweb.umd.min.cjs"), "r") as f:
 INJECT_PLACEHOLDER = """
 () => {
     const BATCH_TIMEOUT = 2000; // Send events after 2 seconds
-
+    const MAX_WORKER_PROMISES = 50; // Max concurrent worker promises
+    const HEARTBEAT_INTERVAL = 1000;
+    
     window.lmnrRrwebEventsBatch = [];
 
     // Create a Web Worker for heavy JSON processing with chunked processing
@@ -97,6 +99,29 @@ INJECT_PLACEHOLDER = """
     let compressionWorker = null;
     let workerPromises = new Map();
     let workerId = 0;
+
+    // Cleanup function for worker
+    const cleanupWorker = () => {
+        if (compressionWorker) {
+            compressionWorker.terminate();
+            compressionWorker = null;
+        }
+        workerPromises.clear();
+        workerId = 0;
+    };
+
+    // Clean up stale promises to prevent memory leaks
+    const cleanupStalePromises = () => {
+        if (workerPromises.size > MAX_WORKER_PROMISES) {
+            const toDelete = [];
+            for (const [id, promise] of workerPromises) {
+                if (toDelete.length >= workerPromises.size - MAX_WORKER_PROMISES) break;
+                toDelete.push(id);
+                promise.reject(new Error('Promise cleaned up due to memory pressure'));
+            }
+            toDelete.forEach(id => workerPromises.delete(id));
+        }
+    };
 
     // Non-blocking JSON.stringify using chunked processing
     function stringifyNonBlocking(obj, chunkSize = 10000) {
@@ -197,6 +222,9 @@ INJECT_PLACEHOLDER = """
     // Alternative: Use transferable objects for maximum efficiency
     async function compressLargeObjectTransferable(data) {
         try {
+            // Clean up stale promises first
+            cleanupStalePromises();
+            
             // Stringify on main thread but non-blocking
             const jsonString = await stringifyNonBlocking(data);
 
@@ -220,10 +248,23 @@ INJECT_PLACEHOLDER = """
                             }
                         }
                     };
+                    
+                    compressionWorker.onerror = (error) => {
+                        console.error('Compression worker error:', error);
+                        cleanupWorker();
+                    };
                 }
 
                 const id = ++workerId;
                 workerPromises.set(id, { resolve, reject });
+
+                // Set timeout to prevent hanging promises
+                setTimeout(() => {
+                    if (workerPromises.has(id)) {
+                        workerPromises.delete(id);
+                        reject(new Error('Compression timeout'));
+                    }
+                }, 10000);
 
                 // Transfer the ArrayBuffer (no copying!)
                 compressionWorker.postMessage({
@@ -263,15 +304,32 @@ INJECT_PLACEHOLDER = """
                             }
                         }
                     };
+                    
+                    compressionWorker.onerror = (error) => {
+                        console.error('Compression worker error:', error);
+                        cleanupWorker();
+                    };
                 }
 
                 const id = ++workerId;
                 workerPromises.set(id, { resolve, reject });
+                
+                // Set timeout to prevent hanging promises
+                setTimeout(() => {
+                    if (workerPromises.has(id)) {
+                        workerPromises.delete(id);
+                        reject(new Error('Compression timeout'));
+                    }
+                }, 10000);
+                
                 compressionWorker.postMessage({ jsonString, id });
             });
         }
     }
 
+    
+    setInterval(cleanupWorker, 5000);
+    
     function isLargeEvent(type) {
         const LARGE_EVENT_TYPES = [
             2, // FullSnapshot
@@ -306,7 +364,7 @@ INJECT_PLACEHOLDER = """
             title: document.title,
             url: document.URL,
         })
-    }, 1000);
+    }, HEARTBEAT_INTERVAL);
 
     window.lmnrRrweb.record({
         async emit(event) {
