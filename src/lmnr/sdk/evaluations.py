@@ -57,7 +57,7 @@ def get_average_scores(results: list[EvaluationResultDatapoint]) -> dict[str, Nu
     average_scores = {}
     for key, values in per_score_values.items():
         scores = [v for v in values if v is not None]
-        
+
         # If there are no scores, we don't want to include the key in the average scores
         if len(scores) > 0:
             average_scores[key] = sum(scores) / len(scores)
@@ -108,6 +108,7 @@ class Evaluation:
         concurrency_limit: int = DEFAULT_BATCH_SIZE,
         project_api_key: str | None = None,
         base_url: str | None = None,
+        base_http_url: str | None = None,
         http_port: int | None = None,
         grpc_port: int | None = None,
         instruments: set[Instruments] | None = None,
@@ -157,6 +158,10 @@ class Evaluation:
                 Useful if self-hosted. Do NOT include the port, use `http_port`\
                 and `grpc_port` instead.
                 Defaults to "https://api.lmnr.ai".
+            base_http_url (str | None, optional): The base HTTP URL for Laminar API.\
+                Only set this if your Laminar backend HTTP is proxied\
+                through a different host. If not specified, defaults\
+                to https://api.lmnr.ai.
             http_port (int | None, optional): The port for Laminar API\
                 HTTP service. Defaults to 443 if not specified.
             grpc_port (int | None, optional): The port for Laminar API\
@@ -199,7 +204,7 @@ class Evaluation:
         self.batch_size = concurrency_limit
         self._logger = get_default_logger(self.__class__.__name__)
         self.upload_tasks = []
-        self.base_http_url = f"{base_url}:{http_port or 443}"
+        self.base_http_url = f"{base_http_url or base_url}:{http_port or 443}"
 
         api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
         if not api_key and not L.is_initialized():
@@ -224,6 +229,7 @@ class Evaluation:
         L.initialize(
             project_api_key=project_api_key,
             base_url=base_url,
+            base_http_url=self.base_http_url,
             http_port=http_port,
             grpc_port=grpc_port,
             instruments=instruments,
@@ -352,22 +358,24 @@ class Evaluation:
                 if isinstance(evaluator, HumanEvaluator):
                     # Create an empty span for human evaluators
                     with L.start_as_current_span(
-                        evaluator_name,
-                        input={"output": output, "target": target}
+                        evaluator_name, input={"output": output, "target": target}
                     ) as human_evaluator_span:
-                        human_evaluator_span.set_attribute(SPAN_TYPE, SpanType.HUMAN_EVALUATOR.value)
+                        human_evaluator_span.set_attribute(
+                            SPAN_TYPE, SpanType.HUMAN_EVALUATOR.value
+                        )
                         # Human evaluators don't execute automatically, just create the span
                         L.set_span_output(None)
-                    
+
                     # We don't want to save the score for human evaluators
                     scores[evaluator_name] = None
                 else:
                     # Regular evaluator function
                     with L.start_as_current_span(
-                        evaluator_name,
-                        input={"output": output, "target": target}
+                        evaluator_name, input={"output": output, "target": target}
                     ) as evaluator_span:
-                        evaluator_span.set_attribute(SPAN_TYPE, SpanType.EVALUATOR.value)
+                        evaluator_span.set_attribute(
+                            SPAN_TYPE, SpanType.EVALUATOR.value
+                        )
                         if is_async(evaluator):
                             value = await evaluator(output, target)
                         else:
@@ -416,6 +424,7 @@ def evaluate(
     concurrency_limit: int = DEFAULT_BATCH_SIZE,
     project_api_key: str | None = None,
     base_url: str | None = None,
+    base_http_url: str | None = None,
     http_port: int | None = None,
     grpc_port: int | None = None,
     instruments: set[Instruments] | None = None,
@@ -465,6 +474,10 @@ def evaluate(
                         Useful if self-hosted elsewhere. Do NOT include the\
                         port, use `http_port` and `grpc_port` instead.
                         Defaults to "https://api.lmnr.ai".
+        base_http_url (str | None, optional): The base HTTP URL for Laminar API.\
+                        Only set this if your Laminar backend HTTP is proxied\
+                        through a different host. If not specified, defaults\
+                        to https://api.lmnr.ai.
         http_port (int | None, optional): The port for Laminar API's HTTP\
                         service. 443 is used if not specified.
                         Defaults to None.
@@ -488,6 +501,7 @@ def evaluate(
         concurrency_limit=concurrency_limit,
         project_api_key=project_api_key,
         base_url=base_url,
+        base_http_url=base_http_url,
         http_port=http_port,
         grpc_port=grpc_port,
         instruments=instruments,

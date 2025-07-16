@@ -45,7 +45,7 @@ class TracerWrapper(object):
         project_api_key: str | None = None,
         max_export_batch_size: int | None = None,
         force_http: bool = False,
-        timeout_seconds: int = 10,
+        timeout_seconds: int = 30,
         set_global_tracer_provider: bool = True,
         otel_logger_level: int = logging.ERROR,
     ) -> "TracerWrapper":

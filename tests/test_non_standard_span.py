@@ -27,6 +27,12 @@ class MyBrokenSpanContext(SpanContext):
 
 
 def test_broken_span(span_exporter: InMemorySpanExporter):
+    if not Laminar.is_initialized():
+        Laminar.initialize(
+            project_api_key="test_key",
+            disable_batch=True,
+        )
+
     with Laminar.start_as_current_span("outer"):
         trace_id = trace.get_current_span().get_span_context().trace_id
         span = NonRecordingSpan(MyBrokenSpanContext(trace_id, SPAN_ID, False))
