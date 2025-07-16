@@ -216,14 +216,13 @@ def _dump_content(content):
     for item in content:
         if item.get("type") == "text":
             json_serializable.append({"type": "text", "text": item.get("text")})
-        elif item.get("type") == "image":
+        elif image_url := item.get("image_url"):
             json_serializable.append(
                 {
-                    "type": "image",
-                    "source": {
-                        "type": item.get("source").get("type"),
-                        "media_type": item.get("source").get("media_type"),
-                        "data": str(item.get("source").get("data")),
+                    "type": "image_url",
+                    "image_url": {
+                        "url": image_url.get("url"),
+                        "detail": image_url.get("detail"),
                     },
                 }
             )
