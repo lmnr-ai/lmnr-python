@@ -142,10 +142,17 @@ class Laminar:
 
         url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
         url = url.rstrip("/")
-        if not url.startswith("http"):
+        if not url.startswith("http:") and not url.startswith("https:"):
             url = f"https://{url}"
         if match := re.search(r":(\d{1,5})$", url):
             url = url[: -len(match.group(0))]
+            cls.__logger.info(f"Ignoring port in base URL: {match.group(1)}")
+
+        http_url = base_http_url or url
+        if not http_url.startswith("http:") and not http_url.startswith("https:"):
+            http_url = f"https://{http_url}"
+        if match := re.search(r":(\d{1,5})$", http_url):
+            http_url = http_url[: -len(match.group(0))]
             if http_port is None:
                 cls.__logger.info(f"Using HTTP port from base URL: {match.group(1)}")
                 http_port = int(match.group(1))
@@ -153,7 +160,7 @@ class Laminar:
                 cls.__logger.info(f"Using HTTP port passed as an argument: {http_port}")
 
         cls.__initialized = True
-        cls.__base_http_url = f"{url}:{http_port or 443}"
+        cls.__base_http_url = f"{http_url}:{http_port or 443}"
 
         if not os.getenv("OTEL_ATTRIBUTE_COUNT_LIMIT"):
             # each message is at least 2 attributes: role and content,
