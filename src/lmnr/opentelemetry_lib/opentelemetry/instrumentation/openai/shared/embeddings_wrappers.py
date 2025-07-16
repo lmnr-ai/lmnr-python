@@ -3,8 +3,6 @@ import time
 from collections.abc import Iterable
 
 from opentelemetry import context as context_api
-
-from lmnr.opentelemetry_lib.tracing import _get_current_context
 from ..shared import (
     OPENAI_LLM_USAGE_TOKEN_TYPES,
     _get_openai_base_url,
@@ -70,7 +68,6 @@ def embeddings_wrapper(
     with tracer.start_as_current_span(
         name=SPAN_NAME,
         kind=SpanKind.CLIENT,
-        context=_get_current_context(),
         attributes={SpanAttributes.LLM_REQUEST_TYPE: LLM_REQUEST_TYPE.value},
     ) as span:
         _handle_request(span, kwargs, instance)
@@ -134,7 +131,6 @@ async def aembeddings_wrapper(
 
     async with start_as_current_span_async(
         tracer=tracer,
-        context=_get_current_context(),
         name=SPAN_NAME,
         kind=SpanKind.CLIENT,
         attributes={SpanAttributes.LLM_REQUEST_TYPE: LLM_REQUEST_TYPE.value},
