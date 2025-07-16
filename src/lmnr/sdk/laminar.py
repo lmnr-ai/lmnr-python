@@ -631,9 +631,9 @@ class Laminar:
             if isinstance(key, Attributes):
                 key = key.value
             if not is_otel_attribute_value_type(value):
-                span.set_attribute(key.value, json_dumps(value))
+                span.set_attribute(key, json_dumps(value))
             else:
-                span.set_attribute(key.value, value)
+                span.set_attribute(key, value)
 
     @classmethod
     def get_laminar_span_context(
