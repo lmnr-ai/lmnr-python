@@ -39,6 +39,16 @@ dependencies = [
   "opentelemetry-instrumentation-threading>=0.54b0",
   "orjson>=3.10.18",
 ]
+# poetry would auto-generate these based on requires-python, but other build
+# systems don't, so we need to specify them manually.
+classifiers = [
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
 
 [project.scripts]
 lmnr = "lmnr.cli:cli"
@@ -137,7 +147,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.7.19,<0.8"]
+requires = ["uv_build>=0.7.21,<0.8"]
 build-backend = "uv_build"
 
 [tool.uv.workspace]
