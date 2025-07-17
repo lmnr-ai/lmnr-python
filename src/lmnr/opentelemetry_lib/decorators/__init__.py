@@ -36,6 +36,7 @@ def default_json(o):
     try:
         return str(o)
     except Exception:
+        logger.debug("Failed to serialize data to JSON, inner type: %s", type(o))
         pass
     return DEFAULT_PLACEHOLDER
 

@@ -32,7 +32,7 @@ class LaminarSpanProcessor(SpanProcessor):
         api_key: str | None = None,
         timeout_seconds: int = 30,
         force_http: bool = False,
-        max_export_batch_size: int = 512,
+        max_export_batch_size: int = 64,
         disable_batch: bool = False,
         exporter: SpanExporter | None = None,
     ):
