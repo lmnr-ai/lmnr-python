@@ -76,6 +76,7 @@ def test_set_span_attributes(span_exporter: InMemorySpanExporter):
                 Attributes.RESPONSE_MODEL: "gpt-4o",
                 Attributes.INPUT_TOKEN_COUNT: 100,
                 Attributes.OUTPUT_TOKEN_COUNT: 200,
+                "freeform": "freeform",
             },
         )
 
@@ -89,6 +90,7 @@ def test_set_span_attributes(span_exporter: InMemorySpanExporter):
     assert spans[0].attributes["gen_ai.response.model"] == "gpt-4o"
     assert spans[0].attributes["gen_ai.usage.input_tokens"] == 100
     assert spans[0].attributes["gen_ai.usage.output_tokens"] == 200
+    assert spans[0].attributes["freeform"] == "freeform"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
