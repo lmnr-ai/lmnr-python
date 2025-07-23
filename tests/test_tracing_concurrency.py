@@ -363,7 +363,7 @@ def test_threadpool_parallel_spans_separate_traces(span_exporter: InMemorySpanEx
         assert span.parent is None or span.parent.span_id == 0
 
 
-@pytest.mark.vcr(record_mode="once")
+@pytest.mark.vcr
 def test_threadpool_parallel_spans_with_openai(span_exporter: InMemorySpanExporter):
     """Test multiple parallel ThreadPoolExecutor spans live in separate traces
     including auto-instrumented OpenAI spans."""
@@ -403,6 +403,7 @@ def test_threadpool_parallel_spans_with_openai(span_exporter: InMemorySpanExport
         if span.name == "task_worker":
             assert span.parent is None or span.parent.span_id == 0
         else:
+            assert span.name == "openai.chat"
             assert span.parent is not None
 
 
