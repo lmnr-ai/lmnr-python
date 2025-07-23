@@ -17,7 +17,7 @@ from ..utils import (
     dont_throw,
     should_emit_events,
 )
-from lmnr.opentelemetry_lib.tracing import _get_current_context
+from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.semconv_ai import LLMRequestTypeValues, SpanAttributes
@@ -127,7 +127,7 @@ def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
         kind=SpanKind.CLIENT,
         attributes={SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.CHAT.value},
         start_time=run.get("start_time"),
-        context=_get_current_context(),
+        context=get_current_context(),
     )
 
     if exception := run.get("exception"):
@@ -252,7 +252,7 @@ def runs_create_and_stream_wrapper(tracer, wrapped, instance, args, kwargs):
         "openai.assistant.run_stream",
         kind=SpanKind.CLIENT,
         attributes={SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.CHAT.value},
-        context=_get_current_context(),
+        context=get_current_context(),
     )
 
     i = 0

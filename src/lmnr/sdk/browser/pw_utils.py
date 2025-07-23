@@ -8,7 +8,7 @@ from lmnr.sdk.decorators import observe
 from lmnr.sdk.browser.utils import retry_sync, retry_async
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
-from lmnr.opentelemetry_lib.tracing import _get_current_context
+from lmnr.opentelemetry_lib.tracing.context import get_current_context
 
 try:
     if is_package_installed("playwright"):
@@ -521,7 +521,7 @@ async def inject_session_recorder_async(page: Page):
 @observe(name="playwright.page", ignore_input=True, ignore_output=True)
 def start_recording_events_sync(page: SyncPage, session_id: str, client: LaminarClient):
 
-    ctx = _get_current_context()
+    ctx = get_current_context()
     span = trace.get_current_span(ctx)
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
@@ -567,13 +567,15 @@ def start_recording_events_sync(page: SyncPage, session_id: str, client: Laminar
 async def start_recording_events_async(
     page: Page, session_id: str, client: AsyncLaminarClient
 ):
-    ctx = _get_current_context()
+    ctx = get_current_context()
     span = trace.get_current_span(ctx)
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
 
     try:
-        if await page.evaluate("""() => typeof window.lmnrSendEvents !== 'undefined'"""):
+        if await page.evaluate(
+            """() => typeof window.lmnrSendEvents !== 'undefined'"""
+        ):
             return
     except Exception:
         pass
@@ -624,6 +626,7 @@ def take_full_snapshot(page: Page):
         return false;
     }"""
     )
+
 
 async def take_full_snapshot_async(page: Page):
     return await page.evaluate(

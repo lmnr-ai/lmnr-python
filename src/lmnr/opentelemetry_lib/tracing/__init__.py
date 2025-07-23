@@ -1,9 +1,6 @@
 import atexit
 import logging
 import threading
-from contextvars import ContextVar, Token
-from typing import List
-from abc import ABC, abstractmethod
 
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
@@ -13,10 +10,22 @@ from lmnr.opentelemetry_lib.tracing.instruments import (
     Instruments,
     init_instrumentations,
 )
+from lmnr.opentelemetry_lib.tracing.context import (
+    attach_context,
+    detach_context,
+    get_current_context,
+    get_token_stack,
+    _isolated_token_stack,
+    _isolated_token_stack_storage,
+    set_token_stack,
+)
 
 from opentelemetry import trace
 from opentelemetry.context import Context
-from opentelemetry.instrumentation.threading import ThreadingInstrumentor
+
+# instead of importing from opentelemetry.instrumentation.threading,
+# we import from our modified copy to use Laminar's isolated context.
+from ..opentelemetry.instrumentation.threading import ThreadingInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider, SpanProcessor
 from opentelemetry.sdk.trace.export import SpanExporter
@@ -24,110 +33,6 @@ from opentelemetry.sdk.trace.export import SpanExporter
 TRACER_NAME = "lmnr.tracer"
 
 MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN = 5000
-
-
-class _IsolatedRuntimeContext(ABC):
-    """The isolated RuntimeContext interface, identical to OpenTelemetry's _RuntimeContext
-    but isolated from the global context.
-    """
-
-    @abstractmethod
-    def attach(self, context: Context) -> Token[Context]:
-        """Sets the current `Context` object. Returns a
-        token that can be used to reset to the previous `Context`.
-
-        Args:
-            context: The Context to set.
-        """
-
-    @abstractmethod
-    def get_current(self) -> Context:
-        """Returns the current `Context` object."""
-
-    @abstractmethod
-    def detach(self, token: Token[Context]) -> None:
-        """Resets Context to a previous value
-
-        Args:
-            token: A reference to a previous Context.
-        """
-
-
-class IsolatedContextVarsRuntimeContext(_IsolatedRuntimeContext):
-    """An isolated implementation of the RuntimeContext interface which wraps ContextVar
-    but uses its own ContextVar instead of the global one.
-    """
-
-    def __init__(self) -> None:
-        self._current_context = ContextVar(
-            "isolated_current_context", default=Context()
-        )
-
-    def attach(self, context: Context) -> Token[Context]:
-        """Sets the current `Context` object. Returns a
-        token that can be used to reset to the previous `Context`.
-
-        Args:
-            context: The Context to set.
-        """
-        return self._current_context.set(context)
-
-    def get_current(self) -> Context:
-        """Returns the current `Context` object."""
-        return self._current_context.get()
-
-    def detach(self, token: Token[Context]) -> None:
-        """Resets Context to a previous value
-
-        Args:
-            token: A reference to a previous Context.
-        """
-        self._current_context.reset(token)
-
-
-# Create the isolated runtime context
-_ISOLATED_RUNTIME_CONTEXT = IsolatedContextVarsRuntimeContext()
-
-# Token stack for push/pop API compatibility - much lighter than copying contexts
-_isolated_token_stack: ContextVar[List[Token[Context]]] = ContextVar(
-    "isolated_token_stack", default=[]
-)
-
-# Thread-local storage for threading support
-_isolated_token_stack_storage = threading.local()
-
-
-def _get_token_stack() -> List[Token[Context]]:
-    """Get the token stack, supporting both asyncio and threading."""
-    try:
-        return _isolated_token_stack.get()
-    except LookupError:
-        if not hasattr(_isolated_token_stack_storage, "token_stack"):
-            _isolated_token_stack_storage.token_stack = []
-        return _isolated_token_stack_storage.token_stack
-
-
-def _set_token_stack(stack: List[Token[Context]]) -> None:
-    """Set the token stack, supporting both asyncio and threading."""
-    try:
-        _isolated_token_stack.set(stack)
-    except LookupError:
-        _isolated_token_stack_storage.token_stack = stack
-
-
-def _get_current_context() -> Context:
-    """Get the current isolated context."""
-    return _ISOLATED_RUNTIME_CONTEXT.get_current()
-
-
-def _attach_context(context: Context) -> Token[Context]:
-    """Attach a context to the isolated runtime context."""
-    return _ISOLATED_RUNTIME_CONTEXT.attach(context)
-
-
-def _detach_context(token: Token[Context]) -> None:
-    """Detach a context from the isolated runtime context."""
-    _ISOLATED_RUNTIME_CONTEXT.detach(token)
 
 
 class TracerWrapper(object):
@@ -233,8 +138,8 @@ class TracerWrapper(object):
 
             def patched_thread_init(thread_self, *args, **kwargs):
                 # Capture current isolated context and token stack for inheritance
-                current_context = _get_current_context()
-                current_token_stack = _get_token_stack().copy()
+                current_context = get_current_context()
+                current_token_stack = get_token_stack().copy()
 
                 # Get the original target function
                 original_target = kwargs.get("target")
@@ -246,8 +151,8 @@ class TracerWrapper(object):
                     # Create a wrapper function that sets up context
                     def thread_wrapper(*target_args, **target_kwargs):
                         # Set inherited context and token stack in the new thread
-                        _attach_context(current_context)
-                        _set_token_stack(current_token_stack)
+                        attach_context(current_context)
+                        set_token_stack(current_token_stack)
                         # Run original target
                         return original_target(*target_args, **target_kwargs)
 
@@ -275,28 +180,28 @@ class TracerWrapper(object):
 
     def get_isolated_context(self) -> Context:
         """Get the current isolated context."""
-        return _get_current_context()
+        return get_current_context()
 
     def push_span_context(self, span: trace.Span) -> Context:
         """Push a new context with the given span onto the stack."""
-        current_ctx = _get_current_context()
+        current_ctx = get_current_context()
         new_context = trace.set_span_in_context(span, current_ctx)
-        token = _attach_context(new_context)
+        token = attach_context(new_context)
 
         # Store the token for later detachment - tokens are much lighter than contexts
-        current_stack = _get_token_stack().copy()
+        current_stack = get_token_stack().copy()
         current_stack.append(token)
-        _set_token_stack(current_stack)
+        set_token_stack(current_stack)
 
         return new_context
 
     def pop_span_context(self) -> None:
         """Pop the current span context from the stack."""
-        current_stack = _get_token_stack().copy()
+        current_stack = get_token_stack().copy()
         if current_stack:
             token = current_stack.pop()
-            _set_token_stack(current_stack)
-            _detach_context(token)
+            set_token_stack(current_stack)
+            detach_context(token)
 
     @staticmethod
     def set_static_params(
@@ -326,7 +231,7 @@ class TracerWrapper(object):
         if hasattr(_isolated_token_stack_storage, "token_stack"):
             _isolated_token_stack_storage.token_stack = []
         # Reset the isolated context to a fresh state
-        _attach_context(Context())
+        attach_context(Context())
 
     def shutdown(self):
         if self._tracer_provider is None:
