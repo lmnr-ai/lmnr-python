@@ -15,11 +15,11 @@ from lmnr.opentelemetry_lib import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 from lmnr.opentelemetry_lib.decorators import json_dumps
 from opentelemetry import trace
 from opentelemetry.context import attach, detach
-from opentelemetry.trace import INVALID_TRACE_ID
+from opentelemetry.trace import INVALID_TRACE_ID, Span, Status, StatusCode, use_span
 from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
 from opentelemetry.util.types import AttributeValue
 
-from typing import Any, Literal
+from typing import Any, Iterator, Literal
 
 import datetime
 import logging
@@ -247,7 +247,7 @@ class Laminar:
         labels: list[str] | None = None,
         parent_span_context: LaminarSpanContext | None = None,
         tags: list[str] | None = None,
-    ):
+    ) -> Iterator[Span]:
         """Start a new span as the current span. Useful for manual
         instrumentation. If `span_type` is set to `"LLM"`, you should report
         usage and response attributes manually. See `Laminar.set_span_attributes`
@@ -493,6 +493,74 @@ class Laminar:
                         serialized_input,
                     )
             return span
+
+    @classmethod
+    @contextmanager
+    def use_span(
+        cls,
+        span: Span,
+        end_on_exit: bool = False,
+        record_exception: bool = True,
+        set_status_on_exception: bool = True,
+    ) -> Iterator[Span]:
+        """Use a span as the current span. Useful for manual instrumentation.
+
+        Fully copies the implementation of `use_span` from opentelemetry.trace
+        and replaces the context API with Laminar's isolated context.
+
+        Args:
+            span: The span that should be activated in the current context.
+            end_on_exit: Whether to end the span automatically when leaving the
+                context manager scope.
+            record_exception: Whether to record any exceptions raised within the
+                context as error event on the span.
+            set_status_on_exception: Only relevant if the returned span is used
+                in a with/context manager. Defines whether the span status will
+                be automatically set to ERROR when an uncaught exception is
+                raised in the span with block. The span status won't be set by
+                this mechanism if it was previously set manually.
+        """
+        if not cls.is_initialized():
+            return use_span(
+                span, end_on_exit, record_exception, set_status_on_exception
+            )
+
+        wrapper = TracerWrapper()
+
+        try:
+            wrapper.push_span_context(span)
+            try:
+                yield span
+            finally:
+                wrapper.pop_span_context()
+
+        # Record only exceptions that inherit Exception class but not BaseException, because
+        # classes that directly inherit BaseException are not technically errors, e.g. GeneratorExit.
+        # See https://github.com/open-telemetry/opentelemetry-python/issues/4484
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            if isinstance(span, Span) and span.is_recording():
+                # Record the exception as an event
+                if record_exception:
+                    span.record_exception(exc)
+
+                # Set status in case exception was raised
+                if set_status_on_exception:
+                    span.set_status(
+                        Status(
+                            status_code=StatusCode.ERROR,
+                            description=f"{type(exc).__name__}: {exc}",
+                        )
+                    )
+
+            # This causes parent spans to set their status to ERROR and to record
+            # an exception as an event if a child span raises an exception even if
+            # such child span was started with both record_exception and
+            # set_status_on_exception attributes set to False.
+            raise
+
+        finally:
+            if end_on_exit:
+                span.end()
 
     @classmethod
     def set_span_output(cls, output: Any = None):
