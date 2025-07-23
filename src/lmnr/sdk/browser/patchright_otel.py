@@ -1,4 +1,6 @@
 from lmnr.sdk.browser.playwright_otel import (
+    _wrap_bring_to_front_async,
+    _wrap_bring_to_front_sync,
     _wrap_new_browser_sync,
     _wrap_new_browser_async,
     _wrap_new_context_sync,
@@ -46,6 +48,12 @@ WRAPPED_METHODS = [
         "method": "launch_persistent_context",
         "wrapper": _wrap_new_context_sync,
     },
+    {
+        "package": "patchright.sync_api",
+        "object": "Page",
+        "method": "bring_to_front",
+        "wrapper": _wrap_bring_to_front_sync,
+    },
 ]
 
 WRAPPED_METHODS_ASYNC = [
@@ -79,6 +87,12 @@ WRAPPED_METHODS_ASYNC = [
         "method": "launch_persistent_context",
         "wrapper": _wrap_new_context_async,
     },
+    {
+        "package": "patchright.async_api",
+        "object": "Page",
+        "method": "bring_to_front",
+        "wrapper": _wrap_bring_to_front_async,
+    },
 ]
 
 
@@ -92,6 +106,7 @@ class PatchrightInstrumentor(BaseInstrumentor):
         return _instruments
 
     def _instrument(self, **kwargs):
+        print("instrumenting PATCHRIGHT")
         tracer_provider = kwargs.get("tracer_provider")
         tracer = get_tracer(__name__, __version__, tracer_provider)
 

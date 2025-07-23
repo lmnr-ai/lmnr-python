@@ -55,8 +55,8 @@ class TestBrowserEvents:
         # Set up the evaluate method to return events
         def evaluate_side_effect(js_code):
             if "lmnrGetAndClearEvents" in js_code:
-                # Return mock events on the second call
-                return [{"data": [1, 2, 3, 4]}]
+                # Return mock events with proper RRWebEvent structure
+                return [{"type": 2, "timestamp": 1234567890, "data": [1, 2, 3, 4]}]
             return True
 
         mock_sync_page.evaluate.side_effect = evaluate_side_effect
@@ -99,8 +99,8 @@ class TestBrowserEvents:
         # Set up the evaluate method to return events
         async def evaluate_side_effect(js_code):
             if "lmnrGetAndClearEvents" in js_code:
-                # Return mock events
-                return [{"data": [1, 2, 3, 4]}]
+                # Return mock events with proper RRWebEvent structure
+                return [{"type": 2, "timestamp": 1234567890, "data": [1, 2, 3, 4]}]
             return True
 
         mock_async_page.evaluate.side_effect = evaluate_side_effect
@@ -140,12 +140,12 @@ class TestBrowserEvents:
         """Test that events are properly captured from multiple pages"""
         # Create two mock pages
         mock_page1 = MagicMock(name="Page1")
-        mock_page1.evaluate.return_value = [{"data": [1, 2, 3, 4]}]
+        mock_page1.evaluate.return_value = [{"type": 2, "timestamp": 1234567890, "data": [1, 2, 3, 4]}]
         mock_page1.goto.return_value = None
         mock_page1.is_closed.return_value = False
 
         mock_page2 = MagicMock(name="Page2")
-        mock_page2.evaluate.return_value = [{"data": [5, 6, 7, 8]}]
+        mock_page2.evaluate.return_value = [{"type": 2, "timestamp": 1234567891, "data": [5, 6, 7, 8]}]
         mock_page2.goto.return_value = None
         mock_page2.is_closed.return_value = False
 
