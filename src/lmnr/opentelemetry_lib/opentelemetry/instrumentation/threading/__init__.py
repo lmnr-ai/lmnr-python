@@ -60,8 +60,9 @@ from lmnr.opentelemetry_lib.tracing.context import (
 )
 from opentelemetry import context
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry.instrumentation.threading.package import _instruments
 from opentelemetry.instrumentation.utils import unwrap
+
+_instruments = ()
 
 if TYPE_CHECKING:
     from typing import Protocol, TypeVar
@@ -195,10 +196,10 @@ class ThreadingInstrumentor(BaseInstrumentor):
             finally:
                 if token is not None:
                     current_stack = get_token_stack().copy()
-                if current_stack:
-                    current_stack.pop()
-                    set_token_stack(current_stack)
-                    detach_context(token)
+                    if current_stack:
+                        current_stack.pop()
+                        set_token_stack(current_stack)
+                        detach_context(token)
 
         # replace the original function with the wrapped function
         new_args: tuple[Callable[..., Any], ...] = (wrapped_func,) + args[1:]

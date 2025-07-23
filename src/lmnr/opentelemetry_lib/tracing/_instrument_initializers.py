@@ -30,10 +30,8 @@ class AnthropicInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("anthropic"):
             return None
-        if not is_package_installed("opentelemetry-instrumentation-anthropic"):
-            return None
 
-        from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
+        from ..opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
 
         return AnthropicInstrumentor(
             upload_base64_image=None,
