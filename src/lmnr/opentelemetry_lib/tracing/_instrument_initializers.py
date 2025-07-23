@@ -136,10 +136,8 @@ class GroqInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("groq"):
             return None
-        if not is_package_installed("opentelemetry-instrumentation-groq"):
-            return None
 
-        from opentelemetry.instrumentation.groq import GroqInstrumentor
+        from ..opentelemetry.instrumentation.groq import GroqInstrumentor
 
         return GroqInstrumentor()
 
