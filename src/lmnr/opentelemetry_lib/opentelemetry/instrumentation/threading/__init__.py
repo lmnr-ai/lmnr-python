@@ -55,8 +55,6 @@ from lmnr.opentelemetry_lib.tracing.context import (
     get_current_context,
     attach_context,
     detach_context,
-    get_token_stack,
-    set_token_stack,
 )
 from opentelemetry import context
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
@@ -162,17 +160,10 @@ class ThreadingInstrumentor(BaseInstrumentor):
         token = None
         try:
             token = attach_context(instance._otel_context)
-            current_stack = get_token_stack().copy()
-            current_stack.append(token)
-            set_token_stack(current_stack)
             return call_wrapped(*args, **kwargs)
         finally:
             if token is not None:
-                current_stack = get_token_stack().copy()
-                if current_stack:
-                    current_stack.pop()
-                    set_token_stack(current_stack)
-                    detach_context(token)
+                detach_context(token)
 
     @staticmethod
     def __wrap_thread_pool_submit(
@@ -189,17 +180,10 @@ class ThreadingInstrumentor(BaseInstrumentor):
             token = None
             try:
                 token = attach_context(otel_context)
-                current_stack = get_token_stack().copy()
-                current_stack.append(token)
-                set_token_stack(current_stack)
                 return original_func(*func_args, **func_kwargs)
             finally:
                 if token is not None:
-                    current_stack = get_token_stack().copy()
-                    if current_stack:
-                        current_stack.pop()
-                        set_token_stack(current_stack)
-                        detach_context(token)
+                    detach_context(token)
 
         # replace the original function with the wrapped function
         new_args: tuple[Callable[..., Any], ...] = (wrapped_func,) + args[1:]

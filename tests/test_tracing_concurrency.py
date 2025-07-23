@@ -363,6 +363,49 @@ def test_threadpool_parallel_spans_separate_traces(span_exporter: InMemorySpanEx
         assert span.parent is None or span.parent.span_id == 0
 
 
+@pytest.mark.vcr(record_mode="once")
+def test_threadpool_parallel_spans_with_openai(span_exporter: InMemorySpanExporter):
+    """Test multiple parallel ThreadPoolExecutor spans live in separate traces
+    including auto-instrumented OpenAI spans."""
+    from openai import OpenAI
+
+    openai_client = OpenAI()
+
+    def task_worker(task_id: str):
+        with Laminar.start_as_current_span("task_worker"):
+            time.sleep(0.01)
+            result = f"task_{task_id}"
+            openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "user", "content": "what is the capital of France?"}
+                ],
+            )
+            Laminar.set_span_output(result)
+            return result
+
+    # Use ThreadPoolExecutor to run tasks
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        futures = [executor.submit(task_worker, str(i)) for i in range(3)]
+        results = [
+            future.result() for future in concurrent.futures.as_completed(futures)
+        ]
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 6
+    assert len(results) == 3
+
+    # There's one trace per thread
+    trace_ids = [span.get_span_context().trace_id for span in spans]
+    assert len(set(trace_ids)) == 3, "Number of traces should match number of threads"
+
+    for span in spans:
+        if span.name == "task_worker":
+            assert span.parent is None or span.parent.span_id == 0
+        else:
+            assert span.parent is not None
+
+
 def test_threadpool_parallel_spans_same_parent(span_exporter: InMemorySpanExporter):
     """Test multiple parallel ThreadPoolExecutor spans within one parent share the same trace."""
 
