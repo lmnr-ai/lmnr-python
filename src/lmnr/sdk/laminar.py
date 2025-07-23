@@ -2,7 +2,7 @@ from contextlib import contextmanager
 from contextvars import Context
 import warnings
 from lmnr.opentelemetry_lib import TracerManager
-from lmnr.opentelemetry_lib.tracing import TracerWrapper, _get_current_context
+from lmnr.opentelemetry_lib.tracing import TracerWrapper, get_current_context
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.attributes import (
@@ -225,7 +225,7 @@ class Laminar:
         if value is not None:
             event["lmnr.event.value"] = value
 
-        current_span = trace.get_current_span(context=_get_current_context())
+        current_span = trace.get_current_span(context=get_current_context())
         if current_span == trace.INVALID_SPAN:
             cls.__logger.warning(
                 "`Laminar().event()` called outside of span context. "
@@ -503,7 +503,7 @@ class Laminar:
             output (Any, optional): output of the span. Will be sent as an\
                 attribute, so must be json serializable. Defaults to None.
         """
-        span = trace.get_current_span(context=_get_current_context())
+        span = trace.get_current_span(context=get_current_context())
         if output is not None and span != trace.INVALID_SPAN:
             serialized_output = json_dumps(output)
             if len(serialized_output) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
@@ -541,7 +541,7 @@ class Laminar:
         Args:
             attributes (dict[Attributes | str, Any]): attributes to set for the span
         """
-        span = trace.get_current_span(context=_get_current_context())
+        span = trace.get_current_span(context=get_current_context())
         if span == trace.INVALID_SPAN:
             return
 
@@ -564,7 +564,7 @@ class Laminar:
         if not cls.is_initialized():
             return None
 
-        span = span or trace.get_current_span(context=_get_current_context())
+        span = span or trace.get_current_span(context=get_current_context())
         if span == trace.INVALID_SPAN:
             return None
         return LaminarSpanContext(
@@ -648,7 +648,7 @@ class Laminar:
         if not cls.is_initialized():
             return
 
-        span = trace.get_current_span(context=_get_current_context())
+        span = trace.get_current_span(context=get_current_context())
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set tags on")
             return
@@ -670,7 +670,7 @@ class Laminar:
         if not cls.is_initialized():
             return
 
-        span = trace.get_current_span(context=_get_current_context())
+        span = trace.get_current_span(context=get_current_context())
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set session id on")
             return
@@ -688,7 +688,7 @@ class Laminar:
         if not cls.is_initialized():
             return
 
-        span = trace.get_current_span(context=_get_current_context())
+        span = trace.get_current_span(context=get_current_context())
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set user id on")
             return
@@ -705,7 +705,7 @@ class Laminar:
         if not cls.is_initialized():
             return
 
-        span = trace.get_current_span(context=_get_current_context())
+        span = trace.get_current_span(context=get_current_context())
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set metadata on")
             return
@@ -735,7 +735,7 @@ class Laminar:
             there is no active span.
         """
         trace_id = (
-            trace.get_current_span(context=_get_current_context())
+            trace.get_current_span(context=get_current_context())
             .get_span_context()
             .trace_id
         )
@@ -763,7 +763,7 @@ class Laminar:
         if not cls.is_initialized():
             return
 
-        span = trace.get_current_span(context=_get_current_context())
+        span = trace.get_current_span(context=get_current_context())
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set trace type on")
             return

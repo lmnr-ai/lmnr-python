@@ -36,7 +36,7 @@ except ImportError:
     ResponseOutputMessageParam = Dict[str, Any]
     RESPONSES_AVAILABLE = False
 
-from lmnr.opentelemetry_lib.tracing import _get_current_context
+from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from openai._legacy_response import LegacyAPIResponse
 from opentelemetry import context as context_api
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
@@ -430,7 +430,7 @@ def responses_get_or_create_wrapper(tracer: Tracer, wrapped, instance, args, kwa
             start_time=(
                 start_time if traced_data is None else int(traced_data.start_time)
             ),
-            context=_get_current_context(),
+            context=get_current_context(),
         )
         span.set_attribute(ERROR_TYPE, e.__class__.__name__)
         span.record_exception(e)
@@ -474,7 +474,7 @@ def responses_get_or_create_wrapper(tracer: Tracer, wrapped, instance, args, kwa
             SPAN_NAME,
             kind=SpanKind.CLIENT,
             start_time=int(traced_data.start_time),
-            context=_get_current_context(),
+            context=get_current_context(),
         )
         set_data_attributes(traced_data, span)
         span.end()
@@ -526,7 +526,7 @@ async def async_responses_get_or_create_wrapper(
             start_time=(
                 start_time if traced_data is None else int(traced_data.start_time)
             ),
-            context=_get_current_context(),
+            context=get_current_context(),
         )
         span.set_attribute(ERROR_TYPE, e.__class__.__name__)
         span.record_exception(e)
@@ -570,7 +570,7 @@ async def async_responses_get_or_create_wrapper(
             SPAN_NAME,
             kind=SpanKind.CLIENT,
             start_time=int(traced_data.start_time),
-            context=_get_current_context(),
+            context=get_current_context(),
         )
         set_data_attributes(traced_data, span)
         span.end()
@@ -595,7 +595,7 @@ def responses_cancel_wrapper(tracer: Tracer, wrapped, instance, args, kwargs):
             kind=SpanKind.CLIENT,
             start_time=existing_data.start_time,
             record_exception=True,
-            context=_get_current_context(),
+            context=get_current_context(),
         )
         span.record_exception(Exception("Response cancelled"))
         set_data_attributes(existing_data, span)
@@ -622,7 +622,7 @@ async def async_responses_cancel_wrapper(
             kind=SpanKind.CLIENT,
             start_time=existing_data.start_time,
             record_exception=True,
-            context=_get_current_context(),
+            context=get_current_context(),
         )
         span.record_exception(Exception("Response cancelled"))
         set_data_attributes(existing_data, span)

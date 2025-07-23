@@ -27,7 +27,7 @@ from ..utils import (
     should_emit_events,
     should_send_prompts,
 )
-from lmnr.opentelemetry_lib.tracing import _get_current_context
+from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.semconv_ai import (
@@ -56,7 +56,7 @@ def completion_wrapper(tracer, wrapped, instance, args, kwargs):
         SPAN_NAME,
         kind=SpanKind.CLIENT,
         attributes={SpanAttributes.LLM_REQUEST_TYPE: LLM_REQUEST_TYPE.value},
-        context=_get_current_context(),
+        context=get_current_context(),
     )
 
     _handle_request(span, kwargs, instance)
@@ -91,7 +91,7 @@ async def acompletion_wrapper(tracer, wrapped, instance, args, kwargs):
         name=SPAN_NAME,
         kind=SpanKind.CLIENT,
         attributes={SpanAttributes.LLM_REQUEST_TYPE: LLM_REQUEST_TYPE.value},
-        context=_get_current_context(),
+        context=get_current_context(),
     )
 
     _handle_request(span, kwargs, instance)
