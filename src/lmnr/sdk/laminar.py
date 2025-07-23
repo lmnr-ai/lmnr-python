@@ -521,7 +521,7 @@ class Laminar:
                 this mechanism if it was previously set manually.
         """
         if not cls.is_initialized():
-            return use_span(
+            yield from use_span(
                 span, end_on_exit, record_exception, set_status_on_exception
             )
 
