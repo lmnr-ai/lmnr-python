@@ -65,8 +65,8 @@ INJECT_PLACEHOLDER = """
                     const writer = compressionStream.writable.getWriter();
                     const reader = compressionStream.readable.getReader();
 
-                    await writer.write(uint8Array);
-                    await writer.close();
+                    writer.write(uint8Array);
+                    writer.close();
 
                     const chunks = [];
                     let totalLength = 0;
@@ -196,8 +196,8 @@ INJECT_PLACEHOLDER = """
         const writer = compressionStream.writable.getWriter();
         const reader = compressionStream.readable.getReader();
 
-        await writer.write(uint8Array);
-        await writer.close();
+        writer.write(uint8Array);
+        writer.close();
 
         const chunks = [];
         let totalLength = 0;
