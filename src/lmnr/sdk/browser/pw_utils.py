@@ -65,8 +65,8 @@ INJECT_PLACEHOLDER = """
                     const writer = compressionStream.writable.getWriter();
                     const reader = compressionStream.readable.getReader();
 
-                    writer.write(uint8Array);
-                    writer.close();
+                    await writer.write(uint8Array);
+                    await writer.close();
 
                     const chunks = [];
                     let totalLength = 0;
@@ -196,8 +196,8 @@ INJECT_PLACEHOLDER = """
         const writer = compressionStream.writable.getWriter();
         const reader = compressionStream.readable.getReader();
 
-        writer.write(uint8Array);
-        writer.close();
+        await writer.write(uint8Array);
+        await writer.close();
 
         const chunks = [];
         let totalLength = 0;
@@ -359,7 +359,7 @@ INJECT_PLACEHOLDER = """
     setInterval(sendBatchIfReady, BATCH_TIMEOUT);
 
     // Add heartbeat events
-    setInterval(async () => {
+    setInterval(() => {
         window.lmnrRrweb.record.addCustomEvent('heartbeat', {
             title: document.title,
             url: document.URL,
