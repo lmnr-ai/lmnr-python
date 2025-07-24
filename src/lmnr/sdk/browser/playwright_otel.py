@@ -63,6 +63,7 @@ def _wrap_new_browser_sync(
     def create_page_handler(session_id, client):
         def page_handler(page):
             start_recording_events_sync(page, session_id, client)
+
         return page_handler
 
     for context in browser.contexts:
@@ -84,6 +85,7 @@ async def _wrap_new_browser_async(
     def create_page_handler(session_id, client):
         async def page_handler(page):
             await start_recording_events_async(page, session_id, client)
+
         return page_handler
 
     for context in browser.contexts:
@@ -104,6 +106,7 @@ def _wrap_new_context_sync(
     def create_page_handler(session_id, client):
         def page_handler(page):
             start_recording_events_sync(page, session_id, client)
+
         return page_handler
 
     page_handler = create_page_handler(session_id, client)
@@ -124,6 +127,7 @@ async def _wrap_new_context_async(
     def create_page_handler(session_id, client):
         async def page_handler(page):
             await start_recording_events_async(page, session_id, client)
+
         return page_handler
 
     page_handler = create_page_handler(session_id, client)

@@ -57,10 +57,10 @@ class Laminar:
         http_port: int | None = None,
         grpc_port: int | None = None,
         instruments: (
-            set[Instruments] | list[Instruments] | tuple[Instruments] | None
+            list[Instruments] | set[Instruments] | tuple[Instruments] | None
         ) = None,
         disabled_instruments: (
-            set[Instruments] | list[Instruments] | tuple[Instruments] | None
+            list[Instruments] | set[Instruments] | tuple[Instruments] | None
         ) = None,
         disable_batch: bool = False,
         max_export_batch_size: int | None = None,
@@ -614,10 +614,9 @@ class Laminar:
             return
 
         for key, value in attributes.items():
-            # Python 3.12+ should do: if key not in Attributes:
             if isinstance(key, Attributes):
                 key = key.value
-            if not isinstance(value, (str, int, float, bool)):
+            if not is_otel_attribute_value_type(value):
                 span.set_attribute(key, json_dumps(value))
             else:
                 span.set_attribute(key, value)
