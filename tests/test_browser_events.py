@@ -55,8 +55,8 @@ class TestBrowserEvents:
         # Set up the evaluate method to return events
         def evaluate_side_effect(js_code):
             if "lmnrGetAndClearEvents" in js_code:
-                # Return mock events with proper RRWebEvent structure
-                return [{"type": 2, "timestamp": 1234567890, "data": [1, 2, 3, 4]}]
+                # Return mock events on the second call
+                return [{"data": [1, 2, 3, 4]}]
             return True
 
         mock_sync_page.evaluate.side_effect = evaluate_side_effect
