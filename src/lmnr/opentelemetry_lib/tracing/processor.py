@@ -17,9 +17,6 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
     SPAN_SDK_VERSION,
 )
 from lmnr.opentelemetry_lib.tracing.exporter import LaminarSpanExporter
-from lmnr.opentelemetry_lib.tracing.context_properties import (
-    _set_association_properties_attributes,
-)
 from lmnr.version import PYTHON_VERSION, __version__
 
 
@@ -76,9 +73,11 @@ class LaminarSpanProcessor(SpanProcessor):
         span.set_attribute(SPAN_SDK_VERSION, __version__)
         span.set_attribute(SPAN_LANGUAGE_VERSION, f"python@{PYTHON_VERSION}")
 
-        association_properties = get_value("association_properties")
-        if association_properties is not None:
-            _set_association_properties_attributes(span, association_properties)
+        if span.name == "LangGraph.workflow":
+            graph_context = get_value("lmnr.langgraph.graph") or {}
+            for key, value in graph_context.items():
+                span.set_attribute(f"lmnr.association.properties.{key}", value)
+
         self.instance.on_start(span, parent_context)
 
     def on_end(self, span: Span):

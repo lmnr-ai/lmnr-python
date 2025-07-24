@@ -10,9 +10,22 @@ from lmnr.opentelemetry_lib.tracing.instruments import (
     Instruments,
     init_instrumentations,
 )
+from lmnr.opentelemetry_lib.tracing.context import (
+    attach_context,
+    detach_context,
+    get_current_context,
+    get_token_stack,
+    _isolated_token_stack,
+    _isolated_token_stack_storage,
+    set_token_stack,
+)
 
 from opentelemetry import trace
-from opentelemetry.instrumentation.threading import ThreadingInstrumentor
+from opentelemetry.context import Context
+
+# instead of importing from opentelemetry.instrumentation.threading,
+# we import from our modified copy to use Laminar's isolated context.
+from ..opentelemetry.instrumentation.threading import ThreadingInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider, SpanProcessor
 from opentelemetry.sdk.trace.export import SpanExporter
@@ -32,6 +45,7 @@ class TracerWrapper(object):
     _async_client: AsyncLaminarClient
     _resource: Resource
     _span_processor: SpanProcessor
+    _original_thread_init = None
 
     def __new__(
         cls,
@@ -91,6 +105,9 @@ class TracerWrapper(object):
 
                 obj._tracer_provider.add_span_processor(obj._span_processor)
 
+                # Setup threading context inheritance
+                obj._setup_threading_inheritance()
+
                 # This is not a real instrumentation and does not generate telemetry
                 # data, but it is required to ensure that OpenTelemetry context
                 # propagation is enabled.
@@ -113,6 +130,43 @@ class TracerWrapper(object):
 
             return cls.instance
 
+    def _setup_threading_inheritance(self):
+        """Setup threading inheritance for isolated context."""
+        if TracerWrapper._original_thread_init is None:
+            # Monkey patch Thread.__init__ to capture context inheritance
+            TracerWrapper._original_thread_init = threading.Thread.__init__
+
+            def patched_thread_init(thread_self, *args, **kwargs):
+                # Capture current isolated context and token stack for inheritance
+                current_context = get_current_context()
+                current_token_stack = get_token_stack().copy()
+
+                # Get the original target function
+                original_target = kwargs.get("target")
+                if not original_target and args:
+                    original_target = args[0]
+
+                # Only inherit if we have a target function
+                if original_target:
+                    # Create a wrapper function that sets up context
+                    def thread_wrapper(*target_args, **target_kwargs):
+                        # Set inherited context and token stack in the new thread
+                        attach_context(current_context)
+                        set_token_stack(current_token_stack)
+                        # Run original target
+                        return original_target(*target_args, **target_kwargs)
+
+                    # Replace the target with our wrapper
+                    if "target" in kwargs:
+                        kwargs["target"] = thread_wrapper
+                    elif args:
+                        args = (thread_wrapper,) + args[1:]
+
+                # Call original init
+                TracerWrapper._original_thread_init(thread_self, *args, **kwargs)
+
+            threading.Thread.__init__ = patched_thread_init
+
     def exit_handler(self):
         if isinstance(self._span_processor, LaminarSpanProcessor):
             self._span_processor.clear()
@@ -123,6 +177,31 @@ class TracerWrapper(object):
         console_log_handler = logging.StreamHandler()
         console_log_handler.setFormatter(VerboseColorfulFormatter())
         self._logger.addHandler(console_log_handler)
+
+    def get_isolated_context(self) -> Context:
+        """Get the current isolated context."""
+        return get_current_context()
+
+    def push_span_context(self, span: trace.Span) -> Context:
+        """Push a new context with the given span onto the stack."""
+        current_ctx = get_current_context()
+        new_context = trace.set_span_in_context(span, current_ctx)
+        token = attach_context(new_context)
+
+        # Store the token for later detachment - tokens are much lighter than contexts
+        current_stack = get_token_stack().copy()
+        current_stack.append(token)
+        set_token_stack(current_stack)
+
+        return new_context
+
+    def pop_span_context(self) -> None:
+        """Pop the current span context from the stack."""
+        current_stack = get_token_stack().copy()
+        if current_stack:
+            token = current_stack.pop()
+            set_token_stack(current_stack)
+            detach_context(token)
 
     @staticmethod
     def set_static_params(
@@ -144,6 +223,15 @@ class TracerWrapper(object):
         # Any state cleanup. Now used in between tests
         if isinstance(cls.instance._span_processor, LaminarSpanProcessor):
             cls.instance._span_processor.clear()
+        # Clear the isolated context state for clean test state
+        try:
+            _isolated_token_stack.set([])
+        except LookupError:
+            pass
+        if hasattr(_isolated_token_stack_storage, "token_stack"):
+            _isolated_token_stack_storage.token_stack = []
+        # Reset the isolated context to a fresh state
+        attach_context(Context())
 
     def shutdown(self):
         if self._tracer_provider is None:

@@ -9,7 +9,6 @@ from .sdk.types import (
     HumanEvaluator,
     RunAgentResponseChunk,
     StepChunkContent,
-    TracingLevel,
 )
 from .sdk.decorators import observe
 from .sdk.types import LaminarSpanContext
@@ -18,7 +17,6 @@ from .opentelemetry_lib.tracing.attributes import Attributes
 from .opentelemetry_lib.tracing.instruments import Instruments
 from .opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from .opentelemetry_lib.tracing.tracer import get_laminar_tracer_provider, get_tracer
-from opentelemetry.trace import use_span
 
 __all__ = [
     "AgentOutput",
@@ -36,10 +34,8 @@ __all__ = [
     "LaminarSpanProcessor",
     "RunAgentResponseChunk",
     "StepChunkContent",
-    "TracingLevel",
     "get_laminar_tracer_provider",
     "get_tracer",
     "evaluate",
     "observe",
-    "use_span",
 ]

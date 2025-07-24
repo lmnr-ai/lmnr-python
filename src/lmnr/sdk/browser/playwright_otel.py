@@ -60,8 +60,15 @@ def _wrap_new_browser_sync(
     browser: SyncBrowser = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
 
+    def create_page_handler(session_id, client):
+        def page_handler(page):
+            start_recording_events_sync(page, session_id, client)
+
+        return page_handler
+
     for context in browser.contexts:
-        context.on("page", lambda p: start_recording_events_sync(p, session_id, client))
+        page_handler = create_page_handler(session_id, client)
+        context.on("page", page_handler)
         for page in context.pages:
             start_recording_events_sync(page, session_id, client)
 
@@ -75,10 +82,15 @@ async def _wrap_new_browser_async(
     browser: Browser = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
 
+    def create_page_handler(session_id, client):
+        async def page_handler(page):
+            await start_recording_events_async(page, session_id, client)
+
+        return page_handler
+
     for context in browser.contexts:
-        context.on(
-            "page", lambda p: start_recording_events_async(p, session_id, client)
-        )
+        page_handler = create_page_handler(session_id, client)
+        context.on("page", page_handler)
         for page in context.pages:
             await start_recording_events_async(page, session_id, client)
     return browser
@@ -91,7 +103,14 @@ def _wrap_new_context_sync(
     context: SyncBrowserContext = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
 
-    context.on("page", lambda p: start_recording_events_sync(p, session_id, client))
+    def create_page_handler(session_id, client):
+        def page_handler(page):
+            start_recording_events_sync(page, session_id, client)
+
+        return page_handler
+
+    page_handler = create_page_handler(session_id, client)
+    context.on("page", page_handler)
     for page in context.pages:
         start_recording_events_sync(page, session_id, client)
 
@@ -105,7 +124,14 @@ async def _wrap_new_context_async(
     context: BrowserContext = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
 
-    context.on("page", lambda p: start_recording_events_async(p, session_id, client))
+    def create_page_handler(session_id, client):
+        async def page_handler(page):
+            await start_recording_events_async(page, session_id, client)
+
+        return page_handler
+
+    page_handler = create_page_handler(session_id, client)
+    context.on("page", page_handler)
     for page in context.pages:
         await start_recording_events_async(page, session_id, client)
 

@@ -27,6 +27,7 @@ from .utils import (
     should_emit_events,
 )
 from .version import __version__
+from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
 from opentelemetry.metrics import Counter, Histogram, Meter, get_meter
@@ -245,6 +246,7 @@ def _wrap(
             SpanAttributes.LLM_SYSTEM: "Groq",
             SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
         },
+        context=get_current_context(),
     )
 
     _handle_input(span, kwargs, event_logger)
@@ -327,6 +329,7 @@ async def _awrap(
             SpanAttributes.LLM_SYSTEM: "Groq",
             SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
         },
+        context=get_current_context(),
     )
 
     _handle_input(span, kwargs, event_logger)

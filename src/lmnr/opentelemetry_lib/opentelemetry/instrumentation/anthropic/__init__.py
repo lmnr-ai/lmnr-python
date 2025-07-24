@@ -30,6 +30,8 @@ from .utils import (
     should_emit_events,
 )
 from .version import __version__
+
+from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
 from opentelemetry.metrics import Counter, Histogram, Meter, get_meter
@@ -396,9 +398,10 @@ def _wrap(
         name,
         kind=SpanKind.CLIENT,
         attributes={
-            SpanAttributes.LLM_SYSTEM: "Anthropic",
+            SpanAttributes.LLM_SYSTEM: "anthropic",
             SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
         },
+        context=get_current_context(),
     )
 
     _handle_input(span, event_logger, kwargs)
@@ -493,9 +496,10 @@ async def _awrap(
         name,
         kind=SpanKind.CLIENT,
         attributes={
-            SpanAttributes.LLM_SYSTEM: "Anthropic",
+            SpanAttributes.LLM_SYSTEM: "anthropic",
             SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
         },
+        context=get_current_context(),
     )
     await _ahandle_input(span, event_logger, kwargs)
 

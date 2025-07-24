@@ -141,12 +141,6 @@ class GetDatapointsResponse(pydantic.BaseModel):
     totalCount: int
 
 
-class TracingLevel(Enum):
-    OFF = 0
-    META_ONLY = 1
-    ALL = 2
-
-
 class LaminarSpanContext(pydantic.BaseModel):
     """
     A span context that can be used to continue a trace across services. This

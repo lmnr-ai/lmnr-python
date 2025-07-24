@@ -8,6 +8,7 @@ from lmnr.sdk.decorators import observe
 from lmnr.sdk.browser.utils import retry_sync, retry_async
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
+from lmnr.opentelemetry_lib.tracing.context import get_current_context
 
 try:
     if is_package_installed("playwright"):
@@ -38,7 +39,9 @@ with open(os.path.join(current_dir, "rrweb", "rrweb.umd.min.cjs"), "r") as f:
 INJECT_PLACEHOLDER = """
 () => {
     const BATCH_TIMEOUT = 2000; // Send events after 2 seconds
-
+    const MAX_WORKER_PROMISES = 50; // Max concurrent worker promises
+    const HEARTBEAT_INTERVAL = 1000;
+    
     window.lmnrRrwebEventsBatch = [];
 
     // Create a Web Worker for heavy JSON processing with chunked processing
@@ -96,6 +99,29 @@ INJECT_PLACEHOLDER = """
     let compressionWorker = null;
     let workerPromises = new Map();
     let workerId = 0;
+
+    // Cleanup function for worker
+    const cleanupWorker = () => {
+        if (compressionWorker) {
+            compressionWorker.terminate();
+            compressionWorker = null;
+        }
+        workerPromises.clear();
+        workerId = 0;
+    };
+
+    // Clean up stale promises to prevent memory leaks
+    const cleanupStalePromises = () => {
+        if (workerPromises.size > MAX_WORKER_PROMISES) {
+            const toDelete = [];
+            for (const [id, promise] of workerPromises) {
+                if (toDelete.length >= workerPromises.size - MAX_WORKER_PROMISES) break;
+                toDelete.push(id);
+                promise.reject(new Error('Promise cleaned up due to memory pressure'));
+            }
+            toDelete.forEach(id => workerPromises.delete(id));
+        }
+    };
 
     // Non-blocking JSON.stringify using chunked processing
     function stringifyNonBlocking(obj, chunkSize = 10000) {
@@ -196,6 +222,9 @@ INJECT_PLACEHOLDER = """
     // Alternative: Use transferable objects for maximum efficiency
     async function compressLargeObjectTransferable(data) {
         try {
+            // Clean up stale promises first
+            cleanupStalePromises();
+            
             // Stringify on main thread but non-blocking
             const jsonString = await stringifyNonBlocking(data);
 
@@ -219,10 +248,23 @@ INJECT_PLACEHOLDER = """
                             }
                         }
                     };
+                    
+                    compressionWorker.onerror = (error) => {
+                        console.error('Compression worker error:', error);
+                        cleanupWorker();
+                    };
                 }
 
                 const id = ++workerId;
                 workerPromises.set(id, { resolve, reject });
+
+                // Set timeout to prevent hanging promises
+                setTimeout(() => {
+                    if (workerPromises.has(id)) {
+                        workerPromises.delete(id);
+                        reject(new Error('Compression timeout'));
+                    }
+                }, 10000);
 
                 // Transfer the ArrayBuffer (no copying!)
                 compressionWorker.postMessage({
@@ -262,15 +304,32 @@ INJECT_PLACEHOLDER = """
                             }
                         }
                     };
+                    
+                    compressionWorker.onerror = (error) => {
+                        console.error('Compression worker error:', error);
+                        cleanupWorker();
+                    };
                 }
 
                 const id = ++workerId;
                 workerPromises.set(id, { resolve, reject });
+                
+                // Set timeout to prevent hanging promises
+                setTimeout(() => {
+                    if (workerPromises.has(id)) {
+                        workerPromises.delete(id);
+                        reject(new Error('Compression timeout'));
+                    }
+                }, 10000);
+                
                 compressionWorker.postMessage({ jsonString, id });
             });
         }
     }
 
+    
+    setInterval(cleanupWorker, 5000);
+    
     function isLargeEvent(type) {
         const LARGE_EVENT_TYPES = [
             2, // FullSnapshot
@@ -300,13 +359,22 @@ INJECT_PLACEHOLDER = """
     setInterval(sendBatchIfReady, BATCH_TIMEOUT);
 
     // Add heartbeat events
-    setInterval(async () => {
+    setInterval(() => {
         window.lmnrRrweb.record.addCustomEvent('heartbeat', {
             title: document.title,
             url: document.URL,
         })
-    }, 1000);
+    }, HEARTBEAT_INTERVAL);
 
+    async function bufferToBase64(buffer) {
+        const base64url = await new Promise(r => {
+            const reader = new FileReader()
+            reader.onload = () => r(reader.result)
+            reader.readAsDataURL(new Blob([buffer]))
+        });
+        return base64url.slice(base64url.indexOf(',') + 1);
+    }
+ 
     window.lmnrRrweb.record({
         async emit(event) {
             try {
@@ -315,9 +383,10 @@ INJECT_PLACEHOLDER = """
                     await compressLargeObject(event.data, true) :
                     await compressSmallObject(event.data);
 
+                const base64Data = await bufferToBase64(compressedResult);
                 const eventToSend = {
                     ...event,
-                    data: compressedResult,
+                    data: base64Data,
                 };
                 window.lmnrRrwebEventsBatch.push(eventToSend);
             } catch (error) {
@@ -461,7 +530,9 @@ async def inject_session_recorder_async(page: Page):
 
 @observe(name="playwright.page", ignore_input=True, ignore_output=True)
 def start_recording_events_sync(page: SyncPage, session_id: str, client: LaminarClient):
-    span = trace.get_current_span()
+
+    ctx = get_current_context()
+    span = trace.get_current_span(ctx)
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
 
@@ -506,7 +577,8 @@ def start_recording_events_sync(page: SyncPage, session_id: str, client: Laminar
 async def start_recording_events_async(
     page: Page, session_id: str, client: AsyncLaminarClient
 ):
-    span = trace.get_current_span()
+    ctx = get_current_context()
+    span = trace.get_current_span(ctx)
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
 

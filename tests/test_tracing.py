@@ -2,7 +2,7 @@ import json
 import pytest
 import uuid
 
-from lmnr import Attributes, Laminar, TracingLevel, use_span
+from lmnr import Attributes, Laminar
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from lmnr.sdk.types import LaminarSpanContext
@@ -98,7 +98,7 @@ def test_set_span_attributes(span_exporter: InMemorySpanExporter):
 def test_use_span_set_attributes(span_exporter: InMemorySpanExporter):
     span = Laminar.start_span("test", input="my_input")
 
-    with use_span(span, end_on_exit=True):
+    with Laminar.use_span(span, end_on_exit=True):
         Laminar.set_span_attributes(
             {
                 Attributes.PROVIDER: "openai",
@@ -126,7 +126,7 @@ def test_use_span_set_attributes(span_exporter: InMemorySpanExporter):
 def test_use_span_end_on_exit(span_exporter: InMemorySpanExporter):
     span = Laminar.start_span("test", input="my_input")
 
-    with use_span(span, end_on_exit=True):
+    with Laminar.use_span(span, end_on_exit=True):
         Laminar.set_span_output("foo")
         pass
 
@@ -139,10 +139,39 @@ def test_use_span_end_on_exit(span_exporter: InMemorySpanExporter):
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
+@pytest.mark.vcr
+def test_use_span_with_auto_instrumentation(span_exporter: InMemorySpanExporter):
+    from openai import OpenAI
+
+    # real key was recorded in vcr
+    openai_client = OpenAI(api_key="fake")
+
+    span = Laminar.start_span("test", input="my_input")
+
+    with Laminar.use_span(span, end_on_exit=True):
+        openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "what is the capital of France?"}],
+        )
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 2
+    test_span = [span for span in spans if span.name == "test"][0]
+    openai_span = [span for span in spans if span.name == "openai.chat"][0]
+
+    assert json.loads(test_span.attributes["lmnr.span.input"]) == "my_input"
+    assert test_span.attributes["lmnr.span.instrumentation_source"] == "python"
+    assert test_span.attributes["lmnr.span.path"] == ("test",)
+
+    assert openai_span.parent.span_id == test_span.get_span_context().span_id
+    assert openai_span.attributes["lmnr.span.instrumentation_source"] == "python"
+    assert openai_span.attributes["lmnr.span.path"] == ("test", "openai.chat")
+
+
 def test_use_span_manual_end(span_exporter: InMemorySpanExporter):
     span = Laminar.start_span("test", input="my_input")
 
-    with use_span(span) as inner_span:
+    with Laminar.use_span(span) as inner_span:
         Laminar.set_span_output("foo")
         inner_span.end()
 
@@ -157,7 +186,7 @@ def test_use_span_manual_end(span_exporter: InMemorySpanExporter):
 
 def test_use_span_exception(span_exporter: InMemorySpanExporter):
     def foo(span):
-        with use_span(span, end_on_exit=True):
+        with Laminar.use_span(span, end_on_exit=True):
             raise ValueError("error")
 
     span = Laminar.start_span("test", input="my_input")
@@ -180,7 +209,7 @@ def test_use_span_exception(span_exporter: InMemorySpanExporter):
 
 def test_use_span_nested_path(span_exporter: InMemorySpanExporter):
     span = Laminar.start_span("test", input="my_input")
-    with use_span(span, end_on_exit=True):
+    with Laminar.use_span(span, end_on_exit=True):
         with Laminar.start_as_current_span("foo"):
             pass
 
@@ -196,7 +225,7 @@ def test_use_span_nested_path(span_exporter: InMemorySpanExporter):
 
 def test_use_span_suppress_exception(span_exporter: InMemorySpanExporter):
     def foo(span):
-        with use_span(span, end_on_exit=True, record_exception=False):
+        with Laminar.use_span(span, end_on_exit=True, record_exception=False):
             raise ValueError("error")
 
     span = Laminar.start_span("test", input="my_input")
@@ -291,6 +320,14 @@ def test_metadata_does_not_leak(span_exporter: InMemorySpanExporter):
     with_metadata_span = [span for span in spans if span.name == "with_metadata"][0]
     no_metadata_span = [span for span in spans if span.name == "no_metadata"][0]
 
+    assert with_metadata_span.parent is None or with_metadata_span.parent.span_id == 0
+    assert no_metadata_span.parent is None or no_metadata_span.parent.span_id == 0
+
+    assert (
+        with_metadata_span.get_span_context().trace_id
+        != no_metadata_span.get_span_context().trace_id
+    )
+
     assert (
         with_metadata_span.attributes["lmnr.association.properties.metadata.foo"]
         == "bar"
@@ -322,27 +359,6 @@ def test_tags(span_exporter: InMemorySpanExporter):
     assert spans[0].name == "test"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
-
-
-def test_tracing_level_attribute(span_exporter: InMemorySpanExporter):
-    with Laminar.set_tracing_level(TracingLevel.META_ONLY):
-        with Laminar.start_as_current_span("test"):
-            pass
-
-    with Laminar.set_tracing_level(TracingLevel.OFF):
-        with Laminar.start_as_current_span("test2"):
-            pass
-
-    spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
-    first_span = [span for span in spans if span.name == "test"][0]
-    second_span = [span for span in spans if span.name == "test2"][0]
-    assert first_span.attributes["lmnr.internal.tracing_level"] == "meta_only"
-    assert second_span.attributes["lmnr.internal.tracing_level"] == "off"
-    assert first_span.attributes["lmnr.span.instrumentation_source"] == "python"
-    assert second_span.attributes["lmnr.span.instrumentation_source"] == "python"
-    assert first_span.attributes["lmnr.span.path"] == ("test",)
-    assert second_span.attributes["lmnr.span.path"] == ("test2",)
 
 
 def test_1k_attributes(span_exporter: InMemorySpanExporter):

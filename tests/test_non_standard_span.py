@@ -28,10 +28,7 @@ class MyBrokenSpanContext(SpanContext):
 
 def test_broken_span(span_exporter: InMemorySpanExporter):
     if not Laminar.is_initialized():
-        Laminar.initialize(
-            project_api_key="test_key",
-            disable_batch=True,
-        )
+        Laminar.initialize(project_api_key="test", disable_batch=True)
 
     with Laminar.start_as_current_span("outer"):
         trace_id = trace.get_current_span().get_span_context().trace_id
@@ -89,11 +86,15 @@ def test_broken_span_observe(span_exporter: InMemorySpanExporter):
     outer_span = [span for span in spans if span.name == "outer"][0]
     assert inner_span.name == "test"
     assert inner_span.attributes["lmnr.span.instrumentation_source"] == "python"
-    assert inner_span.attributes["lmnr.span.path"] == ("test",)
+    assert inner_span.attributes["lmnr.span.path"] == (
+        "outer",
+        "test",
+    )
     assert inner_span.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=outer_span.get_span_context().span_id)),
         str(uuid.UUID(int=inner_span.get_span_context().span_id)),
     )
-    assert inner_span.parent.span_id == SPAN_ID
+    assert inner_span.parent.span_id == outer_span.get_span_context().span_id
     assert inner_span.parent.trace_flags.sampled
 
     assert outer_span.name == "outer"
@@ -134,11 +135,15 @@ async def test_broken_span_observe_async(span_exporter: InMemorySpanExporter):
     outer_span = [span for span in spans if span.name == "outer"][0]
     assert inner_span.name == "test"
     assert inner_span.attributes["lmnr.span.instrumentation_source"] == "python"
-    assert inner_span.attributes["lmnr.span.path"] == ("test",)
+    assert inner_span.attributes["lmnr.span.path"] == (
+        "outer",
+        "test",
+    )
     assert inner_span.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=outer_span.get_span_context().span_id)),
         str(uuid.UUID(int=inner_span.get_span_context().span_id)),
     )
-    assert inner_span.parent.span_id == SPAN_ID
+    assert inner_span.parent.span_id == outer_span.get_span_context().span_id
     assert inner_span.parent.trace_flags.sampled
 
     assert outer_span.name == "outer"

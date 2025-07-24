@@ -8,6 +8,8 @@ from typing import AsyncGenerator, Callable, Collection, Generator
 
 from google.genai import types
 
+from lmnr.opentelemetry_lib.tracing.context import get_current_context
+
 from .config import (
     Config,
 )
@@ -474,6 +476,7 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
             SpanAttributes.LLM_SYSTEM: "gemini",
             SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
         },
+        context=get_current_context(),
     )
 
     if span.is_recording():
@@ -509,6 +512,7 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
             SpanAttributes.LLM_SYSTEM: "gemini",
             SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
         },
+        context=get_current_context(),
     )
 
     if span.is_recording():

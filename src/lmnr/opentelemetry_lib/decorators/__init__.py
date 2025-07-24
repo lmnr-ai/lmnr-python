@@ -5,13 +5,12 @@ import orjson
 import types
 from typing import Any, AsyncGenerator, Callable, Generator, Literal
 
-from opentelemetry import trace
 from opentelemetry import context as context_api
 from opentelemetry.trace import Span
 
 from lmnr.sdk.utils import get_input_from_func_args, is_method
 from lmnr.opentelemetry_lib import MAX_MANUAL_SPAN_PAYLOAD_SIZE
-from lmnr.opentelemetry_lib.tracing.tracer import get_tracer
+from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     SPAN_INPUT,
@@ -37,6 +36,7 @@ def default_json(o):
     try:
         return str(o)
     except Exception:
+        logger.debug("Failed to serialize data to JSON, inner type: %s", type(o))
         pass
     return DEFAULT_PLACEHOLDER
 
@@ -61,8 +61,13 @@ def _setup_span(
     span_name: str, span_type: str, association_properties: dict[str, Any] | None
 ):
     """Set up a span with the given name, type, and association properties."""
-    with get_tracer() as tracer:
-        span = tracer.start_span(span_name, attributes={SPAN_TYPE: span_type})
+    with get_tracer_with_context() as (tracer, isolated_context):
+        # Create span in isolated context
+        span = tracer.start_span(
+            span_name,
+            context=isolated_context,
+            attributes={SPAN_TYPE: span_type},
+        )
 
         if association_properties is not None:
             for key, value in association_properties.items():
@@ -148,10 +153,10 @@ def _process_output(
         pass
 
 
-def _cleanup_span(span: Span, ctx_token):
+def _cleanup_span(span: Span, wrapper: TracerWrapper):
     """Clean up span and context."""
     span.end()
-    context_api.detach(ctx_token)
+    wrapper.pop_span_context()
 
 
 def observe_base(
@@ -171,10 +176,11 @@ def observe_base(
                 return fn(*args, **kwargs)
 
             span_name = name or fn.__name__
+            wrapper = TracerWrapper()
 
             span = _setup_span(span_name, span_type, association_properties)
-            ctx = trace.set_span_in_context(span, context_api.get_current())
-            ctx_token = context_api.attach(ctx)
+            new_context = wrapper.push_span_context(span)
+            ctx_token = context_api.attach(new_context)
 
             _process_input(
                 span, fn, args, kwargs, ignore_input, ignore_inputs, input_formatter
@@ -184,8 +190,11 @@ def observe_base(
                 res = fn(*args, **kwargs)
             except Exception as e:
                 _process_exception(span, e)
-                _cleanup_span(span, ctx_token)
+                _cleanup_span(span, wrapper)
                 raise e
+            finally:
+                # Always restore global context
+                context_api.detach(ctx_token)
 
             # span will be ended in the generator
             if isinstance(res, types.GeneratorType):
@@ -201,7 +210,7 @@ def observe_base(
                 return _ahandle_generator(span, ctx_token, res)
 
             _process_output(span, res, ignore_output, output_formatter)
-            _cleanup_span(span, ctx_token)
+            _cleanup_span(span, wrapper)
             return res
 
         return wrap
@@ -227,10 +236,11 @@ def async_observe_base(
                 return await fn(*args, **kwargs)
 
             span_name = name or fn.__name__
+            wrapper = TracerWrapper()
 
             span = _setup_span(span_name, span_type, association_properties)
-            ctx = trace.set_span_in_context(span, context_api.get_current())
-            ctx_token = context_api.attach(ctx)
+            new_context = wrapper.push_span_context(span)
+            ctx_token = context_api.attach(new_context)
 
             _process_input(
                 span, fn, args, kwargs, ignore_input, ignore_inputs, input_formatter
@@ -240,8 +250,11 @@ def async_observe_base(
                 res = await fn(*args, **kwargs)
             except Exception as e:
                 _process_exception(span, e)
-                _cleanup_span(span, ctx_token)
+                _cleanup_span(span, wrapper)
                 raise e
+            finally:
+                # Always restore global context
+                context_api.detach(ctx_token)
 
             # span will be ended in the generator
             if isinstance(res, types.AsyncGeneratorType):
@@ -250,7 +263,7 @@ def async_observe_base(
                 return await _ahandle_generator(span, ctx_token, res)
 
             _process_output(span, res, ignore_output, output_formatter)
-            _cleanup_span(span, ctx_token)
+            _cleanup_span(span, wrapper)
             return res
 
         return wrap
@@ -258,22 +271,19 @@ def async_observe_base(
     return decorate
 
 
-def _handle_generator(span: Span, ctx_token, res: Generator[Any, Any, Any]):
-    yield from res
+def _handle_generator(span: Span, wrapper: TracerWrapper, res: Generator):
+    try:
+        yield from res
+    finally:
+        _cleanup_span(span, wrapper)
 
-    span.end()
-    if ctx_token is not None:
-        context_api.detach(ctx_token)
 
-
-async def _ahandle_generator(span: Span, ctx_token, res: AsyncGenerator[Any, Any]):
-    # async with contextlib.aclosing(res) as closing_gen:
-    async for part in res:
-        yield part
-
-    span.end()
-    if ctx_token is not None:
-        context_api.detach(ctx_token)
+async def _ahandle_generator(span: Span, wrapper: TracerWrapper, res: AsyncGenerator):
+    try:
+        async for part in res:
+            yield part
+    finally:
+        _cleanup_span(span, wrapper)
 
 
 def _process_exception(span: Span, e: Exception):
