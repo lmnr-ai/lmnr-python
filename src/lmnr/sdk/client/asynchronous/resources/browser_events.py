@@ -25,6 +25,7 @@ class AsyncBrowserEvents(BaseAsyncResource):
             "source": f"python@{PYTHON_VERSION}",
             "sdkVersion": __version__,
         }
+
         compressed_payload = gzip.compress(json.dumps(payload).encode("utf-8"))
         response = await self._client.post(
             url,

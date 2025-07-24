@@ -359,13 +359,22 @@ INJECT_PLACEHOLDER = """
     setInterval(sendBatchIfReady, BATCH_TIMEOUT);
 
     // Add heartbeat events
-    setInterval(async () => {
+    setInterval(() => {
         window.lmnrRrweb.record.addCustomEvent('heartbeat', {
             title: document.title,
             url: document.URL,
         })
     }, HEARTBEAT_INTERVAL);
 
+    async function bufferToBase64(buffer) {
+        const base64url = await new Promise(r => {
+            const reader = new FileReader()
+            reader.onload = () => r(reader.result)
+            reader.readAsDataURL(new Blob([buffer]))
+        });
+        return base64url.slice(base64url.indexOf(',') + 1);
+    }
+ 
     window.lmnrRrweb.record({
         async emit(event) {
             try {
@@ -374,9 +383,10 @@ INJECT_PLACEHOLDER = """
                     await compressLargeObject(event.data, true) :
                     await compressSmallObject(event.data);
 
+                const base64Data = await bufferToBase64(compressedResult);
                 const eventToSend = {
                     ...event,
-                    data: compressedResult,
+                    data: base64Data,
                 };
                 window.lmnrRrwebEventsBatch.push(eventToSend);
             } catch (error) {
