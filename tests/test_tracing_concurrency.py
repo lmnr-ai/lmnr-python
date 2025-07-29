@@ -369,7 +369,7 @@ def test_threadpool_parallel_spans_with_openai(span_exporter: InMemorySpanExport
     including auto-instrumented OpenAI spans."""
     from openai import OpenAI
 
-    openai_client = OpenAI()
+    openai_client = OpenAI(api_key="sk-proj-1234567890")
 
     def task_worker(task_id: str):
         with Laminar.start_as_current_span("task_worker"):

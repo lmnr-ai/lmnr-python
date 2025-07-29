@@ -520,11 +520,9 @@ def _set_completions(span, choices):
 def _set_streaming_token_metrics(
     request_kwargs, complete_response, span, token_counter, shared_attributes
 ):
-    # use tiktoken calculate token usage
     if not should_record_stream_token_usage():
         return
 
-    # kwargs={'model': 'gpt-3.5', 'messages': [{'role': 'user', 'content': '...'}], 'stream': True}
     prompt_usage = -1
     completion_usage = -1
 
@@ -974,6 +972,13 @@ def _accumulate_stream_items(item, complete_response):
 
     complete_response["model"] = item.get("model")
     complete_response["id"] = item.get("id")
+
+    # capture usage information from the last stream chunks
+    if item.get("usage"):
+        complete_response["usage"] = item.get("usage")
+    elif item.get("choices") and item["choices"][0].get("usage"):
+        # Some LLM providers like moonshot mistakenly place token usage information within choices[0], handle this.
+        complete_response["usage"] = item["choices"][0].get("usage")
 
     # prompt filter results
     if item.get("prompt_filter_results"):
