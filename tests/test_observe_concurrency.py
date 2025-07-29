@@ -343,7 +343,7 @@ def test_observe_threadpool_parallel_spans_with_openai(
     including auto-instrumented OpenAI spans."""
     from openai import OpenAI
 
-    openai_client = OpenAI()
+    openai_client = OpenAI(api_key="test_api_key")
 
     @observe()
     def task_worker(task_id: str):

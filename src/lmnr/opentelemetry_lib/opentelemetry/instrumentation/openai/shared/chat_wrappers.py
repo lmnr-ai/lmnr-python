@@ -1,6 +1,7 @@
 import copy
 import json
 import logging
+import threading
 import time
 from functools import singledispatch
 from typing import List, Optional, Union
@@ -296,6 +297,7 @@ def _handle_response(
     choice_counter=None,
     duration_histogram=None,
     duration=None,
+    is_streaming: bool = False,
 ):
     if is_openai_v1():
         response_dict = model_as_dict(response)
@@ -310,6 +312,7 @@ def _handle_response(
         duration_histogram,
         response_dict,
         duration,
+        is_streaming,
     )
 
     # span attributes
@@ -327,13 +330,19 @@ def _handle_response(
 
 
 def _set_chat_metrics(
-    instance, token_counter, choice_counter, duration_histogram, response_dict, duration
+    instance,
+    token_counter,
+    choice_counter,
+    duration_histogram,
+    response_dict,
+    duration,
+    is_streaming: bool = False,
 ):
     shared_attributes = metric_shared_attributes(
         response_model=response_dict.get("model") or None,
         operation="chat",
         server_address=_get_openai_base_url(instance),
-        is_streaming=False,
+        is_streaming=is_streaming,
     )
 
     # token metrics
@@ -619,11 +628,35 @@ class ChatStream(ObjectProxy):
         self._time_of_first_token = self._start_time
         self._complete_response = {"choices": [], "model": ""}
 
+        # Cleanup state tracking to prevent duplicate operations
+        self._cleanup_completed = False
+        self._cleanup_lock = threading.Lock()
+
+    def __del__(self):
+        """Cleanup when object is garbage collected"""
+        if hasattr(self, "_cleanup_completed") and not self._cleanup_completed:
+            self._ensure_cleanup()
+
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.__wrapped__.__exit__(exc_type, exc_val, exc_tb)
+        cleanup_exception = None
+        try:
+            self._ensure_cleanup()
+        except Exception as e:
+            cleanup_exception = e
+            # Don't re-raise to avoid masking original exception
+
+        result = self.__wrapped__.__exit__(exc_type, exc_val, exc_tb)
+
+        if cleanup_exception:
+            # Log cleanup exception but don't affect context manager behavior
+            logger.debug(
+                "Error during ChatStream cleanup in __exit__: %s", cleanup_exception
+            )
+
+        return result
 
     async def __aenter__(self):
         return self
@@ -643,7 +676,12 @@ class ChatStream(ObjectProxy):
         except Exception as e:
             if isinstance(e, StopIteration):
                 self._process_complete_response()
-            raise e
+            else:
+                # Handle cleanup for other exceptions during stream iteration
+                self._ensure_cleanup()
+                if self._span and self._span.is_recording():
+                    self._span.set_status(Status(StatusCode.ERROR, str(e)))
+            raise
         else:
             self._process_item(chunk)
             return chunk
@@ -654,7 +692,12 @@ class ChatStream(ObjectProxy):
         except Exception as e:
             if isinstance(e, StopAsyncIteration):
                 self._process_complete_response()
-            raise e
+            else:
+                # Handle cleanup for other exceptions during stream iteration
+                self._ensure_cleanup()
+                if self._span and self._span.is_recording():
+                    self._span.set_status(Status(StatusCode.ERROR, str(e)))
+            raise
         else:
             self._process_item(chunk)
             return chunk
@@ -725,6 +768,82 @@ class ChatStream(ObjectProxy):
 
         self._span.set_status(Status(StatusCode.OK))
         self._span.end()
+        self._cleanup_completed = True
+
+    @dont_throw
+    def _ensure_cleanup(self):
+        """Thread-safe cleanup method that handles different cleanup scenarios"""
+        with self._cleanup_lock:
+            if self._cleanup_completed:
+                logger.debug("ChatStream cleanup already completed, skipping")
+                return
+
+            try:
+                logger.debug("Starting ChatStream cleanup")
+
+                # Set span status and close it
+                if self._span and self._span.is_recording():
+                    self._span.set_status(Status(StatusCode.OK))
+                    self._span.end()
+                    logger.debug("ChatStream span closed successfully")
+
+                # Calculate partial metrics based on available data
+                self._record_partial_metrics()
+
+                self._cleanup_completed = True
+                logger.debug("ChatStream cleanup completed successfully")
+
+            except Exception as e:
+                # Log cleanup errors but don't propagate to avoid masking original issues
+                logger.debug("Error during ChatStream cleanup: %s", str(e))
+
+                # Still try to close the span even if metrics recording failed
+                try:
+                    if self._span and self._span.is_recording():
+                        self._span.set_status(
+                            Status(StatusCode.ERROR, "Cleanup failed")
+                        )
+                        self._span.end()
+                    self._cleanup_completed = True
+                except Exception:
+                    # Final fallback - just mark as completed to prevent infinite loops
+                    self._cleanup_completed = True
+
+    @dont_throw
+    def _record_partial_metrics(self):
+        """Record metrics based on available partial data"""
+        # Always record duration if we have start time
+        if (
+            self._start_time
+            and isinstance(self._start_time, (float, int))
+            and self._duration_histogram
+        ):
+            duration = time.time() - self._start_time
+            self._duration_histogram.record(
+                duration, attributes=self._shared_attributes()
+            )
+
+        # Record basic span attributes even without complete response
+        if self._span and self._span.is_recording():
+            _set_response_attributes(self._span, self._complete_response)
+
+        # Record partial token metrics if we have any data
+        if self._complete_response.get("choices") or self._request_kwargs:
+            _set_streaming_token_metrics(
+                self._request_kwargs,
+                self._complete_response,
+                self._span,
+                self._token_counter,
+                self._shared_attributes(),
+            )
+
+        # Record choice metrics if we have any choices processed
+        if self._choice_counter and self._complete_response.get("choices"):
+            _set_choice_counter_metrics(
+                self._choice_counter,
+                self._complete_response.get("choices"),
+                self._shared_attributes(),
+            )
 
 
 # Backward compatibility with OpenAI v0
