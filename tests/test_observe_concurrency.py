@@ -356,6 +356,8 @@ def test_observe_threadpool_parallel_spans_with_openai(
 
     # Use ThreadPoolExecutor to run tasks
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        # try sleep a little while context from other tests is cleared
+        time.sleep(0.5)
         futures = [executor.submit(task_worker, str(i)) for i in range(3)]
         results = [
             future.result() for future in concurrent.futures.as_completed(futures)
@@ -375,6 +377,9 @@ def test_observe_threadpool_parallel_spans_with_openai(
         else:
             assert span.name == "openai.chat"
             assert span.parent is not None
+
+    # try sleep a little while context from other tests is cleared
+    time.sleep(0.5)
 
 
 def test_threadpool_parallel_spans_same_parent(span_exporter: InMemorySpanExporter):
