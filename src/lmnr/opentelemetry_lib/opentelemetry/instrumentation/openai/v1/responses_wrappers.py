@@ -36,7 +36,10 @@ except ImportError:
     ResponseOutputMessageParam = Dict[str, Any]
     RESPONSES_AVAILABLE = False
 
-from lmnr.opentelemetry_lib.tracing.context import get_current_context
+from lmnr.opentelemetry_lib.tracing.context import (
+    get_current_context,
+    get_event_attributes_from_context,
+)
 from openai._legacy_response import LegacyAPIResponse
 from opentelemetry import context as context_api
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
@@ -433,7 +436,7 @@ def responses_get_or_create_wrapper(tracer: Tracer, wrapped, instance, args, kwa
             context=get_current_context(),
         )
         span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-        span.record_exception(e)
+        span.record_exception(e, attributes=get_event_attributes_from_context())
         span.set_status(StatusCode.ERROR, str(e))
         if traced_data:
             set_data_attributes(traced_data, span)
@@ -529,7 +532,7 @@ async def async_responses_get_or_create_wrapper(
             context=get_current_context(),
         )
         span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-        span.record_exception(e)
+        span.record_exception(e, attributes=get_event_attributes_from_context())
         span.set_status(StatusCode.ERROR, str(e))
         if traced_data:
             set_data_attributes(traced_data, span)
@@ -597,7 +600,10 @@ def responses_cancel_wrapper(tracer: Tracer, wrapped, instance, args, kwargs):
             record_exception=True,
             context=get_current_context(),
         )
-        span.record_exception(Exception("Response cancelled"))
+        span.record_exception(
+            Exception("Response cancelled"),
+            attributes=get_event_attributes_from_context(),
+        )
         set_data_attributes(existing_data, span)
         span.end()
     return response
@@ -624,7 +630,10 @@ async def async_responses_cancel_wrapper(
             record_exception=True,
             context=get_current_context(),
         )
-        span.record_exception(Exception("Response cancelled"))
+        span.record_exception(
+            Exception("Response cancelled"),
+            attributes=get_event_attributes_from_context(),
+        )
         set_data_attributes(existing_data, span)
         span.end()
     return response

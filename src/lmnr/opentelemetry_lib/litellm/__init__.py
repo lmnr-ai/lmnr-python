@@ -7,6 +7,7 @@ from opentelemetry.trace import SpanKind, Status, StatusCode, Tracer
 from lmnr.opentelemetry_lib.litellm.utils import model_as_dict, set_span_attribute
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
 
+from lmnr.opentelemetry_lib.tracing.context import get_event_attributes_from_context
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from lmnr.sdk.log import get_default_logger
 
@@ -141,10 +142,12 @@ try:
                 else:
                     span.set_status(Status(StatusCode.ERROR))
                     if isinstance(response_obj, Exception):
-                        span.record_exception(response_obj)
+                        attributes = get_event_attributes_from_context()
+                        span.record_exception(response_obj, attributes=attributes)
 
             except Exception as e:
-                span.record_exception(e)
+                attributes = get_event_attributes_from_context()
+                span.record_exception(e, attributes=attributes)
                 logger.error(f"Error in Laminar LiteLLM instrumentation: {e}")
             finally:
                 span.end(int(end_time.timestamp() * 1e9))

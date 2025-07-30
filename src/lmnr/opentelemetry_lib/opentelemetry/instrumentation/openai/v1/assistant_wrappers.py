@@ -17,7 +17,10 @@ from ..utils import (
     dont_throw,
     should_emit_events,
 )
-from lmnr.opentelemetry_lib.tracing.context import get_current_context
+from lmnr.opentelemetry_lib.tracing.context import (
+    get_current_context,
+    get_event_attributes_from_context,
+)
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.semconv_ai import LLMRequestTypeValues, SpanAttributes
@@ -132,7 +135,7 @@ def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
 
     if exception := run.get("exception"):
         span.set_attribute(ERROR_TYPE, exception.__class__.__name__)
-        span.record_exception(exception)
+        span.record_exception(exception, attributes=get_event_attributes_from_context())
         span.set_status(Status(StatusCode.ERROR, str(exception)))
         span.end(run.get("end_time"))
 
@@ -316,7 +319,7 @@ def runs_create_and_stream_wrapper(tracer, wrapped, instance, args, kwargs):
         return response
     except Exception as e:
         span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-        span.record_exception(e)
+        span.record_exception(e, attributes=get_event_attributes_from_context())
         span.set_status(Status(StatusCode.ERROR, str(e)))
         span.end()
         raise

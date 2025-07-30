@@ -2,7 +2,9 @@ import threading
 
 from abc import ABC, abstractmethod
 from contextvars import ContextVar
-from opentelemetry.context import Context, Token
+from opentelemetry.context import Context, Token, create_key, get_value
+
+from lmnr.opentelemetry_lib.tracing.attributes import SESSION_ID, USER_ID
 
 
 class _IsolatedRuntimeContext(ABC):
@@ -107,3 +109,18 @@ def attach_context(context: Context) -> Token[Context]:
 def detach_context(token: Token[Context]) -> None:
     """Detach a context from the isolated runtime context."""
     _ISOLATED_RUNTIME_CONTEXT.detach(token)
+
+
+CONTEXT_USER_ID_KEY = create_key(f"lmnr.{USER_ID}")
+CONTEXT_SESSION_ID_KEY = create_key(f"lmnr.{SESSION_ID}")
+
+
+def get_event_attributes_from_context(context: Context | None = None) -> dict[str, str]:
+    """Get the event attributes from the context."""
+    context = context or get_current_context()
+    attributes = {}
+    if session_id := get_value(CONTEXT_SESSION_ID_KEY, context):
+        attributes["lmnr.event.session_id"] = session_id
+    if user_id := get_value(CONTEXT_USER_ID_KEY, context):
+        attributes["lmnr.event.user_id"] = user_id
+    return attributes

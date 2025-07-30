@@ -3,6 +3,8 @@ import time
 from collections.abc import Iterable
 
 from opentelemetry import context as context_api
+
+from lmnr.opentelemetry_lib.tracing.context import get_event_attributes_from_context
 from ..shared import (
     OPENAI_LLM_USAGE_TOKEN_TYPES,
     _get_openai_base_url,
@@ -91,7 +93,8 @@ def embeddings_wrapper(
                 exception_counter.add(1, attributes=attributes)
 
             span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-            span.record_exception(e)
+            attributes = get_event_attributes_from_context()
+            span.record_exception(e, attributes=attributes)
             span.set_status(Status(StatusCode.ERROR, str(e)))
             span.end()
 
@@ -156,7 +159,8 @@ async def aembeddings_wrapper(
                 exception_counter.add(1, attributes=attributes)
 
             span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-            span.record_exception(e)
+            attributes = get_event_attributes_from_context()
+            span.record_exception(e, attributes=attributes)
             span.set_status(Status(StatusCode.ERROR, str(e)))
             span.end()
 

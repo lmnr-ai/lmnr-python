@@ -5,9 +5,16 @@ import orjson
 import types
 from typing import Any, AsyncGenerator, Callable, Generator, Literal
 
-from opentelemetry import context as context_api
-from opentelemetry.trace import Span
+from opentelemetry.context import set_value
+from opentelemetry.trace import Span, Status, StatusCode
 
+from lmnr.opentelemetry_lib.tracing.context import (
+    CONTEXT_SESSION_ID_KEY,
+    CONTEXT_USER_ID_KEY,
+    attach_context,
+    detach_context,
+    get_event_attributes_from_context,
+)
 from lmnr.sdk.utils import get_input_from_func_args, is_method
 from lmnr.opentelemetry_lib import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
@@ -180,7 +187,11 @@ def observe_base(
 
             span = _setup_span(span_name, span_type, association_properties)
             new_context = wrapper.push_span_context(span)
-            ctx_token = context_api.attach(new_context)
+            if session_id := association_properties.get("session_id"):
+                new_context = set_value(CONTEXT_SESSION_ID_KEY, session_id, new_context)
+            if user_id := association_properties.get("user_id"):
+                new_context = set_value(CONTEXT_USER_ID_KEY, user_id, new_context)
+            ctx_token = attach_context(new_context)
 
             _process_input(
                 span, fn, args, kwargs, ignore_input, ignore_inputs, input_formatter
@@ -194,7 +205,7 @@ def observe_base(
                 raise e
             finally:
                 # Always restore global context
-                context_api.detach(ctx_token)
+                detach_context(ctx_token)
 
             # span will be ended in the generator
             if isinstance(res, types.GeneratorType):
@@ -240,7 +251,11 @@ def async_observe_base(
 
             span = _setup_span(span_name, span_type, association_properties)
             new_context = wrapper.push_span_context(span)
-            ctx_token = context_api.attach(new_context)
+            if session_id := association_properties.get("session_id"):
+                new_context = set_value(CONTEXT_SESSION_ID_KEY, session_id, new_context)
+            if user_id := association_properties.get("user_id"):
+                new_context = set_value(CONTEXT_USER_ID_KEY, user_id, new_context)
+            ctx_token = attach_context(new_context)
 
             _process_input(
                 span, fn, args, kwargs, ignore_input, ignore_inputs, input_formatter
@@ -254,7 +269,7 @@ def async_observe_base(
                 raise e
             finally:
                 # Always restore global context
-                context_api.detach(ctx_token)
+                detach_context(ctx_token)
 
             # span will be ended in the generator
             if isinstance(res, types.AsyncGeneratorType):
@@ -288,4 +303,7 @@ async def _ahandle_generator(span: Span, wrapper: TracerWrapper, res: AsyncGener
 
 def _process_exception(span: Span, e: Exception):
     # Note that this `escaped` is sent as a StringValue("True"), not a boolean.
-    span.record_exception(e, escaped=True)
+    span.record_exception(
+        e, attributes=get_event_attributes_from_context(), escaped=True
+    )
+    span.set_status(Status(StatusCode.ERROR, str(e)))

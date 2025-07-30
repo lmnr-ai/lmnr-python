@@ -1,3 +1,4 @@
+from lmnr.opentelemetry_lib.tracing.context import get_event_attributes_from_context
 from ..shared import _set_span_attribute
 from ..shared.event_emitter import emit_event
 from ..shared.event_models import ChoiceEvent
@@ -69,7 +70,9 @@ class EventHandlerWrapper(AssistantEventHandler):
     @override
     def on_exception(self, exception: Exception):
         self._span.set_attribute(ERROR_TYPE, exception.__class__.__name__)
-        self._span.record_exception(exception)
+        self._span.record_exception(
+            exception, attributes=get_event_attributes_from_context()
+        )
         self._span.set_status(Status(StatusCode.ERROR, str(exception)))
         self._original_handler.on_exception(exception)
 
