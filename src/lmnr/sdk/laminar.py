@@ -230,9 +230,9 @@ class Laminar:
 
         # override the user_id and session_id from the context with the ones
         # passed as arguments
-        if user_id:
+        if user_id is not None:
             extra_attributes["lmnr.event.user_id"] = user_id
-        if session_id:
+        if session_id is not None:
             extra_attributes["lmnr.event.session_id"] = session_id
 
         current_span = trace.get_current_span(context=get_current_context())
