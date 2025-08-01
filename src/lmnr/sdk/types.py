@@ -13,7 +13,7 @@ from typing import Any, Awaitable, Callable, Literal, Optional
 
 from .utils import serialize
 
-EVALUATION_DATAPOINT_MAX_DATA_LENGTH = 1_000_000  # 1MB
+EVALUATION_DATAPOINT_MAX_DATA_LENGTH = 8_000_000  # 8MB
 
 
 Numeric = int | float

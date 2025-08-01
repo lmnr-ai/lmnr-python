@@ -363,6 +363,59 @@ def test_threadpool_parallel_spans_separate_traces(span_exporter: InMemorySpanEx
         assert span.parent is None or span.parent.span_id == 0
 
 
+def test_threadpool_parallel_spans_with_openai(span_exporter: InMemorySpanExporter):
+    """Test multiple parallel ThreadPoolExecutor spans live in separate traces
+    including auto-instrumented OpenAI spans."""
+    from openai import OpenAI
+    from unittest.mock import patch, MagicMock
+
+    # Create a mock response that can be safely shared across threads
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "The capital of France is Paris."
+
+    def task_worker(task_id: str):
+        # Create a separate client for each thread to avoid sharing issues
+        openai_client = OpenAI(api_key="sk-proj-1234567890", max_retries=0)
+        with Laminar.start_as_current_span("task_worker"):
+            time.sleep(0.01)
+            # Mock the OpenAI response to avoid VCR threading issues
+            with patch.object(
+                openai_client._client, "send", return_value=mock_response
+            ):
+                openai_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "user", "content": "what is the capital of France?"}
+                    ],
+                )
+            result = f"task_{task_id}"
+            Laminar.set_span_output(result)
+            return result
+
+    # Use ThreadPoolExecutor to run tasks
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        futures = [executor.submit(task_worker, str(i)) for i in range(3)]
+        results = [
+            future.result() for future in concurrent.futures.as_completed(futures)
+        ]
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 6
+    assert len(results) == 3
+
+    # There's one trace per thread
+    trace_ids = [span.get_span_context().trace_id for span in spans]
+    assert len(set(trace_ids)) == 3, "Number of traces should match number of threads"
+
+    for span in spans:
+        if span.name == "task_worker":
+            assert span.parent is None or span.parent.span_id == 0
+        else:
+            assert span.name == "openai.chat"
+            assert span.parent is not None
+
+
 @pytest.mark.vcr
 def test_threadpool_parallel_spans_with_langchain(span_exporter: InMemorySpanExporter):
     """Test multiple parallel ThreadPoolExecutor spans live in separate traces
