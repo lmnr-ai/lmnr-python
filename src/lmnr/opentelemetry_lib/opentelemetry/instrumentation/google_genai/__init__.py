@@ -8,7 +8,10 @@ from typing import AsyncGenerator, Callable, Collection, Generator
 
 from google.genai import types
 
-from lmnr.opentelemetry_lib.tracing.context import get_current_context
+from lmnr.opentelemetry_lib.tracing.context import (
+    get_current_context,
+    get_event_attributes_from_context,
+)
 
 from .config import (
     Config,
@@ -491,8 +494,9 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         span.end()
         return response
     except Exception as e:
+        attributes = get_event_attributes_from_context()
         span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-        span.record_exception(e)
+        span.record_exception(e, attributes=attributes)
         span.set_status(Status(StatusCode.ERROR, str(e)))
         span.end()
         raise e
@@ -529,8 +533,9 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
             span.end()
             return response
     except Exception as e:
+        attributes = get_event_attributes_from_context()
         span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-        span.record_exception(e)
+        span.record_exception(e, attributes=attributes)
         span.set_status(Status(StatusCode.ERROR, str(e)))
         span.end()
         raise e

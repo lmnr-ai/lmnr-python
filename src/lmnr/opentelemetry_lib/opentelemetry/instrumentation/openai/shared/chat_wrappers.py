@@ -40,7 +40,10 @@ from ..utils import (
     should_emit_events,
     should_send_prompts,
 )
-from lmnr.opentelemetry_lib.tracing.context import get_current_context
+from lmnr.opentelemetry_lib.tracing.context import (
+    get_current_context,
+    get_event_attributes_from_context,
+)
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.metrics import Counter, Histogram
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
@@ -112,7 +115,8 @@ def chat_wrapper(
             exception_counter.add(1, attributes=attributes)
 
         span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-        span.record_exception(e)
+        attributes = get_event_attributes_from_context()
+        span.record_exception(e, attributes=attributes)
         span.set_status(Status(StatusCode.ERROR, str(e)))
         span.end()
 
@@ -212,7 +216,8 @@ async def achat_wrapper(
             exception_counter.add(1, attributes=attributes)
 
         span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-        span.record_exception(e)
+        attributes = get_event_attributes_from_context()
+        span.record_exception(e, attributes=attributes)
         span.set_status(Status(StatusCode.ERROR, str(e)))
         span.end()
 

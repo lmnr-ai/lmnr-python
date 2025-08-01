@@ -3,6 +3,12 @@ from contextvars import Context
 import warnings
 from lmnr.opentelemetry_lib import TracerManager
 from lmnr.opentelemetry_lib.tracing import TracerWrapper, get_current_context
+from lmnr.opentelemetry_lib.tracing.context import (
+    CONTEXT_SESSION_ID_KEY,
+    CONTEXT_USER_ID_KEY,
+    attach_context,
+    get_event_attributes_from_context,
+)
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.attributes import (
@@ -14,7 +20,7 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
 from lmnr.opentelemetry_lib import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 from lmnr.opentelemetry_lib.decorators import json_dumps
 from opentelemetry import trace
-from opentelemetry.context import attach, detach
+from opentelemetry import context as context_api
 from opentelemetry.trace import INVALID_TRACE_ID, Span, Status, StatusCode, use_span
 from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
 from opentelemetry.util.types import AttributeValue
@@ -196,18 +202,18 @@ class Laminar:
     def event(
         cls,
         name: str,
-        value: AttributeValue | None = None,
+        attributes: dict[str, AttributeValue] | None = None,
         timestamp: datetime.datetime | int | None = None,
+        *,
+        user_id: str | None = None,
+        session_id: str | None = None,
     ):
-        """Associate an event with the current span. If using manual\
-        instrumentation, use raw OpenTelemetry `span.add_event()` instead.\
-       `value` will be saved as a `lmnr.event.value` attribute.
+        """Associate an event with the current span. This is a wrapper around
+        `span.add_event()` that adds the event to the current span.
 
         Args:
             name (str): event name
-            value (AttributeValue | None, optional): event value. Must be a\
-                primitive type. Boolean `True` is assumed in the backend if\
-                `value` is None.
+            attributes (dict[str, AttributeValue] | None, optional): event attributes.
                 Defaults to None.
             timestamp (datetime.datetime | int | None, optional): If int, must\
                 be epoch nanoseconds. If not specified, relies on the underlying\
@@ -219,22 +225,26 @@ class Laminar:
         if timestamp and isinstance(timestamp, datetime.datetime):
             timestamp = int(timestamp.timestamp() * 1e9)
 
-        event = {
-            "lmnr.event.type": "default",
-        }
-        if value is not None:
-            event["lmnr.event.value"] = value
+        extra_attributes = get_event_attributes_from_context()
+
+        # override the user_id and session_id from the context with the ones
+        # passed as arguments
+        if user_id is not None:
+            extra_attributes["lmnr.event.user_id"] = user_id
+        if session_id is not None:
+            extra_attributes["lmnr.event.session_id"] = session_id
 
         current_span = trace.get_current_span(context=get_current_context())
         if current_span == trace.INVALID_SPAN:
-            cls.__logger.warning(
-                "`Laminar().event()` called outside of span context. "
-                f"Event '{name}' will not be recorded in the trace. "
-                "Make sure to annotate the function with a decorator"
-            )
+            with cls.start_as_current_span(name) as span:
+                span.add_event(
+                    name, {**(attributes or {}), **extra_attributes}, timestamp
+                )
             return
 
-        current_span.add_event(name, event, timestamp)
+        current_span.add_event(
+            name, {**(attributes or {}), **extra_attributes}, timestamp
+        )
 
     @classmethod
     @contextmanager
@@ -306,7 +316,7 @@ class Laminar:
                 ctx = trace.set_span_in_context(
                     trace.NonRecordingSpan(span_context), ctx
                 )
-            ctx_token = attach(ctx)
+            ctx_token = context_api.attach(ctx)
             label_props = {}
             try:
                 if labels:
@@ -355,9 +365,8 @@ class Laminar:
                 yield span
 
             wrapper.pop_span_context()
-            # TODO: Figure out if this is necessary
             try:
-                detach(ctx_token)
+                context_api.detach(ctx_token)
             except Exception:
                 pass
 
@@ -528,10 +537,16 @@ class Laminar:
         wrapper = TracerWrapper()
 
         try:
-            wrapper.push_span_context(span)
+            context = wrapper.push_span_context(span)
+            # Some auto-instrumentations are not under our control, so they
+            # don't have access to our isolated context. We attach the context
+            # to the OTEL global context, so that spans know their parent
+            # span and trace_id.
+            context_token = context_api.attach(context)
             try:
                 yield span
             finally:
+                context_api.detach(context_token)
                 wrapper.pop_span_context()
 
         # Record only exceptions that inherit Exception class but not BaseException, because
@@ -541,7 +556,9 @@ class Laminar:
             if isinstance(span, Span) and span.is_recording():
                 # Record the exception as an event
                 if record_exception:
-                    span.record_exception(exc)
+                    span.record_exception(
+                        exc, attributes=get_event_attributes_from_context()
+                    )
 
                 # Set status in case exception was raised
                 if set_status_on_exception:
@@ -737,7 +754,11 @@ class Laminar:
         if not cls.is_initialized():
             return
 
-        span = trace.get_current_span(context=get_current_context())
+        context = get_current_context()
+        context = context_api.set_value(CONTEXT_SESSION_ID_KEY, session_id, context)
+        attach_context(context)
+
+        span = trace.get_current_span(context=context)
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set session id on")
             return
@@ -755,7 +776,11 @@ class Laminar:
         if not cls.is_initialized():
             return
 
-        span = trace.get_current_span(context=get_current_context())
+        context = get_current_context()
+        context = context_api.set_value(CONTEXT_USER_ID_KEY, user_id, context)
+        attach_context(context)
+
+        span = trace.get_current_span(context=context)
         if span == trace.INVALID_SPAN:
             cls.__logger.warning("No active span to set user id on")
             return

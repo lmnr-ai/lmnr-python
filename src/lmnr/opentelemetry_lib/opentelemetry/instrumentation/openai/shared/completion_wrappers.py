@@ -27,7 +27,10 @@ from ..utils import (
     should_emit_events,
     should_send_prompts,
 )
-from lmnr.opentelemetry_lib.tracing.context import get_current_context
+from lmnr.opentelemetry_lib.tracing.context import (
+    get_current_context,
+    get_event_attributes_from_context,
+)
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.semconv_ai import (
@@ -65,7 +68,8 @@ def completion_wrapper(tracer, wrapped, instance, args, kwargs):
         response = wrapped(*args, **kwargs)
     except Exception as e:
         span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-        span.record_exception(e)
+        attributes = get_event_attributes_from_context()
+        span.record_exception(e, attributes=attributes)
         span.set_status(Status(StatusCode.ERROR, str(e)))
         span.end()
         raise
@@ -100,7 +104,8 @@ async def acompletion_wrapper(tracer, wrapped, instance, args, kwargs):
         response = await wrapped(*args, **kwargs)
     except Exception as e:
         span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-        span.record_exception(e)
+        attributes = get_event_attributes_from_context()
+        span.record_exception(e, attributes=attributes)
         span.set_status(Status(StatusCode.ERROR, str(e)))
         span.end()
         raise
