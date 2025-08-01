@@ -33,7 +33,7 @@ except ImportError as e:
 logger = logging.getLogger(__name__)
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
-with open(os.path.join(current_dir, "rrweb", "rrweb.umd.min.cjs"), "r") as f:
+with open(os.path.join(current_dir, "recorder", "record.umd.min.cjs"), "r") as f:
     RRWEB_CONTENT = f"() => {{ {f.read()} }}"
 
 INJECT_PLACEHOLDER = """
@@ -358,14 +358,6 @@ INJECT_PLACEHOLDER = """
 
     setInterval(sendBatchIfReady, BATCH_TIMEOUT);
 
-    // Add heartbeat events
-    setInterval(() => {
-        window.lmnrRrweb.record.addCustomEvent('heartbeat', {
-            title: document.title,
-            url: document.URL,
-        })
-    }, HEARTBEAT_INTERVAL);
-
     async function bufferToBase64(buffer) {
         const base64url = await new Promise(r => {
             const reader = new FileReader()
@@ -397,63 +389,22 @@ INJECT_PLACEHOLDER = """
         collectFonts: true,
         recordCrossOriginIframes: true
     });
+
+    function heartbeat() {
+        // Add heartbeat events
+        setInterval(() => {
+            window.lmnrRrweb.record.addCustomEvent('heartbeat', {
+                title: document.title,
+                    url: document.URL,
+                })
+            }, HEARTBEAT_INTERVAL
+        );
+    }
+
+    heartbeat();
+
 }
 """
-
-
-async def send_events_async(
-    page: Page, session_id: str, trace_id: str, client: AsyncLaminarClient
-):
-    """Fetch events from the page and send them to the server"""
-    try:
-        # Check if function exists first
-        events = await page.evaluate(
-            """
-        () => {
-            if (typeof window.lmnrGetAndClearEvents !== 'function') {
-                return [];
-            }
-            return window.lmnrGetAndClearEvents();
-        }
-        """
-        )
-
-        if not events or len(events) == 0:
-            return
-
-        await client._browser_events.send(session_id, trace_id, events)
-    except Exception as e:
-        if "Page.evaluate: Target page, context or browser has been closed" not in str(
-            e
-        ):
-            logger.debug(f"Could not send events: {e}")
-
-
-def send_events_sync(
-    page: SyncPage, session_id: str, trace_id: str, client: LaminarClient
-):
-    """Synchronous version of send_events"""
-    try:
-        events = page.evaluate(
-            """
-        () => {
-            if (typeof window.lmnrGetAndClearEvents !== 'function') {
-                return [];
-            }
-            return window.lmnrGetAndClearEvents();
-        }
-        """
-        )
-        if not events or len(events) == 0:
-            return
-
-        client._browser_events.send(session_id, trace_id, events)
-
-    except Exception as e:
-        if "Page.evaluate: Target page, context or browser has been closed" not in str(
-            e
-        ):
-            logger.debug(f"Could not send events: {e}")
 
 
 def inject_session_recorder_sync(page: SyncPage):
@@ -483,10 +434,10 @@ def inject_session_recorder_sync(page: SyncPage):
             ):
                 return
 
-        try:
-            page.evaluate(INJECT_PLACEHOLDER)
-        except Exception as e:
-            logger.debug(f"Failed to inject session recorder: {e}")
+            try:
+                page.evaluate(INJECT_PLACEHOLDER)
+            except Exception as e:
+                logger.debug(f"Failed to inject session recorder: {e}")
 
     except Exception as e:
         logger.error(f"Error during session recorder injection: {e}")
@@ -519,10 +470,10 @@ async def inject_session_recorder_async(page: Page):
             ):
                 return
 
-        try:
-            await page.evaluate(INJECT_PLACEHOLDER)
-        except Exception as e:
-            logger.debug(f"Failed to inject session recorder placeholder: {e}")
+            try:
+                await page.evaluate(INJECT_PLACEHOLDER)
+            except Exception as e:
+                logger.debug(f"Failed to inject session recorder placeholder: {e}")
 
     except Exception as e:
         logger.error(f"Error during session recorder injection: {e}")
@@ -542,24 +493,6 @@ def start_recording_events_sync(page: SyncPage, session_id: str, client: Laminar
     except Exception:
         pass
 
-    def on_load():
-        try:
-            inject_session_recorder_sync(page)
-        except Exception as e:
-            logger.error(f"Error in on_load handler: {e}")
-
-    def on_close():
-        try:
-            send_events_sync(page, session_id, trace_id, client)
-        except Exception:
-            pass
-
-    page.on("load", on_load)
-    page.on("close", on_close)
-
-    inject_session_recorder_sync(page)
-
-    # Expose function to browser so it can call us when events are ready
     def send_events_from_browser(events):
         try:
             if events and len(events) > 0:
@@ -571,6 +504,16 @@ def start_recording_events_sync(page: SyncPage, session_id: str, client: Laminar
         page.expose_function("lmnrSendEvents", send_events_from_browser)
     except Exception as e:
         logger.debug(f"Could not expose function: {e}")
+
+    inject_session_recorder_sync(page)
+
+    def on_load(p):
+        try:
+            inject_session_recorder_sync(p)
+        except Exception as e:
+            logger.error(f"Error in on_load handler: {e}")
+
+    page.on("domcontentloaded", on_load)
 
 
 @observe(name="playwright.page", ignore_input=True, ignore_output=True)
@@ -589,25 +532,7 @@ async def start_recording_events_async(
             return
     except Exception:
         pass
-
-    async def on_load(p):
-        try:
-            await inject_session_recorder_async(p)
-        except Exception as e:
-            logger.error(f"Error in on_load handler: {e}")
-
-    async def on_close(p):
-        try:
-            # Send any remaining events before closing
-            await send_events_async(p, session_id, trace_id, client)
-        except Exception:
-            pass
-
-    page.on("load", on_load)
-    page.on("close", on_close)
-
-    await inject_session_recorder_async(page)
-
+    
     async def send_events_from_browser(events):
         try:
             if events and len(events) > 0:
@@ -619,6 +544,16 @@ async def start_recording_events_async(
         await page.expose_function("lmnrSendEvents", send_events_from_browser)
     except Exception as e:
         logger.debug(f"Could not expose function: {e}")
+
+    await inject_session_recorder_async(page)
+    
+    async def on_load(p):
+        try:
+            await inject_session_recorder_async(p)
+        except Exception as e:
+            logger.error(f"Error in on_load handler: {e}")
+
+    page.on("domcontentloaded", on_load)
 
 
 def take_full_snapshot(page: Page):
