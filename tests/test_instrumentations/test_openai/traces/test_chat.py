@@ -1522,3 +1522,171 @@ async def test_chat_async_exception(
     assert "openai.AuthenticationError" in event.attributes["exception.stacktrace"]
     assert "invalid_api_key" in event.attributes["exception.stacktrace"]
     assert open_ai_span.attributes.get("error.type") == "AuthenticationError"
+
+
+@pytest.mark.vcr
+def test_chat_streaming_not_consumed(
+    instrument_legacy, span_exporter, log_exporter, reader, openai_client
+):
+    """Test that streaming responses are properly instrumented even when not consumed"""
+
+    # Create streaming response but don't consume it
+    response = openai_client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
+        stream=True,
+    )
+
+    # Don't consume the response - this should still create proper traces and metrics
+    del response
+
+    # Force garbage collection to trigger cleanup
+    import gc
+
+    gc.collect()
+
+    spans = span_exporter.get_finished_spans()
+
+    assert len(spans) == 1
+    open_ai_span = spans[0]
+    assert open_ai_span.name == "openai.chat"
+
+    # Verify span was properly closed
+    assert open_ai_span.status.status_code == StatusCode.OK
+    assert open_ai_span.end_time is not None
+    assert open_ai_span.end_time > open_ai_span.start_time
+
+    assert (
+        open_ai_span.attributes.get(SpanAttributes.LLM_REQUEST_MODEL) == "gpt-3.5-turbo"
+    )
+    assert open_ai_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is True
+    assert open_ai_span.attributes.get(SpanAttributes.LLM_REQUEST_TYPE) == "chat"
+
+    assert (
+        open_ai_span.attributes.get(f"{SpanAttributes.LLM_PROMPTS}.0.content")
+        == "Tell me a joke about opentelemetry"
+    )
+    assert open_ai_span.attributes.get(f"{SpanAttributes.LLM_PROMPTS}.0.role") == "user"
+
+
+@pytest.mark.vcr
+def test_chat_streaming_partial_consumption(
+    instrument_legacy, span_exporter, log_exporter, reader, openai_client
+):
+    """Test that streaming responses are properly instrumented when partially consumed"""
+
+    response = openai_client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": "Count to 5"}],
+        stream=True,
+    )
+
+    # Consume only the first chunk
+    first_chunk = next(iter(response))
+    assert first_chunk is not None
+
+    del response
+
+    import gc
+
+    gc.collect()
+
+    spans = span_exporter.get_finished_spans()
+
+    assert len(spans) == 1
+    open_ai_span = spans[0]
+    assert open_ai_span.name == "openai.chat"
+
+    assert open_ai_span.status.status_code == StatusCode.OK
+    assert open_ai_span.end_time is not None
+
+    assert (
+        open_ai_span.attributes.get(SpanAttributes.LLM_REQUEST_MODEL) == "gpt-3.5-turbo"
+    )
+    assert open_ai_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is True
+
+    # Should have at least one event from the consumed chunk
+    events = open_ai_span.events
+    assert len(events) >= 1
+
+
+@pytest.mark.vcr
+def test_chat_streaming_exception_during_consumption(
+    instrument_legacy, span_exporter, log_exporter, openai_client
+):
+    """Test that streaming responses handle exceptions during consumption properly"""
+
+    response = openai_client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": "Tell me a short story"}],
+        stream=True,
+    )
+
+    # Simulate exception during consumption
+    count = 0
+    try:
+        for chunk in response:
+            count += 1
+            if count == 2:  # Interrupt after second chunk
+                raise Exception("Simulated interruption")
+    except Exception as e:
+        # Force cleanup by deleting the response object
+        del response
+        import gc
+
+        gc.collect()
+        # Re-raise to verify the exception was caught
+        assert "Simulated interruption" in str(e)
+
+    spans = span_exporter.get_finished_spans()
+
+    assert len(spans) == 1
+    open_ai_span = spans[0]
+    assert open_ai_span.name == "openai.chat"
+
+    # Verify span was properly closed (status should be OK since exception was in user code, not in our iterator)
+    assert open_ai_span.status.status_code == StatusCode.OK
+    assert open_ai_span.end_time is not None
+
+    # Should have events from the consumed chunks before exception
+    events = open_ai_span.events
+    assert len(events) >= 2  # At least 2 chunk events before exception
+
+
+@pytest.mark.vcr
+def test_chat_streaming_memory_leak_prevention(
+    instrument_legacy, span_exporter, log_exporter, openai_client
+):
+    """Test that creating many streams without consuming them doesn't cause memory leaks"""
+    import gc
+    import weakref
+
+    initial_spans = len(span_exporter.get_finished_spans())
+
+    # Create a stream without consuming it
+    response = openai_client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
+        stream=True,
+    )
+
+    # Create weak reference to track if object is garbage collected
+    weak_ref = weakref.ref(response)
+
+    del response
+
+    gc.collect()
+
+    # Verify object was garbage collected
+    assert weak_ref() is None, "Stream object was not garbage collected"
+
+    # Verify span was properly closed
+    final_spans = span_exporter.get_finished_spans()
+    new_spans = len(final_spans) - initial_spans
+    assert new_spans == 1, f"Expected 1 new span, got {new_spans}"
+
+    # Verify span is properly closed
+    span = final_spans[-1]
+    assert span.name == "openai.chat"
+    assert span.status.status_code == StatusCode.OK
+    assert span.end_time is not None

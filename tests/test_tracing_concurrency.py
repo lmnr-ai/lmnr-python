@@ -363,24 +363,33 @@ def test_threadpool_parallel_spans_separate_traces(span_exporter: InMemorySpanEx
         assert span.parent is None or span.parent.span_id == 0
 
 
-@pytest.mark.vcr
 def test_threadpool_parallel_spans_with_openai(span_exporter: InMemorySpanExporter):
     """Test multiple parallel ThreadPoolExecutor spans live in separate traces
     including auto-instrumented OpenAI spans."""
     from openai import OpenAI
+    from unittest.mock import patch, MagicMock
 
-    openai_client = OpenAI()
+    # Create a mock response that can be safely shared across threads
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "The capital of France is Paris."
 
     def task_worker(task_id: str):
+        # Create a separate client for each thread to avoid sharing issues
+        openai_client = OpenAI(api_key="sk-proj-1234567890", max_retries=0)
         with Laminar.start_as_current_span("task_worker"):
             time.sleep(0.01)
+            # Mock the OpenAI response to avoid VCR threading issues
+            with patch.object(
+                openai_client._client, "send", return_value=mock_response
+            ):
+                openai_client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "user", "content": "what is the capital of France?"}
+                    ],
+                )
             result = f"task_{task_id}"
-            openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "user", "content": "what is the capital of France?"}
-                ],
-            )
             Laminar.set_span_output(result)
             return result
 
