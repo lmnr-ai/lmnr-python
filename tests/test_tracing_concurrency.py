@@ -416,24 +416,39 @@ def test_threadpool_parallel_spans_with_openai(span_exporter: InMemorySpanExport
             assert span.parent is not None
 
 
-@pytest.mark.vcr
 def test_threadpool_parallel_spans_with_langchain(span_exporter: InMemorySpanExporter):
     """Test multiple parallel ThreadPoolExecutor spans live in separate traces
     including auto-instrumented LangChain spans."""
     from langchain_openai import ChatOpenAI
+    from unittest.mock import patch
+
+    # Create a mock response that can be safely shared across threads
+    mock_response = {
+        "choices": [
+            {
+                "message": {
+                    "content": "The capital of France is Paris.",
+                    "role": "assistant",
+                }
+            }
+        ]
+    }
 
     def task_worker(task_id: str):
         # the real API key was used in the vcr cassette
         openai_client = ChatOpenAI(api_key="test-api-key")
-        with Laminar.start_as_current_span("task_worker"):
-            time.sleep(0.01)
-            openai_client.invoke(
-                model="gpt-4o-mini",
-                input=[{"role": "user", "content": "what is the capital of France?"}],
-            )
-            result = f"task_{task_id}"
-            Laminar.set_span_output(result)
-            return result
+        with patch.object(openai_client.client, "create", return_value=mock_response):
+            with Laminar.start_as_current_span("task_worker"):
+                time.sleep(0.01)
+                openai_client.invoke(
+                    model="gpt-4o-mini",
+                    input=[
+                        {"role": "user", "content": "what is the capital of France?"}
+                    ],
+                )
+                result = f"task_{task_id}"
+                Laminar.set_span_output(result)
+                return result
 
     # Use ThreadPoolExecutor to run tasks
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:

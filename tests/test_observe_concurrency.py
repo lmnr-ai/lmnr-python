@@ -393,16 +393,30 @@ def test_observe_threadpool_parallel_spans_with_langchain(
     """Test multiple parallel ThreadPoolExecutor spans live in separate traces
     including auto-instrumented LangChain spans."""
     from langchain_openai import ChatOpenAI
+    from unittest.mock import patch
+
+    # Create a mock response that can be safely shared across threads
+    mock_response = {
+        "choices": [
+            {
+                "message": {
+                    "content": "The capital of France is Paris.",
+                    "role": "assistant",
+                }
+            }
+        ]
+    }
 
     @observe()
     def task_worker(task_id: str):
         # the real API key was used in the vcr cassette
         openai_client = ChatOpenAI(api_key="test-api-key")
         time.sleep(0.01)
-        openai_client.invoke(
-            model="gpt-4o-mini",
-            input=[{"role": "user", "content": "what is the capital of France?"}],
-        )
+        with patch.object(openai_client.client, "create", return_value=mock_response):
+            openai_client.invoke(
+                model="gpt-4o-mini",
+                input=[{"role": "user", "content": "what is the capital of France?"}],
+            )
         return f"task_{task_id}"
 
     # Use ThreadPoolExecutor to run tasks
