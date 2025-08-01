@@ -1695,7 +1695,7 @@ def test_anthropic_tools_streaming_legacy(
     )
 
     # consume the streaming iterator
-    consumed_events = [event for event in response]
+    [event for event in response]
 
     spans = span_exporter.get_finished_spans()
     # verify overall shape
@@ -1942,3 +1942,100 @@ def assert_message_in_logs(log: LogData, event_name: str, expected_content: dict
     else:
         assert log.log_record.body
         assert dict(log.log_record.body) == expected_content
+
+
+@pytest.mark.vcr
+def test_anthropic_message_stream_manager(
+    instrument_legacy, anthropic_client, span_exporter, log_exporter
+):
+    response_content = ""
+    with anthropic_client.messages.stream(
+        max_tokens=1024,
+        messages=[
+            {
+                "role": "user",
+                "content": "Tell me a joke about OpenTelemetry",
+            }
+        ],
+        model="claude-3-5-haiku-20241022",
+    ) as stream:
+        for event in stream:
+            if event.type == "content_block_delta" and event.delta.type == "text_delta":
+                response_content += event.delta.text
+
+    spans = span_exporter.get_finished_spans()
+    assert [span.name for span in spans] == [
+        "anthropic.chat",
+    ]
+    anthropic_span = spans[0]
+    assert (
+        anthropic_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"]
+        == "Tell me a joke about OpenTelemetry"
+    )
+    assert (anthropic_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.role"]) == "user"
+    assert (
+        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+        == response_content
+    )
+    assert (
+        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.role")
+        == "assistant"
+    )
+    assert (
+        anthropic_span.attributes.get("gen_ai.response.id")
+        == "msg_01MCkQZZtEKF3nVbFaExwATe"
+    )
+
+    logs = log_exporter.get_finished_logs()
+    assert (
+        len(logs) == 0
+    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
+
+
+@pytest.mark.vcr
+@pytest.mark.asyncio
+async def test_async_anthropic_message_stream_manager(
+    instrument_legacy, async_anthropic_client, span_exporter, log_exporter
+):
+    response_content = ""
+    async with async_anthropic_client.messages.stream(
+        max_tokens=1024,
+        messages=[
+            {
+                "role": "user",
+                "content": "Tell me a joke about OpenTelemetry",
+            }
+        ],
+        model="claude-3-5-haiku-20241022",
+    ) as stream:
+        async for event in stream:
+            if event.type == "content_block_delta" and event.delta.type == "text_delta":
+                response_content += event.delta.text
+
+    spans = span_exporter.get_finished_spans()
+    assert [span.name for span in spans] == [
+        "anthropic.chat",
+    ]
+    anthropic_span = spans[0]
+    assert (
+        anthropic_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"]
+        == "Tell me a joke about OpenTelemetry"
+    )
+    assert (anthropic_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.role"]) == "user"
+    assert (
+        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+        == response_content
+    )
+    assert (
+        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.role")
+        == "assistant"
+    )
+    assert (
+        anthropic_span.attributes.get("gen_ai.response.id")
+        == "msg_01E414PCSTg6skd6JWPTX5Uc"
+    )
+
+    logs = log_exporter.get_finished_logs()
+    assert (
+        len(logs) == 0
+    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
