@@ -5,7 +5,7 @@ import orjson
 import types
 from typing import Any, AsyncGenerator, Callable, Generator, Literal
 
-from opentelemetry.context import set_value
+from opentelemetry import context as context_api
 from opentelemetry.trace import Span, Status, StatusCode
 
 from lmnr.opentelemetry_lib.tracing.context import (
@@ -188,10 +188,20 @@ def observe_base(
             span = _setup_span(span_name, span_type, association_properties)
             new_context = wrapper.push_span_context(span)
             if session_id := association_properties.get("session_id"):
-                new_context = set_value(CONTEXT_SESSION_ID_KEY, session_id, new_context)
+                new_context = context_api.set_value(
+                    CONTEXT_SESSION_ID_KEY, session_id, new_context
+                )
             if user_id := association_properties.get("user_id"):
-                new_context = set_value(CONTEXT_USER_ID_KEY, user_id, new_context)
-            ctx_token = attach_context(new_context)
+                new_context = context_api.set_value(
+                    CONTEXT_USER_ID_KEY, user_id, new_context
+                )
+            # Some auto-instrumentations are not under our control, so they
+            # don't have access to our isolated context. We attach the context
+            # to the OTEL global context, so that spans know their parent
+            # span and trace_id.
+            ctx_token = context_api.attach(new_context)
+            # update our isolated context too
+            isolated_ctx_token = attach_context(new_context)
 
             _process_input(
                 span, fn, args, kwargs, ignore_input, ignore_inputs, input_formatter
@@ -205,8 +215,8 @@ def observe_base(
                 raise e
             finally:
                 # Always restore global context
-                detach_context(ctx_token)
-
+                context_api.detach(ctx_token)
+                detach_context(isolated_ctx_token)
             # span will be ended in the generator
             if isinstance(res, types.GeneratorType):
                 return _handle_generator(span, ctx_token, res)
@@ -252,10 +262,20 @@ def async_observe_base(
             span = _setup_span(span_name, span_type, association_properties)
             new_context = wrapper.push_span_context(span)
             if session_id := association_properties.get("session_id"):
-                new_context = set_value(CONTEXT_SESSION_ID_KEY, session_id, new_context)
+                new_context = context_api.set_value(
+                    CONTEXT_SESSION_ID_KEY, session_id, new_context
+                )
             if user_id := association_properties.get("user_id"):
-                new_context = set_value(CONTEXT_USER_ID_KEY, user_id, new_context)
-            ctx_token = attach_context(new_context)
+                new_context = context_api.set_value(
+                    CONTEXT_USER_ID_KEY, user_id, new_context
+                )
+            # Some auto-instrumentations are not under our control, so they
+            # don't have access to our isolated context. We attach the context
+            # to the OTEL global context, so that spans know their parent
+            # span and trace_id.
+            ctx_token = context_api.attach(new_context)
+            # update our isolated context too
+            isolated_ctx_token = attach_context(new_context)
 
             _process_input(
                 span, fn, args, kwargs, ignore_input, ignore_inputs, input_formatter
@@ -269,7 +289,8 @@ def async_observe_base(
                 raise e
             finally:
                 # Always restore global context
-                detach_context(ctx_token)
+                context_api.detach(ctx_token)
+                detach_context(isolated_ctx_token)
 
             # span will be ended in the generator
             if isinstance(res, types.AsyncGeneratorType):

@@ -143,6 +143,7 @@ dev = [
   "litellm>=1.72.6",
   "groq>=0.30.0",
   "anthropic>=0.57.1",
+  "langchain-openai>=0.3.28",
 ]
 
 [build-system]

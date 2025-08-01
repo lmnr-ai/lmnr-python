@@ -243,6 +243,37 @@ def test_use_span_suppress_exception(span_exporter: InMemorySpanExporter):
     assert len(events) == 0
 
 
+@pytest.mark.vcr
+def test_use_span_with_auto_instrumentation_langchain(
+    span_exporter: InMemorySpanExporter,
+):
+    from langchain_openai import ChatOpenAI
+
+    # the real API key was used in the vcr cassette
+    openai_client = ChatOpenAI(api_key="test-api-key")
+
+    span = Laminar.start_span("test", input="my_input")
+
+    with Laminar.use_span(span, end_on_exit=True):
+        response = openai_client.invoke(
+            model="gpt-4o-mini",
+            input=[{"role": "user", "content": "what is the capital of France?"}],
+        )
+        Laminar.set_span_output(response.content[0])
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 2
+    test_span = [span for span in spans if span.name == "test"][0]
+    openai_span = [span for span in spans if span.name == "ChatOpenAI.chat"][0]
+
+    assert (
+        test_span.get_span_context().trace_id == openai_span.get_span_context().trace_id
+    )
+    assert openai_span.parent.span_id == test_span.get_span_context().span_id
+    assert openai_span.attributes["lmnr.span.instrumentation_source"] == "python"
+    assert openai_span.attributes["lmnr.span.path"] == ("test", "ChatOpenAI.chat")
+
+
 def test_session_id(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("test"):
         Laminar.set_trace_session_id("123")

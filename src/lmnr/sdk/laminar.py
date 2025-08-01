@@ -7,7 +7,6 @@ from lmnr.opentelemetry_lib.tracing.context import (
     CONTEXT_SESSION_ID_KEY,
     CONTEXT_USER_ID_KEY,
     attach_context,
-    detach_context,
     get_event_attributes_from_context,
 )
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
@@ -21,7 +20,7 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
 from lmnr.opentelemetry_lib import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 from lmnr.opentelemetry_lib.decorators import json_dumps
 from opentelemetry import trace
-from opentelemetry.context import set_value
+from opentelemetry import context as context_api
 from opentelemetry.trace import INVALID_TRACE_ID, Span, Status, StatusCode, use_span
 from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
 from opentelemetry.util.types import AttributeValue
@@ -317,7 +316,7 @@ class Laminar:
                 ctx = trace.set_span_in_context(
                     trace.NonRecordingSpan(span_context), ctx
                 )
-            ctx_token = attach_context(ctx)
+            ctx_token = context_api.attach(ctx)
             label_props = {}
             try:
                 if labels:
@@ -366,9 +365,8 @@ class Laminar:
                 yield span
 
             wrapper.pop_span_context()
-            # TODO: Figure out if this is necessary
             try:
-                detach_context(ctx_token)
+                context_api.detach(ctx_token)
             except Exception:
                 pass
 
@@ -539,10 +537,16 @@ class Laminar:
         wrapper = TracerWrapper()
 
         try:
-            wrapper.push_span_context(span)
+            context = wrapper.push_span_context(span)
+            # Some auto-instrumentations are not under our control, so they
+            # don't have access to our isolated context. We attach the context
+            # to the OTEL global context, so that spans know their parent
+            # span and trace_id.
+            context_token = context_api.attach(context)
             try:
                 yield span
             finally:
+                context_api.detach(context_token)
                 wrapper.pop_span_context()
 
         # Record only exceptions that inherit Exception class but not BaseException, because
@@ -751,7 +755,7 @@ class Laminar:
             return
 
         context = get_current_context()
-        context = set_value(CONTEXT_SESSION_ID_KEY, session_id, context)
+        context = context_api.set_value(CONTEXT_SESSION_ID_KEY, session_id, context)
         attach_context(context)
 
         span = trace.get_current_span(context=context)
@@ -773,7 +777,7 @@ class Laminar:
             return
 
         context = get_current_context()
-        context = set_value(CONTEXT_USER_ID_KEY, user_id, context)
+        context = context_api.set_value(CONTEXT_USER_ID_KEY, user_id, context)
         attach_context(context)
 
         span = trace.get_current_span(context=context)

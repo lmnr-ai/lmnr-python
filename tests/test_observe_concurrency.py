@@ -335,32 +335,23 @@ def test_threadpool_parallel_spans_separate_traces(span_exporter: InMemorySpanEx
         assert span.parent is None or span.parent.span_id == 0
 
 
-def test_observe_threadpool_parallel_spans_with_openai(
+@pytest.mark.vcr
+def test_observe_threadpool_parallel_spans_with_langchain(
     span_exporter: InMemorySpanExporter,
 ):
     """Test multiple parallel ThreadPoolExecutor spans live in separate traces
-    including auto-instrumented OpenAI spans."""
-    from openai import OpenAI
-    from unittest.mock import patch, MagicMock
-
-    # Create a mock response that can be safely shared across threads
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.content = "The capital of France is Paris."
+    including auto-instrumented LangChain spans."""
+    from langchain_openai import ChatOpenAI
 
     @observe()
     def task_worker(task_id: str):
-        # Create a separate client for each thread to avoid sharing issues
-        openai_client = OpenAI(api_key="test_api_key", max_retries=0)
+        # the real API key was used in the vcr cassette
+        openai_client = ChatOpenAI(api_key="test-api-key")
         time.sleep(0.01)
-        # Mock the OpenAI response to avoid VCR threading issues
-        with patch.object(openai_client._client, "send", return_value=mock_response):
-            openai_client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "user", "content": "what is the capital of France?"}
-                ],
-            )
+        openai_client.invoke(
+            model="gpt-4o-mini",
+            input=[{"role": "user", "content": "what is the capital of France?"}],
+        )
         return f"task_{task_id}"
 
     # Use ThreadPoolExecutor to run tasks
@@ -382,8 +373,12 @@ def test_observe_threadpool_parallel_spans_with_openai(
         if span.name == "task_worker":
             assert span.parent is None or span.parent.span_id == 0
         else:
-            assert span.name == "openai.chat"
+            assert span.name == "ChatOpenAI.chat"
             assert span.parent is not None
+            assert isinstance(span.attributes["lmnr.span.path"], tuple)
+            assert len(span.attributes["lmnr.span.path"]) == 2
+            assert isinstance(span.attributes["lmnr.span.ids_path"], tuple)
+            assert len(span.attributes["lmnr.span.ids_path"]) == 2
 
 
 def test_threadpool_parallel_spans_same_parent(span_exporter: InMemorySpanExporter):
