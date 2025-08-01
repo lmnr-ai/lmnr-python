@@ -13,6 +13,8 @@ from typing import Any, Awaitable, Callable, Literal, Optional
 
 from .utils import serialize
 
+EVALUATION_DATAPOINT_MAX_DATA_LENGTH = 1_000_000  # 1MB
+
 
 Numeric = int | float
 NumericTypes = (int, float)  # for use with isinstance
@@ -75,8 +77,12 @@ class PartialEvaluationDatapoint(pydantic.BaseModel):
         try:
             return {
                 "id": str(self.id),
-                "data": str(serialize(self.data))[:100],
-                "target": str(serialize(self.target))[:100],
+                "data": str(serialize(self.data))[
+                    :EVALUATION_DATAPOINT_MAX_DATA_LENGTH
+                ],
+                "target": str(serialize(self.target))[
+                    :EVALUATION_DATAPOINT_MAX_DATA_LENGTH
+                ],
                 "index": self.index,
                 "traceId": str(self.trace_id),
                 "executorSpanId": str(self.executor_span_id),
@@ -106,9 +112,15 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
                 # preserve only preview of the data, target and executor output
                 # (full data is in trace)
                 "id": str(self.id),
-                "data": str(serialize(self.data))[:100],
-                "target": str(serialize(self.target))[:100],
-                "executorOutput": str(serialize(self.executor_output))[:100],
+                "data": str(serialize(self.data))[
+                    :EVALUATION_DATAPOINT_MAX_DATA_LENGTH
+                ],
+                "target": str(serialize(self.target))[
+                    :EVALUATION_DATAPOINT_MAX_DATA_LENGTH
+                ],
+                "executorOutput": str(serialize(self.executor_output))[
+                    :EVALUATION_DATAPOINT_MAX_DATA_LENGTH
+                ],
                 "scores": self.scores,
                 "traceId": str(self.trace_id),
                 "executorSpanId": str(self.executor_span_id),

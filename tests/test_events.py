@@ -72,6 +72,33 @@ def test_event_with_attributes_and_session_id(span_exporter: InMemorySpanExporte
     }
 
 
+def test_event_overrides_session_id_and_user_id(span_exporter: InMemorySpanExporter):
+    @observe()
+    def observed_foo():
+        Laminar.set_trace_session_id("test_session_id")
+        Laminar.set_trace_user_id("test_user_id")
+        Laminar.event(
+            "test_event",
+            attributes={"key": "value"},
+            user_id="another_user_id",
+            session_id="another_session_id",
+        )
+
+    observed_foo()
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "observed_foo"
+    events = spans[0].events
+    assert len(events) == 1
+    assert events[0].name == "test_event"
+    assert events[0].attributes == {
+        "key": "value",
+        "lmnr.event.session_id": "another_session_id",
+        "lmnr.event.user_id": "another_user_id",
+    }
+
+
 def test_event_with_attributes_and_session_id_observe(
     span_exporter: InMemorySpanExporter,
 ):

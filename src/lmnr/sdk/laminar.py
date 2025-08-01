@@ -205,6 +205,9 @@ class Laminar:
         name: str,
         attributes: dict[str, AttributeValue] | None = None,
         timestamp: datetime.datetime | int | None = None,
+        *,
+        user_id: str | None = None,
+        session_id: str | None = None,
     ):
         """Associate an event with the current span. This is a wrapper around
         `span.add_event()` that adds the event to the current span.
@@ -224,6 +227,13 @@ class Laminar:
             timestamp = int(timestamp.timestamp() * 1e9)
 
         extra_attributes = get_event_attributes_from_context()
+
+        # override the user_id and session_id from the context with the ones
+        # passed as arguments
+        if user_id:
+            extra_attributes["lmnr.event.user_id"] = user_id
+        if session_id:
+            extra_attributes["lmnr.event.session_id"] = session_id
 
         current_span = trace.get_current_span(context=get_current_context())
         if current_span == trace.INVALID_SPAN:
