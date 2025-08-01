@@ -505,6 +505,8 @@ def start_recording_events_sync(page: SyncPage, session_id: str, client: Laminar
     except Exception as e:
         logger.debug(f"Could not expose function: {e}")
 
+    inject_session_recorder_sync(page)
+
     def on_load(p):
         try:
             inject_session_recorder_sync(p)
@@ -543,6 +545,8 @@ async def start_recording_events_async(
     except Exception as e:
         logger.debug(f"Could not expose function: {e}")
 
+    await inject_session_recorder_async(page)
+    
     async def on_load(p):
         try:
             await inject_session_recorder_async(p)
@@ -550,6 +554,7 @@ async def start_recording_events_async(
             logger.error(f"Error in on_load handler: {e}")
 
     page.on("domcontentloaded", on_load)
+
 
 def take_full_snapshot(page: Page):
     return page.evaluate(
