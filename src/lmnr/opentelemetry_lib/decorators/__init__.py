@@ -68,13 +68,33 @@ def _setup_span(
     span_name: str, span_type: str, association_properties: dict[str, Any] | None
 ):
     """Set up a span with the given name, type, and association properties."""
+    from opentelemetry import trace
+    
     with get_tracer_with_context() as (tracer, isolated_context):
-        # Create span in isolated context
-        span = tracer.start_span(
-            span_name,
-            context=isolated_context,
-            attributes={SPAN_TYPE: span_type},
-        )
+        # Check if we should respect existing OTEL context
+        if TracerWrapper.respect_existing_context:
+            # Get the current span from the global OTEL context
+            current_span = trace.get_current_span()
+            if current_span and current_span.is_recording():
+                # Use the current OTEL context to maintain parent-child relationship
+                span = tracer.start_span(
+                    span_name,
+                    attributes={SPAN_TYPE: span_type},
+                )
+            else:
+                # No active span, use isolated context
+                span = tracer.start_span(
+                    span_name,
+                    context=isolated_context,
+                    attributes={SPAN_TYPE: span_type},
+                )
+        else:
+            # Default behavior: always use isolated context
+            span = tracer.start_span(
+                span_name,
+                context=isolated_context,
+                attributes={SPAN_TYPE: span_type},
+            )
 
         if association_properties is not None:
             for key, value in association_properties.items():
@@ -187,11 +207,11 @@ def observe_base(
 
             span = _setup_span(span_name, span_type, association_properties)
             new_context = wrapper.push_span_context(span)
-            if session_id := association_properties.get("session_id"):
+            if association_properties and (session_id := association_properties.get("session_id")):
                 new_context = context_api.set_value(
                     CONTEXT_SESSION_ID_KEY, session_id, new_context
                 )
-            if user_id := association_properties.get("user_id"):
+            if association_properties and (user_id := association_properties.get("user_id")):
                 new_context = context_api.set_value(
                     CONTEXT_USER_ID_KEY, user_id, new_context
                 )
@@ -261,11 +281,11 @@ def async_observe_base(
 
             span = _setup_span(span_name, span_type, association_properties)
             new_context = wrapper.push_span_context(span)
-            if session_id := association_properties.get("session_id"):
+            if association_properties and (session_id := association_properties.get("session_id")):
                 new_context = context_api.set_value(
                     CONTEXT_SESSION_ID_KEY, session_id, new_context
                 )
-            if user_id := association_properties.get("user_id"):
+            if association_properties and (user_id := association_properties.get("user_id")):
                 new_context = context_api.set_value(
                     CONTEXT_USER_ID_KEY, user_id, new_context
                 )

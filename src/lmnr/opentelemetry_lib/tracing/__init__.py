@@ -38,6 +38,7 @@ MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN = 5000
 class TracerWrapper(object):
     resource_attributes: dict = {}
     enable_content_tracing: bool = True
+    respect_existing_context: bool = False
     _lock = threading.Lock()
     _tracer_provider: TracerProvider | None = None
     _logger: logging.Logger
@@ -207,9 +208,11 @@ class TracerWrapper(object):
     def set_static_params(
         resource_attributes: dict,
         enable_content_tracing: bool,
+        respect_existing_context: bool = False,
     ) -> None:
         TracerWrapper.resource_attributes = resource_attributes
         TracerWrapper.enable_content_tracing = enable_content_tracing
+        TracerWrapper.respect_existing_context = respect_existing_context
 
     @classmethod
     def verify_initialized(cls) -> bool:
