@@ -30,12 +30,13 @@ class TracerManager:
         timeout_seconds: int = 30,
         set_global_tracer_provider: bool = True,
         otel_logger_level: int = logging.ERROR,
+        respect_existing_context: bool = False,
     ) -> None:
         enable_content_tracing = True
 
         # Tracer init
         resource_attributes.update({SERVICE_NAME: app_name})
-        TracerWrapper.set_static_params(resource_attributes, enable_content_tracing)
+        TracerWrapper.set_static_params(resource_attributes, enable_content_tracing, respect_existing_context)
         TracerManager.__tracer_wrapper = TracerWrapper(
             disable_batch=disable_batch,
             exporter=exporter,

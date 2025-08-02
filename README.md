@@ -267,3 +267,76 @@ async for chunk in client.agent.run(
     elif chunk.chunk_type == 'finalOutput':
         print(chunk.content.result.content)
 ```
+
+## Integration with OpenTelemetry-instrumented frameworks
+
+By default, Laminar uses its own isolated context for tracing to avoid conflicts with other OpenTelemetry instrumentation. However, if you're using Laminar alongside other OpenTelemetry-instrumented frameworks (like Prefect, FastAPI, Flask, etc.), you can configure Laminar to respect the existing OpenTelemetry context. This allows Laminar spans to become children of spans from other frameworks, providing a unified view of your application's execution flow.
+
+### Enabling context sharing
+
+To enable context sharing, set `respect_existing_context=True` when initializing Laminar:
+
+```python
+from lmnr import Laminar
+
+Laminar.initialize(
+    project_api_key="<YOUR_PROJECT_API_KEY>",
+    respect_existing_context=True,  # Enable context sharing
+)
+```
+
+### Example with Prefect
+
+Here's an example showing how Laminar integrates with Prefect when context sharing is enabled:
+
+```python
+from prefect import flow, task
+from lmnr import Laminar, observe
+import openai
+
+# Initialize Laminar with context sharing
+Laminar.initialize(
+    project_api_key="<YOUR_PROJECT_API_KEY>",
+    respect_existing_context=True,
+)
+
+@observe()
+def call_openai(prompt: str):
+    """This function will be traced as part of the Prefect flow."""
+    client = openai.OpenAI()
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content
+
+@task
+def process_data(data: str):
+    """Prefect task that uses Laminar-instrumented function."""
+    result = call_openai(f"Process this data: {data}")
+    return result
+
+@flow
+def my_workflow():
+    """Prefect flow that orchestrates the tasks."""
+    data = "Important business data"
+    result = process_data(data)
+    print(f"Result: {result}")
+
+# Run the flow
+my_workflow()
+```
+
+With `respect_existing_context=True`, the Laminar spans created by `@observe()` and the OpenAI instrumentation will appear as children of the Prefect task and flow spans, all sharing the same trace ID.
+
+### When to use this feature
+
+Enable `respect_existing_context=True` when:
+- You're using Laminar alongside other OpenTelemetry-instrumented frameworks
+- You want to see LLM calls in the context of your larger application flow
+- You're debugging complex workflows and need to understand the relationship between different components
+
+Keep the default (`respect_existing_context=False`) when:
+- You're only using Laminar for observability
+- You want to keep LLM traces separate from application traces
+- You're experiencing conflicts with other instrumentation libraries
