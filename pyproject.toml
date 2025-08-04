@@ -142,7 +142,7 @@ dev = [
   "langchain>=0.3.25",
   "litellm>=1.72.6",
   "groq>=0.30.0",
-  "anthropic>=0.57.1",
+  "anthropic>=0.60.0",
   "langchain-openai>=0.3.28",
 ]
 
