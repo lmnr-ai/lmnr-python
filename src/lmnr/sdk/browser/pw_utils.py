@@ -487,12 +487,6 @@ def start_recording_events_sync(page: SyncPage, session_id: str, client: Laminar
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
 
-    try:
-        if page.evaluate("""() => typeof window.lmnrSendEvents !== 'undefined'"""):
-            return
-    except Exception:
-        pass
-
     def send_events_from_browser(events):
         try:
             if events and len(events) > 0:
@@ -524,14 +518,6 @@ async def start_recording_events_async(
     span = trace.get_current_span(ctx)
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
-
-    try:
-        if await page.evaluate(
-            """() => typeof window.lmnrSendEvents !== 'undefined'"""
-        ):
-            return
-    except Exception:
-        pass
     
     async def send_events_from_browser(events):
         try:
