@@ -917,7 +917,6 @@ async def test_chat_async_streaming_with_events_with_no_content(
 
 
 @pytest.mark.vcr
-@pytest.mark.asyncio
 def test_with_asyncio_run(
     instrument_legacy, span_exporter, log_exporter, async_openai_client
 ):
