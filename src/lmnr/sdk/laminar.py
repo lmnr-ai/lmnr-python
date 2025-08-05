@@ -73,6 +73,7 @@ class Laminar:
         export_timeout_seconds: int | None = None,
         set_global_tracer_provider: bool = True,
         otel_logger_level: int = logging.ERROR,
+        respect_existing_context: bool = False,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -119,6 +120,11 @@ class Laminar:
                 Defaults to True.
             otel_logger_level (int, optional): OpenTelemetry logger level. Defaults\
                 to logging.ERROR.
+            respect_existing_context (bool, optional): If set to True, Laminar will\
+                respect existing OpenTelemetry context when creating spans, allowing\
+                proper parent-child relationships with other OTEL-instrumented\
+                frameworks like Prefect. When False (default), Laminar uses its own\
+                isolated context for backward compatibility. Defaults to False.
 
         Raises:
             ValueError: If project API key is not set
@@ -179,6 +185,7 @@ class Laminar:
             timeout_seconds=export_timeout_seconds,
             set_global_tracer_provider=set_global_tracer_provider,
             otel_logger_level=otel_logger_level,
+            respect_existing_context=respect_existing_context,
         )
 
     @classmethod
