@@ -3,7 +3,7 @@ from .sdk.client.asynchronous.async_client import AsyncLaminarClient
 from .sdk.datasets import EvaluationDataset, LaminarDataset
 from .sdk.evaluations import evaluate
 from .sdk.laminar import Laminar
-from .sdk.types import SessionRecordingOptions
+from .sdk.types import SessionRecordingOptions, MaskInputOptions
 from .sdk.types import (
     AgentOutput,
     FinalOutputChunkContent,
@@ -39,5 +39,6 @@ __all__ = [
     "get_tracer",
     "evaluate",
     "observe",
-    "SessionRecordingOptions"
+    "SessionRecordingOptions",
+    "MaskInputOptions",
 ]
