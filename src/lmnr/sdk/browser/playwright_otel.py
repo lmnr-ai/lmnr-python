@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import time
 import uuid
 
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
@@ -59,6 +61,18 @@ def _wrap_new_browser_sync(
 ):
     browser: SyncBrowser = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
+    
+    # Check if this is a remote connection (CDP or WebSocket)
+    method_name = to_wrap.get("method", "")
+    is_remote = method_name in ["connect", "connect_over_cdp"]
+    if not is_remote:
+        # Also check args/kwargs for ws/cdp endpoints
+        args_str = str(args) + str(kwargs)
+        is_remote = any(x in args_str.lower() for x in ["ws://", "wss://", "cdp", "devtools"])
+    
+    # Give remote browsers time to establish connection
+    if is_remote:
+        time.sleep(0.5)
 
     def create_page_handler(session_id, client):
         def page_handler(page):
@@ -81,6 +95,18 @@ async def _wrap_new_browser_async(
 ):
     browser: Browser = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
+    
+    # Check if this is a remote connection (CDP or WebSocket)
+    method_name = to_wrap.get("method", "")
+    is_remote = method_name in ["connect", "connect_over_cdp"]
+    if not is_remote:
+        # Also check args/kwargs for ws/cdp endpoints
+        args_str = str(args) + str(kwargs)
+        is_remote = any(x in args_str.lower() for x in ["ws://", "wss://", "cdp", "devtools"])
+    
+    # Give remote browsers time to establish connection
+    if is_remote:
+        await asyncio.sleep(0.5)
 
     def create_page_handler(session_id, client):
         async def page_handler(page):
@@ -102,6 +128,11 @@ def _wrap_new_context_sync(
 ):
     context: SyncBrowserContext = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
+    
+    # Check if parent browser is remote (instance is the browser for new_context)
+    if hasattr(instance, '_connection'):
+        # Playwright internal - _connection exists for remote browsers
+        time.sleep(0.3)  # Smaller delay for context creation
 
     def create_page_handler(session_id, client):
         def page_handler(page):
@@ -123,6 +154,11 @@ async def _wrap_new_context_async(
 ):
     context: BrowserContext = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
+    
+    # Check if parent browser is remote (instance is the browser for new_context)
+    if hasattr(instance, '_connection'):
+        # Playwright internal - _connection exists for remote browsers
+        await asyncio.sleep(0.3)  # Smaller delay for context creation
 
     def create_page_handler(session_id, client):
         async def page_handler(page):
