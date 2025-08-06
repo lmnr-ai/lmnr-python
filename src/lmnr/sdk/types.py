@@ -9,7 +9,7 @@ import uuid
 
 from enum import Enum
 from opentelemetry.trace import SpanContext, TraceFlags
-from typing import Any, Awaitable, Callable, Literal, Optional
+from typing import Any, Awaitable, Callable, Literal, Optional, TypedDict
 
 from .utils import serialize
 
@@ -346,3 +346,15 @@ class RunAgentResponseChunk(pydantic.RootModel):
         | ErrorChunkContent
         | TimeoutChunkContent
     )
+
+
+class MaskInputOptions(TypedDict):
+    textarea: bool | None
+    text: bool | None
+    number: bool | None
+    select: bool | None
+    email: bool | None
+    tel: bool | None
+
+class SessionRecordingOptions(TypedDict):
+    mask_input_options: MaskInputOptions | None

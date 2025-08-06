@@ -5,6 +5,7 @@ import threading
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
+from lmnr.sdk.types import SessionRecordingOptions
 from lmnr.sdk.log import VerboseColorfulFormatter
 from lmnr.opentelemetry_lib.tracing.instruments import (
     Instruments,
@@ -38,6 +39,7 @@ MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN = 5000
 class TracerWrapper(object):
     resource_attributes: dict = {}
     enable_content_tracing: bool = True
+    session_recording_options: SessionRecordingOptions = {}
     _lock = threading.Lock()
     _tracer_provider: TracerProvider | None = None
     _logger: logging.Logger
@@ -62,6 +64,7 @@ class TracerWrapper(object):
         timeout_seconds: int = 30,
         set_global_tracer_provider: bool = True,
         otel_logger_level: int = logging.ERROR,
+        session_recording_options: SessionRecordingOptions | None = None,
     ) -> "TracerWrapper":
         # Silence some opentelemetry warnings
         logging.getLogger("opentelemetry.trace").setLevel(otel_logger_level)
@@ -71,6 +74,9 @@ class TracerWrapper(object):
             if not hasattr(cls, "instance"):
                 cls._initialize_logger(cls)
                 obj = super(TracerWrapper, cls).__new__(cls)
+                
+                # Store session recording options
+                cls.session_recording_options = session_recording_options or {}
 
                 obj._client = LaminarClient(
                     base_url=base_http_url,
@@ -243,6 +249,11 @@ class TracerWrapper(object):
             self._logger.warning("TracerWrapper not fully initialized, cannot flush")
             return False
         return self._span_processor.force_flush()
+    
+    @classmethod
+    def get_session_recording_options(cls) -> SessionRecordingOptions:
+        """Get the session recording options set during initialization."""
+        return cls.session_recording_options
 
     def get_tracer(self):
         if self._tracer_provider is None:

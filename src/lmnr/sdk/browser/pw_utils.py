@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 
@@ -9,6 +10,8 @@ from lmnr.sdk.browser.utils import retry_sync, retry_async
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
+from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.sdk.types import MaskInputOptions
 
 try:
     if is_package_installed("playwright"):
@@ -36,8 +39,9 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(current_dir, "recorder", "record.umd.min.cjs"), "r") as f:
     RRWEB_CONTENT = f"() => {{ {f.read()} }}"
 
+
 INJECT_PLACEHOLDER = """
-() => {
+(mask_input_options) => {
     const BATCH_TIMEOUT = 2000; // Send events after 2 seconds
     const MAX_WORKER_PROMISES = 50; // Max concurrent worker promises
     const HEARTBEAT_INTERVAL = 1000;
@@ -387,7 +391,16 @@ INJECT_PLACEHOLDER = """
         },
         recordCanvas: true,
         collectFonts: true,
-        recordCrossOriginIframes: true
+        recordCrossOriginIframes: true,
+        maskInputOptions: {
+            password: true,
+            textarea: mask_input_options.textarea || false,
+            text: mask_input_options.text || false,
+            number: mask_input_options.number || false,
+            select: mask_input_options.select || false,
+            email: mask_input_options.email || false,
+            tel: mask_input_options.tel || false,
+        }
     });
 
     function heartbeat() {
@@ -405,6 +418,30 @@ INJECT_PLACEHOLDER = """
 
 }
 """
+
+
+def get_mask_input_setting() -> MaskInputOptions:
+    """Get the mask_input setting from session recording configuration."""
+    try:
+        config = TracerWrapper.get_session_recording_options()
+        return config.get("mask_input_options", MaskInputOptions(
+            textarea=False,
+            text=False,
+            number=False,
+            select=False,
+            email=False,
+            tel=False,
+        ))
+    except (AttributeError, Exception):
+        # Fallback to default configuration if TracerWrapper is not initialized
+        return MaskInputOptions(
+            textarea=False,
+            text=False,
+            number=False,
+            select=False,
+            email=False,
+            tel=False,
+        )
 
 
 def inject_session_recorder_sync(page: SyncPage):
@@ -435,7 +472,7 @@ def inject_session_recorder_sync(page: SyncPage):
                 return
 
             try:
-                page.evaluate(INJECT_PLACEHOLDER)
+                page.evaluate(INJECT_PLACEHOLDER, get_mask_input_setting())
             except Exception as e:
                 logger.debug(f"Failed to inject session recorder: {e}")
 
@@ -471,7 +508,7 @@ async def inject_session_recorder_async(page: Page):
                 return
 
             try:
-                await page.evaluate(INJECT_PLACEHOLDER)
+                await page.evaluate(INJECT_PLACEHOLDER, get_mask_input_setting())
             except Exception as e:
                 logger.debug(f"Failed to inject session recorder placeholder: {e}")
 

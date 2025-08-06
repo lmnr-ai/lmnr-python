@@ -45,6 +45,7 @@ from .log import VerboseColorfulFormatter
 
 from .types import (
     LaminarSpanContext,
+    SessionRecordingOptions,
     TraceType,
 )
 
@@ -73,6 +74,7 @@ class Laminar:
         export_timeout_seconds: int | None = None,
         set_global_tracer_provider: bool = True,
         otel_logger_level: int = logging.ERROR,
+        session_recording_options: SessionRecordingOptions | None = None,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -119,6 +121,10 @@ class Laminar:
                 Defaults to True.
             otel_logger_level (int, optional): OpenTelemetry logger level. Defaults\
                 to logging.ERROR.
+            session_recording_options (SessionRecordingOptions | None, optional): Options\
+                for browser session recording. Currently supports 'mask_input'\
+                (bool) to control whether input fields are masked during recording.\
+                Defaults to None (uses default masking behavior).
 
         Raises:
             ValueError: If project API key is not set
@@ -179,6 +185,7 @@ class Laminar:
             timeout_seconds=export_timeout_seconds,
             set_global_tracer_provider=set_global_tracer_provider,
             otel_logger_level=otel_logger_level,
+            session_recording_options=session_recording_options,
         )
 
     @classmethod
