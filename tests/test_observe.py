@@ -354,7 +354,10 @@ def test_observe_tags(span_exporter: InMemorySpanExporter):
     assert len(spans) == 1
     span = spans[0]
 
-    assert span.attributes["lmnr.association.properties.tags"] == ("foo", "bar")
+    assert sorted(span.attributes["lmnr.association.properties.tags"]) == [
+        "bar",
+        "foo",
+    ]
     assert span.attributes["lmnr.span.instrumentation_source"] == "python"
     assert span.attributes["lmnr.span.path"] == ("observed_foo",)
 
@@ -725,7 +728,10 @@ async def test_observe_tags_async(span_exporter: InMemorySpanExporter):
     assert len(spans) == 1
     span = spans[0]
 
-    assert span.attributes["lmnr.association.properties.tags"] == ("foo", "bar")
+    assert sorted(span.attributes["lmnr.association.properties.tags"]) == [
+        "bar",
+        "foo",
+    ]
     assert span.attributes["lmnr.span.instrumentation_source"] == "python"
     assert span.attributes["lmnr.span.path"] == ("observed_foo",)
 
@@ -996,3 +1002,18 @@ def test_observe_non_serializable_fallback(span_exporter: InMemorySpanExporter):
     assert "NonSerializable object at 0x" in json.loads(
         span.attributes["lmnr.span.output"]
     )
+
+
+def test_observe_tags_deduplication(span_exporter: InMemorySpanExporter):
+    @observe(tags=["foo", "bar", "foo"])
+    def observed_foo(x, y, z, **kwargs):
+        return "foo"
+
+    result = observed_foo("arg", "arg2", "arg3", a=1, b=2, c=3)
+    spans = span_exporter.get_finished_spans()
+    assert result == "foo"
+    assert len(spans) == 1
+    assert sorted(spans[0].attributes["lmnr.association.properties.tags"]) == [
+        "bar",
+        "foo",
+    ]

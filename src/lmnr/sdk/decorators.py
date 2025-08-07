@@ -102,7 +102,8 @@ def observe(
             ):
                 logger.warning("Tags must be a list of strings. Tags will be ignored.")
             else:
-                association_properties["tags"] = tags
+                # list(set(tags)) to deduplicate tags
+                association_properties["tags"] = list(set(tags))
         if input_formatter is not None and ignore_input:
             logger.warning(
                 f"observe, function {func.__name__}: Input formatter"
