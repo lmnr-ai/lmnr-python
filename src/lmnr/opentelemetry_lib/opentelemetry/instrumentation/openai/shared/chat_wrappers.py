@@ -1012,7 +1012,7 @@ def _parse_tool_calls(
         # Handle dict or ChatCompletionMessageToolCall
         if isinstance(tool_call, dict):
             tool_call_data = copy.deepcopy(tool_call)
-        elif isinstance(tool_call, ChatCompletionMessageToolCall):
+        elif _is_tool_call_model(tool_call):
             tool_call_data = tool_call.model_dump()
         elif isinstance(tool_call, FunctionCall):
             function_call = tool_call.model_dump()
@@ -1027,6 +1027,17 @@ def _parse_tool_calls(
 
         result.append(tool_call_data)
     return result
+
+
+def _is_tool_call_model(tool_call):
+    try:
+        from openai.types.chat.chat_completion_message_tool_call import (
+            ChatCompletionMessageFunctionToolCall,
+        )
+
+        return isinstance(tool_call, ChatCompletionMessageFunctionToolCall)
+    except Exception:
+        return False
 
 
 @singledispatch

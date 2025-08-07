@@ -4,7 +4,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 from openai.types.chat.chat_completion_message_tool_call import (
-    ChatCompletionMessageToolCall,
+    ChatCompletionMessageFunctionToolCall,
 )
 from opentelemetry.sdk._logs import LogData
 from opentelemetry.semconv._incubating.attributes import (
@@ -371,7 +371,7 @@ def test_chat_pydantic_based_tool_calls(
             {
                 "role": "assistant",
                 "tool_calls": [
-                    ChatCompletionMessageToolCall(
+                    ChatCompletionMessageFunctionToolCall(
                         id="1",
                         type="function",
                         function={
@@ -436,7 +436,7 @@ def test_chat_pydantic_based_tool_calls_with_events_with_content(
             {
                 "role": "assistant",
                 "tool_calls": [
-                    ChatCompletionMessageToolCall(
+                    ChatCompletionMessageFunctionToolCall(
                         id="1",
                         type="function",
                         function={
@@ -513,7 +513,7 @@ def test_chat_pydantic_based_tool_calls_with_events_with_no_content(
             {
                 "role": "assistant",
                 "tool_calls": [
-                    ChatCompletionMessageToolCall(
+                    ChatCompletionMessageFunctionToolCall(
                         id="1",
                         type="function",
                         function={
