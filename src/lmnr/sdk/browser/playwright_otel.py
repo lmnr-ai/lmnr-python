@@ -61,18 +61,9 @@ def _wrap_new_browser_sync(
 ):
     browser: SyncBrowser = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
-    
-    # Check if this is a remote connection (CDP or WebSocket)
-    method_name = to_wrap.get("method", "")
-    is_remote = method_name in ["connect", "connect_over_cdp"]
-    if not is_remote:
-        # Also check args/kwargs for ws/cdp endpoints
-        args_str = str(args) + str(kwargs)
-        is_remote = any(x in args_str.lower() for x in ["ws://", "wss://", "cdp", "devtools"])
-    
+
     # Give remote browsers time to establish connection
-    if is_remote:
-        time.sleep(0.5)
+    time.sleep(0.5)
 
     def create_page_handler(session_id, client):
         def page_handler(page):
@@ -96,17 +87,8 @@ async def _wrap_new_browser_async(
     browser: Browser = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
     
-    # Check if this is a remote connection (CDP or WebSocket)
-    method_name = to_wrap.get("method", "")
-    is_remote = method_name in ["connect", "connect_over_cdp"]
-    if not is_remote:
-        # Also check args/kwargs for ws/cdp endpoints
-        args_str = str(args) + str(kwargs)
-        is_remote = any(x in args_str.lower() for x in ["ws://", "wss://", "cdp", "devtools"])
-    
     # Give remote browsers time to establish connection
-    if is_remote:
-        await asyncio.sleep(0.5)
+    await asyncio.sleep(0.5)
 
     def create_page_handler(session_id, client):
         async def page_handler(page):
