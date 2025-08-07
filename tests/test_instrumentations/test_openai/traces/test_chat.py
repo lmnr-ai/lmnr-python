@@ -5,7 +5,6 @@ import httpx
 import pytest
 from openai.types.chat.chat_completion_message_tool_call import (
     ChatCompletionMessageToolCall,
-    Function,
 )
 from opentelemetry.sdk._logs import LogData
 from opentelemetry.semconv._incubating.attributes import (
@@ -375,10 +374,10 @@ def test_chat_pydantic_based_tool_calls(
                     ChatCompletionMessageToolCall(
                         id="1",
                         type="function",
-                        function=Function(
-                            name="get_current_weather",
-                            arguments='{"location": "San Francisco"}',
-                        ),
+                        function={
+                            "name": "get_current_weather",
+                            "arguments": '{"location": "San Francisco"}',
+                        },
                     )
                 ],
             },
@@ -440,10 +439,10 @@ def test_chat_pydantic_based_tool_calls_with_events_with_content(
                     ChatCompletionMessageToolCall(
                         id="1",
                         type="function",
-                        function=Function(
-                            name="get_current_weather",
-                            arguments='{"location": "San Francisco"}',
-                        ),
+                        function={
+                            "name": "get_current_weather",
+                            "arguments": '{"location": "San Francisco"}',
+                        },
                     )
                 ],
             },
@@ -517,10 +516,10 @@ def test_chat_pydantic_based_tool_calls_with_events_with_no_content(
                     ChatCompletionMessageToolCall(
                         id="1",
                         type="function",
-                        function=Function(
-                            name="get_current_weather",
-                            arguments='{"location": "San Francisco"}',
-                        ),
+                        function={
+                            "name": "get_current_weather",
+                            "arguments": '{"location": "San Francisco"}',
+                        },
                     )
                 ],
             },
