@@ -111,11 +111,6 @@ def _wrap_new_context_sync(
     context: SyncBrowserContext = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
     
-    # Check if parent browser is remote (instance is the browser for new_context)
-    if hasattr(instance, '_connection'):
-        # Playwright internal - _connection exists for remote browsers
-        time.sleep(0.3)  # Smaller delay for context creation
-
     def create_page_handler(session_id, client):
         def page_handler(page):
             start_recording_events_sync(page, session_id, client)
@@ -137,11 +132,6 @@ async def _wrap_new_context_async(
     context: BrowserContext = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
     
-    # Check if parent browser is remote (instance is the browser for new_context)
-    if hasattr(instance, '_connection'):
-        # Playwright internal - _connection exists for remote browsers
-        await asyncio.sleep(0.3)  # Smaller delay for context creation
-
     def create_page_handler(session_id, client):
         async def page_handler(page):
             await start_recording_events_async(page, session_id, client)
