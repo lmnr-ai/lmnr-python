@@ -560,3 +560,16 @@ def test_span_context_dict_fallback(span_exporter: InMemorySpanExporter):
     assert (
         inner_span.get_span_context().trace_id == outer_span.get_span_context().trace_id
     )
+
+
+def test_tags_deduplication(span_exporter: InMemorySpanExporter):
+    with Laminar.start_as_current_span("test"):
+        Laminar.set_span_tags(["foo", "bar", "foo"])
+        pass
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert sorted(spans[0].attributes["lmnr.association.properties.tags"]) == [
+        "bar",
+        "foo",
+    ]

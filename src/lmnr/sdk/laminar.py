@@ -741,7 +741,8 @@ class Laminar:
                 "Tags must be a list of strings. Tags will be ignored."
             )
             return
-        span.set_attribute(f"{ASSOCIATION_PROPERTIES}.tags", tags)
+        # list(set(tags)) to deduplicate tags
+        span.set_attribute(f"{ASSOCIATION_PROPERTIES}.tags", list(set(tags)))
 
     @classmethod
     def set_trace_session_id(cls, session_id: str | None = None):
