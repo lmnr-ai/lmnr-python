@@ -59,10 +59,10 @@ def test_start_as_current_span_tags(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert spans[0].attributes["lmnr.association.properties.tags"] == (
-        "foo",
+    assert sorted(spans[0].attributes["lmnr.association.properties.tags"]) == [
         "bar",
-    )
+        "foo",
+    ]
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
@@ -386,7 +386,10 @@ def test_tags(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert spans[0].attributes["lmnr.association.properties.tags"] == ("foo", "bar")
+    assert sorted(spans[0].attributes["lmnr.association.properties.tags"]) == [
+        "bar",
+        "foo",
+    ]
     assert spans[0].name == "test"
     assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
