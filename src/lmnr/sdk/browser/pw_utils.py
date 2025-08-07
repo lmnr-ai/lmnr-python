@@ -36,10 +36,11 @@ except ImportError as e:
 
 logger = logging.getLogger(__name__)
 
+OLD_BUFFER_TIMEOUT = 60
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(current_dir, "recorder", "record.umd.min.cjs"), "r") as f:
     RRWEB_CONTENT = f"() => {{ {f.read()} }}"
-
 
 INJECT_PLACEHOLDER = """
 (mask_input_options) => {
@@ -424,8 +425,8 @@ INJECT_PLACEHOLDER = """
                 await new Promise(resolve => setTimeout(resolve, CHUNK_SEND_DELAY));
             } catch (error) {
                 console.error('Failed to send chunk:', error);
-                // On error, clear the queue to prevent cascading failures
-                window.lmnrChunkQueue = [];
+                // On error, clear failed chunk batch from queue
+                window.lmnrChunkQueue = window.lmnrChunkQueue.filter(c => c.batchId !== chunk.batchId);
                 break;
             }
         }
@@ -635,13 +636,13 @@ def start_recording_events_sync(page: SyncPage, session_id: str, client: Laminar
     # Buffer for reassembling chunks
     chunk_buffers = {}
     
-    def send_events_from_browser(chunked_events):
+    def send_events_from_browser(chunk):
         try:
             # Handle chunked data
-            batch_id = chunked_events['batchId']
-            chunk_index = chunked_events['chunkIndex']
-            total_chunks = chunked_events['totalChunks']
-            data = chunked_events['data']
+            batch_id = chunk['batchId']
+            chunk_index = chunk['chunkIndex']
+            total_chunks = chunk['totalChunks']
+            data = chunk['data']
             
             # Initialize buffer for this batch if needed
             if batch_id not in chunk_buffers:
@@ -669,11 +670,11 @@ def start_recording_events_sync(page: SyncPage, session_id: str, client: Laminar
                 # Clean up buffer
                 del chunk_buffers[batch_id]
             
-            # Clean up old incomplete buffers (older than 30 seconds)
+            # Clean up old incomplete buffers
             current_time = time.time()
             to_delete = []
             for bid, buffer in chunk_buffers.items():
-                if current_time - buffer['timestamp'] > 30:
+                if current_time - buffer['timestamp'] > OLD_BUFFER_TIMEOUT:
                     to_delete.append(bid)
             for bid in to_delete:
                 logger.debug(f"Cleaning up incomplete chunk buffer: {bid}")
@@ -710,13 +711,13 @@ async def start_recording_events_async(
     # Buffer for reassembling chunks
     chunk_buffers = {}
     
-    async def send_events_from_browser(chunked_events):
+    async def send_events_from_browser(chunk):
         try:
             # Handle chunked data
-            batch_id = chunked_events['batchId']
-            chunk_index = chunked_events['chunkIndex']
-            total_chunks = chunked_events['totalChunks']
-            data = chunked_events['data']
+            batch_id = chunk['batchId']
+            chunk_index = chunk['chunkIndex']
+            total_chunks = chunk['totalChunks']
+            data = chunk['data']
 
             # Initialize buffer for this batch if needed
             if batch_id not in chunk_buffers:
@@ -746,11 +747,11 @@ async def start_recording_events_async(
                 # Clean up buffer
                 del chunk_buffers[batch_id]
             
-            # Clean up old incomplete buffers (older than 30 seconds)
+            # Clean up old incomplete buffers
             current_time = time.time()
             to_delete = []
             for bid, buffer in chunk_buffers.items():
-                if current_time - buffer['timestamp'] > 30:
+                if current_time - buffer['timestamp'] > OLD_BUFFER_TIMEOUT:
                     to_delete.append(bid)
             for bid in to_delete:
                 logger.debug(f"Cleaning up incomplete chunk buffer: {bid}")

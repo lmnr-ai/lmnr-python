@@ -62,9 +62,6 @@ def _wrap_new_browser_sync(
     browser: SyncBrowser = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
 
-    # Give remote browsers time to establish connection
-    time.sleep(0.5)
-
     def create_page_handler(session_id, client):
         def page_handler(page):
             start_recording_events_sync(page, session_id, client)
@@ -86,9 +83,6 @@ async def _wrap_new_browser_async(
 ):
     browser: Browser = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
-    
-    # Give remote browsers time to establish connection
-    await asyncio.sleep(0.5)
 
     def create_page_handler(session_id, client):
         async def page_handler(page):
