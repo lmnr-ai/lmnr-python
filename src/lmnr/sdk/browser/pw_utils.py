@@ -43,7 +43,7 @@ with open(os.path.join(current_dir, "recorder", "record.umd.min.cjs"), "r") as f
 
 INJECT_PLACEHOLDER = """
 (mask_input_options) => {
-    const BATCH_TIMEOUT = 2000; // Send events after 2 seconds
+    const BATCH_TIMEOUT = 1000; // Send events after 1 second
     const MAX_WORKER_PROMISES = 50; // Max concurrent worker promises
     const HEARTBEAT_INTERVAL = 1000;
     const CHUNK_SIZE = 256 * 1024; // 256KB chunks
@@ -392,7 +392,7 @@ INJECT_PLACEHOLDER = """
             try {
                 await window.lmnrSendEvents(chunk);
                 // Small delay between chunks to avoid overwhelming CDP
-                await new Promise(resolve => setTimeout(resolve, 10));
+                await new Promise(resolve => setTimeout(resolve, 50));
             } catch (error) {
                 console.error('Failed to send chunk:', error);
                 // On error, clear the queue to prevent cascading failures
@@ -699,6 +699,7 @@ async def start_recording_events_async(
                 total_chunks = chunk_or_events['totalChunks']
                 data = chunk_or_events['data']
                 
+                print(f"Received chunk: {batch_id}, {chunk_index}, {total_chunks}, time: {time.time()}")
                 # Initialize buffer for this batch if needed
                 if batch_id not in chunk_buffers:
                     chunk_buffers[batch_id] = {
