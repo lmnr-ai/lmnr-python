@@ -717,8 +717,7 @@ async def start_recording_events_async(
             chunk_index = chunked_events['chunkIndex']
             total_chunks = chunked_events['totalChunks']
             data = chunked_events['data']
-            
-            print(f"Received chunk: {batch_id}, {chunk_index}, {total_chunks}, {len(data)} bytes, time: {time.time()}")
+
             # Initialize buffer for this batch if needed
             if batch_id not in chunk_buffers:
                 chunk_buffers[batch_id] = {
