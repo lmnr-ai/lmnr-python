@@ -1,6 +1,4 @@
-import asyncio
 import logging
-import time
 import uuid
 
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
@@ -104,7 +102,7 @@ def _wrap_new_context_sync(
 ):
     context: SyncBrowserContext = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
-    
+
     def create_page_handler(session_id, client):
         def page_handler(page):
             start_recording_events_sync(page, session_id, client)
@@ -125,7 +123,7 @@ async def _wrap_new_context_async(
 ):
     context: BrowserContext = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
-    
+
     def create_page_handler(session_id, client):
         async def page_handler(page):
             await start_recording_events_async(page, session_id, client)
