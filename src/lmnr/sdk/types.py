@@ -169,6 +169,8 @@ class LaminarSpanContext(pydantic.BaseModel):
     trace_id: uuid.UUID
     span_id: uuid.UUID
     is_remote: bool = pydantic.Field(default=False)
+    span_path: list[str] = pydantic.Field(default=[])
+    span_ids_path: list[str] = pydantic.Field(default=[])  # stringified UUIDs
 
     def __str__(self) -> str:
         return self.model_dump_json()
@@ -199,7 +201,7 @@ class LaminarSpanContext(pydantic.BaseModel):
                 "Please use `LaminarSpanContext` instead."
             )
             return span_context
-        elif isinstance(span_context, dict) or isinstance(span_context, str):
+        elif isinstance(span_context, (dict, str)):
             try:
                 laminar_span_context = cls.deserialize(span_context)
                 return SpanContext(
@@ -221,6 +223,9 @@ class LaminarSpanContext(pydantic.BaseModel):
                 "trace_id": data.get("trace_id") or data.get("traceId"),
                 "span_id": data.get("span_id") or data.get("spanId"),
                 "is_remote": data.get("is_remote") or data.get("isRemote", False),
+                "span_path": data.get("span_path") or data.get("spanPath", []),
+                "span_ids_path": data.get("span_ids_path")
+                or data.get("spanIdsPath", []),
             }
             return cls.model_validate(converted_data)
         elif isinstance(data, str):
@@ -355,6 +360,7 @@ class MaskInputOptions(TypedDict):
     select: bool | None
     email: bool | None
     tel: bool | None
+
 
 class SessionRecordingOptions(TypedDict):
     mask_input_options: MaskInputOptions | None

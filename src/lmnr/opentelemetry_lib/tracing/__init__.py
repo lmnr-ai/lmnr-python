@@ -74,7 +74,7 @@ class TracerWrapper(object):
             if not hasattr(cls, "instance"):
                 cls._initialize_logger(cls)
                 obj = super(TracerWrapper, cls).__new__(cls)
-                
+
                 # Store session recording options
                 cls.session_recording_options = session_recording_options or {}
 
@@ -249,13 +249,13 @@ class TracerWrapper(object):
             self._logger.warning("TracerWrapper not fully initialized, cannot flush")
             return False
         return self._span_processor.force_flush()
-    
+
     @classmethod
     def get_session_recording_options(cls) -> SessionRecordingOptions:
         """Get the session recording options set during initialization."""
         return cls.session_recording_options
 
-    def get_tracer(self):
+    def get_tracer(self) -> trace.Tracer:
         if self._tracer_provider is None:
             return trace.get_tracer_provider().get_tracer(TRACER_NAME)
         return self._tracer_provider.get_tracer(TRACER_NAME)

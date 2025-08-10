@@ -10,6 +10,8 @@ from opentelemetry.sdk.trace import Span
 from opentelemetry.context import Context, get_value, get_current, set_value
 
 from lmnr.opentelemetry_lib.tracing.attributes import (
+    PARENT_SPAN_IDS_PATH,
+    PARENT_SPAN_PATH,
     SPAN_IDS_PATH,
     SPAN_INSTRUMENTATION_SOURCE,
     SPAN_LANGUAGE_VERSION,
@@ -53,12 +55,16 @@ class LaminarSpanProcessor(SpanProcessor):
 
     def on_start(self, span: Span, parent_context: Context | None = None):
         span_path_in_context = get_value("span_path", parent_context or get_current())
-        parent_span_path = span_path_in_context or (
-            self.__span_id_to_path.get(span.parent.span_id) if span.parent else None
+        parent_span_path = (
+            span_path_in_context
+            or list(span.attributes.get(PARENT_SPAN_PATH, tuple()))
+            or (
+                self.__span_id_to_path.get(span.parent.span_id) if span.parent else None
+            )
         )
-        parent_span_ids_path = (
-            self.__span_id_lists.get(span.parent.span_id, []) if span.parent else []
-        )
+        parent_span_ids_path = list(
+            span.attributes.get(PARENT_SPAN_IDS_PATH, tuple())
+        ) or (self.__span_id_lists.get(span.parent.span_id, []) if span.parent else [])
         span_path = parent_span_path + [span.name] if parent_span_path else [span.name]
         span_ids_path = parent_span_ids_path + [
             str(uuid.UUID(int=span.get_span_context().span_id))
