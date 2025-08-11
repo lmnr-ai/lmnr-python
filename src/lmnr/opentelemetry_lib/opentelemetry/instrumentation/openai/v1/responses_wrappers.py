@@ -643,7 +643,7 @@ async def async_responses_cancel_wrapper(
     return response
 
 
-def _get_output_text(parsed_response: Response) -> str:
+def _get_output_text(parsed_response: Response) -> Optional[str]:
     output_text = None
     if hasattr(parsed_response, "output_text"):
         output_text = parsed_response.output_text
