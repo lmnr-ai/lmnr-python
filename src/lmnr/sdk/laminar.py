@@ -330,8 +330,6 @@ class Laminar:
                         )
                         path = laminar_span_context.span_path
                         span_ids_path = laminar_span_context.span_ids_path
-                        print(f"path: {path}")
-                        print(f"span_ids_path: {span_ids_path}")
                     except Exception:
                         cls.__logger.warning(
                             f"`start_as_current_span` Could not deserialize parent_span_context: {parent_span_context}. "
