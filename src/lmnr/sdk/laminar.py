@@ -13,6 +13,10 @@ from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
+    PARENT_SPAN_IDS_PATH,
+    PARENT_SPAN_PATH,
+    SPAN_IDS_PATH,
+    SPAN_PATH,
     USER_ID,
     Attributes,
     SPAN_TYPE,
@@ -316,9 +320,29 @@ class Laminar:
 
         with get_tracer_with_context() as (tracer, isolated_context):
             ctx = context or isolated_context
+            path = []
+            span_ids_path = []
             if parent_span_context is not None:
+                if isinstance(parent_span_context, (dict, str)):
+                    try:
+                        laminar_span_context = LaminarSpanContext.deserialize(
+                            parent_span_context
+                        )
+                        path = laminar_span_context.span_path
+                        span_ids_path = laminar_span_context.span_ids_path
+                    except Exception:
+                        cls.__logger.warning(
+                            f"`start_as_current_span` Could not deserialize parent_span_context: {parent_span_context}. "
+                            "Will use it as is."
+                        )
+                        laminar_span_context = parent_span_context
+                else:
+                    laminar_span_context = parent_span_context
+                    if isinstance(laminar_span_context, LaminarSpanContext):
+                        path = laminar_span_context.span_path
+                        span_ids_path = laminar_span_context.span_ids_path
                 span_context = LaminarSpanContext.try_to_otel_span_context(
-                    parent_span_context, cls.__logger
+                    laminar_span_context, cls.__logger
                 )
                 ctx = trace.set_span_in_context(
                     trace.NonRecordingSpan(span_context), ctx
@@ -352,6 +376,8 @@ class Laminar:
                 context=ctx,
                 attributes={
                     SPAN_TYPE: span_type,
+                    PARENT_SPAN_PATH: path,
+                    PARENT_SPAN_IDS_PATH: span_ids_path,
                     **(label_props),
                     **(tag_props),
                 },
@@ -454,9 +480,29 @@ class Laminar:
 
         with get_tracer_with_context() as (tracer, isolated_context):
             ctx = context or isolated_context
+            path = []
+            span_ids_path = []
             if parent_span_context is not None:
+                if isinstance(parent_span_context, (dict, str)):
+                    try:
+                        laminar_span_context = LaminarSpanContext.deserialize(
+                            parent_span_context
+                        )
+                        path = laminar_span_context.span_path
+                        span_ids_path = laminar_span_context.span_ids_path
+                    except Exception:
+                        cls.__logger.warning(
+                            f"`start_span` Could not deserialize parent_span_context: {parent_span_context}. "
+                            "Will use it as is."
+                        )
+                        laminar_span_context = parent_span_context
+                else:
+                    laminar_span_context = parent_span_context
+                    if isinstance(laminar_span_context, LaminarSpanContext):
+                        path = laminar_span_context.span_path
+                        span_ids_path = laminar_span_context.span_ids_path
                 span_context = LaminarSpanContext.try_to_otel_span_context(
-                    parent_span_context, cls.__logger
+                    laminar_span_context, cls.__logger
                 )
                 ctx = trace.set_span_in_context(
                     trace.NonRecordingSpan(span_context), ctx
@@ -491,6 +537,8 @@ class Laminar:
                 context=ctx,
                 attributes={
                     SPAN_TYPE: span_type,
+                    PARENT_SPAN_PATH: path,
+                    PARENT_SPAN_IDS_PATH: span_ids_path,
                     **(label_props),
                     **(tag_props),
                 },
@@ -662,6 +710,8 @@ class Laminar:
             trace_id=uuid.UUID(int=span.get_span_context().trace_id),
             span_id=uuid.UUID(int=span.get_span_context().span_id),
             is_remote=span.get_span_context().is_remote,
+            span_path=span.attributes.get(SPAN_PATH, []),
+            span_ids_path=span.attributes.get(SPAN_IDS_PATH, []),
         )
 
     @classmethod

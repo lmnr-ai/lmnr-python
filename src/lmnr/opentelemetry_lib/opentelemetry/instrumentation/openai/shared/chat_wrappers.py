@@ -56,8 +56,8 @@ from opentelemetry.trace import SpanKind, Tracer
 from opentelemetry.trace.status import Status, StatusCode
 from wrapt import ObjectProxy
 
-from openai.types.chat import ChatCompletionMessageToolCall
 from openai.types.chat.chat_completion_message import FunctionCall
+import pydantic
 
 SPAN_NAME = "openai.chat"
 PROMPT_FILTER_KEY = "prompt_filter_results"
@@ -995,7 +995,7 @@ async def _abuild_from_streaming_response(
 
 
 def _parse_tool_calls(
-    tool_calls: Optional[List[Union[dict, ChatCompletionMessageToolCall]]],
+    tool_calls: Optional[List[Union[dict, pydantic.BaseModel]]],
 ) -> Union[List[ToolCall], None]:
     """
     Util to correctly parse the tool calls data from the OpenAI API to this module's
