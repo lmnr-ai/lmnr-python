@@ -432,6 +432,7 @@ def test_span_context(span_exporter: InMemorySpanExporter):
     assert (
         inner_span.get_span_context().trace_id == outer_span.get_span_context().trace_id
     )
+    assert inner_span.parent.span_id == outer_span.get_span_context().span_id
 
 
 def test_span_context_dict(span_exporter: InMemorySpanExporter):
@@ -460,6 +461,7 @@ def test_span_context_dict(span_exporter: InMemorySpanExporter):
     assert (
         inner_span.get_span_context().trace_id == outer_span.get_span_context().trace_id
     )
+    assert inner_span.parent.span_id == outer_span.get_span_context().span_id
 
 
 def test_span_context_str(span_exporter: InMemorySpanExporter):
@@ -488,6 +490,7 @@ def test_span_context_str(span_exporter: InMemorySpanExporter):
     assert (
         inner_span.get_span_context().trace_id == outer_span.get_span_context().trace_id
     )
+    assert inner_span.parent.span_id == outer_span.get_span_context().span_id
 
 
 def test_span_context_ser_de(span_exporter: InMemorySpanExporter):
@@ -516,6 +519,7 @@ def test_span_context_ser_de(span_exporter: InMemorySpanExporter):
     assert (
         inner_span.get_span_context().trace_id == outer_span.get_span_context().trace_id
     )
+    assert inner_span.parent.span_id == outer_span.get_span_context().span_id
 
 
 def test_span_context_path_ids_path(span_exporter: InMemorySpanExporter):
@@ -550,6 +554,8 @@ def test_span_context_path_ids_path(span_exporter: InMemorySpanExporter):
     assert (
         inner_span.get_span_context().trace_id == outer_span.get_span_context().trace_id
     )
+    assert inner_span.parent.span_id == context_span.get_span_context().span_id
+    assert context_span.parent.span_id == outer_span.get_span_context().span_id
 
 
 def test_span_context_path_ids_path_start_span(span_exporter: InMemorySpanExporter):
@@ -582,6 +588,8 @@ def test_span_context_path_ids_path_start_span(span_exporter: InMemorySpanExport
     assert (
         inner_span.get_span_context().trace_id == outer_span.get_span_context().trace_id
     )
+    assert inner_span.parent.span_id == context_span.get_span_context().span_id
+    assert context_span.parent.span_id == outer_span.get_span_context().span_id
 
 
 def test_span_context_ended_span(span_exporter: InMemorySpanExporter):
@@ -608,6 +616,7 @@ def test_span_context_ended_span(span_exporter: InMemorySpanExporter):
     assert (
         inner_span.get_span_context().trace_id == outer_span.get_span_context().trace_id
     )
+    assert inner_span.parent.span_id == outer_span.get_span_context().span_id
 
 
 def test_span_context_otel_fallback(span_exporter: InMemorySpanExporter):
@@ -633,6 +642,7 @@ def test_span_context_otel_fallback(span_exporter: InMemorySpanExporter):
     assert (
         inner_span.get_span_context().trace_id == outer_span.get_span_context().trace_id
     )
+    assert inner_span.parent.span_id == outer_span.get_span_context().span_id
 
 
 def test_span_context_dict_fallback(span_exporter: InMemorySpanExporter):
@@ -658,6 +668,7 @@ def test_span_context_dict_fallback(span_exporter: InMemorySpanExporter):
     assert (
         inner_span.get_span_context().trace_id == outer_span.get_span_context().trace_id
     )
+    assert inner_span.parent.span_id == outer_span.get_span_context().span_id
 
 
 def test_tags_deduplication(span_exporter: InMemorySpanExporter):
