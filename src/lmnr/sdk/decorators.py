@@ -32,6 +32,7 @@ def observe(
     output_formatter: Callable[[R], str] | None = None,
     metadata: dict[str, Any] | None = None,
     tags: list[str] | None = None,
+    preserve_global_context: bool = False,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """The main decorator entrypoint for Laminar. This is used to wrap
     functions and methods to create spans.
@@ -69,6 +70,9 @@ def observe(
             the trace. Must be JSON serializable. Defaults to None.
         tags (list[str] | None, optional): Tags to associate with the trace.
             Defaults to None.
+        preserve_global_context (bool, optional): Whether to preserve the global\
+            OpenTelemetry context. If set to True, Laminar spans will continue\
+            traces started in the global context. Defaults to False.
     Raises:
         Exception: re-raises the exception if the wrapped function raises an\
             exception
@@ -133,6 +137,7 @@ def observe(
                 input_formatter=input_formatter,
                 output_formatter=output_formatter,
                 association_properties=association_properties,
+                preserve_global_context=preserve_global_context,
             )(func)
             if is_async(func)
             else observe_base(
@@ -144,6 +149,7 @@ def observe(
                 input_formatter=input_formatter,
                 output_formatter=output_formatter,
                 association_properties=association_properties,
+                preserve_global_context=preserve_global_context,
             )(func)
         )
         return result

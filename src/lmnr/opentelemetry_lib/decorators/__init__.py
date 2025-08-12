@@ -65,14 +65,17 @@ def json_dumps(data: dict) -> str:
 
 
 def _setup_span(
-    span_name: str, span_type: str, association_properties: dict[str, Any] | None
+    span_name: str,
+    span_type: str,
+    association_properties: dict[str, Any] | None,
+    preserve_global_context: bool = False,
 ):
     """Set up a span with the given name, type, and association properties."""
     with get_tracer_with_context() as (tracer, isolated_context):
         # Create span in isolated context
         span = tracer.start_span(
             span_name,
-            context=isolated_context,
+            context=isolated_context if not preserve_global_context else None,
             attributes={SPAN_TYPE: span_type},
         )
 
@@ -167,6 +170,7 @@ def _cleanup_span(span: Span, wrapper: TracerWrapper):
 
 
 def observe_base(
+    *,
     name: str | None = None,
     ignore_input: bool = False,
     ignore_inputs: list[str] | None = None,
@@ -175,6 +179,7 @@ def observe_base(
     association_properties: dict[str, Any] | None = None,
     input_formatter: Callable[..., str] | None = None,
     output_formatter: Callable[..., str] | None = None,
+    preserve_global_context: bool = False,
 ):
     def decorate(fn):
         @wraps(fn)
@@ -185,7 +190,9 @@ def observe_base(
             span_name = name or fn.__name__
             wrapper = TracerWrapper()
 
-            span = _setup_span(span_name, span_type, association_properties)
+            span = _setup_span(
+                span_name, span_type, association_properties, preserve_global_context
+            )
             new_context = wrapper.push_span_context(span)
             if session_id := association_properties.get("session_id"):
                 new_context = context_api.set_value(
@@ -241,6 +248,7 @@ def observe_base(
 
 # Async Decorators
 def async_observe_base(
+    *,
     name: str | None = None,
     ignore_input: bool = False,
     ignore_inputs: list[str] | None = None,
@@ -249,6 +257,7 @@ def async_observe_base(
     association_properties: dict[str, Any] | None = None,
     input_formatter: Callable[..., str] | None = None,
     output_formatter: Callable[..., str] | None = None,
+    preserve_global_context: bool = False,
 ):
     def decorate(fn):
         @wraps(fn)
@@ -259,7 +268,9 @@ def async_observe_base(
             span_name = name or fn.__name__
             wrapper = TracerWrapper()
 
-            span = _setup_span(span_name, span_type, association_properties)
+            span = _setup_span(
+                span_name, span_type, association_properties, preserve_global_context
+            )
             new_context = wrapper.push_span_context(span)
             if session_id := association_properties.get("session_id"):
                 new_context = context_api.set_value(
