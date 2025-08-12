@@ -9,7 +9,8 @@ import uuid
 
 from enum import Enum
 from opentelemetry.trace import SpanContext, TraceFlags
-from typing import Any, Awaitable, Callable, Literal, Optional, TypedDict
+from typing import Any, Awaitable, Callable, Literal, Optional
+from typing_extensions import TypedDict  # compatibility with python < 3.12
 
 from .utils import serialize
 
