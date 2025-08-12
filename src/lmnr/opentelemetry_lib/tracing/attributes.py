@@ -19,6 +19,7 @@ PARENT_SPAN_IDS_PATH = "lmnr.span.parent_ids_path"
 SPAN_INSTRUMENTATION_SOURCE = "lmnr.span.instrumentation_source"
 SPAN_SDK_VERSION = "lmnr.span.sdk_version"
 SPAN_LANGUAGE_VERSION = "lmnr.span.language_version"
+HUMAN_EVALUATOR_OPTIONS = "lmnr.span.human_evaluator_options"
 
 ASSOCIATION_PROPERTIES = "lmnr.association.properties"
 SESSION_ID = "session_id"

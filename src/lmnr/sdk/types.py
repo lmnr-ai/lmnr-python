@@ -51,8 +51,13 @@ EvaluatorFunction = Callable[
 ]
 
 
+class HumanEvaluatorOptionsEntry(TypedDict):
+    label: str
+    value: float
+
+
 class HumanEvaluator(pydantic.BaseModel):
-    pass
+    options: list[HumanEvaluatorOptionsEntry] = pydantic.Field(default=[])
 
 
 class InitEvaluationResponse(pydantic.BaseModel):

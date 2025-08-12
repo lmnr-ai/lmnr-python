@@ -1,3 +1,4 @@
+import json
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -364,9 +365,14 @@ async def test_evaluate_with_human_evaluator_async(span_exporter: InMemorySpanEx
     # Mock the datapoints endpoint
     datapoints_response = MagicMock()
 
+    options = [
+        {"label": "relevant", "value": 1},
+        {"label": "irrelevant", "value": 0},
+    ]
+
     # Create HumanEvaluator instances
     human_evaluator1 = HumanEvaluator()
-    human_evaluator2 = HumanEvaluator()
+    human_evaluator2 = HumanEvaluator(options=options)
 
     # Patch the AsyncLaminarClient._evals.init method
     with patch(
@@ -456,6 +462,20 @@ async def test_evaluate_with_human_evaluator_async(span_exporter: InMemorySpanEx
                 "human_quality",
                 "human_relevance",
             ]
+            options_span = next(
+                (
+                    span
+                    for span in spans
+                    if span.attributes.get("lmnr.span.type") == "HUMAN_EVALUATOR"
+                    and span.name == "human_relevance"
+                ),
+            )
+            assert (
+                json.loads(
+                    options_span.attributes.get("lmnr.span.human_evaluator_options")
+                )
+                == options
+            )
 
             # Verify human evaluator spans have correct attributes
             for human_span in human_evaluator_spans:
@@ -476,8 +496,14 @@ def test_evaluate_with_human_evaluator(span_exporter: InMemorySpanExporter):
     # Mock the datapoints endpoint
     datapoints_response = MagicMock()
 
+    options = [
+        {"label": "relevant", "value": 1},
+        {"label": "irrelevant", "value": 0},
+    ]
+
     # Create HumanEvaluator instance
-    human_evaluator = HumanEvaluator()
+    human_evaluator1 = HumanEvaluator()
+    human_evaluator2 = HumanEvaluator(options=options)
 
     # Patch the AsyncLaminarClient._evals.init method
     with patch(
@@ -501,7 +527,8 @@ def test_evaluate_with_human_evaluator(span_exporter: InMemorySpanExporter):
                 executor=lambda data: data,
                 evaluators={
                     "precision": lambda output, target: 0.9,
-                    "human_evaluation": human_evaluator,
+                    "human_quality": human_evaluator1,
+                    "human_relevance": human_evaluator2,
                 },
                 project_api_key="test",
             )
@@ -523,23 +550,35 @@ def test_evaluate_with_human_evaluator(span_exporter: InMemorySpanExporter):
             spans = span_exporter.get_finished_spans()
 
             # Verify the spans
-            assert len(spans) == 4  # evaluation, executor, evaluator, human_evaluator
+            assert (
+                len(spans) == 5
+            )  # evaluation, executor, evaluator, 2x human_evaluator
 
             # Find the human evaluator span
-            human_evaluator_span = next(
+            human_evaluator_spans = [
+                span
+                for span in spans
+                if span.attributes.get("lmnr.span.type") == "HUMAN_EVALUATOR"
+            ]
+
+            assert len(human_evaluator_spans) == 2
+            assert sorted([span.name for span in human_evaluator_spans]) == [
+                "human_quality",
+                "human_relevance",
+            ]
+            options_span = next(
                 (
                     span
                     for span in spans
                     if span.attributes.get("lmnr.span.type") == "HUMAN_EVALUATOR"
+                    and span.name == "human_relevance"
                 ),
-                None,
             )
-
-            assert human_evaluator_span is not None
-            assert human_evaluator_span.name == "human_evaluation"
             assert (
-                human_evaluator_span.attributes.get("lmnr.span.type")
-                == "HUMAN_EVALUATOR"
+                json.loads(
+                    options_span.attributes.get("lmnr.span.human_evaluator_options")
+                )
+                == options
             )
 
 
