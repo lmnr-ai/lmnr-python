@@ -51,19 +51,21 @@ class BedrockInstrumentorInitializer(InstrumentorInitializer):
 
 
 class BrowserUseInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+    def init_instrumentor(
+        self, client, async_client, *args, **kwargs
+    ) -> BaseInstrumentor | None:
         if not is_package_installed("browser-use"):
             return None
 
-        version = get_package_version("browser-use")
-        from packaging.version import parse
+        # version = get_package_version("browser-use")
+        # from packaging.version import parse
 
-        if version and parse(version) >= parse("0.5.0"):
-            return None
+        # if version and parse(version) >= parse("0.5.0"):
+        #     return None
 
         from lmnr.sdk.browser.browser_use_otel import BrowserUseInstrumentor
 
-        return BrowserUseInstrumentor()
+        return BrowserUseInstrumentor(async_client)
 
 
 class ChromaInstrumentorInitializer(InstrumentorInitializer):

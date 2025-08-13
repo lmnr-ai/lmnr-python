@@ -12,7 +12,7 @@ authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
 ]
 readme = "README.md"
-requires-python = ">=3.10,<4"
+requires-python = ">=3.11,<4"
 license = "Apache-2.0"
 dependencies = [
   "pydantic (>=2.0.3,<3.0.0)",
@@ -45,7 +45,6 @@ dependencies = [
 classifiers = [
   "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -124,7 +123,7 @@ dev = [
   "pytest-asyncio>=0.26.0",
   "playwright>=1.52.0",
   "vcrpy>=7.0.0",
-  "openai>=1.99.7",
+  "openai>=1.99.2",
   "pytest-recording>=0.13.4",
   "patchright>=1.52.3",
   "google-genai>=1.19.0",
@@ -133,8 +132,10 @@ dev = [
   "langchain>=0.3.25",
   "litellm>=1.72.6",
   "groq>=0.30.0",
-  "anthropic>=0.60.0",
+  "anthropic>=0.58.0",
   "langchain-openai>=0.3.28",
+  "cdp-use>=1.4.0",
+  "browser-use @ git+https://github.com/browser-use/browser-use.git@main",
 ]
 
 [build-system]
