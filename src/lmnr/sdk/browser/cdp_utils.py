@@ -18,7 +18,6 @@ from lmnr.sdk.types import MaskInputOptions
 try:
     if is_package_installed("cdp-use"):
         from cdp_use.cdp.runtime.events import BindingCalledEvent
-        from cdp_use.client import CDPClient
     else:
         raise ImportError(
             "Attempted to import lmnr.sdk.browser.cdp_utils, but cdp-use is not installed. "
@@ -53,7 +52,7 @@ with open(os.path.join(current_dir, "recorder", "record.umd.min.cjs"), "r") as f
     RRWEB_CONTENT = f"() => {{ {f.read()} }}"
 
 INJECT_PLACEHOLDER = """
-(mask_input_options) => {
+() => {
     const BATCH_TIMEOUT = 2000; // Send events after 2 seconds
     const MAX_WORKER_PROMISES = 50; // Max concurrent worker promises
     const HEARTBEAT_INTERVAL = 1000;
@@ -430,7 +429,7 @@ INJECT_PLACEHOLDER = """
         while (window.lmnrChunkQueue.length > 0) {
             const chunk = window.lmnrChunkQueue.shift();
             try {
-                await window.lmnrSendEvents(chunk);
+                window.lmnrSendEvents(JSON.stringify(chunk));
                 // Small delay between chunks to avoid overwhelming CDP
                 await new Promise(resolve => setTimeout(resolve, CHUNK_SEND_DELAY));
             } catch (error) {
@@ -465,7 +464,9 @@ INJECT_PLACEHOLDER = """
                         data: batchString,
                         isFinal: true
                     };
-                    await window.lmnrSendEvents(chunk);
+                    console.log('sending single chunk', chunk);
+                    window.lmnrSendEvents(JSON.stringify(chunk));
+                    console.log('sent single chunk');
                 } else {
                     // Need to chunk
                     const chunks = createChunks(batchString, batchId);
@@ -511,15 +512,6 @@ INJECT_PLACEHOLDER = """
         recordCanvas: true,
         collectFonts: true,
         recordCrossOriginIframes: true,
-        maskInputOptions: {
-            password: true,
-            textarea: mask_input_options.textarea || false,
-            text: mask_input_options.text || false,
-            number: mask_input_options.number || false,
-            select: mask_input_options.select || false,
-            email: mask_input_options.email || false,
-            tel: mask_input_options.tel || false,
-        }
     });
 
     function heartbeat() {
@@ -534,7 +526,6 @@ INJECT_PLACEHOLDER = """
     }
 
     heartbeat();
-
 }
 """
 
@@ -572,14 +563,17 @@ def inject_session_recorder_sync(session: BrowserSession):
     try:
         try:
             result = asyncio.run(
-                session.cdp_client.send.Runtime.callFunctionOn(
+                session.cdp_client.send.Runtime.evaluate(
                     {
-                        "functionDeclaration": """() => typeof window.lmnrRrweb !== 'undefined'""",
+                        "expression": """typeof window.lmnrRrweb !== 'undefined'""",
                     },
+                    session_id=cdp_session.session_id,
                 )
             )
             if result and "result" in result and "value" in result["result"]:
                 is_loaded = result["result"]["value"]
+            else:
+                is_loaded = False
         except Exception as e:
             logger.debug(f"Failed to check if session recorder is loaded: {e}")
             is_loaded = False
@@ -589,10 +583,11 @@ def inject_session_recorder_sync(session: BrowserSession):
             def load_session_recorder():
                 try:
                     asyncio.run(
-                        cdp_client.send.Runtime.callFunctionOn(
+                        cdp_client.send.Runtime.evaluate(
                             {
-                                "functionDeclaration": RRWEB_CONTENT,
+                                "expression": f"({RRWEB_CONTENT})()",
                             },
+                            session_id=cdp_session.session_id,
                         )
                     )
                     return True
@@ -609,11 +604,12 @@ def inject_session_recorder_sync(session: BrowserSession):
 
             try:
                 asyncio.run(
-                    cdp_client.send.Runtime.callFunctionOn(
+                    cdp_client.send.Runtime.evaluate(
                         {
-                            "functionDeclaration": INJECT_PLACEHOLDER,
-                            "arguments": [{"value": get_mask_input_setting()}],
+                            "expression": f"({INJECT_PLACEHOLDER})()",
+                            # "arguments": [{"value": get_mask_input_setting()}],
                         },
+                        session_id=cdp_session.session_id,
                     )
                 )
             except Exception as e:
@@ -628,13 +624,16 @@ async def inject_session_recorder_async(session: BrowserSession):
     cdp_client = cdp_session.cdp_client
     try:
         try:
-            result = await cdp_client.send.Runtime.callFunctionOn(
+            result = await cdp_client.send.Runtime.evaluate(
                 {
-                    "functionDeclaration": """() => typeof window.lmnrRrweb !== 'undefined'""",
+                    "expression": """typeof window.lmnrRrweb !== 'undefined'""",
                 },
+                session_id=cdp_session.session_id,
             )
             if result and "result" in result and "value" in result["result"]:
                 is_loaded = result["result"]["value"]
+            else:
+                is_loaded = False
         except Exception as e:
             logger.debug(f"Failed to check if session recorder is loaded: {e}")
             is_loaded = False
@@ -643,11 +642,12 @@ async def inject_session_recorder_async(session: BrowserSession):
 
             async def load_session_recorder():
                 try:
-                    await cdp_client.send.Runtime.callFunctionOn(
+                    await cdp_client.send.Runtime.evaluate(
                         {
-                            "functionDeclaration": RRWEB_CONTENT,
+                            "expression": f"({RRWEB_CONTENT})()",
                             "awaitPromise": True,
                         },
+                        session_id=cdp_session.session_id,
                     )
                     return True
                 except Exception as e:
@@ -662,12 +662,12 @@ async def inject_session_recorder_async(session: BrowserSession):
                 return
 
             try:
-                await cdp_client.send.Runtime.callFunctionOn(
+                await cdp_client.send.Runtime.evaluate(
                     {
-                        "functionDeclaration": INJECT_PLACEHOLDER,
-                        "arguments": [{"value": get_mask_input_setting()}],
-                        "awaitPromise": True,
+                        "expression": f"({INJECT_PLACEHOLDER})()",
+                        # "arguments": [{"value": get_mask_input_setting()}],
                     },
+                    session_id=cdp_session.session_id,
                 )
             except Exception as e:
                 logger.debug(f"Failed to inject session recorder placeholder: {e}")
@@ -742,22 +742,22 @@ def start_recording_events_sync(
 
     try:
 
-        def send_events_callback(event: BindingCalledEvent):
-            send_events_from_browser(orjson.loads(event["payload"]))
+        async def send_events_callback(
+            event: BindingCalledEvent, browser_session_id: str | None = None
+        ):
+            if event["name"] != "lmnrSendEvents":
+                return
+            await send_events_from_browser(orjson.loads(event["payload"]))
 
         asyncio.run(
             cdp_client.send.Runtime.addBinding(
                 {
                     "name": "lmnrSendEvents",
                 },
+                session_id=cdp_session.session_id,
             )
         )
-        cdp_client.register.Runtime.bindingCalled(
-            {
-                "name": "lmnrSendEvents",
-            },
-            send_events_callback,
-        )
+        cdp_client.register.Runtime.bindingCalled(send_events_callback)
     except Exception as e:
         logger.debug(f"Could not expose function: {e}")
 
@@ -838,27 +838,23 @@ async def start_recording_events_async(
 
     try:
 
-        async def send_events_callback(event: BindingCalledEvent):
-            send_events_from_browser(orjson.loads(event["payload"]))
+        async def send_events_callback(
+            event: BindingCalledEvent, browser_session_id: str | None = None
+        ):
+            if event["name"] != "lmnrSendEvents":
+                return
+            await send_events_from_browser(orjson.loads(event["payload"]))
 
-        print("adding binding")
         await cdp_client.send.Runtime.addBinding(
             {
                 "name": "lmnrSendEvents",
             },
+            session_id=cdp_session.session_id,
         )
-        print("binding added")
-        cdp_client.register.Runtime.bindingCalled(
-            {
-                "name": "lmnrSendEvents",
-            },
-            send_events_callback,
-        )
-        print("binding registered")
+        cdp_client.register.Runtime.bindingCalled(send_events_callback)
     except Exception as e:
         logger.debug(f"Could not expose function: {e}")
 
-    print("injecting session recorder")
     await inject_session_recorder_async(session)
 
     # async def on_load(p):
@@ -870,43 +866,51 @@ async def start_recording_events_async(
     # page.on("domcontentloaded", on_load)
 
 
-def take_full_snapshot(cdp_client: CDPClient):
-    result = asyncio.run(
-        cdp_client.send.Runtime.callFunctionOn(
-            """() => {
-        if (window.lmnrRrweb) {
-            try {
-                window.lmnrRrweb.record.takeFullSnapshot();
-                return true;
-            } catch (e) {
-                console.error("Error taking full snapshot:", e);
-                return false;
-            }
-        }
-        return false;
-    }"""
-        )
-    )
-    if result and "result" in result and "value" in result["result"]:
-        return result["result"]["value"]
-    return False
+### TODO: Take full snapshot on the version of page.bring_to_front in raw CDP
+# def take_full_snapshot(cdp_client: CDPClient, cdp_session_id: str):
+#     result = asyncio.run(
+#         cdp_client.send.Runtime.evaluate(
+#             {
+#                 "expression": """(() => {
+#         if (window.lmnrRrweb) {
+#             try {
+#                 window.lmnrRrweb.record.takeFullSnapshot();
+#                 return true;
+#             } catch (e) {
+#                 console.error("Error taking full snapshot:", e);
+#                 return false;
+#             }
+#         }
+#         return false;
+#     })()""",
+#             },
+#             session_id=cdp_session_id,
+#         )
+#     )
+#     if result and "result" in result and "value" in result["result"]:
+#         return result["result"]["value"]
+#     return False
 
 
-async def take_full_snapshot_async(cdp_client: CDPClient):
-    result = await cdp_client.send.Runtime.callFunctionOn(
-        """() => {
-        if (window.lmnrRrweb) {
-            try {
-                window.lmnrRrweb.record.takeFullSnapshot();
-                return true;
-            } catch (e) {
-                console.error("Error taking full snapshot:", e);
-                return false;
-            }
-        }
-        return false;
-    }"""
-    )
-    if result and "result" in result and "value" in result["result"]:
-        return result["result"]["value"]
-    return False
+# async def take_full_snapshot_async(cdp_client: CDPClient, cdp_session_id: str):
+#     result = await cdp_client.send.Runtime.evaluate(
+#         {
+#             "expression": """(() => {
+#         if (window.lmnrRrweb) {
+#             try {
+#                 window.lmnrRrweb.record.takeFullSnapshot();
+#                 return true;
+#             } catch (e) {
+#                 console.error("Error taking full snapshot:", e);
+#                 return false;
+#             }
+#         }
+#         return false;
+#     })()""",
+#             },
+#             session_id=cdp_session_id,
+#         }
+#     )
+#     if result and "result" in result and "value" in result["result"]:
+#         return result["result"]["value"]
+#     return False

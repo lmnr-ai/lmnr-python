@@ -4,7 +4,7 @@ from lmnr.sdk.browser.cdp_utils import (
 )
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.laminar import Laminar
-from lmnr.sdk.browser.utils import with_tracer_and_client_wrapper, with_tracer_wrapper
+from lmnr.sdk.browser.utils import with_tracer_and_client_wrapper
 from lmnr.sdk.utils import get_input_from_func_args
 from lmnr.version import __version__
 
