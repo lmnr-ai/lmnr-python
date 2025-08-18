@@ -725,7 +725,6 @@ async def is_rrweb_present(cdp_session) -> bool:
     result = await cdp_client.send.Runtime.evaluate(
         {
             "expression": """(()=>{
-            console.log('HELLO');
             return typeof window.lmnrRrweb !== 'undefined';
             })()""",
         },
