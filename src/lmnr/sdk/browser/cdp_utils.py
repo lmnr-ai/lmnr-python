@@ -1,47 +1,17 @@
-import asyncio
 import orjson
 import logging
 import os
 import time
+import asyncio
 
 from opentelemetry import trace
 
-from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from lmnr.sdk.decorators import observe
-from lmnr.sdk.browser.utils import retry_sync, retry_async
-from lmnr.sdk.client.synchronous.sync_client import LaminarClient
+from lmnr.sdk.browser.utils import retry_async
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
 from lmnr.sdk.types import MaskInputOptions
-
-try:
-    if is_package_installed("cdp-use"):
-        from cdp_use.cdp.runtime.events import BindingCalledEvent
-    else:
-        raise ImportError(
-            "Attempted to import lmnr.sdk.browser.cdp_utils, but cdp-use is not installed. "
-            "Use `pip install cdp-use` to install it."
-        )
-except ImportError as e:
-    raise ImportError(
-        "Attempted to import lmnr.sdk.browser.cdp_utils, but cdp-use is not installed. "
-        "Use `pip install cdp-use` to install it."
-    ) from e
-
-try:
-    if is_package_installed("browser-use"):
-        from browser_use.browser import BrowserSession
-    else:
-        raise ImportError(
-            "Attempted to import lmnr.sdk.browser.cdp_utils, but browser_use is not installed. "
-            "Use `pip install browser_use` to install it."
-        )
-except ImportError as e:
-    raise ImportError(
-        "Attempted to import lmnr.sdk.browser.cdp_utils, but browser_use is not installed. "
-        "Use `pip install browser_use` to install it."
-    ) from e
 
 logger = logging.getLogger(__name__)
 
@@ -52,10 +22,10 @@ with open(os.path.join(current_dir, "recorder", "record.umd.min.cjs"), "r") as f
     RRWEB_CONTENT = f"() => {{ {f.read()} }}"
 
 INJECT_PLACEHOLDER = """
-() => {
+(maskInputOptions) => {
     const BATCH_TIMEOUT = 2000; // Send events after 2 seconds
     const MAX_WORKER_PROMISES = 50; // Max concurrent worker promises
-    const HEARTBEAT_INTERVAL = 1000;
+    const HEARTBEAT_INTERVAL = 2000;
     const CHUNK_SIZE = 256 * 1024; // 256KB chunks
     const CHUNK_SEND_DELAY = 100; // 100ms delay between chunks
 
@@ -324,7 +294,7 @@ INJECT_PLACEHOLDER = """
     }
 
     // Worker-based compression for large objects
-    async function compressLargeObject(data, isLarge = true) {
+    async function compressLargeObject(data) {
         // Check if workers are supported first - if not, use main thread compression
         if (!testWorkerSupport()) {
             return await compressSmallObject(data);
@@ -388,7 +358,6 @@ INJECT_PLACEHOLDER = """
     function isLargeEvent(type) {
         const LARGE_EVENT_TYPES = [
             2, // FullSnapshot
-            3, // IncrementalSnapshot
         ];
 
         if (LARGE_EVENT_TYPES.includes(type)) {
@@ -464,9 +433,7 @@ INJECT_PLACEHOLDER = """
                         data: batchString,
                         isFinal: true
                     };
-                    console.log('sending single chunk', chunk);
                     window.lmnrSendEvents(JSON.stringify(chunk));
-                    console.log('sent single chunk');
                 } else {
                     // Need to chunk
                     const chunks = createChunks(batchString, batchId);
@@ -496,7 +463,7 @@ INJECT_PLACEHOLDER = """
             try {
                 const isLarge = isLargeEvent(event.type);
                 const compressedResult = isLarge ?
-                    await compressLargeObject(event.data, true) :
+                    await compressLargeObject(event.data) :
                     await compressSmallObject(event.data);
 
                 const base64Data = await bufferToBase64(compressedResult);
@@ -512,6 +479,15 @@ INJECT_PLACEHOLDER = """
         recordCanvas: true,
         collectFonts: true,
         recordCrossOriginIframes: true,
+        maskInputOptions: {
+            password: true,
+            textarea: maskInputOptions.textarea || false,
+            text: maskInputOptions.text || false,
+            number: maskInputOptions.number || false,
+            select: maskInputOptions.select || false,
+            email: maskInputOptions.email || false,
+            tel: maskInputOptions.tel || false,
+        }
     });
 
     function heartbeat() {
@@ -557,130 +533,64 @@ def get_mask_input_setting() -> MaskInputOptions:
         )
 
 
-def inject_session_recorder_sync(session: BrowserSession):
-    cdp_session = asyncio.run(session.get_or_create_cdp_session())
+# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
+async def inject_session_recorder(cdp_session):
     cdp_client = cdp_session.cdp_client
     try:
         try:
-            result = asyncio.run(
-                session.cdp_client.send.Runtime.evaluate(
-                    {
-                        "expression": """typeof window.lmnrRrweb !== 'undefined'""",
-                    },
-                    session_id=cdp_session.session_id,
-                )
-            )
-            if result and "result" in result and "value" in result["result"]:
-                is_loaded = result["result"]["value"]
-            else:
-                is_loaded = False
+            is_loaded = await is_rrweb_present(cdp_session)
         except Exception as e:
             logger.debug(f"Failed to check if session recorder is loaded: {e}")
             is_loaded = False
 
-        if not is_loaded:
+        if is_loaded:
+            print("RRWEB already loaded")
+            return
 
-            def load_session_recorder():
-                try:
-                    asyncio.run(
-                        cdp_client.send.Runtime.evaluate(
-                            {
-                                "expression": f"({RRWEB_CONTENT})()",
-                            },
-                            session_id=cdp_session.session_id,
-                        )
-                    )
-                    return True
-                except Exception as e:
-                    logger.debug(f"Failed to load session recorder: {e}")
-                    return False
-
-            if not retry_sync(
-                load_session_recorder,
-                delay=1,
-                error_message="Failed to load session recorder",
-            ):
-                return
-
+        async def load_session_recorder():
             try:
-                asyncio.run(
-                    cdp_client.send.Runtime.evaluate(
-                        {
-                            "expression": f"({INJECT_PLACEHOLDER})()",
-                            # "arguments": [{"value": get_mask_input_setting()}],
-                        },
-                        session_id=cdp_session.session_id,
-                    )
-                )
-            except Exception as e:
-                logger.debug(f"Failed to inject session recorder: {e}")
-
-    except Exception as e:
-        logger.error(f"Error during session recorder injection: {e}")
-
-
-async def inject_session_recorder_async(session: BrowserSession):
-    cdp_session = await session.get_or_create_cdp_session()
-    cdp_client = cdp_session.cdp_client
-    try:
-        try:
-            result = await cdp_client.send.Runtime.evaluate(
-                {
-                    "expression": """typeof window.lmnrRrweb !== 'undefined'""",
-                },
-                session_id=cdp_session.session_id,
-            )
-            if result and "result" in result and "value" in result["result"]:
-                is_loaded = result["result"]["value"]
-            else:
-                is_loaded = False
-        except Exception as e:
-            logger.debug(f"Failed to check if session recorder is loaded: {e}")
-            is_loaded = False
-
-        if not is_loaded:
-
-            async def load_session_recorder():
-                try:
-                    await cdp_client.send.Runtime.evaluate(
-                        {
-                            "expression": f"({RRWEB_CONTENT})()",
-                            "awaitPromise": True,
-                        },
-                        session_id=cdp_session.session_id,
-                    )
-                    return True
-                except Exception as e:
-                    logger.debug(f"Failed to load session recorder: {e}")
-                    return False
-
-            if not await retry_async(
-                load_session_recorder,
-                delay=1,
-                error_message="Failed to load session recorder",
-            ):
-                return
-
-            try:
+                print("injecting RRWEB")
                 await cdp_client.send.Runtime.evaluate(
                     {
-                        "expression": f"({INJECT_PLACEHOLDER})()",
-                        # "arguments": [{"value": get_mask_input_setting()}],
+                        "expression": f"({RRWEB_CONTENT})()",
+                        "awaitPromise": True,
                     },
                     session_id=cdp_session.session_id,
                 )
+                return True
             except Exception as e:
-                logger.debug(f"Failed to inject session recorder placeholder: {e}")
+                print("Failed to load session recorder", e)
+                logger.error(f"Failed to load session recorder: {e}")
+                return False
+
+        if not await retry_async(
+            load_session_recorder,
+            delay=1,
+            error_message="Failed to load session recorder",
+        ):
+            return
+
+        try:
+            await cdp_client.send.Runtime.evaluate(
+                {
+                    "expression": f"({INJECT_PLACEHOLDER})({orjson.dumps(get_mask_input_setting()).decode("utf-8")})",
+                },
+                session_id=cdp_session.session_id,
+            )
+        except Exception as e:
+            logger.debug(f"Failed to inject session recorder placeholder: {e}")
 
     except Exception as e:
         logger.error(f"Error during session recorder injection: {e}")
 
 
-@observe(name="playwright.page", ignore_input=True, ignore_output=True)
-def start_recording_events_sync(
-    session: BrowserSession, session_id: str, client: LaminarClient
+# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
+@observe(name="cdp_use.session", ignore_input=True, ignore_output=True)
+async def start_recording_events(
+    cdp_session,
+    lmnr_session_id: str,
+    client: AsyncLaminarClient,
 ):
-    cdp_session = asyncio.run(session.get_or_create_cdp_session())
     cdp_client = cdp_session.cdp_client
 
     ctx = get_current_context()
@@ -688,101 +598,7 @@ def start_recording_events_sync(
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
 
-    # Buffer for reassembling chunks
-    chunk_buffers = {}
-
-    def send_events_from_browser(chunk):
-        try:
-            # Handle chunked data
-            batch_id = chunk["batchId"]
-            chunk_index = chunk["chunkIndex"]
-            total_chunks = chunk["totalChunks"]
-            data = chunk["data"]
-
-            # Initialize buffer for this batch if needed
-            if batch_id not in chunk_buffers:
-                chunk_buffers[batch_id] = {
-                    "chunks": {},
-                    "total": total_chunks,
-                    "timestamp": time.time(),
-                }
-
-            # Store chunk
-            chunk_buffers[batch_id]["chunks"][chunk_index] = data
-
-            # Check if we have all chunks
-            if len(chunk_buffers[batch_id]["chunks"]) == total_chunks:
-                # Reassemble the full message
-                full_data = "".join(
-                    chunk_buffers[batch_id]["chunks"][i] for i in range(total_chunks)
-                )
-
-                # Parse the JSON
-                events = orjson.loads(full_data)
-
-                # Send to server
-                if events and len(events) > 0:
-                    client._browser_events.send(session_id, trace_id, events)
-
-                # Clean up buffer
-                del chunk_buffers[batch_id]
-
-            # Clean up old incomplete buffers
-            current_time = time.time()
-            to_delete = []
-            for bid, buffer in chunk_buffers.items():
-                if current_time - buffer["timestamp"] > OLD_BUFFER_TIMEOUT:
-                    to_delete.append(bid)
-            for bid in to_delete:
-                logger.debug(f"Cleaning up incomplete chunk buffer: {bid}")
-                del chunk_buffers[bid]
-
-        except Exception as e:
-            logger.debug(f"Could not send events: {e}")
-
-    try:
-
-        async def send_events_callback(
-            event: BindingCalledEvent, browser_session_id: str | None = None
-        ):
-            if event["name"] != "lmnrSendEvents":
-                return
-            await send_events_from_browser(orjson.loads(event["payload"]))
-
-        asyncio.run(
-            cdp_client.send.Runtime.addBinding(
-                {
-                    "name": "lmnrSendEvents",
-                },
-                session_id=cdp_session.session_id,
-            )
-        )
-        cdp_client.register.Runtime.bindingCalled(send_events_callback)
-    except Exception as e:
-        logger.debug(f"Could not expose function: {e}")
-
-    inject_session_recorder_sync(session)
-
-    # def on_load(p):
-    #     try:
-    #         inject_session_recorder_sync(p)
-    #     except Exception as e:
-    #         logger.error(f"Error in on_load handler: {e}")
-
-    # page.on("domcontentloaded", on_load)
-
-
-@observe(name="playwright.page", ignore_input=True, ignore_output=True)
-async def start_recording_events_async(
-    session: BrowserSession, session_id: str, client: AsyncLaminarClient
-):
-    cdp_session = await session.get_or_create_cdp_session()
-    cdp_client = cdp_session.cdp_client
-
-    ctx = get_current_context()
-    span = trace.get_current_span(ctx)
-    trace_id = format(span.get_span_context().trace_id, "032x")
-    span.set_attribute("lmnr.internal.has_browser_session", True)
+    await inject_session_recorder(cdp_session)
 
     # Buffer for reassembling chunks
     chunk_buffers = {}
@@ -818,7 +634,7 @@ async def start_recording_events_async(
 
                 # Send to server
                 if events and len(events) > 0:
-                    await client._browser_events.send(session_id, trace_id, events)
+                    await client._browser_events.send(lmnr_session_id, trace_id, events)
 
                 # Clean up buffer
                 del chunk_buffers[batch_id]
@@ -836,81 +652,85 @@ async def start_recording_events_async(
         except Exception as e:
             logger.debug(f"Could not send events: {e}")
 
-    try:
+    # cdp_use.cdp.runtime.events.BindingCalledEvent
+    async def send_events_callback(event, cdp_session_id: str | None = None):
+        if event["name"] != "lmnrSendEvents":
+            return
+        await send_events_from_browser(orjson.loads(event["payload"]))
 
-        async def send_events_callback(
-            event: BindingCalledEvent, browser_session_id: str | None = None
-        ):
-            if event["name"] != "lmnrSendEvents":
-                return
-            await send_events_from_browser(orjson.loads(event["payload"]))
+    await cdp_client.send.Runtime.addBinding(
+        {
+            "name": "lmnrSendEvents",
+        },
+        session_id=cdp_session.session_id,
+    )
+    cdp_client.register.Runtime.bindingCalled(send_events_callback)
 
-        await cdp_client.send.Runtime.addBinding(
-            {
-                "name": "lmnrSendEvents",
-            },
-            session_id=cdp_session.session_id,
-        )
-        cdp_client.register.Runtime.bindingCalled(send_events_callback)
-    except Exception as e:
-        logger.debug(f"Could not expose function: {e}")
-
-    await inject_session_recorder_async(session)
-
-    # async def on_load(p):
-    #     try:
-    #         await inject_session_recorder_async(p)
-    #     except Exception as e:
-    #         logger.error(f"Error in on_load handler: {e}")
-
-    # page.on("domcontentloaded", on_load)
+    await enable_target_discovery(cdp_session)
+    await register_on_dom_content_loaded(cdp_session)
+    # TODO: Figure out how to reinject on bring page to front, and whether this
+    # is needed at all. From quick tests with booking, other methods seem sufficient.
+    await register_on_target_created(cdp_session, lmnr_session_id, client)
 
 
-### TODO: Take full snapshot on the version of page.bring_to_front in raw CDP
-# def take_full_snapshot(cdp_client: CDPClient, cdp_session_id: str):
-#     result = asyncio.run(
-#         cdp_client.send.Runtime.evaluate(
-#             {
-#                 "expression": """(() => {
-#         if (window.lmnrRrweb) {
-#             try {
-#                 window.lmnrRrweb.record.takeFullSnapshot();
-#                 return true;
-#             } catch (e) {
-#                 console.error("Error taking full snapshot:", e);
-#                 return false;
-#             }
-#         }
-#         return false;
-#     })()""",
-#             },
-#             session_id=cdp_session_id,
-#         )
-#     )
-#     if result and "result" in result and "value" in result["result"]:
-#         return result["result"]["value"]
-#     return False
+# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
+async def register_on_dom_content_loaded(cdp_session):
+    cdp_client = cdp_session.cdp_client
+
+    # cdp_use.cdp.page.events.DomContentEventFiredEvent
+    async def on_load(event, cdp_session_id: str | None = None):
+        try:
+            # Schedule injection to run after current event processing completes
+            # This prevents reentrancy issues with CDP calls
+            asyncio.create_task(inject_session_recorder(cdp_session))
+        except Exception as e:
+            logger.error(f"Error in on_load handler: {e}")
+
+    cdp_client.register.Page.domContentEventFired(on_load)
 
 
-# async def take_full_snapshot_async(cdp_client: CDPClient, cdp_session_id: str):
-#     result = await cdp_client.send.Runtime.evaluate(
-#         {
-#             "expression": """(() => {
-#         if (window.lmnrRrweb) {
-#             try {
-#                 window.lmnrRrweb.record.takeFullSnapshot();
-#                 return true;
-#             } catch (e) {
-#                 console.error("Error taking full snapshot:", e);
-#                 return false;
-#             }
-#         }
-#         return false;
-#     })()""",
-#             },
-#             session_id=cdp_session_id,
-#         }
-#     )
-#     if result and "result" in result and "value" in result["result"]:
-#         return result["result"]["value"]
-#     return False
+# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
+async def enable_target_discovery(cdp_session):
+    cdp_client = cdp_session.cdp_client
+    await cdp_client.send.Target.setDiscoverTargets(
+        {
+            "discover": True,
+        },
+        session_id=cdp_session.session_id,
+    )
+
+
+# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
+async def register_on_target_created(
+    cdp_session, lmnr_session_id: str, client: AsyncLaminarClient
+):
+    # cdp_use.cdp.target.events.TargetCreatedEvent
+    async def on_target_created(event, cdp_session_id: str | None = None):
+        target_info = event["targetInfo"]
+        if target_info["type"] == "page":
+            # Schedule injection to run after current event processing completes
+            # This prevents reentrancy issues with CDP calls
+            asyncio.create_task(inject_session_recorder(cdp_session=cdp_session))
+
+    cdp_session.cdp_client.register.Target.targetCreated(on_target_created)
+
+
+# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
+async def is_rrweb_present(cdp_session) -> bool:
+    cdp_client = cdp_session.cdp_client
+
+    # If we have a target_id, we need to create a session for that target first
+    # For now, just use the main session without contextId
+    # TODO: Properly handle different targets by creating separate sessions
+    result = await cdp_client.send.Runtime.evaluate(
+        {
+            "expression": """(()=>{
+            console.log('HELLO');
+            return typeof window.lmnrRrweb !== 'undefined';
+            })()""",
+        },
+        session_id=cdp_session.session_id,
+    )
+    if result and "result" in result and "value" in result["result"]:
+        return result["result"]["value"]
+    return False

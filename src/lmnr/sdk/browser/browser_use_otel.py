@@ -1,31 +1,28 @@
 from lmnr.opentelemetry_lib.decorators import json_dumps
-from lmnr.sdk.browser.cdp_utils import (
-    start_recording_events_async,
-)
-from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
-from lmnr.sdk.laminar import Laminar
-from lmnr.sdk.browser.utils import with_tracer_and_client_wrapper
+from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
+from lmnr.sdk.browser.utils import with_tracer_wrapper
 from lmnr.sdk.utils import get_input_from_func_args
 from lmnr.version import __version__
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
+from opentelemetry import context as context_api
 from opentelemetry.instrumentation.utils import unwrap
 from opentelemetry.trace import get_tracer, Tracer
 from typing import Collection
 from wrapt import wrap_function_wrapper
 import pydantic
-import uuid
 
 try:
-    from browser_use import AgentHistoryList, Agent
+    from browser_use import AgentHistoryList
 except ImportError as e:
     raise ImportError(
         f"Attempted to import {__file__}, but it is designed "
-        "to patch Browser Use, which is not installed. Use `pip install browser-use` "
+        "to patch Browser Use < 0.5.0, which is not installed. Use `pip install browser-use` "
         "to install Browser Use or remove this import."
     ) from e
 
-_instruments = ("browser-use >= 0.1.0",)
+_instruments = ("browser-use < 0.5.0",)
 
 WRAPPED_METHODS = [
     {
@@ -45,7 +42,6 @@ WRAPPED_METHODS = [
         "ignore_input": True,
         "ignore_output": True,
         "span_type": "DEFAULT",
-        "inject_session_recorder": True,
     },
     {
         "package": "browser_use.controller.service",
@@ -67,10 +63,8 @@ WRAPPED_METHODS = [
 ]
 
 
-@with_tracer_and_client_wrapper
-async def _wrap(
-    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
-):
+@with_tracer_wrapper
+async def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     span_name = to_wrap.get("span_name")
     attributes = {
         "lmnr.span.type": to_wrap.get("span_type"),
@@ -96,32 +90,35 @@ async def _wrap(
         if step_info and hasattr(step_info, "step_number"):
             span_name = f"agent.step.{step_info.step_number}"
 
-    if to_wrap.get("inject_session_recorder"):
-        instance: Agent = instance
-        await start_recording_events_async(
-            instance.browser_session, str(uuid.uuid4()), client
-        )
+    wrapper = TracerWrapper()
+    with get_tracer_with_context() as (tracer, isolated_context):
+        ctx_token = context_api.attach(isolated_context)
+        with tracer.start_as_current_span(
+            span_name, context=isolated_context, attributes=attributes
+        ) as span:
+            wrapper.push_span_context(span)
+            result = await wrapped(*args, **kwargs)
+            if not to_wrap.get("ignore_output"):
+                to_serialize = result
+                if isinstance(result, AgentHistoryList):
+                    to_serialize = result.final_result()
+                serialized = (
+                    to_serialize.model_dump_json()
+                    if isinstance(to_serialize, pydantic.BaseModel)
+                    else json_dumps(to_serialize)
+                )
+                span.set_attribute("lmnr.span.output", serialized)
+            wrapper.pop_span_context()
+            try:
+                context_api.detach(ctx_token)
+            except Exception:
+                pass
+            return result
 
-    with Laminar.start_as_current_span(span_name) as span:
-        span.set_attributes(attributes)
-        result = await wrapped(*args, **kwargs)
-        if not to_wrap.get("ignore_output"):
-            to_serialize = result
-            if isinstance(result, AgentHistoryList):
-                to_serialize = result.final_result()
-            serialized = (
-                to_serialize.model_dump_json()
-                if isinstance(to_serialize, pydantic.BaseModel)
-                else json_dumps(to_serialize)
-            )
-            span.set_attribute("lmnr.span.output", serialized)
-        return result
 
-
-class BrowserUseInstrumentor(BaseInstrumentor):
-    def __init__(self, async_client: AsyncLaminarClient):
+class BrowserUseLegacyInstrumentor(BaseInstrumentor):
+    def __init__(self):
         super().__init__()
-        self.async_client = async_client
 
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
@@ -141,7 +138,6 @@ class BrowserUseInstrumentor(BaseInstrumentor):
                     f"{wrap_object}.{wrap_method}",
                     _wrap(
                         tracer,
-                        self.async_client,
                         wrapped_method,
                     ),
                 )
