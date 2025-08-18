@@ -102,22 +102,6 @@ class CrewAIInstrumentorInitializer(InstrumentorInitializer):
         return CrewAiInstrumentor()
 
 
-class GoogleGenerativeAIInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
-        if not is_package_installed("google-generativeai"):
-            return None
-        if not is_package_installed(
-            "opentelemetry-instrumentation-google-generativeai"
-        ):
-            return None
-
-        from opentelemetry.instrumentation.google_generativeai import (
-            GoogleGenerativeAiInstrumentor,
-        )
-
-        return GoogleGenerativeAiInstrumentor()
-
-
 class GoogleGenAIInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("google-genai"):

@@ -20,7 +20,6 @@ class Instruments(Enum):
     CHROMA = "chroma"
     COHERE = "cohere"
     CREWAI = "crewai"
-    GOOGLE_GENERATIVEAI = "google_generativeai"
     GOOGLE_GENAI = "google_genai"
     GROQ = "groq"
     HAYSTACK = "haystack"
@@ -63,7 +62,6 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.CHROMA: initializers.ChromaInstrumentorInitializer(),
     Instruments.COHERE: initializers.CohereInstrumentorInitializer(),
     Instruments.CREWAI: initializers.CrewAIInstrumentorInitializer(),
-    Instruments.GOOGLE_GENERATIVEAI: initializers.GoogleGenerativeAIInstrumentorInitializer(),
     Instruments.GOOGLE_GENAI: initializers.GoogleGenAIInstrumentorInitializer(),
     Instruments.GROQ: initializers.GroqInstrumentorInitializer(),
     Instruments.HAYSTACK: initializers.HaystackInstrumentorInitializer(),
