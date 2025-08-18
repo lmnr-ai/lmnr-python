@@ -544,12 +544,10 @@ async def inject_session_recorder(cdp_session):
             is_loaded = False
 
         if is_loaded:
-            print("RRWEB already loaded")
             return
 
         async def load_session_recorder():
             try:
-                print("injecting RRWEB")
                 await cdp_client.send.Runtime.evaluate(
                     {
                         "expression": f"({RRWEB_CONTENT})()",
@@ -559,7 +557,6 @@ async def inject_session_recorder(cdp_session):
                 )
                 return True
             except Exception as e:
-                print("Failed to load session recorder", e)
                 logger.error(f"Failed to load session recorder: {e}")
                 return False
 
