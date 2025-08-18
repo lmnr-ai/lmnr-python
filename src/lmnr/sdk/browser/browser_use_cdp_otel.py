@@ -14,16 +14,9 @@ _instruments = ("browser-use >= 1.0.0rc1",)
 
 WRAPPED_METHODS = [
     {
-        "package": "browser_use.agent.service",
-        "object": "Agent",
-        "method": "run",
-        "action": "generate_lmnr_session_id",
-    },
-    {
         "package": "browser_use.browser.session",
         "object": "BrowserSession",
         "method": "get_or_create_cdp_session",
-        "action": "wrap_cdp_session",
     },
 ]
 
@@ -32,18 +25,17 @@ WRAPPED_METHODS = [
 async def _wrap(
     tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
 ):
+    from lmnr.sdk.browser.cdp_utils import (
+        is_rrweb_present,
+        start_recording_events,
+    )
+
     result = await wrapped(*args, **kwargs)
 
-    if to_wrap.get("action") == "wrap_cdp_session":
-        from lmnr.sdk.browser.cdp_utils import (
-            is_rrweb_present,
-            start_recording_events,
-        )
-
-        cdp_session = result
-        is_registered = await is_rrweb_present(cdp_session)
-        if not is_registered:
-            await start_recording_events(cdp_session, str(uuid.uuid4()), client)
+    cdp_session = result
+    is_registered = await is_rrweb_present(cdp_session)
+    if not is_registered:
+        await start_recording_events(cdp_session, str(uuid.uuid4()), client)
     return result
 
 

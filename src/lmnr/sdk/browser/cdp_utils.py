@@ -664,24 +664,18 @@ async def start_recording_events(
     cdp_client.register.Runtime.bindingCalled(send_events_callback)
 
     await enable_target_discovery(cdp_session)
-    await register_on_dom_content_loaded(cdp_session)
-    # TODO: Figure out how to reinject on bring page to front, and whether this
-    # is needed at all. From quick tests with booking, other methods seem sufficient.
-    await register_on_target_created(cdp_session, lmnr_session_id, client)
+
+    register_on_dom_content_loaded(cdp_session)
+    register_on_target_created(cdp_session, lmnr_session_id, client)
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
-async def register_on_dom_content_loaded(cdp_session):
+def register_on_dom_content_loaded(cdp_session):
     cdp_client = cdp_session.cdp_client
 
     # cdp_use.cdp.page.events.DomContentEventFiredEvent
-    async def on_load(event, cdp_session_id: str | None = None):
-        try:
-            # Schedule injection to run after current event processing completes
-            # This prevents reentrancy issues with CDP calls
-            asyncio.create_task(inject_session_recorder(cdp_session))
-        except Exception as e:
-            logger.error(f"Error in on_load handler: {e}")
+    def on_load(event, cdp_session_id: str | None = None):
+        asyncio.run(inject_session_recorder(cdp_session))
 
     cdp_client.register.Page.domContentEventFired(on_load)
 
@@ -698,16 +692,14 @@ async def enable_target_discovery(cdp_session):
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
-async def register_on_target_created(
+def register_on_target_created(
     cdp_session, lmnr_session_id: str, client: AsyncLaminarClient
 ):
     # cdp_use.cdp.target.events.TargetCreatedEvent
-    async def on_target_created(event, cdp_session_id: str | None = None):
+    def on_target_created(event, cdp_session_id: str | None = None):
         target_info = event["targetInfo"]
         if target_info["type"] == "page":
-            # Schedule injection to run after current event processing completes
-            # This prevents reentrancy issues with CDP calls
-            asyncio.create_task(inject_session_recorder(cdp_session=cdp_session))
+            asyncio.run(inject_session_recorder(cdp_session=cdp_session))
 
     cdp_session.cdp_client.register.Target.targetCreated(on_target_created)
 
@@ -716,13 +708,10 @@ async def register_on_target_created(
 async def is_rrweb_present(cdp_session) -> bool:
     cdp_client = cdp_session.cdp_client
 
-    # If we have a target_id, we need to create a session for that target first
-    # For now, just use the main session without contextId
-    # TODO: Properly handle different targets by creating separate sessions
     result = await cdp_client.send.Runtime.evaluate(
         {
             "expression": """(()=>{
-            return typeof window.lmnrRrweb !== 'undefined';
+                return typeof window.lmnrRrweb !== 'undefined';
             })()""",
         },
         session_id=cdp_session.session_id,
