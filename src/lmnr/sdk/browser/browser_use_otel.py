@@ -1,12 +1,10 @@
 from lmnr.opentelemetry_lib.decorators import json_dumps
-from lmnr.opentelemetry_lib.tracing import TracerWrapper
-from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
+from lmnr import Laminar
 from lmnr.sdk.browser.utils import with_tracer_wrapper
 from lmnr.sdk.utils import get_input_from_func_args
 from lmnr.version import __version__
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry import context as context_api
 from opentelemetry.instrumentation.utils import unwrap
 from opentelemetry.trace import get_tracer, Tracer
 from typing import Collection
@@ -90,30 +88,19 @@ async def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         if step_info and hasattr(step_info, "step_number"):
             span_name = f"agent.step.{step_info.step_number}"
 
-    wrapper = TracerWrapper()
-    with get_tracer_with_context() as (tracer, isolated_context):
-        ctx_token = context_api.attach(isolated_context)
-        with tracer.start_as_current_span(
-            span_name, context=isolated_context, attributes=attributes
-        ) as span:
-            wrapper.push_span_context(span)
-            result = await wrapped(*args, **kwargs)
-            if not to_wrap.get("ignore_output"):
-                to_serialize = result
-                if isinstance(result, AgentHistoryList):
-                    to_serialize = result.final_result()
-                serialized = (
-                    to_serialize.model_dump_json()
-                    if isinstance(to_serialize, pydantic.BaseModel)
-                    else json_dumps(to_serialize)
-                )
-                span.set_attribute("lmnr.span.output", serialized)
-            wrapper.pop_span_context()
-            try:
-                context_api.detach(ctx_token)
-            except Exception:
-                pass
-            return result
+    with Laminar.start_as_current_span(span_name) as span:
+        result = await wrapped(*args, **kwargs)
+        if not to_wrap.get("ignore_output"):
+            to_serialize = result
+            if isinstance(result, AgentHistoryList):
+                to_serialize = result.final_result()
+            serialized = (
+                to_serialize.model_dump_json()
+                if isinstance(to_serialize, pydantic.BaseModel)
+                else json_dumps(to_serialize)
+            )
+            span.set_attribute("lmnr.span.output", serialized)
+        return result
 
 
 class BrowserUseLegacyInstrumentor(BaseInstrumentor):
