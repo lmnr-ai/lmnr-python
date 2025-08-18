@@ -12,8 +12,6 @@ import uuid
 # Stable versions, e.g. 1.0.0, satisfy this condition too
 _instruments = ("browser-use >= 1.0.0rc1",)
 
-lmnr_session_id = None
-
 WRAPPED_METHODS = [
     {
         "package": "browser_use.agent.service",
@@ -34,10 +32,6 @@ WRAPPED_METHODS = [
 async def _wrap(
     tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
 ):
-    global lmnr_session_id
-    if to_wrap.get("action") == "generate_lmnr_session_id":
-        lmnr_session_id = str(uuid.uuid4())
-
     result = await wrapped(*args, **kwargs)
 
     if to_wrap.get("action") == "wrap_cdp_session":
@@ -49,9 +43,7 @@ async def _wrap(
         cdp_session = result
         is_registered = await is_rrweb_present(cdp_session)
         if not is_registered:
-            await start_recording_events(
-                cdp_session, lmnr_session_id or str(uuid.uuid4()), client
-            )
+            await start_recording_events(cdp_session, str(uuid.uuid4()), client)
     return result
 
 
