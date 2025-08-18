@@ -10,7 +10,7 @@ from .shared.config import Config
 from .utils import is_openai_v1
 from typing_extensions import Coroutine
 
-_instruments = ("openai >= 0.27.0",)
+_instruments = ("openai >= 0.27.0 ",)
 
 
 class OpenAIInstrumentor(BaseInstrumentor):
