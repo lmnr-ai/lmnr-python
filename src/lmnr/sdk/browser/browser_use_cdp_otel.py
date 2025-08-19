@@ -1,6 +1,11 @@
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.browser.utils import with_tracer_and_client_wrapper
 from lmnr.version import __version__
+from lmnr.sdk.browser.cdp_utils import (
+    is_recorder_present,
+    start_recording_events,
+    take_full_snapshot,
+)
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
@@ -32,16 +37,10 @@ WRAPPED_METHODS = [
 async def _wrap(
     tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
 ):
-    from lmnr.sdk.browser.cdp_utils import (
-        is_rrweb_present,
-        start_recording_events,
-        take_full_snapshot,
-    )
-
     result = await wrapped(*args, **kwargs)
 
     if to_wrap.get("action") == "inject_session_recorder":
-        is_registered = await is_rrweb_present(result)
+        is_registered = await is_recorder_present(result)
         if not is_registered:
             await start_recording_events(result, str(uuid.uuid4()), client)
 

@@ -539,7 +539,7 @@ async def inject_session_recorder(cdp_session):
     cdp_client = cdp_session.cdp_client
     try:
         try:
-            is_loaded = await is_rrweb_present(cdp_session)
+            is_loaded = await is_recorder_present(cdp_session)
         except Exception as e:
             logger.debug(f"Failed to check if session recorder is loaded: {e}")
             is_loaded = False
@@ -693,7 +693,7 @@ def register_on_target_created(
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
-async def is_rrweb_present(cdp_session) -> bool:
+async def is_recorder_present(cdp_session) -> bool:
     cdp_client = cdp_session.cdp_client
 
     result = await cdp_client.send.Runtime.evaluate(
