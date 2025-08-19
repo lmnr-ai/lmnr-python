@@ -287,6 +287,7 @@ INJECT_PLACEHOLDER = """
                     compressionWorker.onerror = (error) => {
                         console.error('Compression worker error:', error);
                         cleanupWorker();
+                        compressSmallObject(data).then(resolve, reject);
                     };
                 }
 
@@ -533,14 +534,17 @@ def get_mask_input_setting() -> MaskInputOptions:
     """Get the mask_input setting from session recording configuration."""
     try:
         config = TracerWrapper.get_session_recording_options()
-        return config.get("mask_input_options", MaskInputOptions(
-            textarea=False,
-            text=False,
-            number=False,
-            select=False,
-            email=False,
-            tel=False,
-        ))
+        return config.get(
+            "mask_input_options",
+            MaskInputOptions(
+                textarea=False,
+                text=False,
+                number=False,
+                select=False,
+                email=False,
+                tel=False,
+            ),
+        )
     except (AttributeError, Exception):
         # Fallback to default configuration if TracerWrapper is not initialized
         return MaskInputOptions(
@@ -632,54 +636,56 @@ def start_recording_events_sync(page: SyncPage, session_id: str, client: Laminar
     span = trace.get_current_span(ctx)
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
-    
+
     # Buffer for reassembling chunks
     chunk_buffers = {}
-    
+
     def send_events_from_browser(chunk):
         try:
             # Handle chunked data
-            batch_id = chunk['batchId']
-            chunk_index = chunk['chunkIndex']
-            total_chunks = chunk['totalChunks']
-            data = chunk['data']
-            
+            batch_id = chunk["batchId"]
+            chunk_index = chunk["chunkIndex"]
+            total_chunks = chunk["totalChunks"]
+            data = chunk["data"]
+
             # Initialize buffer for this batch if needed
             if batch_id not in chunk_buffers:
                 chunk_buffers[batch_id] = {
-                    'chunks': {},
-                    'total': total_chunks,
-                    'timestamp': time.time()
+                    "chunks": {},
+                    "total": total_chunks,
+                    "timestamp": time.time(),
                 }
-            
+
             # Store chunk
-            chunk_buffers[batch_id]['chunks'][chunk_index] = data
-            
+            chunk_buffers[batch_id]["chunks"][chunk_index] = data
+
             # Check if we have all chunks
-            if len(chunk_buffers[batch_id]['chunks']) == total_chunks:
+            if len(chunk_buffers[batch_id]["chunks"]) == total_chunks:
                 # Reassemble the full message
-                full_data = ''.join(chunk_buffers[batch_id]['chunks'][i] for i in range(total_chunks))
-                
+                full_data = "".join(
+                    chunk_buffers[batch_id]["chunks"][i] for i in range(total_chunks)
+                )
+
                 # Parse the JSON
                 events = orjson.loads(full_data)
-                
+
                 # Send to server
                 if events and len(events) > 0:
                     client._browser_events.send(session_id, trace_id, events)
-                
+
                 # Clean up buffer
                 del chunk_buffers[batch_id]
-            
+
             # Clean up old incomplete buffers
             current_time = time.time()
             to_delete = []
             for bid, buffer in chunk_buffers.items():
-                if current_time - buffer['timestamp'] > OLD_BUFFER_TIMEOUT:
+                if current_time - buffer["timestamp"] > OLD_BUFFER_TIMEOUT:
                     to_delete.append(bid)
             for bid in to_delete:
                 logger.debug(f"Cleaning up incomplete chunk buffer: {bid}")
                 del chunk_buffers[bid]
-                
+
         except Exception as e:
             logger.debug(f"Could not send events: {e}")
 
@@ -707,51 +713,51 @@ async def start_recording_events_async(
     span = trace.get_current_span(ctx)
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
-    
+
     # Buffer for reassembling chunks
     chunk_buffers = {}
-    
+
     async def send_events_from_browser(chunk):
         try:
             # Handle chunked data
-            batch_id = chunk['batchId']
-            chunk_index = chunk['chunkIndex']
-            total_chunks = chunk['totalChunks']
-            data = chunk['data']
+            batch_id = chunk["batchId"]
+            chunk_index = chunk["chunkIndex"]
+            total_chunks = chunk["totalChunks"]
+            data = chunk["data"]
 
             # Initialize buffer for this batch if needed
             if batch_id not in chunk_buffers:
                 chunk_buffers[batch_id] = {
-                    'chunks': {},
-                    'total': total_chunks,
-                    'timestamp': time.time()
+                    "chunks": {},
+                    "total": total_chunks,
+                    "timestamp": time.time(),
                 }
-            
+
             # Store chunk
-            chunk_buffers[batch_id]['chunks'][chunk_index] = data
-            
+            chunk_buffers[batch_id]["chunks"][chunk_index] = data
+
             # Check if we have all chunks
-            if len(chunk_buffers[batch_id]['chunks']) == total_chunks:
+            if len(chunk_buffers[batch_id]["chunks"]) == total_chunks:
                 # Reassemble the full message
-                full_data = ''
+                full_data = ""
                 for i in range(total_chunks):
-                    full_data += chunk_buffers[batch_id]['chunks'][i]
-                
+                    full_data += chunk_buffers[batch_id]["chunks"][i]
+
                 # Parse the JSON
                 events = orjson.loads(full_data)
-                
+
                 # Send to server
                 if events and len(events) > 0:
                     await client._browser_events.send(session_id, trace_id, events)
-                
+
                 # Clean up buffer
                 del chunk_buffers[batch_id]
-            
+
             # Clean up old incomplete buffers
             current_time = time.time()
             to_delete = []
             for bid, buffer in chunk_buffers.items():
-                if current_time - buffer['timestamp'] > OLD_BUFFER_TIMEOUT:
+                if current_time - buffer["timestamp"] > OLD_BUFFER_TIMEOUT:
                     to_delete.append(bid)
             for bid in to_delete:
                 logger.debug(f"Cleaning up incomplete chunk buffer: {bid}")
@@ -766,7 +772,7 @@ async def start_recording_events_async(
         logger.debug(f"Could not expose function: {e}")
 
     await inject_session_recorder_async(page)
-    
+
     async def on_load(p):
         try:
             await inject_session_recorder_async(p)
