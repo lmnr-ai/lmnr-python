@@ -46,7 +46,7 @@ INJECT_PLACEHOLDER = """
 (mask_input_options) => {
     const BATCH_TIMEOUT = 2000; // Send events after 2 seconds
     const MAX_WORKER_PROMISES = 50; // Max concurrent worker promises
-    const HEARTBEAT_INTERVAL = 1000;
+    const HEARTBEAT_INTERVAL = 2000;
     const CHUNK_SIZE = 256 * 1024; // 256KB chunks
     const CHUNK_SEND_DELAY = 100; // 100ms delay between chunks
 
