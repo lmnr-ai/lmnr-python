@@ -266,6 +266,7 @@ INJECT_PLACEHOLDER = """
                     compressionWorker.onerror = (error) => {
                         console.error('Compression worker error:', error);
                         cleanupWorker();
+                        resolve(compressSmallObject(data));
                     };
                 }
 
