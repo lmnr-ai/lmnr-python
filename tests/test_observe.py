@@ -5,7 +5,6 @@ import pytest
 from lmnr import Laminar, observe
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry import trace
-from opentelemetry.trace import INVALID_SPAN_ID
 
 
 def test_observe(span_exporter: InMemorySpanExporter):

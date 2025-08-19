@@ -342,7 +342,8 @@ class OpenAIV1Instrumentor(BaseInstrumentor):
         self.try_unwrap("openai.resources.completions.AsyncCompletions", "create")
         self.try_unwrap("openai.resources.embeddings.AsyncEmbeddings", "create")
         self.try_unwrap("openai.resources.images.Images", "generate")
-
+        self.try_unwrap("openai.resources.chat.completions.Completions", "parse")
+        self.try_unwrap("openai.resources.chat.completions.AsyncCompletions", "parse")
         self.try_unwrap("openai.resources.beta.assistants.Assistants", "create")
         self.try_unwrap("openai.resources.beta.chat.completions.Completions", "parse")
         self.try_unwrap(

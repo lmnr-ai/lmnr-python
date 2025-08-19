@@ -50,11 +50,9 @@ try:
                 if (
                     openai_instrumentor
                     and openai_instrumentor.is_instrumented_by_opentelemetry
-                    and not kwargs.get("preserve_openai_instrumentation", False)
                 ):
                     logger.info(
-                        "Disabling OpenTelemetry instrumentation for OpenAI to avoid double-instrumentation of LiteLLM. "
-                        + "Pass preserve_openai_instrumentation=True to LaminarLiteLLMCallback initialization to preserve OpenAI instrumentation."
+                        "Disabling OpenTelemetry instrumentation for OpenAI to avoid double-instrumentation of LiteLLM."
                     )
                     openai_instrumentor.uninstrument()
 

@@ -34,8 +34,8 @@ def test_litellm_openai_basic(
     time.sleep(SLEEP_TO_FLUSH_SECONDS)
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
-    span = [s for s in spans if s.name == "litellm.completion"][0]
+    assert len(spans) == 1
+    span = spans[0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
     assert span.attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
     assert span.attributes["gen_ai.response.id"] == response.id
@@ -79,8 +79,8 @@ def test_litellm_openai_text_block(
     time.sleep(SLEEP_TO_FLUSH_SECONDS)
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
-    span = [s for s in spans if s.name == "litellm.completion"][0]
+    assert len(spans) == 1
+    span = spans[0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
     assert span.attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
     assert span.attributes["gen_ai.response.id"] == response.id
@@ -124,8 +124,8 @@ def test_litellm_openai_with_streaming(
     time.sleep(SLEEP_TO_FLUSH_SECONDS)
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
-    span = [s for s in spans if s.name == "litellm.completion"][0]
+    assert len(spans) == 1
+    span = spans[0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
     assert span.attributes["gen_ai.usage.input_tokens"] == 14
     assert span.attributes["gen_ai.usage.output_tokens"] == 7
@@ -178,12 +178,9 @@ def test_litellm_openai_with_chat_history(
     time.sleep(SLEEP_TO_FLUSH_SECONDS)
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 4
-    inner_spans = [s for s in spans if s.name == "litellm.completion"]
-    assert len(inner_spans) == 2
-    inner_spans = sorted(inner_spans, key=lambda s: s.start_time)
-    first_span = sorted(inner_spans, key=lambda s: s.start_time)[0]
-    second_span = sorted(inner_spans, key=lambda s: s.start_time)[1]
+    assert len(spans) == 2
+    first_span = sorted(spans, key=lambda s: s.start_time)[0]
+    second_span = sorted(spans, key=lambda s: s.start_time)[1]
     assert first_span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
     assert second_span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
 
@@ -258,8 +255,8 @@ def test_litellm_openai_with_image_base64(
     time.sleep(SLEEP_TO_FLUSH_SECONDS)
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
-    span = [s for s in spans if s.name == "litellm.completion"][0]
+    assert len(spans) == 1
+    span = spans[0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
     assert span.attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
     assert span.attributes["gen_ai.response.id"] == response.id
@@ -313,8 +310,8 @@ def test_litellm_openai_with_image_url(
     time.sleep(SLEEP_TO_FLUSH_SECONDS)
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
-    span = [s for s in spans if s.name == "litellm.completion"][0]
+    assert len(spans) == 1
+    span = spans[0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
     assert span.attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
     assert span.attributes["gen_ai.response.id"] == response.id
@@ -374,8 +371,8 @@ async def test_async_litellm_openai_with_image_base64(
     await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
-    span = [s for s in spans if s.name == "litellm.completion"][0]
+    assert len(spans) == 1
+    span = spans[0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
     assert span.attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
     assert span.attributes["gen_ai.response.id"] == response.id
@@ -430,8 +427,8 @@ async def test_async_litellm_openai_with_image_url(
     await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
-    span = [s for s in spans if s.name == "litellm.completion"][0]
+    assert len(spans) == 1
+    span = spans[0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
     assert span.attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
     assert span.attributes["gen_ai.response.id"] == response.id
@@ -472,8 +469,8 @@ async def test_async_litellm_openai_basic(
     await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
-    span = [s for s in spans if s.name == "litellm.completion"][0]
+    assert len(spans) == 1
+    span = spans[0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
     assert span.attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
     assert span.attributes["gen_ai.response.id"] == response.id
@@ -518,8 +515,8 @@ async def test_async_litellm_openai_text_block(
     await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
-    span = [s for s in spans if s.name == "litellm.completion"][0]
+    assert len(spans) == 1
+    span = spans[0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
     assert span.attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
     assert span.attributes["gen_ai.response.id"] == response.id
@@ -564,8 +561,8 @@ async def test_async_litellm_openai_with_streaming(
     await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
-    span = [s for s in spans if s.name == "litellm.completion"][0]
+    assert len(spans) == 1
+    span = spans[0]
     assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
     assert span.attributes["gen_ai.usage.input_tokens"] == 14
     assert span.attributes["gen_ai.usage.output_tokens"] == 7
