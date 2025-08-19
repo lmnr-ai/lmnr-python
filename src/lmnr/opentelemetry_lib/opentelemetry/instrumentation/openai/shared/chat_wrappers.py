@@ -56,7 +56,6 @@ from opentelemetry.trace import SpanKind, Tracer
 from opentelemetry.trace.status import Status, StatusCode
 from wrapt import ObjectProxy
 
-from openai.types.chat.chat_completion_message import FunctionCall
 import pydantic
 
 SPAN_NAME = "openai.chat"
@@ -1014,7 +1013,7 @@ def _parse_tool_calls(
             tool_call_data = copy.deepcopy(tool_call)
         elif _is_tool_call_model(tool_call):
             tool_call_data = tool_call.model_dump()
-        elif isinstance(tool_call, FunctionCall):
+        elif _is_function_call(tool_call):
             function_call = tool_call.model_dump()
             tool_call_data = ToolCall(
                 id="",
@@ -1036,6 +1035,15 @@ def _is_tool_call_model(tool_call):
         )
 
         return isinstance(tool_call, ChatCompletionMessageFunctionToolCall)
+    except Exception:
+        return False
+
+
+def _is_function_call(model: Union[dict, pydantic.BaseModel]) -> bool:
+    try:
+        from openai.types.chat.chat_completion_message import FunctionCall
+
+        return isinstance(model, FunctionCall)
     except Exception:
         return False
 

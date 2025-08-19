@@ -464,7 +464,9 @@ def responses_get_or_create_wrapper(tracer: Tracer, wrapped, instance, args, kwa
             output_blocks={block.id: block for block in parsed_response.output}
             | existing_data.get("output_blocks", {}),
             usage=existing_data.get("usage", parsed_response.usage),
-            output_text=existing_data.get("output_text", parsed_response.output_text),
+            output_text=existing_data.get(
+                "output_text", _get_output_text(parsed_response)
+            ),
             request_model=existing_data.get("request_model", kwargs.get("model")),
             response_model=existing_data.get("response_model", parsed_response.model),
         )
@@ -560,7 +562,9 @@ async def async_responses_get_or_create_wrapper(
             output_blocks={block.id: block for block in parsed_response.output}
             | existing_data.get("output_blocks", {}),
             usage=existing_data.get("usage", parsed_response.usage),
-            output_text=existing_data.get("output_text", parsed_response.output_text),
+            output_text=existing_data.get(
+                "output_text", _get_output_text(parsed_response)
+            ),
             request_model=existing_data.get("request_model", kwargs.get("model")),
             response_model=existing_data.get("response_model", parsed_response.model),
         )
@@ -637,6 +641,18 @@ async def async_responses_cancel_wrapper(
         set_data_attributes(existing_data, span)
         span.end()
     return response
+
+
+def _get_output_text(parsed_response: Response) -> Optional[str]:
+    output_text = None
+    if hasattr(parsed_response, "output_text"):
+        output_text = parsed_response.output_text
+    else:
+        try:
+            output_text = parsed_response.output[0].content[0].text
+        except Exception:
+            pass
+    return output_text
 
 
 # TODO: build streaming responses
