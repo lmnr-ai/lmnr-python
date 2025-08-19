@@ -182,8 +182,8 @@ def test_litellm_openai_with_chat_history(
     inner_spans = [s for s in spans if s.name == "litellm.completion"]
     assert len(inner_spans) == 2
     inner_spans = sorted(inner_spans, key=lambda s: s.start_time)
-    first_span = inner_spans[0]
-    second_span = inner_spans[1]
+    first_span = sorted(inner_spans, key=lambda s: s.start_time)[0]
+    second_span = sorted(inner_spans, key=lambda s: s.start_time)[1]
     assert first_span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
     assert second_span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
 

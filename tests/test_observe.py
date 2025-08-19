@@ -4,6 +4,8 @@ import pytest
 
 from lmnr import Laminar, observe
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry import trace
+from opentelemetry.trace import INVALID_SPAN_ID
 
 
 def test_observe(span_exporter: InMemorySpanExporter):
@@ -1041,3 +1043,82 @@ def test_start_as_current_span_inside_observe(span_exporter: InMemorySpanExporte
     assert outer_span.attributes["lmnr.span.instrumentation_source"] == "python"
     assert outer_span.attributes["lmnr.span.path"] == ("foo",)
     assert inner_span.attributes["lmnr.span.path"] == ("foo", "test")
+
+
+def test_observe_preserve_global_context(span_exporter: InMemorySpanExporter):
+    @observe(preserve_global_context=True)
+    def observed_preserve_global():
+        return "foo_global"
+
+    @observe()
+    def observe_isolated():
+        return "foo_isolated"
+
+    # Start a span in the global context
+    with trace.get_tracer(__name__).start_as_current_span("outer"):
+        result = observed_preserve_global()
+        assert result == "foo_global"
+
+        result = observe_isolated()
+        assert result == "foo_isolated"
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 3
+    outer_span = [span for span in spans if span.name == "outer"][0]
+    isolated_span = [span for span in spans if span.name == "observe_isolated"][0]
+    preserve_span = [span for span in spans if span.name == "observed_preserve_global"][
+        0
+    ]
+
+    assert (
+        outer_span.get_span_context().trace_id
+        == preserve_span.get_span_context().trace_id
+    )
+    assert (
+        outer_span.get_span_context().trace_id
+        != isolated_span.get_span_context().trace_id
+    )
+
+    assert preserve_span.parent.span_id == outer_span.get_span_context().span_id
+    assert isolated_span.parent is None
+
+
+@pytest.mark.asyncio
+async def test_observe_preserve_global_context_async(
+    span_exporter: InMemorySpanExporter,
+):
+    @observe(preserve_global_context=True)
+    def observed_preserve_global():
+        return "foo_global"
+
+    @observe()
+    def observe_isolated():
+        return "foo_isolated"
+
+    # Start a span in the global context
+    with trace.get_tracer(__name__).start_as_current_span("outer"):
+        result = observed_preserve_global()
+        assert result == "foo_global"
+
+        result = observe_isolated()
+        assert result == "foo_isolated"
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 3
+    outer_span = [span for span in spans if span.name == "outer"][0]
+    isolated_span = [span for span in spans if span.name == "observe_isolated"][0]
+    preserve_span = [span for span in spans if span.name == "observed_preserve_global"][
+        0
+    ]
+
+    assert (
+        outer_span.get_span_context().trace_id
+        == preserve_span.get_span_context().trace_id
+    )
+    assert (
+        outer_span.get_span_context().trace_id
+        != isolated_span.get_span_context().trace_id
+    )
+
+    assert preserve_span.parent.span_id == outer_span.get_span_context().span_id
+    assert isolated_span.parent is None

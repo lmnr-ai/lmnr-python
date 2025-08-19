@@ -5,8 +5,9 @@ import uuid
 from tqdm import tqdm
 from typing import Any, Awaitable
 
+from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
-from lmnr.opentelemetry_lib.tracing.attributes import SPAN_TYPE
+from lmnr.opentelemetry_lib.tracing.attributes import HUMAN_EVALUATOR_OPTIONS, SPAN_TYPE
 
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
@@ -363,6 +364,10 @@ class Evaluation:
                         human_evaluator_span.set_attribute(
                             SPAN_TYPE, SpanType.HUMAN_EVALUATOR.value
                         )
+                        if evaluator.options:
+                            human_evaluator_span.set_attribute(
+                                HUMAN_EVALUATOR_OPTIONS, json_dumps(evaluator.options)
+                            )
                         # Human evaluators don't execute automatically, just create the span
                         L.set_span_output(None)
 

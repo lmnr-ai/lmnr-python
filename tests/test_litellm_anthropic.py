@@ -181,8 +181,8 @@ def test_litellm_anthropic_with_chat_history(
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
-    first_span = spans[0]
-    second_span = spans[1]
+    first_span = sorted(spans, key=lambda x: x.start_time)[0]
+    second_span = sorted(spans, key=lambda x: x.start_time)[1]
     assert first_span.name == "litellm.completion"
     assert second_span.name == "litellm.completion"
     assert first_span.attributes["gen_ai.request.model"] == "claude-3-5-haiku-latest"
