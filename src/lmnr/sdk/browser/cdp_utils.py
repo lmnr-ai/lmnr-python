@@ -2,37 +2,16 @@ import orjson
 import logging
 import os
 import time
+import asyncio
 
 from opentelemetry import trace
 
-from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from lmnr.sdk.decorators import observe
-from lmnr.sdk.browser.utils import retry_sync, retry_async
-from lmnr.sdk.client.synchronous.sync_client import LaminarClient
+from lmnr.sdk.browser.utils import retry_async
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
 from lmnr.sdk.types import MaskInputOptions
-
-try:
-    if is_package_installed("playwright"):
-        from playwright.async_api import Page
-        from playwright.sync_api import Page as SyncPage
-    elif is_package_installed("patchright"):
-        from patchright.async_api import Page
-        from patchright.sync_api import Page as SyncPage
-    else:
-        raise ImportError(
-            "Attempted to import lmnr.sdk.browser.pw_utils, but neither "
-            "playwright nor patchright is installed. Use `pip install playwright` "
-            "or `pip install patchright` to install one of the supported browsers."
-        )
-except ImportError as e:
-    raise ImportError(
-        "Attempted to import lmnr.sdk.browser.pw_utils, but neither "
-        "playwright nor patchright is installed. Use `pip install playwright` "
-        "or `pip install patchright` to install one of the supported browsers."
-    ) from e
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +22,7 @@ with open(os.path.join(current_dir, "recorder", "record.umd.min.cjs"), "r") as f
     RRWEB_CONTENT = f"() => {{ {f.read()} }}"
 
 INJECT_PLACEHOLDER = """
-(mask_input_options) => {
+(maskInputOptions) => {
     const BATCH_TIMEOUT = 2000; // Send events after 2 seconds
     const MAX_WORKER_PROMISES = 50; // Max concurrent worker promises
     const HEARTBEAT_INTERVAL = 2000;
@@ -316,7 +295,7 @@ INJECT_PLACEHOLDER = """
     }
 
     // Worker-based compression for large objects
-    async function compressLargeObject(data, isLarge = true) {
+    async function compressLargeObject(data) {
         // Check if workers are supported first - if not, use main thread compression
         if (!testWorkerSupport()) {
             return await compressSmallObject(data);
@@ -380,7 +359,6 @@ INJECT_PLACEHOLDER = """
     function isLargeEvent(type) {
         const LARGE_EVENT_TYPES = [
             2, // FullSnapshot
-            3, // IncrementalSnapshot
         ];
 
         if (LARGE_EVENT_TYPES.includes(type)) {
@@ -421,7 +399,7 @@ INJECT_PLACEHOLDER = """
         while (window.lmnrChunkQueue.length > 0) {
             const chunk = window.lmnrChunkQueue.shift();
             try {
-                await window.lmnrSendEvents(chunk);
+                window.lmnrSendEvents(JSON.stringify(chunk));
                 // Small delay between chunks to avoid overwhelming CDP
                 await new Promise(resolve => setTimeout(resolve, CHUNK_SEND_DELAY));
             } catch (error) {
@@ -456,7 +434,7 @@ INJECT_PLACEHOLDER = """
                         data: batchString,
                         isFinal: true
                     };
-                    await window.lmnrSendEvents(chunk);
+                    window.lmnrSendEvents(JSON.stringify(chunk));
                 } else {
                     // Need to chunk
                     const chunks = createChunks(batchString, batchId);
@@ -486,7 +464,7 @@ INJECT_PLACEHOLDER = """
             try {
                 const isLarge = isLargeEvent(event.type);
                 const compressedResult = isLarge ?
-                    await compressLargeObject(event.data, true) :
+                    await compressLargeObject(event.data) :
                     await compressSmallObject(event.data);
 
                 const base64Data = await bufferToBase64(compressedResult);
@@ -504,12 +482,12 @@ INJECT_PLACEHOLDER = """
         recordCrossOriginIframes: true,
         maskInputOptions: {
             password: true,
-            textarea: mask_input_options.textarea || false,
-            text: mask_input_options.text || false,
-            number: mask_input_options.number || false,
-            select: mask_input_options.select || false,
-            email: mask_input_options.email || false,
-            tel: mask_input_options.tel || false,
+            textarea: maskInputOptions.textarea || false,
+            text: maskInputOptions.text || false,
+            number: maskInputOptions.number || false,
+            select: maskInputOptions.select || false,
+            email: maskInputOptions.email || false,
+            tel: maskInputOptions.tel || false,
         }
     });
 
@@ -525,7 +503,6 @@ INJECT_PLACEHOLDER = """
     }
 
     heartbeat();
-
 }
 """
 
@@ -557,162 +534,69 @@ def get_mask_input_setting() -> MaskInputOptions:
         )
 
 
-def inject_session_recorder_sync(page: SyncPage):
+# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
+async def inject_session_recorder(cdp_session):
+    cdp_client = cdp_session.cdp_client
     try:
         try:
-            is_loaded = page.evaluate(
-                """() => typeof window.lmnrRrweb !== 'undefined'"""
-            )
+            is_loaded = await is_recorder_present(cdp_session)
         except Exception as e:
             logger.debug(f"Failed to check if session recorder is loaded: {e}")
             is_loaded = False
 
-        if not is_loaded:
+        if is_loaded:
+            return
 
-            def load_session_recorder():
-                try:
-                    page.evaluate(RRWEB_CONTENT)
-                    return True
-                except Exception as e:
-                    logger.debug(f"Failed to load session recorder: {e}")
-                    return False
-
-            if not retry_sync(
-                load_session_recorder,
-                delay=1,
-                error_message="Failed to load session recorder",
-            ):
-                return
-
+        async def load_session_recorder():
             try:
-                page.evaluate(INJECT_PLACEHOLDER, get_mask_input_setting())
-            except Exception as e:
-                logger.debug(f"Failed to inject session recorder: {e}")
-
-    except Exception as e:
-        logger.error(f"Error during session recorder injection: {e}")
-
-
-async def inject_session_recorder_async(page: Page):
-    try:
-        try:
-            is_loaded = await page.evaluate(
-                """() => typeof window.lmnrRrweb !== 'undefined'"""
-            )
-        except Exception as e:
-            logger.debug(f"Failed to check if session recorder is loaded: {e}")
-            is_loaded = False
-
-        if not is_loaded:
-
-            async def load_session_recorder():
-                try:
-                    await page.evaluate(RRWEB_CONTENT)
-                    return True
-                except Exception as e:
-                    logger.debug(f"Failed to load session recorder: {e}")
-                    return False
-
-            if not await retry_async(
-                load_session_recorder,
-                delay=1,
-                error_message="Failed to load session recorder",
-            ):
-                return
-
-            try:
-                await page.evaluate(INJECT_PLACEHOLDER, get_mask_input_setting())
-            except Exception as e:
-                logger.debug(f"Failed to inject session recorder placeholder: {e}")
-
-    except Exception as e:
-        logger.error(f"Error during session recorder injection: {e}")
-
-
-@observe(name="playwright.page", ignore_input=True, ignore_output=True)
-def start_recording_events_sync(page: SyncPage, session_id: str, client: LaminarClient):
-
-    ctx = get_current_context()
-    span = trace.get_current_span(ctx)
-    trace_id = format(span.get_span_context().trace_id, "032x")
-    span.set_attribute("lmnr.internal.has_browser_session", True)
-
-    # Buffer for reassembling chunks
-    chunk_buffers = {}
-
-    def send_events_from_browser(chunk):
-        try:
-            # Handle chunked data
-            batch_id = chunk["batchId"]
-            chunk_index = chunk["chunkIndex"]
-            total_chunks = chunk["totalChunks"]
-            data = chunk["data"]
-
-            # Initialize buffer for this batch if needed
-            if batch_id not in chunk_buffers:
-                chunk_buffers[batch_id] = {
-                    "chunks": {},
-                    "total": total_chunks,
-                    "timestamp": time.time(),
-                }
-
-            # Store chunk
-            chunk_buffers[batch_id]["chunks"][chunk_index] = data
-
-            # Check if we have all chunks
-            if len(chunk_buffers[batch_id]["chunks"]) == total_chunks:
-                # Reassemble the full message
-                full_data = "".join(
-                    chunk_buffers[batch_id]["chunks"][i] for i in range(total_chunks)
+                await cdp_client.send.Runtime.evaluate(
+                    {
+                        "expression": f"({RRWEB_CONTENT})()",
+                        "awaitPromise": True,
+                    },
+                    session_id=cdp_session.session_id,
                 )
+                return True
+            except Exception as e:
+                logger.error(f"Failed to load session recorder: {e}")
+                return False
 
-                # Parse the JSON
-                events = orjson.loads(full_data)
+        if not await retry_async(
+            load_session_recorder,
+            delay=1,
+            error_message="Failed to load session recorder",
+        ):
+            return
 
-                # Send to server
-                if events and len(events) > 0:
-                    client._browser_events.send(session_id, trace_id, events)
-
-                # Clean up buffer
-                del chunk_buffers[batch_id]
-
-            # Clean up old incomplete buffers
-            current_time = time.time()
-            to_delete = []
-            for bid, buffer in chunk_buffers.items():
-                if current_time - buffer["timestamp"] > OLD_BUFFER_TIMEOUT:
-                    to_delete.append(bid)
-            for bid in to_delete:
-                logger.debug(f"Cleaning up incomplete chunk buffer: {bid}")
-                del chunk_buffers[bid]
-
-        except Exception as e:
-            logger.debug(f"Could not send events: {e}")
-
-    try:
-        page.expose_function("lmnrSendEvents", send_events_from_browser)
-    except Exception as e:
-        logger.debug(f"Could not expose function: {e}")
-
-    inject_session_recorder_sync(page)
-
-    def on_load(p):
         try:
-            inject_session_recorder_sync(p)
+            await cdp_client.send.Runtime.evaluate(
+                {
+                    "expression": f"({INJECT_PLACEHOLDER})({orjson.dumps(get_mask_input_setting()).decode("utf-8")})",
+                },
+                session_id=cdp_session.session_id,
+            )
         except Exception as e:
-            logger.error(f"Error in on_load handler: {e}")
+            logger.debug(f"Failed to inject session recorder placeholder: {e}")
 
-    page.on("domcontentloaded", on_load)
+    except Exception as e:
+        logger.error(f"Error during session recorder injection: {e}")
 
 
-@observe(name="playwright.page", ignore_input=True, ignore_output=True)
-async def start_recording_events_async(
-    page: Page, session_id: str, client: AsyncLaminarClient
+# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
+@observe(name="cdp_use.session", ignore_input=True, ignore_output=True)
+async def start_recording_events(
+    cdp_session,
+    lmnr_session_id: str,
+    client: AsyncLaminarClient,
 ):
+    cdp_client = cdp_session.cdp_client
+
     ctx = get_current_context()
     span = trace.get_current_span(ctx)
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
+
+    await inject_session_recorder(cdp_session)
 
     # Buffer for reassembling chunks
     chunk_buffers = {}
@@ -748,7 +632,7 @@ async def start_recording_events_async(
 
                 # Send to server
                 if events and len(events) > 0:
-                    await client._browser_events.send(session_id, trace_id, events)
+                    await client._browser_events.send(lmnr_session_id, trace_id, events)
 
                 # Clean up buffer
                 del chunk_buffers[batch_id]
@@ -766,51 +650,84 @@ async def start_recording_events_async(
         except Exception as e:
             logger.debug(f"Could not send events: {e}")
 
-    try:
-        await page.expose_function("lmnrSendEvents", send_events_from_browser)
-    except Exception as e:
-        logger.debug(f"Could not expose function: {e}")
+    # cdp_use.cdp.runtime.events.BindingCalledEvent
+    async def send_events_callback(event, cdp_session_id: str | None = None):
+        if event["name"] != "lmnrSendEvents":
+            return
+        await send_events_from_browser(orjson.loads(event["payload"]))
 
-    await inject_session_recorder_async(page)
+    await cdp_client.send.Runtime.addBinding(
+        {
+            "name": "lmnrSendEvents",
+        },
+        session_id=cdp_session.session_id,
+    )
+    cdp_client.register.Runtime.bindingCalled(send_events_callback)
 
-    async def on_load(p):
-        try:
-            await inject_session_recorder_async(p)
-        except Exception as e:
-            logger.error(f"Error in on_load handler: {e}")
-
-    page.on("domcontentloaded", on_load)
+    await enable_target_discovery(cdp_session)
+    register_on_target_created(cdp_session, lmnr_session_id, client)
 
 
-def take_full_snapshot(page: Page):
-    return page.evaluate(
-        """() => {
-        if (window.lmnrRrweb) {
-            try {
-                window.lmnrRrweb.record.takeFullSnapshot();
-                return true;
-            } catch (e) {
-                console.error("Error taking full snapshot:", e);
-                return false;
-            }
-        }
-        return false;
-    }"""
+# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
+async def enable_target_discovery(cdp_session):
+    cdp_client = cdp_session.cdp_client
+    await cdp_client.send.Target.setDiscoverTargets(
+        {
+            "discover": True,
+        },
+        session_id=cdp_session.session_id,
     )
 
 
-async def take_full_snapshot_async(page: Page):
-    return await page.evaluate(
-        """() => {
-        if (window.lmnrRrweb) {
-            try {
-                window.lmnrRrweb.record.takeFullSnapshot();
-                return true;
-            } catch (e) {
-                console.error("Error taking full snapshot:", e);
-                return false;
-            }
-        }
-        return false;
-    }"""
+# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
+def register_on_target_created(
+    cdp_session, lmnr_session_id: str, client: AsyncLaminarClient
+):
+    # cdp_use.cdp.target.events.TargetCreatedEvent
+    def on_target_created(event, cdp_session_id: str | None = None):
+        target_info = event["targetInfo"]
+        if target_info["type"] == "page":
+            asyncio.create_task(inject_session_recorder(cdp_session=cdp_session))
+
+    cdp_session.cdp_client.register.Target.targetCreated(on_target_created)
+
+
+# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
+async def is_recorder_present(cdp_session) -> bool:
+    cdp_client = cdp_session.cdp_client
+
+    result = await cdp_client.send.Runtime.evaluate(
+        {
+            "expression": """(()=>{
+                return typeof window.lmnrRrweb !== 'undefined';
+            })()""",
+        },
+        session_id=cdp_session.session_id,
     )
+    if result and "result" in result and "value" in result["result"]:
+        return result["result"]["value"]
+    return False
+
+
+async def take_full_snapshot(cdp_session):
+    cdp_client = cdp_session.cdp_client
+    result = await cdp_client.send.Runtime.evaluate(
+        {
+            "expression": """(() => {
+    if (window.lmnrRrweb) {
+        try {
+            window.lmnrRrweb.record.takeFullSnapshot();
+            return true;
+        } catch (e) {
+            console.error("Error taking full snapshot:", e);
+            return false;
+        }
+    }
+    return false;
+})()""",
+        },
+        session_id=cdp_session.session_id,
+    )
+    if result and "result" in result and "value" in result["result"]:
+        return result["result"]["value"]
+    return False

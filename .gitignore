@@ -6,3 +6,4 @@ lmnr_engine/
 .vscode
 .venv
 .idea
+.env

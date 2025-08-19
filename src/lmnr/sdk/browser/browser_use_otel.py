@@ -1,5 +1,5 @@
 from lmnr.opentelemetry_lib.decorators import json_dumps
-from lmnr.sdk.laminar import Laminar
+from lmnr import Laminar
 from lmnr.sdk.browser.utils import with_tracer_wrapper
 from lmnr.sdk.utils import get_input_from_func_args
 from lmnr.version import __version__
@@ -16,11 +16,11 @@ try:
 except ImportError as e:
     raise ImportError(
         f"Attempted to import {__file__}, but it is designed "
-        "to patch Browser Use, which is not installed. Use `pip install browser-use` "
+        "to patch Browser Use < 0.5.0, which is not installed. Use `pip install browser-use` "
         "to install Browser Use or remove this import."
     ) from e
 
-_instruments = ("browser-use >= 0.1.0",)
+_instruments = ("browser-use < 0.5.0",)
 
 WRAPPED_METHODS = [
     {
@@ -89,7 +89,6 @@ async def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
             span_name = f"agent.step.{step_info.step_number}"
 
     with Laminar.start_as_current_span(span_name) as span:
-        span.set_attributes(attributes)
         result = await wrapped(*args, **kwargs)
         if not to_wrap.get("ignore_output"):
             to_serialize = result
@@ -104,7 +103,7 @@ async def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         return result
 
 
-class BrowserUseInstrumentor(BaseInstrumentor):
+class BrowserUseLegacyInstrumentor(BaseInstrumentor):
     def __init__(self):
         super().__init__()
 
