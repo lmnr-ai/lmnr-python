@@ -1,4 +1,3 @@
-from lmnr.sdk.browser.cdp_utils import take_full_snapshot
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.browser.utils import with_tracer_and_client_wrapper
 from lmnr.version import __version__
@@ -18,6 +17,13 @@ WRAPPED_METHODS = [
         "package": "browser_use.browser.session",
         "object": "BrowserSession",
         "method": "get_or_create_cdp_session",
+        "action": "inject_session_recorder",
+    },
+    {
+        "package": "browser_use.browser.session",
+        "object": "BrowserSession",
+        "method": "on_SwitchTabEvent",
+        "action": "take_full_snapshot",
     },
 ]
 
@@ -29,20 +35,21 @@ async def _wrap(
     from lmnr.sdk.browser.cdp_utils import (
         is_rrweb_present,
         start_recording_events,
+        take_full_snapshot,
     )
 
     result = await wrapped(*args, **kwargs)
 
-    cdp_session = result
-    is_registered = await is_rrweb_present(cdp_session)
-    if not is_registered:
-        await start_recording_events(cdp_session, str(uuid.uuid4()), client)
+    if to_wrap.get("action") == "inject_session_recorder":
+        is_registered = await is_rrweb_present(result)
+        if not is_registered:
+            await start_recording_events(result, str(uuid.uuid4()), client)
 
-    target_id = kwargs.get("target_id", args[1] if len(args) > 1 else None)
-    focus = kwargs.get("focus", args[2] if len(args) > 2 else True)
-
-    if isinstance(target_id, str) and target_id and focus:
-        await take_full_snapshot(cdp_session)
+    if to_wrap.get("action") == "take_full_snapshot":
+        target_id = result
+        if target_id:
+            cdp_session = await instance.get_or_create_cdp_session(target_id)
+            await take_full_snapshot(cdp_session)
 
     return result
 
