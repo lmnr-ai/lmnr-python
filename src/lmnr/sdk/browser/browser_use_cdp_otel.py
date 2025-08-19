@@ -1,3 +1,4 @@
+from lmnr.sdk.browser.cdp_utils import take_full_snapshot
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.browser.utils import with_tracer_and_client_wrapper
 from lmnr.version import __version__
@@ -36,6 +37,13 @@ async def _wrap(
     is_registered = await is_rrweb_present(cdp_session)
     if not is_registered:
         await start_recording_events(cdp_session, str(uuid.uuid4()), client)
+
+    target_id = kwargs.get("target_id", args[1] if len(args) > 1 else None)
+    focus = kwargs.get("focus", args[2] if len(args) > 2 else True)
+
+    if isinstance(target_id, str) and target_id and focus:
+        await take_full_snapshot(cdp_session)
+
     return result
 
 

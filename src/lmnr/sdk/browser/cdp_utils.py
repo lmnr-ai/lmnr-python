@@ -266,7 +266,7 @@ INJECT_PLACEHOLDER = """
                     compressionWorker.onerror = (error) => {
                         console.error('Compression worker error:', error);
                         cleanupWorker();
-                        resolve(compressSmallObject(data));
+                        compressSmallObject(data).then(resolve, reject);
                     };
                 }
 
@@ -665,20 +665,7 @@ async def start_recording_events(
     cdp_client.register.Runtime.bindingCalled(send_events_callback)
 
     await enable_target_discovery(cdp_session)
-
-    register_on_dom_content_loaded(cdp_session)
     register_on_target_created(cdp_session, lmnr_session_id, client)
-
-
-# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
-def register_on_dom_content_loaded(cdp_session):
-    cdp_client = cdp_session.cdp_client
-
-    # cdp_use.cdp.page.events.DomContentEventFiredEvent
-    def on_load(event, cdp_session_id: str | None = None):
-        asyncio.run(inject_session_recorder(cdp_session))
-
-    cdp_client.register.Page.domContentEventFired(on_load)
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
@@ -700,7 +687,7 @@ def register_on_target_created(
     def on_target_created(event, cdp_session_id: str | None = None):
         target_info = event["targetInfo"]
         if target_info["type"] == "page":
-            asyncio.run(inject_session_recorder(cdp_session=cdp_session))
+            asyncio.create_task(inject_session_recorder(cdp_session=cdp_session))
 
     cdp_session.cdp_client.register.Target.targetCreated(on_target_created)
 
@@ -714,6 +701,30 @@ async def is_rrweb_present(cdp_session) -> bool:
             "expression": """(()=>{
                 return typeof window.lmnrRrweb !== 'undefined';
             })()""",
+        },
+        session_id=cdp_session.session_id,
+    )
+    if result and "result" in result and "value" in result["result"]:
+        return result["result"]["value"]
+    return False
+
+
+async def take_full_snapshot(cdp_session):
+    cdp_client = cdp_session.cdp_client
+    result = await cdp_client.send.Runtime.evaluate(
+        {
+            "expression": """(() => {
+    if (window.lmnrRrweb) {
+        try {
+            window.lmnrRrweb.record.takeFullSnapshot();
+            return true;
+        } catch (e) {
+            console.error("Error taking full snapshot:", e);
+            return false;
+        }
+    }
+    return false;
+})()""",
         },
         session_id=cdp_session.session_id,
     )
