@@ -65,7 +65,7 @@ class BrowserUseInstrumentorInitializer(InstrumentorInitializer):
 
             return BrowserUseLegacyInstrumentor()
 
-        if version and parse(version) >= parse("1.0.0rc1"):
+        if version and parse(version) >= parse("0.6.0rc1"):
             from lmnr.sdk.browser.browser_use_cdp_otel import BrowserUseInstrumentor
 
             return BrowserUseInstrumentor(async_client)
