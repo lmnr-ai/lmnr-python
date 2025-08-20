@@ -14,8 +14,8 @@ from typing import Collection
 from wrapt import wrap_function_wrapper
 import uuid
 
-# Stable versions, e.g. 1.0.0, satisfy this condition too
-_instruments = ("browser-use >= 1.0.0rc1",)
+# Stable versions, e.g. 0.6.0, satisfy this condition too
+_instruments = ("browser-use >= 0.6.0rc1",)
 
 WRAPPED_METHODS = [
     {
