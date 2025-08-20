@@ -15,7 +15,7 @@ pytest_plugins = ("pytest_asyncio",)
 
 
 @pytest.fixture(scope="session")
-def span_exporter() -> Generator[SpanExporter, None, None]:
+def span_exporter() -> SpanExporter:
     exporter = InMemorySpanExporter()
 
     # Set up a partial mock of TracerManager.init to inject our exporter
