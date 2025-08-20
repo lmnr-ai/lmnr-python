@@ -2,6 +2,8 @@ from typing import Collection
 
 from opentelemetry._events import get_event_logger
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
+
+from lmnr.sdk.log import get_default_logger
 from ..shared.chat_wrappers import (
     achat_wrapper,
     chat_wrapper,
@@ -44,6 +46,7 @@ from wrapt import wrap_function_wrapper
 
 
 _instruments = ("openai >= 1.0.0",)
+logger = get_default_logger(__name__)
 
 
 class OpenAIV1Instrumentor(BaseInstrumentor):
@@ -63,7 +66,8 @@ class OpenAIV1Instrumentor(BaseInstrumentor):
         """
         try:
             wrap_function_wrapper(module, function, wrapper)
-        except (AttributeError, ModuleNotFoundError):
+        except (AttributeError, ModuleNotFoundError, ImportError):
+            logger.debug(f"Failed to wrap {module}.{function}")
             pass
 
     def _instrument(self, **kwargs):
@@ -331,28 +335,34 @@ class OpenAIV1Instrumentor(BaseInstrumentor):
         )
 
     def _uninstrument(self, **kwargs):
-        unwrap("openai.resources.chat.completions", "Completions.create")
-        unwrap("openai.resources.completions", "Completions.create")
-        unwrap("openai.resources.embeddings", "Embeddings.create")
-        unwrap("openai.resources.chat.completions", "AsyncCompletions.create")
-        unwrap("openai.resources.completions", "AsyncCompletions.create")
-        unwrap("openai.resources.embeddings", "AsyncEmbeddings.create")
-        unwrap("openai.resources.images", "Images.generate")
+        self.try_unwrap("openai.resources.chat.completions.Completions", "create")
+        self.try_unwrap("openai.resources.completions.Completions", "create")
+        self.try_unwrap("openai.resources.embeddings.Embeddings", "create")
+        self.try_unwrap("openai.resources.chat.completions.AsyncCompletions", "create")
+        self.try_unwrap("openai.resources.completions.AsyncCompletions", "create")
+        self.try_unwrap("openai.resources.embeddings.AsyncEmbeddings", "create")
+        self.try_unwrap("openai.resources.images.Images", "generate")
+        self.try_unwrap("openai.resources.chat.completions.Completions", "parse")
+        self.try_unwrap("openai.resources.chat.completions.AsyncCompletions", "parse")
+        self.try_unwrap("openai.resources.beta.assistants.Assistants", "create")
+        self.try_unwrap("openai.resources.beta.chat.completions.Completions", "parse")
+        self.try_unwrap(
+            "openai.resources.beta.chat.completions.AsyncCompletions", "parse"
+        )
+        self.try_unwrap("openai.resources.beta.threads.runs.Runs", "create")
+        self.try_unwrap("openai.resources.beta.threads.runs.Runs", "retrieve")
+        self.try_unwrap("openai.resources.beta.threads.runs.Runs", "create_and_stream")
+        self.try_unwrap("openai.resources.beta.threads.messages.Messages", "list")
+        self.try_unwrap("openai.resources.responses.Responses", "create")
+        self.try_unwrap("openai.resources.responses.Responses", "retrieve")
+        self.try_unwrap("openai.resources.responses.Responses", "cancel")
+        self.try_unwrap("openai.resources.responses.AsyncResponses", "create")
+        self.try_unwrap("openai.resources.responses.AsyncResponses", "retrieve")
+        self.try_unwrap("openai.resources.responses.AsyncResponses", "cancel")
 
-        # Beta APIs may not be available consistently in all versions
+    def try_unwrap(self, module, function):
         try:
-            unwrap("openai.resources.beta.assistants", "Assistants.create")
-            unwrap("openai.resources.beta.chat.completions", "Completions.parse")
-            unwrap("openai.resources.beta.chat.completions", "AsyncCompletions.parse")
-            unwrap("openai.resources.beta.threads.runs", "Runs.create")
-            unwrap("openai.resources.beta.threads.runs", "Runs.retrieve")
-            unwrap("openai.resources.beta.threads.runs", "Runs.create_and_stream")
-            unwrap("openai.resources.beta.threads.messages", "Messages.list")
-            unwrap("openai.resources.responses", "Responses.create")
-            unwrap("openai.resources.responses", "Responses.retrieve")
-            unwrap("openai.resources.responses", "Responses.cancel")
-            unwrap("openai.resources.responses", "AsyncResponses.create")
-            unwrap("openai.resources.responses", "AsyncResponses.retrieve")
-            unwrap("openai.resources.responses", "AsyncResponses.cancel")
-        except ImportError:
+            unwrap(module, function)
+        except (AttributeError, ModuleNotFoundError, ImportError):
+            logger.debug(f"Failed to unwrap {module}.{function}")
             pass

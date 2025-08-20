@@ -11,6 +11,10 @@ from lmnr.opentelemetry_lib.tracing.context import get_event_attributes_from_con
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from lmnr.sdk.log import get_default_logger
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import (
+    OpenAIInstrumentor,
+)
+
 logger = get_default_logger(__name__)
 
 SUPPORTED_CALL_TYPES = ["completion", "acompletion"]
@@ -40,6 +44,17 @@ try:
             super().__init__(**kwargs)
             if not hasattr(TracerWrapper, "instance") or TracerWrapper.instance is None:
                 raise ValueError("Laminar must be initialized before LiteLLM callback")
+
+            if is_package_installed("openai"):
+                openai_instrumentor = OpenAIInstrumentor()
+                if (
+                    openai_instrumentor
+                    and openai_instrumentor.is_instrumented_by_opentelemetry
+                ):
+                    logger.info(
+                        "Disabling OpenTelemetry instrumentation for OpenAI to avoid double-instrumentation of LiteLLM."
+                    )
+                    openai_instrumentor.uninstrument()
 
         def _get_tracer(self) -> Tracer:
             if not hasattr(TracerWrapper, "instance") or TracerWrapper.instance is None:

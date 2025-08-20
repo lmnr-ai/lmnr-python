@@ -945,7 +945,6 @@ def test_with_asyncio_run(
 
 
 @pytest.mark.vcr
-@pytest.mark.asyncio
 def test_with_asyncio_run_with_events_with_content(
     instrument_with_content, span_exporter, log_exporter, async_openai_client
 ):
@@ -994,7 +993,6 @@ def test_with_asyncio_run_with_events_with_content(
 
 
 @pytest.mark.vcr
-@pytest.mark.asyncio
 def test_with_asyncio_run_with_events_with_no_content(
     instrument_with_no_content, span_exporter, log_exporter, async_openai_client
 ):
@@ -1301,7 +1299,7 @@ def assert_message_in_logs(log: LogData, event_name: str, expected_content: dict
 
 
 @pytest.mark.vcr
-def test_chat_history_message_dict(span_exporter, openai_client):
+def test_chat_history_message_dict(instrument_legacy, span_exporter, openai_client):
     first_user_message = {
         "role": "user",
         "content": "Generate a random noun in Korean. Respond with just that word.",
@@ -1371,7 +1369,7 @@ def test_chat_history_message_dict(span_exporter, openai_client):
 
 
 @pytest.mark.vcr
-def test_chat_history_message_pydantic(span_exporter, openai_client):
+def test_chat_history_message_pydantic(instrument_legacy, span_exporter, openai_client):
     first_user_message = {
         "role": "user",
         "content": "Generate a random noun in Korean. Respond with just that word.",

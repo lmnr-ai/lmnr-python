@@ -115,7 +115,7 @@ def fixture_meter_provider(reader):
     return meter_provider
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def instrument_legacy(reader, tracer_provider, meter_provider):
     async def upload_base64_image(*args):
         return "/some/url"
@@ -125,14 +125,18 @@ def instrument_legacy(reader, tracer_provider, meter_provider):
         enrich_token_usage=True,
         upload_base64_image=upload_base64_image,
     )
-    instrumentor.instrument(
-        tracer_provider=tracer_provider,
-        meter_provider=meter_provider,
-    )
+    was_already_instrumented = instrumentor.is_instrumented_by_opentelemetry
+    if not was_already_instrumented:
+        instrumentor.instrument(
+            tracer_provider=tracer_provider,
+            meter_provider=meter_provider,
+        )
 
     yield instrumentor
 
-    instrumentor.uninstrument()
+    # Only uninstrument if we instrumented it ourselves
+    if not was_already_instrumented and instrumentor.is_instrumented_by_opentelemetry:
+        instrumentor.uninstrument()
 
 
 @pytest.fixture(scope="function")
@@ -152,7 +156,6 @@ def instrument_with_content(
     Config.use_legacy_attributes = True
     Config.event_logger = None
     os.environ.pop(LMNR_TRACE_CONTENT, None)
-    instrumentor.uninstrument()
 
 
 @pytest.fixture(scope="function")
@@ -172,7 +175,6 @@ def instrument_with_no_content(
     Config.use_legacy_attributes = True
     Config.event_logger = None
     os.environ.pop(LMNR_TRACE_CONTENT, None)
-    instrumentor.uninstrument()
 
 
 @pytest.fixture(scope="module")

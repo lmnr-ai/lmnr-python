@@ -1,3 +1,4 @@
+from typing import Generator
 import pytest
 from unittest.mock import patch
 from lmnr import Laminar
@@ -37,9 +38,30 @@ def span_exporter() -> SpanExporter:
     return exporter
 
 
-@pytest.fixture(scope="session")
-def litellm_callback() -> LaminarLiteLLMCallback:
-    return LaminarLiteLLMCallback()
+@pytest.fixture(scope="function")
+def litellm_callback() -> Generator[LaminarLiteLLMCallback, None, None]:
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import (
+        OpenAIInstrumentor,
+    )
+
+    # Check if OpenAI was instrumented before we create the LiteLLM callback
+    instrumentor = OpenAIInstrumentor()
+    was_instrumented = instrumentor.is_instrumented_by_opentelemetry
+
+    # Create the callback (this will uninstrument OpenAI if it was instrumented)
+    callback = LaminarLiteLLMCallback()
+
+    yield callback
+
+    # Re-instrument OpenAI if it was originally instrumented
+    if was_instrumented and not instrumentor.is_instrumented_by_opentelemetry:
+        # Re-instrument with the same settings as the global initialization
+        from lmnr.opentelemetry_lib.tracing import TracerWrapper
+
+        if hasattr(TracerWrapper, "instance") and TracerWrapper.instance is not None:
+            instrumentor.instrument(
+                tracer_provider=TracerWrapper.instance._tracer_provider
+            )
 
 
 @pytest.fixture(scope="function", autouse=True)
