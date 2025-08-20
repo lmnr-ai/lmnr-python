@@ -7,7 +7,10 @@ from opentelemetry.trace import SpanKind, Status, StatusCode, Tracer
 from lmnr.opentelemetry_lib.litellm.utils import model_as_dict, set_span_attribute
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
 
-from lmnr.opentelemetry_lib.tracing.context import get_event_attributes_from_context
+from lmnr.opentelemetry_lib.tracing.context import (
+    get_current_context,
+    get_event_attributes_from_context,
+)
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from lmnr.sdk.log import get_default_logger
 
@@ -117,6 +120,7 @@ try:
                 attributes={
                     "lmnr.internal.provider": "litellm",
                 },
+                context=get_current_context(),
             )
             try:
                 model = kwargs.get("model", "unknown")

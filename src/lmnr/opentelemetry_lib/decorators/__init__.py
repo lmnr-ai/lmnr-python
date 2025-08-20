@@ -1,5 +1,5 @@
+import dataclasses
 from functools import wraps
-import logging
 import pydantic
 import orjson
 import types
@@ -41,6 +41,13 @@ def default_json(o):
         return list(o)
 
     try:
+        if isinstance(o, dataclasses.dataclass):
+            return dataclasses.asdict(o)
+    except Exception:
+        logger.debug("Failed to serialize dataclass to JSON, inner type: %s", type(o))
+        pass
+
+    try:
         return str(o)
     except Exception:
         logger.debug("Failed to serialize data to JSON, inner type: %s", type(o))
@@ -60,7 +67,7 @@ def json_dumps(data: dict) -> str:
         ).decode("utf-8")
     except Exception:
         # Log the exception and return a placeholder if serialization completely fails
-        logging.warning("Failed to serialize data to JSON, type: %s", type(data))
+        logger.info("Failed to serialize data to JSON, type: %s", type(data))
         return "{}"  # Return an empty JSON object as a fallback
 
 

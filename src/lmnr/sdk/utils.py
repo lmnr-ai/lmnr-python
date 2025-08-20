@@ -111,7 +111,8 @@ def from_env(key: str) -> str | None:
     if val := os.getenv(key):
         return val
     dotenv_path = dotenv.find_dotenv(usecwd=True)
-    # use DotEnv directly so we can set verbose to False
+    # use DotEnv directly so we can se
+    # t verbose to False
     return dotenv.main.DotEnv(dotenv_path, verbose=False, encoding="utf-8").get(key)
 
 
@@ -132,13 +133,13 @@ def is_otel_attribute_value_type(value: typing.Any) -> bool:
 
 def format_id(id_value: str | int | uuid.UUID) -> str:
     """Format trace/span/evaluation ID to a UUID string, or return valid UUID strings as-is.
-    
+
     Args:
         id_value: The ID in various formats (UUID, int, or valid UUID string)
-        
+
     Returns:
         str: UUID string representation
-        
+
     Raises:
         ValueError: If id_value cannot be converted to a valid UUID
     """
