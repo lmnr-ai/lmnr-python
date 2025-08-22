@@ -97,7 +97,7 @@ WRAPPED_METHODS = [
 @_with_tracer_wrapper
 def _wrap_on_event(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     """Wrapper for on_event."""
-    id = instance.id
+    controller_id = instance.id
     user_id = instance.user_id
     event = kwargs.get("event", args[0] if len(args) > 0 else None)
     start_event = False
@@ -142,26 +142,28 @@ def _wrap_on_event(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         finish_event = True
 
     if start_event:
-        if id in parent_spans:
+        if controller_id in parent_spans:
             logger.debug(
                 "Received a message, but already have a span for this trace. Resetting span."
             )
-            parent_spans[id].end()
-            del parent_spans[id]
+            parent_spans[controller_id].end()
+            del parent_spans[controller_id]
         parent_span = Laminar.start_span("conversation.turn", span_type="DEFAULT")
         if user_id:
             parent_span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{USER_ID}", user_id)
-        parent_span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}", id)
-        parent_spans[id] = parent_span
+        parent_span.set_attribute(
+            f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}", controller_id
+        )
+        parent_spans[controller_id] = parent_span
 
-    if id in parent_spans:
-        with Laminar.use_span(parent_spans[id]):
+    if controller_id in parent_spans:
+        with Laminar.use_span(parent_spans[controller_id]):
             result = _wrap_sync_method_inner(
                 tracer, to_wrap, wrapped, instance, args, kwargs
             )
             if finish_event:
-                parent_spans[id].end()
-                del parent_spans[id]
+                parent_spans[controller_id].end()
+                del parent_spans[controller_id]
             return result
 
     return wrapped(*args, **kwargs)
@@ -174,8 +176,8 @@ def _wrap_handle_action(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs
     if event and hasattr(event, "action"):
         if event.action == "system":
             return wrapped(*args, **kwargs)
-    id = instance.id
-    if id not in parent_spans:
+    controller_id = instance.id
+    if controller_id not in parent_spans:
         return wrapped(*args, **kwargs)
     return _wrap_sync_method_inner(tracer, to_wrap, wrapped, instance, args, kwargs)
 
@@ -203,12 +205,12 @@ def _wrap_sync_method_inner(tracer: Tracer, to_wrap, wrapped, instance, args, kw
 
 @_with_tracer_wrapper
 def _wrap_sync_method(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
-    id = None
+    instance_id = None
     if to_wrap.get("object") == "AgentController":
-        id = instance.id
+        instance_id = instance.id
     if to_wrap.get("object") == "ActionExecutionClient" and hasattr(instance, "sid"):
-        id = instance.sid
-    if id is not None and id not in parent_spans:
+        instance_id = instance.sid
+    if instance_id is not None and instance_id not in parent_spans:
         return wrapped(*args, **kwargs)
     return _wrap_sync_method_inner(tracer, to_wrap, wrapped, instance, args, kwargs)
 
@@ -217,12 +219,12 @@ def _wrap_sync_method(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
 async def _wrap_async_method(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     """Wrapper for asynchronous methods."""
     span_name = to_wrap.get("span_name")
-    id = None
+    instance_id = None
     if to_wrap.get("object") == "AgentController":
-        id = instance.id
+        instance_id = instance.id
     if to_wrap.get("object") == "ActionExecutionClient" and hasattr(instance, "sid"):
-        id = instance.sid
-    if id is not None and id not in parent_spans:
+        instance_id = instance.sid
+    if instance_id is not None and instance_id not in parent_spans:
         return await wrapped(*args, **kwargs)
 
     with Laminar.start_as_current_span(
