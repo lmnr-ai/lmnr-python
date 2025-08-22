@@ -111,8 +111,7 @@ def from_env(key: str) -> str | None:
     if val := os.getenv(key):
         return val
     dotenv_path = dotenv.find_dotenv(usecwd=True)
-    # use DotEnv directly so we can se
-    # t verbose to False
+    # use DotEnv directly so we can set verbose to False
     return dotenv.main.DotEnv(dotenv_path, verbose=False, encoding="utf-8").get(key)
 
 
