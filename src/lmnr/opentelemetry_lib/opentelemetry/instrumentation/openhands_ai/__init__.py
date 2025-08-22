@@ -26,6 +26,38 @@ _instruments = ("openhands-ai >= 0.9.0", "openhands-aci >= 0.1.0")
 parent_spans = {}
 
 
+def is_message_action(event) -> bool:
+    """Check if event has action attribute equal to 'message'."""
+    return event and hasattr(event, "action") and event.action == "message"
+
+
+def is_user_message(event) -> bool:
+    """Check if event is a message action from user source."""
+    return (
+        is_message_action(event) and hasattr(event, "source") and event.source == "user"
+    )
+
+
+def is_agent_message(event) -> bool:
+    """Check if event is a message action from agent source."""
+    return (
+        is_message_action(event)
+        and hasattr(event, "source")
+        and event.source == "agent"
+    )
+
+
+def is_agent_state_changed_to(event, state: str) -> bool:
+    """Check if event is an agent_state_changed observation with specific state."""
+    return (
+        event
+        and hasattr(event, "observation")
+        and event.observation == "agent_state_changed"
+        and hasattr(event, "agent_state")
+        and event.agent_state == state
+    )
+
+
 WRAPPED_METHODS = [
     {
         "package": "openhands.agenthub.browsing_agent.browsing_agent",
@@ -102,6 +134,8 @@ def _wrap_on_event(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     event = kwargs.get("event", args[0] if len(args) > 0 else None)
     start_event = False
     finish_event = False
+    user_message = ""
+    agent_message = ""
     if event and hasattr(event, "action") and event.action == "system":
         return wrapped(*args, **kwargs)
 
@@ -123,23 +157,20 @@ def _wrap_on_event(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         to_wrap["span_name"] = f"{event_type}.{subtype}"
 
     # start trace on user message
-    if (
-        event
-        and hasattr(event, "action")
-        and event.action == "message"
-        and hasattr(event, "source")
-        and event.source == "user"
-    ):
+    if is_user_message(event):
+        user_message = event.content if hasattr(event, "content") else ""
         start_event = True
     # end trace on agent state change to finished or error
-    if (
-        event
-        and hasattr(event, "observation")
-        and event.observation == "agent_state_changed"
-        and hasattr(event, "agent_state")
-        and event.agent_state in ["stopped", "awaiting_user_input"]
+    if is_agent_state_changed_to(event, "stopped") or is_agent_state_changed_to(
+        event, "awaiting_user_input"
     ):
         finish_event = True
+
+    if is_agent_state_changed_to(event, "user_rejected"):
+        agent_message = "<user_rejected>"
+
+    if is_agent_message(event):
+        agent_message = event.content if hasattr(event, "content") else ""
 
     if start_event:
         if controller_id in parent_spans:
@@ -151,6 +182,8 @@ def _wrap_on_event(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         parent_span = Laminar.start_span("conversation.turn", span_type="DEFAULT")
         if user_id:
             parent_span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{USER_ID}", user_id)
+        if user_message:
+            parent_span.set_attribute("lmnr.span.input", user_message)
         parent_span.set_attribute(
             f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}", controller_id
         )
@@ -161,6 +194,10 @@ def _wrap_on_event(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
             result = _wrap_sync_method_inner(
                 tracer, to_wrap, wrapped, instance, args, kwargs
             )
+            if agent_message:
+                parent_spans[controller_id].set_attribute(
+                    "lmnr.span.output", agent_message
+                )
             if finish_event:
                 parent_spans[controller_id].end()
                 del parent_spans[controller_id]
