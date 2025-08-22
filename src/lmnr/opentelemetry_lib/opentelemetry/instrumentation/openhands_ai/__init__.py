@@ -149,7 +149,8 @@ def _wrap_on_event(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
             parent_spans[id].end()
             del parent_spans[id]
         parent_span = Laminar.start_span("conversation.turn", span_type="DEFAULT")
-        parent_span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{USER_ID}", user_id)
+        if user_id:
+            parent_span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{USER_ID}", user_id)
         parent_span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}", id)
         parent_spans[id] = parent_span
 
@@ -164,7 +165,6 @@ def _wrap_on_event(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
             return result
 
     return wrapped(*args, **kwargs)
-    # return _wrap_sync_method_inner(tracer, to_wrap, wrapped, instance, args, kwargs)
 
 
 @_with_tracer_wrapper
@@ -174,6 +174,7 @@ def _wrap_handle_action(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs
     if event and hasattr(event, "action"):
         if event.action == "system":
             return wrapped(*args, **kwargs)
+    id = instance.id
     if id not in parent_spans:
         return wrapped(*args, **kwargs)
     return _wrap_sync_method_inner(tracer, to_wrap, wrapped, instance, args, kwargs)
