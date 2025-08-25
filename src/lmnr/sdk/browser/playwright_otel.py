@@ -154,6 +154,26 @@ async def _wrap_bring_to_front_async(
     await take_full_snapshot_async(instance)
 
 
+@with_tracer_and_client_wrapper
+def _wrap_browser_new_page_sync(
+    tracer: Tracer, client: LaminarClient, to_wrap, wrapped, instance, args, kwargs
+):
+    page = wrapped(*args, **kwargs)
+    session_id = str(uuid.uuid4().hex)
+    start_recording_events_sync(page, session_id, client)
+    return page
+
+
+@with_tracer_and_client_wrapper
+async def _wrap_browser_new_page_async(
+    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
+):
+    page = await wrapped(*args, **kwargs)
+    session_id = str(uuid.uuid4().hex)
+    await start_recording_events_async(page, session_id, client)
+    return page
+
+
 WRAPPED_METHODS = [
     {
         "package": "playwright.sync_api",
@@ -190,6 +210,12 @@ WRAPPED_METHODS = [
         "object": "Page",
         "method": "bring_to_front",
         "wrapper": _wrap_bring_to_front_sync,
+    },
+    {
+        "package": "playwright.sync_api",
+        "object": "Browser",
+        "method": "new_page",
+        "wrapper": _wrap_browser_new_page_sync,
     },
 ]
 
@@ -229,6 +255,12 @@ WRAPPED_METHODS_ASYNC = [
         "object": "Page",
         "method": "bring_to_front",
         "wrapper": _wrap_bring_to_front_async,
+    },
+    {
+        "package": "playwright.async_api",
+        "object": "Browser",
+        "method": "new_page",
+        "wrapper": _wrap_browser_new_page_async,
     },
 ]
 
