@@ -1,4 +1,3 @@
-import dataclasses
 from functools import wraps
 import pydantic
 import orjson
@@ -39,13 +38,6 @@ def default_json(o):
     # Handle various sequence types, but not strings or bytes
     if isinstance(o, (list, tuple, set, frozenset)):
         return list(o)
-
-    try:
-        if isinstance(o, dataclasses.dataclass):
-            return dataclasses.asdict(o)
-    except Exception:
-        logger.debug("Failed to serialize dataclass to JSON, inner type: %s", type(o))
-        pass
 
     try:
         return str(o)

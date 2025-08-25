@@ -58,14 +58,17 @@ def is_agent_state_changed_to(event, state: str) -> bool:
     )
 
 
+def get_handle_action_action(event) -> str:
+    """Get the action of the handle_action event."""
+    if event and hasattr(event, "action"):
+        try:
+            return event.action.value
+        except Exception:
+            return event.action
+    return None
+
+
 WRAPPED_METHODS = [
-    {
-        "package": "openhands.agenthub.browsing_agent.browsing_agent",
-        "object": "BrowsingAgent",
-        "methods": [
-            {"method": "step"},
-        ],
-    },
     {
         "package": "openhands.agenthub.codeact_agent.codeact_agent",
         "object": "CodeActAgent",
@@ -75,52 +78,23 @@ WRAPPED_METHODS = [
         ],
     },
     {
-        "package": "openhands.agenthub.loc_agent.loc_agent",
-        "object": "LocAgent",
-        "methods": [
-            {"method": "response_to_actions"},
-        ],
-    },
-    {
-        "package": "openhands.agenthub.readonly_agent.readonly_agent",
-        "object": "ReadOnlyAgent",
-        "methods": [
-            {"method": "step"},
-            {"method": "response_to_actions"},
-        ],
-    },
-    {
-        "package": "openhands.agenthub.visualbrowsing_agent.visualbrowsing_agent",
-        "object": "VisualBrowsingAgent",
-        "methods": [
-            {"method": "step"},
-        ],
-    },
-    {
         "package": "openhands.controller.agent_controller",
         "object": "AgentController",
         "methods": [
-            {"method": "step"},
-            {"method": "_handle_action", "async": True},
+            {"method": "_step", "async": True},
+            {
+                "method": "_handle_action",
+                "async": True,
+                "span_type": "TOOL",
+            },
             {"method": "_handle_observation", "async": True},
-            {"method": "_handle_message_action"},
+            {"method": "_handle_message_action", "async": True},
             {"method": "on_event"},
             {"method": "save_state"},
             {"method": "get_trajectory"},
             {"method": "start_delegate"},
             {"method": "end_delegate"},
             {"method": "_is_stuck"},
-        ],
-    },
-    {
-        "package": "openhands.runtime.browser.browser_env",
-        "object": "BrowserEnv",
-        "methods": [
-            {"method": "step"},
-            {"method": "init_browser"},
-            {"method": "browser_process"},
-            {"method": "check_alive"},
-            {"method": "close"},
         ],
     },
 ]
@@ -136,6 +110,8 @@ def _wrap_on_event(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     finish_event = False
     user_message = ""
     agent_message = ""
+    span_name = to_wrap.get("span_name")
+    span_type = to_wrap.get("span_type", "DEFAULT")
     if event and hasattr(event, "action") and event.action == "system":
         return wrapped(*args, **kwargs)
 
@@ -154,7 +130,8 @@ def _wrap_on_event(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         except Exception:
             subtype = event.observation
     if event_type and subtype:
-        to_wrap["span_name"] = f"{event_type}.{subtype}"
+        span_name = f"event.{event_type}.{subtype}"
+        span_type = "EVENT"
 
     # start trace on user message
     if is_user_message(event):
@@ -192,7 +169,12 @@ def _wrap_on_event(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     if controller_id in parent_spans:
         with Laminar.use_span(parent_spans[controller_id]):
             result = _wrap_sync_method_inner(
-                tracer, to_wrap, wrapped, instance, args, kwargs
+                tracer,
+                {**to_wrap, "span_name": span_name, "span_type": span_type},
+                wrapped,
+                instance,
+                args,
+                kwargs,
             )
             if agent_message:
                 parent_spans[controller_id].set_attribute(
@@ -207,16 +189,21 @@ def _wrap_on_event(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
 
 
 @_with_tracer_wrapper
-def _wrap_handle_action(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
+async def _wrap_handle_action(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     """Wrapper for on_event."""
     event = kwargs.get("event", args[0] if len(args) > 0 else None)
     if event and hasattr(event, "action"):
         if event.action == "system":
-            return wrapped(*args, **kwargs)
+            return await wrapped(*args, **kwargs)
+    action_name = get_handle_action_action(event)
+    if action_name and action_name != "message":
+        to_wrap["span_name"] = f"action.{action_name}"
     controller_id = instance.id
     if controller_id not in parent_spans:
-        return wrapped(*args, **kwargs)
-    return _wrap_sync_method_inner(tracer, to_wrap, wrapped, instance, args, kwargs)
+        return await wrapped(*args, **kwargs)
+    return await _wrap_async_method_inner(
+        tracer, to_wrap, wrapped, instance, args, kwargs
+    )
 
 
 def _wrap_sync_method_inner(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
@@ -226,13 +213,18 @@ def _wrap_sync_method_inner(tracer: Tracer, to_wrap, wrapped, instance, args, kw
     with Laminar.start_as_current_span(
         span_name,
         span_type=to_wrap.get("span_type", "DEFAULT"),
-        input=json_dumps(get_input_from_func_args(wrapped, True, args, kwargs)),
+        input=json_dumps(
+            get_input_from_func_args(
+                wrapped, to_wrap.get("object") is not None, args, kwargs
+            )
+        ),
     ) as span:
         try:
             result = wrapped(*args, **kwargs)
 
             # Capture output
-            span.set_attribute("lmnr.span.output", json_dumps(result))
+            if not to_wrap.get("ignore_output"):
+                span.set_attribute("lmnr.span.output", json_dumps(result))
             return result
 
         except Exception as e:
@@ -252,8 +244,9 @@ def _wrap_sync_method(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     return _wrap_sync_method_inner(tracer, to_wrap, wrapped, instance, args, kwargs)
 
 
-@_with_tracer_wrapper
-async def _wrap_async_method(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
+async def _wrap_async_method_inner(
+    tracer: Tracer, to_wrap, wrapped, instance, args, kwargs
+):
     """Wrapper for asynchronous methods."""
     span_name = to_wrap.get("span_name")
     instance_id = None
@@ -277,12 +270,21 @@ async def _wrap_async_method(tracer: Tracer, to_wrap, wrapped, instance, args, k
             result = await wrapped(*args, **kwargs)
 
             # Capture output
-            span.set_attribute("lmnr.span.output", json_dumps(result))
+            if not to_wrap.get("ignore_output"):
+                span.set_attribute("lmnr.span.output", json_dumps(result))
             return result
 
         except Exception as e:
             span.record_exception(e)
             raise
+
+
+@_with_tracer_wrapper
+async def _wrap_async_method(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
+    """Wrapper for asynchronous methods."""
+    return await _wrap_async_method_inner(
+        tracer, to_wrap, wrapped, instance, args, kwargs
+    )
 
 
 class OpenHandsInstrumentor(BaseInstrumentor):

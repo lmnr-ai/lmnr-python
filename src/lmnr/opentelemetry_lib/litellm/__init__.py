@@ -14,10 +14,6 @@ from lmnr.opentelemetry_lib.tracing.context import (
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from lmnr.sdk.log import get_default_logger
 
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import (
-    OpenAIInstrumentor,
-)
-
 logger = get_default_logger(__name__)
 
 SUPPORTED_CALL_TYPES = ["completion", "acompletion"]
@@ -49,6 +45,10 @@ try:
                 raise ValueError("Laminar must be initialized before LiteLLM callback")
 
             if is_package_installed("openai"):
+                from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import (
+                    OpenAIInstrumentor,
+                )
+
                 openai_instrumentor = OpenAIInstrumentor()
                 if (
                     openai_instrumentor

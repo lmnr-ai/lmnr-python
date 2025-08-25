@@ -8,6 +8,9 @@ from importlib.metadata import version
 
 from opentelemetry import context as context_api
 from opentelemetry._events import EventLogger
+
+import openai
+
 from .shared.config import Config
 
 
@@ -21,7 +24,6 @@ def is_openai_v1():
 
 
 def is_azure_openai(instance):
-    import openai
 
     return is_openai_v1() and isinstance(
         instance._client, (openai.AsyncAzureOpenAI, openai.AzureOpenAI)
