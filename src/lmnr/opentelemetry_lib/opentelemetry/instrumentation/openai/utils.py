@@ -8,10 +8,9 @@ from importlib.metadata import version
 
 from opentelemetry import context as context_api
 from opentelemetry._events import EventLogger
+from .shared.config import Config
 
 import openai
-
-from .shared.config import Config
 
 
 _OPENAI_VERSION = version("openai")
