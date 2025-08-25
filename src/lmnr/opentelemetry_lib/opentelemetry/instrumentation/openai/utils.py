@@ -12,6 +12,7 @@ from .shared.config import Config
 
 import openai
 
+
 _OPENAI_VERSION = version("openai")
 
 LMNR_TRACE_CONTENT = "LMNR_TRACE_CONTENT"
@@ -22,6 +23,7 @@ def is_openai_v1():
 
 
 def is_azure_openai(instance):
+
     return is_openai_v1() and isinstance(
         instance._client, (openai.AsyncAzureOpenAI, openai.AzureOpenAI)
     )

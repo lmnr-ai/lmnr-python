@@ -132,13 +132,13 @@ def is_otel_attribute_value_type(value: typing.Any) -> bool:
 
 def format_id(id_value: str | int | uuid.UUID) -> str:
     """Format trace/span/evaluation ID to a UUID string, or return valid UUID strings as-is.
-    
+
     Args:
         id_value: The ID in various formats (UUID, int, or valid UUID string)
-        
+
     Returns:
         str: UUID string representation
-        
+
     Raises:
         ValueError: If id_value cannot be converted to a valid UUID
     """
