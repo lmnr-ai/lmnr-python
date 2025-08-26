@@ -573,3 +573,35 @@ def test_google_genai_error(span_exporter: InMemorySpanExporter):
         "Traceback (most recent call last):" in event.attributes["exception.stacktrace"]
     )
     assert "google.genai.errors.ClientError" in event.attributes["exception.stacktrace"]
+
+
+@pytest.mark.vcr
+def test_google_genai_no_tokens(span_exporter: InMemorySpanExporter):
+    client = Client(api_key="123")
+
+    # The cassette is manually modified to set total_tokens to None (null) in usage_metadata
+    # in the response
+    def get_weather(location: str) -> str:
+        return f"The weather in {location} is sunny."
+
+    stream = client.models.generate_content_stream(
+        model="gemini-2.5-flash-lite",
+        contents=[
+            {
+                "role": "user",
+                "parts": [
+                    {"text": "What is the weather in Paris?"},
+                ],
+            }
+        ],
+        config=types.GenerateContentConfig(
+            tools=[get_weather],
+        ),
+    )
+    for _chunk in stream:
+        # consume the stream
+        pass
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "gemini.generate_content_stream"

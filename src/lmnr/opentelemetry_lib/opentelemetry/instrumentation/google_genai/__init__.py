@@ -375,6 +375,7 @@ def _build_from_streaming_response(
             # total token count in every chunk is greater by prompt token count than it should be,
             # thus this awkward logic here
             if aggregated_usage_metadata.get("prompt_token_count") is None:
+                # or 0, not .get(key, 0), because sometimes the value is explicitly None
                 aggregated_usage_metadata["prompt_token_count"] = (
                     usage_dict.get("prompt_token_count") or 0
                 )
@@ -417,14 +418,15 @@ async def _abuild_from_streaming_response(
     aggregated_usage_metadata = defaultdict(int)
     model_version = None
     async for chunk in response:
+        if chunk.model_version:
+            model_version = chunk.model_version
+
         if chunk.candidates:
             # Currently gemini throws an error if you pass more than one candidate
             # with streaming
             if chunk.candidates and len(chunk.candidates) > 0:
                 final_parts += chunk.candidates[0].content.parts or []
                 role = chunk.candidates[0].content.role or role
-                if chunk.model_version:
-                    model_version = chunk.model_version
         if chunk.usage_metadata:
             usage_dict = to_dict(chunk.usage_metadata)
             # prompt token count is sent in every chunk
@@ -432,11 +434,12 @@ async def _abuild_from_streaming_response(
             # total token count in every chunk is greater by prompt token count than it should be,
             # thus this awkward logic here
             if aggregated_usage_metadata.get("prompt_token_count") is None:
-                aggregated_usage_metadata["prompt_token_count"] = usage_dict.get(
-                    "prompt_token_count"
+                # or 0, not .get(key, 0), because sometimes the value is explicitly None
+                aggregated_usage_metadata["prompt_token_count"] = (
+                    usage_dict.get("prompt_token_count") or 0
                 )
-                aggregated_usage_metadata["total_token_count"] = usage_dict.get(
-                    "total_token_count"
+                aggregated_usage_metadata["total_token_count"] = (
+                    usage_dict.get("total_token_count") or 0
                 )
             aggregated_usage_metadata["candidates_token_count"] += (
                 usage_dict.get("candidates_token_count") or 0

@@ -1,0 +1,128 @@
+interactions:
+- request:
+    body: '{"contents": [{"parts": [{"text": "What is the weather in Paris?"}], "role":
+      "user"}], "tools": [{"functionDeclarations": [{"name": "get_weather", "parameters":
+      {"properties": {"location": {"type": "STRING"}}, "required": ["location"], "type":
+      "OBJECT"}}]}], "generationConfig": {}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '282'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - google-genai-sdk/1.29.0 gl-python/3.13.5
+      x-goog-api-client:
+      - google-genai-sdk/1.29.0 gl-python/3.13.5
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?alt=sse
+  response:
+    body:
+      string: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"functionCall\":
+        {\"name\": \"get_weather\",\"args\": {\"location\": \"Paris\"}}}],\"role\":
+        \"model\"},\"finishReason\": \"STOP\",\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\":
+        40,\"candidatesTokenCount\": 15,\"totalTokenCount\": null,\"promptTokensDetails\":
+        [{\"modality\": \"TEXT\",\"tokenCount\": 40}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\":
+        \"yyeuaMfnOJ70nsEP-eLmwQo\"}\r\n\r\n"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Disposition:
+      - attachment
+      Content-Type:
+      - text/event-stream
+      Date:
+      - Tue, 26 Aug 2025 21:31:55 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=502
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"contents": [{"parts": [{"text": "What is the weather in Paris?"}], "role":
+      "user"}, {"parts": [{"functionCall": {"args": {"location": "Paris"}, "name":
+      "get_weather"}}], "role": "model"}, {"parts": [{"functionResponse": {"name":
+      "get_weather", "response": {"result": "The weather in Paris is sunny."}}}],
+      "role": "user"}], "tools": [{"functionDeclarations": [{"name": "get_weather",
+      "parameters": {"properties": {"location": {"type": "STRING"}}, "required": ["location"],
+      "type": "OBJECT"}}]}], "generationConfig": {}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '520'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - google-genai-sdk/1.29.0 gl-python/3.13.5
+      x-goog-api-client:
+      - google-genai-sdk/1.29.0 gl-python/3.13.5
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?alt=sse
+  response:
+    body:
+      string: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"The\"}],\"role\":
+        \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 76,\"candidatesTokenCount\":
+        1,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        76}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\": \"zCeuaIz2Er3j7M8Pq4e-8QM\"}\r\n\r\ndata:
+        {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \" weather in Paris
+        is sunny.\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0}],\"usageMetadata\":
+        {\"promptTokenCount\": 76,\"candidatesTokenCount\": 7,\"totalTokenCount\": null,\"promptTokensDetails\":
+        [{\"modality\": \"TEXT\",\"tokenCount\": 76}]},\"modelVersion\":
+        \"gemini-2.5-flash-lite\",\"responseId\": \"zCeuaIz2Er3j7M8Pq4e-8QM\"}\r\n\r\n"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Disposition:
+      - attachment
+      Content-Type:
+      - text/event-stream
+      Date:
+      - Tue, 26 Aug 2025 21:31:56 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=365
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1
