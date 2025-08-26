@@ -130,12 +130,12 @@ dev = [
   "patchright>=1.52.3",
   "google-genai>=1.31.0",
   "langgraph>=0.4.8",
-  "langchain-core>=0.3.64",
-  "langchain>=0.3.25",
+  "langchain-core>=0.3.75",
+  "langchain>=0.3.27",
   "litellm>=1.75.8",
   "groq>=0.30.0",
   "anthropic>=0.60.0",
-  "langchain-openai>=0.3.28",
+  "langchain-openai>=0.3.32",
 ]
 
 [build-system]

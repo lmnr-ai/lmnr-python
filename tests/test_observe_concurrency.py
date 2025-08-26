@@ -393,10 +393,12 @@ def test_observe_threadpool_parallel_spans_with_langchain(
     """Test multiple parallel ThreadPoolExecutor spans live in separate traces
     including auto-instrumented LangChain spans."""
     from langchain_openai import ChatOpenAI
-    from unittest.mock import patch
+    from unittest.mock import patch, MagicMock
+
+    mock_response = MagicMock()
 
     # Create a mock response that can be safely shared across threads
-    mock_response = {
+    mock_response_raw = {
         "choices": [
             {
                 "message": {
@@ -406,6 +408,7 @@ def test_observe_threadpool_parallel_spans_with_langchain(
             }
         ]
     }
+    mock_response.parse.return_value = mock_response_raw
 
     @observe()
     def task_worker(task_id: str):
