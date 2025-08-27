@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.7.7"
+version = "0.7.8"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -121,21 +121,21 @@ dev = [
   "flake8>=7.2.0",
   "pytest>=8.3.5",
   "pytest-sugar>=1.0.0",
-  "pytest-asyncio>=0.26.0",
+  "pytest-asyncio>=1.1.0",
   "playwright>=1.52.0",
   "vcrpy>=7.0.0",
   # litellm breaks with openai>=1.100.0 (as of litellm 1.75.8)
   "openai>=1.99.7,<1.100.0",
   "pytest-recording>=0.13.4",
   "patchright>=1.52.3",
-  "google-genai>=1.19.0",
+  "google-genai>=1.31.0",
   "langgraph>=0.4.8",
-  "langchain-core>=0.3.64",
-  "langchain>=0.3.25",
+  "langchain-core>=0.3.75",
+  "langchain>=0.3.27",
   "litellm>=1.75.8",
   "groq>=0.30.0",
   "anthropic>=0.60.0",
-  "langchain-openai>=0.3.28",
+  "langchain-openai>=0.3.32",
 ]
 
 [build-system]

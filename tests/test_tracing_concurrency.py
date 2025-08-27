@@ -420,10 +420,11 @@ def test_threadpool_parallel_spans_with_langchain(span_exporter: InMemorySpanExp
     """Test multiple parallel ThreadPoolExecutor spans live in separate traces
     including auto-instrumented LangChain spans."""
     from langchain_openai import ChatOpenAI
-    from unittest.mock import patch
+    from unittest.mock import patch, MagicMock
 
     # Create a mock response that can be safely shared across threads
-    mock_response = {
+    mock_response = MagicMock()
+    mock_response.parse.return_value = {
         "choices": [
             {
                 "message": {
