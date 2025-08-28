@@ -18,9 +18,9 @@ interactions:
       host:
       - generativelanguage.googleapis.com
       user-agent:
-      - google-genai-sdk/1.29.0 gl-python/3.13.5
+      - google-genai-sdk/1.31.0 gl-python/3.13.5
       x-goog-api-client:
-      - google-genai-sdk/1.29.0 gl-python/3.13.5
+      - google-genai-sdk/1.31.0 gl-python/3.13.5
     method: POST
     uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?alt=sse
   response:
@@ -30,7 +30,7 @@ interactions:
         \"model\"},\"finishReason\": \"STOP\",\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\":
         40,\"candidatesTokenCount\": 15,\"totalTokenCount\": null,\"promptTokensDetails\":
         [{\"modality\": \"TEXT\",\"tokenCount\": 40}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\":
-        \"yyeuaMfnOJ70nsEP-eLmwQo\"}\r\n\r\n"
+        \"ZCWwaKLsPPvfnsEPzLTa0A8\"}\r\n\r\n"
     headers:
       Alt-Svc:
       - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
@@ -39,11 +39,11 @@ interactions:
       Content-Type:
       - text/event-stream
       Date:
-      - Tue, 26 Aug 2025 21:31:55 GMT
+      - Thu, 28 Aug 2025 09:46:12 GMT
       Server:
       - scaffolding on HTTPServer2
       Server-Timing:
-      - gfet4t7; dur=502
+      - gfet4t7; dur=503
       Transfer-Encoding:
       - chunked
       Vary:
@@ -81,22 +81,22 @@ interactions:
       host:
       - generativelanguage.googleapis.com
       user-agent:
-      - google-genai-sdk/1.29.0 gl-python/3.13.5
+      - google-genai-sdk/1.31.0 gl-python/3.13.5
       x-goog-api-client:
-      - google-genai-sdk/1.29.0 gl-python/3.13.5
+      - google-genai-sdk/1.31.0 gl-python/3.13.5
     method: POST
     uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?alt=sse
   response:
     body:
       string: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"The\"}],\"role\":
         \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 76,\"candidatesTokenCount\":
-        1,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
-        76}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\": \"zCeuaIz2Er3j7M8Pq4e-8QM\"}\r\n\r\ndata:
+        1,\"totalTokenCount\": null,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        76}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\": \"ZSWwaPvHD8KznsEP4MSpsA8\"}\r\n\r\ndata:
         {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \" weather in Paris
         is sunny.\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\": 0}],\"usageMetadata\":
-        {\"promptTokenCount\": 76,\"candidatesTokenCount\": 7,\"totalTokenCount\": null,\"promptTokensDetails\":
-        [{\"modality\": \"TEXT\",\"tokenCount\": 76}]},\"modelVersion\":
-        \"gemini-2.5-flash-lite\",\"responseId\": \"zCeuaIz2Er3j7M8Pq4e-8QM\"}\r\n\r\n"
+        {\"promptTokenCount\": 76,\"candidatesTokenCount\": 7,\"totalTokenCount\":
+        83,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 76}]},\"modelVersion\":
+        \"gemini-2.5-flash-lite\",\"responseId\": \"ZSWwaPvHD8KznsEP4MSpsA8\"}\r\n\r\n"
     headers:
       Alt-Svc:
       - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
@@ -105,11 +105,11 @@ interactions:
       Content-Type:
       - text/event-stream
       Date:
-      - Tue, 26 Aug 2025 21:31:56 GMT
+      - Thu, 28 Aug 2025 09:46:13 GMT
       Server:
       - scaffolding on HTTPServer2
       Server-Timing:
-      - gfet4t7; dur=365
+      - gfet4t7; dur=234
       Transfer-Encoding:
       - chunked
       Vary:
