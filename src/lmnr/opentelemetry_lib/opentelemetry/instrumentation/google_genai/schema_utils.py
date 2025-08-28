@@ -10,9 +10,12 @@ DUMMY_CLIENT = BaseApiClient(api_key="dummy")
 
 def process_schema(schema: Any) -> dict[str, Any]:
     # The only thing we need from the client is the t_schema function
-    json_schema = t_schema(DUMMY_CLIENT, schema).json_schema.model_dump(
-        exclude_unset=True, exclude_none=True
-    )
+    try:
+        json_schema = t_schema(DUMMY_CLIENT, schema).json_schema.model_dump(
+            exclude_unset=True, exclude_none=True
+        )
+    except Exception:
+        json_schema = {}
     return json_schema
 
 

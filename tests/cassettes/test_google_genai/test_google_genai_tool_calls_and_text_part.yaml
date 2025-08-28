@@ -1,0 +1,67 @@
+interactions:
+- request:
+    body: '{"contents": [{"parts": [{"text": "What is the opposite of ''bright''?
+      Also, what is the weather in Tokyo?"}], "role": "user"}], "systemInstruction":
+      {"parts": [{"text": "Be concise and to the point"}], "role": "user"}, "tools":
+      [{"functionDeclarations": [{"description": "Gets the weather in a given city.",
+      "name": "get_weather", "parameters": {"properties": {"location": {"description":
+      "The location to get the weather for.", "type": "STRING"}}, "required": ["location"],
+      "type": "OBJECT"}}]}], "generationConfig": {}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '520'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - google-genai-sdk/1.31.0 gl-python/3.13.5
+      x-goog-api-client:
+      - google-genai-sdk/1.31.0 gl-python/3.13.5
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/3VSTW/CMAy991dEufQCE6rEx3ZDjMOkbaANbZMmNHnUbSPSpGqMgCH++9K0hZaN
+        HlrXz35+ec7BY4yvQIUiBELD79inzTB2cO8C04pQkQXqlE1mkNO5tnwOjdiWEO6KJr5IkOks00aQ
+        DSLmf+ciTshnwjA/FKl/wxuNx851xmijViS0moCULTkVriDFYmKM9LVFoARz3rksgjw2/zRbROoV
+        FPROtF7vNb+oOXrX/s7x8jyQ51o6PakOUdZkpwPySChhkhcEU858XczmJ71cqBB3Nt3z6gGOmm8M
+        xPiEBHZdcDoIz3KdZmRlo5rojVvXMCjJGttt4UG/wkkTyBZ0O+z8oTX3dqiQza03LoQ9I0hBe2fe
+        9GPRMN7yt1TVRrjv0qssKV16w9xUK4gxtQZ1g5t+N5Jgkq6lR0fLczSZVgYfwqJw3Au2MHt8n44G
+        P7vn0VzqeW8wXnPv6P0Cg3y1Id0CAAA=
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Thu, 28 Aug 2025 12:35:15 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=515
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1

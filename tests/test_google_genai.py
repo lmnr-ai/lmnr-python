@@ -199,7 +199,7 @@ def test_google_genai_tool_calls(span_exporter: InMemorySpanExporter):
     client = Client(api_key="123")
     system_instruction = "Be concise and to the point. Use tools as much as possible."
     client.models.generate_content(
-        model="gemini-2.5-flash-preview-05-20",
+        model="gemini-2.5-flash-lite",
         contents=[
             {
                 "role": "user",
@@ -217,13 +217,8 @@ def test_google_genai_tool_calls(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
-    assert (
-        spans[0].attributes["gen_ai.request.model"] == "gemini-2.5-flash-preview-05-20"
-    )
-    assert (
-        spans[0].attributes["gen_ai.response.model"]
-        == "models/gemini-2.5-flash-preview-05-20"
-    )
+    assert spans[0].attributes["gen_ai.request.model"] == "gemini-2.5-flash-lite"
+    assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
     assert spans[0].attributes["gen_ai.prompt.0.content"] == system_instruction
     assert spans[0].attributes["gen_ai.prompt.0.role"] == "system"
     user_content = json.loads(spans[0].attributes["gen_ai.prompt.1.content"])
@@ -283,6 +278,55 @@ def test_google_genai_multiple_tool_calls(span_exporter: InMemorySpanExporter):
     assert json.loads(
         spans[0].attributes["gen_ai.completion.0.tool_calls.1.arguments"]
     ) == {"location": "Paris"}
+    assert spans[0].attributes["gen_ai.completion.0.role"] == "model"
+
+
+@pytest.mark.vcr
+def test_google_genai_tool_calls_and_text_part(span_exporter: InMemorySpanExporter):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    client = Client(api_key="123")
+    system_instruction = "Be concise and to the point"
+    user_message = (
+        "What is the opposite of 'bright'? Also, what is the weather in Tokyo?"
+    )
+    client.models.generate_content(
+        model="gemini-2.5-flash-lite",
+        contents=[
+            {
+                "role": "user",
+                "parts": [
+                    {"text": user_message},
+                ],
+            }
+        ],
+        config=types.GenerateContentConfig(
+            system_instruction={"text": system_instruction},
+            tools=[types.Tool(function_declarations=[get_weather_declaration])],
+        ),
+    )
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "gemini.generate_content"
+    assert spans[0].attributes["gen_ai.request.model"] == "gemini-2.5-flash-lite"
+    assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+    assert spans[0].attributes["gen_ai.prompt.0.content"] == system_instruction
+    assert spans[0].attributes["gen_ai.prompt.0.role"] == "system"
+    user_content = json.loads(spans[0].attributes["gen_ai.prompt.1.content"])
+    assert user_content[0]["type"] == "text"
+    assert user_content[0]["text"] == user_message
+    assert spans[0].attributes["gen_ai.prompt.1.role"] == "user"
+    assert json.loads(spans[0].attributes["gen_ai.completion.0.content"]) == [
+        {
+            "type": "text",
+            "text": "The opposite of 'bright' is 'dim'.",
+        }
+    ]
+    assert spans[0].attributes["gen_ai.completion.0.tool_calls.0.name"] == "get_weather"
+    assert json.loads(
+        spans[0].attributes["gen_ai.completion.0.tool_calls.0.arguments"]
+    ) == {"location": "Tokyo"}
     assert spans[0].attributes["gen_ai.completion.0.role"] == "model"
 
 

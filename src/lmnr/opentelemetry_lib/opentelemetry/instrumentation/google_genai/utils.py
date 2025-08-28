@@ -104,7 +104,8 @@ def get_content(
         else:
             return None
     elif isinstance(content, list):
-        return [get_content(item) for item in content]
+        contents_list = [get_content(item) for item in content]
+        return [item for item in contents_list if item is not None]
     elif isinstance(content, str):
         return {
             "type": "text",
@@ -159,19 +160,20 @@ def _process_part(
     part_dict = to_dict(content)
     if part_dict.get("inline_data"):
         blob = to_dict(part_dict.get("inline_data"))
-        if blob.get("mime_type").startswith("image/"):
+        if blob.get("mime_type", "").startswith("image/"):
             return _process_image_item(blob)
         else:
             # currently, only images are supported
             return ProcessedContentPart(
                 content=blob.get("mime_type") or "unknown_media"
             )
-    elif part_dict.get("function_call"):
+    elif function_call := part_dict.get("function_call"):
+        function_call_dict = to_dict(function_call)
         return ProcessedContentPart(
             function_call=ToolCall(
-                name=part_dict.get("function_call").get("name"),
-                id=part_dict.get("function_call").get("id"),
-                arguments=part_dict.get("function_call").get("args", {}),
+                name=function_call_dict.get("name"),
+                id=function_call_dict.get("id"),
+                arguments=function_call_dict.get("args", {}),
             )
         )
     elif part_dict.get("text") is not None:
@@ -214,11 +216,14 @@ def _process_image_item(blob: dict[str, Any]) -> ProcessedContentPart | dict | N
     encoded_data = (
         base64.b64encode(data).decode("utf-8") if isinstance(data, bytes) else data
     )
+    mime_type = blob.get("mime_type", "image/unknown")
+    image_type = mime_type.split("/")[1] if "/" in mime_type else "unknown"
+
     return (
         ProcessedContentPart(
             image_url=ImageUrl(
                 image_url=ImageUrlInner(
-                    url=f"data:image/{blob.get('mime_type').split('/')[1]};base64,{encoded_data}",
+                    url=f"data:image/{image_type};base64,{encoded_data}",
                 )
             )
         )

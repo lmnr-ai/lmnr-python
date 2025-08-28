@@ -9,6 +9,7 @@ from typing_extensions import TypedDict
 
 from google.genai import types
 
+from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.opentelemetry_lib.tracing.context import (
     get_current_context,
     get_event_attributes_from_context,
@@ -151,7 +152,7 @@ def _set_request_attributes(span, args, kwargs):
             set_span_attribute(
                 span,
                 SpanAttributes.LLM_REQUEST_STRUCTURED_OUTPUT_SCHEMA,
-                json.dumps(json_schema),
+                json_dumps(json_schema),
             )
         except Exception:
             pass
@@ -180,7 +181,7 @@ def _set_request_attributes(span, args, kwargs):
         set_span_attribute(
             span,
             f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.{tool_num}.parameters",
-            json.dumps(tool_dict.get("parameters")),
+            json_dumps(tool_dict.get("parameters")),
         )
 
     if should_send_prompts():
@@ -213,7 +214,7 @@ def _set_request_attributes(span, args, kwargs):
                 (
                     content_str
                     if isinstance(content_str, str)
-                    else json.dumps(content_str)
+                    else json_dumps(content_str)
                 ),
             )
             blocks = (
@@ -246,7 +247,7 @@ def _set_request_attributes(span, args, kwargs):
                 set_span_attribute(
                     span,
                     f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.tool_calls.{tool_call_index}.arguments",
-                    json.dumps(function_call.get("arguments")),
+                    json_dumps(function_call.get("arguments")),
                 )
                 tool_call_index += 1
 
@@ -298,22 +299,26 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
             span, f"{gen_ai_attributes.GEN_AI_COMPLETION}.0.role", "model"
         )
         candidates_list = candidates if isinstance(candidates, list) else [candidates]
-        for i, candidate in enumerate(candidates_list):
+        i = 0
+        for candidate in candidates_list:
+            has_content = False
             processed_content = process_content_union(candidate.content)
             content_str = get_content(processed_content)
 
             set_span_attribute(
                 span, f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.role", "model"
             )
-            set_span_attribute(
-                span,
-                f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.content",
-                (
-                    content_str
-                    if isinstance(content_str, str)
-                    else json.dumps(content_str)
-                ),
-            )
+            if content_str:
+                has_content = True
+                set_span_attribute(
+                    span,
+                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.content",
+                    (
+                        content_str
+                        if isinstance(content_str, str)
+                        else json_dumps(content_str)
+                    ),
+                )
             blocks = (
                 processed_content
                 if isinstance(processed_content, list)
@@ -326,6 +331,7 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
                 if not block_dict.get("function_call"):
                     continue
                 function_call = to_dict(block_dict.get("function_call", {}))
+                has_content = True
                 set_span_attribute(
                     span,
                     f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.{tool_call_index}.name",
@@ -343,9 +349,11 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
                 set_span_attribute(
                     span,
                     f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.{tool_call_index}.arguments",
-                    json.dumps(function_call.get("arguments")),
+                    json_dumps(function_call.get("arguments")),
                 )
                 tool_call_index += 1
+            if has_content:
+                i += 1
 
 
 class ProcessChunkResult(TypedDict):
