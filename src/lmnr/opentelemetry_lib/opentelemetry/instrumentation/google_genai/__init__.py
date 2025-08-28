@@ -8,6 +8,7 @@ from typing import AsyncGenerator, Callable, Collection, Generator
 
 from google.genai import types
 
+from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.opentelemetry_lib.tracing.context import (
     get_current_context,
     get_event_attributes_from_context,
@@ -20,9 +21,10 @@ from .schema_utils import SchemaJSONEncoder, process_schema
 from .utils import (
     dont_throw,
     get_content,
+    process_content_union,
+    process_stream_chunk,
     role_from_content_union,
     set_span_attribute,
-    process_content_union,
     to_dict,
     with_tracer_wrapper,
 )
@@ -139,9 +141,7 @@ def _set_request_attributes(span, args, kwargs):
         try:
             set_span_attribute(
                 span,
-                # TODO: change to SpanAttributes.LLM_REQUEST_STRUCTURED_OUTPUT_SCHEMA
-                # when we upgrade to opentelemetry-semantic-conventions-ai>=0.4.10
-                "gen_ai.request.structured_output_schema",
+                SpanAttributes.LLM_REQUEST_STRUCTURED_OUTPUT_SCHEMA,
                 json.dumps(process_schema(schema), cls=SchemaJSONEncoder),
             )
         except Exception:
@@ -150,10 +150,8 @@ def _set_request_attributes(span, args, kwargs):
         try:
             set_span_attribute(
                 span,
-                # TODO: change to SpanAttributes.LLM_REQUEST_STRUCTURED_OUTPUT_SCHEMA
-                # when we upgrade to opentelemetry-semantic-conventions-ai>=0.4.10
-                "gen_ai.request.structured_output_schema",
-                json.dumps(json_schema),
+                SpanAttributes.LLM_REQUEST_STRUCTURED_OUTPUT_SCHEMA,
+                json_dumps(json_schema),
             )
         except Exception:
             pass
@@ -182,7 +180,7 @@ def _set_request_attributes(span, args, kwargs):
         set_span_attribute(
             span,
             f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.{tool_num}.parameters",
-            json.dumps(tool_dict.get("parameters")),
+            json_dumps(tool_dict.get("parameters")),
         )
 
     if should_send_prompts():
@@ -215,7 +213,7 @@ def _set_request_attributes(span, args, kwargs):
                 (
                     content_str
                     if isinstance(content_str, str)
-                    else json.dumps(content_str)
+                    else json_dumps(content_str)
                 ),
             )
             blocks = (
@@ -248,7 +246,7 @@ def _set_request_attributes(span, args, kwargs):
                 set_span_attribute(
                     span,
                     f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.tool_calls.{tool_call_index}.arguments",
-                    json.dumps(function_call.get("arguments")),
+                    json_dumps(function_call.get("arguments")),
                 )
                 tool_call_index += 1
 
@@ -300,22 +298,26 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
             span, f"{gen_ai_attributes.GEN_AI_COMPLETION}.0.role", "model"
         )
         candidates_list = candidates if isinstance(candidates, list) else [candidates]
-        for i, candidate in enumerate(candidates_list):
+        i = 0
+        for candidate in candidates_list:
+            has_content = False
             processed_content = process_content_union(candidate.content)
             content_str = get_content(processed_content)
 
             set_span_attribute(
                 span, f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.role", "model"
             )
-            set_span_attribute(
-                span,
-                f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.content",
-                (
-                    content_str
-                    if isinstance(content_str, str)
-                    else json.dumps(content_str)
-                ),
-            )
+            if content_str:
+                has_content = True
+                set_span_attribute(
+                    span,
+                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.content",
+                    (
+                        content_str
+                        if isinstance(content_str, str)
+                        else json_dumps(content_str)
+                    ),
+                )
             blocks = (
                 processed_content
                 if isinstance(processed_content, list)
@@ -328,6 +330,7 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
                 if not block_dict.get("function_call"):
                     continue
                 function_call = to_dict(block_dict.get("function_call", {}))
+                has_content = True
                 set_span_attribute(
                     span,
                     f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.{tool_call_index}.name",
@@ -345,9 +348,11 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
                 set_span_attribute(
                     span,
                     f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.{tool_call_index}.arguments",
-                    json.dumps(function_call.get("arguments")),
+                    json_dumps(function_call.get("arguments")),
                 )
                 tool_call_index += 1
+            if has_content:
+                i += 1
 
 
 @dont_throw
@@ -359,54 +364,45 @@ def _build_from_streaming_response(
     aggregated_usage_metadata = defaultdict(int)
     model_version = None
     for chunk in response:
-        if chunk.model_version:
-            model_version = chunk.model_version
-
-        if chunk.candidates:
-            # Currently gemini throws an error if you pass more than one candidate
-            # with streaming
-            if chunk.candidates and len(chunk.candidates) > 0:
-                final_parts += chunk.candidates[0].content.parts or []
-                role = chunk.candidates[0].content.role or role
-        if chunk.usage_metadata:
-            usage_dict = to_dict(chunk.usage_metadata)
-            # prompt token count is sent in every chunk
-            # (and is less by 1 in the last chunk, so we set it once);
-            # total token count in every chunk is greater by prompt token count than it should be,
-            # thus this awkward logic here
-            if aggregated_usage_metadata.get("prompt_token_count") is None:
-                # or 0, not .get(key, 0), because sometimes the value is explicitly None
-                aggregated_usage_metadata["prompt_token_count"] = (
-                    usage_dict.get("prompt_token_count") or 0
-                )
-                aggregated_usage_metadata["total_token_count"] = (
-                    usage_dict.get("total_token_count") or 0
-                )
-            aggregated_usage_metadata["candidates_token_count"] += (
-                usage_dict.get("candidates_token_count") or 0
-            )
-            aggregated_usage_metadata["total_token_count"] += (
-                usage_dict.get("candidates_token_count") or 0
-            )
+        # Important: do all processing in a separate sync function, that is
+        # wrapped in @dont_throw. If we did it here, the @dont_throw on top of
+        # this function would not be able to catch the errors, as they are
+        # raised later, after the generator is returned, and when it is being
+        # consumed.
+        chunk_result = process_stream_chunk(
+            chunk,
+            role,
+            model_version,
+            aggregated_usage_metadata,
+            final_parts,
+        )
+        # even though process_stream_chunk can't return None, the result can be
+        # None, if the processing throws an error (see @dont_throw)
+        if chunk_result:
+            role = chunk_result["role"]
+            model_version = chunk_result["model_version"]
         yield chunk
 
-    compound_response = types.GenerateContentResponse(
-        candidates=[
-            {
-                "content": {
-                    "parts": final_parts,
-                    "role": role,
-                },
-            }
-        ],
-        usage_metadata=types.GenerateContentResponseUsageMetadataDict(
-            **aggregated_usage_metadata
-        ),
-        model_version=model_version,
-    )
-    if span.is_recording():
-        _set_response_attributes(span, compound_response)
-    span.end()
+    try:
+        compound_response = types.GenerateContentResponse(
+            candidates=[
+                {
+                    "content": {
+                        "parts": final_parts,
+                        "role": role,
+                    },
+                }
+            ],
+            usage_metadata=types.GenerateContentResponseUsageMetadataDict(
+                **aggregated_usage_metadata
+            ),
+            model_version=model_version,
+        )
+        if span.is_recording():
+            _set_response_attributes(span, compound_response)
+    finally:
+        if span.is_recording():
+            span.end()
 
 
 @dont_throw
@@ -418,54 +414,45 @@ async def _abuild_from_streaming_response(
     aggregated_usage_metadata = defaultdict(int)
     model_version = None
     async for chunk in response:
-        if chunk.model_version:
-            model_version = chunk.model_version
-
-        if chunk.candidates:
-            # Currently gemini throws an error if you pass more than one candidate
-            # with streaming
-            if chunk.candidates and len(chunk.candidates) > 0:
-                final_parts += chunk.candidates[0].content.parts or []
-                role = chunk.candidates[0].content.role or role
-        if chunk.usage_metadata:
-            usage_dict = to_dict(chunk.usage_metadata)
-            # prompt token count is sent in every chunk
-            # (and is less by 1 in the last chunk, so we set it once);
-            # total token count in every chunk is greater by prompt token count than it should be,
-            # thus this awkward logic here
-            if aggregated_usage_metadata.get("prompt_token_count") is None:
-                # or 0, not .get(key, 0), because sometimes the value is explicitly None
-                aggregated_usage_metadata["prompt_token_count"] = (
-                    usage_dict.get("prompt_token_count") or 0
-                )
-                aggregated_usage_metadata["total_token_count"] = (
-                    usage_dict.get("total_token_count") or 0
-                )
-            aggregated_usage_metadata["candidates_token_count"] += (
-                usage_dict.get("candidates_token_count") or 0
-            )
-            aggregated_usage_metadata["total_token_count"] += (
-                usage_dict.get("candidates_token_count") or 0
-            )
+        # Important: do all processing in a separate sync function, that is
+        # wrapped in @dont_throw. If we did it here, the @dont_throw on top of
+        # this function would not be able to catch the errors, as they are
+        # raised later, after the generator is returned, and when it is being
+        # consumed.
+        chunk_result = process_stream_chunk(
+            chunk,
+            role,
+            model_version,
+            aggregated_usage_metadata,
+            final_parts,
+        )
+        # even though process_stream_chunk can't return None, the result can be
+        # None, if the processing throws an error (see @dont_throw)
+        if chunk_result:
+            role = chunk_result["role"]
+            model_version = chunk_result["model_version"]
         yield chunk
 
-    compound_response = types.GenerateContentResponse(
-        candidates=[
-            {
-                "content": {
-                    "parts": final_parts,
-                    "role": role,
-                },
-            }
-        ],
-        usage_metadata=types.GenerateContentResponseUsageMetadataDict(
-            **aggregated_usage_metadata
-        ),
-        model_version=model_version,
-    )
-    if span.is_recording():
-        _set_response_attributes(span, compound_response)
-    span.end()
+    try:
+        compound_response = types.GenerateContentResponse(
+            candidates=[
+                {
+                    "content": {
+                        "parts": final_parts,
+                        "role": role,
+                    },
+                }
+            ],
+            usage_metadata=types.GenerateContentResponseUsageMetadataDict(
+                **aggregated_usage_metadata
+            ),
+            model_version=model_version,
+        )
+        if span.is_recording():
+            _set_response_attributes(span, compound_response)
+    finally:
+        if span.is_recording():
+            span.end()
 
 
 @with_tracer_wrapper
@@ -502,7 +489,7 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         span.record_exception(e, attributes=attributes)
         span.set_status(Status(StatusCode.ERROR, str(e)))
         span.end()
-        raise e
+        raise
 
 
 @with_tracer_wrapper
@@ -541,7 +528,7 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         span.record_exception(e, attributes=attributes)
         span.set_status(Status(StatusCode.ERROR, str(e)))
         span.end()
-        raise e
+        raise
 
 
 class GoogleGenAiSdkInstrumentor(BaseInstrumentor):

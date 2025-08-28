@@ -1,0 +1,170 @@
+interactions:
+- request:
+    body: '{"contents": [{"parts": [{"text": "What is the capital of France? Tell
+      me about the city."}], "role": "user"}]}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '111'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - google-genai-sdk/1.31.0 gl-python/3.13.5
+      x-goog-api-client:
+      - google-genai-sdk/1.31.0 gl-python/3.13.5
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?alt=sse
+  response:
+    body:
+      string: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"The
+        capital of France is **\"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\":
+        {\"promptTokenCount\": 14,\"candidatesTokenCount\": 6,\"totalTokenCount\":
+        20,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 14}]},\"modelVersion\":
+        \"gemini-2.5-flash-lite\",\"responseId\": \"YSewaNSeEt3skdUPj_ruyQ8\"}\r\n\r\ndata:
+        {\"candidates\": [{\"content\": null,\"index\":
+        0}],\"usageMetadata\": {\"promptTokenCount\": 14,\"candidatesTokenCount\":
+        22,\"totalTokenCount\": 36,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        14}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\": \"YSewaNSeEt3skdUPj_ruyQ8\"}\r\n\r\ndata:
+        {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \" renowned worldwide
+        for its **rich history, iconic landmarks, vibrant culture, and undeniable
+        romantic ambiance**. Here's a glimpse into what makes Paris so special:\\n\\n**Iconic
+        Landmarks & Attractions:**\\n\\n*   **Eiffel Tower:** Perhaps\"}],\"role\":
+        \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 14,\"candidatesTokenCount\":
+        70,\"totalTokenCount\": 84,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        14}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\": \"YSewaNSeEt3skdUPj_ruyQ8\"}\r\n\r\ndata:
+        {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \" the most recognizable
+        symbol of Paris, this wrought-iron lattice tower offers breathtaking panoramic
+        views of the city.\\n*   **Louvre Museum:** Home to an unparalleled collection
+        of art, including Leonardo da Vinci's Mona Lisa, the Venus de Milo,\"}],\"role\":
+        \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 14,\"candidatesTokenCount\":
+        121,\"totalTokenCount\": 135,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        14}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\": \"YSewaNSeEt3skdUPj_ruyQ8\"}\r\n\r\ndata:
+        {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \" and thousands of
+        other masterpieces.\\n*   **Notre-Dame Cathedral:** A magnificent Gothic cathedral,
+        currently undergoing restoration after a devastating fire, it remains a powerful
+        symbol of French heritage.\\n*   **Arc de Triomphe:** Standing\"}],\"role\":
+        \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 14,\"candidatesTokenCount\":
+        169,\"totalTokenCount\": 183,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        14}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\": \"YSewaNSeEt3skdUPj_ruyQ8\"}\r\n\r\ndata:
+        {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \" at the western
+        end of the Champs-\xC9lys\xE9es, this monumental arch honors those who fought
+        and died for France.\\n*   **Champs-\xC9lys\xE9es:** A grand avenue lined
+        with luxury boutiques, cafes, theaters, and cinemas\"}],\"role\": \"model\"},\"index\":
+        0}],\"usageMetadata\": {\"promptTokenCount\": 14,\"candidatesTokenCount\":
+        218,\"totalTokenCount\": 232,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        14}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\": \"YSewaNSeEt3skdUPj_ruyQ8\"}\r\n\r\ndata:
+        {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \", leading from the
+        Place de la Concorde to the Arc de Triomphe.\\n*   **Sacr\xE9-C\u0153ur Basilica:**
+        Perched atop Montmartre hill, this stunning white basilica offers spectacular
+        views and a charming atmosphere in\"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\":
+        {\"promptTokenCount\": 14,\"candidatesTokenCount\": 266,\"totalTokenCount\":
+        280,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 14}]},\"modelVersion\":
+        \"gemini-2.5-flash-lite\",\"responseId\": \"YSewaNSeEt3skdUPj_ruyQ8\"}\r\n\r\ndata:
+        {\"candidates\": [{\"content\": null,\"index\":
+        0}],\"usageMetadata\": {\"promptTokenCount\": 14,\"candidatesTokenCount\":
+        314,\"totalTokenCount\": 328,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        14}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\": \"YSewaNSeEt3skdUPj_ruyQ8\"}\r\n\r\ndata:
+        {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"ainte-Chapelle:**
+        Known for its exquisite stained-glass windows, this Gothic chapel is a marvel
+        of medieval artistry.\\n*   **Palace of Versailles:** A short train ride from
+        Paris, this opulent former royal residence is a testament\"}],\"role\": \"model\"},\"index\":
+        0}],\"usageMetadata\": {\"promptTokenCount\": 14,\"candidatesTokenCount\":
+        362,\"totalTokenCount\": 376,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        14}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\": \"YSewaNSeEt3skdUPj_ruyQ8\"}\r\n\r\ndata:
+        {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \" to the grandeur
+        of French monarchy.\\n\\n**Culture and Lifestyle:**\\n\\n*   **Art and Fashion:**
+        Paris is a global epicenter for art and fashion. Its museums, galleries, haute
+        couture houses, and thriving street style scene are legendary.\\n*   **Gast\"}],\"role\":
+        \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 14,\"candidatesTokenCount\":
+        415,\"totalTokenCount\": 429,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        14}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\": \"YSewaNSeEt3skdUPj_ruyQ8\"}\r\n\r\ndata:
+        {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"ronomy:** French
+        cuisine is world-famous, and Paris is its ultimate expression. From Michelin-starred
+        restaurants to charming bistros and bustling markets, the city offers an incredible
+        culinary journey. Think croissants, macarons, escargots, and world\"}],\"role\":
+        \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 14,\"candidatesTokenCount\":
+        464,\"totalTokenCount\": 478,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        14}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\": \"YSewaNSeEt3skdUPj_ruyQ8\"}\r\n\r\ndata:
+        {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"-class wines.\\n*
+        \  **Romance and Ambiance:** Paris is often called the \\\"City of Love\\\"
+        for good reason. Its charming cobblestone streets, beautiful bridges over
+        the Seine River, intimate cafes, and picturesque parks create an\"}],\"role\":
+        \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 14,\"candidatesTokenCount\":
+        514,\"totalTokenCount\": 528,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        14}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\": \"YSewaNSeEt3skdUPj_ruyQ8\"}\r\n\r\ndata:
+        {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \" incredibly romantic
+        atmosphere.\\n*   **Intellectual and Artistic Hub:** Throughout history, Paris
+        has been a magnet for intellectuals, artists, writers, and philosophers, fostering
+        a vibrant and dynamic cultural scene.\\n*   **Caf\xE9 Culture:** Parisians
+        are\"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\":
+        14,\"candidatesTokenCount\": 566,\"totalTokenCount\": 580,\"promptTokensDetails\":
+        [{\"modality\": \"TEXT\",\"tokenCount\": 14}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\":
+        \"YSewaNSeEt3skdUPj_ruyQ8\"}\r\n\r\ndata: {\"candidates\": [{\"content\":
+        {\"parts\": [{\"text\": \" known for their love of lingering in cafes, sipping
+        coffee or wine, and watching the world go by. This caf\xE9 culture is an integral
+        part of the city's social fabric.\\n*   **Parks and Gardens:** Despite its
+        urban density\"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\":
+        14,\"candidatesTokenCount\": 614,\"totalTokenCount\": 628,\"promptTokensDetails\":
+        [{\"modality\": \"TEXT\",\"tokenCount\": 14}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\":
+        \"YSewaNSeEt3skdUPj_ruyQ8\"}\r\n\r\ndata: {\"candidates\": [{\"content\":
+        null,\"index\": 0}],\"usageMetadata\":
+        {\"promptTokenCount\": 14,\"candidatesTokenCount\": 663,\"totalTokenCount\":
+        677,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\": 14}]},\"modelVersion\":
+        \"gemini-2.5-flash-lite\",\"responseId\": \"YSewaNSeEt3skdUPj_ruyQ8\"}\r\n\r\ndata:
+        {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \" iconic bridges
+        and embankments that are central to its charm.\\n*   **Distinct Neighborhoods
+        (Arrondissements):** Paris is divided into 20 arrondissements, each with its
+        own unique character and atmosphere, from the bohemian Mont\"}],\"role\":
+        \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\": 14,\"candidatesTokenCount\":
+        712,\"totalTokenCount\": 726,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        14}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\": \"YSewaNSeEt3skdUPj_ruyQ8\"}\r\n\r\ndata:
+        {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"martre to the chic
+        Saint-Germain-des-Pr\xE9s.\\n*   **Lively and Bustling:** While known for
+        its romance, Paris is also a dynamic and bustling metropolis with a constant
+        flow of activity.\\n\\nIn essence, Paris is a city\"}],\"role\": \"model\"},\"index\":
+        0}],\"usageMetadata\": {\"promptTokenCount\": 14,\"candidatesTokenCount\":
+        764,\"totalTokenCount\": 778,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        14}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\": \"YSewaNSeEt3skdUPj_ruyQ8\"}\r\n\r\ndata:
+        {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \" that captivates
+        the senses and nourishes the soul. It's a place where history, art, food,
+        and fashion converge to create an unforgettable experience.\"}],\"role\":
+        \"model\"},\"finishReason\": \"STOP\",\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\":
+        14,\"candidatesTokenCount\": 797,\"totalTokenCount\": 811,\"promptTokensDetails\":
+        [{\"modality\": \"TEXT\",\"tokenCount\": 14}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\":
+        \"YSewaNSeEt3skdUPj_ruyQ8\"}\r\n\r\n"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Disposition:
+      - attachment
+      Content-Type:
+      - text/event-stream
+      Date:
+      - Thu, 28 Aug 2025 09:54:41 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=307
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1

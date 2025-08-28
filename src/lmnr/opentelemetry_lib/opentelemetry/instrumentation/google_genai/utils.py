@@ -1,6 +1,8 @@
 import base64
+from collections import defaultdict
 import logging
 import traceback
+from typing_extensions import TypedDict
 
 from .config import (
     Config,
@@ -33,10 +35,14 @@ class ProcessedContentPart(pydantic.BaseModel):
     image_url: ImageUrl | None = pydantic.Field(default=None)
 
 
-def set_span_attribute(span: Span, name: str, value: str):
-    if value is not None:
-        if value != "":
-            span.set_attribute(name, value)
+class ProcessChunkResult(TypedDict):
+    role: str
+    model_version: str | None
+
+
+def set_span_attribute(span: Span, name: str, value: Any):
+    if value is not None and value != "":
+        span.set_attribute(name, value)
     return
 
 
@@ -84,7 +90,7 @@ def get_content(
     content: (
         ProcessedContentPart | dict | list[ProcessedContentPart | dict] | str | None
     ),
-) -> list[Any] | None:
+) -> dict | list[dict] | None:
     if isinstance(content, dict):
         return content.get("content") or content.get("image_url")
     if isinstance(content, ProcessedContentPart):
@@ -98,7 +104,8 @@ def get_content(
         else:
             return None
     elif isinstance(content, list):
-        return [get_content(item) for item in content]
+        contents_list = [get_content(item) for item in content]
+        return [item for item in contents_list if item is not None]
     elif isinstance(content, str):
         return {
             "type": "text",
@@ -110,9 +117,6 @@ def get_content(
 
 def process_content_union(
     content: types.ContentUnion | types.ContentUnionDict,
-    trace_id: str | None = None,
-    span_id: str | None = None,
-    message_index: int = 0,
 ) -> ProcessedContentPart | dict | list[ProcessedContentPart | dict] | None:
     if isinstance(content, types.Content):
         parts = to_dict(content).get("parts", [])
@@ -123,25 +127,16 @@ def process_content_union(
         return _process_part_union(content)
     elif isinstance(content, dict):
         if "parts" in content:
-            return [
-                _process_part_union(
-                    item, trace_id, span_id, message_index, content_index
-                )
-                for content_index, item in enumerate(content.get("parts", []))
-            ]
+            return [_process_part_union(item) for item in content.get("parts", [])]
         else:
             # Assume it's PartDict
-            return _process_part_union(content, trace_id, span_id, message_index)
+            return _process_part_union(content)
     else:
         return None
 
 
 def _process_part_union(
     content: types.PartDict | types.File | types.Part | str,
-    trace_id: str | None = None,
-    span_id: str | None = None,
-    message_index: int = 0,
-    content_index: int = 0,
 ) -> ProcessedContentPart | dict | None:
     if isinstance(content, str):
         return ProcessedContentPart(content=content)
@@ -154,36 +149,31 @@ def _process_part_union(
         )
         return ProcessedContentPart(content=f"files/{name}")
     elif isinstance(content, (types.Part, dict)):
-        return _process_part(content, trace_id, span_id, message_index, content_index)
+        return _process_part(content)
     else:
         return None
 
 
 def _process_part(
     content: types.Part,
-    trace_id: str | None = None,
-    span_id: str | None = None,
-    message_index: int = 0,
-    content_index: int = 0,
 ) -> ProcessedContentPart | dict | None:
     part_dict = to_dict(content)
     if part_dict.get("inline_data"):
         blob = to_dict(part_dict.get("inline_data"))
-        if blob.get("mime_type").startswith("image/"):
-            return _process_image_item(
-                blob, trace_id, span_id, message_index, content_index
-            )
+        if blob.get("mime_type", "").startswith("image/"):
+            return _process_image_item(blob)
         else:
             # currently, only images are supported
             return ProcessedContentPart(
                 content=blob.get("mime_type") or "unknown_media"
             )
-    elif part_dict.get("function_call"):
+    elif function_call := part_dict.get("function_call"):
+        function_call_dict = to_dict(function_call)
         return ProcessedContentPart(
             function_call=ToolCall(
-                name=part_dict.get("function_call").get("name"),
-                id=part_dict.get("function_call").get("id"),
-                arguments=part_dict.get("function_call").get("args", {}),
+                name=function_call_dict.get("name"),
+                id=function_call_dict.get("id"),
+                arguments=function_call_dict.get("args", {}),
             )
         )
     elif part_dict.get("text") is not None:
@@ -220,26 +210,71 @@ def with_tracer_wrapper(func):
     return _with_tracer
 
 
-def _process_image_item(
-    blob: dict[str, Any],
-    trace_id: str,
-    span_id: str,
-    message_index: int,
-    content_index: int,
-) -> ProcessedContentPart | dict | None:
+def _process_image_item(blob: dict[str, Any]) -> ProcessedContentPart | dict | None:
     # Convert to openai format, so backends can handle it
     data = blob.get("data")
     encoded_data = (
         base64.b64encode(data).decode("utf-8") if isinstance(data, bytes) else data
     )
+    mime_type = blob.get("mime_type", "image/unknown")
+    image_type = mime_type.split("/")[1] if "/" in mime_type else "unknown"
+
     return (
         ProcessedContentPart(
             image_url=ImageUrl(
                 image_url=ImageUrlInner(
-                    url=f"data:image/{blob.get('mime_type').split('/')[1]};base64,{encoded_data}",
+                    url=f"data:image/{image_type};base64,{encoded_data}",
                 )
             )
         )
         if Config.convert_image_to_openai_format
         else blob
+    )
+
+
+@dont_throw
+def process_stream_chunk(
+    chunk: types.GenerateContentResponse,
+    existing_role: str,
+    existing_model_version: str | None,
+    # ============================== #
+    # mutable states, passed by reference
+    aggregated_usage_metadata: defaultdict[str, int],
+    final_parts: list[types.Part | None],
+    # ============================== #
+) -> ProcessChunkResult:
+    role = existing_role
+    model_version = existing_model_version
+
+    if chunk.model_version:
+        model_version = chunk.model_version
+
+    # Currently gemini throws an error if you pass more than one candidate
+    # with streaming
+    if chunk.candidates and len(chunk.candidates) > 0 and chunk.candidates[0].content:
+        final_parts += chunk.candidates[0].content.parts or []
+        role = chunk.candidates[0].content.role or role
+    if chunk.usage_metadata:
+        usage_dict = to_dict(chunk.usage_metadata)
+        # prompt token count is sent in every chunk
+        # (and is less by 1 in the last chunk, so we set it once);
+        # total token count in every chunk is greater by prompt token count than it should be,
+        # thus this awkward logic here
+        if aggregated_usage_metadata.get("prompt_token_count") is None:
+            # or 0, not .get(key, 0), because sometimes the value is explicitly None
+            aggregated_usage_metadata["prompt_token_count"] = (
+                usage_dict.get("prompt_token_count") or 0
+            )
+            aggregated_usage_metadata["total_token_count"] = (
+                usage_dict.get("total_token_count") or 0
+            )
+        aggregated_usage_metadata["candidates_token_count"] += (
+            usage_dict.get("candidates_token_count") or 0
+        )
+        aggregated_usage_metadata["total_token_count"] += (
+            usage_dict.get("candidates_token_count") or 0
+        )
+    return ProcessChunkResult(
+        role=role,
+        model_version=model_version,
     )
