@@ -244,13 +244,11 @@ def process_stream_chunk(
     if chunk.model_version:
         model_version = chunk.model_version
 
-    if chunk.candidates:
-        # Currently gemini throws an error if you pass more than one candidate
-        # with streaming
-        if chunk.candidates and len(chunk.candidates) > 0:
-            if chunk.candidates[0].content:
-                final_parts += chunk.candidates[0].content.parts or []
-                role = chunk.candidates[0].content.role or role
+    # Currently gemini throws an error if you pass more than one candidate
+    # with streaming
+    if chunk.candidates and len(chunk.candidates) > 0 and chunk.candidates[0].content:
+        final_parts += chunk.candidates[0].content.parts or []
+        role = chunk.candidates[0].content.role or role
     if chunk.usage_metadata:
         usage_dict = to_dict(chunk.usage_metadata)
         # prompt token count is sent in every chunk
