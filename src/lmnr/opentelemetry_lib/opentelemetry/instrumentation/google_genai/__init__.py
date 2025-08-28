@@ -5,7 +5,6 @@ import json
 import logging
 import os
 from typing import AsyncGenerator, Callable, Collection, Generator
-from typing_extensions import TypedDict
 
 from google.genai import types
 
@@ -354,11 +353,6 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
                 tool_call_index += 1
             if has_content:
                 i += 1
-
-
-class ProcessChunkResult(TypedDict):
-    role: str
-    model_version: str | None
 
 
 @dont_throw
