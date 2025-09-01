@@ -36,6 +36,7 @@ except ImportError:
     ResponseOutputMessageParam = Dict[str, Any]
     RESPONSES_AVAILABLE = False
 
+from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.opentelemetry_lib.tracing.context import (
     get_current_context,
     get_event_attributes_from_context,
@@ -406,8 +407,14 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                 )
                 tool_call_index += 1
             elif block_dict.get("type") == "reasoning":
+                reasoning_summary = block_dict.get("summary")
+                if reasoning_summary:
+                    if isinstance(reasoning_summary, (list, dict)):
+                        reasoning_value = json_dumps(reasoning_summary)
+                    else:
+                        reasoning_value = reasoning_summary
                 _set_span_attribute(
-                    span, f"{GEN_AI_COMPLETION}.0.reasoning", block_dict.get("summary")
+                    span, f"{GEN_AI_COMPLETION}.0.reasoning", reasoning_value
                 )
             # TODO: handle other block types, in particular other calls
 
