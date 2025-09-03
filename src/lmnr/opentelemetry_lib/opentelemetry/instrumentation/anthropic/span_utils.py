@@ -72,7 +72,7 @@ async def _dump_content(message_index, content, span):
         return json.dumps(content, cls=JSONEncoder)
 
 
-# @dont_throw
+@dont_throw
 async def aset_input_attributes(span, kwargs):
     from .utils import set_span_attribute
 
