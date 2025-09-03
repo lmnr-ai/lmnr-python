@@ -219,8 +219,19 @@ class TracerWrapper(object):
 
     @classmethod
     def verify_initialized(cls) -> bool:
-        with cls._lock:
-            return hasattr(cls, "instance") and hasattr(cls.instance, "_span_processor")
+        # This is not using lock, but it is fine to return False from here
+        # even if initialization is going on.
+
+        # If we try to acquire the lock here, it may deadlock if an automatic
+        # instrumentation is importing a file that (at the top level) has a
+        # function annotated with Laminar's `observe` decorator.
+        # The decorator is evaluated at import time, inside `init_instrumentations`,
+        # which is called by the `TracerWrapper` constructor while holding the lock.
+        # Without the lock here, we will simply return False, which will cause
+        # the decorator to return the original function. This is fine, at runtime,
+        # the next import statement will re-evaluate the decorator, and Laminar will
+        # have been initialized by that time.
+        return hasattr(cls, "instance") and hasattr(cls.instance, "_span_processor")
 
     @classmethod
     def clear(cls):
