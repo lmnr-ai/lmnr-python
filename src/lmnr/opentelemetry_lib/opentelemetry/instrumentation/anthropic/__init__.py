@@ -355,8 +355,6 @@ def _set_token_usage(
         choices = len(content_attr)
     elif completion_attr:
         choices = 1
-    print("completion_tokens", completion_tokens)
-    print("content_attr", content_attr)
     if choices > 0 and choice_counter:
         choice_counter.add(
             choices,
