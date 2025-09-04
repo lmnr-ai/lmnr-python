@@ -1,3 +1,4 @@
+import uuid
 import orjson
 import logging
 import os
@@ -16,6 +17,8 @@ from lmnr.sdk.types import MaskInputOptions
 logger = logging.getLogger(__name__)
 
 OLD_BUFFER_TIMEOUT = 60
+
+frame_to_isolated_context_id = {}
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(current_dir, "recorder", "record.umd.min.cjs"), "r") as f:
@@ -552,96 +555,36 @@ def get_mask_input_setting() -> MaskInputOptions:
         )
 
 
-async def is_error_page(cdp_session):
-    cdp_client = cdp_session.cdp_client
+async def get_isolated_context_id(cdp_session):
+    tree = await cdp_session.cdp_client.send.Page.getFrameTree(
+        session_id=cdp_session.session_id
+    )
+    frame = tree.get("frameTree", {}).get("frame", {})
+    frame_id = frame.get("id", str(uuid.uuid4()))
+    loader_id = frame.get("loaderI", str(uuid.uuid4()))
+    url = frame.get("url", "about:blank")
 
-    try:
-        # Get the current page URL
-        result = await cdp_client.send.Runtime.evaluate(
+    key = f"{frame_id}_{loader_id}_{url}"
+
+    if key not in frame_to_isolated_context_id:
+        result = await cdp_session.cdp_client.send.Page.createIsolatedWorld(
             {
-                "expression": "window.location.href",
-                "returnByValue": True,
+                "frameId": frame_id,
+                "worldName": "laminar-isolated-context",
             },
             session_id=cdp_session.session_id,
         )
-
-        url = result.get("result", {}).get("value", "")
-
-        # Comprehensive list of browser error URLs
-        error_url_patterns = [
-            # Chrome error pages
-            "chrome-error://",
-            "chrome://network-error/",
-            "chrome://network-errors/",
-            # Chrome crash and debugging pages
-            "chrome://crash/",
-            "chrome://crashdump/",
-            "chrome://kill/",
-            "chrome://hang/",
-            "chrome://shorthang/",
-            "chrome://gpuclean/",
-            "chrome://gpucrash/",
-            "chrome://gpuhang/",
-            "chrome://memory-exhaust/",
-            "chrome://memory-pressure-critical/",
-            "chrome://memory-pressure-moderate/",
-            "chrome://inducebrowsercrashforrealz/",
-            "chrome://inducebrowserdcheckforrealz/",
-            "chrome://inducebrowserheapcorruption/",
-            "chrome://heapcorruptioncrash/",
-            "chrome://badcastcrash/",
-            "chrome://ppapiflashcrash/",
-            "chrome://ppapiflashhang/",
-            "chrome://quit/",
-            "chrome://restart/",
-            # Firefox error pages
-            "about:neterror",
-            "about:certerror",
-            "about:blocked",
-            # Firefox crash and debugging pages
-            "about:crashcontent",
-            "about:crashparent",
-            "about:crashes",
-            "about:tabcrashed",
-            # Edge error pages (similar to Chrome)
-            "edge-error://",
-            "edge://crash/",
-            "edge://kill/",
-            "edge://hang/",
-            # Safari/WebKit error indicators (data URLs with error content)
-            "webkit-error://",
-        ]
-
-        # Check if current URL matches any error pattern
-        if any(url.startswith(pattern) for pattern in error_url_patterns):
-            logger.debug(f"Detected browser error page from URL: {url}")
-            return True
-
-        # Additional check for data URLs that might contain error pages
-        if url.startswith("data:") and any(
-            error_term in url.lower()
-            for error_term in ["error", "crash", "failed", "unavailable", "not found"]
-        ):
-            logger.debug(f"Detected error page from data URL: {url[:100]}...")
-            return True
-
-    except Exception as e:
-        logger.debug(f"Error during session recorder injection: {e}")
-        return False
+        isolated_context_id = result["executionContextId"]
+        frame_to_isolated_context_id[key] = isolated_context_id
+        return isolated_context_id
+    else:
+        return frame_to_isolated_context_id[key]
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 async def inject_session_recorder(cdp_session):
     cdp_client = cdp_session.cdp_client
     try:
-        # Check if this is an error page - if so, don't inject the recorder
-        try:
-            if await is_error_page(cdp_session):
-                logger.debug("Skipping session recorder injection on error page")
-                return
-        except Exception as e:
-            logger.debug(f"Failed to check if page is error page: {e}")
-
         try:
             is_loaded = await is_recorder_present(cdp_session)
         except Exception as e:
@@ -651,12 +594,16 @@ async def inject_session_recorder(cdp_session):
         if is_loaded:
             return
 
+        isolated_context_id = await get_isolated_context_id(cdp_session)
+
         async def load_session_recorder():
             try:
+
                 await asyncio.wait_for(
                     cdp_client.send.Runtime.evaluate(
                         {
                             "expression": f"({RRWEB_CONTENT})()",
+                            "contextId": isolated_context_id,
                         },
                         session_id=cdp_session.session_id,
                     ),
@@ -680,6 +627,7 @@ async def inject_session_recorder(cdp_session):
                 cdp_client.send.Runtime.evaluate(
                     {
                         "expression": f"({INJECT_PLACEHOLDER})({orjson.dumps(get_mask_input_setting()).decode('utf-8')})",
+                        "contextId": isolated_context_id,
                     },
                     session_id=cdp_session.session_id,
                 )
@@ -804,12 +752,14 @@ def register_on_target_created(
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 async def is_recorder_present(cdp_session) -> bool:
     cdp_client = cdp_session.cdp_client
+    isolated_context_id = await get_isolated_context_id(cdp_session)
 
     try:
         result = await asyncio.wait_for(
             cdp_client.send.Runtime.evaluate(
                 {
                     "expression": "typeof window.lmnrRrweb !== 'undefined'",
+                    "contextId": isolated_context_id,
                 },
                 session_id=cdp_session.session_id,
             ),
@@ -826,6 +776,7 @@ async def is_recorder_present(cdp_session) -> bool:
 
 async def take_full_snapshot(cdp_session):
     cdp_client = cdp_session.cdp_client
+    isolated_context_id = await get_isolated_context_id(cdp_session)
     result = await cdp_client.send.Runtime.evaluate(
         {
             "expression": """(() => {
@@ -840,6 +791,7 @@ async def take_full_snapshot(cdp_session):
     }
     return false;
 })()""",
+            "contextId": isolated_context_id,
         },
         session_id=cdp_session.session_id,
     )
