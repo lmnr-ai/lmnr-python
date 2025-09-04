@@ -458,51 +458,69 @@ INJECT_PLACEHOLDER = """
         });
         return base64url.slice(base64url.indexOf(',') + 1);
     }
- 
-    window.lmnrRrweb.record({
-        async emit(event) {
-            try {
-                const isLarge = isLargeEvent(event.type);
-                const compressedResult = isLarge ?
-                    await compressLargeObject(event.data) :
-                    await compressSmallObject(event.data);
 
-                const base64Data = await bufferToBase64(compressedResult);
-                const eventToSend = {
-                    ...event,
-                    data: base64Data,
-                };
-                window.lmnrRrwebEventsBatch.push(eventToSend);
-            } catch (error) {
-                console.warn('Failed to push event to batch', error);
+    if (!window.lmnrStartedRecordingEvents) {
+        const detectionResults = {
+            hasZoneJs: !!(window.Zone || Object.keys(window).some(k => k.startsWith('__zone_symbol__'))),
+            mutationObserverState: {
+                current: window.MutationObserver,
+                isNative: window.MutationObserver.toString().includes('[native code]'),
+                hasZoneSymbols: false,
+                originalFound: null,
+                restorationMethod: null
             }
-        },
-        recordCanvas: true,
-        collectFonts: true,
-        recordCrossOriginIframes: true,
-        maskInputOptions: {
-            password: true,
-            textarea: maskInputOptions.textarea || false,
-            text: maskInputOptions.text || false,
-            number: maskInputOptions.number || false,
-            select: maskInputOptions.select || false,
-            email: maskInputOptions.email || false,
-            tel: maskInputOptions.tel || false,
+        };
+
+        if (detectionResults.hasZoneJs) {
+            console.warn('Zone.js detected, skipping session recorder');
+            return;
         }
-    });
+        window.lmnrRrweb.record({
+            async emit(event) {
+                try {
+                    const isLarge = isLargeEvent(event.type);
+                    const compressedResult = isLarge ?
+                        await compressLargeObject(event.data) :
+                        await compressSmallObject(event.data);
 
-    function heartbeat() {
-        // Add heartbeat events
-        setInterval(() => {
-            window.lmnrRrweb.record.addCustomEvent('heartbeat', {
-                title: document.title,
-                    url: document.URL,
-                })
-            }, HEARTBEAT_INTERVAL
-        );
+                    const base64Data = await bufferToBase64(compressedResult);
+                    const eventToSend = {
+                        ...event,
+                        data: base64Data,
+                    };
+                    window.lmnrRrwebEventsBatch.push(eventToSend);
+                } catch (error) {
+                    console.warn('Failed to push event to batch', error);
+                }
+            },
+            recordCanvas: true,
+            collectFonts: true,
+            recordCrossOriginIframes: true,
+            maskInputOptions: {
+                password: true,
+                textarea: maskInputOptions.textarea || false,
+                text: maskInputOptions.text || false,
+                number: maskInputOptions.number || false,
+                select: maskInputOptions.select || false,
+                email: maskInputOptions.email || false,
+                tel: maskInputOptions.tel || false,
+            }
+        });
+
+        function heartbeat() {
+            // Add heartbeat events
+            setInterval(() => {
+                window.lmnrRrweb.record.addCustomEvent('heartbeat', {
+                    title: document.title,
+                        url: document.URL,
+                    })
+                }, HEARTBEAT_INTERVAL
+            );
+        }
+
+        heartbeat();
+        window.lmnrStartedRecordingEvents = true;
     }
-
-    heartbeat();
 }
 """
 
@@ -534,10 +552,96 @@ def get_mask_input_setting() -> MaskInputOptions:
         )
 
 
-# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
+async def is_error_page(cdp_session):
+    cdp_client = cdp_session.cdp_client
+
+    try:
+        # Get the current page URL
+        result = await cdp_client.send.Runtime.evaluate(
+            {
+                "expression": "window.location.href",
+                "returnByValue": True,
+            },
+            session_id=cdp_session.session_id,
+        )
+
+        url = result.get("result", {}).get("value", "")
+
+        # Comprehensive list of browser error URLs
+        error_url_patterns = [
+            # Chrome error pages
+            "chrome-error://",
+            "chrome://network-error/",
+            "chrome://network-errors/",
+            # Chrome crash and debugging pages
+            "chrome://crash/",
+            "chrome://crashdump/",
+            "chrome://kill/",
+            "chrome://hang/",
+            "chrome://shorthang/",
+            "chrome://gpuclean/",
+            "chrome://gpucrash/",
+            "chrome://gpuhang/",
+            "chrome://memory-exhaust/",
+            "chrome://memory-pressure-critical/",
+            "chrome://memory-pressure-moderate/",
+            "chrome://inducebrowsercrashforrealz/",
+            "chrome://inducebrowserdcheckforrealz/",
+            "chrome://inducebrowserheapcorruption/",
+            "chrome://heapcorruptioncrash/",
+            "chrome://badcastcrash/",
+            "chrome://ppapiflashcrash/",
+            "chrome://ppapiflashhang/",
+            "chrome://quit/",
+            "chrome://restart/",
+            # Firefox error pages
+            "about:neterror",
+            "about:certerror",
+            "about:blocked",
+            # Firefox crash and debugging pages
+            "about:crashcontent",
+            "about:crashparent",
+            "about:crashes",
+            "about:tabcrashed",
+            # Edge error pages (similar to Chrome)
+            "edge-error://",
+            "edge://crash/",
+            "edge://kill/",
+            "edge://hang/",
+            # Safari/WebKit error indicators (data URLs with error content)
+            "webkit-error://",
+        ]
+
+        # Check if current URL matches any error pattern
+        if any(url.startswith(pattern) for pattern in error_url_patterns):
+            logger.debug(f"Detected browser error page from URL: {url}")
+            return True
+
+        # Additional check for data URLs that might contain error pages
+        if url.startswith("data:") and any(
+            error_term in url.lower()
+            for error_term in ["error", "crash", "failed", "unavailable", "not found"]
+        ):
+            logger.debug(f"Detected error page from data URL: {url[:100]}...")
+            return True
+
+    except Exception as e:
+        logger.debug(f"Error during session recorder injection: {e}")
+        return False
+
+
+# browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 async def inject_session_recorder(cdp_session):
     cdp_client = cdp_session.cdp_client
     try:
+        # Check if this is an error page - if so, don't inject the recorder
+        try:
+            if await is_error_page(cdp_session):
+                logger.debug("Skipping session recorder injection on error page")
+                return
+        except Exception as e:
+            logger.debug(f"Failed to check if page is error page: {e}")
+
         try:
             is_loaded = await is_recorder_present(cdp_session)
         except Exception as e:
@@ -549,12 +653,14 @@ async def inject_session_recorder(cdp_session):
 
         async def load_session_recorder():
             try:
-                await cdp_client.send.Runtime.evaluate(
-                    {
-                        "expression": f"({RRWEB_CONTENT})()",
-                        "awaitPromise": True,
-                    },
-                    session_id=cdp_session.session_id,
+                await asyncio.wait_for(
+                    cdp_client.send.Runtime.evaluate(
+                        {
+                            "expression": f"({RRWEB_CONTENT})()",
+                        },
+                        session_id=cdp_session.session_id,
+                    ),
+                    timeout=2.5,
                 )
                 return True
             except Exception as e:
@@ -563,26 +669,29 @@ async def inject_session_recorder(cdp_session):
 
         if not await retry_async(
             load_session_recorder,
+            retries=3,
             delay=1,
-            error_message="Failed to load session recorder",
+            error_message="Failed to load session recorder processor",
         ):
             return
 
         try:
-            await cdp_client.send.Runtime.evaluate(
-                {
-                    "expression": f"({INJECT_PLACEHOLDER})({orjson.dumps(get_mask_input_setting()).decode("utf-8")})",
-                },
-                session_id=cdp_session.session_id,
+            await asyncio.create_task(
+                cdp_client.send.Runtime.evaluate(
+                    {
+                        "expression": f"({INJECT_PLACEHOLDER})({orjson.dumps(get_mask_input_setting()).decode('utf-8')})",
+                    },
+                    session_id=cdp_session.session_id,
+                )
             )
         except Exception as e:
-            logger.debug(f"Failed to inject session recorder placeholder: {e}")
+            logger.debug(f"Failed to inject recorder processor: {e}")
 
     except Exception as e:
-        logger.error(f"Error during session recorder injection: {e}")
+        logger.debug(f"Error during session recorder injection: {e}")
 
 
-# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
+# browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 @observe(name="cdp_use.session", ignore_input=True, ignore_output=True)
 async def start_recording_events(
     cdp_session,
@@ -668,7 +777,7 @@ async def start_recording_events(
     register_on_target_created(cdp_session, lmnr_session_id, client)
 
 
-# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
+# browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 async def enable_target_discovery(cdp_session):
     cdp_client = cdp_session.cdp_client
     await cdp_client.send.Target.setDiscoverTargets(
@@ -679,7 +788,7 @@ async def enable_target_discovery(cdp_session):
     )
 
 
-# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
+# browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 def register_on_target_created(
     cdp_session, lmnr_session_id: str, client: AsyncLaminarClient
 ):
@@ -692,21 +801,27 @@ def register_on_target_created(
     cdp_session.cdp_client.register.Target.targetCreated(on_target_created)
 
 
-# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
+# browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 async def is_recorder_present(cdp_session) -> bool:
     cdp_client = cdp_session.cdp_client
 
-    result = await cdp_client.send.Runtime.evaluate(
-        {
-            "expression": """(()=>{
-                return typeof window.lmnrRrweb !== 'undefined';
-            })()""",
-        },
-        session_id=cdp_session.session_id,
-    )
-    if result and "result" in result and "value" in result["result"]:
-        return result["result"]["value"]
-    return False
+    try:
+        result = await asyncio.wait_for(
+            cdp_client.send.Runtime.evaluate(
+                {
+                    "expression": "typeof window.lmnrRrweb !== 'undefined'",
+                },
+                session_id=cdp_session.session_id,
+            ),
+            timeout=1,
+        )
+        if result and "result" in result and "value" in result["result"]:
+            return result["result"]["value"]
+        return False
+    except asyncio.TimeoutError:
+        return True
+    except Exception:
+        return True
 
 
 async def take_full_snapshot(cdp_session):
