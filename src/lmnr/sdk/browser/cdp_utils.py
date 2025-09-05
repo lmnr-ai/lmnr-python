@@ -517,7 +517,7 @@ INJECT_PLACEHOLDER = """
 
 async def should_skip_page(cdp_session):
     """Checks if the page url is an error page or an empty page.
-    Thius function returns True in case of any error in our code, because
+    This function returns True in case of any error in our code, because
     it is safer to not record events than to try to inject the recorder
     into something that is already broken.
     """
