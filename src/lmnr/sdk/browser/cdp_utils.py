@@ -515,7 +515,8 @@ INJECT_PLACEHOLDER = """
 """
 
 
-async def is_error_page(cdp_session):
+async def should_instrument_page(cdp_session):
+    """Checks if the page url is an error page or an empty page."""
     cdp_client = cdp_session.cdp_client
 
     try:
@@ -535,6 +536,7 @@ async def is_error_page(cdp_session):
 
         # Comprehensive list of browser error URLs
         error_url_patterns = [
+            "about:blank",
             # Chrome error pages
             "chrome-error://",
             "chrome://network-error/",
@@ -662,13 +664,13 @@ async def get_isolated_context_id(cdp_session) -> int | None:
 async def inject_session_recorder(cdp_session):
     cdp_client = cdp_session.cdp_client
     try:
+        should_instrument = False
         try:
-            is_error = await is_error_page(cdp_session)
+            should_instrument = await should_instrument_page(cdp_session)
         except Exception as e:
             logger.debug(f"Failed to check if error page: {e}")
-            is_error = False
 
-        if is_error:
+        if should_instrument:
             logger.debug("Error page detected, skipping session recorder injection")
             return
         try:
@@ -687,7 +689,6 @@ async def inject_session_recorder(cdp_session):
 
         async def load_session_recorder():
             try:
-
                 await asyncio.wait_for(
                     cdp_client.send.Runtime.evaluate(
                         {

@@ -112,7 +112,12 @@ class Evaluation:
         base_http_url: str | None = None,
         http_port: int | None = None,
         grpc_port: int | None = None,
-        instruments: set[Instruments] | None = None,
+        instruments: (
+            set[Instruments] | list[Instruments] | tuple[Instruments] | None
+        ) = None,
+        disabled_instruments: (
+            set[Instruments] | list[Instruments] | tuple[Instruments] | None
+        ) = None,
         max_export_batch_size: int | None = MAX_EXPORT_BATCH_SIZE,
         trace_export_timeout_seconds: int | None = None,
     ):
@@ -171,6 +176,10 @@ class Evaluation:
                 to auto-instrument. If None, all available instruments will be\
                 used.
                 See https://docs.lmnr.ai/tracing/automatic-instrumentation
+                Defaults to None.
+            disabled_instruments (set[Instruments] | None, optional): Set of modules\
+                to disable auto-instrumentations. If None, only modules passed\
+                as `instruments` will be disabled.
                 Defaults to None.
         """
 
@@ -234,6 +243,7 @@ class Evaluation:
             http_port=http_port,
             grpc_port=grpc_port,
             instruments=instruments,
+            disabled_instruments=disabled_instruments,
             max_export_batch_size=max_export_batch_size,
             export_timeout_seconds=trace_export_timeout_seconds,
         )
@@ -432,7 +442,12 @@ def evaluate(
     base_http_url: str | None = None,
     http_port: int | None = None,
     grpc_port: int | None = None,
-    instruments: set[Instruments] | None = None,
+    instruments: (
+        set[Instruments] | list[Instruments] | tuple[Instruments] | None
+    ) = None,
+    disabled_instruments: (
+        set[Instruments] | list[Instruments] | tuple[Instruments] | None
+    ) = None,
     max_export_batch_size: int | None = MAX_EXPORT_BATCH_SIZE,
     trace_export_timeout_seconds: int | None = None,
 ) -> Awaitable[None] | None:
@@ -493,6 +508,10 @@ def evaluate(
                         auto-instrument. If None, all available instruments\
                         will be used.
                         Defaults to None.
+        disabled_instruments (set[Instruments] | None, optional): Set of modules\
+                        to disable auto-instrumentations. If None, no\
+                        only modules passed as `instruments` will be disabled.
+                        Defaults to None.
         trace_export_timeout_seconds (int | None, optional): The timeout for\
                         trace export on OpenTelemetry exporter. Defaults to None.
     """
@@ -510,6 +529,7 @@ def evaluate(
         http_port=http_port,
         grpc_port=grpc_port,
         instruments=instruments,
+        disabled_instruments=disabled_instruments,
         max_export_batch_size=max_export_batch_size,
         trace_export_timeout_seconds=trace_export_timeout_seconds,
     )
