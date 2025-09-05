@@ -1,8 +1,8 @@
-import orjson
+import asyncio
 import logging
+import orjson
 import os
 import time
-import asyncio
 
 from opentelemetry import trace
 
@@ -16,6 +16,11 @@ from lmnr.sdk.types import MaskInputOptions
 logger = logging.getLogger(__name__)
 
 OLD_BUFFER_TIMEOUT = 60
+CDP_OPERATION_TIMEOUT_SECONDS = 10
+
+# CDP ContextId is int
+frame_to_isolated_context_id: dict[str, int] = {}
+lock = asyncio.Lock()
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(current_dir, "recorder", "record.umd.min.cjs"), "r") as f:
@@ -448,8 +453,6 @@ INJECT_PLACEHOLDER = """
         }
     }
 
-    setInterval(sendBatchIfReady, BATCH_TIMEOUT);
-
     async function bufferToBase64(buffer) {
         const base64url = await new Promise(r => {
             const reader = new FileReader()
@@ -458,53 +461,150 @@ INJECT_PLACEHOLDER = """
         });
         return base64url.slice(base64url.indexOf(',') + 1);
     }
- 
-    window.lmnrRrweb.record({
-        async emit(event) {
-            try {
-                const isLarge = isLargeEvent(event.type);
-                const compressedResult = isLarge ?
-                    await compressLargeObject(event.data) :
-                    await compressSmallObject(event.data);
 
-                const base64Data = await bufferToBase64(compressedResult);
-                const eventToSend = {
-                    ...event,
-                    data: base64Data,
-                };
-                window.lmnrRrwebEventsBatch.push(eventToSend);
-            } catch (error) {
-                console.warn('Failed to push event to batch', error);
+    if (!window.lmnrStartedRecordingEvents) {
+        setInterval(sendBatchIfReady, BATCH_TIMEOUT);
+
+        window.lmnrRrweb.record({
+            async emit(event) {
+                try {
+                    const isLarge = isLargeEvent(event.type);
+                    const compressedResult = isLarge ?
+                        await compressLargeObject(event.data) :
+                        await compressSmallObject(event.data);
+
+                    const base64Data = await bufferToBase64(compressedResult);
+                    const eventToSend = {
+                        ...event,
+                        data: base64Data,
+                    };
+                    window.lmnrRrwebEventsBatch.push(eventToSend);
+                } catch (error) {
+                    console.warn('Failed to push event to batch', error);
+                }
+            },
+            recordCanvas: true,
+            collectFonts: true,
+            recordCrossOriginIframes: true,
+            maskInputOptions: {
+                password: true,
+                textarea: maskInputOptions.textarea || false,
+                text: maskInputOptions.text || false,
+                number: maskInputOptions.number || false,
+                select: maskInputOptions.select || false,
+                email: maskInputOptions.email || false,
+                tel: maskInputOptions.tel || false,
             }
-        },
-        recordCanvas: true,
-        collectFonts: true,
-        recordCrossOriginIframes: true,
-        maskInputOptions: {
-            password: true,
-            textarea: maskInputOptions.textarea || false,
-            text: maskInputOptions.text || false,
-            number: maskInputOptions.number || false,
-            select: maskInputOptions.select || false,
-            email: maskInputOptions.email || false,
-            tel: maskInputOptions.tel || false,
+        });
+
+        function heartbeat() {
+            // Add heartbeat events
+            setInterval(() => {
+                window.lmnrRrweb.record.addCustomEvent('heartbeat', {
+                    title: document.title,
+                        url: document.URL,
+                    })
+                }, HEARTBEAT_INTERVAL
+            );
         }
-    });
 
-    function heartbeat() {
-        // Add heartbeat events
-        setInterval(() => {
-            window.lmnrRrweb.record.addCustomEvent('heartbeat', {
-                title: document.title,
-                    url: document.URL,
-                })
-            }, HEARTBEAT_INTERVAL
-        );
+        heartbeat();
+        window.lmnrStartedRecordingEvents = true;
     }
-
-    heartbeat();
 }
 """
+
+
+async def should_skip_page(cdp_session):
+    """Checks if the page url is an error page or an empty page.
+    This function returns True in case of any error in our code, because
+    it is safer to not record events than to try to inject the recorder
+    into something that is already broken.
+    """
+    cdp_client = cdp_session.cdp_client
+
+    try:
+        # Get the current page URL
+        result = await asyncio.wait_for(
+            cdp_client.send.Runtime.evaluate(
+                {
+                    "expression": "window.location.href",
+                    "returnByValue": True,
+                },
+                session_id=cdp_session.session_id,
+            ),
+            timeout=CDP_OPERATION_TIMEOUT_SECONDS,
+        )
+
+        url = result.get("result", {}).get("value", "")
+
+        # Comprehensive list of browser error URLs
+        error_url_patterns = [
+            "about:blank",
+            # Chrome error pages
+            "chrome-error://",
+            "chrome://network-error/",
+            "chrome://network-errors/",
+            # Chrome crash and debugging pages
+            "chrome://crash/",
+            "chrome://crashdump/",
+            "chrome://kill/",
+            "chrome://hang/",
+            "chrome://shorthang/",
+            "chrome://gpuclean/",
+            "chrome://gpucrash/",
+            "chrome://gpuhang/",
+            "chrome://memory-exhaust/",
+            "chrome://memory-pressure-critical/",
+            "chrome://memory-pressure-moderate/",
+            "chrome://inducebrowsercrashforrealz/",
+            "chrome://inducebrowserdcheckforrealz/",
+            "chrome://inducebrowserheapcorruption/",
+            "chrome://heapcorruptioncrash/",
+            "chrome://badcastcrash/",
+            "chrome://ppapiflashcrash/",
+            "chrome://ppapiflashhang/",
+            "chrome://quit/",
+            "chrome://restart/",
+            # Firefox error pages
+            "about:neterror",
+            "about:certerror",
+            "about:blocked",
+            # Firefox crash and debugging pages
+            "about:crashcontent",
+            "about:crashparent",
+            "about:crashes",
+            "about:tabcrashed",
+            # Edge error pages (similar to Chrome)
+            "edge-error://",
+            "edge://crash/",
+            "edge://kill/",
+            "edge://hang/",
+            # Safari/WebKit error indicators (data URLs with error content)
+            "webkit-error://",
+        ]
+
+        # Check if current URL matches any error pattern
+        if any(url.startswith(pattern) for pattern in error_url_patterns):
+            logger.debug(f"Detected browser error page from URL: {url}")
+            return True
+
+        # Additional check for data URLs that might contain error pages
+        if url.startswith("data:") and any(
+            error_term in url.lower()
+            for error_term in ["error", "crash", "failed", "unavailable", "not found"]
+        ):
+            logger.debug(f"Detected error page from data URL: {url[:100]}...")
+            return True
+
+        return False
+
+    except asyncio.TimeoutError:
+        logger.debug("Timeout error when checking if error page")
+        return True
+    except Exception as e:
+        logger.debug(f"Error during checking if error page: {e}")
+        return True
 
 
 def get_mask_input_setting() -> MaskInputOptions:
@@ -534,12 +634,78 @@ def get_mask_input_setting() -> MaskInputOptions:
         )
 
 
-# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
-async def inject_session_recorder(cdp_session):
+# browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
+async def get_isolated_context_id(cdp_session) -> int | None:
+    async with lock:
+        tree = {}
+        try:
+            tree = await asyncio.wait_for(
+                cdp_session.cdp_client.send.Page.getFrameTree(
+                    session_id=cdp_session.session_id
+                ),
+                timeout=CDP_OPERATION_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.debug("Timeout error when getting frame tree")
+            return None
+        except Exception as e:
+            logger.debug(f"Failed to get frame tree: {e}")
+            return None
+        frame = tree.get("frameTree", {}).get("frame", {})
+        frame_id = frame.get("id")
+        loader_id = frame.get("loaderId")
+
+        if frame_id is None or loader_id is None:
+            logger.debug("Failed to get frame id or loader id")
+            return None
+        key = f"{frame_id}_{loader_id}"
+
+        if key in frame_to_isolated_context_id:
+            return frame_to_isolated_context_id[key]
+
+        try:
+            result = await asyncio.wait_for(
+                cdp_session.cdp_client.send.Page.createIsolatedWorld(
+                    {
+                        "frameId": frame_id,
+                        "worldName": "laminar-isolated-context",
+                    },
+                    session_id=cdp_session.session_id,
+                ),
+                timeout=CDP_OPERATION_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.debug("Timeout error when getting isolated context id")
+            return None
+        except Exception as e:
+            logger.debug(f"Failed to get isolated context id: {e}")
+            return None
+        isolated_context_id = result["executionContextId"]
+        frame_to_isolated_context_id[key] = isolated_context_id
+        return isolated_context_id
+
+
+# browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
+async def inject_session_recorder(cdp_session) -> int | None:
+    """Injects the session recorder base as well as the recorder itself.
+    Returns the isolated context id if successful.
+    """
+    isolated_context_id = None
     cdp_client = cdp_session.cdp_client
     try:
+        should_skip = True
         try:
-            is_loaded = await is_recorder_present(cdp_session)
+            should_skip = await should_skip_page(cdp_session)
+        except Exception as e:
+            logger.debug(f"Failed to check if error page: {e}")
+
+        if should_skip:
+            logger.debug("Empty page detected, skipping session recorder injection")
+            return
+
+        isolated_context_id = await get_isolated_context_id(cdp_session)
+        try:
+            is_loaded = await is_recorder_present(cdp_session, isolated_context_id)
         except Exception as e:
             logger.debug(f"Failed to check if session recorder is loaded: {e}")
             is_loaded = False
@@ -547,42 +713,60 @@ async def inject_session_recorder(cdp_session):
         if is_loaded:
             return
 
+        if isolated_context_id is None:
+            logger.debug("Failed to get isolated context id")
+            return
+
         async def load_session_recorder():
             try:
-                await cdp_client.send.Runtime.evaluate(
-                    {
-                        "expression": f"({RRWEB_CONTENT})()",
-                        "awaitPromise": True,
-                    },
-                    session_id=cdp_session.session_id,
+                await asyncio.wait_for(
+                    cdp_client.send.Runtime.evaluate(
+                        {
+                            "expression": f"({RRWEB_CONTENT})()",
+                            "contextId": isolated_context_id,
+                        },
+                        session_id=cdp_session.session_id,
+                    ),
+                    timeout=CDP_OPERATION_TIMEOUT_SECONDS,
                 )
                 return True
+            except asyncio.TimeoutError:
+                logger.debug("Timeout error when loading session recorder base")
+                return False
             except Exception as e:
-                logger.error(f"Failed to load session recorder: {e}")
+                logger.debug(f"Failed to load session recorder base: {e}")
                 return False
 
         if not await retry_async(
             load_session_recorder,
+            retries=3,
             delay=1,
             error_message="Failed to load session recorder",
         ):
             return
 
         try:
-            await cdp_client.send.Runtime.evaluate(
-                {
-                    "expression": f"({INJECT_PLACEHOLDER})({orjson.dumps(get_mask_input_setting()).decode("utf-8")})",
-                },
-                session_id=cdp_session.session_id,
+            await asyncio.wait_for(
+                cdp_client.send.Runtime.evaluate(
+                    {
+                        "expression": f"({INJECT_PLACEHOLDER})({orjson.dumps(get_mask_input_setting()).decode('utf-8')})",
+                        "contextId": isolated_context_id,
+                    },
+                    session_id=cdp_session.session_id,
+                ),
+                timeout=CDP_OPERATION_TIMEOUT_SECONDS,
             )
+            return isolated_context_id
+        except asyncio.TimeoutError:
+            logger.debug("Timeout error when injecting session recorder")
         except Exception as e:
-            logger.debug(f"Failed to inject session recorder placeholder: {e}")
+            logger.debug(f"Failed to inject recorder: {e}")
 
     except Exception as e:
-        logger.error(f"Error during session recorder injection: {e}")
+        logger.debug(f"Error during session recorder injection: {e}")
 
 
-# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
+# browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 @observe(name="cdp_use.session", ignore_input=True, ignore_output=True)
 async def start_recording_events(
     cdp_session,
@@ -596,7 +780,10 @@ async def start_recording_events(
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
 
-    await inject_session_recorder(cdp_session)
+    isolated_context_id = await inject_session_recorder(cdp_session)
+    if isolated_context_id is None:
+        logger.debug("Failed to inject session recorder, not registering bindings")
+        return
 
     # Buffer for reassembling chunks
     chunk_buffers = {}
@@ -654,11 +841,14 @@ async def start_recording_events(
     async def send_events_callback(event, cdp_session_id: str | None = None):
         if event["name"] != "lmnrSendEvents":
             return
+        if event["executionContextId"] != isolated_context_id:
+            return
         await send_events_from_browser(orjson.loads(event["payload"]))
 
     await cdp_client.send.Runtime.addBinding(
         {
             "name": "lmnrSendEvents",
+            "executionContextId": isolated_context_id,
         },
         session_id=cdp_session.session_id,
     )
@@ -668,7 +858,7 @@ async def start_recording_events(
     register_on_target_created(cdp_session, lmnr_session_id, client)
 
 
-# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
+# browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 async def enable_target_discovery(cdp_session):
     cdp_client = cdp_session.cdp_client
     await cdp_client.send.Target.setDiscoverTargets(
@@ -679,7 +869,7 @@ async def enable_target_discovery(cdp_session):
     )
 
 
-# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
+# browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 def register_on_target_created(
     cdp_session, lmnr_session_id: str, client: AsyncLaminarClient
 ):
@@ -689,31 +879,63 @@ def register_on_target_created(
         if target_info["type"] == "page":
             asyncio.create_task(inject_session_recorder(cdp_session=cdp_session))
 
-    cdp_session.cdp_client.register.Target.targetCreated(on_target_created)
+    try:
+        cdp_session.cdp_client.register.Target.targetCreated(on_target_created)
+    except Exception as e:
+        logger.debug(f"Failed to register on target created: {e}")
 
 
-# browser_use.browser.session.CDPSession (browser-use >= 1.0.0)
-async def is_recorder_present(cdp_session) -> bool:
+# browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
+async def is_recorder_present(
+    cdp_session, isolated_context_id: int | None = None
+) -> bool:
+    # This function returns True on any error, because it is safer to not record
+    # events than to try to inject the recorder into a broken context.
     cdp_client = cdp_session.cdp_client
+    if isolated_context_id is None:
+        isolated_context_id = await get_isolated_context_id(cdp_session)
+    if isolated_context_id is None:
+        logger.debug("Failed to get isolated context id")
+        return True
 
-    result = await cdp_client.send.Runtime.evaluate(
-        {
-            "expression": """(()=>{
-                return typeof window.lmnrRrweb !== 'undefined';
-            })()""",
-        },
-        session_id=cdp_session.session_id,
-    )
-    if result and "result" in result and "value" in result["result"]:
-        return result["result"]["value"]
-    return False
+    try:
+        result = await asyncio.wait_for(
+            cdp_client.send.Runtime.evaluate(
+                {
+                    "expression": "typeof window.lmnrRrweb !== 'undefined'",
+                    "contextId": isolated_context_id,
+                },
+                session_id=cdp_session.session_id,
+            ),
+            timeout=CDP_OPERATION_TIMEOUT_SECONDS,
+        )
+        if result and "result" in result and "value" in result["result"]:
+            return result["result"]["value"]
+        return False
+    except asyncio.TimeoutError:
+        logger.debug("Timeout error when checking if session recorder is present")
+        return True
+    except Exception:
+        logger.debug("Exception when checking if session recorder is present")
+        return True
 
 
 async def take_full_snapshot(cdp_session):
     cdp_client = cdp_session.cdp_client
-    result = await cdp_client.send.Runtime.evaluate(
-        {
-            "expression": """(() => {
+    isolated_context_id = await get_isolated_context_id(cdp_session)
+    if isolated_context_id is None:
+        logger.debug("Failed to get isolated context id")
+        return False
+
+    if await should_skip_page(cdp_session):
+        logger.debug("Skipping full snapshot")
+        return False
+
+    try:
+        result = await asyncio.wait_for(
+            cdp_client.send.Runtime.evaluate(
+                {
+                    "expression": """(() => {
     if (window.lmnrRrweb) {
         try {
             window.lmnrRrweb.record.takeFullSnapshot();
@@ -725,9 +947,18 @@ async def take_full_snapshot(cdp_session):
     }
     return false;
 })()""",
-        },
-        session_id=cdp_session.session_id,
-    )
+                    "contextId": isolated_context_id,
+                },
+                session_id=cdp_session.session_id,
+            ),
+            timeout=CDP_OPERATION_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.debug("Timeout error when taking full snapshot")
+        return False
+    except Exception as e:
+        logger.debug(f"Error when taking full snapshot: {e}")
+        return False
     if result and "result" in result and "value" in result["result"]:
         return result["result"]["value"]
     return False

@@ -421,14 +421,14 @@ class Laminar:
 
         Usage example:
         ```python
-        from src.lmnr import Laminar, use_span
+        from src.lmnr import Laminar
         def foo(span):
-            with use_span(span):
+            with Laminar.use_span(span):
                 with Laminar.start_as_current_span("foo_inner"):
                     some_function()
         
         def bar():
-            with use_span(span):
+            with Laminar.use_span(span):
                 openai_client.chat.completions.create()
         
         span = Laminar.start_span("outer")

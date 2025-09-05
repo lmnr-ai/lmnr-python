@@ -1,3 +1,6 @@
+import asyncio
+import uuid
+
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.browser.utils import with_tracer_and_client_wrapper
 from lmnr.version import __version__
@@ -12,7 +15,6 @@ from opentelemetry.instrumentation.utils import unwrap
 from opentelemetry.trace import get_tracer, Tracer
 from typing import Collection
 from wrapt import wrap_function_wrapper
-import uuid
 
 # Stable versions, e.g. 0.6.0, satisfy this condition too
 _instruments = ("browser-use >= 0.6.0rc1",)
@@ -33,12 +35,7 @@ WRAPPED_METHODS = [
 ]
 
 
-@with_tracer_and_client_wrapper
-async def _wrap(
-    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
-):
-    result = await wrapped(*args, **kwargs)
-
+async def process_wrapped_result(result, instance, client, to_wrap):
     if to_wrap.get("action") == "inject_session_recorder":
         is_registered = await is_recorder_present(result)
         if not is_registered:
@@ -49,6 +46,14 @@ async def _wrap(
         if target_id:
             cdp_session = await instance.get_or_create_cdp_session(target_id)
             await take_full_snapshot(cdp_session)
+
+
+@with_tracer_and_client_wrapper
+async def _wrap(
+    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
+):
+    result = await wrapped(*args, **kwargs)
+    asyncio.create_task(process_wrapped_result(result, instance, client, to_wrap))
 
     return result
 
