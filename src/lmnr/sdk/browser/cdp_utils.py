@@ -20,6 +20,7 @@ CDP_OPERATION_TIMEOUT_SECONDS = 10
 
 # CDP ContextId is int
 frame_to_isolated_context_id: dict[str, int] = {}
+lock = asyncio.Lock()
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(current_dir, "recorder", "record.umd.min.cjs"), "r") as f:
@@ -631,58 +632,61 @@ def get_mask_input_setting() -> MaskInputOptions:
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 async def get_isolated_context_id(cdp_session) -> int | None:
-    tree = {}
-    try:
-        tree = await asyncio.wait_for(
-            cdp_session.cdp_client.send.Page.getFrameTree(
-                session_id=cdp_session.session_id
-            ),
-            timeout=CDP_OPERATION_TIMEOUT_SECONDS,
-        )
-    except asyncio.TimeoutError:
-        logger.debug("Timeout error when getting frame tree")
-        return None
-    except Exception as e:
-        logger.debug(f"Failed to get frame tree: {e}")
-        return None
+    async with lock:
+        tree = {}
+        try:
+            tree = await asyncio.wait_for(
+                cdp_session.cdp_client.send.Page.getFrameTree(
+                    session_id=cdp_session.session_id
+                ),
+                timeout=CDP_OPERATION_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.debug("Timeout error when getting frame tree")
+            return None
+        except Exception as e:
+            logger.debug(f"Failed to get frame tree: {e}")
+            return None
+        frame = tree.get("frameTree", {}).get("frame", {})
+        frame_id = frame.get("id")
+        loader_id = frame.get("loaderId")
 
-    frame = tree.get("frameTree", {}).get("frame", {})
-    frame_id = frame.get("id")
-    loader_id = frame.get("loaderId")
+        if frame_id is None or loader_id is None:
+            logger.debug("Failed to get frame id or loader id")
+            return None
+        key = f"{frame_id}_{loader_id}"
 
-    if frame_id is None or loader_id is None:
-        logger.debug("Failed to get frame id or loader id")
-        return None
+        if key in frame_to_isolated_context_id:
+            return frame_to_isolated_context_id[key]
 
-    key = f"{frame_id}_{loader_id}"
-
-    if key in frame_to_isolated_context_id:
-        return frame_to_isolated_context_id[key]
-
-    try:
-        result = await asyncio.wait_for(
-            cdp_session.cdp_client.send.Page.createIsolatedWorld(
-                {
-                    "frameId": frame_id,
-                    "worldName": "laminar-isolated-context",
-                },
-                session_id=cdp_session.session_id,
-            ),
-            timeout=CDP_OPERATION_TIMEOUT_SECONDS,
-        )
-    except asyncio.TimeoutError:
-        logger.debug("Timeout error when getting isolated context id")
-        return None
-    except Exception as e:
-        logger.debug(f"Failed to get isolated context id: {e}")
-        return None
-    isolated_context_id = result["executionContextId"]
-    frame_to_isolated_context_id[key] = isolated_context_id
-    return isolated_context_id
+        try:
+            result = await asyncio.wait_for(
+                cdp_session.cdp_client.send.Page.createIsolatedWorld(
+                    {
+                        "frameId": frame_id,
+                        "worldName": "laminar-isolated-context",
+                    },
+                    session_id=cdp_session.session_id,
+                ),
+                timeout=CDP_OPERATION_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.debug("Timeout error when getting isolated context id")
+            return None
+        except Exception as e:
+            logger.debug(f"Failed to get isolated context id: {e}")
+            return None
+        isolated_context_id = result["executionContextId"]
+        frame_to_isolated_context_id[key] = isolated_context_id
+        return isolated_context_id
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
-async def inject_session_recorder(cdp_session):
+async def inject_session_recorder(cdp_session) -> int | None:
+    """Injects the session recorder base as well as the recorder itself.
+    Returns the isolated context id if successful.
+    """
+    isolated_context_id = None
     cdp_client = cdp_session.cdp_client
     try:
         should_skip = True
@@ -692,10 +696,12 @@ async def inject_session_recorder(cdp_session):
             logger.debug(f"Failed to check if error page: {e}")
 
         if should_skip:
-            logger.debug("Error page detected, skipping session recorder injection")
+            logger.debug("Empty page detected, skipping session recorder injection")
             return
+
+        isolated_context_id = await get_isolated_context_id(cdp_session)
         try:
-            is_loaded = await is_recorder_present(cdp_session)
+            is_loaded = await is_recorder_present(cdp_session, isolated_context_id)
         except Exception as e:
             logger.debug(f"Failed to check if session recorder is loaded: {e}")
             is_loaded = False
@@ -703,7 +709,6 @@ async def inject_session_recorder(cdp_session):
         if is_loaded:
             return
 
-        isolated_context_id = await get_isolated_context_id(cdp_session)
         if isolated_context_id is None:
             logger.debug("Failed to get isolated context id")
             return
@@ -747,6 +752,7 @@ async def inject_session_recorder(cdp_session):
                 ),
                 timeout=CDP_OPERATION_TIMEOUT_SECONDS,
             )
+            return isolated_context_id
         except asyncio.TimeoutError:
             logger.debug("Timeout error when injecting session recorder")
         except Exception as e:
@@ -770,7 +776,10 @@ async def start_recording_events(
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
 
-    await inject_session_recorder(cdp_session)
+    isolated_context_id = await inject_session_recorder(cdp_session)
+    if isolated_context_id is None:
+        logger.debug("Failed to inject session recorder, not registering bindings")
+        return
 
     # Buffer for reassembling chunks
     chunk_buffers = {}
@@ -828,11 +837,14 @@ async def start_recording_events(
     async def send_events_callback(event, cdp_session_id: str | None = None):
         if event["name"] != "lmnrSendEvents":
             return
+        if event["executionContextId"] != isolated_context_id:
+            return
         await send_events_from_browser(orjson.loads(event["payload"]))
 
     await cdp_client.send.Runtime.addBinding(
         {
             "name": "lmnrSendEvents",
+            "executionContextId": isolated_context_id,
         },
         session_id=cdp_session.session_id,
     )
@@ -870,11 +882,14 @@ def register_on_target_created(
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
-async def is_recorder_present(cdp_session) -> bool:
+async def is_recorder_present(
+    cdp_session, isolated_context_id: int | None = None
+) -> bool:
     # This function returns True on any error, because it is safer to not record
     # events than to try to inject the recorder into a broken context.
     cdp_client = cdp_session.cdp_client
-    isolated_context_id = await get_isolated_context_id(cdp_session)
+    if isolated_context_id is None:
+        isolated_context_id = await get_isolated_context_id(cdp_session)
     if isolated_context_id is None:
         logger.debug("Failed to get isolated context id")
         return True
@@ -906,6 +921,10 @@ async def take_full_snapshot(cdp_session):
     isolated_context_id = await get_isolated_context_id(cdp_session)
     if isolated_context_id is None:
         logger.debug("Failed to get isolated context id")
+        return False
+
+    if await should_skip_page(cdp_session):
+        logger.debug("Skipping full snapshot")
         return False
 
     try:
