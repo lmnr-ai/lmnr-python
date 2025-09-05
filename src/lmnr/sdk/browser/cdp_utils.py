@@ -3,7 +3,6 @@ import logging
 import orjson
 import os
 import time
-import uuid
 
 from opentelemetry import trace
 
@@ -515,7 +514,7 @@ INJECT_PLACEHOLDER = """
 """
 
 
-async def should_instrument_page(cdp_session):
+async def should_skip_page(cdp_session):
     """Checks if the page url is an error page or an empty page."""
     cdp_client = cdp_session.cdp_client
 
@@ -593,9 +592,11 @@ async def should_instrument_page(cdp_session):
             logger.debug(f"Detected error page from data URL: {url[:100]}...")
             return True
 
+        return False
+
     except asyncio.TimeoutError:
         logger.debug("Timeout error when checking if error page")
-        return True
+        return False
     except Exception as e:
         logger.debug(f"Error during checking if error page: {e}")
         return False
@@ -628,13 +629,30 @@ def get_mask_input_setting() -> MaskInputOptions:
         )
 
 
+# browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 async def get_isolated_context_id(cdp_session) -> int | None:
-    tree = await cdp_session.cdp_client.send.Page.getFrameTree(
-        session_id=cdp_session.session_id
-    )
+    tree = {}
+    try:
+        tree = await asyncio.wait_for(
+            cdp_session.cdp_client.send.Page.getFrameTree(
+                session_id=cdp_session.session_id
+            ),
+            timeout=CDP_OPERATION_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.debug("Timeout error when getting frame tree")
+        return None
+    except Exception as e:
+        logger.debug(f"Failed to get frame tree: {e}")
+        return None
+
     frame = tree.get("frameTree", {}).get("frame", {})
-    frame_id = frame.get("id", str(uuid.uuid4()))
-    loader_id = frame.get("loaderId", str(uuid.uuid4()))
+    frame_id = frame.get("id")
+    loader_id = frame.get("loaderId")
+
+    if frame_id is None or loader_id is None:
+        logger.debug("Failed to get frame id or loader id")
+        return None
 
     key = f"{frame_id}_{loader_id}"
 
@@ -652,6 +670,9 @@ async def get_isolated_context_id(cdp_session) -> int | None:
             ),
             timeout=CDP_OPERATION_TIMEOUT_SECONDS,
         )
+    except asyncio.TimeoutError:
+        logger.debug("Timeout error when getting isolated context id")
+        return None
     except Exception as e:
         logger.debug(f"Failed to get isolated context id: {e}")
         return None
@@ -664,13 +685,13 @@ async def get_isolated_context_id(cdp_session) -> int | None:
 async def inject_session_recorder(cdp_session):
     cdp_client = cdp_session.cdp_client
     try:
-        should_instrument = False
+        should_skip = True
         try:
-            should_instrument = await should_instrument_page(cdp_session)
+            should_skip = await should_skip_page(cdp_session)
         except Exception as e:
             logger.debug(f"Failed to check if error page: {e}")
 
-        if should_instrument:
+        if should_skip:
             logger.debug("Error page detected, skipping session recorder injection")
             return
         try:
@@ -700,15 +721,18 @@ async def inject_session_recorder(cdp_session):
                     timeout=CDP_OPERATION_TIMEOUT_SECONDS,
                 )
                 return True
+            except asyncio.TimeoutError:
+                logger.debug("Timeout error when loading session recorder base")
+                return False
             except Exception as e:
-                logger.error(f"Failed to load session recorder: {e}")
+                logger.debug(f"Failed to load session recorder base: {e}")
                 return False
 
         if not await retry_async(
             load_session_recorder,
             retries=3,
             delay=1,
-            error_message="Failed to load session recorder processor",
+            error_message="Failed to load session recorder",
         ):
             return
 
@@ -726,7 +750,7 @@ async def inject_session_recorder(cdp_session):
         except asyncio.TimeoutError:
             logger.debug("Timeout error when injecting session recorder")
         except Exception as e:
-            logger.debug(f"Failed to inject recorder processor: {e}")
+            logger.debug(f"Failed to inject recorder: {e}")
 
     except Exception as e:
         logger.debug(f"Error during session recorder injection: {e}")
@@ -890,10 +914,8 @@ async def take_full_snapshot(cdp_session):
                 {
                     "expression": """(() => {
     if (window.lmnrRrweb) {
-        console.log("Taking full snapshot, lmnrRrweb is present")
         try {
             window.lmnrRrweb.record.takeFullSnapshot();
-            console.log("Full snapshot taken successfully")
             return true;
         } catch (e) {
             console.error("Error taking full snapshot:", e);
