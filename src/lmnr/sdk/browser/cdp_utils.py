@@ -516,7 +516,11 @@ INJECT_PLACEHOLDER = """
 
 
 async def should_skip_page(cdp_session):
-    """Checks if the page url is an error page or an empty page."""
+    """Checks if the page url is an error page or an empty page.
+    Thius function returns True in case of any error in our code, because
+    it is safer to not record events than to try to inject the recorder
+    into something that is already broken.
+    """
     cdp_client = cdp_session.cdp_client
 
     try:
@@ -597,10 +601,10 @@ async def should_skip_page(cdp_session):
 
     except asyncio.TimeoutError:
         logger.debug("Timeout error when checking if error page")
-        return False
+        return True
     except Exception as e:
         logger.debug(f"Error during checking if error page: {e}")
-        return False
+        return True
 
 
 def get_mask_input_setting() -> MaskInputOptions:
