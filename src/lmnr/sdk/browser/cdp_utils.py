@@ -1,9 +1,9 @@
-import uuid
-import orjson
+import asyncio
 import logging
+import orjson
 import os
 import time
-import asyncio
+import uuid
 
 from opentelemetry import trace
 
@@ -17,8 +17,10 @@ from lmnr.sdk.types import MaskInputOptions
 logger = logging.getLogger(__name__)
 
 OLD_BUFFER_TIMEOUT = 60
+CDP_OPERATION_TIMEOUT_SECONDS = 10
 
-frame_to_isolated_context_id = {}
+# CDP ContextId is int
+frame_to_isolated_context_id: dict[str, int] = {}
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(current_dir, "recorder", "record.umd.min.cjs"), "r") as f:
@@ -451,8 +453,6 @@ INJECT_PLACEHOLDER = """
         }
     }
 
-    setInterval(sendBatchIfReady, BATCH_TIMEOUT);
-
     async function bufferToBase64(buffer) {
         const base64url = await new Promise(r => {
             const reader = new FileReader()
@@ -463,21 +463,8 @@ INJECT_PLACEHOLDER = """
     }
 
     if (!window.lmnrStartedRecordingEvents) {
-        const detectionResults = {
-            hasZoneJs: !!(window.Zone || Object.keys(window).some(k => k.startsWith('__zone_symbol__'))),
-            mutationObserverState: {
-                current: window.MutationObserver,
-                isNative: window.MutationObserver.toString().includes('[native code]'),
-                hasZoneSymbols: false,
-                originalFound: null,
-                restorationMethod: null
-            }
-        };
+        setInterval(sendBatchIfReady, BATCH_TIMEOUT);
 
-        if (detectionResults.hasZoneJs) {
-            console.warn('Zone.js detected, skipping session recorder');
-            return;
-        }
         window.lmnrRrweb.record({
             async emit(event) {
                 try {
@@ -528,6 +515,90 @@ INJECT_PLACEHOLDER = """
 """
 
 
+async def is_error_page(cdp_session):
+    cdp_client = cdp_session.cdp_client
+
+    try:
+        # Get the current page URL
+        result = await asyncio.wait_for(
+            cdp_client.send.Runtime.evaluate(
+                {
+                    "expression": "window.location.href",
+                    "returnByValue": True,
+                },
+                session_id=cdp_session.session_id,
+            ),
+            timeout=CDP_OPERATION_TIMEOUT_SECONDS,
+        )
+
+        url = result.get("result", {}).get("value", "")
+
+        # Comprehensive list of browser error URLs
+        error_url_patterns = [
+            # Chrome error pages
+            "chrome-error://",
+            "chrome://network-error/",
+            "chrome://network-errors/",
+            # Chrome crash and debugging pages
+            "chrome://crash/",
+            "chrome://crashdump/",
+            "chrome://kill/",
+            "chrome://hang/",
+            "chrome://shorthang/",
+            "chrome://gpuclean/",
+            "chrome://gpucrash/",
+            "chrome://gpuhang/",
+            "chrome://memory-exhaust/",
+            "chrome://memory-pressure-critical/",
+            "chrome://memory-pressure-moderate/",
+            "chrome://inducebrowsercrashforrealz/",
+            "chrome://inducebrowserdcheckforrealz/",
+            "chrome://inducebrowserheapcorruption/",
+            "chrome://heapcorruptioncrash/",
+            "chrome://badcastcrash/",
+            "chrome://ppapiflashcrash/",
+            "chrome://ppapiflashhang/",
+            "chrome://quit/",
+            "chrome://restart/",
+            # Firefox error pages
+            "about:neterror",
+            "about:certerror",
+            "about:blocked",
+            # Firefox crash and debugging pages
+            "about:crashcontent",
+            "about:crashparent",
+            "about:crashes",
+            "about:tabcrashed",
+            # Edge error pages (similar to Chrome)
+            "edge-error://",
+            "edge://crash/",
+            "edge://kill/",
+            "edge://hang/",
+            # Safari/WebKit error indicators (data URLs with error content)
+            "webkit-error://",
+        ]
+
+        # Check if current URL matches any error pattern
+        if any(url.startswith(pattern) for pattern in error_url_patterns):
+            logger.debug(f"Detected browser error page from URL: {url}")
+            return True
+
+        # Additional check for data URLs that might contain error pages
+        if url.startswith("data:") and any(
+            error_term in url.lower()
+            for error_term in ["error", "crash", "failed", "unavailable", "not found"]
+        ):
+            logger.debug(f"Detected error page from data URL: {url[:100]}...")
+            return True
+
+    except asyncio.TimeoutError:
+        logger.debug("Timeout error when checking if error page")
+        return True
+    except Exception as e:
+        logger.debug(f"Error during checking if error page: {e}")
+        return False
+
+
 def get_mask_input_setting() -> MaskInputOptions:
     """Get the mask_input setting from session recording configuration."""
     try:
@@ -555,36 +626,54 @@ def get_mask_input_setting() -> MaskInputOptions:
         )
 
 
-async def get_isolated_context_id(cdp_session):
+async def get_isolated_context_id(cdp_session) -> int | None:
     tree = await cdp_session.cdp_client.send.Page.getFrameTree(
         session_id=cdp_session.session_id
     )
     frame = tree.get("frameTree", {}).get("frame", {})
     frame_id = frame.get("id", str(uuid.uuid4()))
-    loader_id = frame.get("loaderI", str(uuid.uuid4()))
+    loader_id = frame.get("loaderId", str(uuid.uuid4()))
     url = frame.get("url", "about:blank")
 
     key = f"{frame_id}_{loader_id}_{url}"
 
-    if key not in frame_to_isolated_context_id:
-        result = await cdp_session.cdp_client.send.Page.createIsolatedWorld(
-            {
-                "frameId": frame_id,
-                "worldName": "laminar-isolated-context",
-            },
-            session_id=cdp_session.session_id,
-        )
-        isolated_context_id = result["executionContextId"]
-        frame_to_isolated_context_id[key] = isolated_context_id
-        return isolated_context_id
-    else:
+    if key in frame_to_isolated_context_id:
+        print(f"Key: {key} existing context id: {frame_to_isolated_context_id[key]}")
         return frame_to_isolated_context_id[key]
+
+    try:
+        result = await asyncio.wait_for(
+            cdp_session.cdp_client.send.Page.createIsolatedWorld(
+                {
+                    "frameId": frame_id,
+                    "worldName": "laminar-isolated-context",
+                },
+                session_id=cdp_session.session_id,
+            ),
+            timeout=CDP_OPERATION_TIMEOUT_SECONDS,
+        )
+    except Exception as e:
+        logger.debug(f"Failed to get isolated context id: {e}")
+        return None
+    isolated_context_id = result["executionContextId"]
+    frame_to_isolated_context_id[key] = isolated_context_id
+    print(f"Key: {key} new context id: {isolated_context_id}")
+    return isolated_context_id
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 async def inject_session_recorder(cdp_session):
     cdp_client = cdp_session.cdp_client
     try:
+        try:
+            is_error = await is_error_page(cdp_session)
+        except Exception as e:
+            logger.debug(f"Failed to check if error page: {e}")
+            is_error = False
+
+        if is_error:
+            logger.debug("Error page detected, skipping session recorder injection")
+            return
         try:
             is_loaded = await is_recorder_present(cdp_session)
         except Exception as e:
@@ -595,6 +684,9 @@ async def inject_session_recorder(cdp_session):
             return
 
         isolated_context_id = await get_isolated_context_id(cdp_session)
+        if isolated_context_id is None:
+            logger.debug("Failed to get isolated context id")
+            return
 
         async def load_session_recorder():
             try:
@@ -607,7 +699,7 @@ async def inject_session_recorder(cdp_session):
                         },
                         session_id=cdp_session.session_id,
                     ),
-                    timeout=2.5,
+                    timeout=CDP_OPERATION_TIMEOUT_SECONDS,
                 )
                 return True
             except Exception as e:
@@ -623,15 +715,18 @@ async def inject_session_recorder(cdp_session):
             return
 
         try:
-            await asyncio.create_task(
+            await asyncio.wait_for(
                 cdp_client.send.Runtime.evaluate(
                     {
                         "expression": f"({INJECT_PLACEHOLDER})({orjson.dumps(get_mask_input_setting()).decode('utf-8')})",
                         "contextId": isolated_context_id,
                     },
                     session_id=cdp_session.session_id,
-                )
+                ),
+                timeout=CDP_OPERATION_TIMEOUT_SECONDS,
             )
+        except asyncio.TimeoutError:
+            logger.debug("Timeout error when injecting session recorder")
         except Exception as e:
             logger.debug(f"Failed to inject recorder processor: {e}")
 
@@ -746,13 +841,21 @@ def register_on_target_created(
         if target_info["type"] == "page":
             asyncio.create_task(inject_session_recorder(cdp_session=cdp_session))
 
-    cdp_session.cdp_client.register.Target.targetCreated(on_target_created)
+    try:
+        cdp_session.cdp_client.register.Target.targetCreated(on_target_created)
+    except Exception as e:
+        logger.debug(f"Failed to register on target created: {e}")
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 async def is_recorder_present(cdp_session) -> bool:
+    # This function returns True on any error, because it is safer to not record
+    # events than to try to inject the recorder into a broken context.
     cdp_client = cdp_session.cdp_client
     isolated_context_id = await get_isolated_context_id(cdp_session)
+    if isolated_context_id is None:
+        logger.debug("Failed to get isolated context id")
+        return True
 
     try:
         result = await asyncio.wait_for(
@@ -763,26 +866,38 @@ async def is_recorder_present(cdp_session) -> bool:
                 },
                 session_id=cdp_session.session_id,
             ),
-            timeout=1,
+            timeout=CDP_OPERATION_TIMEOUT_SECONDS,
         )
         if result and "result" in result and "value" in result["result"]:
             return result["result"]["value"]
         return False
     except asyncio.TimeoutError:
+        logger.debug("Timeout error when checking if session recorder is present")
         return True
     except Exception:
+        logger.debug("Exception when checking if session recorder is present")
         return True
 
 
 async def take_full_snapshot(cdp_session):
     cdp_client = cdp_session.cdp_client
+    print("Taking full snapshot")
     isolated_context_id = await get_isolated_context_id(cdp_session)
-    result = await cdp_client.send.Runtime.evaluate(
-        {
-            "expression": """(() => {
+    print(f"Isolated context id: {isolated_context_id}")
+    if isolated_context_id is None:
+        logger.debug("Failed to get isolated context id")
+        return False
+
+    try:
+        result = await asyncio.wait_for(
+            cdp_client.send.Runtime.evaluate(
+                {
+                    "expression": """(() => {
     if (window.lmnrRrweb) {
+        console.log("Taking full snapshot, lmnrRrweb is present")
         try {
             window.lmnrRrweb.record.takeFullSnapshot();
+            console.log("Full snapshot taken successfully")
             return true;
         } catch (e) {
             console.error("Error taking full snapshot:", e);
@@ -791,10 +906,21 @@ async def take_full_snapshot(cdp_session):
     }
     return false;
 })()""",
-            "contextId": isolated_context_id,
-        },
-        session_id=cdp_session.session_id,
-    )
+                    "contextId": isolated_context_id,
+                },
+                session_id=cdp_session.session_id,
+            ),
+            timeout=CDP_OPERATION_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        print("Timeout error when taking full snapshot")
+        logger.debug("Timeout error when taking full snapshot")
+        return False
+    except Exception as e:
+        print(f"Error when taking full snapshot: {e}")
+        logger.debug(f"Error when taking full snapshot: {e}")
+        return False
+    print(f"Result: {result}")
     if result and "result" in result and "value" in result["result"]:
         return result["result"]["value"]
     return False

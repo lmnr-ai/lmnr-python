@@ -36,17 +36,16 @@ WRAPPED_METHODS = [
 
 
 async def process_wrapped_result(result, instance, client, to_wrap):
-    if not instance._cached_browser_state_summary:
-        return
-
     if to_wrap.get("action") == "inject_session_recorder":
         is_registered = await is_recorder_present(result)
         if not is_registered:
             await start_recording_events(result, str(uuid.uuid4()), client)
 
     if to_wrap.get("action") == "take_full_snapshot":
+        print("wrapped on switch tab event")
         target_id = result
         if target_id:
+            print(f"target id: {target_id}")
             cdp_session = await instance.get_or_create_cdp_session(target_id)
             await take_full_snapshot(cdp_session)
 
@@ -63,6 +62,7 @@ async def _wrap(
 
 class BrowserUseInstrumentor(BaseInstrumentor):
     def __init__(self, async_client: AsyncLaminarClient):
+        print("BrowserUseInstrumentor with full snapshot logs")
         super().__init__()
         self.async_client = async_client
 
