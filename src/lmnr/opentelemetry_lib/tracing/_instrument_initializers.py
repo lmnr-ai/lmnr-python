@@ -51,9 +51,19 @@ class BedrockInstrumentorInitializer(InstrumentorInitializer):
 
 
 class BrowserUseInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(
-        self, client, async_client, *args, **kwargs
-    ) -> BaseInstrumentor | None:
+    """Instruments for different versions of browser-use:
+
+    - browser-use < 0.5: BrowserUseLegacyInstrumentor to track agent_step and
+      other structure spans. Session instrumentation is controlled by
+      Instruments.PLAYWRIGHT (or Instruments.PATCHRIGHT for several versions
+      in 0.4.* that used patchright)
+    - browser-use ~= 0.5: Structure spans live in browser_use package itself.
+      Session instrumentation is controlled by Instruments.PLAYWRIGHT
+    - browser-use >= 0.6.0rc1: BubusInstrumentor to keep spans structure.
+      Session instrumentation is controlled by Instruments.BROWSER_USE_SESSION
+    """
+
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("browser-use"):
             return None
 
@@ -65,12 +75,35 @@ class BrowserUseInstrumentorInitializer(InstrumentorInitializer):
 
             return BrowserUseLegacyInstrumentor()
 
+        return None
+
+
+class BrowserUseSessionInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(
+        self, client, async_client, *args, **kwargs
+    ) -> BaseInstrumentor | None:
+        if not is_package_installed("browser-use"):
+            return None
+
+        version = get_package_version("browser-use")
+        from packaging.version import parse
+
         if version and parse(version) >= parse("0.6.0rc1"):
             from lmnr.sdk.browser.browser_use_cdp_otel import BrowserUseInstrumentor
 
             return BrowserUseInstrumentor(async_client)
 
         return None
+
+
+class BubusInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("bubus"):
+            return None
+
+        from lmnr.sdk.browser.bubus_otel import BubusInstrumentor
+
+        return BubusInstrumentor()
 
 
 class ChromaInstrumentorInitializer(InstrumentorInitializer):

@@ -201,6 +201,20 @@ class TracerWrapper(object):
 
         return new_context
 
+    def push_raw_span_context(self, span_context: trace.SpanContext) -> Context:
+        current_ctx = get_current_context()
+        new_context = trace.set_span_in_context(
+            trace.NonRecordingSpan(span_context), current_ctx
+        )
+        token = attach_context(new_context)
+
+        # Store the token for later detachment - tokens are much lighter than contexts
+        current_stack = get_token_stack().copy()
+        current_stack.append(token)
+        set_token_stack(current_stack)
+
+        return new_context
+
     def pop_span_context(self) -> None:
         """Pop the current span context from the stack."""
         current_stack = get_token_stack().copy()

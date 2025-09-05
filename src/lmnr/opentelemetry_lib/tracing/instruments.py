@@ -17,6 +17,8 @@ class Instruments(Enum):
     ANTHROPIC = "anthropic"
     BEDROCK = "bedrock"
     BROWSER_USE = "browser_use"
+    BROWSER_USE_SESSION = "browser_use_session"
+    BUBUS = "bubus"
     CHROMA = "chroma"
     COHERE = "cohere"
     CREWAI = "crewai"
@@ -60,6 +62,8 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.ANTHROPIC: initializers.AnthropicInstrumentorInitializer(),
     Instruments.BEDROCK: initializers.BedrockInstrumentorInitializer(),
     Instruments.BROWSER_USE: initializers.BrowserUseInstrumentorInitializer(),
+    Instruments.BROWSER_USE_SESSION: initializers.BrowserUseSessionInstrumentorInitializer(),
+    Instruments.BUBUS: initializers.BubusInstrumentorInitializer(),
     Instruments.CHROMA: initializers.ChromaInstrumentorInitializer(),
     Instruments.COHERE: initializers.CohereInstrumentorInitializer(),
     Instruments.CREWAI: initializers.CrewAIInstrumentorInitializer(),
