@@ -633,12 +633,10 @@ async def get_isolated_context_id(cdp_session) -> int | None:
     frame = tree.get("frameTree", {}).get("frame", {})
     frame_id = frame.get("id", str(uuid.uuid4()))
     loader_id = frame.get("loaderId", str(uuid.uuid4()))
-    url = frame.get("url", "about:blank")
 
-    key = f"{frame_id}_{loader_id}_{url}"
+    key = f"{frame_id}_{loader_id}"
 
     if key in frame_to_isolated_context_id:
-        print(f"Key: {key} existing context id: {frame_to_isolated_context_id[key]}")
         return frame_to_isolated_context_id[key]
 
     try:
@@ -657,7 +655,6 @@ async def get_isolated_context_id(cdp_session) -> int | None:
         return None
     isolated_context_id = result["executionContextId"]
     frame_to_isolated_context_id[key] = isolated_context_id
-    print(f"Key: {key} new context id: {isolated_context_id}")
     return isolated_context_id
 
 
@@ -881,9 +878,7 @@ async def is_recorder_present(cdp_session) -> bool:
 
 async def take_full_snapshot(cdp_session):
     cdp_client = cdp_session.cdp_client
-    print("Taking full snapshot")
     isolated_context_id = await get_isolated_context_id(cdp_session)
-    print(f"Isolated context id: {isolated_context_id}")
     if isolated_context_id is None:
         logger.debug("Failed to get isolated context id")
         return False
@@ -913,14 +908,11 @@ async def take_full_snapshot(cdp_session):
             timeout=CDP_OPERATION_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:
-        print("Timeout error when taking full snapshot")
         logger.debug("Timeout error when taking full snapshot")
         return False
     except Exception as e:
-        print(f"Error when taking full snapshot: {e}")
         logger.debug(f"Error when taking full snapshot: {e}")
         return False
-    print(f"Result: {result}")
     if result and "result" in result and "value" in result["result"]:
         return result["result"]["value"]
     return False
