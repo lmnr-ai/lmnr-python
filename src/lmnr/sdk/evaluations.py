@@ -510,7 +510,7 @@ def evaluate(
                         Defaults to None.
         disabled_instruments (set[Instruments] | None, optional): Set of modules\
                         to disable auto-instrumentations. If None, no\
-                        only modules passed as `instruments` will be disabled.
+                        If None, only modules passed as `instruments` will be disabled.
                         Defaults to None.
         trace_export_timeout_seconds (int | None, optional): The timeout for\
                         trace export on OpenTelemetry exporter. Defaults to None.
