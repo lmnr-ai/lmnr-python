@@ -55,6 +55,56 @@ def test_litellm_openai_basic(
 
 
 @pytest.mark.vcr
+def test_litellm_openai_with_metadata(
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    os.environ["OPENAI_API_KEY"] = "test-key"
+
+    litellm.callbacks = [litellm_callback]
+    response = litellm.completion(
+        model="gpt-4.1-nano",
+        messages=[{"role": "user", "content": "What is the capital of France?"}],
+        metadata={
+            "tags": ["test"],
+            "user_id": "test_user_id",
+            "session_id": "test_session_id",
+        },
+    )
+
+    # Wait for the callback to complete and flush the spans
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+    Laminar.flush()
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
+    assert span.attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
+    assert span.attributes["gen_ai.response.id"] == response.id
+    assert span.attributes["gen_ai.usage.input_tokens"] == 14
+    assert span.attributes["gen_ai.usage.output_tokens"] == 7
+    assert span.attributes["llm.usage.total_tokens"] == 21
+    assert (
+        span.attributes["gen_ai.prompt.0.content"] == "What is the capital of France?"
+    )
+    assert span.attributes["gen_ai.prompt.0.role"] == "user"
+    assert (
+        span.attributes["gen_ai.completion.0.content"]
+        == response.choices[0].message.content
+    )
+    assert span.attributes["gen_ai.completion.0.role"] == "assistant"
+    assert span.attributes["gen_ai.system"] == "openai"
+    assert span.attributes["lmnr.association.properties.tags"] == ("test",)
+    assert span.attributes["lmnr.association.properties.user_id"] == "test_user_id"
+    assert (
+        span.attributes["lmnr.association.properties.session_id"] == "test_session_id"
+    )
+
+
+@pytest.mark.vcr
 def test_litellm_openai_text_block(
     span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
 ):
@@ -137,6 +187,56 @@ def test_litellm_openai_with_streaming(
     assert span.attributes["gen_ai.completion.0.content"] == final_response
     assert span.attributes["gen_ai.completion.0.role"] == "assistant"
     assert span.attributes["gen_ai.system"] == "openai"
+
+
+@pytest.mark.vcr
+def test_litellm_openai_with_streaming_and_metadata(
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    os.environ["OPENAI_API_KEY"] = "test-key"
+
+    litellm.callbacks = [litellm_callback]
+    response = litellm.completion(
+        model="gpt-4.1-nano",
+        messages=[{"role": "user", "content": "What is the capital of France?"}],
+        stream=True,
+        metadata={
+            "tags": ["test"],
+            "user_id": "test_user_id",
+            "session_id": "test_session_id",
+        },
+    )
+
+    final_response = ""
+    for chunk in response:
+        final_response += chunk.choices[0].delta.content or ""
+
+    # Wait for the callback to complete and flush the spans
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+    Laminar.flush()
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
+    assert span.attributes["gen_ai.usage.input_tokens"] == 14
+    assert span.attributes["gen_ai.usage.output_tokens"] == 7
+    assert span.attributes["llm.usage.total_tokens"] == 21
+    assert (
+        span.attributes["gen_ai.prompt.0.content"] == "What is the capital of France?"
+    )
+    assert span.attributes["gen_ai.prompt.0.role"] == "user"
+    assert span.attributes["gen_ai.completion.0.content"] == final_response
+    assert span.attributes["gen_ai.completion.0.role"] == "assistant"
+    assert span.attributes["gen_ai.system"] == "openai"
+    assert span.attributes["lmnr.association.properties.tags"] == ("test",)
+    assert span.attributes["lmnr.association.properties.user_id"] == "test_user_id"
+    assert (
+        span.attributes["lmnr.association.properties.session_id"] == "test_session_id"
+    )
 
 
 @pytest.mark.vcr
@@ -575,3 +675,54 @@ async def test_async_litellm_openai_with_streaming(
     assert span.attributes["gen_ai.completion.0.content"] == final_response
     assert span.attributes["gen_ai.completion.0.role"] == "assistant"
     assert span.attributes["gen_ai.system"] == "openai"
+
+
+@pytest.mark.vcr
+@pytest.mark.asyncio
+async def test_async_litellm_openai_with_streaming_and_metadata(
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    os.environ["OPENAI_API_KEY"] = "test-key"
+
+    litellm.callbacks = [litellm_callback]
+    response = await litellm.acompletion(
+        model="gpt-4.1-nano",
+        messages=[{"role": "user", "content": "What is the capital of France?"}],
+        stream=True,
+        metadata={
+            "tags": ["test"],
+            "user_id": "test_user_id",
+            "session_id": "test_session_id",
+        },
+    )
+
+    final_response = ""
+    async for chunk in response:
+        final_response += chunk.choices[0].delta.content or ""
+
+    # Wait for the callback to complete and flush the spans
+    await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
+    Laminar.flush()
+    await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
+    assert span.attributes["gen_ai.usage.input_tokens"] == 14
+    assert span.attributes["gen_ai.usage.output_tokens"] == 7
+    assert span.attributes["llm.usage.total_tokens"] == 21
+    assert (
+        span.attributes["gen_ai.prompt.0.content"] == "What is the capital of France?"
+    )
+    assert span.attributes["gen_ai.prompt.0.role"] == "user"
+    assert span.attributes["gen_ai.completion.0.content"] == final_response
+    assert span.attributes["gen_ai.completion.0.role"] == "assistant"
+    assert span.attributes["gen_ai.system"] == "openai"
+    assert span.attributes["lmnr.association.properties.tags"] == ("test",)
+    assert span.attributes["lmnr.association.properties.user_id"] == "test_user_id"
+    assert (
+        span.attributes["lmnr.association.properties.session_id"] == "test_session_id"
+    )

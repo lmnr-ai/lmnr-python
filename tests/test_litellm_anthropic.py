@@ -56,6 +56,58 @@ def test_litellm_anthropic_basic(
 
 
 @pytest.mark.vcr
+def test_litellm_anthropic_with_metadata(
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    os.environ["ANTHROPIC_API_KEY"] = "test-key"
+
+    litellm.callbacks = [litellm_callback]
+    response = litellm.completion(
+        model="claude-3-5-haiku-latest",
+        messages=[{"role": "user", "content": "What is the capital of France?"}],
+        metadata={
+            "tags": ["test"],
+            "user_id": "test_user_id",
+            "session_id": "test_session_id",
+        },
+    )
+
+    # Wait for the callback to complete and flush the spans
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+    Laminar.flush()
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "litellm.completion"
+    assert spans[0].attributes["gen_ai.request.model"] == "claude-3-5-haiku-latest"
+    assert spans[0].attributes["gen_ai.response.model"] == "claude-3-5-haiku-20241022"
+    assert spans[0].attributes["gen_ai.response.id"] == response.id
+    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 14
+    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 10
+    assert spans[0].attributes["llm.usage.total_tokens"] == 24
+    assert (
+        spans[0].attributes["gen_ai.prompt.0.content"]
+        == "What is the capital of France?"
+    )
+    assert spans[0].attributes["gen_ai.prompt.0.role"] == "user"
+    assert (
+        spans[0].attributes["gen_ai.completion.0.content"]
+        == response.choices[0].message.content
+    )
+    assert spans[0].attributes["gen_ai.completion.0.role"] == "assistant"
+    assert spans[0].attributes["gen_ai.system"] == "anthropic"
+    assert spans[0].attributes["lmnr.association.properties.tags"] == ("test",)
+    assert spans[0].attributes["lmnr.association.properties.user_id"] == "test_user_id"
+    assert (
+        spans[0].attributes["lmnr.association.properties.session_id"]
+        == "test_session_id"
+    )
+
+
+@pytest.mark.vcr
 def test_litellm_anthropic_text_block(
     span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
 ):
@@ -139,6 +191,58 @@ def test_litellm_anthropic_with_streaming(
     assert spans[0].attributes["gen_ai.completion.0.content"] == final_response
     assert spans[0].attributes["gen_ai.completion.0.role"] == "assistant"
     assert spans[0].attributes["gen_ai.system"] == "anthropic"
+
+
+@pytest.mark.vcr
+def test_litellm_anthropic_with_streaming_and_metadata(
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    os.environ["ANTHROPIC_API_KEY"] = "test-key"
+
+    litellm.callbacks = [litellm_callback]
+    response = litellm.completion(
+        model="claude-3-5-haiku-latest",
+        messages=[{"role": "user", "content": "What is the capital of France?"}],
+        stream=True,
+        metadata={
+            "tags": ["test"],
+            "user_id": "test_user_id",
+            "session_id": "test_session_id",
+        },
+    )
+
+    final_response = ""
+    for chunk in response:
+        final_response += chunk.choices[0].delta.content or ""
+
+    # Wait for the callback to complete and flush the spans
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+    Laminar.flush()
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "litellm.completion"
+    assert spans[0].attributes["gen_ai.request.model"] == "claude-3-5-haiku-latest"
+    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 14
+    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 10
+    assert spans[0].attributes["llm.usage.total_tokens"] == 24
+    assert (
+        spans[0].attributes["gen_ai.prompt.0.content"]
+        == "What is the capital of France?"
+    )
+    assert spans[0].attributes["gen_ai.prompt.0.role"] == "user"
+    assert spans[0].attributes["gen_ai.completion.0.content"] == final_response
+    assert spans[0].attributes["gen_ai.completion.0.role"] == "assistant"
+    assert spans[0].attributes["gen_ai.system"] == "anthropic"
+    assert spans[0].attributes["lmnr.association.properties.tags"] == ("test",)
+    assert spans[0].attributes["lmnr.association.properties.user_id"] == "test_user_id"
+    assert (
+        spans[0].attributes["lmnr.association.properties.session_id"]
+        == "test_session_id"
+    )
 
 
 @pytest.mark.vcr
@@ -705,3 +809,56 @@ async def test_async_litellm_anthropic_with_streaming(
     assert spans[0].attributes["gen_ai.completion.0.content"] == final_response
     assert spans[0].attributes["gen_ai.completion.0.role"] == "assistant"
     assert spans[0].attributes["gen_ai.system"] == "anthropic"
+
+
+@pytest.mark.vcr
+@pytest.mark.asyncio
+async def test_async_litellm_anthropic_with_streaming_and_metadata(
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    os.environ["ANTHROPIC_API_KEY"] = "test-key"
+
+    litellm.callbacks = [litellm_callback]
+    response = await litellm.acompletion(
+        model="claude-3-5-haiku-latest",
+        messages=[{"role": "user", "content": "What is the capital of France?"}],
+        stream=True,
+        metadata={
+            "tags": ["test"],
+            "user_id": "test_user_id",
+            "session_id": "test_session_id",
+        },
+    )
+
+    final_response = ""
+    async for chunk in response:
+        final_response += chunk.choices[0].delta.content or ""
+
+    # Wait for the callback to complete and flush the spans
+    await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
+    Laminar.flush()
+    await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "litellm.completion"
+    assert spans[0].attributes["gen_ai.request.model"] == "claude-3-5-haiku-latest"
+    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 14
+    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 10
+    assert spans[0].attributes["llm.usage.total_tokens"] == 24
+    assert (
+        spans[0].attributes["gen_ai.prompt.0.content"]
+        == "What is the capital of France?"
+    )
+    assert spans[0].attributes["gen_ai.prompt.0.role"] == "user"
+    assert spans[0].attributes["gen_ai.completion.0.content"] == final_response
+    assert spans[0].attributes["gen_ai.completion.0.role"] == "assistant"
+    assert spans[0].attributes["gen_ai.system"] == "anthropic"
+    assert spans[0].attributes["lmnr.association.properties.tags"] == ("test",)
+    assert spans[0].attributes["lmnr.association.properties.user_id"] == "test_user_id"
+    assert (
+        spans[0].attributes["lmnr.association.properties.session_id"]
+        == "test_session_id"
+    )

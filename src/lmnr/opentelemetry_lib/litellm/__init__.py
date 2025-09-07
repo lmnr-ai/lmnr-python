@@ -11,6 +11,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
     get_current_context,
     get_event_attributes_from_context,
 )
+from lmnr.opentelemetry_lib.tracing.attributes import ASSOCIATION_PROPERTIES
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from lmnr.sdk.log import get_default_logger
 
@@ -113,6 +114,7 @@ try:
             except Exception as e:
                 logger.error(f"Error getting tracer: {e}")
                 return
+
             span = tracer.start_span(
                 span_name,
                 kind=SpanKind.CLIENT,
@@ -148,6 +150,30 @@ try:
                     )
                 if "top_p" in kwargs:
                     set_span_attribute(span, "gen_ai.request.top_p", kwargs["top_p"])
+
+                metadata = (
+                    kwargs.get("litellm_params").get(
+                        "metadata", kwargs.get("metadata", {})
+                    )
+                    or {}
+                )
+                tags = metadata.get("tags", [])
+                if (
+                    tags
+                    and isinstance(tags, (list, tuple, set))
+                    and all(isinstance(tag, str) for tag in tags)
+                ):
+                    span.set_attribute(f"{ASSOCIATION_PROPERTIES}.tags", tags)
+
+                user_id = metadata.get("user_id")
+                if user_id:
+                    span.set_attribute(f"{ASSOCIATION_PROPERTIES}.user_id", user_id)
+
+                session_id = metadata.get("session_id")
+                if session_id:
+                    span.set_attribute(
+                        f"{ASSOCIATION_PROPERTIES}.session_id", session_id
+                    )
 
                 if is_success:
                     span.set_status(Status(StatusCode.OK))
