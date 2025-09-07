@@ -11,7 +11,34 @@ from lmnr.opentelemetry_lib.litellm import LaminarLiteLLMCallback
 from lmnr import Laminar
 
 
+from pydantic import BaseModel
+
 SLEEP_TO_FLUSH_SECONDS = 0.05
+
+
+EVENT_JSON_SCHEMA = {
+    "name": "event",
+    "schema": {
+        "type": "object",
+        "title": "Event",
+        "properties": {
+            "name": {"type": "string", "title": "Name"},
+            "people": {
+                "type": "array",
+                "items": {"type": "string"},
+                "title": "People",
+            },
+            "dayOfWeek": {"type": "string", "title": "Dayofweek"},
+        },
+        "required": ["name", "people", "dayOfWeek"],
+    },
+}
+
+
+class Event(BaseModel):
+    name: str
+    people: list[str]
+    dayOfWeek: str
 
 
 @pytest.mark.vcr
@@ -682,6 +709,206 @@ async def test_async_litellm_anthropic_with_image_url(
 
 
 @pytest.mark.vcr
+def test_litellm_anthropic_with_structured_output(
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    os.environ["ANTHROPIC_API_KEY"] = "test-key"
+
+    litellm.callbacks = [litellm_callback]
+    response = litellm.completion(
+        model="claude-3-5-haiku-latest",
+        messages=[
+            {
+                "role": "user",
+                "content": "Alice and Bob are going to a science fair on Friday. Extract the event information.",
+            }
+        ],
+        response_format={
+            "type": "json_schema",
+            "json_schema": EVENT_JSON_SCHEMA,
+        },
+    )
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+    Laminar.flush()
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "litellm.completion"
+    assert spans[0].attributes["gen_ai.request.model"] == "claude-3-5-haiku-latest"
+    assert spans[0].attributes["gen_ai.response.model"] == "claude-3-5-haiku-20241022"
+    assert spans[0].attributes["gen_ai.response.id"] == response.id
+    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 486
+    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 76
+    assert spans[0].attributes["llm.usage.total_tokens"] == 562
+    assert (
+        spans[0].attributes["gen_ai.prompt.0.content"]
+        == "Alice and Bob are going to a science fair on Friday. Extract the event information."
+    )
+    assert spans[0].attributes["gen_ai.prompt.0.role"] == "user"
+    assert (
+        spans[0].attributes["gen_ai.completion.0.content"]
+        == response.choices[0].message.content
+    )
+    assert spans[0].attributes["gen_ai.completion.0.role"] == "assistant"
+    assert spans[0].attributes["gen_ai.system"] == "anthropic"
+    assert (
+        json.loads(spans[0].attributes["gen_ai.request.structured_output_schema"])
+        == EVENT_JSON_SCHEMA["schema"]
+    )
+
+
+@pytest.mark.vcr
+def test_litellm_anthropic_with_structured_output_pydantic(
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    os.environ["ANTHROPIC_API_KEY"] = "test-key"
+
+    litellm.callbacks = [litellm_callback]
+    response = litellm.completion(
+        model="claude-3-5-haiku-latest",
+        messages=[
+            {
+                "role": "user",
+                "content": "Alice and Bob are going to a science fair on Friday. Extract the event information.",
+            }
+        ],
+        response_format=Event,
+    )
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+    Laminar.flush()
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "litellm.completion"
+    assert spans[0].attributes["gen_ai.request.model"] == "claude-3-5-haiku-latest"
+    assert spans[0].attributes["gen_ai.response.model"] == "claude-3-5-haiku-20241022"
+    assert spans[0].attributes["gen_ai.response.id"] == response.id
+    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 508
+    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 76
+    assert spans[0].attributes["llm.usage.total_tokens"] == 584
+    assert (
+        spans[0].attributes["gen_ai.prompt.0.content"]
+        == "Alice and Bob are going to a science fair on Friday. Extract the event information."
+    )
+    assert spans[0].attributes["gen_ai.prompt.0.role"] == "user"
+    assert (
+        spans[0].attributes["gen_ai.completion.0.content"]
+        == response.choices[0].message.content
+    )
+    assert spans[0].attributes["gen_ai.completion.0.role"] == "assistant"
+    assert spans[0].attributes["gen_ai.system"] == "anthropic"
+    assert (
+        json.loads(spans[0].attributes["gen_ai.request.structured_output_schema"])
+        == EVENT_JSON_SCHEMA["schema"]
+    )
+
+
+@pytest.mark.vcr
+def test_litellm_anthropic_with_structured_output_and_streaming(
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    os.environ["ANTHROPIC_API_KEY"] = "test-key"
+
+    litellm.callbacks = [litellm_callback]
+    response = litellm.completion(
+        model="claude-3-5-haiku-latest",
+        messages=[
+            {
+                "role": "user",
+                "content": "Alice and Bob are going to a science fair on Friday. Extract the event information.",
+            }
+        ],
+        response_format={
+            "type": "json_schema",
+            "json_schema": EVENT_JSON_SCHEMA,
+        },
+        stream=True,
+    )
+    final_response = ""
+    for chunk in response:
+        final_response += chunk.choices[0].delta.content or ""
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+    Laminar.flush()
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "litellm.completion"
+    assert spans[0].attributes["gen_ai.request.model"] == "claude-3-5-haiku-latest"
+    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 486
+    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 76
+    assert spans[0].attributes["llm.usage.total_tokens"] == 562
+    assert (
+        spans[0].attributes["gen_ai.prompt.0.content"]
+        == "Alice and Bob are going to a science fair on Friday. Extract the event information."
+    )
+    assert spans[0].attributes["gen_ai.prompt.0.role"] == "user"
+    assert spans[0].attributes["gen_ai.completion.0.content"] == final_response
+    assert spans[0].attributes["gen_ai.completion.0.role"] == "assistant"
+    assert spans[0].attributes["gen_ai.system"] == "anthropic"
+    assert (
+        json.loads(spans[0].attributes["gen_ai.request.structured_output_schema"])
+        == EVENT_JSON_SCHEMA["schema"]
+    )
+
+
+@pytest.mark.vcr
+def test_litellm_anthropic_with_structured_output_pydantic_and_streaming(
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    os.environ["ANTHROPIC_API_KEY"] = "test-key"
+
+    litellm.callbacks = [litellm_callback]
+    response = litellm.completion(
+        model="claude-3-5-haiku-latest",
+        messages=[
+            {
+                "role": "user",
+                "content": "Alice and Bob are going to a science fair on Friday. Extract the event information.",
+            }
+        ],
+        response_format=Event,
+        stream=True,
+    )
+    final_response = ""
+    for chunk in response:
+        final_response += chunk.choices[0].delta.content or ""
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+    Laminar.flush()
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "litellm.completion"
+    assert spans[0].attributes["gen_ai.request.model"] == "claude-3-5-haiku-latest"
+    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 508
+    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 76
+    assert spans[0].attributes["llm.usage.total_tokens"] == 584
+    assert (
+        spans[0].attributes["gen_ai.prompt.0.content"]
+        == "Alice and Bob are going to a science fair on Friday. Extract the event information."
+    )
+    assert spans[0].attributes["gen_ai.prompt.0.role"] == "user"
+    assert spans[0].attributes["gen_ai.completion.0.content"] == final_response
+    assert spans[0].attributes["gen_ai.completion.0.role"] == "assistant"
+    assert spans[0].attributes["gen_ai.system"] == "anthropic"
+    assert (
+        json.loads(spans[0].attributes["gen_ai.request.structured_output_schema"])
+        == EVENT_JSON_SCHEMA["schema"]
+    )
+
+
+@pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_litellm_anthropic_basic(
     span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
@@ -861,4 +1088,208 @@ async def test_async_litellm_anthropic_with_streaming_and_metadata(
     assert (
         spans[0].attributes["lmnr.association.properties.session_id"]
         == "test_session_id"
+    )
+
+
+@pytest.mark.vcr(record_mode="once")
+@pytest.mark.asyncio
+async def test_async_litellm_anthropic_with_structured_output(
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    os.environ["ANTHROPIC_API_KEY"] = "test-key"
+
+    litellm.callbacks = [litellm_callback]
+    response = await litellm.acompletion(
+        model="claude-3-5-haiku-latest",
+        messages=[
+            {
+                "role": "user",
+                "content": "Alice and Bob are going to a science fair on Friday. Extract the event information.",
+            }
+        ],
+        response_format={
+            "type": "json_schema",
+            "json_schema": EVENT_JSON_SCHEMA,
+        },
+    )
+    await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
+    Laminar.flush()
+    await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "litellm.completion"
+    assert spans[0].attributes["gen_ai.request.model"] == "claude-3-5-haiku-latest"
+    assert spans[0].attributes["gen_ai.response.model"] == "claude-3-5-haiku-20241022"
+    assert spans[0].attributes["gen_ai.response.id"] == response.id
+    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 501
+    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 76
+    assert spans[0].attributes["llm.usage.total_tokens"] == 577
+    assert (
+        spans[0].attributes["gen_ai.prompt.0.content"]
+        == "Alice and Bob are going to a science fair on Friday. Extract the event information."
+    )
+    assert spans[0].attributes["gen_ai.prompt.0.role"] == "user"
+    assert (
+        spans[0].attributes["gen_ai.completion.0.content"]
+        == response.choices[0].message.content
+    )
+    assert spans[0].attributes["gen_ai.completion.0.role"] == "assistant"
+    assert spans[0].attributes["gen_ai.system"] == "anthropic"
+    assert (
+        json.loads(spans[0].attributes["gen_ai.request.structured_output_schema"])
+        == EVENT_JSON_SCHEMA["schema"]
+    )
+
+
+@pytest.mark.vcr(record_mode="once")
+@pytest.mark.asyncio
+async def test_async_litellm_anthropic_with_structured_output_pydantic(
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    os.environ["ANTHROPIC_API_KEY"] = "test-key"
+
+    litellm.callbacks = [litellm_callback]
+    response = await litellm.acompletion(
+        model="claude-3-5-haiku-latest",
+        messages=[
+            {
+                "role": "user",
+                "content": "Alice and Bob are going to a science fair on Friday. Extract the event information.",
+            }
+        ],
+        response_format=Event,
+    )
+    await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
+    Laminar.flush()
+    await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "litellm.completion"
+    assert spans[0].attributes["gen_ai.request.model"] == "claude-3-5-haiku-latest"
+    assert spans[0].attributes["gen_ai.response.model"] == "claude-3-5-haiku-20241022"
+    assert spans[0].attributes["gen_ai.response.id"] == response.id
+    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 508
+    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 76
+    assert spans[0].attributes["llm.usage.total_tokens"] == 584
+    assert (
+        spans[0].attributes["gen_ai.prompt.0.content"]
+        == "Alice and Bob are going to a science fair on Friday. Extract the event information."
+    )
+    assert spans[0].attributes["gen_ai.prompt.0.role"] == "user"
+    assert (
+        spans[0].attributes["gen_ai.completion.0.content"]
+        == response.choices[0].message.content
+    )
+    assert spans[0].attributes["gen_ai.completion.0.role"] == "assistant"
+    assert spans[0].attributes["gen_ai.system"] == "anthropic"
+    assert (
+        json.loads(spans[0].attributes["gen_ai.request.structured_output_schema"])
+        == EVENT_JSON_SCHEMA["schema"]
+    )
+
+
+@pytest.mark.vcr(record_mode="once")
+@pytest.mark.asyncio
+async def test_async_litellm_anthropic_with_structured_output_and_streaming(
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    os.environ["ANTHROPIC_API_KEY"] = "test-key"
+
+    litellm.callbacks = [litellm_callback]
+    response = await litellm.acompletion(
+        model="claude-3-5-haiku-latest",
+        messages=[
+            {
+                "role": "user",
+                "content": "Alice and Bob are going to a science fair on Friday. Extract the event information.",
+            }
+        ],
+        response_format={
+            "type": "json_schema",
+            "json_schema": EVENT_JSON_SCHEMA,
+        },
+        stream=True,
+    )
+    final_response = ""
+    async for chunk in response:
+        final_response += chunk.choices[0].delta.content or ""
+    await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
+    Laminar.flush()
+    await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "litellm.completion"
+    assert spans[0].attributes["gen_ai.request.model"] == "claude-3-5-haiku-latest"
+    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 501
+    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 76
+    assert spans[0].attributes["llm.usage.total_tokens"] == 577
+    assert (
+        spans[0].attributes["gen_ai.prompt.0.content"]
+        == "Alice and Bob are going to a science fair on Friday. Extract the event information."
+    )
+    assert spans[0].attributes["gen_ai.prompt.0.role"] == "user"
+    assert spans[0].attributes["gen_ai.completion.0.content"] == final_response
+    assert spans[0].attributes["gen_ai.completion.0.role"] == "assistant"
+    assert spans[0].attributes["gen_ai.system"] == "anthropic"
+    assert (
+        json.loads(spans[0].attributes["gen_ai.request.structured_output_schema"])
+        == EVENT_JSON_SCHEMA["schema"]
+    )
+
+
+@pytest.mark.vcr(record_mode="once")
+@pytest.mark.asyncio
+async def test_async_litellm_anthropic_with_structured_output_pydantic_and_streaming(
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    os.environ["ANTHROPIC_API_KEY"] = "test-key"
+
+    litellm.callbacks = [litellm_callback]
+    response = await litellm.acompletion(
+        model="claude-3-5-haiku-latest",
+        messages=[
+            {
+                "role": "user",
+                "content": "Alice and Bob are going to a science fair on Friday. Extract the event information.",
+            }
+        ],
+        response_format=Event,
+        stream=True,
+    )
+    final_response = ""
+    async for chunk in response:
+        final_response += chunk.choices[0].delta.content or ""
+    await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
+    Laminar.flush()
+    await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "litellm.completion"
+    assert spans[0].attributes["gen_ai.request.model"] == "claude-3-5-haiku-latest"
+    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 508
+    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 76
+    assert spans[0].attributes["llm.usage.total_tokens"] == 584
+    assert (
+        spans[0].attributes["gen_ai.prompt.0.content"]
+        == "Alice and Bob are going to a science fair on Friday. Extract the event information."
+    )
+    assert spans[0].attributes["gen_ai.prompt.0.role"] == "user"
+    assert spans[0].attributes["gen_ai.completion.0.content"] == final_response
+    assert spans[0].attributes["gen_ai.completion.0.role"] == "assistant"
+    assert spans[0].attributes["gen_ai.system"] == "anthropic"
+    assert (
+        json.loads(spans[0].attributes["gen_ai.request.structured_output_schema"])
+        == EVENT_JSON_SCHEMA["schema"]
     )

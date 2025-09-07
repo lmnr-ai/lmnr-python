@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 
 from opentelemetry.trace import SpanKind, Status, StatusCode, Tracer
+from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.opentelemetry_lib.litellm.utils import model_as_dict, set_span_attribute
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
 
@@ -174,6 +175,23 @@ try:
                     span.set_attribute(
                         f"{ASSOCIATION_PROPERTIES}.session_id", session_id
                     )
+
+                optional_params = kwargs.get("optional_params") or {}
+                if not optional_params:
+                    hidden_params = metadata.get("hidden_params") or {}
+                    optional_params = hidden_params.get("optional_params") or {}
+                response_format = optional_params.get("response_format")
+                if (
+                    response_format
+                    and isinstance(response_format, dict)
+                    and response_format.get("type") == "json_schema"
+                ):
+                    schema = (response_format.get("json_schema") or {}).get("schema")
+                    if schema:
+                        span.set_attribute(
+                            "gen_ai.request.structured_output_schema",
+                            json_dumps(schema),
+                        )
 
                 if is_success:
                     span.set_status(Status(StatusCode.OK))
