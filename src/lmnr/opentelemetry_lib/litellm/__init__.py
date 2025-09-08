@@ -5,7 +5,11 @@ from datetime import datetime
 
 from opentelemetry.trace import SpanKind, Status, StatusCode, Tracer
 from lmnr.opentelemetry_lib.decorators import json_dumps
-from lmnr.opentelemetry_lib.litellm.utils import model_as_dict, set_span_attribute
+from lmnr.opentelemetry_lib.litellm.utils import (
+    get_tool_definition,
+    model_as_dict,
+    set_span_attribute,
+)
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
 
 from lmnr.opentelemetry_lib.tracing.context import (
@@ -257,14 +261,10 @@ try:
 
             for i, tool in enumerate(tools):
                 tool_dict = model_as_dict(tool)
-                if tool_dict.get("type") != "function":
-                    # TODO: parse other tool types
-                    continue
-
-                function_dict = tool_dict.get("function", {})
-                function_name = function_dict.get("name", "")
-                function_description = function_dict.get("description", "")
-                function_parameters = function_dict.get("parameters", {})
+                tool_definition = get_tool_definition(tool_dict)
+                function_name = tool_definition.get("name")
+                function_description = tool_definition.get("description")
+                function_parameters = tool_definition.get("parameters")
                 set_span_attribute(
                     span,
                     f"llm.request.functions.{i}.name",

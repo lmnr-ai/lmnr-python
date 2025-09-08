@@ -34,6 +34,30 @@ EVENT_JSON_SCHEMA = {
     },
 }
 
+COMPUTER_TOOLS = [
+    {
+        "type": "computer_20250124",
+        "function": {
+            # These params live flat on the tool dict for Anthropic API, but
+            # must be nested into `function` and `function.parameters` for LiteLLM.
+            "name": "computer",
+            "parameters": {
+                "display_width_px": 1024,
+                "display_height_px": 768,
+                "display_number": 1,
+            },
+        },
+    },
+    {
+        "type": "text_editor_20250124",
+        "name": "str_replace_editor",
+    },
+    {
+        "type": "bash_20250124",
+        "name": "bash",
+    },
+]
+
 
 class Event(BaseModel):
     name: str
@@ -476,6 +500,130 @@ def test_litellm_anthropic_with_chat_history_and_tools(
     assert json.loads(first_span.attributes["llm.request.functions.1.parameters"]) == (
         tools[1]["function"]["parameters"]
     )
+
+
+@pytest.mark.vcr
+def test_litellm_anthropic_with_computer_tools(
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+):
+    """For now, this test just checks that tool definitions are correctly set in the
+    span request attributes."""
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    os.environ["ANTHROPIC_API_KEY"] = "test-key"
+    litellm.callbacks = [litellm_callback]
+
+    user_prompt = "What is the capital of France?"
+    response = litellm.completion(
+        model="claude-sonnet-4-20250514",
+        messages=[
+            {
+                "role": "user",
+                "content": user_prompt,
+            }
+        ],
+        tools=COMPUTER_TOOLS,
+        headers={
+            "anthropic-beta": "computer-use-2025-01-24",
+        },
+    )
+
+    # Wait for the callback to complete and flush the spans
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+    Laminar.flush()
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.name == "litellm.completion"
+    assert span.attributes["gen_ai.request.model"] == "claude-sonnet-4-20250514"
+    assert span.attributes["gen_ai.response.model"] == "claude-sonnet-4-20250514"
+
+    assert span.attributes["gen_ai.response.id"] == response.id
+    assert span.attributes["gen_ai.system"] == "anthropic"
+
+    assert span.attributes["gen_ai.prompt.0.content"] == user_prompt
+    assert span.attributes["gen_ai.prompt.0.role"] == "user"
+    assert (
+        span.attributes["gen_ai.completion.0.content"]
+        == response.choices[0].message.content
+    )
+    assert span.attributes["gen_ai.completion.0.role"] == "assistant"
+
+    assert (
+        span.attributes["llm.request.functions.0.name"]
+        == COMPUTER_TOOLS[0]["function"]["name"]
+    )
+    assert json.loads(span.attributes["llm.request.functions.0.parameters"]) == {
+        "display_width_px": 1024,
+        "display_height_px": 768,
+        "display_number": 1,
+    }
+    assert span.attributes["llm.request.functions.1.name"] == COMPUTER_TOOLS[1]["name"]
+    assert span.attributes["llm.request.functions.2.name"] == COMPUTER_TOOLS[2]["name"]
+
+
+@pytest.mark.vcr
+def test_litellm_anthropic_with_computer_tools_and_streaming(
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+):
+    """For now, this test just checks that tool definitions are correctly set in the
+    span request attributes."""
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    os.environ["ANTHROPIC_API_KEY"] = "test-key"
+    litellm.callbacks = [litellm_callback]
+    user_prompt = "What is the capital of France?"
+    response = litellm.completion(
+        model="claude-sonnet-4-20250514",
+        messages=[
+            {
+                "role": "user",
+                "content": user_prompt,
+            }
+        ],
+        tools=COMPUTER_TOOLS,
+        headers={
+            "anthropic-beta": "computer-use-2025-01-24",
+        },
+        stream=True,
+    )
+
+    final_response = ""
+    for chunk in response:
+        final_response += chunk.choices[0].delta.content or ""
+
+    # Wait for the callback to complete and flush the spans
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+    Laminar.flush()
+    time.sleep(SLEEP_TO_FLUSH_SECONDS)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.name == "litellm.completion"
+    assert span.attributes["gen_ai.request.model"] == "claude-sonnet-4-20250514"
+    assert span.attributes["gen_ai.response.model"] == "claude-sonnet-4-20250514"
+
+    assert span.attributes["gen_ai.system"] == "anthropic"
+
+    assert span.attributes["gen_ai.prompt.0.content"] == user_prompt
+    assert span.attributes["gen_ai.prompt.0.role"] == "user"
+    assert span.attributes["gen_ai.completion.0.content"] == final_response
+    assert span.attributes["gen_ai.completion.0.role"] == "assistant"
+
+    assert (
+        span.attributes["llm.request.functions.0.name"]
+        == COMPUTER_TOOLS[0]["function"]["name"]
+    )
+    assert json.loads(span.attributes["llm.request.functions.0.parameters"]) == {
+        "display_width_px": 1024,
+        "display_height_px": 768,
+        "display_number": 1,
+    }
+    assert span.attributes["llm.request.functions.1.name"] == COMPUTER_TOOLS[1]["name"]
+    assert span.attributes["llm.request.functions.2.name"] == COMPUTER_TOOLS[2]["name"]
 
 
 @pytest.mark.vcr
@@ -1293,3 +1441,130 @@ async def test_async_litellm_anthropic_with_structured_output_pydantic_and_strea
         json.loads(spans[0].attributes["gen_ai.request.structured_output_schema"])
         == EVENT_JSON_SCHEMA["schema"]
     )
+
+
+@pytest.mark.vcr
+@pytest.mark.asyncio
+async def test_async_litellm_anthropic_with_computer_tools(
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+):
+    """For now, this test just checks that tool definitions are correctly set in the
+    span request attributes."""
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    os.environ["ANTHROPIC_API_KEY"] = "test-key"
+    litellm.callbacks = [litellm_callback]
+
+    user_prompt = "What is the capital of France?"
+    response = await litellm.acompletion(
+        model="claude-sonnet-4-20250514",
+        messages=[
+            {
+                "role": "user",
+                "content": user_prompt,
+            }
+        ],
+        tools=COMPUTER_TOOLS,
+        headers={
+            "anthropic-beta": "computer-use-2025-01-24",
+        },
+    )
+
+    # Wait for the callback to complete and flush the spans
+    await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
+    Laminar.flush()
+    await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.name == "litellm.completion"
+    assert span.attributes["gen_ai.request.model"] == "claude-sonnet-4-20250514"
+    assert span.attributes["gen_ai.response.model"] == "claude-sonnet-4-20250514"
+
+    assert span.attributes["gen_ai.response.id"] == response.id
+    assert span.attributes["gen_ai.system"] == "anthropic"
+
+    assert span.attributes["gen_ai.prompt.0.content"] == user_prompt
+    assert span.attributes["gen_ai.prompt.0.role"] == "user"
+    assert (
+        span.attributes["gen_ai.completion.0.content"]
+        == response.choices[0].message.content
+    )
+    assert span.attributes["gen_ai.completion.0.role"] == "assistant"
+
+    assert (
+        span.attributes["llm.request.functions.0.name"]
+        == COMPUTER_TOOLS[0]["function"]["name"]
+    )
+    assert json.loads(span.attributes["llm.request.functions.0.parameters"]) == {
+        "display_width_px": 1024,
+        "display_height_px": 768,
+        "display_number": 1,
+    }
+    assert span.attributes["llm.request.functions.1.name"] == COMPUTER_TOOLS[1]["name"]
+    assert span.attributes["llm.request.functions.2.name"] == COMPUTER_TOOLS[2]["name"]
+
+
+@pytest.mark.vcr
+@pytest.mark.asyncio
+async def test_async_litellm_anthropic_with_computer_tools_and_streaming(
+    span_exporter: InMemorySpanExporter, litellm_callback: LaminarLiteLLMCallback
+):
+    """For now, this test just checks that tool definitions are correctly set in the
+    span request attributes."""
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    os.environ["ANTHROPIC_API_KEY"] = "test-key"
+
+    litellm.callbacks = [litellm_callback]
+    user_prompt = "What is the capital of France?"
+    response = litellm.completion(
+        model="claude-sonnet-4-20250514",
+        messages=[
+            {
+                "role": "user",
+                "content": user_prompt,
+            }
+        ],
+        tools=COMPUTER_TOOLS,
+        headers={
+            "anthropic-beta": "computer-use-2025-01-24",
+        },
+        stream=True,
+    )
+
+    final_response = ""
+    async for chunk in response:
+        final_response += chunk.choices[0].delta.content or ""
+
+    # Wait for the callback to complete and flush the spans
+    await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
+    Laminar.flush()
+    await asyncio.sleep(SLEEP_TO_FLUSH_SECONDS)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.name == "litellm.completion"
+    assert span.attributes["gen_ai.request.model"] == "claude-sonnet-4-20250514"
+    assert span.attributes["gen_ai.response.model"] == "claude-sonnet-4-20250514"
+
+    assert span.attributes["gen_ai.system"] == "anthropic"
+
+    assert span.attributes["gen_ai.prompt.0.content"] == user_prompt
+    assert span.attributes["gen_ai.prompt.0.role"] == "user"
+    assert span.attributes["gen_ai.completion.0.content"] == final_response
+    assert span.attributes["gen_ai.completion.0.role"] == "assistant"
+
+    assert (
+        span.attributes["llm.request.functions.0.name"]
+        == COMPUTER_TOOLS[0]["function"]["name"]
+    )
+    assert json.loads(span.attributes["llm.request.functions.0.parameters"]) == {
+        "display_width_px": 1024,
+        "display_height_px": 768,
+        "display_number": 1,
+    }
+    assert span.attributes["llm.request.functions.1.name"] == COMPUTER_TOOLS[1]["name"]
+    assert span.attributes["llm.request.functions.2.name"] == COMPUTER_TOOLS[2]["name"]
