@@ -1519,7 +1519,7 @@ async def test_async_litellm_anthropic_with_computer_tools_and_streaming(
 
     litellm.callbacks = [litellm_callback]
     user_prompt = "What is the capital of France?"
-    response = litellm.completion(
+    response = await litellm.acompletion(
         model="claude-sonnet-4-20250514",
         messages=[
             {

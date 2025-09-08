@@ -27,14 +27,20 @@ def set_span_attribute(span: Span, key: str, value: AttributeValue | None):
 
 def get_tool_definition(tool: dict) -> ToolDefinition:
     parameters = None
+    description = None
+    name = (tool.get("function") or {}).get("name") or tool.get("name")
     if tool.get("type") == "function":
-        parameters = tool.get("parameters")
+        function = tool.get("function") or {}
+        parameters = function.get("parameters") or tool.get("parameters")
+        description = function.get("description") or tool.get("description")
     elif isinstance(tool.get("type"), str) and tool.get("type").startswith("computer"):
         # Anthropic beta computer tools
         # https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/computer-use-tool
 
         # OpenAI computer use API
         # https://platform.openai.com/docs/guides/tools-computer-use
+        if not name:
+            name = tool.get("type")
 
         parameters = {}
         tool_parameters = (tool.get("function") or {}).get("parameters") or {}
@@ -70,7 +76,7 @@ def get_tool_definition(tool: dict) -> ToolDefinition:
             parameters["environment"] = environment
 
     return ToolDefinition(
-        name=tool.get("name") or tool.get("function", {}).get("name"),
-        description=tool.get("description"),
+        name=name,
+        description=description,
         parameters=parameters,
     )
