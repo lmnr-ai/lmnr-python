@@ -743,7 +743,7 @@ def test_litellm_openai_responses(
     os.environ["OPENAI_API_KEY"] = "test-key"
 
     litellm.callbacks = [litellm_callback]
-    # litellm responses only supports strings for metadata and siltently ignores the rest
+    # litellm responses only supports strings for metadata and silently ignores the rest
     response = litellm.responses(
         model="gpt-4.1-nano",
         input="What is the capital of France?",
@@ -1617,7 +1617,7 @@ async def test_async_litellm_openai_responses(
     os.environ["OPENAI_API_KEY"] = "test-key"
 
     litellm.callbacks = [litellm_callback]
-    # litellm responses only supports strings for metadata and siltently ignores the rest
+    # litellm responses only supports strings for metadata and silently ignores the rest
     response = await litellm.aresponses(
         model="gpt-4.1-nano",
         input="What is the capital of France?",
