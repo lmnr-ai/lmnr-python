@@ -255,7 +255,7 @@ class TracerWrapper(object):
             return
         self._tracer_provider.shutdown()
 
-    def flush(self, force_reinit_processor: bool = False):
+    def flush(self):
         if not hasattr(self, "_span_processor"):
             self._logger.warning("TracerWrapper not fully initialized, cannot flush")
             return False
