@@ -762,7 +762,7 @@ class Laminar:
         return LaminarSpanContext.deserialize(span_context)
 
     @classmethod
-    def flush(cls) -> bool:
+    def flush(cls, lambda_end: bool = False) -> bool:
         """Flush the internal tracer.
 
         Returns:
@@ -771,7 +771,7 @@ class Laminar:
         """
         if not cls.is_initialized():
             return False
-        return TracerManager.flush()
+        return TracerManager.flush(force_reinit_processor=lambda_end)
 
     @classmethod
     def shutdown(cls):

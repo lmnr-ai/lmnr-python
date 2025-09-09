@@ -255,11 +255,16 @@ class TracerWrapper(object):
             return
         self._tracer_provider.shutdown()
 
-    def flush(self):
+    def flush(self, force_reinit_processor: bool = False):
         if not hasattr(self, "_span_processor"):
             self._logger.warning("TracerWrapper not fully initialized, cannot flush")
             return False
-        return self._span_processor.force_flush()
+        result = self._span_processor.force_flush()
+        if force_reinit_processor and isinstance(
+            self._span_processor, LaminarSpanProcessor
+        ):
+            self._span_processor.force_reinit()
+        return result
 
     @classmethod
     def get_session_recording_options(cls) -> SessionRecordingOptions:

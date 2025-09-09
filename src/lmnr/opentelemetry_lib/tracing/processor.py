@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from opentelemetry.sdk.trace.export import (
@@ -19,13 +20,16 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
     SPAN_SDK_VERSION,
 )
 from lmnr.opentelemetry_lib.tracing.exporter import LaminarSpanExporter
+from lmnr.sdk.log import get_default_logger
 from lmnr.version import PYTHON_VERSION, __version__
 
 
 class LaminarSpanProcessor(SpanProcessor):
     instance: BatchSpanProcessor | SimpleSpanProcessor
+    logger: logging.Logger
     __span_id_to_path: dict[int, list[str]] = {}
     __span_id_lists: dict[int, list[str]] = {}
+    max_export_batch_size: int
 
     def __init__(
         self,
@@ -38,6 +42,8 @@ class LaminarSpanProcessor(SpanProcessor):
         disable_batch: bool = False,
         exporter: SpanExporter | None = None,
     ):
+        self.logger = get_default_logger(__name__)
+        self.max_export_batch_size = max_export_batch_size
         self.exporter = exporter or LaminarSpanExporter(
             base_url=base_url,
             port=port,
@@ -85,6 +91,26 @@ class LaminarSpanProcessor(SpanProcessor):
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
         return self.instance.force_flush(timeout_millis)
+
+    def force_reinit(self):
+        if not isinstance(self.exporter, LaminarSpanExporter):
+            self.logger.warning(
+                "LaminarSpanProcessor is not using LaminarSpanExporter, cannot force reinit"
+            )
+            return
+        self.instance.shutdown()
+        disable_batch = isinstance(self.instance, SimpleSpanProcessor)
+        del self.exporter.instance
+        del self.instance
+
+        self.exporter._init_instance()
+        self.instance = (
+            SimpleSpanProcessor(self.exporter)
+            if disable_batch
+            else BatchSpanProcessor(
+                self.exporter, max_export_batch_size=self.max_export_batch_size
+            )
+        )
 
     def shutdown(self):
         self.instance.shutdown()
