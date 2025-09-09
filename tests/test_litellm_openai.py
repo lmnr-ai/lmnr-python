@@ -2,6 +2,7 @@ import asyncio
 import json
 import litellm
 import os
+from opentelemetry.sdk.trace import ReadableSpan
 import pytest
 import time
 
@@ -332,8 +333,9 @@ def test_litellm_openai_with_chat_history(
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
-    first_span = sorted(spans, key=lambda s: s.start_time)[0]
-    second_span = sorted(spans, key=lambda s: s.start_time)[1]
+    sorted_spans: list[ReadableSpan] = sorted(list(spans), key=lambda s: s.start_time)
+    first_span = sorted_spans[0]
+    second_span = sorted_spans[1]
     assert first_span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
     assert second_span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
 
@@ -419,8 +421,9 @@ def test_litellm_openai_with_chat_history_and_tools(
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
-    first_span = spans[0]
-    second_span = spans[1]
+    sorted_spans: list[ReadableSpan] = sorted(list(spans), key=lambda s: s.start_time)
+    first_span = sorted_spans[0]
+    second_span = sorted_spans[1]
     assert first_span.name == "litellm.completion"
     assert second_span.name == "litellm.completion"
     assert first_span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
