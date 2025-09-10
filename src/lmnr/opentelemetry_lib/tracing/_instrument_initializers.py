@@ -142,6 +142,26 @@ class CrewAIInstrumentorInitializer(InstrumentorInitializer):
         return CrewAiInstrumentor()
 
 
+class CuaAgentInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("cua-agent"):
+            return None
+
+        from ..opentelemetry.instrumentation.cua_agent import CuaAgentInstrumentor
+
+        return CuaAgentInstrumentor()
+
+
+class CuaComputerInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("cua-computer"):
+            return None
+
+        from ..opentelemetry.instrumentation.cua_computer import CuaComputerInstrumentor
+
+        return CuaComputerInstrumentor()
+
+
 class GoogleGenAIInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("google-genai"):

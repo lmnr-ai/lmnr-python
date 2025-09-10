@@ -218,7 +218,7 @@ def observe_base(
             except Exception as e:
                 _process_exception(span, e)
                 _cleanup_span(span, wrapper)
-                raise e
+                raise
             finally:
                 # Always restore global context
                 context_api.detach(ctx_token)
