@@ -985,7 +985,6 @@ def test_litellm_openai_responses_with_computer_tools(
             }
         ],
     )
-    print(first_response.output)
 
     litellm.responses(
         model="openai/computer-use-preview",
