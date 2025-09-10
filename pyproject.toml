@@ -23,7 +23,7 @@ dependencies = [
   "opentelemetry-exporter-otlp-proto-grpc (>=1.33.0)",
   "opentelemetry-instrumentation (>=0.54b0)",
   "opentelemetry-semantic-conventions (>=0.54b0)",
-  "opentelemetry-semantic-conventions-ai (>=0.4.11)",
+  "opentelemetry-semantic-conventions-ai (>=0.4.13)",
   "tqdm (>=4.0)",
   "tenacity (>=8.0)",
   # Since 1.68.0, grpcio writes a warning message
@@ -35,10 +35,10 @@ dependencies = [
   # Related issue:
   # https://discuss.ai.google.dev/t/warning-all-log-messages-before-absl-initializelog-is-called-are-written-to-stderr-e0000-001731955515-629532-17124-init-cc-229-grpc-wait-for-shutdown-with-timeout-timed-out/50020
   # https://github.com/grpc/grpc/issues/38490
-  "grpcio>=1",
-  "httpx>=0.25.0",
-  "orjson>=3.10.18",
-  "packaging>=22.0",
+  "grpcio (>=1)",
+  "httpx (>=0.24.0)",
+  "orjson (>=3.0.0)",
+  "packaging (>=22.0)",
 ]
 # poetry would auto-generate these based on requires-python, but other build
 # systems don't, so we need to specify them manually.
@@ -62,57 +62,57 @@ lmnr = "lmnr.cli:cli"
 # `uv add lmnr --extra anthropic --extra groq`
 # `poetry add 'lmnr[anthropic,groq]'`
 
-alephalpha=["opentelemetry-instrumentation-alephalpha>=0.44.0"]
-bedrock=["opentelemetry-instrumentation-bedrock>=0.44.0"]
-chromadb=["opentelemetry-instrumentation-chromadb>=0.44.0"]
-cohere=["opentelemetry-instrumentation-cohere>=0.44.0"]
-crewai=["opentelemetry-instrumentation-crewai>=0.44.0"]
-haystack=["opentelemetry-instrumentation-haystack>=0.44.0"]
-lancedb=["opentelemetry-instrumentation-lancedb>=0.44.0"]
-langchain=["opentelemetry-instrumentation-langchain>=0.44.0"]
-llamaindex=["opentelemetry-instrumentation-llamaindex>=0.44.0"]
-marqo=["opentelemetry-instrumentation-marqo>=0.44.0"]
-mcp=["opentelemetry-instrumentation-mcp>=0.44.0"]
-milvus=["opentelemetry-instrumentation-milvus>=0.44.0"]
-mistralai=["opentelemetry-instrumentation-mistralai>=0.44.0"]
-ollama=["opentelemetry-instrumentation-ollama>=0.44.0"]
-pinecone=["opentelemetry-instrumentation-pinecone>=0.44.0"]
-qdrant=["opentelemetry-instrumentation-qdrant>=0.44.0"]
-replicate=["opentelemetry-instrumentation-replicate>=0.44.0"]
-sagemaker=["opentelemetry-instrumentation-sagemaker>=0.44.0"]
-together=["opentelemetry-instrumentation-together>=0.44.0"]
-transformers=["opentelemetry-instrumentation-transformers>=0.44.0"]
-vertexai=["opentelemetry-instrumentation-vertexai>=0.44.0"]
-watsonx=["opentelemetry-instrumentation-watsonx>=0.44.0"]
-weaviate=["opentelemetry-instrumentation-weaviate>=0.44.0"]
+alephalpha=["opentelemetry-instrumentation-alephalpha>=0.46.2"]
+bedrock=["opentelemetry-instrumentation-bedrock>=0.46.2"]
+chromadb=["opentelemetry-instrumentation-chromadb>=0.46.2"]
+cohere=["opentelemetry-instrumentation-cohere>=0.46.2"]
+crewai=["opentelemetry-instrumentation-crewai>=0.46.2"]
+haystack=["opentelemetry-instrumentation-haystack>=0.46.2"]
+lancedb=["opentelemetry-instrumentation-lancedb>=0.46.2"]
+langchain=["opentelemetry-instrumentation-langchain>=0.46.2"]
+llamaindex=["opentelemetry-instrumentation-llamaindex>=0.46.2"]
+marqo=["opentelemetry-instrumentation-marqo>=0.46.2"]
+mcp=["opentelemetry-instrumentation-mcp>=0.46.2"]
+milvus=["opentelemetry-instrumentation-milvus>=0.46.2"]
+mistralai=["opentelemetry-instrumentation-mistralai>=0.46.2"]
+ollama=["opentelemetry-instrumentation-ollama>=0.46.2"]
+pinecone=["opentelemetry-instrumentation-pinecone>=0.46.2"]
+qdrant=["opentelemetry-instrumentation-qdrant>=0.46.2"]
+replicate=["opentelemetry-instrumentation-replicate>=0.46.2"]
+sagemaker=["opentelemetry-instrumentation-sagemaker>=0.46.2"]
+together=["opentelemetry-instrumentation-together>=0.46.2"]
+transformers=["opentelemetry-instrumentation-transformers>=0.46.2"]
+vertexai=["opentelemetry-instrumentation-vertexai>=0.46.2"]
+watsonx=["opentelemetry-instrumentation-watsonx>=0.46.2"]
+weaviate=["opentelemetry-instrumentation-weaviate>=0.46.2"]
 # `all` is the group added for convenience, if you want to install all
 # the instrumentations.
 # we suggest using package-manager-specific commands instead,
 # like `uv add lmnr --all-extras`
 all = [
-  "opentelemetry-instrumentation-alephalpha>=0.44.0",
-  "opentelemetry-instrumentation-bedrock>=0.44.0",
-  "opentelemetry-instrumentation-chromadb>=0.44.0",
-  "opentelemetry-instrumentation-cohere>=0.44.0",
-  "opentelemetry-instrumentation-crewai>=0.44.0",
-  "opentelemetry-instrumentation-haystack>=0.44.0",
-  "opentelemetry-instrumentation-lancedb>=0.44.0",
-  "opentelemetry-instrumentation-langchain>=0.44.0",
-  "opentelemetry-instrumentation-llamaindex>=0.44.0",
-  "opentelemetry-instrumentation-marqo>=0.44.0",
-  "opentelemetry-instrumentation-mcp>=0.44.0",
-  "opentelemetry-instrumentation-milvus>=0.44.0",
-  "opentelemetry-instrumentation-mistralai>=0.44.0",
-  "opentelemetry-instrumentation-ollama>=0.44.0",
-  "opentelemetry-instrumentation-pinecone>=0.44.0",
-  "opentelemetry-instrumentation-qdrant>=0.44.0",
-  "opentelemetry-instrumentation-replicate>=0.44.0",
-  "opentelemetry-instrumentation-sagemaker>=0.44.0",
-  "opentelemetry-instrumentation-together>=0.44.0",
-  "opentelemetry-instrumentation-transformers>=0.44.0",
-  "opentelemetry-instrumentation-vertexai>=0.44.0",
-  "opentelemetry-instrumentation-watsonx>=0.44.0",
-  "opentelemetry-instrumentation-weaviate>=0.44.0"
+  "opentelemetry-instrumentation-alephalpha>=0.46.2",
+  "opentelemetry-instrumentation-bedrock>=0.46.2",
+  "opentelemetry-instrumentation-chromadb>=0.46.2",
+  "opentelemetry-instrumentation-cohere>=0.46.2",
+  "opentelemetry-instrumentation-crewai>=0.46.2",
+  "opentelemetry-instrumentation-haystack>=0.46.2",
+  "opentelemetry-instrumentation-lancedb>=0.46.2",
+  "opentelemetry-instrumentation-langchain>=0.46.2",
+  "opentelemetry-instrumentation-llamaindex>=0.46.2",
+  "opentelemetry-instrumentation-marqo>=0.46.2",
+  "opentelemetry-instrumentation-mcp>=0.46.2",
+  "opentelemetry-instrumentation-milvus>=0.46.2",
+  "opentelemetry-instrumentation-mistralai>=0.46.2",
+  "opentelemetry-instrumentation-ollama>=0.46.2",
+  "opentelemetry-instrumentation-pinecone>=0.46.2",
+  "opentelemetry-instrumentation-qdrant>=0.46.2",
+  "opentelemetry-instrumentation-replicate>=0.46.2",
+  "opentelemetry-instrumentation-sagemaker>=0.46.2",
+  "opentelemetry-instrumentation-together>=0.46.2",
+  "opentelemetry-instrumentation-transformers>=0.46.2",
+  "opentelemetry-instrumentation-vertexai>=0.46.2",
+  "opentelemetry-instrumentation-watsonx>=0.46.2",
+  "opentelemetry-instrumentation-weaviate>=0.46.2"
 ]
 
 [dependency-groups]
@@ -134,7 +134,7 @@ dev = [
   "langchain>=0.3.27",
   "litellm>=1.75.8",
   "groq>=0.30.0",
-  "anthropic>=0.60.0",
+  "anthropic[bedrock]>=0.60.0",
   "langchain-openai>=0.3.32",
 ]
 

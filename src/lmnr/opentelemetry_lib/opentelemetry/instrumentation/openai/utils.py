@@ -5,6 +5,7 @@ import threading
 import traceback
 from contextlib import asynccontextmanager
 from importlib.metadata import version
+from packaging.version import parse
 
 from opentelemetry import context as context_api
 from opentelemetry._events import EventLogger
@@ -19,7 +20,15 @@ LMNR_TRACE_CONTENT = "LMNR_TRACE_CONTENT"
 
 
 def is_openai_v1():
-    return _OPENAI_VERSION >= "1.0.0"
+    return parse(_OPENAI_VERSION) >= parse("1.0.0")
+
+
+def is_reasoning_supported():
+    # Reasoning has been introduced in OpenAI API on Dec 17, 2024
+    #     as per https://platform.openai.com/docs/changelog.
+    # The updated OpenAI library version is 1.58.0
+    #     as per https://pypi.org/project/openai/.
+    return parse(_OPENAI_VERSION) >= parse("1.58.0")
 
 
 def is_azure_openai(instance):

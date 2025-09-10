@@ -8,6 +8,9 @@ from .utils import (
     dont_throw,
     model_as_dict,
     should_send_prompts,
+    _extract_response_data,
+    _aextract_response_data,
+    set_span_attribute,
 )
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_RESPONSE_ID,
@@ -165,6 +168,73 @@ async def aset_input_attributes(span, kwargs):
                     )
 
 
+async def _aset_span_completions(span, response):
+    if not should_send_prompts():
+        return
+
+    response = await _aextract_response_data(response)
+    index = 0
+    prefix = f"{SpanAttributes.LLM_COMPLETIONS}.{index}"
+    set_span_attribute(span, f"{prefix}.finish_reason", response.get("stop_reason"))
+    if response.get("role"):
+        set_span_attribute(span, f"{prefix}.role", response.get("role"))
+
+    if response.get("completion"):
+        set_span_attribute(span, f"{prefix}.content", response.get("completion"))
+    elif response.get("content"):
+        tool_call_index = 0
+        text = ""
+        for content in response.get("content"):
+            content_block_type = content.type
+            # usually, Antrhopic responds with just one text block,
+            # but the API allows for multiple text blocks, so concatenate them
+            if content_block_type == "text" and hasattr(content, "text"):
+                text += content.text
+            elif content_block_type == "thinking":
+                content = dict(content)
+                # override the role to thinking
+                set_span_attribute(
+                    span,
+                    f"{prefix}.role",
+                    "thinking",
+                )
+                set_span_attribute(
+                    span,
+                    f"{prefix}.content",
+                    content.get("thinking"),
+                )
+                # increment the index for subsequent content blocks
+                index += 1
+                prefix = f"{SpanAttributes.LLM_COMPLETIONS}.{index}"
+                # set the role to the original role on the next completions
+                set_span_attribute(
+                    span,
+                    f"{prefix}.role",
+                    response.get("role"),
+                )
+            elif content_block_type == "tool_use":
+                content = dict(content)
+                set_span_attribute(
+                    span,
+                    f"{prefix}.tool_calls.{tool_call_index}.id",
+                    content.get("id"),
+                )
+                set_span_attribute(
+                    span,
+                    f"{prefix}.tool_calls.{tool_call_index}.name",
+                    content.get("name"),
+                )
+                tool_arguments = content.get("input")
+                if tool_arguments is not None:
+                    set_span_attribute(
+                        span,
+                        f"{prefix}.tool_calls.{tool_call_index}.arguments",
+                        json.dumps(tool_arguments),
+                    )
+                tool_call_index += 1
+        set_span_attribute(span, f"{prefix}.content", text)
+
+
 def _set_span_completions(span, response):
     if not should_send_prompts():
         return
@@ -233,11 +303,30 @@ def _set_span_completions(span, response):
 
 
 @dont_throw
-def set_response_attributes(span, response):
-    from .utils import set_span_attribute
+async def aset_response_attributes(span, response):
+    response = await _aextract_response_data(response)
+    set_span_attribute(span, SpanAttributes.LLM_RESPONSE_MODEL, response.get("model"))
+    set_span_attribute(span, GEN_AI_RESPONSE_ID, response.get("id"))
 
-    if not isinstance(response, dict):
-        response = response.__dict__
+    if response.get("usage"):
+        prompt_tokens = response.get("usage").input_tokens
+        completion_tokens = response.get("usage").output_tokens
+        set_span_attribute(span, SpanAttributes.LLM_USAGE_PROMPT_TOKENS, prompt_tokens)
+        set_span_attribute(
+            span, SpanAttributes.LLM_USAGE_COMPLETION_TOKENS, completion_tokens
+        )
+        set_span_attribute(
+            span,
+            SpanAttributes.LLM_USAGE_TOTAL_TOKENS,
+            prompt_tokens + completion_tokens,
+        )
+
+    await _aset_span_completions(span, response)
+
+
+@dont_throw
+def set_response_attributes(span, response):
+    response = _extract_response_data(response)
     set_span_attribute(span, SpanAttributes.LLM_RESPONSE_MODEL, response.get("model"))
     set_span_attribute(span, GEN_AI_RESPONSE_ID, response.get("id"))
 
@@ -261,8 +350,6 @@ def set_response_attributes(span, response):
 def set_streaming_response_attributes(span, complete_response_events):
     if not should_send_prompts():
         return
-
-    from .utils import set_span_attribute
 
     if not span.is_recording() or not complete_response_events:
         return

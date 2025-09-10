@@ -144,6 +144,11 @@ def _set_request_attributes(span, kwargs, instance=None):
     _set_span_attribute(
         span, SpanAttributes.LLM_IS_STREAMING, kwargs.get("stream") or False
     )
+    _set_span_attribute(
+        span,
+        SpanAttributes.LLM_REQUEST_REASONING_EFFORT,
+        kwargs.get("reasoning_effort"),
+    )
     if response_format := kwargs.get("response_format"):
         # backward-compatible check for
         # openai.types.shared_params.response_format_json_schema.ResponseFormatJSONSchema
@@ -263,6 +268,15 @@ def _set_response_attributes(span, response):
         SpanAttributes.LLM_USAGE_CACHE_READ_INPUT_TOKENS,
         prompt_tokens_details.get("cached_tokens", 0),
     )
+
+    if completion_token_details := dict(usage.get("completion_tokens_details", {})):
+        reasoning_tokens = completion_token_details.get("reasoning_tokens")
+        _set_span_attribute(
+            span,
+            SpanAttributes.LLM_USAGE_REASONING_TOKENS,
+            reasoning_tokens or 0,
+        )
+
     return
 
 
