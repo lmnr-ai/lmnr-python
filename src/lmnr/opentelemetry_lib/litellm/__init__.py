@@ -4,19 +4,25 @@ import json
 from datetime import datetime
 
 from opentelemetry.trace import SpanKind, Status, StatusCode, Tracer
-from lmnr.opentelemetry_lib.litellm.utils import model_as_dict, set_span_attribute
+from lmnr.opentelemetry_lib.decorators import json_dumps
+from lmnr.opentelemetry_lib.litellm.utils import (
+    get_tool_definition,
+    model_as_dict,
+    set_span_attribute,
+)
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
 
 from lmnr.opentelemetry_lib.tracing.context import (
     get_current_context,
     get_event_attributes_from_context,
 )
+from lmnr.opentelemetry_lib.tracing.attributes import ASSOCIATION_PROPERTIES
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
 
-SUPPORTED_CALL_TYPES = ["completion", "acompletion"]
+SUPPORTED_CALL_TYPES = ["completion", "acompletion", "responses", "aresponses"]
 
 # Try to import the necessary LiteLLM components and gracefully handle ImportError
 try:
@@ -39,11 +45,14 @@ try:
             litellm.callbacks = [LaminarLiteLLMCallback()]
         """
 
+        logged_openai_responses: set[str]
+
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
             if not hasattr(TracerWrapper, "instance") or TracerWrapper.instance is None:
                 raise ValueError("Laminar must be initialized before LiteLLM callback")
 
+            self.logged_openai_responses = set()
             if is_package_installed("openai"):
                 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import (
                     OpenAIInstrumentor,
@@ -69,6 +78,14 @@ try:
         ):
             if kwargs.get("call_type") not in SUPPORTED_CALL_TYPES:
                 return
+            if kwargs.get("call_type") in ["responses", "aresponses"]:
+                # responses API may be called multiple times with the same response_obj
+                response_id = getattr(response_obj, "id", None)
+                if response_id in self.logged_openai_responses:
+                    return
+                if response_id:
+                    self.logged_openai_responses.add(response_id)
+            self.logged_openai_responses.add(response_obj.id)
             try:
                 self._create_span(
                     kwargs, response_obj, start_time, end_time, is_success=True
@@ -107,12 +124,18 @@ try:
             is_success: bool,
         ):
             """Create an OpenTelemetry span for the LiteLLM call"""
-            span_name = "litellm.completion"
+            call_type = kwargs.get("call_type", "completion")
+            if call_type == "aresponses":
+                call_type = "responses"
+            if call_type == "acompletion":
+                call_type = "completion"
+            span_name = f"litellm.{call_type}"
             try:
                 tracer = self._get_tracer()
             except Exception as e:
                 logger.error(f"Error getting tracer: {e}")
                 return
+
             span = tracer.start_span(
                 span_name,
                 kind=SpanKind.CLIENT,
@@ -148,6 +171,52 @@ try:
                     )
                 if "top_p" in kwargs:
                     set_span_attribute(span, "gen_ai.request.top_p", kwargs["top_p"])
+
+                metadata = (
+                    kwargs.get("litellm_params").get(
+                        "metadata", kwargs.get("metadata", {})
+                    )
+                    or {}
+                )
+                tags = metadata.get("tags", [])
+                if isinstance(tags, str):
+                    try:
+                        tags = json.loads(tags)
+                    except Exception:
+                        pass
+                if (
+                    tags
+                    and isinstance(tags, (list, tuple, set))
+                    and all(isinstance(tag, str) for tag in tags)
+                ):
+                    span.set_attribute(f"{ASSOCIATION_PROPERTIES}.tags", tags)
+
+                user_id = metadata.get("user_id")
+                if user_id:
+                    span.set_attribute(f"{ASSOCIATION_PROPERTIES}.user_id", user_id)
+
+                session_id = metadata.get("session_id")
+                if session_id:
+                    span.set_attribute(
+                        f"{ASSOCIATION_PROPERTIES}.session_id", session_id
+                    )
+
+                optional_params = kwargs.get("optional_params") or {}
+                if not optional_params:
+                    hidden_params = metadata.get("hidden_params") or {}
+                    optional_params = hidden_params.get("optional_params") or {}
+                response_format = optional_params.get("response_format")
+                if (
+                    response_format
+                    and isinstance(response_format, dict)
+                    and response_format.get("type") == "json_schema"
+                ):
+                    schema = (response_format.get("json_schema") or {}).get("schema")
+                    if schema:
+                        span.set_attribute(
+                            "gen_ai.request.structured_output_schema",
+                            json_dumps(schema),
+                        )
 
                 if is_success:
                     span.set_status(Status(StatusCode.OK))
@@ -213,14 +282,10 @@ try:
 
             for i, tool in enumerate(tools):
                 tool_dict = model_as_dict(tool)
-                if tool_dict.get("type") != "function":
-                    # TODO: parse other tool types
-                    continue
-
-                function_dict = tool_dict.get("function", {})
-                function_name = function_dict.get("name", "")
-                function_description = function_dict.get("description", "")
-                function_parameters = function_dict.get("parameters", {})
+                tool_definition = get_tool_definition(tool_dict)
+                function_name = tool_definition.get("name")
+                function_description = tool_definition.get("description")
+                function_parameters = tool_definition.get("parameters")
                 set_span_attribute(
                     span,
                     f"llm.request.functions.{i}.name",
@@ -341,6 +406,100 @@ try:
                         json.dumps(model_as_dict(content)),
                     )
 
+        def _process_content_part(self, content_part: dict) -> dict:
+            content_part_dict = model_as_dict(content_part)
+            if content_part_dict.get("type") == "output_text":
+                return {"type": "text", "text": content_part_dict.get("text")}
+            return content_part_dict
+
+        def _process_response_output(self, span, output):
+            """Response of OpenAI Responses API"""
+            if not isinstance(output, list):
+                return
+            set_span_attribute(span, "gen_ai.completion.0.role", "assistant")
+            tool_call_index = 0
+            for block in output:
+                block_dict = model_as_dict(block)
+                if block_dict.get("type") == "message":
+                    content = block_dict.get("content")
+                    if content is None:
+                        continue
+                    if isinstance(content, str):
+                        set_span_attribute(span, "gen_ai.completion.0.content", content)
+                    elif isinstance(content, list):
+                        set_span_attribute(
+                            span,
+                            "gen_ai.completion.0.content",
+                            json_dumps(
+                                [self._process_content_part(part) for part in content]
+                            ),
+                        )
+                if block_dict.get("type") == "function_call":
+                    set_span_attribute(
+                        span,
+                        f"gen_ai.completion.0.tool_calls.{tool_call_index}.id",
+                        block_dict.get("id"),
+                    )
+                    set_span_attribute(
+                        span,
+                        f"gen_ai.completion.0.tool_calls.{tool_call_index}.name",
+                        block_dict.get("name"),
+                    )
+                    set_span_attribute(
+                        span,
+                        f"gen_ai.completion.0.tool_calls.{tool_call_index}.arguments",
+                        block_dict.get("arguments"),
+                    )
+                    tool_call_index += 1
+                elif block_dict.get("type") == "file_search_call":
+                    set_span_attribute(
+                        span,
+                        f"gen_ai.completion.0.tool_calls.{tool_call_index}.id",
+                        block_dict.get("id"),
+                    )
+                    set_span_attribute(
+                        span,
+                        f"gen_ai.completion.0.tool_calls.{tool_call_index}.name",
+                        "file_search_call",
+                    )
+                    tool_call_index += 1
+                elif block_dict.get("type") == "web_search_call":
+                    set_span_attribute(
+                        span,
+                        f"gen_ai.completion.0.tool_calls.{tool_call_index}.id",
+                        block_dict.get("id"),
+                    )
+                    set_span_attribute(
+                        span,
+                        f"gen_ai.completion.0.tool_calls.{tool_call_index}.name",
+                        "web_search_call",
+                    )
+                    tool_call_index += 1
+                elif block_dict.get("type") == "computer_call":
+                    set_span_attribute(
+                        span,
+                        f"gen_ai.completion.0.tool_calls.{tool_call_index}.id",
+                        block_dict.get("call_id"),
+                    )
+                    set_span_attribute(
+                        span,
+                        f"gen_ai.completion.0.tool_calls.{tool_call_index}.name",
+                        "computer_call",
+                    )
+                    set_span_attribute(
+                        span,
+                        f"gen_ai.completion.0.tool_calls.{tool_call_index}.arguments",
+                        json_dumps(block_dict.get("action")),
+                    )
+                    tool_call_index += 1
+                elif block_dict.get("type") == "reasoning":
+                    set_span_attribute(
+                        span,
+                        "gen_ai.completion.0.reasoning",
+                        block_dict.get("summary"),
+                    )
+                # TODO: handle other block types, in particular other calls
+
         def _process_success_response(self, span, response_obj):
             """Process successful response attributes"""
             response_dict = model_as_dict(response_obj)
@@ -349,7 +508,9 @@ try:
                 span, "gen_ai.response.model", response_dict.get("model")
             )
 
-            if response_dict.get("usage"):
+            if getattr(response_obj, "usage", None):
+                self._process_response_usage(span, getattr(response_obj, "usage", None))
+            elif response_dict.get("usage"):
                 self._process_response_usage(span, response_dict.get("usage"))
 
             if response_dict.get("cache_creation_input_tokens"):
@@ -367,6 +528,8 @@ try:
 
             if response_dict.get("choices"):
                 self._process_response_choices(span, response_dict.get("choices"))
+            elif response_dict.get("output"):
+                self._process_response_output(span, response_dict.get("output"))
 
 except ImportError as e:
     logger.debug(f"LiteLLM callback unavailable: {e}")

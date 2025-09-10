@@ -1,0 +1,112 @@
+interactions:
+- request:
+    body: '{"messages":[{"role":"user","content":"Alice and Bob are going to a science
+      fair on Friday. Extract the event information."}],"model":"gpt-4.1-nano","response_format":{"type":"json_schema","json_schema":{"name":"event","schema":{"type":"object","title":"Event","properties":{"name":{"type":"string","title":"Name"},"people":{"type":"array","items":{"type":"string"},"title":"People"},"dayOfWeek":{"type":"string","title":"Dayofweek"}},"required":["name","people","dayOfWeek"]}}}}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '479'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      user-agent:
+      - AsyncOpenAI/Python 1.99.9
+      x-stainless-arch:
+      - arm64
+      x-stainless-async:
+      - async:asyncio
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - MacOS
+      x-stainless-package-version:
+      - 1.99.9
+      x-stainless-raw-response:
+      - 'true'
+      x-stainless-read-timeout:
+      - '600.0'
+      x-stainless-retry-count:
+      - '0'
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.13.5
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAAwAAAP//jJJNb9swDIbv/hUCz3ZhO86C+LZu2C4D9oFiO9SBoUi0rUaWNEkpagT5
+        74PsNHa7DthFBz58Kb4kTxEhIDiUBFhHPeuNTD58vB2ah+/mkN596/Dnj993zg3F5svjU/p5DXFQ
+        6P0DMv+sumG6NxK90GrCzCL1GKpmm/Umf5euimwEveYog6w1PiluskRRpZM8zddJWiRZcZF3WjB0
+        UJL7iBBCTuMbGlUcn6Akafwc6dE52iKU1yRCwGoZIkCdE85T5SGeIdPKoxp7P1WgaI8VlBU4JlAx
+        JA0VtoK4AoPayMDuK3gvBcMxeqv3FeziCjgdvja/EA+j+pMVnA4VnJc/WWyOjga76ijlAlCltKdh
+        XKPH3YWcr66kbo3Ve/dKCo1QwnW1Req0Cg6c1wZGeo4I2Y3TO74YCBire+Nrrw84frddTeVgXtoM
+        s+0Feu2pXMSzPH6jXM3RUyHdYvzAKOuQz9J5V/TIhV6AaGH6727eqj0ZF6r9n/IzYAyNR14bi1yw
+        l47nNIvhpv+Vdh3y2DA4tI+CYe0F2rAIjg09yunQwA3OY183QrVojRXTtTWm3rB8tdo3W55BdI7+
+        AAAA//8DAAV6lel8AwAA
+    headers:
+      Access-Control-Expose-Headers:
+      - X-Request-ID
+      CF-RAY:
+      - 97b75f6adc0e1f7f-LHR
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Sun, 07 Sep 2025 15:52:21 GMT
+      Server:
+      - cloudflare
+      Set-Cookie:
+      - __cf_bm=mBnJ6KzW5BAsjg_dW_jTPz7LmV_.WqgVGnrcLrxGjG4-1757260341-1.0.1.1-bfVwH.JwtC39L3MW8qKUFB72GxiDIf5ROFFcWbEls4p.AFVE67IkR85U8kKXllFpLPHHDQTp3KLNd7PSQpk5rn7DEx44_qbslsZfbijj4Xk;
+        path=/; expires=Sun, 07-Sep-25 16:22:21 GMT; domain=.api.openai.com; HttpOnly;
+        Secure; SameSite=None
+      - _cfuvid=0mStSJEDx_187GVtZ59PZ9QUe6.rK_ElCzatTUXtXYU-1757260341692-0.0.1.1-604800000;
+        path=/; domain=.api.openai.com; HttpOnly; Secure; SameSite=None
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      Transfer-Encoding:
+      - chunked
+      X-Content-Type-Options:
+      - nosniff
+      alt-svc:
+      - h3=":443"; ma=86400
+      cf-cache-status:
+      - DYNAMIC
+      openai-organization:
+      - user-xzaeeoqlanzncr8pomspsknu
+      openai-processing-ms:
+      - '533'
+      openai-project:
+      - proj_aT4OgTR5NJ9iNjg4xWc82hiE
+      openai-version:
+      - '2020-10-01'
+      x-envoy-upstream-service-time:
+      - '553'
+      x-ratelimit-limit-requests:
+      - '30000'
+      x-ratelimit-limit-tokens:
+      - '150000000'
+      x-ratelimit-remaining-requests:
+      - '29999'
+      x-ratelimit-remaining-tokens:
+      - '149999975'
+      x-ratelimit-reset-requests:
+      - 2ms
+      x-ratelimit-reset-tokens:
+      - 0s
+      x-request-id:
+      - req_1ee367d209f249d6a7eccec0c6e6a2ae
+    status:
+      code: 200
+      message: OK
+version: 1

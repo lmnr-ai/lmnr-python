@@ -1,0 +1,86 @@
+interactions:
+- request:
+    body: '{"model":"computer-use-preview","input":"Take a screenshot of the desktop.","tools":[{"type":"computer_use_preview","display_width":1024,"display_height":768,"environment":"linux"}],"truncation":"auto"}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '202'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      user-agent:
+      - litellm/1.76.2
+    method: POST
+    uri: https://api.openai.com/v1/responses
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA3RUTW+jMBC951cgnzcrAgGS3Pa0h95X2q0qy9gDuDE2ssdpoyr/fYUhfDTtBaH3
+        mPGbNw9/bKKISEFOEbHgOpofyio+7itxqOLD7shKscvzY1bGQogjryDO0zQ/JlkJLM7SPCE/+gam
+        fAWO9yZGOxhwboEhCMp6bldkRZrFSbIPnEOG3vU13LSdAgQxFJWMn2trvO5VVUw5CDBYayw5Rdor
+        FQCp74VUADKp3Jp1aD1HafQKb9k7NR47jxTNGR5JNEZRztS6XWsEqLtYj2C33sG2s3CR8LZN4iTb
+        xul2txv9CAeQU/S8iaIo+gjPyWjuR5uzJC9ZsJkd0xh2eVHskyop+P5Lm0MLvHaw1BGkzvR3rgaS
+        BTvIaRK06Oe4BdCuMUhG8jbV9UfQUXv/qtI/hrt/Fft70EX6lNdw+P3LlU/zSR1oIXVNHasAr5Q3
+        wM+9queX8MVtE0UvwamOWaYUqLXtaP2w9GCw8Y7eczXImNbSWdN2SDnjDdAzXJecBeaMlrqeBiZQ
+        VcaGnLYgpG9HwaQGDZYhUOfbltllm97TFbgZnSHjbFKARllJWIXTgb1IDhQHnAiomFdIxugbC8sx
+        EdquF+ADvPsZj+g7ztorY1uGi+VNqwvfbRYrIxewpXESr4tRJ92D042RPFQzj4ZMhHsM7UPivAM6
+        Jn/euJCuU+xKG5B108ss8sMD+SYFNv2E8XAJDEvRF2mNbkGHzSip/Tv5FBM0HVWm7qwpe4XxBHZL
+        v6zXnI0RX8zlHathNlLq1c+/P446V8TiSvmYfwPegJgr45Xnny+V4iv8q7ZTTr/rjAaZmskszqZd
+        ereOXQvIBEPW979tbv8BAAD//wMAqwTTEN4FAAA=
+    headers:
+      CF-RAY:
+      - 97bff1d08d3337b6-LHR
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Mon, 08 Sep 2025 16:50:27 GMT
+      Server:
+      - cloudflare
+      Set-Cookie:
+      - __cf_bm=1IpLDEAHBpODP3gGfolB_.aLH432VxzW_Jtd_phON1A-1757350227-1.0.1.1-0BK8G6Jcf.CbaIUkSQ5De62rd2mFmd6CUIc0xLXbVInqxRvf74ciAoHVQzYwISXUJPLIXin6ZUCYuoms4vt.gyDIL1E_Q7xZzVqLk5j8n2c;
+        path=/; expires=Mon, 08-Sep-25 17:20:27 GMT; domain=.api.openai.com; HttpOnly;
+        Secure; SameSite=None
+      - _cfuvid=g3Tf1nr3bPN5CgAUfz.vqm11CmsfXek7aagD9zkvSN8-1757350227096-0.0.1.1-604800000;
+        path=/; domain=.api.openai.com; HttpOnly; Secure; SameSite=None
+      Transfer-Encoding:
+      - chunked
+      X-Content-Type-Options:
+      - nosniff
+      alt-svc:
+      - h3=":443"; ma=86400
+      cf-cache-status:
+      - DYNAMIC
+      openai-organization:
+      - user-xzaeeoqlanzncr8pomspsknu
+      openai-processing-ms:
+      - '3191'
+      openai-project:
+      - proj_aT4OgTR5NJ9iNjg4xWc82hiE
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      x-envoy-upstream-service-time:
+      - '3198'
+      x-ratelimit-limit-requests:
+      - '3000'
+      x-ratelimit-remaining-requests:
+      - '2999'
+      x-ratelimit-reset-requests:
+      - 20ms
+      x-request-id:
+      - req_fdd881d1bd82204de4d8077852a0c4af
+    status:
+      code: 200
+      message: OK
+version: 1

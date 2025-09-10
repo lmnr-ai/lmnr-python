@@ -1,0 +1,96 @@
+interactions:
+- request:
+    body: '{"model":"gpt-4.1-nano","input":"What is the weather in San Francisco?","tools":[{"type":"function","name":"get_weather","description":"Get
+      the weather in a given city","parameters":{"type":"object","properties":{"city":{"type":"string"}}}},{"type":"function","name":"get_news","description":"Get
+      the news in a given city","parameters":{"type":"object","properties":{"city":{"type":"string"}}}}]}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '396'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      user-agent:
+      - litellm/1.76.2
+    method: POST
+    uri: https://api.openai.com/v1/responses
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA+xVy27bMBC8+ysInuNCimVb8bVFg6JAUTSHHJpAWJErm41EquQyaRD43wtSsh55
+        FEXPvRjyDnc4nF0unxaMcSX5jnGLri02eVklqyyvEhR5epFDuaqELMvNBUgBaZmIi3S73oh1vl1t
+        Eyn5WSAw5Q8UdCIx2mEXFxaBUBYQsHS73q6yfJOnEXME5F3IEaZpayTsyUoQd3trvA6qKqgdxjBa
+        ayzfMe3rOgaUPiUWEglU7eaoI+sFKaNn8QZ+FcZT66kgc4cvQTKmLgTUc7rGSKyD2H1Ly+xdutSg
+        zfI8OV8vk2yZZr0PkZjv2PcFY4w9xd/B4Eqc7AXIyzzYm5dZtk5lkmRplsiketXeSEGPLUYSr+Oh
+        osQRfsvNCILd+wY1RfzphgtFjzd8d8OvQLOPFrRQTpgbfhxTAnvRyY6f18l5ttVXl3cfvqWXX358
+        fr+69vj102rM0NBEgXuk4gGBDmh5xI4Lxm6jPS1YqGus5x6T9V2FW4v3ynhXnJqoEzDUoLWmaakQ
+        IA5Y3OHjFLMIzmil93zX286xqoylyaJgk28asKfMBWPHrhehQnoslERNqlI46zOH9l4JLKiLc4kV
+        +Jp438XG4vQQhE2LFsjHcPou6aO/aFRWGdvA+H9S3biuc61XfI+2NE5R0MwblMo3fNDd+XgwSsRs
+        8GT4ALiXffi8icbqSXTCqjYGd4xfIjE6IOsLyZRmwPbqHjULzfPnqg9gqHeDhNZNzjqR0Y+NsxFp
+        rWnRksJ5RmjIzoJpbMLkyIbaT8Dj8H2c8IOUKpwR6q/TnYYp0y+z+NMri3JwcCpiCNwunm0QZcQ5
+        GNphWsZ/r4DGB/d39oeV/72fej8MHjJtUZt9a00ZtkyGYDu9o9ZrASf/pXJQ1qc3yTvY43iBlZ69
+        H5uLs5fxyaP0NE5VcUA5Jiazq/78WVqdvwa8xjtMv7eoyRDUI5gm6TBDvJuPuwYJJBAE/uPi+BsA
+        AP//AwB4fd6YIQgAAA==
+    headers:
+      CF-RAY:
+      - 97bfcc24fa573c70-LHR
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Mon, 08 Sep 2025 16:24:43 GMT
+      Server:
+      - cloudflare
+      Set-Cookie:
+      - __cf_bm=IS29n.TL.r7X4trMGQua8t8gSRzJoFmIBltOpgt2Q8c-1757348683-1.0.1.1-CJ0PbTPuIsXNa.TrmBHTJz.Xc0G67.BmPZhquuVtVC4MWBpX7s.m38LlI__eaD.fk7Z83zgLXmw2EtfS6iMlUONzZO3951DlAxl06dBiMTw;
+        path=/; expires=Mon, 08-Sep-25 16:54:43 GMT; domain=.api.openai.com; HttpOnly;
+        Secure; SameSite=None
+      - _cfuvid=7x5z1Pe8xBeudZkdoR8S6UllUdPJcn1hCAiYb8p.Xyw-1757348683118-0.0.1.1-604800000;
+        path=/; domain=.api.openai.com; HttpOnly; Secure; SameSite=None
+      Transfer-Encoding:
+      - chunked
+      X-Content-Type-Options:
+      - nosniff
+      alt-svc:
+      - h3=":443"; ma=86400
+      cf-cache-status:
+      - DYNAMIC
+      openai-organization:
+      - user-xzaeeoqlanzncr8pomspsknu
+      openai-processing-ms:
+      - '2123'
+      openai-project:
+      - proj_aT4OgTR5NJ9iNjg4xWc82hiE
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      x-envoy-upstream-service-time:
+      - '2130'
+      x-ratelimit-limit-requests:
+      - '30000'
+      x-ratelimit-limit-tokens:
+      - '150000000'
+      x-ratelimit-remaining-requests:
+      - '29999'
+      x-ratelimit-remaining-tokens:
+      - '149999715'
+      x-ratelimit-reset-requests:
+      - 2ms
+      x-ratelimit-reset-tokens:
+      - 0s
+      x-request-id:
+      - req_27a85f7f6032cd4a3de58c644c462072
+    status:
+      code: 200
+      message: OK
+version: 1
