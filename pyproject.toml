@@ -144,3 +144,6 @@ build-backend = "uv_build"
 
 [tool.uv.workspace]
 members = ["examples/fastapi-app"]
+
+[tool.ruff]
+target-version = "py310"
