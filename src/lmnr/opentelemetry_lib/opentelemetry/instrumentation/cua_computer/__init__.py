@@ -1,4 +1,4 @@
-"""OpenTelemetry Groq instrumentation"""
+"""OpenTelemetry CUA instrumentation"""
 
 import logging
 from typing import Collection
