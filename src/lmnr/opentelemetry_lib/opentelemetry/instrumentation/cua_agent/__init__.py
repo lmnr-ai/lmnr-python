@@ -23,7 +23,7 @@ def _wrap_run(
     args,
     kwargs,
 ):
-    parent_span = Laminar.start_span("agent.run")
+    parent_span = Laminar.start_span("ComputerAgent.run")
     instance._lmnr_parent_span = parent_span
 
     try:
@@ -44,11 +44,19 @@ async def _abuild_from_streaming_response(
         response_iter = aiter(response)
         while True:
             step = None
-            step_span = Laminar.start_span("agent.step")
+            step_span = Laminar.start_span("ComputerAgent.step")
             with Laminar.use_span(step_span):
                 try:
                     step = await anext(response_iter)
                     step_span.set_attribute("lmnr.span.output", json_dumps(step))
+                    try:
+                        # When processing tool calls, each output item is processed separately,
+                        # if the output is message, agent.step returns an empty array
+                        # https://github.com/trycua/cua/blob/17d670962970a1d1774daaec029ebf92f1f9235e/libs/python/agent/agent/agent.py#L459
+                        if len(step.get("output", [])) == 0:
+                            continue
+                    except Exception:
+                        pass
                     if step_span.is_recording():
                         step_span.end()
                 except StopAsyncIteration:

@@ -15,7 +15,7 @@ from opentelemetry.trace import Span
 from opentelemetry.trace.status import Status, StatusCode
 from wrapt import wrap_function_wrapper
 
-from .utils import payload_to_base64url
+from .utils import payload_to_placeholder
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +131,7 @@ WRAPPED_AMETHODS = [
         "package": "computer.interface.generic",
         "object": "GenericComputerInterface",
         "method": "screenshot",
-        "output_formatter": payload_to_base64url,
+        "output_formatter": payload_to_placeholder,
     },
     {
         "package": "computer.interface.generic",
@@ -340,7 +340,7 @@ def _wrap(
     with Laminar.use_span(parent_span):
         instance_name = "interface"
         with Laminar.start_as_current_span(
-            f"{instance_name}.{to_wrap.get('method')}"
+            f"{instance_name}.{to_wrap.get('method')}", span_type="TOOL"
         ) as span:
             span.set_attribute(
                 "lmnr.span.input",
@@ -397,7 +397,8 @@ async def _wrap_async(
     with Laminar.use_span(parent_span):
         instance_name = "interface"
         with Laminar.start_as_current_span(
-            f"{instance_name}.{to_wrap.get('method')}"
+            f"{instance_name}.{to_wrap.get('method')}",
+            span_type="TOOL",
         ) as span:
             span.set_attribute(
                 "lmnr.span.input",
