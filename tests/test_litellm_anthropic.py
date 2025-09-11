@@ -466,6 +466,25 @@ def test_litellm_anthropic_with_chat_history_and_tools(
         second_span.attributes["gen_ai.prompt.1.content"]
         == first_response.choices[0].message.content
     )
+    assert second_span.attributes["gen_ai.prompt.1.tool_calls.0.name"] == "get_weather"
+    assert (
+        first_span.attributes["gen_ai.completion.0.tool_calls.0.name"] == "get_weather"
+    )
+    assert json.loads(
+        second_span.attributes["gen_ai.prompt.1.tool_calls.0.arguments"]
+    ) == {"city": "San Francisco"}
+    assert json.loads(
+        first_span.attributes["gen_ai.completion.0.tool_calls.0.arguments"]
+    ) == {"city": "San Francisco"}
+    assert (
+        second_span.attributes["gen_ai.prompt.1.tool_calls.0.id"]
+        == first_response.choices[0].message.tool_calls[0]["id"]
+    )
+    assert (
+        first_span.attributes["gen_ai.completion.0.tool_calls.0.id"]
+        == first_response.choices[0].message.tool_calls[0]["id"]
+    )
+
     assert second_span.attributes["gen_ai.prompt.1.role"] == "assistant"
     assert second_span.attributes["gen_ai.prompt.2.content"] == "Sunny as always!"
     assert second_span.attributes["gen_ai.prompt.2.role"] == "tool"

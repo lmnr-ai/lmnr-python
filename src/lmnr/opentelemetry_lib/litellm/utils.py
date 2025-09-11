@@ -1,3 +1,4 @@
+import re
 from pydantic import BaseModel
 from opentelemetry.sdk.trace import Span
 from opentelemetry.util.types import AttributeValue
@@ -80,3 +81,14 @@ def get_tool_definition(tool: dict) -> ToolDefinition:
         description=description,
         parameters=parameters,
     )
+
+
+def is_validator_iterator(content):
+    """
+    Some OpenAI objects contain fields typed as Iterable, which pydantic
+    internally converts to a ValidatorIterator, and they cannot be trivially
+    serialized without consuming the iterator to, for example, a list.
+
+    See: https://github.com/pydantic/pydantic/issues/9541#issuecomment-2189045051
+    """
+    return re.search(r"pydantic.*ValidatorIterator'>$", str(type(content)))

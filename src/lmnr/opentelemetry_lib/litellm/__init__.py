@@ -3,10 +3,12 @@
 import json
 from datetime import datetime
 
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import GEN_AI_PROMPT
 from opentelemetry.trace import SpanKind, Status, StatusCode, Tracer
 from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.opentelemetry_lib.litellm.utils import (
     get_tool_definition,
+    is_validator_iterator,
     model_as_dict,
     set_span_attribute,
 )
@@ -245,35 +247,107 @@ try:
             if not isinstance(messages, list):
                 return
 
-            for i, message in enumerate(messages):
-                message_dict = model_as_dict(message)
-                role = message_dict.get("role", "unknown")
-                set_span_attribute(span, f"gen_ai.prompt.{i}.role", role)
-
-                tool_calls = message_dict.get("tool_calls", [])
-                self._process_tool_calls(span, tool_calls, i, is_response=False)
-
-                content = message_dict.get("content", "")
-                if content is None:
-                    continue
-                if isinstance(content, str):
-                    set_span_attribute(span, f"gen_ai.prompt.{i}.content", content)
-                elif isinstance(content, list):
-                    set_span_attribute(
-                        span, f"gen_ai.prompt.{i}.content", json.dumps(content)
+            prompt_index = 0
+            for item in messages:
+                block_dict = model_as_dict(item)
+                if block_dict.get("type", "message") == "message":
+                    tool_calls = block_dict.get("tool_calls", [])
+                    self._process_tool_calls(
+                        span, tool_calls, prompt_index, is_response=False
                     )
-                else:
-                    set_span_attribute(
-                        span,
-                        f"gen_ai.prompt.{i}.content",
-                        json.dumps(model_as_dict(content)),
-                    )
-                if role == "tool":
+                    content = block_dict.get("content")
+                    if is_validator_iterator(content):
+                        # Have not been able to catch this in the wild, but keeping
+                        # just in case, as raw OpenAI responses do that
+                        content = [self._process_content_part(part) for part in content]
+                    try:
+                        stringified_content = (
+                            content if isinstance(content, str) else json_dumps(content)
+                        )
+                    except Exception:
+                        stringified_content = (
+                            str(content) if content is not None else ""
+                        )
                     set_span_attribute(
                         span,
-                        f"gen_ai.prompt.{i}.tool_call_id",
-                        message_dict.get("tool_call_id"),
+                        f"{GEN_AI_PROMPT}.{prompt_index}.content",
+                        stringified_content,
                     )
+                    set_span_attribute(
+                        span,
+                        f"{GEN_AI_PROMPT}.{prompt_index}.role",
+                        block_dict.get("role"),
+                    )
+                    prompt_index += 1
+
+                elif block_dict.get("type") == "computer_call_output":
+                    set_span_attribute(
+                        span,
+                        f"{GEN_AI_PROMPT}.{prompt_index}.role",
+                        "computer_call_output",
+                    )
+                    output_image_url = block_dict.get("output", {}).get("image_url")
+                    if output_image_url:
+                        set_span_attribute(
+                            span,
+                            f"{GEN_AI_PROMPT}.{prompt_index}.content",
+                            json.dumps(
+                                [
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {"url": output_image_url},
+                                    }
+                                ]
+                            ),
+                        )
+                    prompt_index += 1
+                elif block_dict.get("type") == "computer_call":
+                    set_span_attribute(
+                        span, f"{GEN_AI_PROMPT}.{prompt_index}.role", "assistant"
+                    )
+                    call_content = {}
+                    if block_dict.get("id"):
+                        call_content["id"] = block_dict.get("id")
+                    if block_dict.get("action"):
+                        call_content["action"] = block_dict.get("action")
+                    set_span_attribute(
+                        span,
+                        f"{GEN_AI_PROMPT}.{prompt_index}.tool_calls.0.arguments",
+                        json.dumps(call_content),
+                    )
+                    set_span_attribute(
+                        span,
+                        f"{GEN_AI_PROMPT}.{prompt_index}.tool_calls.0.id",
+                        block_dict.get("call_id"),
+                    )
+                    set_span_attribute(
+                        span,
+                        f"{GEN_AI_PROMPT}.{prompt_index}.tool_calls.0.name",
+                        "computer_call",
+                    )
+                    prompt_index += 1
+                elif block_dict.get("type") == "reasoning":
+                    reasoning_summary = block_dict.get("summary")
+                    if reasoning_summary and isinstance(reasoning_summary, list):
+                        processed_chunks = [
+                            {"type": "text", "text": chunk.get("text")}
+                            for chunk in reasoning_summary
+                            if isinstance(chunk, dict)
+                            and chunk.get("type") == "summary_text"
+                        ]
+                        set_span_attribute(
+                            span,
+                            f"{GEN_AI_PROMPT}.{prompt_index}.reasoning",
+                            json_dumps(processed_chunks),
+                        )
+                        set_span_attribute(
+                            span,
+                            f"{GEN_AI_PROMPT}.{prompt_index}.role",
+                            "assistant",
+                        )
+                    # reasoning is followed by other content parts in the same messge,
+                    # so we don't increment the prompt index
+                # TODO: handle other block types
 
         def _process_request_tool_definitions(self, span, tools):
             """Process and set tool definitions attributes on the span"""
@@ -493,11 +567,19 @@ try:
                     )
                     tool_call_index += 1
                 elif block_dict.get("type") == "reasoning":
-                    set_span_attribute(
-                        span,
-                        "gen_ai.completion.0.reasoning",
-                        block_dict.get("summary"),
-                    )
+                    reasoning_summary = block_dict.get("summary")
+                    if reasoning_summary and isinstance(reasoning_summary, list):
+                        processed_chunks = [
+                            {"type": "text", "text": chunk.get("text")}
+                            for chunk in reasoning_summary
+                            if isinstance(chunk, dict)
+                            and chunk.get("type") == "summary_text"
+                        ]
+                        set_span_attribute(
+                            span,
+                            "gen_ai.completion.0.reasoning",
+                            json_dumps(processed_chunks),
+                        )
                 # TODO: handle other block types, in particular other calls
 
         def _process_success_response(self, span, response_obj):

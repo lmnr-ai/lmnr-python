@@ -301,7 +301,9 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                     prompt_index += 1
                 elif block_dict.get("type") == "computer_call_output":
                     _set_span_attribute(
-                        span, f"{GEN_AI_PROMPT}.{prompt_index}.role", "computer-call"
+                        span,
+                        f"{GEN_AI_PROMPT}.{prompt_index}.role",
+                        "computer_call_output",
                     )
                     output_image_url = block_dict.get("output", {}).get("image_url")
                     if output_image_url:
@@ -325,16 +327,45 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                     call_content = {}
                     if block_dict.get("id"):
                         call_content["id"] = block_dict.get("id")
-                    if block_dict.get("call_id"):
-                        call_content["call_id"] = block_dict.get("call_id")
                     if block_dict.get("action"):
                         call_content["action"] = block_dict.get("action")
                     _set_span_attribute(
                         span,
-                        f"{GEN_AI_PROMPT}.{prompt_index}.content",
+                        f"{GEN_AI_PROMPT}.{prompt_index}.tool_calls.0.arguments",
                         json.dumps(call_content),
                     )
+                    _set_span_attribute(
+                        span,
+                        f"{GEN_AI_PROMPT}.{prompt_index}.tool_calls.0.id",
+                        block_dict.get("call_id"),
+                    )
+                    _set_span_attribute(
+                        span,
+                        f"{GEN_AI_PROMPT}.{prompt_index}.tool_calls.0.name",
+                        "computer_call",
+                    )
                     prompt_index += 1
+                elif block_dict.get("type") == "reasoning":
+                    reasoning_summary = block_dict.get("summary")
+                    if reasoning_summary and isinstance(reasoning_summary, list):
+                        processed_chunks = [
+                            {"type": "text", "text": chunk.get("text")}
+                            for chunk in reasoning_summary
+                            if isinstance(chunk, dict)
+                            and chunk.get("type") == "summary_text"
+                        ]
+                        _set_span_attribute(
+                            span,
+                            f"{GEN_AI_PROMPT}.{prompt_index}.reasoning",
+                            json_dumps(processed_chunks),
+                        )
+                        _set_span_attribute(
+                            span,
+                            f"{GEN_AI_PROMPT}.{prompt_index}.role",
+                            "assistant",
+                        )
+                    # reasoning is followed by other content parts in the same messge,
+                    # so we don't increment the prompt index
                 # TODO: handle other block types
 
         _set_span_attribute(span, f"{GEN_AI_COMPLETION}.0.role", "assistant")
@@ -408,14 +439,18 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                 tool_call_index += 1
             elif block_dict.get("type") == "reasoning":
                 reasoning_summary = block_dict.get("summary")
-                if reasoning_summary:
-                    if isinstance(reasoning_summary, (list, dict)):
-                        reasoning_value = json_dumps(reasoning_summary)
-                    else:
-                        reasoning_value = reasoning_summary
-                _set_span_attribute(
-                    span, f"{GEN_AI_COMPLETION}.0.reasoning", reasoning_value
-                )
+                if reasoning_summary and isinstance(reasoning_summary, list):
+                    processed_chunks = [
+                        {"type": "text", "text": chunk.get("text")}
+                        for chunk in reasoning_summary
+                        if isinstance(chunk, dict)
+                        and chunk.get("type") == "summary_text"
+                    ]
+                    _set_span_attribute(
+                        span,
+                        "gen_ai.completion.0.reasoning",
+                        json_dumps(processed_chunks),
+                    )
             # TODO: handle other block types, in particular other calls
 
 

@@ -15,6 +15,9 @@ from pydantic import BaseModel
 
 SLEEP_TO_FLUSH_SECONDS = 0.05
 
+BASE64_IMAGE = ""
+with open("tests/data/base64_png_blank_1024_768.txt", "r") as f:
+    BASE64_IMAGE = f.read().strip()
 
 EVENT_JSON_SCHEMA = {
     "name": "event",
@@ -956,9 +959,64 @@ def test_litellm_openai_responses_with_computer_tools(
     # to the VCR cassette.
     os.environ["OPENAI_API_KEY"] = "test-key"
     litellm.callbacks = [litellm_callback]
+
+    user_prompt = "Take a screenshot of the desktop."
+    first_response = litellm.responses(
+        model="openai/computer-use-preview",
+        input=[
+            {
+                "type": "message",
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": user_prompt,
+                    }
+                ],
+            }
+        ],
+        truncation="auto",
+        tools=[
+            {
+                "type": "computer_use_preview",
+                "display_width": 1024,
+                "display_height": 768,
+                "environment": "linux",
+            }
+        ],
+    )
+
     litellm.responses(
         model="openai/computer-use-preview",
-        input="Take a screenshot of the desktop.",
+        input=[
+            {
+                "type": "message",
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": user_prompt,
+                    }
+                ],
+            },
+            {
+                "type": "computer_call",
+                "call_id": first_response.output[-1].call_id,
+                "id": first_response.output[-1].id,
+                "action": {
+                    "type": "screenshot",
+                },
+                "status": "completed",
+            },
+            {
+                "type": "computer_call_output",
+                "call_id": first_response.output[-1].call_id,
+                "output": {
+                    "type": "computer_screenshot",
+                    "image_url": f"data:image/png;base64,{BASE64_IMAGE}",
+                },
+            },
+        ],
         truncation="auto",
         tools=[
             {
@@ -974,37 +1032,83 @@ def test_litellm_openai_responses_with_computer_tools(
     Laminar.flush()
     time.sleep(SLEEP_TO_FLUSH_SECONDS)
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 1
-    assert spans[0].name == "litellm.responses"
-    assert spans[0].attributes["gen_ai.request.model"] == "computer-use-preview"
-    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 498
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 7
-    assert spans[0].attributes["llm.usage.total_tokens"] == 505
+    assert len(spans) == 2
+    sorted_spans: list[ReadableSpan] = sorted(list(spans), key=lambda s: s.start_time)
+    first_span = sorted_spans[0]
+    second_span = sorted_spans[1]
+    assert first_span.name == "litellm.responses"
+    assert first_span.attributes["gen_ai.request.model"] == "computer-use-preview"
+    assert first_span.attributes["gen_ai.usage.input_tokens"] == 498
+    assert first_span.attributes["gen_ai.usage.output_tokens"] == 7
+    assert first_span.attributes["llm.usage.total_tokens"] == 505
+    assert first_span.attributes["gen_ai.prompt.0.role"] == "user"
+    assert json.loads(first_span.attributes["gen_ai.prompt.0.content"]) == [
+        {"type": "input_text", "text": user_prompt}
+    ]
+    assert first_span.attributes["gen_ai.completion.0.role"] == "assistant"
+    assert first_span.attributes["gen_ai.system"] == "openai"
     assert (
-        spans[0].attributes["gen_ai.prompt.0.content"]
-        == "Take a screenshot of the desktop."
+        first_span.attributes["llm.request.functions.0.name"] == "computer_use_preview"
     )
-    assert spans[0].attributes["gen_ai.prompt.0.role"] == "user"
-    assert spans[0].attributes["gen_ai.completion.0.role"] == "assistant"
-    assert spans[0].attributes["gen_ai.system"] == "openai"
-    assert spans[0].attributes["llm.request.functions.0.name"] == "computer_use_preview"
-    assert json.loads(spans[0].attributes["llm.request.functions.0.parameters"]) == {
+    assert json.loads(first_span.attributes["llm.request.functions.0.parameters"]) == {
         "display_width": 1024,
         "display_height": 768,
         "environment": "linux",
     }
     assert (
-        spans[0].attributes["gen_ai.completion.0.tool_calls.0.name"] == "computer_call"
+        first_span.attributes["gen_ai.completion.0.tool_calls.0.name"]
+        == "computer_call"
     )
     assert json.loads(
-        spans[0].attributes["gen_ai.completion.0.tool_calls.0.arguments"]
+        first_span.attributes["gen_ai.completion.0.tool_calls.0.arguments"]
     ) == {
         "type": "screenshot",
     }
     assert (
-        spans[0].attributes["gen_ai.completion.0.tool_calls.0.id"]
-        == "call_l3VocsZfaY8n73K6ge8GAsbK"
+        first_span.attributes["gen_ai.completion.0.tool_calls.0.id"]
+        == first_response.output[-1].call_id
     )
+
+    assert second_span.name == "litellm.responses"
+    assert second_span.attributes["gen_ai.request.model"] == "computer-use-preview"
+    assert second_span.attributes["gen_ai.usage.input_tokens"] == 2212
+    assert second_span.attributes["gen_ai.usage.output_tokens"] == 38
+    assert second_span.attributes["llm.usage.total_tokens"] == 2250
+    assert second_span.attributes["gen_ai.prompt.0.role"] == "user"
+    assert json.loads(second_span.attributes["gen_ai.prompt.0.content"]) == [
+        {"type": "input_text", "text": user_prompt}
+    ]
+    assert second_span.attributes["gen_ai.completion.0.role"] == "assistant"
+    assert second_span.attributes["gen_ai.system"] == "openai"
+    assert (
+        second_span.attributes["llm.request.functions.0.name"] == "computer_use_preview"
+    )
+    assert json.loads(second_span.attributes["llm.request.functions.0.parameters"]) == {
+        "display_width": 1024,
+        "display_height": 768,
+        "environment": "linux",
+    }
+    assert (
+        second_span.attributes["gen_ai.prompt.1.tool_calls.0.name"] == "computer_call"
+    )
+    assert json.loads(
+        second_span.attributes["gen_ai.prompt.1.tool_calls.0.arguments"]
+    ) == {
+        "action": {"type": "screenshot"},
+        "id": first_response.output[-1].id,
+    }
+    assert (
+        second_span.attributes["gen_ai.prompt.1.tool_calls.0.id"]
+        == first_response.output[-1].call_id
+    )
+    assert second_span.attributes["gen_ai.prompt.1.role"] == "assistant"
+    assert json.loads(second_span.attributes["gen_ai.prompt.2.content"]) == [
+        {
+            "type": "image_url",
+            "image_url": {"url": f"data:image/png;base64,{BASE64_IMAGE}"},
+        }
+    ]
+    assert second_span.attributes["gen_ai.prompt.2.role"] == "computer_call_output"
 
 
 @pytest.mark.vcr
