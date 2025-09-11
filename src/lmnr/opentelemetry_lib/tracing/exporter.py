@@ -5,7 +5,7 @@ from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
     OTLPSpanExporter,
 )
-from opentelemetry.exporter.otlp.proto.http import Compression
+from opentelemetry.exporter.otlp.proto.http import Compression as HTTPCompression
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
     OTLPSpanExporter as HTTPOTLPSpanExporter,
 )
@@ -15,6 +15,10 @@ from lmnr.sdk.utils import from_env
 
 class LaminarSpanExporter(SpanExporter):
     instance: OTLPSpanExporter | HTTPOTLPSpanExporter
+    endpoint: str
+    headers: dict[str, str]
+    timeout: float
+    force_http: bool
 
     def __init__(
         self,
@@ -34,19 +38,30 @@ class LaminarSpanExporter(SpanExporter):
             port = 443 if force_http else 8443
         final_url = f"{url}:{port or 443}"
         api_key = api_key or from_env("LMNR_PROJECT_API_KEY")
-        if force_http:
+        self.endpoint = final_url
+        self.headers = (
+            {"Authorization": f"Bearer {api_key}"}
+            if force_http
+            else {"authorization": f"Bearer {api_key}"}
+        )
+        self.timeout = timeout_seconds
+        self.force_http = force_http
+        self._init_instance()
+
+    def _init_instance(self):
+        if self.force_http:
             self.instance = HTTPOTLPSpanExporter(
-                endpoint=f"{final_url}/v1/traces",
-                headers={"Authorization": f"Bearer {api_key}"},
-                compression=Compression.Gzip,
-                timeout=timeout_seconds,
+                endpoint=self.endpoint,
+                headers=self.headers,
+                compression=HTTPCompression.Gzip,
+                timeout=self.timeout,
             )
         else:
             self.instance = OTLPSpanExporter(
-                endpoint=final_url,
-                headers={"authorization": f"Bearer {api_key}"},
+                endpoint=self.endpoint,
+                headers=self.headers,
+                timeout=self.timeout,
                 compression=grpc.Compression.Gzip,
-                timeout=timeout_seconds,
             )
 
     def export(self, spans: list[ReadableSpan]) -> SpanExportResult:

@@ -64,3 +64,9 @@ class TracerManager:
     @staticmethod
     def shutdown():
         TracerManager.__tracer_wrapper.shutdown()
+
+    @staticmethod
+    def force_reinit_processor():
+        if not hasattr(TracerManager, "_TracerManager__tracer_wrapper"):
+            return False
+        return TracerManager.__tracer_wrapper.force_reinit_processor()

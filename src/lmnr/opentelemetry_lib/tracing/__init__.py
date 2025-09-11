@@ -261,6 +261,15 @@ class TracerWrapper(object):
             return False
         return self._span_processor.force_flush()
 
+    def force_reinit_processor(self):
+        if isinstance(self._span_processor, LaminarSpanProcessor):
+            self._span_processor.force_flush()
+            self._span_processor.force_reinit()
+        else:
+            self._logger.warning(
+                "Not using LaminarSpanProcessor, cannot force reinit processor"
+            )
+
     @classmethod
     def get_session_recording_options(cls) -> SessionRecordingOptions:
         """Get the session recording options set during initialization."""

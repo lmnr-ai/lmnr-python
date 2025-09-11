@@ -774,6 +774,20 @@ class Laminar:
         return TracerManager.flush()
 
     @classmethod
+    def force_flush(cls):
+        """Force flush the internal tracer.
+
+        Actually shuts down the span processor and re-initializes it as long
+        as it is a LaminarSpanProcessor. This is not recommended in production
+        workflows, but is useful at the end of Lambda functions, where a regular
+        flush might be killed by the Lambda runtime, because the actual export
+        inside it runs in a background thread.
+        """
+        if not cls.is_initialized():
+            return
+        TracerManager.force_reinit_processor()
+
+    @classmethod
     def shutdown(cls):
         if cls.is_initialized():
             TracerManager.shutdown()
