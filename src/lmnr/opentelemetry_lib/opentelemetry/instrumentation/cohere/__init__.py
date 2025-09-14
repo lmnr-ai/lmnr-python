@@ -23,6 +23,7 @@ from .streaming import (
     aprocess_chat_v2_streaming_response,
 )
 from .utils import dont_throw, should_emit_events
+from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.version import __version__
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import (
@@ -232,30 +233,33 @@ def _wrap(
             SpanAttributes.LLM_SYSTEM: "Cohere",
             SpanAttributes.LLM_REQUEST_TYPE: llm_request_type.value,
         },
+        context=get_current_context(),
     )
 
     with use_span(span, end_on_exit=False):
-        set_span_request_attributes(span, kwargs)
-        _handle_input_content(span, event_logger, llm_request_type, kwargs)
-
         try:
-            response = wrapped(*args, **kwargs)
-        except Exception as e:
-            if span.is_recording():
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-                span.record_exception(e)
-                span.end()
-            raise
+            set_span_request_attributes(span, kwargs)
+            _handle_input_content(span, event_logger, llm_request_type, kwargs)
 
-        if to_wrap.get("stream_process_func"):
-            return to_wrap.get("stream_process_func")(
-                span, event_logger, llm_request_type, response
-            )
+            try:
+                response = wrapped(*args, **kwargs)
+            except Exception as e:
+                if span.is_recording():
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                    span.record_exception(e)
+                    span.end()
+                raise
 
-        set_span_response_attributes(span, response)
-        _handle_response_content(span, event_logger, llm_request_type, response)
-        span.end()
-        return response
+            if to_wrap.get("stream_process_func"):
+                return to_wrap.get("stream_process_func")(
+                    span, event_logger, llm_request_type, response
+                )
+
+            set_span_response_attributes(span, response)
+            _handle_response_content(span, event_logger, llm_request_type, response)
+            return response
+        finally:
+            span.end()
 
 
 @_with_tracer_wrapper
@@ -276,30 +280,36 @@ async def _awrap(
 
     name = to_wrap.get("span_name")
     llm_request_type = _llm_request_type_by_method(to_wrap.get("method"))
-    with tracer.start_as_current_span(
+    span = tracer.start_span(
         name,
         kind=SpanKind.CLIENT,
         attributes={
             SpanAttributes.LLM_SYSTEM: "Cohere",
             SpanAttributes.LLM_REQUEST_TYPE: llm_request_type.value,
         },
-    ) as span:
-        set_span_request_attributes(span, kwargs)
-        _handle_input_content(span, event_logger, llm_request_type, kwargs)
+        context=get_current_context(),
+    )
 
+    with use_span(span):
         try:
-            response = await wrapped(*args, **kwargs)
-        except Exception as e:
-            if span.is_recording():
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-                span.record_exception(e)
-                span.end()
-            raise
+            set_span_request_attributes(span, kwargs)
+            _handle_input_content(span, event_logger, llm_request_type, kwargs)
 
-        set_span_response_attributes(span, response)
-        _handle_response_content(span, event_logger, llm_request_type, response)
+            try:
+                response = await wrapped(*args, **kwargs)
+            except Exception as e:
+                if span.is_recording():
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                    span.record_exception(e)
+                    span.end()
+                raise
 
-        return response
+            set_span_response_attributes(span, response)
+            _handle_response_content(span, event_logger, llm_request_type, response)
+
+            return response
+        finally:
+            span.end()
 
 
 class CohereInstrumentor(BaseInstrumentor):
