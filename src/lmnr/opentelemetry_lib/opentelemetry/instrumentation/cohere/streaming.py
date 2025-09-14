@@ -162,9 +162,9 @@ def _accumulate_stream_item(
 ):
     item_dict = to_dict(item)
     if item_dict.get("type") == "message-start":
-        final_response["message"] = (item_dict.get("delta") or {}).get(
-            "message"
-        ) or DEFAULT_MESSAGE
+        final_response["message"] = (item_dict.get("delta") or {}).get("message") or {
+            **DEFAULT_MESSAGE
+        }
         final_response["id"] = item_dict.get("id")
     elif item_dict.get("type") == "content-start":
         new_content_item = ((item_dict.get("delta") or {}).get("message") or {}).get(
