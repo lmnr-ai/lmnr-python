@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.7.12"
+version = "0.7.13"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -65,7 +65,6 @@ lmnr = "lmnr.cli:cli"
 alephalpha=["opentelemetry-instrumentation-alephalpha>=0.46.2"]
 bedrock=["opentelemetry-instrumentation-bedrock>=0.46.2"]
 chromadb=["opentelemetry-instrumentation-chromadb>=0.46.2"]
-cohere=["opentelemetry-instrumentation-cohere>=0.46.2"]
 crewai=["opentelemetry-instrumentation-crewai>=0.46.2"]
 haystack=["opentelemetry-instrumentation-haystack>=0.46.2"]
 lancedb=["opentelemetry-instrumentation-lancedb>=0.46.2"]
@@ -93,7 +92,6 @@ all = [
   "opentelemetry-instrumentation-alephalpha>=0.46.2",
   "opentelemetry-instrumentation-bedrock>=0.46.2",
   "opentelemetry-instrumentation-chromadb>=0.46.2",
-  "opentelemetry-instrumentation-cohere>=0.46.2",
   "opentelemetry-instrumentation-crewai>=0.46.2",
   "opentelemetry-instrumentation-haystack>=0.46.2",
   "opentelemetry-instrumentation-lancedb>=0.46.2",
