@@ -122,8 +122,6 @@ class CohereInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("cohere"):
             return None
-        if not is_package_installed("opentelemetry-instrumentation-cohere"):
-            return None
 
         from ..opentelemetry.instrumentation.cohere import CohereInstrumentor
 
