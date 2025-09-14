@@ -125,7 +125,7 @@ class CohereInstrumentorInitializer(InstrumentorInitializer):
         if not is_package_installed("opentelemetry-instrumentation-cohere"):
             return None
 
-        from opentelemetry.instrumentation.cohere import CohereInstrumentor
+        from ..opentelemetry.instrumentation.cohere import CohereInstrumentor
 
         return CohereInstrumentor()
 

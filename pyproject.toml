@@ -136,6 +136,7 @@ dev = [
   "groq>=0.30.0",
   "anthropic[bedrock]>=0.60.0",
   "langchain-openai>=0.3.32",
+  "cohere>=5.18.0",
 ]
 
 [build-system]
