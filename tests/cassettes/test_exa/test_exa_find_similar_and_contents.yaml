@@ -1,0 +1,477 @@
+interactions:
+- request:
+    body: '{"url": "https://www.techcrunch.com/", "numResults": 2, "contents": {"text":
+      true}}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '83'
+      Content-Type:
+      - application/json
+      User-Agent:
+      - exa-py unknown
+    method: POST
+    uri: https://api.exa.ai/findSimilar
+  response:
+    body:
+      string: "{\"requestId\":\"40c6a25a89ffaba535c299f969a375ab\",\"results\":[{\"id\":\"https://techcrunch.com/?mc_cid=4b6a15b702&mc_eid=%5BUNIQID\",\"title\":\"TechCrunch
+        | Startup and Technology News\",\"url\":\"https://techcrunch.com/?mc_cid=4b6a15b702&mc_eid=%5BUNIQID\",\"publishedDate\":\"2025-06-13T22:09:17.000Z\",\"author\":\"Maxwell
+        Zeff\",\"score\":0.9343951940536499,\"text\":\"[Apps](https://techcrunch.com/category/apps/)\\n\\n###
+        [Spotify is finally launching support for lossless music streaming](https://techcrunch.com/2025/09/10/spotify-is-finally-launching-support-for-lossless-music-streaming/)\\n\\n-
+        [Ivan Mehta](https://techcrunch.com/author/ivan-mehta/)\\n\\n5 hours ago\\n\\n[Apps](https://techcrunch.com/category/apps/)\\n\\n###
+        [Vimeo to be acquired by Bending Spoons in $1.38B all-cash deal](https://techcrunch.com/2025/09/10/vimeo-to-be-acquired-by-bending-spoons-in-1-38b-all-cash-deal/)\\n\\n-
+        [Aisha Malik](https://techcrunch.com/author/aisha-malik/)\\n\\n2 hours ago\\n\\n[Startups](https://techcrunch.com/category/startups/)\\n\\n###
+        [Sources: AI training startup Mercor eyes $10B+ valuation on $450 million
+        run rate](https://techcrunch.com/2025/09/09/sources-ai-training-startup-mercor-eyes-10b-valuation-on-450-million-run-rate/)\\n\\n-
+        [Marina Temkin](https://techcrunch.com/author/marina-temkin/)\\n\\n14 hours
+        ago\\n\\n**Top Headlines**\\n\\n### [Robinhood embraces copy trading after
+        warning competitors about regulatory risks](https://techcrunch.com/2025/09/09/robinhood-embraces-copy-trading-after-warning-competitors-about-regulatory-risks/)\\n\\n-
+        [Connie Loizos](https://techcrunch.com/author/connie-loizos/)\\n\\n### [Why
+        SpaceX made a $17B bet on the direct-to-cell market](https://techcrunch.com/2025/09/09/why-spacex-made-a-17b-bet-on-the-direct-to-cell-market/)\\n\\n-
+        [Aria Alamalhodaei](https://techcrunch.com/author/aria-alamalhodaei/)\\n\\n###
+        [The iPhone Air is a hint at the iPhone\u2019s future, which could include
+        foldables](https://techcrunch.com/2025/09/09/the-iphone-air-is-a-hint-at-the-iphones-future-which-could-include-foldables/)\\n\\n-
+        [Sarah Perez](https://techcrunch.com/author/sarah-perez/)\\n\\n### [Microsoft
+        to lessen reliance on OpenAI by buying AI from rival Anthropic](https://techcrunch.com/2025/09/09/microsoft-to-lessen-reliance-on-openai-by-buying-ai-from-rival-anthropic/)\\n\\n-
+        [Rebecca Bellan](https://techcrunch.com/author/rebecca-bellan/)\\n\\n### [iPhone
+        17, iPhone Air, AirPods Pro 3, and everything else announced at Apple\u2019s
+        hardware event](https://techcrunch.com/2025/09/09/iphone-17-iphone-air-airpods-pro-3-and-everything-else-announced-at-apples-hardware-event/)\\n\\n-
+        [Lauren Forristal](https://techcrunch.com/author/lauren-forristal/)\\n\\n##
+        Latest News\\n\\n[See More](https://techcrunch.com/latest/)\\n\\n- [Hardware](https://techcrunch.com/category/hardware/)\\n\\n\\n\\n###
+        [All of the iPhone 17 models compared](https://techcrunch.com/2025/09/10/all-of-the-iphone-17-models-compared/)\\n\\n\\n\\n\\n\\n-
+        [Aisha Malik](https://techcrunch.com/author/aisha-malik/)\\n\\n12 minutes
+        ago\\n\\n- [Apps](https://techcrunch.com/category/apps/)\\n\\n\\n\\n### [Reddit
+        launches tools for publisher to track and share stories](https://techcrunch.com/2025/09/10/reddit-launches-tools-for-publisher-to-track-and-share-stories/)\\n\\n\\n\\n\\n\\n-
+        [Ivan Mehta](https://techcrunch.com/author/ivan-mehta/)\\n\\n36 minutes ago\\n\\n-
+        [Startups](https://techcrunch.com/category/startups/)\\n\\n\\n\\n### [Vibe
+        coding? Meet vibe security](https://techcrunch.com/podcast/vibe-coding-meet-vibe-security/)\\n\\n\\n\\n\\n\\n-
+        [Theresa Loconsolo](https://techcrunch.com/author/theresa-loconsolo/)\\n-
+        [Rebecca Bellan](https://techcrunch.com/author/rebecca-bellan/)\\n\\n53 minutes
+        ago\\n\\n- [TechCrunch Disrupt 2025](https://techcrunch.com/events/tc-disrupt-2025/)\\n\\n\\n\\n###
+        [Exploring the future of voice AI with Mati Staniszewski at TechCrunch Disrupt
+        2025](https://techcrunch.com/2025/09/10/exploring-the-future-of-voice-ai-with-mati-staniszewski-at-techcrunch-disrupt-2025/)\\n\\n\\n\\n\\n\\n-
+        [TechCrunch Events](https://techcrunch.com/author/techcrunch-events/)\\n\\n53
+        minutes ago\\n\\n- [Hardware](https://techcrunch.com/category/hardware/)\\n\\n\\n\\n###
+        [Dutch battery startup LeydenJar\u2019s silicon anode tech could pose a challenge
+        to China](https://techcrunch.com/2025/09/10/dutch-battery-startup-leydenjars-silicon-anode-tech-could-pose-a-challenge-to-china/)\\n\\n\\n\\n\\n\\n-
+        [Tim De Chant](https://techcrunch.com/author/tim-de-chant/)\\n\\n56 minutes
+        ago\\n\\n- [Apps](https://techcrunch.com/category/apps/)\\n\\n\\n\\n### [After
+        selling to Spotify, Anchor\u2019s co-founders are back with Oboe, an AI-powered
+        app for learning](https://techcrunch.com/2025/09/10/after-selling-to-spotify-anchors-co-founders-are-back-with-oboe-an-ai-powered-app-for-learning/)\\n\\n\\n\\n\\n\\n-
+        [Sarah Perez](https://techcrunch.com/author/sarah-perez/)\\n\\n1 hour ago\\n\\n-
+        [Apps](https://techcrunch.com/category/apps/)\\n\\n\\n\\n### [Vimeo to be
+        acquired by Bending Spoons in $1.38B all-cash deal](https://techcrunch.com/2025/09/10/vimeo-to-be-acquired-by-bending-spoons-in-1-38b-all-cash-deal/)\\n\\n\\n\\n\\n\\n-
+        [Aisha Malik](https://techcrunch.com/author/aisha-malik/)\\n\\n2 hours ago\\n\\n-
+        In Brief\\n\\n\\n\\n### [Jaguar Land Rover says data stolen in disruptive
+        cyberattack](https://techcrunch.com/2025/09/10/jaguar-land-rover-says-data-stolen-in-disruptive-cyberattack/)\\n\\n\\n\\n\\n\\n-
+        [Zack Whittaker](https://techcrunch.com/author/zack-whittaker/)\\n\\n3 hours
+        ago\\n\\n- [AI](https://techcrunch.com/category/artificial-intelligence/)\\n\\n\\n\\n###
+        [RSS co-creator launches new protocol for AI data licensing](https://techcrunch.com/2025/09/10/rss-co-creator-launches-new-protocol-for-ai-data-licensing/)\\n\\n\\n\\n\\n\\n-
+        [Russell Brandom](https://techcrunch.com/author/russell-brandom/)\\n\\n3 hours
+        ago\\n\\n- [Space](https://techcrunch.com/category/space/)\\n\\n\\n\\n###
+        [Rendezvous Robotics exits stealth with $3M to build reconfigurable space
+        infrastructure](https://techcrunch.com/2025/09/10/rendezvous-robotics-exits-stealth-with-3m-to-build-reconfigurable-space-infrastructure/)\\n\\n\\n\\n\\n\\n-
+        [Aria Alamalhodaei](https://techcrunch.com/author/aria-alamalhodaei/)\\n\\n3
+        hours ago\\n\\n[Next](https://techcrunch.com/latest/?offset=10)\\n\\nOctober
+        27-29, 2025\\n\\nSan Francisco\\n\\n_**Founders:**_ land your investor and
+        sharpen your pitch. _**Investors:**_ discover your next breakout startup.
+        _**Innovators:**_ claim a front-row seat to the future. Join 10,000+ tech
+        leaders at the epicenter of innovation. Register now and save up to $668.
+        **Regular Bird rates end September 26**\\n\\n[**Register Now**](https://techcrunch.com/events/tc-disrupt-2025/?utm_source=tc&utm_medium=ad&utm_campaign=disrupt2025&utm_content=ticketsales&promo=rightrail_disrupt2025_rb&display=)\\n\\n##
+        Most Popular\\n\\n- ### [iPhone 17, iPhone Air, AirPods Pro 3, and everything
+        else announced at Apple\u2019s hardware event](https://techcrunch.com/2025/09/09/iphone-17-iphone-air-airpods-pro-3-and-everything-else-announced-at-apples-hardware-event/)\\n\\n\\n\\n\\n\\n-
+        [Lauren Forristal](https://techcrunch.com/author/lauren-forristal/)\\n\\n-
+        ### [Musk\u2019s $1T pay package is full of watered-down versions of his own
+        broken promises](https://techcrunch.com/2025/09/06/musks-1t-pay-package-is-full-of-watered-down-versions-of-his-own-broken-promises/)\\n\\n\\n\\n\\n\\n-
+        [Sean O'Kane](https://techcrunch.com/author/sean-okane/)\\n\\n- ### [Scale
+        AI\u2019s former CTO launches AI agent that could solve big data\u2019s biggest
+        problem](https://techcrunch.com/2025/09/05/scale-ais-former-cto-launches-ai-agent-that-could-solve-big-datas-biggest-problem/)\\n\\n\\n\\n\\n\\n-
+        [Julie Bort](https://techcrunch.com/author/julie-bort/)\\n\\n- ### [OpenAI
+        announces AI-powered hiring platform to take on LinkedIn](https://techcrunch.com/2025/09/04/openai-announces-ai-powered-hiring-platform-to-take-on-linkedin/)\\n\\n\\n\\n\\n\\n-
+        [Maxwell Zeff](https://techcrunch.com/author/maxwell-zeff/)\\n\\n- ### [Atlassian
+        to buy Arc developer The Browser Company for $610M](https://techcrunch.com/2025/09/04/atlassian-to-buy-arc-developer-the-browser-company-for-610m/)\\n\\n\\n\\n\\n\\n-
+        [Ivan Mehta](https://techcrunch.com/author/ivan-mehta/)\\n\\n- ### [Google
+        brings Material 3 Expressive to Pixel 6 and newer devices, along with other
+        features](https://techcrunch.com/2025/09/03/google-brings-material-3-expressive-to-pixel-6-and-newer-devices-along-with-other-features/)\\n\\n\\n\\n\\n\\n-
+        [Aisha Malik](https://techcrunch.com/author/aisha-malik/)\\n\\n## Storylines\\n\\n[See
+        More](https://techcrunch.com/storyline)\\n\\nCatch up on trending topics\\n\\n[Apps](https://techcrunch.com/category/apps/)\\n\\n###
+        [WWDC 2025 live updates: iOS 26, Liquid Glass, Apple Intelligence updates,
+        and everything else revealed](https://techcrunch.com/storyline/wwdc-2025-live-updates-a-fresh-look-for-ios-a-dedicated-gaming-app-and-more/)\\n\\n29
+        Stories Jun 9, 2025\\n\\n[Enterprise](https://techcrunch.com/category/enterprise/)\\n\\n###
+        [Google I/O 2025 live coverage: Google AI Ultra, Project Mariner, Gemini app
+        updates, and more](https://techcrunch.com/storyline/google-i-o-2025-live-coverage-google-ai-ultra-project-mariner-gemini-app-updates-and-more/)\\n\\n62
+        Stories May 20, 2025\\n\\n[Transportation](https://techcrunch.com/category/transportation/)\\n\\n###
+        [Tesla earnings wrap up: Elon Musk talks DOGE, Trump and tariffs, robotaxis,
+        AI, and cheap EVs](https://techcrunch.com/storyline/tesla-q1-earnings-live-updates/)\\n\\n27
+        Stories Apr 22, 2025\\n\\n[AI](https://techcrunch.com/category/artificial-intelligence/)\\n\\n###
+        [Nvidia GTC 2025 live updates: Blackwell Ultra, GM partnerships, and two \u2018personal
+        AI supercomputers\u2019](https://techcrunch.com/storyline/nvidia-gtc-2025-live-updates-blackwell-ultra-gm-partnerships-and-two-personal-ai-supercomputers/)\\n\\n33
+        Stories Mar 17, 2025\\n\\n[AI](https://techcrunch.com/category/artificial-intelligence/)\\n\\n###
+        [SXSW 2025 live coverage:\_Health tips from Bryan Johnson, concerns about
+        Elon Musk, and what it\u2019s like to actually ride a Waymo Uber on the conference\u2019s
+        final day](https://techcrunch.com/storyline/sxsw-2025-live-coverage-health-tips-from-bryan-johnson-concerns-about-elon-musk-and-what-its-like-to-actually-ride-a-waymo-uber-on-the-conferences-final-day/)\\n\\n36
+        Stories Mar 7, 2025\\n\\n[Enterprise](https://techcrunch.com/category/enterprise/)\\n\\n###
+        [Alphabet earnings live updates: AI, Gemini 2.0, Google Cloud, and more](https://techcrunch.com/storyline/alphabet-earnings-live-updates-ai-gemini-2-0-google-cloud-and-more/)\\n\\n12
+        Stories Feb 4, 2025\\n\\n[Transportation](https://techcrunch.com/category/transportation/)\\n\\n###
+        [Tesla earnings live updates: Promising \u2018return to growth\u2019 and cheaper
+        cars](https://techcrunch.com/storyline/tesla-earnings-live-updates-elon-new-evs-ai-and-more/)\\n\\n35
+        Stories Jan 29, 2025\\n\\n[Hardware](https://techcrunch.com/category/hardware/)\\n\\n###
+        [Samsung Unpacked 2025 live updates: Galaxy S25, new AI features, and more](https://techcrunch.com/storyline/samsung-unpacked-2025-live-updates-galaxy-s25-new-ai-features-and-more/)\\n\\n8
+        Stories Jan 22, 2025\\n\\n## Upcoming Events\\n\\n[See More](https://techcrunch.com/events/)\\n\\n-
+        ### [TechCrunch Disrupt 2025](https://techcrunch.com/events/tc-disrupt-2025/)\\n\\n\\n\\nSan
+        Francisco, CA October 27 \u2013 29, 2025\\n\\n\\n\\n\\n\\n[Register Now](https://techcrunch.com/events/tc-disrupt-2025/tickets)\\n\\n-
+        ### [StrictlyVC Palo Alto](https://techcrunch.com/events/strictlyvc-palo-alto/)\\n\\n\\n\\nPalo
+        Alto, CA December 3, 2025\\n\\n\\n\\nPresented by\\n\\n\\n\\n\\n\\n\\n\\n[Get
+        on Waitlist](https://techcrunch.com/techcrunch.com#h-get-on-waitlist)\\n\\n\\n\\nGet
+        on waitlist to get exclusive early access to limited tickets!\\n\\n\\n## Newsletters\\n\\n[See
+        More](https://techcrunch.com/newsletters)\\n\\nSubscribe for the industry\u2019s
+        biggest tech news\\n\\n##### TechCrunch Daily News\\n\\nEvery weekday and
+        Sunday, you can get the best of TechCrunch\u2019s coverage.\\n\\n##### Startups
+        Weekly\\n\\nStartups are the core of TechCrunch, so get our best coverage
+        delivered weekly.\\n\\n##### TechCrunch Week in Review\\n\\nGet the best of
+        our coverage, delivered to your inbox every Saturday.\\n\\n##### TechCrunch
+        Mobility\\n\\nTechCrunch Mobility is your destination for transportation news
+        and insight.\\n\\nNo newsletters selected.\\n\\nSubscribe\\n\\nBy submitting
+        your email, you agree to our [Terms](https://techcrunch.com/terms-of-service/)
+        and [Privacy Notice](https://techcrunch.com/privacy-policy/).\\n\\n## Startups\\n\\n[See
+        More](https://techcrunch.com/category/startups/)\\n\\n[Startups](https://techcrunch.com/category/startups/)\\n\\n###
+        [Vibe coding? Meet vibe security](https://techcrunch.com/podcast/vibe-coding-meet-vibe-security/)\\n\\n-
+        [Theresa Loconsolo](https://techcrunch.com/author/theresa-loconsolo/)\\n-
+        [Rebecca Bellan](https://techcrunch.com/author/rebecca-bellan/)\\n\\n53 minutes
+        ago\\n\\n[TechCrunch Disrupt 2025](https://techcrunch.com/events/tc-disrupt-2025/)\\n\\n###
+        [Exploring the future of voice AI with Mati Staniszewski at TechCrunch Disrupt
+        2025](https://techcrunch.com/2025/09/10/exploring-the-future-of-voice-ai-with-mati-staniszewski-at-techcrunch-disrupt-2025/)\\n\\n-
+        [TechCrunch Events](https://techcrunch.com/author/techcrunch-events/)\\n\\n53
+        minutes ago\\n\\n[Apps](https://techcrunch.com/category/apps/)\\n\\n### [After
+        selling to Spotify, Anchor\u2019s co-founders are back with Oboe, an AI-powered
+        app for learning](https://techcrunch.com/2025/09/10/after-selling-to-spotify-anchors-co-founders-are-back-with-oboe-an-ai-powered-app-for-learning/)\\n\\n-
+        [Sarah Perez](https://techcrunch.com/author/sarah-perez/)\\n\\n1 hour ago\\n\\n[Venture](https://techcrunch.com/category/venture/)\\n\\n###
+        [This app just raised $14M to take on the loneliness epidemic](https://techcrunch.com/2025/09/10/this-gen-z-founded-app-just-raised-14m-to-take-on-the-loneliness-episdemic/)\\n\\n-
+        [Dominic-Madori Davis](https://techcrunch.com/author/dominic-madori-davis/)\\n\\n3
+        hours ago\\n\\n[AI](https://techcrunch.com/category/artificial-intelligence/)\\n\\n###
+        [AI gaming startup Born raises $15M to build \u2018social\u2019 AI companions
+        that combat loneliness](https://techcrunch.com/2025/09/10/born-maker-of-virtual-pet-pengu-raises-15m-to-launch-a-new-wave-of-social-ai-companions/)\\n\\n-
+        [Rebecca Bellan](https://techcrunch.com/author/rebecca-bellan/)\\n\\n3 hours
+        ago\\n\\n## Video\\n\\n[See More](https://techcrunch.com/video)\\n\\n[Hardware](https://techcrunch.com/category/hardware/)\\n\\n##
+        [Watch Apple\u2019s AirPod Pro 3 live translation feature in action](https://techcrunch.com/video/watch-apples-airpod-pro-3-live-translation-feature-in-action/)\\n\\nGet
+        a look at the real-time translation the new AirPods Pro 3 bring to your ears,
+        which you can prompt through a gesture.\\n\\nSeptember 9, 2025\\n\\nMore From:\\n\\n-
+        [Hardware](https://techcrunch.com/category/hardware/)\\n\\n\\n\\n### [Apple\u2019s
+        new Center Stage Camera always keeps you in frame](https://techcrunch.com/video/apples-new-center-stage-camera-always-keeps-you-in-frame/)\\n\\n\\n\\n\\n\\n-
+        [TC Video](https://techcrunch.com/author/tc-video/)\\n\\n22 hours ago\\n\\n-
+        [Hardware](https://techcrunch.com/category/hardware/)\\n\\n\\n\\n### [iPhone
+        Air is Apple\u2019s thinnest, lightest iPhone yet](https://techcrunch.com/video/iphone-air-is-apples-thinnest-lightest-iphone-yet/)\\n\\n\\n\\n\\n\\n-
+        [TC Video](https://techcrunch.com/author/tc-video/)\\n\\n22 hours ago\\n\\n-
+        [Hardware](https://techcrunch.com/category/hardware/)\\n\\n\\n\\n### [Watch
+        Apple\u2019s AirPod Pro 3 live translation feature in action](https://techcrunch.com/video/watch-apples-airpod-pro-3-live-translation-feature-in-action/)\\n\\n\\n\\n\\n\\n-
+        [TC Video](https://techcrunch.com/author/tc-video/)\\n\\n22 hours ago\\n\\n-
+        [Transportation](https://techcrunch.com/category/transportation/)\\n\\n\\n\\n###
+        [Slate Auto\u2019s fully customizable EVs are nixing the bells and whistles](https://techcrunch.com/video/slate-autos-fully-customizable-evs-are-nixing-the-bells-and-whistles/)\\n\\n\\n\\n\\n\\n-
+        [TC Video](https://techcrunch.com/author/tc-video/)\\n\\n2 days ago\\n\\n-
+        [Hardware](https://techcrunch.com/category/hardware/)\\n\\n\\n\\n### [Nothing
+        releases its first over-the-ear headphones](https://techcrunch.com/video/nothing-releases-its-first-over-the-ear-headphones/)\\n\\n\\n\\n\\n\\n-
+        [TC Video](https://techcrunch.com/author/tc-video/)\\n\\nJul 1, 2025\\n\\n-
+        [Startups](https://techcrunch.com/category/startups/)\\n\\n\\n\\n### [What
+        the next generation of AI natives mean for founders and funders](https://techcrunch.com/video/what-the-next-generation-of-ai-natives-mean-for-founders-and-funders/)\\n\\n\\n\\n\\n\\n-
+        [TC Video](https://techcrunch.com/author/tc-video/)\\n\\nJun 20, 2025\\n\\n-
+        [Startups](https://techcrunch.com/category/startups/)\\n\\n\\n\\n### [Advice
+        on making early bets from an investor who\u2019s backed 60 successes](https://techcrunch.com/video/advice-on-making-early-bets-from-an-investor-whos-backed-60-successes/)\\n\\n\\n\\n\\n\\n-
+        [TC Video](https://techcrunch.com/author/tc-video/)\\n\\nJun 19, 2025\\n\\n-
+        [Space](https://techcrunch.com/category/space/)\\n\\n\\n\\n### [Why Robinhood\u2019s
+        co-founder is betting on solar power from space](https://techcrunch.com/video/why-robinhoods-co-founder-is-betting-on-solar-power-from-space/)\\n\\n\\n\\n\\n\\n-
+        [TC Video](https://techcrunch.com/author/tc-video/)\\n\\nJun 19, 2025\\n\\n-
+        [Crypto](https://techcrunch.com/category/cryptocurrency/)\\n\\n\\n\\n### [Katie
+        Haun makes the case for tokenizing more of the world](https://techcrunch.com/video/katie-haun-makes-the-case-for-tokenizing-more-of-the-world/)\\n\\n\\n\\n\\n\\n-
+        [TC Video](https://techcrunch.com/author/tc-video/)\\n\\nJun 19, 2025\\n\\n-
+        [AI](https://techcrunch.com/category/artificial-intelligence/)\\n\\n\\n\\n###
+        [How AI chatbots keep people coming back](https://techcrunch.com/video/how-ai-chatbots-keep-people-coming-back/)\\n\\n\\n\\n\\n\\n-
+        [TC Video](https://techcrunch.com/author/tc-video/)\\n\\nJun 17, 2025\\n\\n##
+        AI\\n\\n[See More](https://techcrunch.com/category/artificial-intelligence/)\\n\\n[TechCrunch
+        Disrupt 2025](https://techcrunch.com/events/tc-disrupt-2025/)\\n\\n### [Exploring
+        the future of voice AI with Mati Staniszewski at TechCrunch Disrupt 2025](https://techcrunch.com/2025/09/10/exploring-the-future-of-voice-ai-with-mati-staniszewski-at-techcrunch-disrupt-2025/)\\n\\n-
+        [TechCrunch Events](https://techcrunch.com/author/techcrunch-events/)\\n\\n53
+        minutes ago\\n\\n[Apps](https://techcrunch.com/category/apps/)\\n\\n### [After
+        selling to Spotify, Anchor\u2019s co-founders are back with Oboe, an AI-powered
+        app for learning](https://techcrunch.com/2025/09/10/after-selling-to-spotify-anchors-co-founders-are-back-with-oboe-an-ai-powered-app-for-learning/)\\n\\n-
+        [Sarah Perez](https://techcrunch.com/author/sarah-perez/)\\n\\n1 hour ago\\n\\n[AI](https://techcrunch.com/category/artificial-intelligence/)\\n\\n###
+        [RSS co-creator launches new protocol for AI data licensing](https://techcrunch.com/2025/09/10/rss-co-creator-launches-new-protocol-for-ai-data-licensing/)\\n\\n-
+        [Russell Brandom](https://techcrunch.com/author/russell-brandom/)\\n\\n3 hours
+        ago\\n\\n[AI](https://techcrunch.com/category/artificial-intelligence/)\\n\\n###
+        [AI gaming startup Born raises $15M to build \u2018social\u2019 AI companions
+        that combat loneliness](https://techcrunch.com/2025/09/10/born-maker-of-virtual-pet-pengu-raises-15m-to-launch-a-new-wave-of-social-ai-companions/)\\n\\n-
+        [Rebecca Bellan](https://techcrunch.com/author/rebecca-bellan/)\\n\\n3 hours
+        ago\\n\\n[AI](https://techcrunch.com/category/artificial-intelligence/)\\n\\n###
+        [Ex-Google X trio wants their AI to be your second brain \u2014 and they just
+        raised $6M to make it happen](https://techcrunch.com/2025/09/10/ex-google-x-trio-wants-their-ai-to-be-your-second-brain-and-they-just-raised-6m-to-make-it-happen/)\\n\\n-
+        [Jagmeet Singh](https://techcrunch.com/author/jagmeet-singh/)\\n\\n4 hours
+        ago\\n\\n## Security\\n\\n[See More](https://techcrunch.com/category/security/)\\n\\n[Startups](https://techcrunch.com/category/startups/)\\n\\n###
+        [Vibe coding? Meet vibe security](https://techcrunch.com/podcast/vibe-coding-meet-vibe-security/)\\n\\n-
+        [Theresa Loconsolo](https://techcrunch.com/author/theresa-loconsolo/)\\n-
+        [Rebecca Bellan](https://techcrunch.com/author/rebecca-bellan/)\\n\\n53 minutes
+        ago\\n\\nIn Brief\\n\\n### [Jaguar Land Rover says data stolen in disruptive
+        cyberattack](https://techcrunch.com/2025/09/10/jaguar-land-rover-says-data-stolen-in-disruptive-cyberattack/)\\n\\n-
+        [Zack Whittaker](https://techcrunch.com/author/zack-whittaker/)\\n\\n3 hours
+        ago\\n\\n[Security](https://techcrunch.com/category/security/)\\n\\n### [Google\u2019s
+        former security leads raise $13M to fight email threats before they reach
+        you](https://techcrunch.com/2025/09/10/googles-former-security-leads-raise-13m-to-fight-email-threats-before-they-reach-you/)\\n\\n-
+        [Jagmeet Singh](https://techcrunch.com/author/jagmeet-singh/)\\n\\n5 hours
+        ago\\n\\n[Security](https://techcrunch.com/category/security/)\\n\\n### [Plex
+        urges users to change passwords after data breach](https://techcrunch.com/2025/09/09/plex-urges-users-to-change-passwords-after-data-breach/)\\n\\n-
+        [Zack Whittaker](https://techcrunch.com/author/zack-whittaker/)\\n\\n1 day
+        ago\\n\\n[Venture](https://techcrunch.com/category/venture/)\\n\\n### [Netskope
+        follows Rubrik as a rare cybersecurity IPO, both backed by Lightspeed](https://techcrunch.com/2025/09/08/netskope-follows-rubrik-as-a-rare-cybersecurity-ipo-both-backed-lightspeed/)\\n\\n-
+        [Marina Temkin](https://techcrunch.com/author/marina-temkin/)\\n\\n2 days
+        ago\\n\\n## Venture\\n\\n[See More](https://techcrunch.com/category/venture)\\n\\n[Venture](https://techcrunch.com/category/venture/)\\n\\n###
+        [This app just raised $14M to take on the loneliness epidemic](https://techcrunch.com/2025/09/10/this-gen-z-founded-app-just-raised-14m-to-take-on-the-loneliness-episdemic/)\\n\\n-
+        [Dominic-Madori Davis](https://techcrunch.com/author/dominic-madori-davis/)\\n\\n3
+        hours ago\\n\\n[TechCrunch Disrupt 2025](https://techcrunch.com/events/tc-disrupt-2025/)\\n\\n###
+        [From mixers to pitch-offs \u2014 your brand event belongs at TechCrunch Disrupt
+        2025](https://techcrunch.com/2025/09/09/from-mixers-to-pitch-offs-your-brand-event-belongs-at-techcrunch-disrupt-2025/)\\n\\n-
+        [TechCrunch Events](https://techcrunch.com/author/techcrunch-events/)\\n\\n17
+        hours ago\\n\\n[TechCrunch Disrupt 2025](https://techcrunch.com/events/tc-disrupt-2025/)\\n\\n###
+        [Where top VCs are betting next: Index, Greylock, and Felicis share 2026 priorities
+        at TechCrunch Disrupt 2025](https://techcrunch.com/2025/09/09/want-to-know-where-vcs-are-investing-next-be-in-the-room-at-techcrunch-disrupt-2025/)\\n\\n-
+        [TechCrunch Events](https://techcrunch.com/author/techcrunch-events/)\\n\\n1
+        day ago\\n\\n[Venture](https://techcrunch.com/category/venture/)\\n\\n###
+        [Netskope follows Rubrik as a rare cybersecurity IPO, both backed by Lightspeed](https://techcrunch.com/2025/09/08/netskope-follows-rubrik-as-a-rare-cybersecurity-ipo-both-backed-lightspeed/)\\n\\n-
+        [Marina Temkin](https://techcrunch.com/author/marina-temkin/)\\n\\n2 days
+        ago\\n\\n[Startups](https://techcrunch.com/category/startups/)\\n\\n### [Pinecone
+        founder Edo Liberty discusses why the next big AI breakthrough starts with
+        search, at TechCrunch Disrupt 2025](https://techcrunch.com/2025/09/08/pinecone-founder-edo-liberty-explores-the-real-missing-link-in-enterprise-ai-at-techcrunch-disrupt-2025/)\\n\\n-
+        [TechCrunch Events](https://techcrunch.com/author/techcrunch-events/)\\n\\n2
+        days ago\\n\\n[Security](https://techcrunch.com/category/security/)\\n\\n###
+        [VC giant Insight Partners notifies staff and limited partners after data
+        breach](https://techcrunch.com/2025/09/08/vc-giant-insight-partners-notifies-staff-and-limited-partners-after-data-breach/)\\n\\n-
+        [Zack Whittaker](https://techcrunch.com/author/zack-whittaker/)\\n\\n2 days
+        ago\\n\\nIn Brief\\n\\n### [Databricks confirms new $100B valuation on $4B
+        ARR](https://techcrunch.com/2025/09/08/databricks-confirms-new-100b-valuation-on-4b-arr/)\\n\\n-
+        [Julie Bort](https://techcrunch.com/author/julie-bort/)\\n\\n2 days ago\\n\\n[Startups](https://techcrunch.com/category/startups/)\\n\\n###
+        [Y Combinator-backed Motion raises fresh $38M to build the Microsoft Office
+        of AI agents](https://techcrunch.com/2025/09/08/y-combinator-backed-motion-raises-fresh-38m-to-build-the-microsoft-office-of-ai-agents/)\\n\\n-
+        [Julie Bort](https://techcrunch.com/author/julie-bort/)\\n\\n2 days ago\\n\\n##
+        Apps\\n\\n[See More](https://techcrunch.com/category/apps/)\\n\\n[Apps](https://techcrunch.com/category/apps/)\\n\\n###
+        [Reddit launches tools for publisher to track and share stories](https://techcrunch.com/2025/09/10/reddit-launches-tools-for-publisher-to-track-and-share-stories/)\\n\\n-
+        [Ivan Mehta](https://techcrunch.com/author/ivan-mehta/)\\n\\n36 minutes ago\\n\\n[Apps](https://techcrunch.com/category/apps/)\\n\\n###
+        [After selling to Spotify, Anchor\u2019s co-founders are back with Oboe, an
+        AI-powered app for learning](https://techcrunch.com/2025/09/10/after-selling-to-spotify-anchors-co-founders-are-back-with-oboe-an-ai-powered-app-for-learning/)\\n\\n-
+        [Sarah Perez](https://techcrunch.com/author/sarah-perez/)\\n\\n1 hour ago\\n\\n[Apps](https://techcrunch.com/category/apps/)\\n\\n###
+        [Vimeo to be acquired by Bending Spoons in $1.38B all-cash deal](https://techcrunch.com/2025/09/10/vimeo-to-be-acquired-by-bending-spoons-in-1-38b-all-cash-deal/)\\n\\n-
+        [Aisha Malik](https://techcrunch.com/author/aisha-malik/)\\n\\n2 hours ago\\n\\n[Apps](https://techcrunch.com/category/apps/)\\n\\n###
+        [Grammarly now offers spelling and grammar check for five more languages](https://techcrunch.com/2025/09/10/grammarly-now-offers-spelling-and-grammar-check-for-five-more-languages/)\\n\\n-
+        [Ivan Mehta](https://techcrunch.com/author/ivan-mehta/)\\n\\n3 hours ago\\n\\n[AI](https://techcrunch.com/category/artificial-intelligence/)\\n\\n###
+        [Ex-Google X trio wants their AI to be your second brain \u2014 and they just
+        raised $6M to make it happen](https://techcrunch.com/2025/09/10/ex-google-x-trio-wants-their-ai-to-be-your-second-brain-and-they-just-raised-6m-to-make-it-happen/)\\n\\n-
+        [Jagmeet Singh](https://techcrunch.com/author/jagmeet-singh/)\\n\\n4 hours
+        ago\\n\\n## Transportation\\n\\n[See More](https://techcrunch.com/category/transportation/)\\n\\n[Hardware](https://techcrunch.com/category/hardware/)\\n\\n###
+        [Dutch battery startup LeydenJar\u2019s silicon anode tech could pose a challenge
+        to China](https://techcrunch.com/2025/09/10/dutch-battery-startup-leydenjars-silicon-anode-tech-could-pose-a-challenge-to-china/)\\n\\n-
+        [Tim De Chant](https://techcrunch.com/author/tim-de-chant/)\\n\\n56 minutes
+        ago\\n\\nIn Brief\\n\\n### [Jaguar Land Rover says data stolen in disruptive
+        cyberattack](https://techcrunch.com/2025/09/10/jaguar-land-rover-says-data-stolen-in-disruptive-cyberattack/)\\n\\n-
+        [Zack Whittaker](https://techcrunch.com/author/zack-whittaker/)\\n\\n3 hours
+        ago\\n\\n[Transportation](https://techcrunch.com/category/transportation/)\\n\\n###
+        [Lyft and May Mobility launch robotaxis in Atlanta](https://techcrunch.com/2025/09/10/lyfts-modest-robotaxi-launch-highlights-growing-gap-with-uber-and-waymo/)\\n\\n-
+        [Rebecca Bellan](https://techcrunch.com/author/rebecca-bellan/)\\n\\n3 hours
+        ago\\n\\n[Transportation](https://techcrunch.com/category/transportation/)\\n\\n###
+        [Zoox opens its Las Vegas robotaxi service to the public](https://techcrunch.com/2025/09/10/zoox-opens-its-las-vegas-robotaxi-service-to-the-public/)\\n\\n-
+        [Kirsten Korosec](https://techcrunch.com/author/kirsten-korosec/)\\n\\n3 hours
+        ago\\n\\n[Transportation](https://techcrunch.com/category/transportation/)\\n\\n###
+        [Uber will add Blade\u2019s helicopters to its platform as early as 2026](https://techcrunch.com/2025/09/10/uber-will-add-blades-helicopters-to-its-platform-as-early-as-2026/)\\n\\n-
+        [Sean O'Kane](https://techcrunch.com/author/sean-okane/)\\n\\n4 hours ago\\n\\n##
+        In Brief\\n\\n- In Brief\\n\\n\\n\\n### [Jaguar Land Rover says data stolen
+        in disruptive cyberattack](https://techcrunch.com/2025/09/10/jaguar-land-rover-says-data-stolen-in-disruptive-cyberattack/)\\n\\n\\n\\n\\n\\n-
+        [Zack Whittaker](https://techcrunch.com/author/zack-whittaker/)\\n\\n3 hours
+        ago\\n\\n- In Brief\\n\\n\\n\\n### [Microsoft to lessen reliance on OpenAI
+        by buying AI from rival Anthropic](https://techcrunch.com/2025/09/09/microsoft-to-lessen-reliance-on-openai-by-buying-ai-from-rival-anthropic/)\\n\\n\\n\\n\\n\\n-
+        [Rebecca Bellan](https://techcrunch.com/author/rebecca-bellan/)\\n\\n20 hours
+        ago\\n\\n- In Brief\\n\\n\\n\\n### [Ramp says it has hit $1B in annualized
+        revenue](https://techcrunch.com/2025/09/09/ramp-says-it-has-hit-1b-in-annualized-revenue/)\\n\\n\\n\\n\\n\\n-
+        [Julie Bort](https://techcrunch.com/author/julie-bort/)\\n\\n23 hours ago\\n\\n-
+        In Brief\\n\\n\\n\\n### [Nvidia unveils new GPU designed for long-context
+        inference](https://techcrunch.com/2025/09/09/nvidia-unveils-new-gpu-designed-for-long-context-inference/)\\n\\n\\n\\n\\n\\n-
+        [Russell Brandom](https://techcrunch.com/author/russell-brandom/)\\n\\n23
+        hours ago\\n\\n- In Brief\\n\\n\\n\\n### [OpenAI denies that it\u2019s weighing
+        a \u2018last-ditch\u2019 California exit amid regulatory pressure over its
+        restructuring](https://techcrunch.com/2025/09/08/openai-denies-that-its-weighing-a-last-ditch-california-exit-amid-regulatory-pressure-over-its-restructuring/)\\n\\n\\n\\n\\n\\n-
+        [Connie Loizos](https://techcrunch.com/author/connie-loizos/)\\n\\n1 day ago\\n\\n-
+        In Brief\\n\\n\\n\\n### [Snap breaks into \u2018startup squads\u2019 as ad
+        revenue stalls](https://techcrunch.com/2025/09/08/snap-breaks-into-startup-squads-as-ad-revenue-stalls/)\\n\\n\\n\\n\\n\\n-
+        [Connie Loizos](https://techcrunch.com/author/connie-loizos/)\\n\\n2 days
+        ago\\n\\n## Podcasts\\n\\n[See More](https://techcrunch.com/podcasts/)\\n\\n###
+        Equity\\n\\nEquity is TechCrunch\u2019s flagship podcast about the business
+        of startups, unpacked by the writers who know best. Produced by Theresa Loconsolo.
+        Edited by Kell.\\n\\n1020 Episodes\\n\\nUpdated: Sep 10, 2025\\n\\n[Explore
+        All](https://techcrunch.com/podcasts/equity/)\\n\\n### StrictlyVC Download\\n\\nEach
+        week, StrictlyVC\u2019s host and TechCrunch Editor-in-Chief Connie Loizos,
+        with Alex Gove, former journalist, VC and operating exec, review the top stories
+        in StrictlyVC and interview a mover and shaker in the world of tech.\\n\\n38
+        Episodes\\n\\nUpdated: Sep 3, 2025\\n\\n[Explore All](https://techcrunch.com/podcasts/strictlyvc-download/)\",\"image\":\"https://techcrunch.com/wp-content/uploads/2018/04/tc-logo-2018-square-reverse2x.png\",\"favicon\":\"https://techcrunch.com/wp-content/uploads/2015/02/cropped-cropped-favicon-gradient.png?w=32\"},{\"id\":\"https://techcrunch.com/page/2/\",\"title\":\"TechCrunch
+        | Page 2 of 8234 | Startup and Technology News\",\"url\":\"https://techcrunch.com/page/2/\",\"publishedDate\":\"2024-06-13T16:00:00.000Z\",\"author\":\"Sarah
+        Perez\",\"score\":0.9255467653274536,\"text\":\"## The Latest\\n\\n[Apps](https://techcrunch.com/category/apps/)\\n\\n##
+        [Apple gives developers a way to nominate their apps for editorial consideration
+        on the App Store](https://techcrunch.com/2024/06/13/apple-gives-developers-a-way-to-nominate-their-apps-for-editorial-consideration-on-the-app-store/)\\n\\n[Sarah
+        Perez](https://techcrunch.com/author/sarah-perez/)\\n\\n3 days ago\\n\\nFrom
+        a new Nominations dashboard in App Store Connect, developers will be able
+        to create their nominations, either one by one or by uploading a spreadsheet
+        to nominate apps in\u2026\\n\\n[![Apple gives developers a way to nominate
+        their apps for editorial consideration on the App Store](https://techcrunch.com/wp-content/uploads/2024/01/app-store-2024-v2.jpg?w=1024)](https://techcrunch.com/2024/06/13/apple-gives-developers-a-way-to-nominate-their-apps-for-editorial-consideration-on-the-app-store/)\\n\\n[Venture](https://techcrunch.com/category/venture/)\\n\\n##
+        [What StepStone\u2019s $3.3B venture secondaries fund tells us about LPs\u2019
+        current appetite for venture](https://techcrunch.com/2024/06/13/what-stepstones-3-3b-venture-secondaries-fund-tells-us-about-lps-current-appetite-for-venture/)\\n\\n[Rebecca
+        Szkutak](https://techcrunch.com/author/rebecca-szkutak/)\\n\\n3 days ago\\n\\nStepStone
+        raised the largest fund dedicated to investing in venture secondaries ever,
+        the firm announced last week. This fundraise doesn\u2019t just say a lot about
+        StepStone\u2019s venture secondaries investing prowess,\u2026\\n\\n[![What
+        StepStone\u2019s $3.3B venture secondaries fund tells us about LPs\u2019 current
+        appetite for venture](https://techcrunch.com/wp-content/uploads/2024/03/GettyImages-1502217391.jpg?w=1024)](https://techcrunch.com/2024/06/13/what-stepstones-3-3b-venture-secondaries-fund-tells-us-about-lps-current-appetite-for-venture/)\\n\\n[Apps](https://techcrunch.com/category/apps/)\\n\\n##
+        [Spotify announces an in-house creative agency, tests generative AI voiceover
+        ads](https://techcrunch.com/2024/06/13/spotify-creative-labs-ad-agency-for-advertisers/)\\n\\n[Lauren
+        Forristal](https://techcrunch.com/author/lauren-forristal/)\\n\\n3 days ago\\n\\nSpotify
+        announced on Thursday that it\u2019s venturing further into the ad space with
+        its first in-house creative agency called Creative Lab, helping brands create
+        custom marketing campaigns. It will also\u2026\\n\\n[![Spotify announces an
+        in-house creative agency, tests generative AI voiceover ads](https://techcrunch.com/wp-content/uploads/2024/02/GettyImages-1783835425-crop-e1717409949317.jpg?w=1024)](https://techcrunch.com/2024/06/13/spotify-creative-labs-ad-agency-for-advertisers/)\\n\\n[AI](https://techcrunch.com/category/artificial-intelligence/)\\n\\n##
+        [Here\u2019s everything Apple announced at the WWDC 2024 keynote, including
+        Apple Intelligence, Siri makeover](https://techcrunch.com/2024/06/13/everything-apple-announced-wwdc-2024/)\\n\\n[Christine
+        Hall](https://techcrunch.com/author/christine-hall/)\\n\\n3 days ago\\n\\nThe
+        TechCrunch team runs down all of the biggest news from the Apple WWDC 2024
+        keynote in an easy-to-skim digest.\\n\\n[![Here\u2019s everything Apple announced
+        at the WWDC 2024 keynote, including Apple Intelligence, Siri makeover](https://techcrunch.com/wp-content/uploads/2024/06/Tim-Cook-Apple-WWDC.png?w=1024)](https://techcrunch.com/2024/06/13/everything-apple-announced-wwdc-2024/)\\n\\n[Transportation](https://techcrunch.com/category/transportation/)\\n\\n##
+        [Tesla shareholders sue Musk for starting competing AI company](https://techcrunch.com/2024/06/13/tesla-shareholders-sue-musk-for-starting-competing-ai-company/)\\n\\n[Rebecca
+        Bellan](https://techcrunch.com/author/rebecca-bellan/)\\n\\n[Sean O'Kane](https://techcrunch.com/author/sean-okane/)\\n\\n3
+        days ago\\n\\nTesla shareholders are suing CEO Elon Musk and members of the
+        automaker\u2019s board of directors over Musk\u2019s decision to start xAI,
+        which they say is a competing AI company, and\u2026\\n\\n[![Tesla shareholders
+        sue Musk for starting competing AI company](https://techcrunch.com/wp-content/uploads/2020/12/GettyImages-1130604490.jpg?w=1024)](https://techcrunch.com/2024/06/13/tesla-shareholders-sue-musk-for-starting-competing-ai-company/)\\n\\n[Apps](https://techcrunch.com/category/apps/)\\n\\n##
+        [Apple\u2019s Spotlight Search gets better at natural language queries in
+        iOS 18](https://techcrunch.com/2024/06/13/apples-spotlight-search-gets-better-at-natural-language-queries-in-ios-18/)\\n\\n[Sarah
+        Perez](https://techcrunch.com/author/sarah-perez/)\\n\\n3 days ago\\n\\nWith
+        the Core Spotlight framework, developers can donate content they want to make
+        searchable via Spotlight.\\n\\n[![Apple\u2019s Spotlight Search gets better
+        at natural language queries in iOS 18](https://techcrunch.com/wp-content/uploads/2022/02/GettyImages-176216770-e1647050977311.jpg?w=1024)](https://techcrunch.com/2024/06/13/apples-spotlight-search-gets-better-at-natural-language-queries-in-ios-18/)\\n\\n[Transportation](https://techcrunch.com/category/transportation/)\\n\\n##
+        [Tesla and its fans waged an unprecedented battle over Elon Musk\u2019s $56B
+        pay package](https://techcrunch.com/2024/06/13/tesla-musk-pay-package-shareholder-vote/)\\n\\n[Sean
+        O'Kane](https://techcrunch.com/author/sean-okane/)\\n\\n3 days ago\\n\\nIt\u2019s
+        all part of an effort to say that, this time, when the shareholders vote to
+        approve his monster $56 billion compensation package, they were fully informed.\\n\\n[![Tesla
+        and its fans waged an unprecedented battle over Elon Musk\u2019s $56B pay
+        package](https://techcrunch.com/wp-content/uploads/2024/05/Breakthrough-Prize-Ceremony-Arrivals.jpeg?w=1024)](https://techcrunch.com/2024/06/13/tesla-musk-pay-package-shareholder-vote/)\\n\\n[Transportation](https://techcrunch.com/category/transportation/)\\n\\n##
+        [Tesla shareholders to vote today on $56B pay package](https://techcrunch.com/2024/06/13/tesla-shareholders-to-vote-today-on-56b-pay-package/)\\n\\n[Rebecca
+        Bellan](https://techcrunch.com/author/rebecca-bellan/)\\n\\n3 days ago\\n\\nWelcome
+        back to TechCrunch Mobility \u2014 your central hub for news and insights
+        on the future of transportation. Sign up here for free \u2014 just click TechCrunch
+        Mobility! Kirsten Korosec\u2026\\n\\n[![Tesla shareholders to vote today on
+        $56B pay package](https://techcrunch.com/wp-content/uploads/2024/04/GettyImages-1246103921.jpg?w=1024)](https://techcrunch.com/2024/06/13/tesla-shareholders-to-vote-today-on-56b-pay-package/)\\n\\n[Apps](https://techcrunch.com/category/apps/)\\n\\n##
+        [TechCrunch Minute: Apple sherlocks third-party apps at WWDC 2024](https://techcrunch.com/video/techcrunch-minute-apple-sherlocks-third-party-apps-at-wwdc-2024/)\\n\\n[Anthony
+        Ha](https://techcrunch.com/author/anthony-ha/)\\n\\n9:00 AM PDT \u2022 June
+        13, 2024\\n\\nI learned a new word today \u2014 \u201Csherlocking,\u201D which
+        is how some folks refer to Apple releasing a new feature that does the same
+        thing\u2026\\n\\n[![TechCrunch Minute: Apple sherlocks third-party apps at
+        WWDC 2024](https://techcrunch.com/wp-content/uploads/2024/06/YouTube-Thumb-Text-3.png?w=1024)](https://techcrunch.com/video/techcrunch-minute-apple-sherlocks-third-party-apps-at-wwdc-2024/)\\n\\n**Featured
+        Article**\\n\\n## [GPTZero\u2019s founders, still in their 20s, have a profitable
+        AI detection startup, millions in the bank and a new $10M Series A](https://techcrunch.com/2024/06/13/gptzero-profitable-ai-detection-startup-10m-series-a/)\\n\\nGPTZero\u2019s
+        growth and financials made it one of the AI startups ruthlessly pursued by
+        VCs. And Footwork\u2019s Nikhil Basu Trivedi won the deal.\\n\\n[Julie Bort](https://techcrunch.com/author/julie-bort/)\\n\\n3
+        days ago\\n\\n[![GPTZero\u2019s founders, still in their 20s, have a profitable
+        AI detection startup, millions in the bank and a new $10M Series A](https://techcrunch.com/wp-content/uploads/2024/06/GPTZero-founders-Edward-and-Alex.jpg?w=1024)](https://techcrunch.com/2024/06/13/gptzero-profitable-ai-detection-startup-10m-series-a/)\\n\\n###
+        Get the industry\u2019s biggest tech news\\n\\n[Explore all newsletters](https://techcrunch.com/newsletters/)\\n\\n#####
+        TechCrunch Daily News\\n\\nEvery weekday and Sunday, you can get the best
+        of TechCrunch\u2019s coverage.\\n\\n##### Startups Weekly\\n\\nStartups are
+        the core of TechCrunch, so get our best coverage delivered weekly.\\n\\n#####
+        TechCrunch Week in Review\\n\\nGet the best of our coverage, delivered to
+        your inbox every Saturday.\\n\\n##### TechCrunch AI\\n\\nTechCrunch's AI experts
+        cover the latest news in the fast-moving field.\\n\\nEmail address (required)\\n\\nSubscribe\\n\\nBy
+        submitting your email, you agree to our [Terms](https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html)
+        and [Privacy Notice](https://legal.yahoo.com/us/en/yahoo/privacy/index.html).\\n\\n####
+        Where we\u2019ll be next\\n\\nOct 28th\\n\\n### TechCrunch Disrupt 2024\\n\\nSan
+        Francisco, CA\\n\\n[Get Tickets](https://techcrunch.com/events/tc-disrupt-2024/)\\n\\n[Be
+        A Sponsor](https://info.techcrunch.com/SponsorshipsInterest.html?_ga=2.96550298.4033274.1713289101-502932701.1709742501)\\n\\n[Apps](https://techcrunch.com/category/apps/)\\n\\n##
+        [Here are the best WWDC 2024 features you missed](https://techcrunch.com/2024/06/13/here-are-the-best-wwdc-2024-features-you-missed/)\\n\\n[Ivan
+        Mehta](https://techcrunch.com/author/ivan-mehta/)\\n\\n3 days ago\\n\\nApple
+        announced a number of new features and updates onstage during its keynote
+        address at WWDC 2024, including updates to iOS, iPadOS, macOS, VisionOS and
+        the introduction of Apple Intelligence.\u2026\\n\\n[![Here are the best WWDC
+        2024 features you missed](https://techcrunch.com/wp-content/uploads/2024/06/wwdc24-ios18-control-center-02.jpg?w=1024)](https://techcrunch.com/2024/06/13/here-are-the-best-wwdc-2024-features-you-missed/)\\n\\n[Apps](https://techcrunch.com/category/apps/)\\n\\n##
+        [WhatsApp adds new features to the calling experience, including support for
+        32-person video calls](https://techcrunch.com/2024/06/13/whatsapp-add-new-features-to-the-calling-experience-including-support-for-32-person-video-calls/)\\n\\n[Jagmeet
+        Singh](https://techcrunch.com/author/jagmeet-singh/)\\n\\n3 days ago\\n\\nWhatsApp
+        updated the video calling experience across devices on Thursday by introducing
+        screen sharing with audio support and a new speaker spotlight feature. It\u2019s
+        also increasing the limit for video\u2026\\n\\n[![WhatsApp adds new features
+        to the calling experience, including support for 32-person video calls](https://techcrunch.com/wp-content/uploads/2020/07/GettyImages-470542903.jpg?w=1024)](https://techcrunch.com/2024/06/13/whatsapp-add-new-features-to-the-calling-experience-including-support-for-32-person-video-calls/)\\n\\n[AI](https://techcrunch.com/category/artificial-intelligence/)\\n\\n##
+        [Amazon says it\u2019ll spend $230 million on generative AI startups](https://techcrunch.com/2024/06/13/amazon-says-itll-spend-230-million-on-generative-ai-startups/)\\n\\n[Kyle
+        Wiggers](https://techcrunch.com/author/kyle-wiggers/)\\n\\n3 days ago\\n\\nTo
+        sweeten the pot, Amazon is pledging that startups in this year\u2019s Generative
+        AI Accelerator cohort will gain access to experts and tech from Nvidia, the
+        program\u2019s presenting partner.\\n\\n[![Amazon says it\u2019ll spend $230
+        million on generative AI startups](https://techcrunch.com/wp-content/uploads/2022/09/amazon-logo.jpg?w=1024)](https://techcrunch.com/2024/06/13/amazon-says-itll-spend-230-million-on-generative-ai-startups/)\\n\\n[AI](https://techcrunch.com/category/artificial-intelligence/)\\n\\n##
+        [Picsart partners with Getty Images to develop a custom AI model](https://techcrunch.com/2024/06/13/picsart-partners-with-getty-images-to-develop-a-custom-ai-model/)\\n\\n[Aisha
+        Malik](https://techcrunch.com/author/aisha-malik/)\\n\\n3 days ago\\n\\nPicsart,
+        a photo-editing startup backed by SoftBank, announced on Thursday that it\u2019s
+        partnering with Getty Images to develop a custom model to bring AI imagery
+        to its 150 million users.\_The\u2026\\n\\n[![Picsart partners with Getty Images
+        to develop a custom AI model](https://techcrunch.com/wp-content/uploads/2024/06/picsart-image.jpg?w=1024)](https://techcrunch.com/2024/06/13/picsart-partners-with-getty-images-to-develop-a-custom-ai-model/)\\n\\n[Apps](https://techcrunch.com/category/apps/)\\n\\n##
+        [After the Yahoo News app revamp, Yahoo preps AI summaries on homepage, too](https://techcrunch.com/2024/06/13/after-the-yahoo-news-app-revamp-yahoo-preps-ai-summaries-on-homepage-too/)\\n\\n[Sarah
+        Perez](https://techcrunch.com/author/sarah-perez/)\\n\\n3 days ago\\n\\nYahoo\u2019s
+        AI push isn\u2019t over just yet. The company, also TechCrunch\u2019s parent,
+        recently launched AI-powered features for Yahoo Mail, including its own take
+        on Gmail\u2019s Priority Inbox and AI summaries\u2026\\n\\n[![After the Yahoo
+        News app revamp, Yahoo preps AI summaries on homepage, too](https://techcrunch.com/wp-content/uploads/2023/02/GettyImages-1242149379.jpg?w=1024)](https://techcrunch.com/2024/06/13/after-the-yahoo-news-app-revamp-yahoo-preps-ai-summaries-on-homepage-too/)\\n\\n[Climate](https://techcrunch.com/category/climate/)\\n\\n##
+        [Unigrid wants to make batteries cheaper and safer using sodium](https://techcrunch.com/2024/06/13/unigrid-wants-to-make-batteries-cheaper-and-safer-using-sodium/)\\n\\n[Tim
+        De Chant](https://techcrunch.com/author/tim-de-chant/)\\n\\n3 days ago\\n\\nSodium-ion
+        isn\u2019t quite ready for widespread use, but one startup thinks it has surmounted
+        the battery chemistry\u2019s key hurdles.\\n\\n[![Unigrid wants to make batteries
+        cheaper and safer using sodium](https://techcrunch.com/wp-content/uploads/2024/06/eb3640_b987b124548a4c90a3c093cde00b6464mv2.jpg?w=1024)](https://techcrunch.com/2024/06/13/unigrid-wants-to-make-batteries-cheaper-and-safer-using-sodium/)\\n\\n[Social](https://techcrunch.com/category/social/)\\n\\n##
+        [LinkedIn leans on AI to do the work of job hunting](https://techcrunch.com/2024/06/13/linkedin-leans-on-ai-to-do-the-work-of-job-hunting/)\\n\\n[Ingrid
+        Lunden](https://techcrunch.com/author/ingrid-lunden/)\\n\\n3 days ago\\n\\nLinkedIn
+        is launching new AI tools to help you look for jobs, write cover letters and
+        job applications, personalize learning, and a new search experience.\\n\\n[![LinkedIn
+        leans on AI to do the work of job hunting](https://techcrunch.com/wp-content/uploads/2024/06/Job-Seeker-Experience.png?w=1024)](https://techcrunch.com/2024/06/13/linkedin-leans-on-ai-to-do-the-work-of-job-hunting/)\\n\\n[Startups](https://techcrunch.com/category/startups/)\\n\\n##
+        [Court halts Byju\u2019s second rights issue as $200M fundraise falters](https://techcrunch.com/2024/06/13/court-halts-byjus-second-rights-issue-as-200m-fundraise-falters/)\\n\\n[Manish
+        Singh](https://techcrunch.com/author/manish-singh/)\\n\\n3 days ago\\n\\nAn
+        Indian court has restrained Byju\u2019s from proceeding with its second rights
+        issue amid allegations of oppression and mismanagement by its shareholders.\\n\\n[![Court
+        halts Byju\u2019s second rights issue as $200M fundraise falters](https://techcrunch.com/wp-content/uploads/2023/04/GettyImages-1249691017.jpg?w=1024)](https://techcrunch.com/2024/06/13/court-halts-byjus-second-rights-issue-as-200m-fundraise-falters/)\\n\\n[Fundraising](https://techcrunch.com/category/fundraising/)\\n\\n##
+        [Aepnus wants to create a circular economy for key battery manufacturing materials](https://techcrunch.com/2024/06/13/aepnus-wants-to-create-a-circular-economy-for-key-battery-manufacturing-materials/)\\n\\n[Tim
+        De Chant](https://techcrunch.com/author/tim-de-chant/)\\n\\n3 days ago\\n\\nThe
+        specter of wastewater threatens to stall the construction of battery factories.
+        One startup, though, says the solution is to recycle it.\\n\\n[![Aepnus wants
+        to create a circular economy for key battery manufacturing materials](https://techcrunch.com/wp-content/uploads/2024/06/GettyImages-1570041390.jpeg?w=1024)](https://techcrunch.com/2024/06/13/aepnus-wants-to-create-a-circular-economy-for-key-battery-manufacturing-materials/)\\n\\n[Fintech](https://techcrunch.com/category/fintech/)\\n\\n##
+        [AccountsIQ takes in $65M to boost bookkeeping with AI](https://techcrunch.com/2024/06/12/accountsiq-takes-in-65m-to-boost-its-bookkeeping-tools-with-ai/)\\n\\n[Ingrid
+        Lunden](https://techcrunch.com/author/ingrid-lunden/)\\n\\n3 days ago\\n\\nAccountsIQ,
+        a Dublin-founded accounting technology company, has raised $65 million to
+        build \u201Cthe finance function of the future\u201D for midsized companies.\\n\\n[![AccountsIQ
+        takes in $65M to boost bookkeeping with AI](https://techcrunch.com/wp-content/uploads/2022/09/GettyImages-1340844659.jpg?w=1024)](https://techcrunch.com/2024/06/12/accountsiq-takes-in-65m-to-boost-its-bookkeeping-tools-with-ai/)\",\"image\":\"https://techcrunch.com/wp-content/uploads/2018/04/tc-logo-2018-square-reverse2x.png\",\"favicon\":\"https://techcrunch.com/wp-content/uploads/2015/02/cropped-cropped-favicon-gradient.png?w=32\"}],\"costDollars\":{\"total\":0.007,\"search\":{\"neural\":0.005},\"contents\":{\"text\":0.002}},\"searchTime\":164.28778299991973}"
+    headers:
+      Access-Control-Allow-Credentials:
+      - 'true'
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '46999'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Mon, 15 Sep 2025 20:48:59 GMT
+      ETag:
+      - W/"b797-I8DsYtzaLIB1dwD4xcXA+uOuI3I"
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains
+      Vary:
+      - Origin
+      X-Powered-By:
+      - Express
+      X-RateLimit-Limit:
+      - '9007199254740991'
+      X-RateLimit-Remaining:
+      - '9007199254740990'
+      X-RateLimit-Reset:
+      - '1757969341'
+    status:
+      code: 200
+      message: OK
+version: 1
