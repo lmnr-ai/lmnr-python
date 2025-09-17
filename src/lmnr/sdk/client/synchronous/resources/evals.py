@@ -231,6 +231,9 @@ class Evals(BaseResource):
         while retry < max_retries:
             retry += 1
             length = length // 2
+            logger.debug(
+                f"Retrying save datapoints: {retry} of {max_retries}, length: {length}"
+            )
             if length == 0:
                 raise ValueError("Error saving evaluation datapoints")
             points = [
