@@ -5,14 +5,17 @@ import urllib.parse
 from typing import Any
 
 from lmnr.sdk.client.synchronous.resources.base import BaseResource
+from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import (
     GetDatapointsResponse,
     EvaluationResultDatapoint,
     InitEvaluationResponse,
     PartialEvaluationDatapoint,
 )
+from lmnr.sdk.utils import serialize
 
 INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH = 16_000_000  # 16MB
+logger = get_default_logger(__name__)
 
 
 class Evals(BaseResource):
@@ -164,7 +167,13 @@ class Evals(BaseResource):
         response = self._client.post(
             self._base_url + f"/v1/evals/{eval_id}/datapoints/{datapoint_id}",
             json={
-                "executorOutput": executor_output,
+                "executorOutput": (
+                    str(serialize(executor_output))[
+                        :INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH
+                    ]
+                    if executor_output is not None
+                    else None
+                ),
                 "scores": scores,
             },
             headers=self._headers(),

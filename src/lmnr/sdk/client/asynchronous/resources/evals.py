@@ -5,15 +5,17 @@ import uuid
 from typing import Any
 
 from lmnr.sdk.client.asynchronous.resources.base import BaseAsyncResource
+from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import (
     GetDatapointsResponse,
     InitEvaluationResponse,
     EvaluationResultDatapoint,
     PartialEvaluationDatapoint,
 )
-
+from lmnr.sdk.utils import serialize
 
 INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH = 16_000_000  # 16MB
+logger = get_default_logger(__name__)
 
 
 class AsyncEvals(BaseAsyncResource):
@@ -203,9 +205,13 @@ class AsyncEvals(BaseAsyncResource):
         response = await self._client.post(
             self._base_url + f"/v1/evals/{eval_id}/datapoints/{datapoint_id}",
             json={
-                "executorOutput": executor_output[
-                    :INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH
-                ],
+                "executorOutput": (
+                    str(serialize(executor_output))[
+                        :INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH
+                    ]
+                    if executor_output is not None
+                    else None
+                ),
                 "scores": scores,
             },
             headers=self._headers(),
@@ -229,6 +235,9 @@ class AsyncEvals(BaseAsyncResource):
         while retry < max_retries:
             retry += 1
             length = length // 2
+            logger.debug(
+                f"Retrying save datapoints: {retry} of {max_retries}, length: {length}"
+            )
             if length == 0:
                 raise ValueError("Error saving evaluation datapoints")
             points = [
