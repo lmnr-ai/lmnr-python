@@ -6,18 +6,23 @@ from typing import Any
 
 from lmnr.sdk.client.synchronous.resources.base import BaseResource
 from lmnr.sdk.types import (
-    InitEvaluationResponse,
-    EvaluationResultDatapoint,
-    PartialEvaluationDatapoint,
     GetDatapointsResponse,
+    EvaluationResultDatapoint,
+    InitEvaluationResponse,
+    PartialEvaluationDatapoint,
 )
+
+INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH = 16_000_000  # 16MB
 
 
 class Evals(BaseResource):
     """Resource for interacting with Laminar evaluations API."""
 
     def init(
-        self, name: str | None = None, group_name: str | None = None, metadata: dict[str, Any] | None = None
+        self,
+        name: str | None = None,
+        group_name: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> InitEvaluationResponse:
         """Initialize a new evaluation.
 
@@ -53,7 +58,7 @@ class Evals(BaseResource):
     ) -> uuid.UUID:
         """
         Create a new evaluation and return its ID.
-        
+
         Parameters:
             name (str | None, optional): Optional name of the evaluation.
             group_name (str | None, optional): An identifier to group evaluations.
@@ -76,7 +81,7 @@ class Evals(BaseResource):
     ) -> uuid.UUID:
         """
         Create a datapoint for an evaluation.
-        
+
         Parameters:
             eval_id (uuid.UUID): The evaluation ID.
             data: The input data for the executor.
@@ -84,13 +89,13 @@ class Evals(BaseResource):
             metadata (dict[str, Any] | None, optional): Optional metadata.
             index (int | None, optional): Optional index of the datapoint.
             trace_id (uuid.UUID | None, optional): Optional trace ID.
-        
+
         Returns:
             uuid.UUID: The datapoint ID.
         """
-        
+
         datapoint_id = uuid.uuid4()
-        
+
         # Create a minimal datapoint first
         partial_datapoint = PartialEvaluationDatapoint(
             id=datapoint_id,
@@ -101,7 +106,7 @@ class Evals(BaseResource):
             executor_span_id=uuid.uuid4(),  # Will be updated when executor runs
             metadata=metadata,
         )
-        
+
         self.save_datapoints(eval_id, [partial_datapoint])
         return datapoint_id
 
@@ -121,16 +126,24 @@ class Evals(BaseResource):
         Raises:
             ValueError: If there's an error saving the datapoints.
         """
+        length = INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH
+        points = [datapoint.to_dict(max_data_length=length) for datapoint in datapoints]
         response = self._client.post(
             self._base_url + f"/v1/evals/{eval_id}/datapoints",
             json={
-                "points": [datapoint.to_dict() for datapoint in datapoints],
+                "points": points,
                 "groupName": group_name,
             },
             headers=self._headers(),
         )
+        if response.status_code == 413:
+            self._retry_save_datapoints(eval_id, datapoints, group_name)
+            return
+
         if response.status_code != 200:
-            raise ValueError(f"Error saving evaluation datapoints: {response.text}")
+            raise ValueError(
+                f"Error saving evaluation datapoints: [{response.status_code}] {response.text}"
+            )
 
     def update_datapoint(
         self,
@@ -147,7 +160,7 @@ class Evals(BaseResource):
             executor_output (Any): The executor output.
             scores (dict[str, float | int] | None, optional): The scores. Defaults to None.
         """
-        
+
         response = self._client.post(
             self._base_url + f"/v1/evals/{eval_id}/datapoints/{datapoint_id}",
             json={
@@ -195,3 +208,36 @@ class Evals(BaseResource):
                     f"Error fetching datapoints: [{response.status_code}] {response.text}"
                 )
         return GetDatapointsResponse.model_validate(response.json())
+
+    def _retry_save_datapoints(
+        self,
+        eval_id: uuid.UUID,
+        datapoints: list[EvaluationResultDatapoint | PartialEvaluationDatapoint],
+        group_name: str | None = None,
+        initial_length: int = INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH,
+        max_retries: int = 20,
+    ):
+        retry = 0
+        length = initial_length
+        while retry < max_retries:
+            retry += 1
+            length = length // 2
+            if length == 0:
+                raise ValueError("Error saving evaluation datapoints")
+            points = [
+                datapoint.to_dict(max_data_length=length) for datapoint in datapoints
+            ]
+            response = self._client.post(
+                self._base_url + f"/v1/evals/{eval_id}/datapoints",
+                json={
+                    "points": points,
+                    "groupName": group_name,
+                },
+                headers=self._headers(),
+            )
+            if response.status_code != 413:
+                break
+        if response.status_code != 200:
+            raise ValueError(
+                f"Error saving evaluation datapoints: [{response.status_code}] {response.text}"
+            )
