@@ -32,6 +32,7 @@ class TracerManager:
         set_global_tracer_provider: bool = True,
         otel_logger_level: int = logging.ERROR,
         session_recording_options: SessionRecordingOptions | None = None,
+        use_otel_config: bool = False,
     ) -> None:
         enable_content_tracing = True
 
@@ -53,6 +54,7 @@ class TracerManager:
             set_global_tracer_provider=set_global_tracer_provider,
             otel_logger_level=otel_logger_level,
             session_recording_options=session_recording_options,
+            use_otel_config=use_otel_config,
         )
 
     @staticmethod

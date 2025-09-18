@@ -65,6 +65,7 @@ class TracerWrapper(object):
         set_global_tracer_provider: bool = True,
         otel_logger_level: int = logging.ERROR,
         session_recording_options: SessionRecordingOptions | None = None,
+        use_otel_config: bool = False,
     ) -> "TracerWrapper":
         # Silence some opentelemetry warnings
         logging.getLogger("opentelemetry.trace").setLevel(otel_logger_level)
@@ -98,6 +99,7 @@ class TracerWrapper(object):
                     timeout_seconds=timeout_seconds,
                     force_http=force_http,
                     disable_batch=disable_batch,
+                    use_otel_config=use_otel_config,
                 )
 
                 lmnr_provider = TracerProvider(resource=obj._resource)

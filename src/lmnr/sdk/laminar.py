@@ -23,6 +23,8 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
 )
 from lmnr.opentelemetry_lib import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 from lmnr.opentelemetry_lib.decorators import json_dumps
+from lmnr.sdk.utils import should_use_otel_config
+
 from opentelemetry import trace
 from opentelemetry import context as context_api
 from opentelemetry.trace import INVALID_TRACE_ID, Span, Status, StatusCode, use_span
@@ -140,7 +142,12 @@ class Laminar:
             return
 
         cls.__project_api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
-        if not cls.__project_api_key:
+
+        use_otel_config = (
+            should_use_otel_config() and not cls.__project_api_key and not base_url
+        )
+
+        if not cls.__project_api_key and not use_otel_config:
             raise ValueError(
                 "Please initialize the Laminar object with"
                 " your project API key or set the LMNR_PROJECT_API_KEY"
@@ -190,6 +197,7 @@ class Laminar:
             set_global_tracer_provider=set_global_tracer_provider,
             otel_logger_level=otel_logger_level,
             session_recording_options=session_recording_options,
+            use_otel_config=use_otel_config,
         )
 
     @classmethod
