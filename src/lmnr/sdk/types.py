@@ -14,7 +14,7 @@ from typing_extensions import TypedDict  # compatibility with python < 3.12
 
 from .utils import serialize
 
-EVALUATION_DATAPOINT_MAX_DATA_LENGTH = 8_000_000  # 8MB
+DEFAULT_DATAPOINT_MAX_DATA_LENGTH = 16_000_000  # 16MB
 
 
 Numeric = int | float
@@ -79,16 +79,12 @@ class PartialEvaluationDatapoint(pydantic.BaseModel):
     metadata: EvaluationDatapointMetadata = pydantic.Field(default=None)
 
     # uuid is not serializable by default, so we need to convert it to a string
-    def to_dict(self):
+    def to_dict(self, max_data_length: int = DEFAULT_DATAPOINT_MAX_DATA_LENGTH):
         try:
             return {
                 "id": str(self.id),
-                "data": str(serialize(self.data))[
-                    :EVALUATION_DATAPOINT_MAX_DATA_LENGTH
-                ],
-                "target": str(serialize(self.target))[
-                    :EVALUATION_DATAPOINT_MAX_DATA_LENGTH
-                ],
+                "data": str(serialize(self.data))[:max_data_length],
+                "target": str(serialize(self.target))[:max_data_length],
                 "index": self.index,
                 "traceId": str(self.trace_id),
                 "executorSpanId": str(self.executor_span_id),
@@ -112,20 +108,16 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
     metadata: EvaluationDatapointMetadata = pydantic.Field(default=None)
 
     # uuid is not serializable by default, so we need to convert it to a string
-    def to_dict(self):
+    def to_dict(self, max_data_length: int = DEFAULT_DATAPOINT_MAX_DATA_LENGTH):
         try:
             return {
                 # preserve only preview of the data, target and executor output
                 # (full data is in trace)
                 "id": str(self.id),
-                "data": str(serialize(self.data))[
-                    :EVALUATION_DATAPOINT_MAX_DATA_LENGTH
-                ],
-                "target": str(serialize(self.target))[
-                    :EVALUATION_DATAPOINT_MAX_DATA_LENGTH
-                ],
+                "data": str(serialize(self.data))[:max_data_length],
+                "target": str(serialize(self.target))[:max_data_length],
                 "executorOutput": str(serialize(self.executor_output))[
-                    :EVALUATION_DATAPOINT_MAX_DATA_LENGTH
+                    :max_data_length
                 ],
                 "scores": self.scores,
                 "traceId": str(self.trace_id),

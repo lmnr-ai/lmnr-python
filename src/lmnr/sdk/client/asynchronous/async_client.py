@@ -12,7 +12,7 @@ from lmnr.sdk.client.asynchronous.resources import (
     AsyncBrowserEvents,
     AsyncEvals,
     AsyncTags,
-    AsyncEvaluators
+    AsyncEvaluators,
 )
 from lmnr.sdk.utils import from_env
 
@@ -66,6 +66,26 @@ class AsyncLaminarClient:
         self.__client = httpx.AsyncClient(
             headers=self._headers(),
             timeout=timeout,
+            # Context: If the server responds with a 413, the connection becomes
+            # poisoned and freezes on subsequent requests, and there is no way
+            # to recover or recycle such connection.
+            # Setting max_keepalive_connections to 0 will resolve this, but is
+            # less efficient, as it will create a new connection
+            # (not client, so still better) for each request.
+            #
+            # Note: from my experiments with a simple python server, forcing the
+            # server to read/consume the request payload from the socket seems
+            # to resolve this, but I haven't figured out how to do that in our
+            # real actix-web backend server and whether it makes sense to do so.
+            #
+            # TODO: investigate if there are better ways to fix this rather than
+            # setting keepalive_expiry to 0. Other alternative: migrate to
+            # requests + aiohttp.
+            #
+            # limits=httpx.Limits(
+            #     max_keepalive_connections=0,
+            #     keepalive_expiry=0,
+            # ),
         )
 
         # Initialize resource objects
@@ -157,5 +177,3 @@ class AsyncLaminarClient:
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
-
-
