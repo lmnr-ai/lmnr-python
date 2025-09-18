@@ -1,0 +1,1002 @@
+interactions:
+- request:
+    body: '{"query": "AI in healthcare", "numResults": 2, "contents": {"text": true}}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '74'
+      Content-Type:
+      - application/json
+      User-Agent:
+      - exa-py unknown
+    method: POST
+    uri: https://api.exa.ai/search
+  response:
+    body:
+      string: "{\"requestId\":\"922d48c892eddcfef1e511e22f045898\",\"autopromptString\":\"AI
+        in healthcare\",\"resolvedSearchType\":\"neural\",\"results\":[{\"id\":\"https://pmc.ncbi.nlm.nih.gov/articles/PMC8285156/\",\"title\":\"Artificial
+        intelligence in healthcare: transforming the practice of ...\",\"url\":\"https://pmc.ncbi.nlm.nih.gov/articles/PMC8285156/\",\"publishedDate\":\"2021-01-01T00:00:00.000Z\",\"author\":\"\",\"text\":\"[Skip
+        to main content](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#main-content)\\n\\n**Official
+        websites use .gov**\\nA\\n**.gov** website belongs to an official\\ngovernment
+        organization in the United States.\\n\\n**Secure .gov websites use HTTPS**\\nA
+        **lock** (\\n\\nLocked padlock icon\\n) or **https://** means you've safely\\nconnected
+        to the .gov website. Share sensitive\\ninformation only on official, secure
+        websites.\\n\\nSearch PMC Full-Text ArchiveSearch in PMC\\n\\n- [Journal List](https://pmc.ncbi.nlm.nih.gov/journals/)\\n-
+        [User Guide](https://pmc.ncbi.nlm.nih.gov/about/userguide/)\\n\\n- ## PERMALINK\\n\\n\\n\\nCopy\\n\\n\\nAs
+        a library, NLM provides access to scientific literature. Inclusion in an NLM
+        database does not imply endorsement of, or agreement with,\\nthe contents
+        by NLM or the National Institutes of Health.\\nLearn more:\\n[PMC Disclaimer](https://pmc.ncbi.nlm.nih.gov/about/disclaimer/)\\n\\\\|\\n[PMC
+        Copyright Notice](https://pmc.ncbi.nlm.nih.gov/about/copyright/)\\n\\nFuture
+        Healthc J\\n\\n. 2021 Jul;8(2):e188\u2013e194. doi: [10.7861/fhj.2021-0095](https://doi.org/10.7861/fhj.2021-0095)\\n\\n#
+        Artificial intelligence in healthcare: transforming the practice of medicine\\n\\n[Junaid
+        Bajwa](https://pubmed.ncbi.nlm.nih.gov/?term=%22Bajwa%20J%22%5BAuthor%5D)\\n\\n###
+        Junaid Bajwa\\n\\nAMicrosoft Research, Cambridge, UK\\n\\nchief medical scientist\\n\\nFind
+        articles by [Junaid Bajwa](https://pubmed.ncbi.nlm.nih.gov/?term=%22Bajwa%20J%22%5BAuthor%5D)\\n\\nA,\u2709,
+        [Usman Munir](https://pubmed.ncbi.nlm.nih.gov/?term=%22Munir%20U%22%5BAuthor%5D)\\n\\n###
+        Usman Munir\\n\\nBMicrosoft Research, Cambridge, UK\\n\\nresearch program
+        manager\\n\\nFind articles by [Usman Munir](https://pubmed.ncbi.nlm.nih.gov/?term=%22Munir%20U%22%5BAuthor%5D)\\n\\nB,
+        [Aditya Nori](https://pubmed.ncbi.nlm.nih.gov/?term=%22Nori%20A%22%5BAuthor%5D)\\n\\n###
+        Aditya Nori\\n\\nCMicrosoft Research, Cambridge, UK\\n\\nhead of health intelligence\\n\\nFind
+        articles by [Aditya Nori](https://pubmed.ncbi.nlm.nih.gov/?term=%22Nori%20A%22%5BAuthor%5D)\\n\\nC,
+        [Bryan Williams](https://pubmed.ncbi.nlm.nih.gov/?term=%22Williams%20B%22%5BAuthor%5D)\\n\\n###
+        Bryan Williams\\n\\nDUniversity College London, London, UK and director, NIHR
+        UCLH Biomedical Research Centre, London, UK\\n\\nchair of medicine\\n\\nFind
+        articles by [Bryan Williams](https://pubmed.ncbi.nlm.nih.gov/?term=%22Williams%20B%22%5BAuthor%5D)\\n\\nD\\n\\n-
+        Author information\\n- Copyright and License information\\n\\nAMicrosoft Research,
+        Cambridge, UK\\n\\nBMicrosoft Research, Cambridge, UK\\n\\nCMicrosoft Research,
+        Cambridge, UK\\n\\nDUniversity College London, London, UK and director, NIHR
+        UCLH Biomedical Research Centre, London, UK\\n\\n\u2709\\n\\nAddress for correspondence:
+        Dr Junaid Bajwa, Microsoft Research, 21 Station Road, Cambridge CB1 2FB, UK.
+        Email: junaid.bajwa@microsoft.com\\n\\n#### Roles\\n\\n**Junaid Bajwa**: chief
+        medical scientist\\n\\n**Usman Munir**: research program manager\\n\\n**Aditya
+        Nori**: head of health intelligence\\n\\n**Bryan Williams**: chair of medicine\\n\\n\xA9
+        Royal College of Physicians 2021. All rights reserved.\\n\\n[PMC Copyright
+        notice](https://pmc.ncbi.nlm.nih.gov/about/copyright/)\\n\\nPMCID: PMC8285156\_\_PMID:
+        [34286183](https://pubmed.ncbi.nlm.nih.gov/34286183/)\\n\\n## ABSTRACT\\n\\nArtificial
+        intelligence (AI) is a powerful and disruptive area of computer science, with
+        the potential to fundamentally transform the practice of medicine and the
+        delivery of healthcare. In this review article, we outline recent breakthroughs
+        in the application of AI in healthcare, describe a roadmap to building effective,
+        reliable and safe AI systems, and discuss the possible future direction of
+        AI augmented healthcare systems.\\n\\n**KEYWORDS:** AI, digital health\\n\\n##
+        Introduction\\n\\nHealthcare systems around the world face significant challenges
+        in achieving the \u2018quadruple aim\u2019 for healthcare: improve population
+        health, improve the patient's experience of care, enhance caregiver experience
+        and reduce the rising cost of care. [1\u20133](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0001)
+        Ageing populations, growing burden of chronic diseases and rising costs of
+        healthcare globally are challenging governments, payers, regulators and providers
+        to innovate and transform models of healthcare delivery. Moreover, against
+        a backdrop now catalysed by the global pandemic, healthcare systems find themselves
+        challenged to \u2018perform\u2019 (deliver effective, high-quality care) and
+        \u2018transform\u2019 care at scale by leveraging real-world data driven insights
+        directly into patient care. The pandemic has also highlighted the shortages
+        in healthcare workforce and inequities in the access to care, previously articulated
+        by The King's Fund and the World Health Organization (Box [1](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#T0002)).
+        [4,5](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0004)\\n\\n###
+        Box 1.\\n\\nWorkforce challenges in the next decade\\n\\n| |\\n| --- |\\n|
+        By 2030, the gap between supply of and demand for staff employed by NHS trusts
+        could increase to almost 250,000 full-time equivalent posts. [4](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0004)
+        |\\n| Based on the current trends and needs of the global population by 2030,
+        the world will have 18 million fewer healthcare professionals (especially
+        marked differences in the developing world), including 5 million fewer doctors
+        than society will require. [5](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0005)
+        |\\n\\n[Open in a new tab](https://pmc.ncbi.nlm.nih.gov/table/T0002/)\\n\\nThe
+        application of technology and artificial intelligence (AI) in healthcare has
+        the potential to address some of these supply-and-demand challenges. The increasing
+        availability of multi-modal data (genomics, economic, demographic, clinical
+        and phenotypic) coupled with technology innovations in mobile, internet of
+        things (IoT), computing power and data security herald a moment of convergence
+        between healthcare and technology to fundamentally transform models of healthcare
+        delivery through AI-augmented healthcare systems.\\n\\nIn particular, cloud
+        computing is enabling the transition of effective and safe AI systems into
+        mainstream healthcare delivery. Cloud computing is providing the computing
+        capacity for the analysis of considerably large amounts of data, at higher
+        speeds and lower costs compared with historic \u2018on premises\u2019 infrastructure
+        of healthcare organisations. Indeed, we observe that many technology providers
+        are increasingly seeking to partner with healthcare organisations to drive
+        AI-driven medical innovation enabled by cloud computing and technology-related
+        transformation (Box [2](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#T0003)).
+        [6\u20138](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0006)\\n\\n###
+        Box 2.\\n\\nQuotes from technology leaders\\n\\n| |\\n| --- |\\n| Satya Nadella,
+        chief executive officer, Microsoft: \u2018AI is perhaps the most transformational
+        technology of our time, and healthcare is perhaps AI's most pressing application.\u2019
+        [6](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0006) |\\n| Tim Cook,
+        chief executive officer, Apple: \u2018\\\\[Healthcare\\\\] is a business opportunity
+        ... if you look at it, medical health activity is the largest or second-largest
+        component of the economy.\u2019 [7](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0007)
+        |\\n| Google Health: \u2018We think that AI is poised to transform medicine,
+        delivering new, assistive technologies that will empower doctors to better
+        serve their patients. Machine learning has dozens of possible application
+        areas, but healthcare stands out as a remarkable opportunity to benefit people.\u2019
+        [8](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0008) |\\n\\n[Open
+        in a new tab](https://pmc.ncbi.nlm.nih.gov/table/T0003/)\\n\\nHere, we summarise
+        recent breakthroughs in the application of AI in healthcare, describe a roadmap
+        to building effective AI systems and discuss the possible future direction
+        of AI augmented healthcare systems.\\n\\n## What is artificial intelligence?\\n\\nSimply
+        put, AI refers to the science and engineering of making intelligent machines,
+        through algorithms or a set of rules, which the machine follows to mimic human
+        cognitive functions, such as learning and problem solving. [9](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0009)
+        AI systems have the potential to anticipate problems or deal with issues as
+        they come up and, as such, operate in an intentional, intelligent and adaptive
+        manner. [10](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0010) AI's
+        strength is in its ability to learn and recognise patterns and relationships
+        from large multidimensional and multimodal datasets; for example, AI systems
+        could translate a patient's entire medical record into a single number that
+        represents a likely diagnosis. [11,12](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0011)
+        Moreover, AI systems are dynamic and autonomous, learning and adapting as
+        more data become available. [13](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0013)\\n\\nAI
+        is not one ubiquitous, universal technology, rather, it represents several
+        subfields (such as machine learning and deep learning) that, individually
+        or in combination, add intelligence to applications. Machine learning (ML)
+        refers to the study of algorithms that allow computer programs to automatically
+        improve through experience. [14](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0014)
+        ML itself may be categorised as \u2018supervised\u2019, \u2018unsupervised\u2019
+        and \u2018reinforcement learning\u2019 (RL), and there is ongoing research
+        in various sub-fields including \u2018semi-supervised\u2019, \u2018self-supervised\u2019
+        and \u2018multi-instance\u2019 ML.\\n\\n- Supervised learning leverages labelled
+        data (annotated information); for example, using labelled X-ray images of
+        known tumours to detect tumours in new images. [15](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0015)\\n\\n-
+        \u2018Unsupervised learning\u2019 attempts to extract information from data
+        without labels; for example, categorising groups of patients with similar
+        symptoms to identify a common cause. [16](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0016)\\n\\n-
+        In RL, computational agents learn by trial and error, or by expert demonstration.
+        The algorithm learns by developing a strategy to maximise rewards. Of note,
+        major breakthroughs in AI in recent years have been based on RL.\\n\\n- Deep
+        learning (DL) is a class of algorithms that learns by using a large, many-layered
+        collection of connected processes and exposing these processors to a vast
+        set of examples. DL has emerged as the predominant method in AI today driving
+        improvements in areas such as image and speech recognition. [17,18](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0017)\\n\\n\\n##
+        How to build effective and trusted AI-augmented healthcare systems?\\n\\nDespite
+        more than a decade of significant focus, the use and adoption of AI in clinical
+        practice remains limited, with many AI products for healthcare still at the
+        design and develop stage. [19\u201322](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0019)
+        While there are different ways to build AI systems for healthcare, far too
+        often there are attempts to force square pegs into round holes ie find healthcare
+        problems to apply AI solutions to without due consideration to local context
+        (such as clinical workflows, user needs, trust, safety and ethical implications).\\n\\nWe
+        hold the view that AI amplifies and augments, rather than replaces, human
+        intelligence. Hence, when building AI systems in healthcare, it is key to
+        not replace the important elements of the human interaction in medicine but
+        to focus it, and improve the efficiency and effectiveness of that interaction.
+        Moreover, AI innovations in healthcare will come through an in-depth, human-centred
+        understanding of the complexity of patient journeys and care pathways.\\n\\nIn
+        Fig [1](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#F0001), we describe
+        a problem-driven, human-centred approach, adapted from frameworks by Wiens
+        _et al_, Care and Sendak to building effective and reliable AI-augmented healthcare
+        systems. [23\u201325](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0023)\\n\\n###
+        Fig 1.\\n\\n[Open in a new tab](https://pmc.ncbi.nlm.nih.gov/figure/F0001/)\\n\\nMulti-step,
+        iterative approach to build effective and reliable AI-augmented systems in
+        healthcare.\\n\\n### Design and develop\\n\\nThe first stage is to design
+        and develop AI solutions for the right problems using a human-centred AI and
+        experimentation approach and engaging appropriate stakeholders, especially
+        the healthcare users themselves.\\n\\n#### Stakeholder engagement and co-creation\\n\\nBuild
+        a multidisciplinary team including computer and social scientists, operational
+        and research leadership, and clinical stakeholders (physician, caregivers
+        and patients) and subject experts (eg for biomedical scientists) that would
+        include authorisers, motivators, financiers, conveners, connectors, implementers
+        and champions. [26](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0026)
+        A multi-stakeholder team brings the technical, strategic, operational expertise
+        to define problems, goals, success metrics and intermediate milestones.\\n\\n####
+        Human-centred AI\\n\\nA human-centred AI approach combines an ethnographic
+        understanding of health systems, with AI. Through user-designed research,
+        first understand the key problems (we suggest using a qualitative study design
+        to understand \u2018what is the problem\u2019, \u2018why is it a problem\u2019,
+        \u2018to whom does it matter\u2019, \u2018why has it not been addressed before\u2019
+        and \u2018why is it not getting attention\u2019) including the needs, constraints
+        and workflows in healthcare organisations, and the facilitators and barriers
+        to the integration of AI within the clinical context. After defining key problems,
+        the next step is to identify which problems are appropriate for AI to solve,
+        whether there is availability of applicable datasets to build and later evaluate
+        AI. By contextualising algorithms in an existing workflow, AI systems would
+        operate within existing norms and practices to ensure adoption, providing
+        appropriate solutions to existing problems for the end user.\\n\\n#### Experimentation\\n\\nThe
+        focus should be on piloting of new stepwise experiments to build AI tools,
+        using tight feedback loops from stakeholders to facilitate rapid experiential
+        learning and incremental changes. [27](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0027)
+        The experiments would allow the trying out of new ideas simultaneously, exploring
+        to see which one works, learn what works and what doesn't, and why. [28](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0028)
+        Experimentation and feedback will help to elucidate the purpose and intended
+        uses for the AI system: the likely end users and the potential harm and ethical
+        implications of AI system to them (for instance, data privacy, security, equity
+        and safety).\\n\\n### Evaluate and validate\\n\\nNext, we must iteratively
+        evaluate and validate the predictions made by the AI tool to test how well
+        it is functioning. This is critical, and evaluation is based on three dimensions:
+        statistical validity, clinical utility and economic utility.\\n\\n- Statistical
+        validity is understanding the performance of AI on metrics of accuracy, reliability,
+        robustness, stability and calibration. High model performance on retrospective,
+        _in silico_ settings is not sufficient to demonstrate clinical utility or
+        impact.\\n\\n- To determine clinical utility, evaluate the algorithm in a
+        real-time environment on a hold-out and temporal validation set (eg longitudinal
+        and external geographic datasets) to demonstrate clinical effectiveness and
+        generalisability. [25](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0025)\\n\\n-
+        Economic utility quantifies the net benefit relative to the cost from the
+        investment in the AI system.\\n\\n\\n### Scale and diffuse\\n\\nMany AI systems
+        are initially designed to solve a problem at one healthcare system based on
+        the patient population specific to that location and context. Scale up of
+        AI systems requires special attention to deployment modalities, model updates,
+        the regulatory system, variation between systems and reimbursement environment.\\n\\n###
+        Monitor and maintain\\n\\nEven after an AI system has been deployed clinically,
+        it must be continually monitored and maintained to monitor for risks and adverse
+        events using effective post-market surveillance. Healthcare organisations,
+        regulatory bodies and AI developers should cooperate to collate and analyse
+        the relevant datasets for AI performance, clinical and safety-related risks,
+        and adverse events. [29](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0029)\\n\\n##
+        What are the current and future use cases of AI in healthcare?\\n\\nAI can
+        enable healthcare systems to achieve their \u2018quadruple aim\u2019 by democratising
+        and standardising a future of connected and AI augmented care, precision diagnostics,
+        precision therapeutics and, ultimately, precision medicine (Table [1](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#T0001)).
+        [30](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0030) Research in
+        the application of AI healthcare continues to accelerate rapidly, with potential
+        use cases being demonstrated across the healthcare sector (both physical and
+        mental health) including drug discovery, virtual clinical consultation, disease
+        diagnosis, prognosis, medication management and health monitoring.\\n\\n###
+        Table 1.\\n\\nWidescale adoption and application of artificial intelligence
+        in healthcare\\n\\n| Timeline | Connected/augmented care | Precision diagnostics
+        | Precision therapeutics | Precision Medicine | Summary |\\n| --- | --- |
+        --- | --- | --- | --- |\\n| **Short term: 0\u20135 years** | Internet of things
+        in healthcareVirtual assistantsAugmented telehealthPersonalised mental health
+        support | Precision imaging (eg diabetic retinopathy and radiotherapy planning)
+        | CRISPR (increasing use) | Digital and AI enabled research hospitals [30](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0030)
+        | AI automates time consuming, high-volume repetitive tasks, especially within
+        precision imaging |\\n| **Medium-term: 5\u201310 years** | Ambient intelligence
+        in healthcare | Large-scale adoption and scale-up of precision imaging | Synthetic
+        biologyImmunomics | Customisation of healthcareRobotic assisted therapies
+        | AI uses multi-modal datasets to drive precision therapeutics |\\n| **Long
+        term: >10 years** | Autonomous virtual health assistants, delivering predictive
+        and anticipatory careNetworked and connected care organisations (single digital
+        infrastructure) | Holographic and hybrid imagingHolomics (integrated genomic/radiomic/proteomic/clinical/immunohistochemical
+        data) | Genomics medicineAI driven drug discovery | New curative treatmentsAI
+        empowered healthcare professionals (eg digital twins) | AI enables healthcare
+        systems to achieve a state of precision medicine through AI-augmented healthcare
+        and connected care |\\n\\n[Open in a new tab](https://pmc.ncbi.nlm.nih.gov/table/T0001/)\\n\\nTimings
+        are illustrative to widescale adoption of the proposed innovation taking into
+        account challenges / regulatory environment / use at scale.\\n\\nWe describe
+        a non-exhaustive suite of AI applications in healthcare in the near term,
+        medium term and longer term, for the potential capabilities of AI to augment,
+        automate and transform medicine.\\n\\n### AI today (and in the near future)\\n\\nCurrently,
+        AI systems are not reasoning engines ie cannot reason the same way as human
+        physicians, who can draw upon \u2018common sense\u2019 or \u2018clinical intuition
+        and experience\u2019. [12](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0012)
+        Instead, AI resembles a signal translator, translating patterns from datasets.
+        AI systems today are beginning to be adopted by healthcare organisations to
+        automate time consuming, high volume repetitive tasks. Moreover, there is
+        considerable progress in demonstrating the use of AI in precision diagnostics
+        (eg diabetic retinopathy and radiotherapy planning).\\n\\n### AI in the medium
+        term (the next 5\u201310 years)\\n\\nIn the medium term, we propose that there
+        will be significant progress in the development of powerful algorithms that
+        are efficient (eg require less data to train), able to use unlabelled data,
+        and can combine disparate structured and unstructured data including imaging,
+        electronic health data, multi-omic, behavioural and pharmacological data.
+        In addition, healthcare organisations and medical practices will evolve from
+        being _adopters_ of AI platforms, to becoming _co-innovators_ with technology
+        partners in the development of novel AI systems for precision therapeutics.\\n\\n###
+        AI in the long term (>10 years)\\n\\nIn the long term, AI systems will become
+        more _intelligent_, enabling AI healthcare systems achieve a state of precision
+        medicine through AI-augmented healthcare and connected care. Healthcare will
+        shift from the traditional one-size-fits-all form of medicine to a preventative,
+        personalised, data-driven disease management model that achieves improved
+        patient outcomes (improved patient and clinical experiences of care) in a
+        more cost-effective delivery system.\\n\\n### Connected/augmented care\\n\\nAI
+        could significantly reduce inefficiency in healthcare, improve patient flow
+        and experience, and enhance caregiver experience and patient safety through
+        the care pathway; for example, AI could be applied to the remote monitoring
+        of patients (eg intelligent telehealth through wearables/sensors) to identify
+        and provide timely care of patients at risk of deterioration.\\n\\nIn the
+        long term, we expect that healthcare clinics, hospitals, social care services,
+        patients and caregivers to be all connected to a single, interoperable digital
+        infrastructure using passive sensors in combination with ambient intelligence.
+        [31](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0031) Following
+        are two AI applications in connected care.\\n\\n### Virtual assistants and
+        AI chatbots\\n\\nAI chatbots (such as those used in Babylon ( [www.babylonhealth.com](http://www.babylonhealth.com))
+        and Ada ( [https://ada.com](https://ada.com))) are being used by patients
+        to identify symptoms and recommend further actions in community and primary
+        care settings. AI chatbots can be integrated with wearable devices such as
+        smartwatches to provide insights to both patients and caregivers in improving
+        their behaviour, sleep and general wellness.\\n\\n### Ambient and intelligent
+        care\\n\\nWe also note the emergence of ambient sensing without the need for
+        any peripherals.\\n\\n- Emerald ( [www.emeraldinno.com](http://www.emeraldinno.com)):
+        a wireless, touchless sensor and machine learning platform for remote monitoring
+        of sleep, breathing and behaviour, founded by Massachusetts Institute of Technology
+        faculty and researchers.\\n\\n- Google nest: claiming to monitor sleep (including
+        sleep disturbances like cough) using motion and sound sensors. [32](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0032)\\n\\n-
+        A recently published article exploring the ability to use smart speakers to
+        contactlessly monitor heart rhythms. [33](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0033)\\n\\n-
+        Automation and ambient clinical intelligence: AI systems leveraging natural
+        language processing (NLP) technology have the potential to automate administrative
+        tasks such as documenting patient visits in electronic health records, optimising
+        clinical workflow and enabling clinicians to focus more time on caring for
+        patients (eg Nuance Dragon Ambient eXperience ( [www.nuance.com/healthcare/ambient-clinical-intelligence.html](http://www.nuance.com/healthcare/ambient-clinical-intelligence.html))).\\n\\n\\n##
+        Precision diagnostics\\n\\n### Diagnostic imaging\\n\\nThe automated classification
+        of medical images is the leading AI application today. A recent review of
+        AI/ML-based medical devices approved in the USA and Europe from 2015\u20132020
+        found that more than half (129 (58%) devices in the USA and 126 (53%) devices
+        in Europe) were approved or CE marked for radiological use. [34](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0034)
+        Studies have demonstrated AI's ability to meet or exceed the performance of
+        human experts in image-based diagnoses from several medical specialties including
+        pneumonia in radiology (a convolutional neural network trained with labelled
+        frontal chest X-ray images outperformed radiologists in detecting pneumonia),
+        dermatology (a convolutional neural network was trained with clinical images
+        and was found to classify skin lesions accurately), pathology (one study trained
+        AI algorithms with whole-slide pathology images to detect lymph node metastases
+        of breast cancer and compared the results with those of pathologists) and
+        cardiology (a deep learning algorithm diagnosed heart attack with a performance
+        comparable with that of cardiologists). [35\u201338](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0035)\\n\\nWe
+        recognise that there are some exemplars in this area in the NHS (eg University
+        of Leeds Virtual Pathology Project and the National Pathology Imaging Co-operative)
+        and expect widescale adoption and scaleup of AI-based diagnostic imaging in
+        the medium term. [39](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0039)
+        We provide two use cases of such technologies.\\n\\n### Diabetic retinopathy
+        screening\\n\\nKey to reducing preventable, diabetes-related vision loss worldwide
+        is screening individuals for detection and the prompt treatment of diabetic
+        retinopathy. However, screening is costly given the substantial number of
+        diabetes patients and limited manpower for eye care worldwide. [40](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0040)
+        Research studies on automated AI algorithms for diabetic retinopathy in the
+        USA, Singapore, Thailand and India have demonstrated robust diagnostic performance
+        and cost effectiveness. [41\u201344](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0041)
+        Moreover, Centers for Medicare & Medicaid Services approved Medicare reimbursement
+        for the use of Food and Drug Administration approved AI algorithm \u2018IDx-DR\u2019,
+        which demonstrated 87% sensitivity and 90% specificity for detecting more-than-mild
+        diabetic retinopathy. [45](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0045)\\n\\n###
+        Improving the precision and reducing waiting timings for radiotherapy planning\\n\\nAn
+        important AI application is to assist clinicians for image preparation and
+        planning tasks for radiotherapy cancer treatment. Currently, segmentation
+        of the images is time consuming and laborious task, performed manually by
+        an oncologist using specially designed software to draw contours around the
+        regions of interest. The AI-based InnerEye open-source technology can cut
+        this preparation time for head and neck, and prostate cancer by up to 90%,
+        meaning that waiting times for starting potentially life-saving radiotherapy
+        treatment can be dramatically reduced (Fig [2](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#F0002)).
+        [46,47](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0046)\\n\\n####
+        Fig 2.\\n\\n[Open in a new tab](https://pmc.ncbi.nlm.nih.gov/figure/F0002/)\\n\\nPotential
+        applications for the InnerEye deep learning toolkit include quantitative radiology
+        for monitoring tumour progression, planning for surgery and radiotherapy planning.
+        [47](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0047)\\n\\n## Precision
+        therapeutics\\n\\nTo make progress towards precision therapeutics, we need
+        to considerably improve our understanding of disease. Researchers globally
+        are exploring the cellular and molecular basis of disease, collecting a range
+        of multimodal datasets that can lead to digital and biological biomarkers
+        for diagnosis, severity and progression. Two important future AI applications
+        include immunomics / synthetic biology and drug discovery.\\n\\n### Immunomics
+        and synthetic biology\\n\\nThrough the application of AI tools on multimodal
+        datasets in the future, we may be able to better understand the cellular basis
+        of disease and the clustering of diseases and patient populations to provide
+        more targeted preventive strategies, for example, using immunomics to diagnose
+        and better predict care and treatment options. This will be revolutionary
+        for multiple standards of care, with particular impact in the cancer, neurological
+        and rare disease space, personalising the experience of care for the individual.\\n\\n###
+        AI-driven drug discovery\\n\\nAI will drive significant improvement in clinical
+        trial design and optimisation of drug manufacturing processes, and, in general,
+        any combinatorial optimisation process in healthcare could be replaced by
+        AI. We have already seen the beginnings of this with the recent announcements
+        by DeepMind and AlphaFold, which now sets the stage for better understanding
+        disease processes, predicting protein structures and developing more targeted
+        therapeutics (for both rare and more common diseases; Fig [3](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#F0003)).
+        [48,49](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0048)\\n\\n####
+        Fig 3.\\n\\n[Open in a new tab](https://pmc.ncbi.nlm.nih.gov/figure/F0003/)\\n\\n**An
+        overview of the main neural network model architecture for AlphaFold.** [49](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0049)
+        MSA = multiple sequence alignment.\\n\\n## Precision medicine\\n\\n### New
+        curative therapies\\n\\nOver the past decade, synthetic biology has produced
+        developments like CRISPR gene editing and some personalised cancer therapies.
+        However, the life cycle for developing such advanced therapies is still extremely
+        inefficient and expensive.\\n\\nIn future, with better access to data (genomic,
+        proteomic, glycomic, metabolomic and bioinformatic), AI will allow us to handle
+        far more systematic complexity and, in turn, help us transform the way we
+        understand, discover and affect biology. This will improve the efficiency
+        of the drug discovery process by helping better predict early which agents
+        are more likely to be effective and also better anticipate adverse drug effects,
+        which have often thwarted the further development of otherwise effective drugs
+        at a costly late stage in the development process. This, in turn will democratise
+        access to novel advanced therapies at a lower cost.\\n\\n### AI empowered
+        healthcare professionals\\n\\nIn the longer term, healthcare professionals
+        will leverage AI in augmenting the care they provide, allowing them to provide
+        safer, standardised and more effective care at the top of their licence; for
+        example, clinicians could use an \u2018AI digital consult\u2019 to examine
+        \u2018digital twin\u2019 models of their patients (a truly \u2018digital and
+        biomedical\u2019 version of a patient), allowing them to \u2018test\u2019
+        the effectiveness, safety and experience of an intervention (such as a cancer
+        drug) in the digital environment prior to delivering the intervention to the
+        patient in the real world.\\n\\n## Challenges\\n\\nWe recognise that there
+        are significant challenges related to the wider adoption and deployment of
+        AI into healthcare systems. These challenges include, but are not limited
+        to, data quality and access, technical infrastructure, organisational capacity,
+        and ethical and responsible practices in addition to aspects related to safety
+        and regulation. Some of these issues have been covered, but others go beyond
+        the scope of this current article.\\n\\n## Conclusion and key recommendations\\n\\nAdvances
+        in AI have the potential to transform many aspects of healthcare, enabling
+        a future that is more personalised, precise, predictive and portable. It is
+        unclear if we will see an incremental adoption of new technologies or radical
+        adoption of these technological innovations, but the impact of such technologies
+        and the digital renaissance they bring requires health systems to consider
+        how best they will adapt to the changing landscape. For the NHS, the application
+        of such technologies truly has the potential to release time for care back
+        to healthcare professionals, enabling them to focus on what matters to their
+        patients and, in the future, leveraging a globally democratised set of data
+        assets comprising the \u2018highest levels of human knowledge\u2019 to \u2018work
+        at the limits of science\u2019 to deliver a common high standard of care,
+        wherever and whenever it is delivered, and by whoever. [50](https://pmc.ncbi.nlm.nih.gov/pmc.ncbi.nlm.nih.gov#CIT0050)
+        Globally, AI could become a key tool for improving health equity around the
+        world.\\n\\nAs much as the last 10 years have been about the roll out of digitisation
+        of health records for the purposes of efficiency (and in some healthcare systems,
+        billing/reimbursement), the next 10 years will be about the insight and value
+        society can gain from these digital assets, and how these can be translated
+        into driving better clinical outcomes with the assistance of AI, and the subsequent
+        creation of novel data assets and tools. It is clear that we are at an turning
+        point as it relates to the convergence of the practice of medicine and the
+        application of technology, and although there are multiple opportunities,
+        there are formidable challenges that need to be overcome as it relates to
+        the real world and the scale of implementation of such innovation. A key to
+        delivering this vision will be an expansion of translational research in the
+        field of healthcare applications of artificial intelligence. Alongside this,
+        we need investment into the upskilling of a healthcare workforce and future
+        leaders that are digitally enabled, and to understand and embrace, rather
+        than being intimidated by, the potential of an AI-augmented healthcare system.\\n\\nHealthcare
+        leaders should consider (as a minimum) these issues when planning to leverage
+        AI for health:\\n\\n- processes for ethical and responsible access to data:
+        healthcare data is highly sensitive, inconsistent, siloed and not optimised
+        for the purposes of machine learning development, evaluation, implementation
+        and adoption\\n\\n- access to domain expertise / prior knowledge to make sense
+        and create some of the rules which need to be applied to the datasets (to
+        generate the necessary insight)\\n\\n- access to sufficient computing power
+        to generate decisions in real time, which is being transformed exponentially
+        with the advent of cloud computing\\n\\n- research into implementation: critically,
+        we must consider, explore and research issues which arise when you take the
+        algorithm and put it in the real world, building \u2018trusted\u2019 AI algorithms
+        embedded into appropriate workflows.\\n\\n\\n## References\\n\\n- 1.Berwick
+        DM, Nolan TW, Whittington J. The Triple Aim: Care, health, and cost. Health
+        Affairs\\n2008;27:759\u201369. \\\\[ [DOI](https://doi.org/10.1377/hlthaff.27.3.759)\\\\]
+        \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/18474969/)\\\\] \\\\[ [Google
+        Scholar](https://scholar.google.com/scholar_lookup?journal=Health%20Affairs&title=The%20Triple%20Aim:%20Care,%20health,%20and%20cost&author=DM%20Berwick&author=TW%20Nolan&author=J%20Whittington&volume=27&publication_year=2008&pages=759-69&pmid=18474969&doi=10.1377/hlthaff.27.3.759&)\\\\]\\n-
+        2.Bodenheimer T, Sinsky C. From triple to quadruple aim: care of the patient
+        requires care of the provider. Ann Fam Med\\n2014;12:573\u20136. \\\\[ [DOI](https://doi.org/10.1370/afm.1713)\\\\]
+        \\\\[ [PMC free article](https://pmc.ncbi.nlm.nih.gov/articles/PMC4226781/)\\\\]
+        \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/25384822/)\\\\] \\\\[ [Google
+        Scholar](https://scholar.google.com/scholar_lookup?journal=Ann%20Fam%20Med&title=From%20triple%20to%20quadruple%20aim:%20care%20of%20the%20patient%20requires%20care%20of%20the%20provider&author=T%20Bodenheimer&author=C%20Sinsky&volume=12&publication_year=2014&pages=573-6&pmid=25384822&doi=10.1370/afm.1713&)\\\\]\\n-
+        3.Feeley D. The Triple Aim or the Quadruple Aim? Four Points to Help Set Your
+        Strategy. Institute for Healthcare Improvement, 2017. [www.ihi.org/communities/blogs/the-triple-aim-or-the-quadruple-aim-four-points-to-help-set-your-strategy](http://www.ihi.org/communities/blogs/the-triple-aim-or-the-quadruple-aim-four-points-to-help-set-your-strategy).
+        \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?title=The%20Triple%20Aim%20or%20the%20Quadruple%20Aim?%20Four%20Points%20to%20Help%20Set%20Your%20Strategy&author=D%20Feeley&publication_year=2017&)\\\\]\\n-
+        4.The Health Foundation, Nuffield Trust, The King's Fund . The health care
+        workforce in England: make or break?\\nThe King's Fund, 2018. \\\\[ [Google
+        Scholar](https://scholar.google.com/scholar_lookup?title=The%20health%20care%20workforce%20in%20England:%20make%20or%20break?&publication_year=2018&)\\\\]\\n-
+        5.World Health Organization.\\nWorking for health and growth: Investing in
+        the health workforce. WHO, 2016. [http://apps.who.int/iris/bitstream/10665/250047/1/9789241511308-eng.pdf](http://apps.who.int/iris/bitstream/10665/250047/1/9789241511308-eng.pdf)
+        \\\\[Accessed 31 January 2020\\\\]. \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?title=Working%20for%20health%20and%20growth:%20Investing%20in%20the%20health%20workforce&publication_year=2016&)\\\\]\\n-
+        6.Satya Nadella announces strategic collaboration with Novartis. You Tube,
+        2019. [www.youtube.com/watch?v=wMfsQE-D2q4](http://www.youtube.com/watch?v=Oo1Ye2BBh8w)\\n-
+        7.Lashinsky A. Tim Cook on how Apple champions the environment, education,
+        and health care. Fortune, 2017. \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?title=Tim%20Cook%20on%20how%20Apple%20champions%20the%20environment,%20education,%20and%20health%20care&author=A%20Lashinsky&publication_year=2017&)\\\\]\\n-
+        8.Turea M. How the \u2018Big 4\u2019 tech companies are leading healthcare
+        innovation. Healthcare Weekly, 2019. \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?title=How%20the%20%E2%80%98Big%204%E2%80%99%20tech%20companies%20are%20leading%20healthcare%20innovation&author=M%20Turea&publication_year=2019&)\\\\]\\n-
+        9.McCarthy J. What is artificial intelligence?\\nJohn McCarthy, 1998. \\\\[
+        [Google Scholar](https://scholar.google.com/scholar_lookup?title=What%20is%20artificial%20intelligence?&author=J%20McCarthy&publication_year=1998&)\\\\]\\n-
+        10.Shukla SS, Jaiswal V. Applicability of artificial intelligence in different
+        fields of life. IJSER\\n2013;1:28\u201335. \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?journal=IJSER&title=Applicability%20of%20artificial%20intelligence%20in%20different%20fields%20of%20life&author=SS%20Shukla&author=V%20Jaiswal&volume=1&publication_year=2013&pages=28-35&)\\\\]\\n-
+        11.Deng J, Dong W, Socher R, et al. Imagenet: a large-scale hierarchical image
+        database. 2009 IEEE Conference on Computer Vision and Pattern Recognition\\n2009:248\u201355.
+        \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?title=2009%20IEEE%20Conference%20on%20Computer%20Vision%20and%20Pattern%20Recognition&author=J%20Deng&author=W%20Dong&author=R%20Socher&publication_year=2009&)\\\\]\\n-
+        12.Quinn TP, Senadeera M, Jacobs S, Coghlan S, Le V. Trust and medical AI:
+        the challenges we face and the expertise needed to overcome them. J Am Med
+        Inform Assoc\\n2021;28:890\u20134. \\\\[ [DOI](https://doi.org/10.1093/jamia/ocaa268)\\\\]
+        \\\\[ [PMC free article](https://pmc.ncbi.nlm.nih.gov/articles/PMC7973477/)\\\\]
+        \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/33340404/)\\\\] \\\\[ [Google
+        Scholar](https://scholar.google.com/scholar_lookup?journal=J%20Am%20Med%20Inform%20Assoc&title=Trust%20and%20medical%20AI:%20the%20challenges%20we%20face%20and%20the%20expertise%20needed%20to%20overcome%20them&author=TP%20Quinn&author=M%20Senadeera&author=S%20Jacobs&author=S%20Coghlan&author=V%20Le&volume=28&publication_year=2021&pages=890-4&pmid=33340404&doi=10.1093/jamia/ocaa268&)\\\\]\\n-
+        13.Binns R, Gallo V. Trade-offs. Information Commissioner's Office, 2019.
+        [https://ico.org.uk/about-the-ico/news-and-events/ai-blog-trade-offs](https://ico.org.uk/about-the-ico/news-and-events/ai-blog-trade-offs)\\n-
+        14.Mitchell T. Machine learning. McGraw Hill, 1997. [www.cs.cmu.edu/afs/cs.cmu.edu/user/mitchell/ftp/mlbook.html](http://www.cs.cmu.edu/afs/cs.cmu.edu/user/mitchell/ftp/mlbook.html)
+        \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?title=Machine%20learning&author=T%20Mitchell&publication_year=1997&)\\\\]\\n-
+        15.Reardon S. Rise of robot radiologists. Nature\\n2019;576:S54\u20138. \\\\[
+        [DOI](https://doi.org/10.1038/d41586-019-03847-z)\\\\] \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/31853073/)\\\\]
+        \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?journal=Nature&title=Rise%20of%20robot%20radiologists&author=S%20Reardon&volume=576&publication_year=2019&pages=S54-8&pmid=31853073&doi=10.1038/d41586-019-03847-z&)\\\\]\\n-
+        16.Lasko TA, Denny JC, Levy MA. Computational phenotype discovery using unsupervised
+        feature learning over noisy, sparse, and irregular clinical data. PLoS One\\n2013;8:e66341.
+        \\\\[ [DOI](https://doi.org/10.1371/journal.pone.0066341)\\\\] \\\\[ [PMC
+        free article](https://pmc.ncbi.nlm.nih.gov/articles/PMC3691199/)\\\\] \\\\[
+        [PubMed](https://pubmed.ncbi.nlm.nih.gov/23826094/)\\\\] \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?journal=PLoS%20One&title=Computational%20phenotype%20discovery%20using%20unsupervised%20feature%20learning%20over%20noisy,%20sparse,%20and%20irregular%20clinical%20data&author=TA%20Lasko&author=JC%20Denny&author=MA%20Levy&volume=8&publication_year=2013&pages=e66341&pmid=23826094&doi=10.1371/journal.pone.0066341&)\\\\]\\n-
+        17.The Royal Society . Machine learning: the power and promise of computers
+        that learn by example. The Royal Society, 2017. \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?title=Machine%20learning:%20the%20power%20and%20promise%20of%20computers%20that%20learn%20by%20example&publication_year=2017&)\\\\]\\n-
+        18.LeCun Y, Bengio Y, Hinton G. Deep learning. Nature\\n2015;521:436\u201344.
+        \\\\[ [DOI](https://doi.org/10.1038/nature14539)\\\\] \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/26017442/)\\\\]
+        \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?journal=Nature&title=Deep%20learning&author=Y%20LeCun&author=Y%20Bengio&author=G%20Hinton&volume=521&publication_year=2015&pages=436-44&pmid=26017442&doi=10.1038/nature14539&)\\\\]\\n-
+        19.Topol EJ. High-performance medicine: the convergence of human and artificial
+        intelligence. Nat Med\\n2019;25:44\u201356. \\\\[ [DOI](https://doi.org/10.1038/s41591-018-0300-7)\\\\]
+        \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/30617339/)\\\\] \\\\[ [Google
+        Scholar](https://scholar.google.com/scholar_lookup?journal=Nat%20Med&title=High-performance%20medicine:%20the%20convergence%20of%20human%20and%20artificial%20intelligence&author=EJ%20Topol&volume=25&publication_year=2019&pages=44-56&pmid=30617339&doi=10.1038/s41591-018-0300-7&)\\\\]\\n-
+        20.Kelly CJ, Karthikesalingam A, Suleyman M, Corrado G, King D. Key challenges
+        for delivering clinical impact with artificial intelligence. BMC Medicine\\n2019;17:195.
+        \\\\[ [DOI](https://doi.org/10.1186/s12916-019-1426-2)\\\\] \\\\[ [PMC free
+        article](https://pmc.ncbi.nlm.nih.gov/articles/PMC6821018/)\\\\] \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/31665002/)\\\\]
+        \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?journal=BMC%20Medicine&title=Key%20challenges%20for%20delivering%20clinical%20impact%20with%20artificial%20intelligence&author=CJ%20Kelly&author=A%20Karthikesalingam&author=M%20Suleyman&author=G%20Corrado&author=D%20King&volume=17&publication_year=2019&pages=195&pmid=31665002&doi=10.1186/s12916-019-1426-2&)\\\\]\\n-
+        21.Panch T, Mattie H, Celi LA. The \u2018inconvenient truth\u2019 about AI
+        in healthcare. NPJ Digit Med\\n2019;2:77. \\\\[ [DOI](https://doi.org/10.1038/s41746-019-0155-4)\\\\]
+        \\\\[ [PMC free article](https://pmc.ncbi.nlm.nih.gov/articles/PMC6697674/)\\\\]
+        \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/31453372/)\\\\] \\\\[ [Google
+        Scholar](https://scholar.google.com/scholar_lookup?journal=NPJ%20Digit%20Med&title=The%20%E2%80%98inconvenient%20truth%E2%80%99%20about%20AI%20in%20healthcare&author=T%20Panch&author=H%20Mattie&author=LA%20Celi&volume=2&publication_year=2019&pages=77&pmid=31453372&doi=10.1038/s41746-019-0155-4&)\\\\]\\n-
+        22.NHSX . Artificial intelligence: How to get it right. NHS, 2019. \\\\[ [Google
+        Scholar](https://scholar.google.com/scholar_lookup?title=Artificial%20intelligence:%20How%20to%20get%20it%20right&publication_year=2019&)\\\\]\\n-
+        23.Wiens J, Saria S, Sendak M, et al. Do no harm: a roadmap for responsible
+        machine learning for health care. Nat Med\\n2019;25:1337\u201340. \\\\[ [DOI](https://doi.org/10.1038/s41591-019-0548-6)\\\\]
+        \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/31427808/)\\\\] \\\\[ [Google
+        Scholar](https://scholar.google.com/scholar_lookup?journal=Nat%20Med&title=Do%20no%20harm:%20a%20roadmap%20for%20responsible%20machine%20learning%20for%20health%20care&author=J%20Wiens&author=S%20Saria&author=M%20Sendak&volume=25&publication_year=2019&pages=1337-40&pmid=31427808&doi=10.1038/s41591-019-0548-6&)\\\\]\\n-
+        24.United States Government Accountability Office . Artificial intelligence
+        in health care: Benefits and challenges of technologies to augment patient
+        care. GAO, 2020. \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?title=Artificial%20intelligence%20in%20health%20care:%20Benefits%20and%20challenges%20of%20technologies%20to%20augment%20patient%20care&publication_year=2020&)\\\\]\\n-
+        25.Sendak MP, D'Arcy J, Kashyap S, et al. A path for translation of machine
+        learning products into healthcare delivery. EMJ Innov\\n2020;10:19\u201300172.
+        \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?journal=EMJ%20Innov&title=A%20path%20for%20translation%20of%20machine%20learning%20products%20into%20healthcare%20delivery&author=MP%20Sendak&author=J%20D'Arcy&author=S%20Kashyap&volume=10&publication_year=2020&pages=19-00172&)\\\\]\\n-
+        26.Andrews M, McConnell J, Wescott A. Development as leadership-led change:
+        working paper series RWP10-009. Harvard University, 2010. \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?title=Development%20as%20leadership-led%20change:%20working%20paper%20series%20RWP10-009&author=M%20Andrews&author=J%20McConnell&author=A%20Wescott&publication_year=2010&)\\\\]\\n-
+        27.Andrews M, Pritchett L, Woolcock M. Escaping capability traps through problem-driven
+        iterative adaptation (PDIA): WIDER working paper 2012/064. UNU-WIDER, 2012.
+        \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?title=Escaping%20capability%20traps%20through%20problem-driven%20iterative%20adaptation%20(PDIA):%20WIDER%20working%20paper%202012/064&author=M%20Andrews&author=L%20Pritchett&author=M%20Woolcock&publication_year=2012&)\\\\]\\n-
+        28.Andrews M. Who really leads development? WIDER working paper 2013/092.
+        UNU-WIDER, 2013. \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?title=Who%20really%20leads%20development?%20WIDER%20working%20paper%202013/092&author=M%20Andrews&publication_year=2013&)\\\\]\\n-
+        29.Davahli MR, Karwowski W, Fiok K, Wan T, Parsaei HR. Controlling safety
+        of artificial intelligence-based systems in healthcare. Symmetry\\n2021;13:102.
+        \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?journal=Symmetry&title=Controlling%20safety%20of%20artificial%20intelligence-based%20systems%20in%20healthcare&author=MR%20Davahli&author=W%20Karwowski&author=K%20Fiok&author=T%20Wan&author=HR%20Parsaei&volume=13&publication_year=2021&pages=102&)\\\\]\\n-
+        30.Nachev P, Herron D, McNally N, Rees G, Williams B. Redefining the research
+        hospital. NPJ Digit Med\\n2019;2:119. \\\\[ [DOI](https://doi.org/10.1038/s41746-019-0201-2)\\\\]
+        \\\\[ [PMC free article](https://pmc.ncbi.nlm.nih.gov/articles/PMC6897858/)\\\\]
+        \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/31840090/)\\\\] \\\\[ [Google
+        Scholar](https://scholar.google.com/scholar_lookup?journal=NPJ%20Digit%20Med&title=Redefining%20the%20research%20hospital&author=P%20Nachev&author=D%20Herron&author=N%20McNally&author=G%20Rees&author=B%20Williams&volume=2&publication_year=2019&pages=119&pmid=31840090&doi=10.1038/s41746-019-0201-2&)\\\\]\\n-
+        31.Haque A, Milstein A, Fei-Fei L. Illuminating the dark spaces of healthcare
+        with ambient intelligence. Nature\\n2020;585:193\u2013202. \\\\[ [DOI](https://doi.org/10.1038/s41586-020-2669-y)\\\\]
+        \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/32908264/)\\\\] \\\\[ [Google
+        Scholar](https://scholar.google.com/scholar_lookup?journal=Nature&title=Illuminating%20the%20dark%20spaces%20of%20healthcare%20with%20ambient%20intelligence&author=A%20Haque&author=A%20Milstein&author=L%20Fei-Fei&volume=585&publication_year=2020&pages=193-202&pmid=32908264&doi=10.1038/s41586-020-2669-y&)\\\\]\\n-
+        32.Muoio D. Google's next-gen Nest Hub debuts with contactless sleep monitoring
+        and analysis features. Mobi Health News, 2021. [www.mobihealthnews.com/news/googles-next-gen-nest-hub-debuts-contactless-sleep-monitoring-and-analysis-features](http://www.mobihealthnews.com/news/googles-next-gen-nest-hub-debuts-contactless-sleep-monitoring-and-analysis-features)
+        \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?title=Google's%20next-gen%20Nest%20Hub%20debuts%20with%20contactless%20sleep%20monitoring%20and%20analysis%20features&author=D%20Muoio&publication_year=2021&)\\\\]\\n-
+        33.Wang A, Nguyen D, Sridhar AR, et al. Using smart speakers to contactlessly
+        monitor heart rhythms. Commun Biol\\n2021;4:319. \\\\[ [DOI](https://doi.org/10.1038/s42003-021-01824-9)\\\\]
+        \\\\[ [PMC free article](https://pmc.ncbi.nlm.nih.gov/articles/PMC7943557/)\\\\]
+        \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/33750897/)\\\\] \\\\[ [Google
+        Scholar](https://scholar.google.com/scholar_lookup?journal=Commun%20Biol&title=Using%20smart%20speakers%20to%20contactlessly%20monitor%20heart%20rhythms&author=A%20Wang&author=D%20Nguyen&author=AR%20Sridhar&volume=4&publication_year=2021&pages=319&pmid=33750897&doi=10.1038/s42003-021-01824-9&)\\\\]\\n-
+        34.Muehlematter UJ, Daniore P, Vokinger KN. Approval of artificial intelligence
+        and machine learning-based medical devices in the USA and Europe (2015\u201320):
+        a comparative analysis. Lancet Digital Health\\n2021;3:e195\u2013203. \\\\[
+        [DOI](https://doi.org/10.1016/S2589-7500(20)30292-2)\\\\] \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/33478929/)\\\\]
+        \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?journal=Lancet%20Digital%20Health&title=Approval%20of%20artificial%20intelligence%20and%20machine%20learning-based%20medical%20devices%20in%20the%20USA%20and%20Europe%20(2015%E2%80%9320):%20a%20comparative%20analysis&author=UJ%20Muehlematter&author=P%20Daniore&author=KN%20Vokinger&volume=3&publication_year=2021&pages=e195-203&pmid=33478929&doi=10.1016/S2589-7500(20)30292-2&)\\\\]\\n-
+        35.Wang X, Peng Y, Lu L, et al. Hospital-scale chest x-ray database and benchmarks
+        on weakly-supervised classification and localization of common thorax diseases.
+        IEEE CVPR\\n2017:2097\u2013106. \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?journal=IEEE%20CVPR&title=Hospital-scale%20chest%20x-ray%20database%20and%20benchmarks%20on%20weakly-supervised%20classification%20and%20localization%20of%20common%20thorax%20diseases&author=X%20Wang&author=Y%20Peng&author=L%20Lu&publication_year=2017&pages=2097-106&)\\\\]\\n-
+        36.Esteva A, Robicquet A, Ramsundar B, et al. A guide to deep learning in
+        healthcare. Nat Med\\n2019;25:24\u20139. \\\\[ [DOI](https://doi.org/10.1038/s41591-018-0316-z)\\\\]
+        \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/30617335/)\\\\] \\\\[ [Google
+        Scholar](https://scholar.google.com/scholar_lookup?journal=Nat%20Med&title=A%20guide%20to%20deep%20learning%20in%20healthcare&author=A%20Esteva&author=A%20Robicquet&author=B%20Ramsundar&volume=25&publication_year=2019&pages=24-9&pmid=30617335&doi=10.1038/s41591-018-0316-z&)\\\\]\\n-
+        37.Bejnordi BE, Veta M, Van Diest PJ, et al. Diagnostic assessment of deep
+        learning algorithms for detection of lymph node metastases in women with breast
+        cancer. JAMA\\n2017;318:2199\u2013210. \\\\[ [DOI](https://doi.org/10.1001/jama.2017.14585)\\\\]
+        \\\\[ [PMC free article](https://pmc.ncbi.nlm.nih.gov/articles/PMC5820737/)\\\\]
+        \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/29234806/)\\\\] \\\\[ [Google
+        Scholar](https://scholar.google.com/scholar_lookup?journal=JAMA&title=Diagnostic%20assessment%20of%20deep%20learning%20algorithms%20for%20detection%20of%20lymph%20node%20metastases%20in%20women%20with%20breast%20cancer&author=BE%20Bejnordi&author=M%20Veta&author=PJ%20Van%20Diest&volume=318&publication_year=2017&pages=2199-210&pmid=29234806&doi=10.1001/jama.2017.14585&)\\\\]\\n-
+        38.Strodthoff N, Strodthoff C. Detecting and interpreting myocardial infarction
+        using fully convolutional neural networks. Physiological Measurement\\n2019;40:015001.
+        \\\\[ [DOI](https://doi.org/10.1088/1361-6579/aaf34d)\\\\] \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/30523982/)\\\\]
+        \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?journal=Physiological%20Measurement&title=Detecting%20and%20interpreting%20myocardial%20infarction%20using%20fully%20convolutional%20neural%20networks&author=N%20Strodthoff&author=C%20Strodthoff&volume=40&publication_year=2019&pages=015001&pmid=30523982&doi=10.1088/1361-6579/aaf34d&)\\\\]\\n-
+        39.University of Leeds . NPIC - Northern Pathology Imaging Co-operative. University
+        of Leeds, 2020. [www.virtualpathology.leeds.ac.uk/npic](http://www.virtualpathology.leeds.ac.uk/npic)
+        \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?title=NPIC%20-%20Northern%20Pathology%20Imaging%20Co-operative&publication_year=2020&)\\\\]\\n-
+        40.Bellemo V, Lim ZW, Lim G, et al. Artificial intelligence using deep learning
+        to screen for referable and vision-threatening diabetic retinopathy in Africa:
+        a clinical validation study. Lancet Digit Health\\n2019;1:e35\u201344. \\\\[
+        [DOI](https://doi.org/10.1016/S2589-7500(19)30004-4)\\\\] \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/33323239/)\\\\]
+        \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?journal=Lancet%20Digit%20Health&title=Artificial%20intelligence%20using%20deep%20learning%20to%20screen%20for%20referable%20and%20vision-threatening%20diabetic%20retinopathy%20in%20Africa:%20a%20clinical%20validation%20study&author=V%20Bellemo&author=ZW%20Lim&author=G%20Lim&volume=1&publication_year=2019&pages=e35-44&pmid=33323239&doi=10.1016/S2589-7500(19)30004-4&)\\\\]\\n-
+        41.Gulshan V, Peng L, Coram M, et al. Development and validation of a deep
+        learning algorithm for detection of diabetic retinopathy in retinal fundus
+        photographs. JAMA\\n2016;316:2402\u201310. \\\\[ [DOI](https://doi.org/10.1001/jama.2016.17216)\\\\]
+        \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/27898976/)\\\\] \\\\[ [Google
+        Scholar](https://scholar.google.com/scholar_lookup?journal=JAMA&title=Development%20and%20validation%20of%20a%20deep%20learning%20algorithm%20for%20detection%20of%20diabetic%20retinopathy%20in%20retinal%20fundus%20photographs&author=V%20Gulshan&author=L%20Peng&author=M%20Coram&volume=316&publication_year=2016&pages=2402-10&pmid=27898976&doi=10.1001/jama.2016.17216&)\\\\]\\n-
+        42.Ting DSW, Pasquale LR, Peng L, et al. Artificial intelligence and deep
+        learning in ophthalmology. Br J Ophthalmol\\n2019;103:167\u201375. \\\\[ [DOI](https://doi.org/10.1136/bjophthalmol-2018-313173)\\\\]
+        \\\\[ [PMC free article](https://pmc.ncbi.nlm.nih.gov/articles/PMC6362807/)\\\\]
+        \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/30361278/)\\\\] \\\\[ [Google
+        Scholar](https://scholar.google.com/scholar_lookup?journal=Br%20J%20Ophthalmol&title=Artificial%20intelligence%20and%20deep%20learning%20in%20ophthalmology&author=DSW%20Ting&author=LR%20Pasquale&author=L%20Peng&volume=103&publication_year=2019&pages=167-75&pmid=30361278&doi=10.1136/bjophthalmol-2018-313173&)\\\\]\\n-
+        43.Raumviboonsuk P, Krause J, Chotcomwongse P, et al. Deep learning versus
+        human graders for classifying diabetic retinopathy severity in a nationwide
+        screening program. NPJ Digit Med\\n2019;2:25. \\\\[ [DOI](https://doi.org/10.1038/s41746-019-0099-8)\\\\]
+        \\\\[ [PMC free article](https://pmc.ncbi.nlm.nih.gov/articles/PMC6550283/)\\\\]
+        \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/31304372/)\\\\] \\\\[ [Google
+        Scholar](https://scholar.google.com/scholar_lookup?journal=NPJ%20Digit%20Med&title=Deep%20learning%20versus%20human%20graders%20for%20classifying%20diabetic%20retinopathy%20severity%20in%20a%20nationwide%20screening%20program&author=P%20Raumviboonsuk&author=J%20Krause&author=P%20Chotcomwongse&volume=2&publication_year=2019&pages=25&pmid=31304372&doi=10.1038/s41746-019-0099-8&)\\\\]\\n-
+        44.Xie Y, Nguyen QD, Hamzah H, et al. Artificial intelligence for teleophthalmology-based
+        diabetic retinopathy screening in a national programme: an economic analysis
+        modelling study. Lancet Digit Health\\n2020;2:e240\u20139. \\\\[ [DOI](https://doi.org/10.1016/S2589-7500(20)30060-1)\\\\]
+        \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/33328056/)\\\\] \\\\[ [Google
+        Scholar](https://scholar.google.com/scholar_lookup?journal=Lancet%20Digit%20Health&title=Artificial%20intelligence%20for%20teleophthalmology-based%20diabetic%20retinopathy%20screening%20in%20a%20national%20programme:%20an%20economic%20analysis%20modelling%20study&author=Y%20Xie&author=QD%20Nguyen&author=H%20Hamzah&volume=2&publication_year=2020&pages=e240-9&pmid=33328056&doi=10.1016/S2589-7500(20)30060-1&)\\\\]\\n-
+        45.Simonite T. The US government will pay doctors to use these AI algorithms.
+        Wired, 2020. [www.wired.com/story/us-government-pay-doctors-use-ai-algorithms](http://www.wired.com/story/us-government-pay-doctors-use-ai-algorithms)
+        \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?title=The%20US%20government%20will%20pay%20doctors%20to%20use%20these%20AI%20algorithms&author=T%20Simonite&publication_year=2020&)\\\\]\\n-
+        46.Oktay O, Nanavati J, Schwaighofer A, et al.\\nEvaluation of deep learning
+        to augment image-guided radiotherapy for head and neck and prostate cancers.
+        JAMA Netw Open\\n2020;3:e2027426. \\\\[ [DOI](https://doi.org/10.1001/jamanetworkopen.2020.27426)\\\\]
+        \\\\[ [PMC free article](https://pmc.ncbi.nlm.nih.gov/articles/PMC7705593/)\\\\]
+        \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/33252691/)\\\\] \\\\[ [Google
+        Scholar](https://scholar.google.com/scholar_lookup?journal=JAMA%20Netw%20Open&title=Evaluation%20of%20deep%20learning%20to%20augment%20image-guided%20radiotherapy%20for%20head%20and%20neck%20and%20prostate%20cancers&author=O%20Oktay&author=J%20Nanavati&author=A%20Schwaighofer&volume=3&publication_year=2020&pages=e2027426&pmid=33252691&doi=10.1001/jamanetworkopen.2020.27426&)\\\\]\\n-
+        47.Alverez-Valle J, Moore GJ. Project InnerEye open-source deep learning toolkit:
+        Democratizing medical imaging AI. Microsoft, 2020. [www.microsoft.com/en-us/research/blog/project-innereye-open-source-deep-learning-toolkit-democratizing-medical-imaging-ai](http://www.microsoft.com/en-us/research/blog/project-innereye-open-source-deep-learning-toolkit-democratizing-medical-imaging-ai)
+        \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?title=Project%20InnerEye%20open-source%20deep%20learning%20toolkit:%20Democratizing%20medical%20imaging%20AI&author=J%20Alverez-Valle&author=GJ%20Moore&publication_year=2020&)\\\\]\\n-
+        48.Senior AW, Evans R, Jumper J, et al. Improved protein structure prediction
+        using potentials from deep learning. Nature\\n2020;577:706\u201310. \\\\[
+        [DOI](https://doi.org/10.1038/s41586-019-1923-7)\\\\] \\\\[ [PubMed](https://pubmed.ncbi.nlm.nih.gov/31942072/)\\\\]
+        \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?journal=Nature&title=Improved%20protein%20structure%20prediction%20using%20potentials%20from%20deep%20learning&author=AW%20Senior&author=R%20Evans&author=J%20Jumper&volume=577&publication_year=2020&pages=706-10&pmid=31942072&doi=10.1038/s41586-019-1923-7&)\\\\]\\n-
+        49.The AlphaFold team . AlphaFold: a solution to a 50-year-old grand challenge
+        in biology. DeepMind, 2020. [https://deepmind.com/blog/article/alphafold-a-solution-to-a-50-year-old-grand-challenge-in-biology](https://deepmind.com/blog/article/alphafold-a-solution-to-a-50-year-old-grand-challenge-in-biology)
+        \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?title=AlphaFold:%20a%20solution%20to%20a%2050-year-old%20grand%20challenge%20in%20biology&publication_year=2020&)\\\\]\\n-
+        50.Department of Health and Social Care.\\nNHS Constitution or England. DHSC,
+        2012.\\n[www.gov.uk/government/publications/the-nhs-constitution-for-england](http://www.gov.uk/government/publications/the-nhs-constitution-for-england)
+        \\\\[ [Google Scholar](https://scholar.google.com/scholar_lookup?title=NHS%20Constitution%20or%20England&publication_year=2012&)\\\\]\\n\\n##
+        ACTIONS\\n\\n- [View on publisher site](https://doi.org/10.7861/fhj.2021-0095)\\n-
+        [PDF (1.0\_MB)](https://pmc.ncbi.nlm.nih.gov/pdf/futurehealth-8-2-e188.pdf)\\n-
+        Cite\\n- Collections\\n- Permalink\\n\\n\\n## PERMALINK\\n\\n\\n\\nCopy\\n\\n\\n##
+        RESOURCES\\n\\n### Similar articles\\n\\n### Cited by other articles\\n\\n###
+        Links to NCBI Databases\\n\\nBack to Top\"},{\"id\":\"https://www.foreseemed.com/artificial-intelligence-in-healthcare\",\"title\":\"Artificial
+        Intelligence (AI) in Healthcare & Medical Field\",\"url\":\"https://www.foreseemed.com/artificial-intelligence-in-healthcare\",\"publishedDate\":\"2025-01-01T00:00:00.000Z\",\"author\":\"\",\"text\":\"Back
+        [About Us](https://www.foreseemed.com/about-foresee-medical) [Leadership](https://www.foreseemed.com/leadership)
+        [Contact](https://www.foreseemed.com/contact-foresee-medical) [Testimonials](https://www.foreseemed.com/testimonials)
+        [Partners](https://www.foreseemed.com/partners) [Careers](https://www.foreseemed.com/careers-foresee-medical)\\n\\nBack
+        [See All Explainers](https://www.foreseemed.com/explainers) [AI in Healthcare](https://www.foreseemed.com/artificial-intelligence-in-healthcare)
+        [Risk Score](https://www.foreseemed.com/medicare-risk-adjustment) [NLP in
+        Healthcare](https://www.foreseemed.com/natural-language-processing-in-healthcare)
+        [Predictive Analytics](https://www.foreseemed.com/predictive-analytics-in-healthcare)
+        [Computer Assisted Coding](https://www.foreseemed.com/computer-assisted-coding)
+        [Medical Algorithms](https://www.foreseemed.com/medical-algorithms) [PHI vs
+        PII](https://www.foreseemed.com/difference-between-phi-vs-pii) [E&M Codes](https://www.foreseemed.com/evaluation-management-codes)\\n\\nBack
+        [Blog](https://www.foreseemed.com/blog) [Case Studies](https://www.foreseemed.com/case-studies)\\n\\n#
+        AI in Healthcare\\n\\nThe rise of artificial intelligence in healthcare has
+        been revolutionary, completely reshaping how patients are diagnosed, treated,
+        and monitored. The impact of AI in healthcare is evident across every level
+        of the medical ecosystem, from research and clinical documentation to treatment
+        and patient engagement. By delivering more accurate diagnoses and enabling
+        highly personalized treatment plans, artificial intelligence in healthcare
+        is transforming outcomes for patients while streamlining workflows for providers.
+        One of the greatest strengths of AI in healthcare is its ability to analyze
+        vast amounts of clinical data quickly, helping professionals identify disease
+        markers, patient risks, and population health trends that might otherwise
+        be missed.\\n\\nThe applications of artificial intelligence in healthcare
+        are incredibly broad and far-reaching. AI in healthcare is already used to
+        scan radiology images for early detection of cancers and heart disease, predict
+        outcomes using electronic health records, and improve clinical trial design.
+        By embedding artificial intelligence in healthcare into hospital systems,
+        outpatient clinics, and even home monitoring devices, medical providers can
+        offer smarter, faster, and more efficient care. As a result, AI in healthcare
+        is widely recognized as the future of medicine, delivering better care quality
+        while reducing costs and enhancing efficiency.\\n\\nThe story of artificial
+        intelligence in healthcare began prominently with IBM\u2019s Watson, one of
+        the earliest high-profile AI systems. In 2011, IBM launched a healthcare-specific
+        version of Watson that relied on natural language processing to interpret
+        and analyze medical information. This was one of the first demonstrations
+        of AI in healthcare being used to improve decision-making in real-world settings.
+        Today, IBM has been joined by tech giants such as Apple, Microsoft, and Amazon,
+        all of whom are investing heavily in artificial intelligence in healthcare
+        technologies designed to revolutionize the sector.\\n\\nThe potential of AI
+        in healthcare is nothing short of remarkable. Experts predict that artificial
+        intelligence in healthcare will continue to redefine how we process clinical
+        data, diagnose complex conditions, develop breakthrough treatments, and even
+        prevent diseases before they occur. By using AI in healthcare, physicians
+        and care teams can make better-informed decisions based on accurate, real-time
+        insights\u2014saving time, reducing costs, and improving patient records management.
+        Whether identifying new cancer therapies, monitoring chronic disease progression,
+        or improving the patient experience, artificial intelligence in healthcare
+        stands as a game changer.\\n\\nLooking ahead, AI in healthcare promises to
+        usher in a new era of precision medicine, where patients receive tailored
+        treatment faster and more accurately than ever before. By embracing artificial
+        intelligence in healthcare, the industry can achieve the dual goals of enhancing
+        patient outcomes while making care delivery more efficient and sustainable
+        for providers. Ultimately, the future of medicine will be defined by how effectively
+        we harness the power of artificial intelligence in healthcare\u2014a future
+        where technology and human expertise combine to deliver unprecedented levels
+        of care.\\n\\n**Let\u2019s take a look at a few of the different types of
+        artificial intelligence and healthcare industry benefits that can be derived
+        from their use.**\\n\\n## **Machine Learning**\\n\\n[Machine learning](https://www.foreseemed.com/blog/machine-learning-in-healthcare),
+        a key component of AI used in healthcare, has significantly reshaped healthcare
+        by enhancing medical diagnosis and treatment. By processing vast amounts of
+        clinical data, algorithms can identify patterns and predict medical outcomes
+        with unprecedented accuracy. This technology aids in analyzing patient records,
+        medical imaging, and discovering new therapies, thus helping healthcare professionals
+        improve treatments and reduce costs. Machine learning enables precise disease
+        diagnosis, customized treatments, and detection of subtle changes in vital
+        signs, which might indicate potential health issues. Precision medicine, the
+        most common application, predicts effective treatment procedures based on
+        patient-specific data through supervised learning. Additionally, deep learning,
+        a subset of AI, is used in healthcare for tasks like speech recognition through
+        natural language processing. As deep learning advances, understanding and
+        utilizing it in clinical settings will become increasingly crucial for healthcare
+        professionals. See our page [Benefits of Machine Learning in Healthcare](https://www.foreseemed.com/blog/machine-learning-in-healthcare)
+        for more on the topic.\\n\\n## **Natural Language Processing**\\n\\n[Natural
+        language processing](https://www.foreseemed.com/natural-language-processing-in-healthcare)
+        (NLP) is a form of artificial intelligence that enables computers to interpret
+        and use human language. This form of AI used in healthcare is reshaping the
+        healthcare industry. NLP is being used in a wide range of health data applications,
+        such as improving patient care through better diagnosis accuracy, streamlining
+        clinical processes, and providing more personalized services.\\n\\nFor example,
+        NLP can be applied to medical records to accurately diagnose illnesses by
+        extracting useful information from health data. Additionally, it can be used
+        to identify relevant treatments and medications for each patient or even predict
+        potential health risks based on past health data. Furthermore, NLP also provides
+        clinicians with powerful tools for managing large amounts of complex data
+        \u2013 something which would normally take much longer to do manually.\\n\\nNatural
+        language processing is proving to be an invaluable tool in healthcare \u2013
+        allowing medical professionals to use artificial intelligence to more accurately
+        diagnose illnesses and provide better personalized treatments for their patients.
+        This form of AI in healthcare is quickly becoming a must-have in the modern
+        healthcare industry and is likely to become even more sophisticated and be
+        used in a wider range of applications.\\n\\n## **Rule-based Expert Systems**\\n\\nExpert
+        systems based on variations of \u2018if-then\u2019 rules were the prevalent
+        technology for AI in healthcare in the 80s and later periods. The use of artificial
+        intelligence in healthcare is widely used for [clinical decision support](https://www.foreseemed.com/clinical-decision-support)
+        to this day. Many [electronic health record systems](https://www.foreseemed.com/blog/ehr-software-and-interoperability)
+        (EHRs) currently make available a set of rules with their software offerings.\\n\\nExpert
+        systems usually entail human experts and engineers to build an extensive series
+        of rules in a certain knowledge area. They function well up to a point and
+        are easy to follow and process. But as the number of rules grows too large,
+        usually exceeding several thousand, the rules can begin to conflict with each
+        other and fall apart. Also, if the knowledge area changes in a significant
+        way, changing the rules can be burdensome and laborious.\\n\\n## **Diagnosis
+        and Treatment Applications**\\n\\nDiagnosis and treatment of disease has been
+        at the core of artificial intelligence AI in healthcare for the last 50 years.
+        Early rule-based systems had potential to accurately diagnose and treat disease,
+        but were not totally accepted for clinical practice. They were not significantly
+        better at diagnosing than humans, and the integration was less than ideal
+        with clinician workflows and health record systems.\\n\\nBut whether rules-based
+        or algorithmic, using artificial intelligence in healthcare for diagnosis
+        and treatment plans can often be difficult to marry with clinical workflows
+        and EHR systems. Integration issues into healthcare organizations has been
+        a greater barrier to widespread adoption of AI in healthcare when compared
+        to the accuracy of suggestions. Much of the AI and healthcare capabilities
+        for diagnosis, treatment and clinical trials from medical software vendors
+        are standalone and address only a certain area of care. Some EHR software
+        vendors are beginning to build limited [healthcare analytics](https://www.foreseemed.com/blog/big-data-analytics-in-healthcare)
+        functions with AI into their product offerings, but are in the elementary
+        stages. To take full advantage of the use of artificial intelligence in healthcare
+        using a stand alone EHR system providers will either have to undertake substantial
+        integration projects themselves, or leverage the capabilities of third party
+        vendors that have AI capabilities and can integrate with their EHR.\\n\\n##
+        **Administrative Applications**\\n\\nArtificial Intelligence in healthcare
+        is changing many of the administrative aspects of medical care. By automating
+        mundane tasks, such as data entry, claims processing and appointment scheduling,
+        using artificial intelligence in healthcare can free up time for providers
+        and healthcare organizations to focus on patient care and revenue cycle management.
+        Furthermore, artificial intelligence also has the potential to reduce human
+        error by providing a faster way to review health records, medical imaging,
+        claims processing and test results. With artificial intelligence giving medical
+        professionals more autonomy over their workflow process, they are able to
+        provide better quality patient care while maintaining budget efficiency. The
+        ability of AI in healthcare to analyze the medical history of a patient and
+        deliver better and faster results is reshaping the way healthcare providers
+        deliver care, making it possible for them to devote more time and resources
+        to their patients. With artificial intelligence AI in healthcare leading the
+        charge in improving patient care, medical professionals can be confident that
+        they can focus on delivering quality care while also saving time and money
+        with AI-powered administrative tasks.\\n\\nUltimately, artificial intelligence
+        in healthcare offers a refined way for healthcare providers to deliver better
+        and faster patient care. By automating mundane administrative tasks, artificial
+        intelligence can help medical professionals save time and money while also
+        giving them more autonomy over their workflow process.\\n\\n## Regulatory,
+        Ethical & Adoption Challenges\\n\\nWhile many clinicians are optimistic about
+        what artificial intelligence in healthcare can achieve, patient trust often
+        lags behind. Studies show that clear explanations from physicians and nurses
+        improve acceptance, but transparency, strong data governance, and solid evidence
+        of performance remain critical for building confidence. At the same time,
+        concerns about training data, bias, fairness, and model reliability persist.
+        Ensuring that AI systems do not perpetuate inequities is a growing priority,
+        with initiatives like the \u201C2025 Watch List\u201D from Canadian experts
+        highlighting these issues as urgent areas for attention.\\n\\nAnother challenge
+        lies in liability and accountability. As artificial intelligence in healthcare
+        tools take on more decision-support or even semi-autonomous roles, the question
+        of responsibility becomes pressing: who is accountable if an AI-enabled recommendation
+        leads to harm\u2014the clinician, the hospital, or the developer? Regulatory
+        bodies are also stepping up to address these concerns. In the United States,
+        for example, the FDA is formally reviewing digital mental health devices,
+        while new policies are being drafted around generative AI, medical documentation
+        tools, and medical device approvals. Striking the right balance between encouraging
+        innovation and managing risk will be essential to ensure that artificial intelligence
+        in healthcare continues to grow responsibly.\\n\\nEven when AI tools demonstrate
+        strong potential, widespread implementation remains difficult. Healthcare
+        organizations face challenges in integrating these systems into existing workflows,
+        such as electronic health records, while also training staff, ensuring clinician
+        acceptance, and demonstrating a clear return on investment. Real-world validation
+        is costly but necessary for credibility. Ultimately, the success of artificial
+        intelligence in healthcare will depend on overcoming these barriers\u2014building
+        trust, ensuring fairness, establishing accountability, and navigating regulatory
+        and financial hurdles.\\n\\n## When Did AI Become Popular in Healthcare?\\n\\nThe
+        surge in popularity of healthcare AI marks a transformative era in the medical
+        field. This phenomenon, gaining momentum over the past decade, has seen the
+        **role of AI in healthcare** emerge as a cornerstone for innovation and efficiency
+        in medical practices worldwide. Understanding when and how AI became so integral
+        requires exploring its applications, benefits, and the groundbreaking examples
+        of healthcare AI.\\n\\nAI in the medical field began to gain substantial attention
+        in the early 21st century, with significant advancements in technology and
+        data analysis. This period saw a convergence of increased computational power,
+        the availability of large datasets (Big Data), and significant improvements
+        in AI-powered [medical algorithms](https://www.foreseemed.com/medical-algorithms).
+        The real turning point, however, came with the realization of how AI could
+        address some of the most pressing challenges in healthcare, ranging from diagnostic
+        accuracy to personalized treatment and operational efficiency.\\n\\nAccording
+        to [Statista](https://www.statista.com/statistics/1419774/ai-machine-learning-medical-device-market/#:~:text=In%202021%2C%20the%20artificial%20intelligence,11%20billion%20U.S.%20dollars%20worldwide.),
+        the AI in healthcare market\u2014valued at just $11 billion in 2021\u2014is
+        projected to skyrocket to nearly $187 billion by 2030. This explosive growth
+        highlights the accelerating adoption of artificial intelligence in healthcare,
+        signaling major transformations ahead for hospitals, medical providers, pharmaceutical
+        firms, biotechnology companies, and the broader healthcare ecosystem. As investment
+        scales, AI in healthcare is expected to fundamentally reshape clinical workflows,
+        drug development pipelines, and patient care delivery worldwide.\\n\\n## How
+        AI is Reshaping Decision-Making\\n\\nMany healthcare professionals see the
+        transformative potential of artificial intelligence in healthcare, yet many
+        remain cautious about its clinical use. A [2025 AMA survey](https://www.ama-assn.org/practice-management/digital-health/2-3-physicians-are-using-health-ai-78-2023)
+        found that 66% of physicians are already using health-AI tools\u2014up from
+        38% in 2023\u2014and 68% believe AI positively contributes to patient care
+        in some way. But concerns are still substantial: many doctors worry about
+        AI influencing diagnosis and treatment decisions, fearing errors, bias, or
+        misuse.\\n\\nDespite valid concerns, the case for AI in healthcare remains
+        strong: its capacity to enhance patient outcomes demands cautious optimism.
+        Looking at both the strengths and limitations of artificial intelligence in
+        healthcare\u2014and implementing safeguards like oversight, transparency,
+        and data protection\u2014is essential to build trust among clinicians, patients,
+        and healthcare institutions.\\n\\n## The Benefits of AI in Healthcare\\n\\n**How
+        has AI Impacted the Health Industry?** AI for healthcare offers the ability
+        to process and analyze vast amounts of medical data far beyond human capacity.
+        This capability was instrumental in diagnosing diseases, predicting outcomes,
+        and recommending treatments. For instance, AI algorithms can analyze medical
+        images, such as X-rays and MRIs, with greater accuracy and speed than human
+        radiologists, often detecting diseases such as cancer at earlier stages.\\n\\nExamples
+        of artificial intelligence in healthcare are diverse and impactful. A significant
+        development besides IBM\u2019s Watson Health was [Google's DeepMind Health
+        project](https://deepmind.google/discover/blog/codoc-developing-reliable-ai-tools-for-healthcare/),
+        which demonstrated the ability to diagnose eye diseases from retinal scans
+        with a level of accuracy comparable to human experts. These pioneering projects
+        showcased AI's potential to revolutionize diagnostics and personalized medicine.\\n\\nAnother
+        area where AI used in healthcare has made a significant impact is in [predictive
+        analytics](https://www.foreseemed.com/predictive-analytics-in-healthcare).
+        Healthcare AI systems can analyze patterns in a patient's medical history
+        and current health data to predict potential health risks. This predictive
+        capability enables healthcare providers to offer proactive, preventative care,
+        ultimately leading to better patient outcomes and reduced healthcare costs.\\n\\nAI
+        streamlines various processes within healthcare facilities. From scheduling
+        appointments to processing insurance claims, AI automation reduces administrative
+        burdens, allowing healthcare providers to focus more on patient care. This
+        not only improves operational efficiency but also enhances the overall patient
+        experience.\\n\\nThe rise of AI in healthcare has been a gradual but steady
+        journey, catalyzed by technological advancements and the increasing demand
+        for improved healthcare delivery. The integration of AI into the medical field
+        has brought about a paradigm shift, making healthcare more efficient, accurate,
+        and personalized. As AI technology continues to evolve, its role in healthcare
+        is set to become even more significant, further solidifying its status as
+        an indispensable tool in modern medicine. This journey of AI from a novel
+        concept to a fundamental aspect of healthcare exemplifies a technological
+        revolution, with the promise of better health outcomes for all.\\n\\n## **Recent
+        Advances of AI in Healthcare**\\n\\nOne of the most exciting areas of progress
+        for artificial intelligence in healthcare is drug discovery. Companies like
+        DeepMind, mentioned above, are pushing the frontier by dramatically shortening
+        the time it takes to identify promising drug candidates. What once took years
+        of research may soon take only months, with AI models accelerating the process
+        of narrowing down compounds for further testing. Beyond research, AI in healthcare
+        is already making a major impact on early disease detection and diagnostics.
+        A new AI-powered stethoscope developed at [Imperial College London](https://www.imperial.ac.uk/)
+        can detect heart failure, valve disease, and irregular rhythms in just 15
+        seconds by combining ECG signals with heart sound analysis. In the UK, tools
+        such as [Osiris AI](https://www.osiris-ai.co.uk/)\u2014developed in collaboration
+        with Microsoft\u2014are being deployed in radiation oncology to streamline
+        treatment planning. These advances highlight how artificial intelligence in
+        healthcare is moving beyond experimentation and into real-world clinical applications.\\n\\nAnother
+        area of rapid adoption is clinical documentation and administrative efficiency.
+        Tools like [Heidi Health](https://www.heidihealth.com/) are being used to
+        automate medical note-taking, transcription, and structuring, saving valuable
+        time for physicians. Microsoft has also launched [Dragon Copilot](https://www.microsoft.com/en-us/health-solutions/clinical-workflow/dragon-copilot),
+        an AI assistant designed to reduce administrative burdens by drafting referral
+        letters, after-visit summaries, and evidence-based clinical notes. This reflects
+        a growing emphasis on using artificial intelligence in healthcare not only
+        for diagnosis and treatment, but also for non-clinical support tasks that
+        improve efficiency and reduce burnout.\\n\\nThe mental health field is also
+        seeing innovation. A surge of AI-enabled tools\u2014ranging from chatbots
+        to virtual therapists\u2014are entering the market. Recognizing the need for
+        oversight, the U.S. FDA is preparing to evaluate these devices through its
+        [Digital Health Advisory Committee](https://www.fda.gov/medical-devices/digital-health-center-excellence/fda-digital-health-advisory-committee)
+        to weigh both their benefits and risks. Meanwhile, artificial intelligence
+        in healthcare is being scaled to population-level applications. In India,
+        the state of Telangana is piloting AI-based cancer screenings (oral, breast,
+        cervical) to address radiologist shortages and improve early detection. In
+        the UK, researchers are leveraging health datasets to develop AI models capable
+        of predicting the onset of diseases such as Alzheimer\u2019s and kidney disease
+        years before symptoms emerge.\\n\\nFinally, cutting-edge academic work is
+        expanding the boundaries of AI in healthcare through innovative approaches
+        like reinforcement learning, which focuses on recommending long-term interventions
+        rather than simply predicting outcomes. Other research explores embodied AI
+        systems\u2014robots, multisensory platforms, and human-AI teams in diagnostics
+        and pathology\u2014demonstrating that the role of artificial intelligence
+        in healthcare is not confined to software tools but is expanding into interactive,
+        agentive systems. Collectively, these advances show that AI is rapidly becoming
+        embedded across the entire healthcare spectrum, from research labs and clinics
+        to population health programs and mental health services.\\n\\n## **Emerging
+        Trends & What to Watch Next**\\n\\nThe future of artificial intelligence in
+        healthcare is poised to bring even greater impact, particularly in diagnosis
+        and screening. We can expect further deployment of AI-powered tools\u2014such
+        as imaging systems, ECG analysis, and smart stethoscopes\u2014along with expanded
+        screening programs, especially in regions with limited medical resources.
+        Early disease detection remains one of the most significant opportunities
+        where AI in healthcare can deliver measurable value. At the same time, autonomous
+        and semi-autonomous systems are on the horizon. Human-AI teaming, delegated
+        autonomy, and reinforcement learning approaches will become more common, provided
+        they are deployed safely and with strong regulatory oversight. Generative
+        AI is also emerging as a powerful force in healthcare, supporting summarization,
+        decision support, medical education, and even generating patient-facing content.
+        However, concerns about accuracy, hallucinations, and safety will ensure close
+        scrutiny.\\n\\nAnother critical focus will be on scaling and access. As adoption
+        increases, efforts must be made to bring artificial intelligence in healthcare
+        to rural and underserved communities, ensuring that its benefits are not limited
+        to high-income countries or large health systems. Finally, regulatory frameworks
+        will need to evolve alongside innovation. As artificial intelligence in healthcare
+        becomes more powerful and pervasive, policymakers will need to formalize guidelines
+        around data privacy, liability, validation, bias, and transparency to protect
+        patients while fostering innovation.\\n\\nWith **new AI technology in healthcare**,
+        tools like [ForeSee Medical](https://www.foreseemed.com) and intelligent algorithms
+        now possess the ability to interpret massive datasets at unprecedented speeds.
+        Advanced deep learning systems can detect diseases earlier, craft individualized
+        treatment strategies, and even automate complex tasks, such as certain aspects
+        of drug discovery. These leaps forward can improve patient safety, reduce
+        operational costs, and elevate the overall standard of care.\\n\\nThe promise
+        of AI in healthcare extends into the future, where connected digital ecosystems
+        and powerful analytics engines will reshape our understanding of health and
+        disease. However, the primary challenge is not AI\u2019s inherent capability
+        to excel, but rather the integration of these tools into everyday clinical
+        practice. As providers adapt, roles in medicine may shift to emphasize the
+        uniquely human talents of empathy, complex reasoning, and nuanced judgment.
+        Those who embrace AI will likely reap the greatest rewards, as new generations
+        of clinicians and patients alike benefit from improved outcomes, heightened
+        efficiency, and better overall experiences.\\n\\nIn short, AI in healthcare
+        holds tremendous potential, with emerging technologies heralding a new era
+        of medical innovation. Through careful adoption, robust evidence generation,
+        ethical oversight, and ongoing education, we can fully harness AI\u2019s transformative
+        power to improve lives, streamline clinical workflows, and usher in a future
+        defined by patient-centered, data-driven healthcare.Are you looking to extract
+        actionable insights from your data using the latest artificial intelligence
+        technology? See how ForeSee Medical can empower you with insightful [HCC risk
+        adjustment coding](https://www.foreseemed.com/hcc-risk-adjustment-coding)
+        support and integrate it seamlessly with your electronic health records.\\n\\n[SEE
+        how it works](https://www.foreseemed.com/hcc-risk-adjustment-coding)\\n\\nBy
+        Steve Barth, Marketing Director\\n\\nSources:\\n\\n\xC7i\xE7ek, V., et al.
+        (2025). Position of artificial intelligence in healthcare and future directions.
+        _Artificial Intelligence in Medicine_. Retrieved from [https://www.sciencedirect.com/science/article/abs/pii/S0933365725001289](https://www.sciencedirect.com/science/article/abs/pii/S0933365725001289?utm_source=chatgpt.com)\\n\\nNature
+        Editorial. (2025). Synthetic data can benefit medical research \u2014 but
+        risks must be recognized. _Nature_. Retrieved from [https://www.nature.com/articles/d41586-025-02869-0](https://www.nature.com/articles/d41586-025-02869-0?utm_source=chatgpt.com)\\n\\nAdler-Milstein,
+        J., et al. (2025). Survey of AI adoption in U.S. health systems. _JAMA Network
+        Open_. Retrieved from [https://pmc.ncbi.nlm.nih.gov/articles/PMC12202002/](https://pmc.ncbi.nlm.nih.gov/articles/PMC12202002/?utm_source=chatgpt.com)\\n\\nHassabis,
+        D. (2025, September). DeepMind CEO: AI could cut drug discovery from years
+        to months \u2014 how it is changing medicine worldwide. _Times of India_.
+        Retrieved from [https://timesofindia.indiatimes.com/technology/tech-news/deepmind-ceo-demis-hassabis-ai-could-cut-drug-discovery-from-years-to-how-it-is-changing-medicine-worldwide/articleshow/123846367.cms](https://timesofindia.indiatimes.com/technology/tech-news/deepmind-ceo-demis-hassabis-ai-could-cut-drug-discovery-from-years-to-how-it-is-changing-medicine-worldwide/articleshow/123846367.cms?utm_source=chatgpt.com)\\n\\nCookson,
+        C. (2025, August). How AI is helping one doctor treat cancer: \u201CIt\u2019s
+        moved out of the hype phase.\u201D _Financial Times_. Retrieved from [https://www.ft.com/content/fcc33754-d583-4302-aaff-de9c09783706](https://www.ft.com/content/fcc33754-d583-4302-aaff-de9c09783706?utm_source=chatgpt.com)\\n\\nBoseley,
+        S. (2025, August 30). Doctors develop AI stethoscope that can detect major
+        heart conditions in 15 seconds. _The Guardian_. Retrieved from [https://www.theguardian.com/technology/2025/aug/30/doctors-ai-stethoscope-heart-disease-london](https://www.theguardian.com/technology/2025/aug/30/doctors-ai-stethoscope-heart-disease-london?utm_source=chatgpt.com)\\n\\n_Adelaide
+        Now_. (2025). SA health system testing AI to help doctors and cut waiting
+        lists. Retrieved from [https://www.adelaidenow.com.au/news/south-australia/state-election/sa-health-system-testing-ai-to-help-doctors-and-cut-waiting-lists/news-story/440eaf27c40e9fff239bbc8502c800da](https://www.adelaidenow.com.au/news/south-australia/state-election/sa-health-system-testing-ai-to-help-doctors-and-cut-waiting-lists/news-story/440eaf27c40e9fff239bbc8502c800da?utm_source=chatgpt.com)\",\"image\":\"http://static1.squarespace.com/static/5daddb33ee92bf44231c2fef/t/5e97456b750db14302d74b65/1573753240136/HCC+risk+adjustment+coding?format=1500w\"}],\"searchTime\":1340.5,\"costDollars\":{\"total\":0.007,\"search\":{\"neural\":0.005},\"contents\":{\"text\":0.002}}}"
+    headers:
+      Access-Control-Allow-Credentials:
+      - 'true'
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '90045'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Mon, 15 Sep 2025 20:47:46 GMT
+      ETag:
+      - W/"15fbd-weMVUxutoReqHzEXtvTWl8JuFag"
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains
+      Vary:
+      - Origin
+      X-Powered-By:
+      - Express
+      X-RateLimit-Limit:
+      - '9007199254740991'
+      X-RateLimit-Remaining:
+      - '9007199254740990'
+      X-RateLimit-Reset:
+      - '1757969267'
+    status:
+      code: 200
+      message: OK
+version: 1
