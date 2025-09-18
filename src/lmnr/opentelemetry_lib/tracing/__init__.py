@@ -79,14 +79,18 @@ class TracerWrapper(object):
                 # Store session recording options
                 cls.session_recording_options = session_recording_options or {}
 
-                obj._client = LaminarClient(
-                    base_url=base_http_url,
-                    project_api_key=project_api_key,
-                )
-                obj._async_client = AsyncLaminarClient(
-                    base_url=base_http_url,
-                    project_api_key=project_api_key,
-                )
+                if project_api_key:
+                    obj._client = LaminarClient(
+                        base_url=base_http_url,
+                        project_api_key=project_api_key,
+                    )
+                    obj._async_client = AsyncLaminarClient(
+                        base_url=base_http_url,
+                        project_api_key=project_api_key,
+                    )
+                else:
+                    obj._client = None
+                    obj._async_client = None
 
                 obj._resource = Resource(attributes=TracerWrapper.resource_attributes)
 

@@ -1,3 +1,4 @@
+import os
 import grpc
 import re
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
@@ -55,8 +56,11 @@ class LaminarSpanExporter(SpanExporter):
                 pass
         self.timeout = timeout_seconds
 
-        protocol = get_otel_env_var("PROTOCOL") or "http/protobuf"
-        self.force_http = protocol in ("http/protobuf", "http/json")
+        protocol = get_otel_env_var("PROTOCOL") or "grpc/protobuf"
+        exporter_type = from_env("OTEL_EXPORTER") or "otlp_grpc"
+        self.force_http = (
+            protocol in ("http/protobuf", "http/json") or exporter_type == "otlp_http"
+        )
 
     def _init_from_laminar_config(
         self,

@@ -120,7 +120,7 @@ class TestLaminarSpanExporterOtel:
             assert exporter.endpoint == "http://simple-endpoint"
             assert exporter.headers == {}
             assert exporter.timeout == 30  # default timeout
-            assert exporter.force_http is True  # default protocol is http/protobuf
+            assert exporter.force_http is False  # default protocol is grpc/protobuf
 
     def test_otel_config_grpc_protocol(self):
         """Test OTEL config with gRPC protocol."""
