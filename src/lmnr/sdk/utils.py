@@ -181,21 +181,6 @@ def parse_otel_headers(headers_str: str | None) -> dict[str, str]:
     return headers
 
 
-def should_use_otel_config() -> bool:
-    """Check if OTEL configuration should be used.
-
-    Returns True if OTEL_ENDPOINT is specified and neither
-    project_api_key nor base_url are configured via Laminar env vars.
-    """
-    has_laminar_config = (
-        from_env("LMNR_PROJECT_API_KEY") is not None
-        or from_env("LMNR_BASE_URL") is not None
-    )
-    has_otel_endpoint = get_otel_env_var("ENDPOINT") is not None
-
-    return not has_laminar_config and has_otel_endpoint
-
-
 def format_id(id_value: str | int | uuid.UUID) -> str:
     """Format trace/span/evaluation ID to a UUID string, or return valid UUID strings as-is.
 

@@ -54,7 +54,6 @@ class TracerManager:
             set_global_tracer_provider=set_global_tracer_provider,
             otel_logger_level=otel_logger_level,
             session_recording_options=session_recording_options,
-            use_otel_config=use_otel_config,
         )
 
     @staticmethod

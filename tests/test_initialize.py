@@ -35,7 +35,7 @@ def test_laminar_initialize_url_parsing():
             "params": {},
             "env_vars": {},
             "expected": {
-                "base_url": "https://api.lmnr.ai",
+                "base_url": None,
                 "http_port": 443,
                 "port": 8443,
                 "base_http_url": "https://api.lmnr.ai:443",
@@ -83,7 +83,7 @@ def test_laminar_initialize_url_parsing():
             "params": {"http_port": 8080},
             "env_vars": {},
             "expected": {
-                "base_url": "https://api.lmnr.ai",
+                "base_url": None,
                 "http_port": 8080,
                 "port": 8443,
                 "base_http_url": "https://api.lmnr.ai:8080",
@@ -95,7 +95,7 @@ def test_laminar_initialize_url_parsing():
             "params": {"grpc_port": 9090},
             "env_vars": {},
             "expected": {
-                "base_url": "https://api.lmnr.ai",
+                "base_url": None,
                 "http_port": 443,
                 "port": 9090,
                 "base_http_url": "https://api.lmnr.ai:443",
@@ -122,7 +122,7 @@ def test_laminar_initialize_url_parsing():
             "params": {"base_http_url": "https://http.example.com:8080"},
             "env_vars": {},
             "expected": {
-                "base_url": "https://api.lmnr.ai",
+                "base_url": None,
                 "http_port": 8080,
                 "port": 8443,
                 "base_http_url": "https://http.example.com:8080",
@@ -137,7 +137,7 @@ def test_laminar_initialize_url_parsing():
             },
             "env_vars": {},
             "expected": {
-                "base_url": "https://api.lmnr.ai",
+                "base_url": None,
                 "http_port": 9090,
                 "port": 8443,
                 "base_http_url": "https://http.example.com:9090",
@@ -185,7 +185,7 @@ def test_laminar_initialize_url_parsing():
             "params": {"base_http_url": "http.example.com"},
             "env_vars": {},
             "expected": {
-                "base_url": "https://api.lmnr.ai",
+                "base_url": None,
                 "http_port": 443,
                 "port": 8443,
                 "base_http_url": "https://http.example.com:443",

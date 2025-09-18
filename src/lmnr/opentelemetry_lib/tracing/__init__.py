@@ -55,7 +55,7 @@ class TracerWrapper(object):
         exporter: SpanExporter | None = None,
         instruments: set[Instruments] | None = None,
         block_instruments: set[Instruments] | None = None,
-        base_url: str = "https://api.lmnr.ai",
+        base_url: str | None = None,
         port: int = 8443,
         http_port: int = 443,
         project_api_key: str | None = None,
@@ -65,7 +65,6 @@ class TracerWrapper(object):
         set_global_tracer_provider: bool = True,
         otel_logger_level: int = logging.ERROR,
         session_recording_options: SessionRecordingOptions | None = None,
-        use_otel_config: bool = False,
     ) -> "TracerWrapper":
         # Silence some opentelemetry warnings
         logging.getLogger("opentelemetry.trace").setLevel(otel_logger_level)
@@ -81,11 +80,11 @@ class TracerWrapper(object):
 
                 if project_api_key:
                     obj._client = LaminarClient(
-                        base_url=base_http_url,
+                        base_url=base_http_url or "https://api.lmnr.ai",
                         project_api_key=project_api_key,
                     )
                     obj._async_client = AsyncLaminarClient(
-                        base_url=base_http_url,
+                        base_url=base_http_url or "https://api.lmnr.ai",
                         project_api_key=project_api_key,
                     )
                 else:
@@ -103,7 +102,6 @@ class TracerWrapper(object):
                     timeout_seconds=timeout_seconds,
                     force_http=force_http,
                     disable_batch=disable_batch,
-                    use_otel_config=use_otel_config,
                 )
 
                 lmnr_provider = TracerProvider(resource=obj._resource)

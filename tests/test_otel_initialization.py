@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import patch
 
 from lmnr import Laminar
-from lmnr.sdk.utils import get_otel_env_var, parse_otel_headers, should_use_otel_config
+from lmnr.sdk.utils import get_otel_env_var, parse_otel_headers
 from lmnr.opentelemetry_lib.tracing.exporter import LaminarSpanExporter
 
 
@@ -61,32 +61,6 @@ class TestOtelEnvVarUtils:
         headers_str = "invalid,no-equals-sign"
         assert parse_otel_headers(headers_str) == {}
 
-    def test_should_use_otel_config_true(self):
-        """Test should_use_otel_config returns True when conditions are met."""
-        with patch.dict(
-            os.environ,
-            {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://custom-endpoint"},
-            clear=True,
-        ):
-            assert should_use_otel_config() is True
-
-    def test_should_use_otel_config_false_laminar_config(self):
-        """Test should_use_otel_config returns False when Laminar config exists."""
-        with patch.dict(
-            os.environ,
-            {
-                "LMNR_PROJECT_API_KEY": "test-key",
-                "OTEL_EXPORTER_OTLP_ENDPOINT": "http://custom-endpoint",
-            },
-            clear=True,
-        ):
-            assert should_use_otel_config() is False
-
-    def test_should_use_otel_config_false_no_endpoint(self):
-        """Test should_use_otel_config returns False when no OTEL endpoint."""
-        with patch.dict(os.environ, {}, clear=True):
-            assert should_use_otel_config() is False
-
 
 class TestLaminarSpanExporterOtel:
     """Test LaminarSpanExporter with OTEL configuration."""
@@ -98,16 +72,14 @@ class TestLaminarSpanExporterOtel:
             {
                 "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://custom-endpoint:4318",
                 "OTEL_EXPORTER_OTLP_TRACES_HEADERS": "Authorization=Bearer%20test-token",
-                "OTEL_EXPORTER_OTLP_TRACES_TIMEOUT": "45",
                 "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "http/protobuf",
             },
             clear=True,
         ):
-            exporter = LaminarSpanExporter(use_otel_config=True)
+            exporter = LaminarSpanExporter()
 
             assert exporter.endpoint == "http://custom-endpoint:4318"
             assert exporter.headers == {"Authorization": "Bearer test-token"}
-            assert exporter.timeout == 45
             assert exporter.force_http is True
 
     def test_otel_config_defaults(self):
@@ -115,7 +87,7 @@ class TestLaminarSpanExporterOtel:
         with patch.dict(
             os.environ, {"OTEL_ENDPOINT": "http://simple-endpoint"}, clear=True
         ):
-            exporter = LaminarSpanExporter(use_otel_config=True)
+            exporter = LaminarSpanExporter()
 
             assert exporter.endpoint == "http://simple-endpoint"
             assert exporter.headers == {}
@@ -132,15 +104,9 @@ class TestLaminarSpanExporterOtel:
             },
             clear=True,
         ):
-            exporter = LaminarSpanExporter(use_otel_config=True)
+            exporter = LaminarSpanExporter()
 
             assert exporter.force_http is False
-
-    def test_otel_config_missing_endpoint(self):
-        """Test OTEL config fails when endpoint is missing."""
-        with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(ValueError, match="OTEL endpoint not configured"):
-                LaminarSpanExporter(use_otel_config=True)
 
     def test_laminar_config_initialization(self):
         """Test traditional Laminar config still works."""
@@ -176,22 +142,7 @@ class TestLaminarOtelInitialization:
             mock_init.assert_called_once()
             call_kwargs = mock_init.call_args[1]
             assert call_kwargs["project_api_key"] == "test-key"
-            assert call_kwargs["use_otel_config"] is False
-
-    def test_otel_initialization_when_conditions_met(self):
-        """Test OTEL initialization when no Laminar config and OTEL endpoint exists."""
-        with patch.dict(
-            os.environ,
-            {"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://custom-endpoint:4318"},
-            clear=True,
-        ):
-            with patch("lmnr.opentelemetry_lib.TracerManager.init") as mock_init:
-                Laminar.initialize()
-
-                mock_init.assert_called_once()
-                call_kwargs = mock_init.call_args[1]
-                assert call_kwargs["use_otel_config"] is True
-                assert call_kwargs["project_api_key"] is None
+            assert call_kwargs["base_url"] is None
 
     def test_laminar_config_takes_precedence(self):
         """Test Laminar config takes precedence over OTEL config."""
@@ -208,8 +159,7 @@ class TestLaminarOtelInitialization:
 
                 mock_init.assert_called_once()
                 call_kwargs = mock_init.call_args[1]
-                assert call_kwargs["use_otel_config"] is False
-                assert call_kwargs["project_api_key"] == "laminar-key"
+                assert call_kwargs["base_url"] is None
 
     def test_base_url_param_prevents_otel_config(self):
         """Test that providing base_url parameter prevents OTEL config."""
@@ -226,7 +176,7 @@ class TestLaminarOtelInitialization:
 
                 mock_init.assert_called_once()
                 call_kwargs = mock_init.call_args[1]
-                assert call_kwargs["use_otel_config"] is False
+                assert call_kwargs["base_url"] == "https://custom.lmnr.ai"
 
     def test_error_when_no_config_available(self):
         """Test error when neither Laminar nor OTEL config is available."""
@@ -248,8 +198,8 @@ class TestLaminarOtelInitialization:
 
                 mock_init.assert_called_once()
                 call_kwargs = mock_init.call_args[1]
-                assert call_kwargs["use_otel_config"] is False
                 assert call_kwargs["project_api_key"] == "explicit-key"
+                assert call_kwargs["base_url"] is None
 
 
 class TestOtelConfigIntegration:
@@ -280,29 +230,4 @@ class TestOtelConfigIntegration:
                 # Verify TracerManager.init was called with OTEL config
                 mock_init.assert_called_once()
                 call_kwargs = mock_init.call_args[1]
-                assert call_kwargs["use_otel_config"] is True
-
-    def test_mixed_otel_env_vars(self):
-        """Test with mixed OTEL environment variable precedence."""
-        with patch.dict(
-            os.environ,
-            {
-                "OTEL_ENDPOINT": "http://generic-otel:4318",
-                "OTEL_EXPORTER_OTLP_ENDPOINT": "http://otlp-specific:4318",
-                "OTEL_EXPORTER_OTLP_TRACES_HEADERS": "Authorization=Bearer%20traces-token",
-                "OTEL_EXPORTER_OTLP_TIMEOUT": "30",
-                "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "http/json",
-            },
-            clear=True,
-        ):
-
-            exporter = LaminarSpanExporter(use_otel_config=True)
-
-            # Should use OTLP-specific endpoint over generic
-            assert exporter.endpoint == "http://otlp-specific:4318"
-            # Should use traces-specific headers
-            assert exporter.headers == {"Authorization": "Bearer traces-token"}
-            # Should use OTLP-specific timeout
-            assert exporter.timeout == 30
-            # Should use traces-specific protocol
-            assert exporter.force_http is True
+                assert call_kwargs["base_url"] is None

@@ -41,7 +41,6 @@ class LaminarSpanProcessor(SpanProcessor):
         max_export_batch_size: int = 64,
         disable_batch: bool = False,
         exporter: SpanExporter | None = None,
-        use_otel_config: bool = False,
     ):
         self.logger = get_default_logger(__name__)
         self.max_export_batch_size = max_export_batch_size
@@ -51,7 +50,6 @@ class LaminarSpanProcessor(SpanProcessor):
             api_key=api_key,
             timeout_seconds=timeout_seconds,
             force_http=force_http,
-            use_otel_config=use_otel_config,
         )
         self.instance = (
             SimpleSpanProcessor(self.exporter)

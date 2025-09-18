@@ -23,7 +23,7 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
 )
 from lmnr.opentelemetry_lib import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 from lmnr.opentelemetry_lib.decorators import json_dumps
-from lmnr.sdk.utils import should_use_otel_config
+from lmnr.sdk.utils import get_otel_env_var
 
 from opentelemetry import trace
 from opentelemetry import context as context_api
@@ -143,11 +143,11 @@ class Laminar:
 
         cls.__project_api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
 
-        use_otel_config = (
-            should_use_otel_config() and not cls.__project_api_key and not base_url
-        )
-
-        if not cls.__project_api_key and not use_otel_config:
+        if (
+            not cls.__project_api_key
+            and not get_otel_env_var("ENDPOINT")
+            and not get_otel_env_var("HEADERS")
+        ):
             raise ValueError(
                 "Please initialize the Laminar object with"
                 " your project API key or set the LMNR_PROJECT_API_KEY"
@@ -156,14 +156,15 @@ class Laminar:
 
         cls._initialize_logger()
 
-        url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
-        url = url.rstrip("/")
-        if not url.startswith("http:") and not url.startswith("https:"):
-            url = f"https://{url}"
-        if match := re.search(r":(\d{1,5})$", url):
-            url = url[: -len(match.group(0))]
-            cls.__logger.info(f"Ignoring port in base URL: {match.group(1)}")
-        http_url = base_http_url or url
+        url = base_url or from_env("LMNR_BASE_URL")
+        if url:
+            url = url.rstrip("/")
+            if not url.startswith("http:") and not url.startswith("https:"):
+                url = f"https://{url}"
+            if match := re.search(r":(\d{1,5})$", url):
+                url = url[: -len(match.group(0))]
+                cls.__logger.info(f"Ignoring port in base URL: {match.group(1)}")
+        http_url = base_http_url or url or "https://api.lmnr.ai"
         if not http_url.startswith("http:") and not http_url.startswith("https:"):
             http_url = f"https://{http_url}"
         if match := re.search(r":(\d{1,5})$", http_url):
@@ -197,7 +198,6 @@ class Laminar:
             set_global_tracer_provider=set_global_tracer_provider,
             otel_logger_level=otel_logger_level,
             session_recording_options=session_recording_options,
-            use_otel_config=use_otel_config,
         )
 
     @classmethod
