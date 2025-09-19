@@ -69,7 +69,7 @@ class TracerWrapper(object):
         # Silence some opentelemetry warnings
         logging.getLogger("opentelemetry.trace").setLevel(otel_logger_level)
 
-        base_http_url = f"{base_url}:{http_port}"
+        base_http_url = f"{base_url}:{http_port}" if base_url else None
         with cls._lock:
             if not hasattr(cls, "instance"):
                 cls._initialize_logger(cls)
