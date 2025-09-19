@@ -91,6 +91,9 @@ class BrowserUseSessionInstrumentorInitializer(InstrumentorInitializer):
         if version and parse(version) >= parse("0.6.0rc1"):
             from lmnr.sdk.browser.browser_use_cdp_otel import BrowserUseInstrumentor
 
+            if async_client is None:
+                return None
+
             return BrowserUseInstrumentor(async_client)
 
         return None
@@ -348,6 +351,9 @@ class PatchrightInstrumentorInitializer(InstrumentorInitializer):
 
         from lmnr.sdk.browser.patchright_otel import PatchrightInstrumentor
 
+        if client is None and async_client is None:
+            return None
+
         return PatchrightInstrumentor(client, async_client)
 
 
@@ -371,6 +377,9 @@ class PlaywrightInstrumentorInitializer(InstrumentorInitializer):
             return None
 
         from lmnr.sdk.browser.playwright_otel import PlaywrightInstrumentor
+
+        if client is None and async_client is None:
+            return None
 
         return PlaywrightInstrumentor(client, async_client)
 

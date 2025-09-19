@@ -130,6 +130,57 @@ def is_otel_attribute_value_type(value: typing.Any) -> bool:
     return False
 
 
+def get_otel_env_var(var_name: str) -> str | None:
+    """Get OTEL environment variable with priority order.
+
+    Checks in order:
+    1. OTEL_EXPORTER_OTLP_TRACES_{var_name}
+    2. OTEL_EXPORTER_OTLP_{var_name}
+    3. OTEL_{var_name}
+
+    Args:
+        var_name: The variable name (e.g., 'ENDPOINT', 'HEADERS', 'TIMEOUT')
+
+    Returns:
+        str | None: The environment variable value or None if not found
+    """
+    candidates = [
+        f"OTEL_EXPORTER_OTLP_TRACES_{var_name}",
+        f"OTEL_EXPORTER_OTLP_{var_name}",
+        f"OTEL_{var_name}",
+    ]
+
+    for candidate in candidates:
+        if value := from_env(candidate):
+            return value
+    return None
+
+
+def parse_otel_headers(headers_str: str | None) -> dict[str, str]:
+    """Parse OTEL headers string into dictionary.
+
+    Format: key1=value1,key2=value2
+    Values are URL-decoded.
+
+    Args:
+        headers_str: Headers string in OTEL format
+
+    Returns:
+        dict[str, str]: Parsed headers dictionary
+    """
+    if not headers_str:
+        return {}
+
+    headers = {}
+    for pair in headers_str.split(","):
+        if "=" in pair:
+            key, value = pair.split("=", 1)
+            import urllib.parse
+
+            headers[key.strip()] = urllib.parse.unquote(value.strip())
+    return headers
+
+
 def format_id(id_value: str | int | uuid.UUID) -> str:
     """Format trace/span/evaluation ID to a UUID string, or return valid UUID strings as-is.
 
