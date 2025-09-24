@@ -24,6 +24,7 @@ class Instruments(Enum):
     CREWAI = "crewai"
     CUA_AGENT = "cua_agent"
     CUA_COMPUTER = "cua_computer"
+    EXA = "exa"
     GOOGLE_GENAI = "google_genai"
     GROQ = "groq"
     HAYSTACK = "haystack"
@@ -71,6 +72,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.CREWAI: initializers.CrewAIInstrumentorInitializer(),
     Instruments.CUA_AGENT: initializers.CuaAgentInstrumentorInitializer(),
     Instruments.CUA_COMPUTER: initializers.CuaComputerInstrumentorInitializer(),
+    Instruments.EXA: initializers.ExaInstrumentorInitializer(),
     Instruments.GOOGLE_GENAI: initializers.GoogleGenAIInstrumentorInitializer(),
     Instruments.GROQ: initializers.GroqInstrumentorInitializer(),
     Instruments.HAYSTACK: initializers.HaystackInstrumentorInitializer(),
