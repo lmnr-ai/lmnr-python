@@ -225,7 +225,7 @@ def observe_base(
                 detach_context(isolated_ctx_token)
             # span will be ended in the generator
             if isinstance(res, types.GeneratorType):
-                return _handle_generator(span, ctx_token, res)
+                return _handle_generator(span, wrapper, res)
             if isinstance(res, types.AsyncGeneratorType):
                 # async def foo() -> AsyncGenerator[int, None]:
                 # is not considered async in a classical sense in Python,
@@ -234,7 +234,7 @@ def observe_base(
                 # Flags are listed from LSB here:
                 # https://docs.python.org/3/library/inspect.html#inspect-module-co-flags
                 # See also: https://groups.google.com/g/python-tulip/c/6rWweGXLutU?pli=1
-                return _ahandle_generator(span, ctx_token, res)
+                return _ahandle_generator(span, wrapper, res)
 
             _process_output(span, res, ignore_output, output_formatter)
             _cleanup_span(span, wrapper)
@@ -306,7 +306,7 @@ def async_observe_base(
             if isinstance(res, types.AsyncGeneratorType):
                 # probably unreachable, read the comment in the similar
                 # part of the sync wrapper.
-                return await _ahandle_generator(span, ctx_token, res)
+                return await _ahandle_generator(span, wrapper, res)
 
             _process_output(span, res, ignore_output, output_formatter)
             _cleanup_span(span, wrapper)
@@ -317,18 +317,37 @@ def async_observe_base(
     return decorate
 
 
-def _handle_generator(span: Span, wrapper: TracerWrapper, res: Generator):
+def _handle_generator(
+    span: Span,
+    wrapper: TracerWrapper,
+    res: Generator,
+    ignore_output: bool = False,
+    output_formatter: Callable[..., str] | None = None,
+):
+    results = []
     try:
-        yield from res
+        for part in res:
+            results.append(part)
+            yield part
     finally:
+        _process_output(span, results, ignore_output, output_formatter)
         _cleanup_span(span, wrapper)
 
 
-async def _ahandle_generator(span: Span, wrapper: TracerWrapper, res: AsyncGenerator):
+async def _ahandle_generator(
+    span: Span,
+    wrapper: TracerWrapper,
+    res: AsyncGenerator,
+    ignore_output: bool = False,
+    output_formatter: Callable[..., str] | None = None,
+):
+    results = []
     try:
         async for part in res:
+            results.append(part)
             yield part
     finally:
+        _process_output(span, results, ignore_output, output_formatter)
         _cleanup_span(span, wrapper)
 
 
