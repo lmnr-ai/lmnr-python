@@ -1121,3 +1121,38 @@ async def test_observe_preserve_global_context_async(
 
     assert preserve_span.parent.span_id == outer_span.get_span_context().span_id
     assert isolated_span.parent is None
+
+
+def test_observe_simple_generator(span_exporter: InMemorySpanExporter):
+    @observe()
+    def observed_foo():
+        yield "foo"
+        yield "bar"
+
+    results = [r for r in observed_foo()]
+    assert results == ["foo", "bar"]
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "observed_foo"
+    assert json.loads(spans[0].attributes["lmnr.span.output"]) == ["foo", "bar"]
+    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
+
+
+@pytest.mark.asyncio
+async def test_observe_simple_generator_async(span_exporter: InMemorySpanExporter):
+    @observe()
+    async def observed_foo():
+        yield "foo"
+        yield "bar"
+
+    results = [r async for r in observed_foo()]
+    assert results == ["foo", "bar"]
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "observed_foo"
+    assert json.loads(spans[0].attributes["lmnr.span.output"]) == ["foo", "bar"]
+    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
