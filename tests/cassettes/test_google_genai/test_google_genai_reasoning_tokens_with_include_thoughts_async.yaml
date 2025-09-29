@@ -1,0 +1,69 @@
+interactions:
+- request:
+    body: '{"contents": [{"parts": [{"text": "How many times does the letter ''r''
+      appear in the word strawberry?"}], "role": "user"}], "systemInstruction": {"parts":
+      [{"text": "Think deep and thoroughly step by step."}], "role": "user"}, "generationConfig":
+      {"thinkingConfig": {"includeThoughts": true, "thinkingBudget": 512}}}'
+    headers:
+      Content-Type:
+      - application/json
+      user-agent:
+      - google-genai-sdk/1.34.0 gl-python/3.13.5
+      x-goog-api-client:
+      - google-genai-sdk/1.34.0 gl-python/3.13.5
+    method: post
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent
+  response:
+    body:
+      string: "{\n  \"candidates\": [\n    {\n      \"content\": {\n        \"parts\":
+        [\n          {\n            \"text\": \"**Breaking Down the Letter Count in
+        \\\"Strawberry\\\"**\\n\\nOkay, so the challenge is clear: figure out how
+        many times the letter 'r' appears in the word \\\"strawberry\\\".  That's
+        straightforward enough. Let's break it down methodically.\\n\\nFirst, I need
+        to isolate the target: \\\"strawberry\\\" is the word in question, and 'r'
+        is the character we're focusing on.  Now, the simplest approach is just a
+        direct scan.  I'll go through the word, character by character, and increment
+        a counter every time I hit an 'r'.\\n\\n*   s... nope.\\n*   t... not there.\\n*
+        \  **r** ... one!\\n*   a... keep moving.\\n*   w... no 'r' here.\\n*   b...
+        still searching.\\n*   e... almost there...\\n*   **r** ... two!\\n*   **r**
+        ... three!\\n*   y... and we're done.\\n\\nAlright, that's it. It's a quick,
+        manual count, but effective.  The final, definitive answer is: The letter
+        'r' appears 3 times in the word \\\"strawberry\\\".  Easy peasy.\\n\",\n            \"thought\":
+        true\n          },\n          {\n            \"text\": \"Let's count them:\\n\\ns
+        - t - **r** - a - w - b - e - **r** - **r** - y\\n\\nThe letter 'r' appears
+        **3** times in the word \\\"strawberry\\\".\"\n          }\n        ],\n        \"role\":
+        \"model\"\n      },\n      \"finishReason\": \"STOP\",\n      \"index\": 0\n
+        \   }\n  ],\n  \"usageMetadata\": {\n    \"promptTokenCount\": 25,\n    \"candidatesTokenCount\":
+        49,\n    \"totalTokenCount\": 246,\n    \"promptTokensDetails\": [\n      {\n
+        \       \"modality\": \"TEXT\",\n        \"tokenCount\": 25\n      }\n    ],\n
+        \   \"thoughtsTokenCount\": 172\n  },\n  \"modelVersion\": \"gemini-2.5-flash-lite\",\n
+        \ \"responseId\": \"MoXaaLGnAaiE7M8P3q6RsQM\"\n}\n"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Mon, 29 Sep 2025 13:10:10 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=2777
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1

@@ -272,6 +272,16 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
 
     if response.usage_metadata:
         usage_dict = to_dict(response.usage_metadata)
+        candidates_token_count = usage_dict.get("candidates_token_count")
+        # unlike OpenAI, and unlike input cached tokens, thinking tokens are
+        # not counted as part of candidates token count, so we need to add them
+        # separately for consistency with other instrumentations
+        thoughts_token_count = usage_dict.get("thoughts_token_count")
+        output_token_count = (
+            (candidates_token_count or 0) + (thoughts_token_count or 0)
+            if candidates_token_count is not None or thoughts_token_count is not None
+            else None
+        )
         set_span_attribute(
             span,
             gen_ai_attributes.GEN_AI_USAGE_INPUT_TOKENS,
@@ -280,7 +290,7 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
         set_span_attribute(
             span,
             gen_ai_attributes.GEN_AI_USAGE_OUTPUT_TOKENS,
-            usage_dict.get("candidates_token_count"),
+            output_token_count,
         )
         set_span_attribute(
             span,
@@ -291,6 +301,11 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
             span,
             SpanAttributes.LLM_USAGE_CACHE_READ_INPUT_TOKENS,
             usage_dict.get("cached_content_token_count"),
+        )
+        set_span_attribute(
+            span,
+            SpanAttributes.LLM_USAGE_REASONING_TOKENS,
+            thoughts_token_count,
         )
 
     if should_send_prompts():

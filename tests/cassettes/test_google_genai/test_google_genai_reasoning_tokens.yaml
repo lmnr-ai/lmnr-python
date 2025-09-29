@@ -1,0 +1,64 @@
+interactions:
+- request:
+    body: '{"contents": [{"parts": [{"text": "How many times does the letter ''r''
+      appear in the word strawberry?"}], "role": "user"}], "systemInstruction": {"parts":
+      [{"text": "Think deep and thoroughly step by step."}], "role": "user"}, "generationConfig":
+      {"thinkingConfig": {"thinkingBudget": 512}}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '290'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - google-genai-sdk/1.34.0 gl-python/3.13.5
+      x-goog-api-client:
+      - google-genai-sdk/1.34.0 gl-python/3.13.5
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/2VR32vCMBB+718R8iIUK5ubm/NtbHtwKBOtY7DuIdrTZrZJSa6oiP/7LtZqywKX
+        hPu++/XdwWOML4WKZSwQLB+wb/IwdjjdDtMKQSEBlYucuTB45ZbnUPsTBWHngvgIsGXZUhcKGSaQ
+        DSIVKcsChmS+b3yfXkG2JVuQQc1fvXsXFCbAUkAEw1qmxUSegzCWOHfEQZmBZVK5GmyrTcwibtGI
+        7QKM2Ue8w2vtHS//n/Z1KKNTcB1nOoa0oh8rAl9JJW0yBWG1crRZ+DHhF1SqGHbkvvGqAqfUvLBi
+        DWNAQfKKi4g8NzrLMdQbUC9OGkK6vTJZbRsN/P7pjKNGkTZDH7rtf3ntK1WVaX1NtQ3SkCKVuHeT
+        hG9fIa8Jgc22KiW8mmAcE12sE2y2eNvve2fJShU/wVhZyrWGjAQMup1esEqFTQKqDqeq3IDNtbIw
+        jB1xOgyFGP/O3x8LtYnnk/4I7OyZe0fvD6OyUt2sAgAA
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Mon, 29 Sep 2025 13:06:12 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=707
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1
