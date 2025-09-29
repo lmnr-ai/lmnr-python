@@ -1,0 +1,68 @@
+interactions:
+- request:
+    body: '{"contents":[{"role":"user","parts":[{"text":"How many times does the letter
+      ''r'' appear in the word strawberry?"}]}],"system_instruction":{"parts":[{"text":"Think
+      deep and thoroughly step by step."}]},"generationConfig":{"thinkingConfig":{"includeThoughts":true,"thinkingBudget":512}}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '285'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - litellm/1.77.1
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/4VUXU/bMBR976+4y0ulKI2mln3QPSEGG9IYDKpp0jpNbnKbeHXsYDuEDPHfd2/S
+        lrQghmTq+H6e4+N7PwAIEqFTmQqPLpjCTzoBuG//s81oj9qTYXNEh6Ww/tG3+7vv7cnF4x0HBWF4
+        pIVq/kqdgc8RTi3eVKiTBswSBHxB79GG4VzP9cVKNBE4A2egEVPwBpYyqyyCqTzkpoZC6Aa8LNC1
+        uVQbDEM7BEdmB1UJUrem2tgU5oHzVtQLtLaJ5wGc+aGjmnwos9wvja0FuZXWLBQWEVgUSjUxnErr
+        fARnQ6WgpISpqbusXtgM/fT5ClSAeNxrLGZgMzpaoPMgSqolkhxyJFTSQaJQWNVAKi0mHhJTaU9M
+        xfDVbDkwt2gTU5RKJnRFlJ8cHNTS59RwVilhAe9Ki85Jox0YSxQWCEvBJAuVGUuuxQcOdFxzIZxM
+        oBTcoqYUicm09BQb820Ahf6pqFdHqqAYa6osfwR8K13FJLVQV4glEP5k1cK8Nh2uGiEzU+YGPFgi
+        vIYFIO0sEEmta0gSGbohjECbEtfffu/b8neDLqLygq/OaIzXNtH5rr/qvcjFjhWfy+u5VZaDNrzd
+        1vC1ift+jPOJT24RX629mi57C+tIWRZW1PK1lCT87kqZ9jYohhnXJeVhtC9hEgeJwcFkrfCXlHwt
+        SQ/YNkcPNFGVk7fMTRDtvcKcr48forcV9mwP0f+fLqmBwHYAqJNiyhAdc0crDOnVMj+0aloLWtg7
+        3/w2mwfwDNIwnJDPy2hJMEG/7+3+1yOCwBqF3HFhUlQb9y3EgG5CuvwKhTOa3a5nF5dbpgKpU7yj
+        49eDTYE2dVA5keE5ekGTUWznX0AvuCj9zKxQHzM1ZBkfdMl6g3THfnC4tnvjhdoNPXwbPcnrPlJV
+        qfoTtjd8CaRQ0jeMZHbyY9a7cyqw09aGiUGPsI0mdlscjyeDNWUdi9/R8jzhIhkWROBoHL8ZLZVw
+        +YiqY1s1oKlT0tDBs5Qdjw9+C3HxefxJyJN35+8vJzdvr9y382DwMPgHAjzTXWgGAAA=
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Mon, 29 Sep 2025 13:52:11 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=3030
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1

@@ -1,0 +1,82 @@
+interactions:
+- request:
+    body: '{"contents": [{"role": "user", "parts": [{"text": "How many times does
+      the letter ''r'' appear in the word strawberry?"}]}], "system_instruction":
+      {"parts": [{"text": "Think deep and thoroughly step by step."}]}, "generationConfig":
+      {"thinkingConfig": {"includeThoughts": true, "thinkingBudget": 512}}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '300'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - litellm/1.77.1
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?alt=sse
+  response:
+    body:
+      string: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"**Calculating
+        Letter Frequency**\\n\\nI've zeroed in on the core question: figuring out
+        how many times the letter 'r' shows up in \\\"strawberry.\\\" The target is
+        clear, and I'm now moving forward to count that letter. The next step is to
+        examine the word letter by letter, to see the r's!\\n\\n\\n\",\"thought\":
+        true}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\":
+        24,\"totalTokenCount\": 96,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        24}],\"thoughtsTokenCount\": 72},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\":
+        \"dpDaaLL7BsjtkdUPlInyiAM\"}\r\n\r\ndata: {\"candidates\": [{\"content\":
+        {\"parts\": [{\"text\": \"**Pinpointing The Final Count**\\n\\nI've made swift
+        progress. I successfully broke down \\\"strawberry\\\" letter by letter. I
+        identified all the instances of 'r', meticulously keeping a running tally.
+        Now I'm ready to declare the precise frequency of 'r' within the word.\\n\\n\\n\",\"thought\":
+        true}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\":
+        24,\"totalTokenCount\": 211,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        24}],\"thoughtsTokenCount\": 187},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\":
+        \"dpDaaLL7BsjtkdUPlInyiAM\"}\r\n\r\ndata: {\"candidates\": [{\"content\":
+        {\"parts\": [{\"text\": \"Let's count the letter 'r' in the word \\\"strawberry\\\":\\n\\ns
+        - t - **r** - a - w - b - e - **r** - **r** - y\\n\\nThe letter 'r' appears
+        **\"}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\":
+        24,\"candidatesTokenCount\": 47,\"totalTokenCount\": 258,\"promptTokensDetails\":
+        [{\"modality\": \"TEXT\",\"tokenCount\": 24}],\"thoughtsTokenCount\": 187},\"modelVersion\":
+        \"gemini-2.5-flash-lite\",\"responseId\": \"dpDaaLL7BsjtkdUPlInyiAM\"}\r\n\r\ndata:
+        {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"3** times.\"}],\"role\":
+        \"model\"},\"finishReason\": \"STOP\",\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\":
+        24,\"candidatesTokenCount\": 51,\"totalTokenCount\": 262,\"promptTokensDetails\":
+        [{\"modality\": \"TEXT\",\"tokenCount\": 24}],\"thoughtsTokenCount\": 187},\"modelVersion\":
+        \"gemini-2.5-flash-lite\",\"responseId\": \"dpDaaLL7BsjtkdUPlInyiAM\"}\r\n\r\n"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Disposition:
+      - attachment
+      Content-Type:
+      - text/event-stream
+      Date:
+      - Mon, 29 Sep 2025 13:58:15 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=1685
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1

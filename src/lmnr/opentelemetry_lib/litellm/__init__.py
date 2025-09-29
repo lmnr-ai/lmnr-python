@@ -406,7 +406,15 @@ try:
                         details.get("cached_tokens"),
                     )
                 # TODO: add audio/image/text token details
-            # TODO: add completion tokens details (reasoning tokens)
+            if usage_dict.get("completion_tokens_details"):
+                details = usage_dict.get("completion_tokens_details", {})
+                details = model_as_dict(details)
+                if details.get("reasoning_tokens"):
+                    set_span_attribute(
+                        span,
+                        "gen_ai.usage.reasoning_tokens",
+                        details.get("reasoning_tokens"),
+                    )
 
         def _process_tool_calls(self, span, tool_calls, choice_index, is_response=True):
             """Process and set tool call attributes on the span"""
@@ -467,17 +475,56 @@ try:
                 content = message.get("content", "")
                 if content is None:
                     continue
+                reasoning_content = message.get("reasoning_content")
+                if reasoning_content:
+                    if isinstance(reasoning_content, str):
+                        reasoning_content = [
+                            {
+                                "type": "text",
+                                "text": reasoning_content,
+                            }
+                        ]
+                    elif not isinstance(reasoning_content, list):
+                        reasoning_content = [
+                            {
+                                "type": "text",
+                                "text": str(reasoning_content),
+                            }
+                        ]
+                else:
+                    reasoning_content = []
                 if isinstance(content, str):
-                    set_span_attribute(span, f"gen_ai.completion.{i}.content", content)
+                    if reasoning_content:
+                        set_span_attribute(
+                            span,
+                            f"gen_ai.completion.{i}.content",
+                            json.dumps(
+                                reasoning_content
+                                + [
+                                    {
+                                        "type": "text",
+                                        "text": content,
+                                    }
+                                ]
+                            ),
+                        )
+                    else:
+                        set_span_attribute(
+                            span,
+                            f"gen_ai.completion.{i}.content",
+                            content,
+                        )
                 elif isinstance(content, list):
                     set_span_attribute(
-                        span, f"gen_ai.completion.{i}.content", json.dumps(content)
+                        span,
+                        f"gen_ai.completion.{i}.content",
+                        json.dumps(reasoning_content + content),
                     )
                 else:
                     set_span_attribute(
                         span,
                         f"gen_ai.completion.{i}.content",
-                        json.dumps(model_as_dict(content)),
+                        json.dumps(reasoning_content + [model_as_dict(content)]),
                     )
 
         def _process_content_part(self, content_part: dict) -> dict:

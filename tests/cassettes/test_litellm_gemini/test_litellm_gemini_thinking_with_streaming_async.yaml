@@ -1,0 +1,133 @@
+interactions:
+- request:
+    body: '{"contents": [{"role": "user", "parts": [{"text": "How many times does
+      the letter ''r'' appear in the word strawberry?"}]}], "system_instruction":
+      {"parts": [{"text": "Think deep and thoroughly step by step."}]}, "generationConfig":
+      {"thinkingConfig": {"includeThoughts": true, "thinkingBudget": 512}}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '300'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - litellm/1.77.1
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?alt=sse
+  response:
+    body:
+      string: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"text\": \"**Determining
+        the Approach**\\n\\nI've zeroed in on the central issue: figuring out how
+        many times 'r' appears in \\\"strawberry\\\". First, I need to pinpoint the
+        target word and letter. Now, the next logical step is to scan the word character
+        by character, counting each instance of the letter 'r'. This appears to be
+        a basic search operation that can be done using a counting variable and iteration.\\n\\n\\n\",\"thought\":
+        true}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\":
+        24,\"totalTokenCount\": 95,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        24}],\"thoughtsTokenCount\": 71},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\":
+        \"7ZLaaPHtG6nr7M8Pz-j9wA4\"}\r\n\r\ndata: {\"candidates\": [{\"content\":
+        {\"parts\": [{\"text\": \"**Counting the Instances**\\n\\nI've determined
+        the answer, the character 'r' appears three times in the word \\\"strawberry\\\".
+        I achieved this by meticulously scanning the word, character by character,
+        and incrementing a counter each time I encountered the letter 'r'. I've confirmed
+        that counting three times provides an accurate count.\\n\\n\\n\",\"thought\":
+        true}],\"role\": \"model\"},\"index\": 0}],\"usageMetadata\": {\"promptTokenCount\":
+        24,\"totalTokenCount\": 236,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        24}],\"thoughtsTokenCount\": 212},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\":
+        \"7ZLaaPHtG6nr7M8Pz-j9wA4\"}\r\n\r\ndata: {\"candidates\": [{\"content\":
+        {\"parts\": [{\"text\": \"Let's count them:\\n\\nS - t - **r** - a - w - b
+        - e - **r** - **r** - y\\n\\nThe letter 'r' appears **3** times in the word
+        \\\"strawberry\\\".\"}],\"role\": \"model\"},\"finishReason\": \"STOP\",\"index\":
+        0}],\"usageMetadata\": {\"promptTokenCount\": 24,\"candidatesTokenCount\":
+        47,\"totalTokenCount\": 283,\"promptTokensDetails\": [{\"modality\": \"TEXT\",\"tokenCount\":
+        24}],\"thoughtsTokenCount\": 212},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\":
+        \"7ZLaaPHtG6nr7M8Pz-j9wA4\"}\r\n\r\n"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Disposition:
+      - attachment
+      Content-Type:
+      - text/event-stream
+      Date:
+      - Mon, 29 Sep 2025 14:08:46 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=1132
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"contents": [{"role": "user", "parts": [{"text": "How many times does
+      the letter ''r'' appear in the word strawberry?"}]}], "system_instruction":
+      {"parts": [{"text": "Think deep and thoroughly step by step."}]}, "generationConfig":
+      {"thinkingConfig": {"includeThoughts": true, "thinkingBudget": 512}}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '300'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - litellm/1.77.1
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?alt=sse
+  response:
+    body:
+      string: ''
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Disposition:
+      - attachment
+      Content-Type:
+      - text/event-stream
+      Date:
+      - Mon, 29 Sep 2025 14:08:46 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=1132
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1
