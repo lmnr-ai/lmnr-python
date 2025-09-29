@@ -572,6 +572,218 @@ def test_google_genai_output_json_schema(span_exporter: InMemorySpanExporter):
     )
 
 
+@pytest.mark.vcr
+def test_google_genai_reasoning_tokens(span_exporter: InMemorySpanExporter):
+    client = Client(api_key="123")
+    response = client.models.generate_content(
+        model="gemini-2.5-flash-lite",
+        contents=[
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "text": "How many times does the letter 'r' appear in the word strawberry?"
+                    },
+                ],
+            }
+        ],
+        config=types.GenerateContentConfig(
+            system_instruction={"text": "Think deep and thoroughly step by step."},
+            thinking_config=types.ThinkingConfig(thinking_budget=512),
+        ),
+    )
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "gemini.generate_content"
+    assert (
+        spans[0].attributes["gen_ai.usage.reasoning_tokens"]
+        == response.usage_metadata.thoughts_token_count
+    )
+    assert (
+        spans[0].attributes["gen_ai.usage.output_tokens"]
+        == response.usage_metadata.candidates_token_count
+        + response.usage_metadata.thoughts_token_count
+    )
+    assert (
+        spans[0].attributes["gen_ai.usage.input_tokens"]
+        == response.usage_metadata.prompt_token_count
+    )
+    assert (
+        spans[0].attributes["llm.usage.total_tokens"]
+        == response.usage_metadata.total_token_count
+    )
+    assert (
+        spans[0].attributes["llm.usage.total_tokens"]
+        == spans[0].attributes["gen_ai.usage.input_tokens"]
+        + spans[0].attributes["gen_ai.usage.output_tokens"]
+    )
+
+
+@pytest.mark.vcr
+def test_google_genai_reasoning_tokens_with_include_thoughts(
+    span_exporter: InMemorySpanExporter,
+):
+    client = Client(api_key="123")
+    response = client.models.generate_content(
+        model="gemini-2.5-flash-lite",
+        contents=[
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "text": "How many times does the letter 'r' appear in the word strawberry?"
+                    },
+                ],
+            }
+        ],
+        config=types.GenerateContentConfig(
+            system_instruction={"text": "Think deep and thoroughly step by step."},
+            thinking_config=types.ThinkingConfig(
+                thinking_budget=512, include_thoughts=True
+            ),
+        ),
+    )
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "gemini.generate_content"
+    assert (
+        spans[0].attributes["gen_ai.usage.reasoning_tokens"]
+        == response.usage_metadata.thoughts_token_count
+    )
+    assert (
+        spans[0].attributes["gen_ai.usage.output_tokens"]
+        == response.usage_metadata.candidates_token_count
+        + response.usage_metadata.thoughts_token_count
+    )
+    assert (
+        spans[0].attributes["gen_ai.usage.input_tokens"]
+        == response.usage_metadata.prompt_token_count
+    )
+    assert (
+        spans[0].attributes["llm.usage.total_tokens"]
+        == response.usage_metadata.total_token_count
+    )
+    assert (
+        spans[0].attributes["llm.usage.total_tokens"]
+        == spans[0].attributes["gen_ai.usage.input_tokens"]
+        + spans[0].attributes["gen_ai.usage.output_tokens"]
+    )
+    span_output = json.loads(spans[0].attributes["gen_ai.completion.0.content"])
+    assert span_output[0]["type"] == "text"
+    assert span_output[0]["text"] == response.parts[0].text
+    assert span_output[1]["type"] == "text"
+    assert span_output[1]["text"] == response.text
+
+
+@pytest.mark.vcr(record_mode="once")
+@pytest.mark.asyncio
+async def test_google_genai_reasoning_tokens_async(span_exporter: InMemorySpanExporter):
+    client = Client(api_key="123")
+    response = await client.aio.models.generate_content(
+        model="gemini-2.5-flash-lite",
+        contents=[
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "text": "How many times does the letter 'r' appear in the word strawberry?"
+                    },
+                ],
+            }
+        ],
+        config=types.GenerateContentConfig(
+            system_instruction={"text": "Think deep and thoroughly step by step."},
+            thinking_config=types.ThinkingConfig(thinking_budget=512),
+        ),
+    )
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "gemini.generate_content"
+    assert (
+        spans[0].attributes["gen_ai.usage.reasoning_tokens"]
+        == response.usage_metadata.thoughts_token_count
+    )
+    assert (
+        spans[0].attributes["gen_ai.usage.output_tokens"]
+        == response.usage_metadata.candidates_token_count
+        + response.usage_metadata.thoughts_token_count
+    )
+    assert (
+        spans[0].attributes["gen_ai.usage.input_tokens"]
+        == response.usage_metadata.prompt_token_count
+    )
+    assert (
+        spans[0].attributes["llm.usage.total_tokens"]
+        == response.usage_metadata.total_token_count
+    )
+    assert (
+        spans[0].attributes["llm.usage.total_tokens"]
+        == spans[0].attributes["gen_ai.usage.input_tokens"]
+        + spans[0].attributes["gen_ai.usage.output_tokens"]
+    )
+
+
+@pytest.mark.vcr(record_mode="once")
+@pytest.mark.asyncio
+async def test_google_genai_reasoning_tokens_with_include_thoughts_async(
+    span_exporter: InMemorySpanExporter,
+):
+    client = Client(api_key="123")
+    response = await client.aio.models.generate_content(
+        model="gemini-2.5-flash-lite",
+        contents=[
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "text": "How many times does the letter 'r' appear in the word strawberry?"
+                    },
+                ],
+            }
+        ],
+        config=types.GenerateContentConfig(
+            system_instruction={"text": "Think deep and thoroughly step by step."},
+            thinking_config=types.ThinkingConfig(
+                thinking_budget=512, include_thoughts=True
+            ),
+        ),
+    )
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "gemini.generate_content"
+    assert (
+        spans[0].attributes["gen_ai.usage.reasoning_tokens"]
+        == response.usage_metadata.thoughts_token_count
+    )
+    assert (
+        spans[0].attributes["gen_ai.usage.output_tokens"]
+        == response.usage_metadata.candidates_token_count
+        + response.usage_metadata.thoughts_token_count
+    )
+    assert (
+        spans[0].attributes["gen_ai.usage.input_tokens"]
+        == response.usage_metadata.prompt_token_count
+    )
+    assert (
+        spans[0].attributes["llm.usage.total_tokens"]
+        == response.usage_metadata.total_token_count
+    )
+    assert (
+        spans[0].attributes["llm.usage.total_tokens"]
+        == spans[0].attributes["gen_ai.usage.input_tokens"]
+        + spans[0].attributes["gen_ai.usage.output_tokens"]
+    )
+    span_output = json.loads(spans[0].attributes["gen_ai.completion.0.content"])
+    assert span_output[0]["type"] == "text"
+    assert span_output[0]["text"] == response.parts[0].text
+    assert span_output[1]["type"] == "text"
+    assert span_output[1]["text"] == response.text
+
+
 def test_google_genai_error(span_exporter: InMemorySpanExporter):
     # Invalid key on purpose
     client = Client(api_key="123")

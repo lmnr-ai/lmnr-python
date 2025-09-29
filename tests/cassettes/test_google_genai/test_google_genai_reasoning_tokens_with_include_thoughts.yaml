@@ -1,0 +1,71 @@
+interactions:
+- request:
+    body: '{"contents": [{"parts": [{"text": "How many times does the letter ''r''
+      appear in the word strawberry?"}], "role": "user"}], "systemInstruction": {"parts":
+      [{"text": "Think deep and thoroughly step by step."}], "role": "user"}, "generationConfig":
+      {"thinkingConfig": {"includeThoughts": true, "thinkingBudget": 512}}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '315'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - google-genai-sdk/1.34.0 gl-python/3.13.5
+      x-goog-api-client:
+      - google-genai-sdk/1.34.0 gl-python/3.13.5
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/4VUUW+bMBB+z6+48hIJAdrabOr6VrWbVnVrq4ZNlZY9OHAEK2Az2xFlVf/77gxJ
+        aDptkYLBd/7uu+/u/DQBCDKhcpkLhzY4gx+0A/Dkn2zTyqFyZNhu0WYjjNv79r+n0Tu5OHzkQ0EY
+        piXC3BnRLtGYDqb3U7jQG+XCcKEW6rwyclW6CCp0UwtLg2INrpQWct2qBPj0xqKBVihnwWlYK91C
+        Sf9aqA6crJG2yYsAHPlNzRRE06AwFqTyllabHBaB3ZFYBAnMZd1UCKj0ZlUm8EkaSyyuQCHmHOY3
+        Gs0AusdYYwdYYU1a2LM9qnQWqwLiA3jaIE29m20wk4XMBn4RtKXMSqAEiWkCN7qNfBIc03bWYS2c
+        zERVdWCpMLtQCas1d6S8VCsojK69aYkrqRRtMfeV3qqw7Ia3hJl5Qko3yF/Of1knq4r2EjgvI0Yy
+        SMkQrSMvecFy9AzTUnBltKLTF9QNUm18uEUgFgEvbb8s+wVJ3CThYBHsn76QBglHKM3RGO/IY1Md
+        11zClrhcIzaUBeETxqBgf4p7wuRHcIemwMz1aujIa8Tp73RiHTLuLy5jaZDSUtYJlVEMXRx0ykCr
+        0Aa9CMTOtmSS4xoflJYnQhDmq6ajCjpRcZCTvi2JZBAdjEXJ7caT4cwGR7bn6P+z9MWPiE+Og9dn
+        LIKNXRyGJgxjEbfxMsbhq3927JL+fTrC8CQMhwH6x6QEY5a79597voHRFTK/WudYbd13CQWFVNKW
+        9yisVuw2T2/vdroEUuX4SNtvJtsAHjrYWLHCr+gEXUxid/0EDTV+41K9RuVvEbIcv+vBRvfYC/vs
+        w2D39Tk4ehq9wrWXFFVW4wtudPdRkqKSruNM0o8P6ajCFOAF9laJyUiwbQe8pPj2dDYZJOtV/I7G
+        yl6uFdYkYHycvIuLStgypujoowYGbaOVxaucHe9nqRDXl/L8/cOvdf7tztx8vp2d62DyPPkDFZMx
+        XucFAAA=
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Mon, 29 Sep 2025 13:06:15 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=2264
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1

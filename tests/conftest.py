@@ -99,5 +99,6 @@ def vcr_config():
             "api-key",
             "x-goog-api-key",
             "x-api-key",
-        ]
+        ],
+        "filter_query_parameters": ["key"],
     }

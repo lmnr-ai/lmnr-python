@@ -1,0 +1,117 @@
+interactions:
+- request:
+    body: '{"contents":[{"role":"user","parts":[{"text":"How many times does the letter
+      ''r'' appear in the word strawberry?"}]}],"system_instruction":{"parts":[{"text":"Think
+      deep and thoroughly step by step."}]},"generationConfig":{"thinkingConfig":{"includeThoughts":true,"thinkingBudget":512}}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '285'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - litellm/1.77.1
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/4VTUW/TQAx+76/w7qUsSiO6Dib6ygYaGttYI4REefAatzma3kXnq7Kq2n/Hlyxp
+        OoTIQ+T4sz9/tuP9AEAt0GQ6Q0+spvBTPAD7+h0wazwZL0DrEmeJzh9im2ffsyXE01NIUlGU5gRz
+        9TBX8NFujQdt5HPmHVaP5NxuLiFzMzd3a9zFwBa8xG+ZHFRoPNefBXkvjqEbwuLAwR1HIuQ35IcM
+        j45wLTmaIbOVSeCTduzjmqWyLgMB+pmxZEr3Ne7RrciHiOOaCdzaKobrYVEAy6w6shgKa9farGBp
+        HRAuchHGHs2CwC5D6hRYascQuQje+ByDRGvoNAaMQTgfY6AWrezJaRfpiE5OE0iD0ZHyC2sCApAj
+        qUpNa2i4ErGap4dO+21Kl2GRKEyvB1rXAq83xAnM9KYsCMjY7SpP5kbFr7aaByAs1rst9bDn+P+/
+        QrOhZoEiYjMNa2cfSctR0CmGWLvgTY81YlkSOoYomkRRozX8Av9oNVF9YZ396yBROVtQkLSxGRVt
+        eNeDWmqjOX8gZGtC2Cy9u+9GobTJ6EncbwdtgZpabRlX9JU8yilhdzCqdHZT+tSuydQHIMjZeUPW
+        u7wjfNLi3nosjlPHH+K/ePlSquqif5K9a5UmsdB+FzpJr36kvaVKgSNZ7SQGvYG1Sz+WOH4/HryM
+        rJnid3Ksm3GtaCMDHJ0l70bLAjkfSXWqqypHXFrDdJ2FwIsvN4j3+vNteXlh+Op+Yke/Z9/U4Hnw
+        B15FvimYBAAA
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Mon, 29 Sep 2025 14:08:44 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=1656
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"contents":[{"role":"user","parts":[{"text":"How many times does the letter
+      ''r'' appear in the word strawberry?"}]}],"system_instruction":{"parts":[{"text":"Think
+      deep and thoroughly step by step."}]},"generationConfig":{"thinkingConfig":{"includeThoughts":true,"thinkingBudget":512}}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '285'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - litellm/1.77.1
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent
+  response:
+    body:
+      string: ''
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Mon, 29 Sep 2025 14:08:44 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=1656
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1
