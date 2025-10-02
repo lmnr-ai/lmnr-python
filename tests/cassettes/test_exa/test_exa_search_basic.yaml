@@ -1,0 +1,53 @@
+interactions:
+- request:
+    body: '{"query": "hottest AI startups", "numResults": 2}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '49'
+      Content-Type:
+      - application/json
+      User-Agent:
+      - exa-py unknown
+    method: POST
+    uri: https://api.exa.ai/search
+  response:
+    body:
+      string: '{"requestId":"4b8f63e2c683278d21df6f597e9c6733","autopromptString":"hottest
+        AI startups","resolvedSearchType":"neural","results":[{"id":"https://www.linkedin.com/posts/jordanmazer_32-of-the-hottest-ai-startups-and-theyre-activity-7329163962439159810-wTe_","title":"32
+        of the hottest AI startups, and they''re all HIRING (foundation ...","url":"https://www.linkedin.com/posts/jordanmazer_32-of-the-hottest-ai-startups-and-theyre-activity-7329163962439159810-wTe_","publishedDate":"2025-05-16T00:00:00.000Z","author":null},{"id":"https://techcrunch.com/2025/08/27/here-are-the-33-us-ai-startups-that-have-raised-100m-or-more-in-2025/","title":"Here
+        are the 33 US AI startups that have raised $100M or more in ...","url":"https://techcrunch.com/2025/08/27/here-are-the-33-us-ai-startups-that-have-raised-100m-or-more-in-2025/","publishedDate":"2025-08-27T00:00:00.000Z","author":null}],"searchTime":617.3,"costDollars":{"total":0.005,"search":{"neural":0.005}}}'
+    headers:
+      Access-Control-Allow-Credentials:
+      - 'true'
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '957'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Mon, 15 Sep 2025 20:47:04 GMT
+      ETag:
+      - W/"3bd-c+qwCMwku8MGByhwgeHEHPcVkEo"
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains
+      Vary:
+      - Origin
+      X-Powered-By:
+      - Express
+      X-RateLimit-Limit:
+      - '9007199254740991'
+      X-RateLimit-Remaining:
+      - '9007199254740990'
+      X-RateLimit-Reset:
+      - '1757969225'
+    status:
+      code: 200
+      message: OK
+version: 1
