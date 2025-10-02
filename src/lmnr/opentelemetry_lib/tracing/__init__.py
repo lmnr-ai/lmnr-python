@@ -93,6 +93,20 @@ class TracerWrapper(object):
 
                 obj._resource = Resource(attributes=TracerWrapper.resource_attributes)
 
+                # Setup threading context inheritance and instrumentation BEFORE creating
+                # the span processor. This ensures that BatchSpanProcessor's worker thread
+                # (which is created and started in its __init__) will be properly instrumented
+                # and have the Laminar context attached.
+                obj._setup_threading_inheritance()
+
+                # Instrument threading to enable context propagation across threads.
+                # This must happen before LaminarSpanProcessor is created, so that
+                # BatchSpanProcessor's worker thread gets _lmnr_otel_context set when
+                # it calls .start() in its __init__.
+                # See the README at:
+                # https://pypi.org/project/opentelemetry-instrumentation-threading/
+                ThreadingInstrumentor().instrument()
+
                 obj._span_processor = LaminarSpanProcessor(
                     base_url=base_url,
                     api_key=project_api_key,
@@ -114,16 +128,6 @@ class TracerWrapper(object):
                 obj._tracer_provider = lmnr_provider
 
                 obj._tracer_provider.add_span_processor(obj._span_processor)
-
-                # Setup threading context inheritance
-                obj._setup_threading_inheritance()
-
-                # This is not a real instrumentation and does not generate telemetry
-                # data, but it is required to ensure that OpenTelemetry context
-                # propagation is enabled.
-                # See the README at:
-                # https://pypi.org/project/opentelemetry-instrumentation-threading/
-                ThreadingInstrumentor().instrument()
 
                 init_instrumentations(
                     tracer_provider=obj._tracer_provider,

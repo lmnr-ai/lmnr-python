@@ -12,33 +12,46 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-Instrument threading to propagate OpenTelemetry context.
+Instrument threading to propagate Laminar's isolated OpenTelemetry context.
 
 Copied from opentelemetry-instrumentation-threading at commit:
 ad2fe813abb2ab0b6e25bedeebef5041ca3189f7
 https://github.com/open-telemetry/opentelemetry-python-contrib/blob/ad2fe813abb2ab0b6e25bedeebef5041ca3189f7/instrumentation/opentelemetry-instrumentation-threading/src/opentelemetry/instrumentation/threading/__init__.py
 
-Modified to use the Laminar isolated context.
+Modified to:
+1. Use Laminar's isolated context instead of the global OpenTelemetry context
+2. Use `_lmnr_otel_context` attribute to avoid conflicts with the official
+   opentelemetry-instrumentation-threading package (which uses `_otel_context`)
+3. Include defensive `hasattr` check to handle threads started before instrumentation
+   (e.g., BatchSpanProcessor's worker thread starting before Laminar.initialize())
 
 Usage
 -----
 
 .. code-block:: python
 
-    from opentelemetry.instrumentation.threading import ThreadingInstrumentor
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.threading import ThreadingInstrumentor
 
     ThreadingInstrumentor().instrument()
 
 This library provides instrumentation for the `threading` module to ensure that
-the OpenTelemetry context is propagated across threads. It is important to note
-that this instrumentation does not produce any telemetry data on its own. It
-merely ensures that the context is correctly propagated when threads are used.
-
+Laminar's isolated OpenTelemetry context is propagated across threads. It is
+important to note that this instrumentation does not produce any telemetry data
+on its own. It merely ensures that the context is correctly propagated when threads
+are used.
 
 When instrumented, new threads created using threading.Thread, threading.Timer,
-or within futures.ThreadPoolExecutor will have the current OpenTelemetry
-context attached, and this context will be re-activated in the thread's
-run method or the executor's worker thread."
+or within futures.ThreadPoolExecutor will have the current Laminar context
+attached, and this context will be re-activated in the thread's run method or
+the executor's worker thread.
+
+Compatibility
+-------------
+
+This implementation can coexist with the official opentelemetry-instrumentation-threading
+package. Both can be instrumented simultaneously:
+- Official instrumentor manages global OpenTelemetry context via `_otel_context`
+- Laminar instrumentor manages isolated context via `_lmnr_otel_context`
 """
 
 from __future__ import annotations
@@ -67,8 +80,8 @@ if TYPE_CHECKING:
 
     R = TypeVar("R")
 
-    class HasOtelContext(Protocol):
-        _otel_context: context.Context
+    class HasLaminarContext(Protocol):
+        _lmnr_otel_context: context.Context
 
 
 class ThreadingInstrumentor(BaseInstrumentor):
@@ -143,23 +156,29 @@ class ThreadingInstrumentor(BaseInstrumentor):
     @staticmethod
     def __wrap_threading_start(
         call_wrapped: Callable[[], None],
-        instance: HasOtelContext,
+        instance: HasLaminarContext,
         args: tuple[()],
         kwargs: dict[str, Any],
     ) -> None:
-        instance._otel_context = get_current_context()
+        # Use Laminar-specific attribute name to avoid conflicts with official
+        # OpenTelemetry threading instrumentation (which uses _otel_context)
+        instance._lmnr_otel_context = get_current_context()
         return call_wrapped(*args, **kwargs)
 
     @staticmethod
     def __wrap_threading_run(
         call_wrapped: Callable[..., R],
-        instance: HasOtelContext,
+        instance: HasLaminarContext,
         args: tuple[Any, ...],
         kwargs: dict[str, Any],
     ) -> R:
         token = None
         try:
-            token = attach_context(instance._otel_context)
+            # Defensive check: only attach context if it was set by __wrap_threading_start
+            # This handles the case where a thread was started before instrumentation was applied
+            # (e.g., BatchSpanProcessor's worker thread starting before Laminar.initialize())
+            if hasattr(instance, "_lmnr_otel_context"):
+                token = attach_context(instance._lmnr_otel_context)
             return call_wrapped(*args, **kwargs)
         finally:
             if token is not None:
