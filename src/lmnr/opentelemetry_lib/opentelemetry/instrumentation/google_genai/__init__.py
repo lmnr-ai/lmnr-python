@@ -21,6 +21,7 @@ from .schema_utils import SchemaJSONEncoder, process_schema
 from .utils import (
     dont_throw,
     get_content,
+    merge_text_parts,
     process_content_union,
     process_stream_chunk,
     role_from_content_union,
@@ -403,7 +404,7 @@ def _build_from_streaming_response(
             candidates=[
                 {
                     "content": {
-                        "parts": final_parts,
+                        "parts": merge_text_parts(final_parts),
                         "role": role,
                     },
                 }
@@ -453,7 +454,7 @@ async def _abuild_from_streaming_response(
             candidates=[
                 {
                     "content": {
-                        "parts": final_parts,
+                        "parts": merge_text_parts(final_parts),
                         "role": role,
                     },
                 }

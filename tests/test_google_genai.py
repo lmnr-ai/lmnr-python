@@ -832,6 +832,62 @@ def test_google_genai_error(span_exporter: InMemorySpanExporter):
 
 
 @pytest.mark.vcr
+def test_google_genai_streaming(span_exporter: InMemorySpanExporter):
+    client = Client(api_key="123")
+
+    stream = client.models.generate_content_stream(
+        model="gemini-2.5-flash-lite",
+        contents=[
+            {
+                "role": "user",
+                "parts": [
+                    {"text": "Write a short poem about cats"},
+                ],
+            }
+        ],
+    )
+    final_response = ""
+    for chunk in stream:
+        final_response += chunk.text or ""
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.name == "gemini.generate_content_stream"
+    assert (
+        final_response
+        == """A silent stalk, a velvet paw,
+A hunter's grace, without a flaw.
+Emerald eyes, that softly gleam,
+Lost in a dream, a furry dream.
+
+A gentle purr, a rumbling sound,
+When happy hearts are to be found.
+They stretch and yawn, a lazy art,
+And steal away a human heart."""
+    )
+
+    assert json.loads(span.attributes["gen_ai.prompt.0.content"]) == [
+        {
+            "text": "Write a short poem about cats",
+            "type": "text",
+        }
+    ]
+    assert span.attributes["gen_ai.prompt.0.role"] == "user"
+    assert json.loads(span.attributes["gen_ai.completion.0.content"]) == [
+        {
+            "text": final_response,
+            "type": "text",
+        }
+    ]
+
+    assert span.attributes["gen_ai.completion.0.role"] == "model"
+    assert span.attributes["gen_ai.usage.input_tokens"] == 7
+    assert span.attributes["gen_ai.usage.output_tokens"] == 166
+    assert span.attributes["llm.usage.total_tokens"] == 175  # 173 + 2 (thinking tokens)
+
+
+@pytest.mark.vcr
 def test_google_genai_no_tokens(span_exporter: InMemorySpanExporter):
     client = Client(api_key="123")
 

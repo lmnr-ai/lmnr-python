@@ -807,3 +807,272 @@ def test_format_id_clear_behavior():
     # Invalid strings -> ValueError (no guessing)
     with pytest.raises(ValueError):
         format_id("not a uuid at all")
+
+
+# Tests for merge_text_parts function
+def test_merge_text_parts_empty_list():
+    """Test that empty list returns empty list"""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
+        merge_text_parts,
+    )
+
+    result = merge_text_parts([])
+    assert result == []
+
+
+def test_merge_text_parts_consecutive_strings():
+    """Test merging consecutive string inputs"""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
+        merge_text_parts,
+    )
+
+    parts = ["Hello ", "world", "!"]
+    result = merge_text_parts(parts)
+
+    assert len(result) == 1
+    assert result[0].text == "Hello world!"
+
+
+def test_merge_text_parts_consecutive_part_objects():
+    """Test merging consecutive Part objects with text"""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
+        merge_text_parts,
+    )
+    from google.genai import types
+
+    parts = [
+        types.Part(text="abc"),
+        types.Part(text="def"),
+        types.Part(text="ghi"),
+    ]
+    result = merge_text_parts(parts)
+
+    assert len(result) == 1
+    assert result[0].text == "abcdefghi"
+
+
+def test_merge_text_parts_consecutive_part_dicts():
+    """Test merging consecutive PartDict (dict) inputs"""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
+        merge_text_parts,
+    )
+
+    parts = [
+        {"text": "First "},
+        {"text": "second "},
+        {"text": "third"},
+    ]
+    result = merge_text_parts(parts)
+
+    assert len(result) == 1
+    assert result[0].text == "First second third"
+
+
+def test_merge_text_parts_mixed_types():
+    """Test merging with mixed input types (str, Part, dict)"""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
+        merge_text_parts,
+    )
+    from google.genai import types
+
+    parts = [
+        "Start ",
+        types.Part(text="middle "),
+        {"text": "end"},
+    ]
+    result = merge_text_parts(parts)
+
+    assert len(result) == 1
+    assert result[0].text == "Start middle end"
+
+
+def test_merge_text_parts_with_non_text_part():
+    """Test that non-text parts break the merge sequence"""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
+        merge_text_parts,
+    )
+    from google.genai import types
+
+    # Create an inline_data part (e.g., image)
+    inline_data_part = types.Part(
+        inline_data={"mime_type": "image/png", "data": b"fake_image_data"}
+    )
+
+    parts = [
+        types.Part(text="abc"),
+        types.Part(text="def"),
+        inline_data_part,
+        types.Part(text="xyz"),
+    ]
+    result = merge_text_parts(parts)
+
+    # Should result in 3 parts: merged text "abcdef", inline_data, text "xyz"
+    assert len(result) == 3
+    assert result[0].text == "abcdef"
+    assert result[1].inline_data is not None
+    assert result[2].text == "xyz"
+
+
+def test_merge_text_parts_with_function_call():
+    """Test that function call parts break the merge sequence"""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
+        merge_text_parts,
+    )
+    from google.genai import types
+
+    # Create a function call part
+    function_call_part = types.Part(
+        function_call={"name": "get_weather", "args": {"location": "Tokyo"}}
+    )
+
+    parts = [
+        types.Part(text="The weather is "),
+        function_call_part,
+        types.Part(text=" degrees."),
+    ]
+    result = merge_text_parts(parts)
+
+    # Should result in 3 parts: text, function_call, text
+    assert len(result) == 3
+    assert result[0].text == "The weather is "
+    assert result[1].function_call is not None
+    assert result[2].text == " degrees."
+
+
+def test_merge_text_parts_multiple_non_text_parts():
+    """Test multiple non-text parts with text in between"""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
+        merge_text_parts,
+    )
+    from google.genai import types
+
+    inline_data_part1 = types.Part(
+        inline_data={"mime_type": "image/png", "data": b"image1"}
+    )
+    inline_data_part2 = types.Part(
+        inline_data={"mime_type": "image/png", "data": b"image2"}
+    )
+
+    parts = [
+        types.Part(text="Text1 "),
+        types.Part(text="Text2"),
+        inline_data_part1,
+        types.Part(text="Text3"),
+        inline_data_part2,
+        types.Part(text="Text4 "),
+        types.Part(text="Text5"),
+    ]
+    result = merge_text_parts(parts)
+
+    # Should result in 5 parts:
+    # merged "Text1 Text2", image1, "Text3", image2, merged "Text4 Text5"
+    assert len(result) == 5
+    assert result[0].text == "Text1 Text2"
+    assert result[1].inline_data is not None
+    assert result[2].text == "Text3"
+    assert result[3].inline_data is not None
+    assert result[4].text == "Text4 Text5"
+
+
+def test_merge_text_parts_only_non_text_parts():
+    """Test that only non-text parts are preserved as-is"""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
+        merge_text_parts,
+    )
+    from google.genai import types
+
+    inline_data_part1 = types.Part(
+        inline_data={"mime_type": "image/png", "data": b"image1"}
+    )
+    inline_data_part2 = types.Part(
+        inline_data={"mime_type": "image/jpeg", "data": b"image2"}
+    )
+
+    parts = [inline_data_part1, inline_data_part2]
+    result = merge_text_parts(parts)
+
+    # Should result in 2 parts unchanged
+    assert len(result) == 2
+    assert result[0].inline_data is not None
+    assert result[1].inline_data is not None
+
+
+def test_merge_text_parts_single_text_part():
+    """Test that a single text part is returned as-is"""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
+        merge_text_parts,
+    )
+    from google.genai import types
+
+    parts = [types.Part(text="Single text")]
+    result = merge_text_parts(parts)
+
+    assert len(result) == 1
+    assert result[0].text == "Single text"
+
+
+def test_merge_text_parts_with_file_object():
+    """Test that File objects break the merge sequence"""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
+        merge_text_parts,
+    )
+    from google.genai import types
+
+    # Create a File object
+    file_obj = types.File(name="document.pdf", uri="gs://bucket/document.pdf")
+
+    parts = [
+        types.Part(text="Before file "),
+        types.Part(text="part"),
+        file_obj,
+        types.Part(text="After "),
+        types.Part(text="file"),
+    ]
+    result = merge_text_parts(parts)
+
+    # Should result in 3 parts: merged text, file, merged text
+    assert len(result) == 3
+    assert result[0].text == "Before file part"
+    assert isinstance(result[1], types.File)
+    assert result[2].text == "After file"
+
+
+def test_merge_text_parts_trailing_text_only():
+    """Test parts ending with text (no non-text parts)"""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
+        merge_text_parts,
+    )
+    from google.genai import types
+
+    parts = [
+        types.Part(text="Part1 "),
+        types.Part(text="Part2 "),
+        types.Part(text="Part3"),
+    ]
+    result = merge_text_parts(parts)
+
+    assert len(result) == 1
+    assert result[0].text == "Part1 Part2 Part3"
+
+
+def test_merge_text_parts_leading_non_text():
+    """Test parts starting with non-text part"""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
+        merge_text_parts,
+    )
+    from google.genai import types
+
+    inline_data_part = types.Part(
+        inline_data={"mime_type": "image/png", "data": b"image"}
+    )
+
+    parts = [
+        inline_data_part,
+        types.Part(text="Text1 "),
+        types.Part(text="Text2"),
+    ]
+    result = merge_text_parts(parts)
+
+    assert len(result) == 2
+    assert result[0].inline_data is not None
+    assert result[1].text == "Text1 Text2"
