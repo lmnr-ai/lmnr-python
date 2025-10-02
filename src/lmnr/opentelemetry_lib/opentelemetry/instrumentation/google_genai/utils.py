@@ -40,6 +40,56 @@ class ProcessChunkResult(TypedDict):
     model_version: str | None
 
 
+def merge_text_parts(
+    parts: list[types.PartDict | types.File | types.Part | str],
+) -> list[types.Part]:
+    if not parts:
+        return []
+
+    merged_parts: list[types.Part] = []
+    accumulated_text = ""
+
+    for part in parts:
+        # Handle string input - treat as text
+        if isinstance(part, str):
+            accumulated_text += part
+        # Handle File objects - they are not text, so don't merge
+        elif isinstance(part, types.File):
+            # Flush any accumulated text first
+            if accumulated_text:
+                merged_parts.append(types.Part(text=accumulated_text))
+                accumulated_text = ""
+            # Add the File as-is (wrapped in a Part if needed)
+            # Note: File objects should be passed through as-is in the original part
+            merged_parts.append(part)
+        # Handle Part and PartDict (dicts)
+        else:
+            part_dict = to_dict(part)
+
+            # Check if this is a text part
+            if part_dict.get("text") is not None:
+                accumulated_text += part_dict.get("text")
+            else:
+                # Non-text part (inline_data, function_call, etc.)
+                # Flush any accumulated text first
+                if accumulated_text:
+                    merged_parts.append(types.Part(text=accumulated_text))
+                    accumulated_text = ""
+
+                # Add the non-text part as-is
+                if isinstance(part, types.Part):
+                    merged_parts.append(part)
+                elif isinstance(part, dict):
+                    # Convert dict to Part object
+                    merged_parts.append(types.Part(**part_dict))
+
+    # Don't forget to add any remaining accumulated text
+    if accumulated_text:
+        merged_parts.append(types.Part(text=accumulated_text))
+
+    return merged_parts
+
+
 def set_span_attribute(span: Span, name: str, value: Any):
     if value is not None and value != "":
         span.set_attribute(name, value)
