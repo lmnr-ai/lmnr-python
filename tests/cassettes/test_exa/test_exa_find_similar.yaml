@@ -1,0 +1,54 @@
+interactions:
+- request:
+    body: '{"url": "https://www.techcrunch.com/", "numResults": 2}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '55'
+      Content-Type:
+      - application/json
+      User-Agent:
+      - exa-py unknown
+    method: POST
+    uri: https://api.exa.ai/findSimilar
+  response:
+    body:
+      string: '{"requestId":"b7beeabe349ba99c5e5cffba1479cafd","results":[{"id":"https://techcrunch.com/?mc_cid=4b6a15b702&mc_eid=%5BUNIQID","title":"TechCrunch
+        | Startup and Technology News","url":"https://techcrunch.com/?mc_cid=4b6a15b702&mc_eid=%5BUNIQID","publishedDate":"2024-06-14T00:00:00.000Z","author":"Devin
+        Coldewey","score":0.9343951940536499},{"id":"https://techcrunch.com/page/2/","title":"TechCrunch
+        | Page 2 of 8234 | Startup and Technology News","url":"https://techcrunch.com/page/2/","publishedDate":"2024-06-13T00:00:00.000Z","author":"Sarah
+        Perez","score":0.9255467653274536}],"costDollars":{"total":0.005,"search":{"neural":0.005}},"searchTime":171.9458249998279}'
+    headers:
+      Access-Control-Allow-Credentials:
+      - 'true'
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '669'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Mon, 15 Sep 2025 20:47:55 GMT
+      ETag:
+      - W/"29d-Bew1+dy1ADyPzg4V8xuIyKXCioU"
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains
+      Vary:
+      - Origin
+      X-Powered-By:
+      - Express
+      X-RateLimit-Limit:
+      - '9007199254740991'
+      X-RateLimit-Remaining:
+      - '9007199254740990'
+      X-RateLimit-Reset:
+      - '1757969277'
+    status:
+      code: 200
+      message: OK
+version: 1

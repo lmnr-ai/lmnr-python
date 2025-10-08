@@ -165,6 +165,16 @@ class CuaComputerInstrumentorInitializer(InstrumentorInitializer):
         return CuaComputerInstrumentor()
 
 
+class ExaInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("exa-py"):
+            return None
+
+        from ..opentelemetry.instrumentation.exa import ExaInstrumentor
+
+        return ExaInstrumentor()
+
+
 class GoogleGenAIInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("google-genai"):
