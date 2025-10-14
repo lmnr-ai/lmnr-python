@@ -89,7 +89,7 @@ async def test_asyncio_parallel_spans_same_parent(span_exporter: InMemorySpanExp
 
     # Check all child spans have the parent as their parent
     for child_span in child_spans:
-        assert child_span.parent.span_id == parent_span.context.span_id
+        assert child_span.parent.span_id == parent_span.get_span_context().span_id
 
 
 @pytest.mark.asyncio
@@ -136,11 +136,13 @@ async def test_asyncio_deeply_nested_with_parallelism(
 
     # Check hierarchy
     for branch_span in branch_spans:
-        assert branch_span.parent.span_id == root_span.context.span_id
+        assert branch_span.parent.span_id == root_span.get_span_context().span_id
 
     # Each leaf should have a branch as parent
     for leaf_span in leaf_spans:
-        assert leaf_span.parent.span_id in [b.context.span_id for b in branch_spans]
+        assert leaf_span.parent.span_id in [
+            b.get_span_context().span_id for b in branch_spans
+        ]
 
 
 # =============================================================================
@@ -233,7 +235,7 @@ def test_threading_parallel_spans_same_parent(span_exporter: InMemorySpanExporte
 
     # Check all child spans have the parent as their parent
     for child_span in child_spans:
-        assert child_span.parent.span_id == parent_span.context.span_id
+        assert child_span.parent.span_id == parent_span.get_span_context().span_id
 
 
 def test_threading_deeply_nested_with_parallelism(span_exporter: InMemorySpanExporter):
@@ -295,11 +297,13 @@ def test_threading_deeply_nested_with_parallelism(span_exporter: InMemorySpanExp
 
     # Check hierarchy
     for branch_span in branch_spans:
-        assert branch_span.parent.span_id == root_span.context.span_id
+        assert branch_span.parent.span_id == root_span.get_span_context().span_id
 
     # Each leaf should have a branch as parent
     for leaf_span in leaf_spans:
-        assert leaf_span.parent.span_id in [b.context.span_id for b in branch_spans]
+        assert leaf_span.parent.span_id in [
+            b.get_span_context().span_id for b in branch_spans
+        ]
 
 
 # =============================================================================
@@ -489,7 +493,7 @@ def test_threadpool_parallel_spans_same_parent(span_exporter: InMemorySpanExport
 
     # Check all child spans have the parent as their parent
     for child_span in child_spans:
-        assert child_span.parent.span_id == parent_span.context.span_id
+        assert child_span.parent.span_id == parent_span.get_span_context().span_id
 
 
 def test_threadpool_deeply_nested_with_parallelism(span_exporter: InMemorySpanExporter):
@@ -541,11 +545,13 @@ def test_threadpool_deeply_nested_with_parallelism(span_exporter: InMemorySpanEx
 
     # Check hierarchy
     for branch_span in branch_spans:
-        assert branch_span.parent.span_id == root_span.context.span_id
+        assert branch_span.parent.span_id == root_span.get_span_context().span_id
 
     # Each leaf should have a branch as parent
     for leaf_span in leaf_spans:
-        assert leaf_span.parent.span_id in [b.context.span_id for b in branch_spans]
+        assert leaf_span.parent.span_id in [
+            b.get_span_context().span_id for b in branch_spans
+        ]
 
 
 # =============================================================================
@@ -641,7 +647,7 @@ async def test_start_active_span_asyncio_parallel_with_observe(
 
     # All children should have parent as their parent
     for child_span in child_spans:
-        assert child_span.parent.span_id == parent_span.context.span_id
+        assert child_span.parent.span_id == parent_span.get_span_context().span_id
         assert child_span.attributes["lmnr.span.path"][0] == "parent"
 
 
@@ -688,7 +694,7 @@ def test_start_active_span_threading_parallel_with_observe(
 
     # All children should have parent as their parent
     for child_span in child_spans:
-        assert child_span.parent.span_id == parent_span.context.span_id
+        assert child_span.parent.span_id == parent_span.get_span_context().span_id
         assert child_span.attributes["lmnr.span.path"][0] == "parent"
 
 
@@ -726,7 +732,7 @@ def test_start_active_span_threadpool_parallel_with_observe(
 
     # All children should have parent as their parent
     for child_span in child_spans:
-        assert child_span.parent.span_id == parent_span.context.span_id
+        assert child_span.parent.span_id == parent_span.get_span_context().span_id
         assert child_span.attributes["lmnr.span.path"][0] == "parent"
 
 
@@ -784,11 +790,13 @@ def test_start_active_span_nested_threading_with_observe(
 
     # Check hierarchy
     for branch_span in branch_spans:
-        assert branch_span.parent.span_id == root_span.context.span_id
+        assert branch_span.parent.span_id == root_span.get_span_context().span_id
         assert branch_span.attributes["lmnr.span.path"][0] == "root"
 
     for leaf_span in leaf_spans:
-        assert leaf_span.parent.span_id in [b.context.span_id for b in branch_spans]
+        assert leaf_span.parent.span_id in [
+            b.get_span_context().span_id for b in branch_spans
+        ]
         assert leaf_span.attributes["lmnr.span.path"][0] == "root"
 
 
@@ -836,11 +844,13 @@ async def test_start_active_span_nested_asyncio_with_observe(
 
     # Check hierarchy
     for branch_span in branch_spans:
-        assert branch_span.parent.span_id == root_span.context.span_id
+        assert branch_span.parent.span_id == root_span.get_span_context().span_id
         assert branch_span.attributes["lmnr.span.path"][0] == "root"
 
     for leaf_span in leaf_spans:
-        assert leaf_span.parent.span_id in [b.context.span_id for b in branch_spans]
+        assert leaf_span.parent.span_id in [
+            b.get_span_context().span_id for b in branch_spans
+        ]
         assert leaf_span.attributes["lmnr.span.path"][0] == "root"
 
 
@@ -885,4 +895,4 @@ def test_start_active_span_threadpool_context_isolation_with_observe(
     # Each inner span should be a child of its corresponding worker
     for inner_span in inner_spans:
         parent_id = inner_span.parent.span_id
-        assert any(w.context.span_id == parent_id for w in worker_spans)
+        assert any(w.get_span_context().span_id == parent_id for w in worker_spans)
