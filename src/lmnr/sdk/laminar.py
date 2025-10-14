@@ -662,7 +662,7 @@ class Laminar:
         ```python
         from src.lmnr import Laminar
         def foo():
-            with Laminar.start_as_current_span("foo_inner"):
+            with Laminar.start_active_span("foo_inner"):
                 some_function()
         
         def bar():
