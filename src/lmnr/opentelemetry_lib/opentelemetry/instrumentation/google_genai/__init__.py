@@ -206,15 +206,17 @@ def _set_request_attributes(span, args, kwargs):
             contents = [contents]
         for content in contents:
             processed_content = process_content_union(content)
-            content_str = get_content(processed_content)
+            content_payload = get_content(processed_content)
+            if isinstance(content_payload, dict):
+                content_payload = [content_payload]
 
             set_span_attribute(
                 span,
                 f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.content",
                 (
-                    content_str
-                    if isinstance(content_str, str)
-                    else json_dumps(content_str)
+                    content_payload
+                    if isinstance(content_payload, str)
+                    else json_dumps(content_payload)
                 ),
             )
             blocks = (
@@ -318,20 +320,22 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
         for candidate in candidates_list:
             has_content = False
             processed_content = process_content_union(candidate.content)
-            content_str = get_content(processed_content)
+            content_payload = get_content(processed_content)
+            if isinstance(content_payload, dict):
+                content_payload = [content_payload]
 
             set_span_attribute(
                 span, f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.role", "model"
             )
-            if content_str:
+            if content_payload:
                 has_content = True
                 set_span_attribute(
                     span,
                     f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.content",
                     (
-                        content_str
-                        if isinstance(content_str, str)
-                        else json_dumps(content_str)
+                        content_payload
+                        if isinstance(content_payload, str)
+                        else json_dumps(content_payload)
                     ),
                 )
             blocks = (
