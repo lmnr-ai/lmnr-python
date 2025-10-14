@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from contextvars import Context
+from contextvars import Context, Token
 import warnings
 from lmnr.opentelemetry_lib import TracerManager
 from lmnr.opentelemetry_lib.tracing import TracerWrapper, get_current_context
@@ -641,6 +641,92 @@ class Laminar:
         finally:
             if end_on_exit:
                 span.end()
+
+    @classmethod
+    def start_active_span(
+        cls,
+        name: str,
+        input: Any = None,
+        span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
+        context: Context | None = None,
+        parent_span_context: LaminarSpanContext | None = None,
+        tags: list[str] | None = None,
+    ) -> tuple[Span, Token[Context] | None]:
+        """Start a new span. Useful for manual instrumentation.
+        If `span_type` is set to `"LLM"`, you should report usage and response
+        attributes manually. See `Laminar.set_span_attributes` for more
+        information. Returns the span and a context token that can be used to
+        detach the context.
+
+        Usage example:
+        ```python
+        from src.lmnr import Laminar
+        def foo():
+            with Laminar.start_as_current_span("foo_inner"):
+                some_function()
+        
+        def bar():
+            openai_client.chat.completions.create()
+        
+        span, ctx_token = Laminar.start_active_span("outer")
+        foo()
+        bar()
+        # IMPORTANT: End the span manually
+        Laminar.end_active_span(span, ctx_token)
+        
+        # Results in:
+        # | outer
+        # |   | foo
+        # |   |   | foo_inner
+        # |   | bar
+        # |   |   | openai.chat
+        ```
+
+        Args:
+            name (str): name of the span
+            input (Any, optional): input to the span. Will be sent as an\
+                attribute, so must be json serializable. Defaults to None.
+            span_type (Literal["DEFAULT", "LLM", "TOOL"], optional):\
+                type of the span. If you use `"LLM"`, you should report usage\
+                and response attributes manually. Defaults to "DEFAULT".
+            context (Context | None, optional): raw OpenTelemetry context\
+                to attach the span to. Defaults to None.
+            parent_span_context (LaminarSpanContext | None, optional): parent\
+                span context to use for the span. Useful for continuing traces\
+                across services. If parent_span_context is a\
+                raw OpenTelemetry span context, or if it is a dictionary or string\
+                obtained from `Laminar.get_laminar_span_context_dict()` or\
+                `Laminar.get_laminar_span_context_str()` respectively, it will be\
+                converted to a `LaminarSpanContext` if possible. See also\
+                `Laminar.get_span_context`, `Laminar.get_span_context_dict` and\
+                `Laminar.get_span_context_str` for more information.
+                Defaults to None.
+            tags (list[str] | None, optional): tags to set for the span.
+                Defaults to None.
+        """
+        span = cls.start_span(
+            name, input, span_type, context, parent_span_context, tags
+        )
+        if not cls.is_initialized():
+            return span, None
+        wrapper = TracerWrapper()
+        context = wrapper.push_span_context(span)
+        context_token = context_api.attach(context)
+        return span, context_token
+
+    @classmethod
+    def end_active_span(cls, span: Span, ctx_token: Token[Context]):
+        """End an active span."""
+        span.end()
+        if not cls.is_initialized():
+            return
+        wrapper = TracerWrapper()
+        try:
+            wrapper.pop_span_context()
+            if ctx_token is not None:
+                context_api.detach(ctx_token)
+        except Exception:
+            pass
 
     @classmethod
     def set_span_output(cls, output: Any = None):

@@ -682,3 +682,253 @@ def test_tags_deduplication(span_exporter: InMemorySpanExporter):
         "bar",
         "foo",
     ]
+
+
+def test_start_active_span_simple(span_exporter: InMemorySpanExporter):
+    span, ctx_token = Laminar.start_active_span("outer", input="test_input")
+    Laminar.set_span_output("test_output")
+    Laminar.end_active_span(span, ctx_token)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "outer"
+    assert json.loads(spans[0].attributes["lmnr.span.input"]) == "test_input"
+    assert json.loads(spans[0].attributes["lmnr.span.output"]) == "test_output"
+    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == ("outer",)
+
+
+def test_start_active_span_with_nested_context_manager(
+    span_exporter: InMemorySpanExporter,
+):
+    """Test start_active_span with nested start_as_current_span."""
+    span, ctx_token = Laminar.start_active_span("outer")
+
+    with Laminar.start_as_current_span("inner"):
+        Laminar.set_span_output("inner_output")
+
+    Laminar.end_active_span(span, ctx_token)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 2
+
+    outer_span = [s for s in spans if s.name == "outer"][0]
+    inner_span = [s for s in spans if s.name == "inner"][0]
+
+    # Check parent-child relationship
+    assert inner_span.parent.span_id == outer_span.get_span_context().span_id
+    assert (
+        inner_span.get_span_context().trace_id == outer_span.get_span_context().trace_id
+    )
+
+    # Check span paths
+    assert outer_span.attributes["lmnr.span.path"] == ("outer",)
+    assert inner_span.attributes["lmnr.span.path"] == ("outer", "inner")
+
+    # Check output
+    assert json.loads(inner_span.attributes["lmnr.span.output"]) == "inner_output"
+
+
+def test_start_active_span_deeply_nested(span_exporter: InMemorySpanExporter):
+    """Test multiple levels of nesting with start_active_span."""
+    outer_span, outer_token = Laminar.start_active_span("outer")
+
+    with Laminar.start_as_current_span("middle"):
+        inner_span, inner_token = Laminar.start_active_span("inner")
+        Laminar.set_span_output("inner_output")
+        Laminar.end_active_span(inner_span, inner_token)
+
+    Laminar.end_active_span(outer_span, outer_token)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 3
+
+    outer = [s for s in spans if s.name == "outer"][0]
+    middle = [s for s in spans if s.name == "middle"][0]
+    inner = [s for s in spans if s.name == "inner"][0]
+
+    # Check parent-child relationships
+    assert middle.parent.span_id == outer.get_span_context().span_id
+    assert inner.parent.span_id == middle.get_span_context().span_id
+
+    # Check all spans share the same trace_id
+    assert (
+        outer.get_span_context().trace_id
+        == middle.get_span_context().trace_id
+        == inner.get_span_context().trace_id
+    )
+
+    # Check span paths
+    assert outer.attributes["lmnr.span.path"] == ("outer",)
+    assert middle.attributes["lmnr.span.path"] == ("outer", "middle")
+    assert inner.attributes["lmnr.span.path"] == ("outer", "middle", "inner")
+
+    # Check ids_path
+    assert outer.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=outer.get_span_context().span_id)),
+    )
+    assert middle.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=outer.get_span_context().span_id)),
+        str(uuid.UUID(int=middle.get_span_context().span_id)),
+    )
+    assert inner.attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=outer.get_span_context().span_id)),
+        str(uuid.UUID(int=middle.get_span_context().span_id)),
+        str(uuid.UUID(int=inner.get_span_context().span_id)),
+    )
+
+
+def test_start_active_span_sequential_siblings(span_exporter: InMemorySpanExporter):
+    """Test sequential siblings under an active span."""
+    parent_span, parent_token = Laminar.start_active_span("parent")
+
+    with Laminar.start_as_current_span("child1"):
+        Laminar.set_span_output("output1")
+
+    with Laminar.start_as_current_span("child2"):
+        Laminar.set_span_output("output2")
+
+    Laminar.end_active_span(parent_span, parent_token)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 3
+
+    parent = [s for s in spans if s.name == "parent"][0]
+    child1 = [s for s in spans if s.name == "child1"][0]
+    child2 = [s for s in spans if s.name == "child2"][0]
+
+    # Both children should have the same parent
+    assert child1.parent.span_id == parent.get_span_context().span_id
+    assert child2.parent.span_id == parent.get_span_context().span_id
+
+    # All should share the same trace_id
+    assert (
+        parent.get_span_context().trace_id
+        == child1.get_span_context().trace_id
+        == child2.get_span_context().trace_id
+    )
+
+    # Check span paths
+    assert parent.attributes["lmnr.span.path"] == ("parent",)
+    assert child1.attributes["lmnr.span.path"] == ("parent", "child1")
+    assert child2.attributes["lmnr.span.path"] == ("parent", "child2")
+
+
+def test_start_active_span_with_tags_and_span_type(
+    span_exporter: InMemorySpanExporter,
+):
+    """Test start_active_span with tags and span_type."""
+    span, ctx_token = Laminar.start_active_span(
+        "test_span", input={"key": "value"}, span_type="LLM", tags=["tag1", "tag2"]
+    )
+    Laminar.end_active_span(span, ctx_token)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "test_span"
+    assert spans[0].attributes["lmnr.span.type"] == "LLM"
+    assert json.loads(spans[0].attributes["lmnr.span.input"]) == {"key": "value"}
+    assert spans[0].attributes["lmnr.span.path"] == ("test_span",)
+
+    # Check tags if present (tags might be set via the span processor)
+    tags_attr = spans[0].attributes.get("lmnr.association.properties.tags")
+    if tags_attr:
+        assert sorted(tags_attr) == ["tag1", "tag2"]
+
+
+def test_start_active_span_multiple_active_spans(span_exporter: InMemorySpanExporter):
+    """Test multiple active spans in sequence (not nested)."""
+    span1, token1 = Laminar.start_active_span("span1")
+    Laminar.set_span_output("output1")
+    Laminar.end_active_span(span1, token1)
+
+    span2, token2 = Laminar.start_active_span("span2")
+    Laminar.set_span_output("output2")
+    Laminar.end_active_span(span2, token2)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 2
+
+    span1_obj = [s for s in spans if s.name == "span1"][0]
+    span2_obj = [s for s in spans if s.name == "span2"][0]
+
+    # They should be in different traces
+    assert (
+        span1_obj.get_span_context().trace_id != span2_obj.get_span_context().trace_id
+    )
+
+    # Both should be root spans
+    assert span1_obj.parent is None or span1_obj.parent.span_id == 0
+    assert span2_obj.parent is None or span2_obj.parent.span_id == 0
+
+    # Check paths
+    assert span1_obj.attributes["lmnr.span.path"] == ("span1",)
+    assert span2_obj.attributes["lmnr.span.path"] == ("span2",)
+
+
+@pytest.mark.asyncio
+async def test_start_active_span_async(span_exporter: InMemorySpanExporter):
+    """Test start_active_span with async functions."""
+
+    async def async_work():
+        with Laminar.start_as_current_span("async_inner"):
+            Laminar.set_span_output("async_output")
+
+    span, ctx_token = Laminar.start_active_span("async_outer")
+    await async_work()
+    Laminar.end_active_span(span, ctx_token)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 2
+
+    outer = [s for s in spans if s.name == "async_outer"][0]
+    inner = [s for s in spans if s.name == "async_inner"][0]
+
+    # Check parent-child relationship
+    assert inner.parent.span_id == outer.get_span_context().span_id
+    assert inner.get_span_context().trace_id == outer.get_span_context().trace_id
+
+    # Check span paths
+    assert outer.attributes["lmnr.span.path"] == ("async_outer",)
+    assert inner.attributes["lmnr.span.path"] == ("async_outer", "async_inner")
+
+
+@pytest.mark.asyncio
+async def test_start_active_span_async_nested(span_exporter: InMemorySpanExporter):
+    """Test nested active spans with async functions."""
+
+    async def nested_level2():
+        with Laminar.start_as_current_span("level2"):
+            pass
+
+    async def nested_level1():
+        span, token = Laminar.start_active_span("level1")
+        await nested_level2()
+        Laminar.end_active_span(span, token)
+
+    span, ctx_token = Laminar.start_active_span("level0")
+    await nested_level1()
+    Laminar.end_active_span(span, ctx_token)
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 3
+
+    level0 = [s for s in spans if s.name == "level0"][0]
+    level1 = [s for s in spans if s.name == "level1"][0]
+    level2 = [s for s in spans if s.name == "level2"][0]
+
+    # Check parent-child relationships
+    assert level1.parent.span_id == level0.get_span_context().span_id
+    assert level2.parent.span_id == level1.get_span_context().span_id
+
+    # Check trace ids
+    assert (
+        level0.get_span_context().trace_id
+        == level1.get_span_context().trace_id
+        == level2.get_span_context().trace_id
+    )
+
+    # Check span paths
+    assert level0.attributes["lmnr.span.path"] == ("level0",)
+    assert level1.attributes["lmnr.span.path"] == ("level0", "level1")
+    assert level2.attributes["lmnr.span.path"] == ("level0", "level1", "level2")
