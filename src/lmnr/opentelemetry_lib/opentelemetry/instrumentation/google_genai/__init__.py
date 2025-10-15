@@ -385,6 +385,7 @@ def _build_from_streaming_response(
         # this function would not be able to catch the errors, as they are
         # raised later, after the generator is returned, and when it is being
         # consumed.
+        span.add_event("llm.content.completion.chunk")
         chunk_result = process_stream_chunk(
             chunk,
             role,
@@ -435,6 +436,7 @@ async def _abuild_from_streaming_response(
         # this function would not be able to catch the errors, as they are
         # raised later, after the generator is returned, and when it is being
         # consumed.
+        span.add_event("llm.content.completion.chunk")
         chunk_result = process_stream_chunk(
             chunk,
             role,
