@@ -677,7 +677,7 @@ def test_google_genai_reasoning_tokens_with_include_thoughts(
     assert span_output[1]["text"] == response.text
 
 
-@pytest.mark.vcr(record_mode="once")
+@pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_google_genai_reasoning_tokens_async(span_exporter: InMemorySpanExporter):
     client = Client(api_key="123")
@@ -726,7 +726,7 @@ async def test_google_genai_reasoning_tokens_async(span_exporter: InMemorySpanEx
     )
 
 
-@pytest.mark.vcr(record_mode="once")
+@pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_google_genai_reasoning_tokens_with_include_thoughts_async(
     span_exporter: InMemorySpanExporter,
@@ -782,6 +782,38 @@ async def test_google_genai_reasoning_tokens_with_include_thoughts_async(
     assert span_output[0]["text"] == response.parts[0].text
     assert span_output[1]["type"] == "text"
     assert span_output[1]["text"] == response.text
+
+
+@pytest.mark.vcr
+def test_google_genai_string_contents(span_exporter: InMemorySpanExporter):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    client = Client(api_key="123")
+    system_instruction = "Be concise and to the point. Use tools as much as possible."
+    response = client.models.generate_content(
+        model="gemini-2.5-flash-preview-05-20",
+        contents="What is the capital of France?",
+        config=types.GenerateContentConfig(
+            system_instruction={"text": system_instruction},
+        ),
+    )
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "gemini.generate_content"
+    assert spans[0].attributes["gen_ai.prompt.0.content"] == system_instruction
+    assert spans[0].attributes["gen_ai.prompt.0.role"] == "system"
+    assert json.loads(spans[0].attributes["gen_ai.prompt.1.content"]) == [
+        {
+            "type": "text",
+            "text": "What is the capital of France?",
+        }
+    ]
+    assert spans[0].attributes["gen_ai.prompt.1.role"] == "user"
+    assert spans[0].attributes["gen_ai.completion.0.role"] == "model"
+
+    span_output = json.loads(spans[0].attributes["gen_ai.completion.0.content"])
+    assert span_output[0]["type"] == "text"
+    assert span_output[0]["text"] == response.parts[0].text
 
 
 def test_google_genai_error(span_exporter: InMemorySpanExporter):

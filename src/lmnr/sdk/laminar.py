@@ -434,17 +434,17 @@ class Laminar:
             with Laminar.use_span(span):
                 with Laminar.start_as_current_span("foo_inner"):
                     some_function()
-        
+
         def bar():
             with Laminar.use_span(span):
                 openai_client.chat.completions.create()
-        
+
         span = Laminar.start_span("outer")
         foo(span)
         bar(span)
         # IMPORTANT: End the span manually
         span.end()
-        
+
         # Results in:
         # | outer
         # |   | foo

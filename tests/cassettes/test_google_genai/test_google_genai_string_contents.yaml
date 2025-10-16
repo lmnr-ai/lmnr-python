@@ -1,0 +1,62 @@
+interactions:
+- request:
+    body: '{"contents": [{"parts": [{"text": "What is the capital of France?"}], "role":
+      "user"}], "systemInstruction": {"parts": [{"text": "Be concise and to the point.
+      Use tools as much as possible."}], "role": "user"}, "generationConfig": {}}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '234'
+      content-type:
+      - application/json
+      host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - google-genai-sdk/1.34.0 gl-python/3.13.5
+      x-goog-api-client:
+      - google-genai-sdk/1.34.0 gl-python/3.13.5
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/2WQXU+DMBSG7/srSK+HItsS9NaPZIlGVPxIjDHVnkEzaLE96AzZf7eFwUrsRdOe
+        9+3peZ+WBAH9ZJILzhAMPQtebSUI2m53mpIIEq0wlGyxZhoP3n613tlaELbuEU2ZFoZ62m48v80O
+        HbUqwdkrxaEc7LvBQNdCClPcAzNKOttDdpvSURWSw9aWIzJ80LWmjWE53AAym42NCWitVVVjpjYg
+        z1XTZYvnfTMPxUQ/2cuokJUTZZHM/nU1F/ZPUfqEPHg2IisF/roc2eVLRj0MOB1q4EA8XBQL1eQF
+        TgeMF2TPq0f4BNqInlV3N8c5VBZiGB8tw3XJTBHWGr4F/ITRMoyjbgiqwdRKGlhx91A9zxu2+oqu
+        knfc8Mf0tLn+SO4iSnbkD5aoXE83AgAA
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Tue, 14 Oct 2025 15:34:57 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=716
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1
