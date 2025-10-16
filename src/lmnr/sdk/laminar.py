@@ -671,12 +671,12 @@ class Laminar:
         instrumentation.
         Example:
         ```python
-        with L.start_as_current_span(
+        with Laminar.start_as_current_span(
             name="my_span_name", input=input["messages"], span_type="LLM"
         ):
             response = await my_custom_call_to_openai(input)
-            L.set_span_output(response["choices"][0]["message"]["content"])
-            L.set_span_attributes({
+            Laminar.set_span_output(response["choices"][0]["message"]["content"])
+            Laminar.set_span_attributes({
                 Attributes.PROVIDER: 'openai',
                 Attributes.REQUEST_MODEL: input["model"],
                 Attributes.RESPONSE_MODEL: response["model"],
