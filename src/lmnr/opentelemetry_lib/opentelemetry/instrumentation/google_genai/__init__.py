@@ -384,6 +384,10 @@ def _build_from_streaming_response(
     aggregated_usage_metadata = defaultdict(int)
     model_version = None
     for chunk in response:
+        try:
+            span.add_event("llm.content.completion.chunk")
+        except Exception:
+            pass
         # Important: do all processing in a separate sync function, that is
         # wrapped in @dont_throw. If we did it here, the @dont_throw on top of
         # this function would not be able to catch the errors, as they are
@@ -434,6 +438,10 @@ async def _abuild_from_streaming_response(
     aggregated_usage_metadata = defaultdict(int)
     model_version = None
     async for chunk in response:
+        try:
+            span.add_event("llm.content.completion.chunk")
+        except Exception:
+            pass
         # Important: do all processing in a separate sync function, that is
         # wrapped in @dont_throw. If we did it here, the @dont_throw on top of
         # this function would not be able to catch the errors, as they are

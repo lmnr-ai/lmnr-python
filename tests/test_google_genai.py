@@ -879,8 +879,10 @@ def test_google_genai_streaming(span_exporter: InMemorySpanExporter):
         ],
     )
     final_response = ""
+    chunk_count = 0
     for chunk in stream:
         final_response += chunk.text or ""
+        chunk_count += 1
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
@@ -917,6 +919,8 @@ And steal away a human heart."""
     assert span.attributes["gen_ai.usage.input_tokens"] == 7
     assert span.attributes["gen_ai.usage.output_tokens"] == 166
     assert span.attributes["llm.usage.total_tokens"] == 175  # 173 + 2 (thinking tokens)
+    assert len(span.events) == chunk_count
+    assert all(event.name == "llm.content.completion.chunk" for event in span.events)
 
 
 @pytest.mark.vcr
