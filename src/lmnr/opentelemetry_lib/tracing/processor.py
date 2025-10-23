@@ -1,4 +1,5 @@
 import logging
+import threading
 import uuid
 
 from opentelemetry.sdk.trace.export import (
@@ -30,6 +31,7 @@ class LaminarSpanProcessor(SpanProcessor):
     __span_id_to_path: dict[int, list[str]] = {}
     __span_id_lists: dict[int, list[str]] = {}
     max_export_batch_size: int
+    _lock: threading.RLock
 
     def __init__(
         self,
@@ -42,6 +44,7 @@ class LaminarSpanProcessor(SpanProcessor):
         disable_batch: bool = False,
         exporter: SpanExporter | None = None,
     ):
+        self._lock = threading.RLock()
         self.logger = get_default_logger(__name__)
         self.max_export_batch_size = max_export_batch_size
         self.exporter = exporter or LaminarSpanExporter(
@@ -84,13 +87,16 @@ class LaminarSpanProcessor(SpanProcessor):
             for key, value in graph_context.items():
                 span.set_attribute(f"lmnr.association.properties.{key}", value)
 
-        self.instance.on_start(span, parent_context)
+        with self._lock:
+            self.instance.on_start(span, parent_context)
 
     def on_end(self, span: Span):
-        self.instance.on_end(span)
+        with self._lock:
+            self.instance.on_end(span)
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
-        return self.instance.force_flush(timeout_millis)
+        with self._lock:
+            return self.instance.force_flush(timeout_millis)
 
     def force_reinit(self):
         if not isinstance(self.exporter, LaminarSpanExporter):
@@ -98,22 +104,30 @@ class LaminarSpanProcessor(SpanProcessor):
                 "LaminarSpanProcessor is not using LaminarSpanExporter, cannot force reinit"
             )
             return
-        self.instance.shutdown()
-        disable_batch = isinstance(self.instance, SimpleSpanProcessor)
-        del self.exporter.instance
-        del self.instance
 
+        # Reinitialize exporter (thread-safe, handles its own locking)
         self.exporter._init_instance()
-        self.instance = (
-            SimpleSpanProcessor(self.exporter)
-            if disable_batch
-            else BatchSpanProcessor(
-                self.exporter, max_export_batch_size=self.max_export_batch_size
+
+        with self._lock:
+            old_instance = self.instance
+            disable_batch = isinstance(old_instance, SimpleSpanProcessor)
+
+            try:
+                old_instance.shutdown()
+            except Exception as e:
+                self.logger.debug(f"Error shutting down old processor instance: {e}")
+
+            self.instance = (
+                SimpleSpanProcessor(self.exporter)
+                if disable_batch
+                else BatchSpanProcessor(
+                    self.exporter, max_export_batch_size=self.max_export_batch_size
+                )
             )
-        )
 
     def shutdown(self):
-        self.instance.shutdown()
+        with self._lock:
+            self.instance.shutdown()
 
     def clear(self):
         self.__span_id_to_path = {}
