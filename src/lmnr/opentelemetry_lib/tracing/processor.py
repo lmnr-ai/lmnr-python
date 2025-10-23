@@ -75,8 +75,6 @@ class LaminarSpanProcessor(SpanProcessor):
         ]
         span.set_attribute(SPAN_PATH, span_path)
         span.set_attribute(SPAN_IDS_PATH, span_ids_path)
-        self.__span_id_to_path[span.get_span_context().span_id] = span_path
-        self.__span_id_lists[span.get_span_context().span_id] = span_ids_path
 
         span.set_attribute(SPAN_INSTRUMENTATION_SOURCE, "python")
         span.set_attribute(SPAN_SDK_VERSION, __version__)
@@ -88,6 +86,8 @@ class LaminarSpanProcessor(SpanProcessor):
                 span.set_attribute(f"lmnr.association.properties.{key}", value)
 
         with self._lock:
+            self.__span_id_to_path[span.get_span_context().span_id] = span_path
+            self.__span_id_lists[span.get_span_context().span_id] = span_ids_path
             self.instance.on_start(span, parent_context)
 
     def on_end(self, span: Span):
@@ -130,5 +130,6 @@ class LaminarSpanProcessor(SpanProcessor):
             self.instance.shutdown()
 
     def clear(self):
-        self.__span_id_to_path = {}
-        self.__span_id_lists = {}
+        with self._lock:
+            self.__span_id_to_path = {}
+            self.__span_id_lists = {}
