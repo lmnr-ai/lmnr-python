@@ -788,7 +788,7 @@ async def start_recording_events(
     # Buffer for reassembling chunks
     chunk_buffers = {}
 
-    async def send_events_from_browser(chunk):
+    async def send_events_from_browser(chunk: dict):
         try:
             # Handle chunked data
             batch_id = chunk["batchId"]
@@ -843,7 +843,7 @@ async def start_recording_events(
             return
         if event["executionContextId"] != isolated_context_id:
             return
-        await send_events_from_browser(orjson.loads(event["payload"]))
+        asyncio.create_task(send_events_from_browser(orjson.loads(event["payload"])))
 
     await cdp_client.send.Runtime.addBinding(
         {
