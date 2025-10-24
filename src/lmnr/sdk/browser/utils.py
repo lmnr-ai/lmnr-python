@@ -42,7 +42,7 @@ def retry_sync(func, retries=5, delay=0.5, error_message="Operation failed"):
             if result:  # If function returns truthy value, consider it successful
                 return result
             if attempt == retries - 1:  # Last attempt
-                logger.error(f"{error_message} after all retries")
+                logger.debug(f"{error_message} after all retries")
                 return None
         except Exception as e:
             if attempt == retries - 1:  # Last attempt

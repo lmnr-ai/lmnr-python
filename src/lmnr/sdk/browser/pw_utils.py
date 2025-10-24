@@ -1,17 +1,24 @@
-import orjson
-import logging
+import asyncio
 import os
 import time
 
+import orjson
+
 from opentelemetry import trace
 
+from lmnr.opentelemetry_lib.tracing.context import get_current_context
+from lmnr.opentelemetry_lib.tracing import TracerWrapper
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from lmnr.sdk.decorators import observe
 from lmnr.sdk.browser.utils import retry_sync, retry_async
+from lmnr.sdk.browser.pw_background_sending import (
+    get_background_loop,
+    submit_sync_task,
+    track_async_send,
+)
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
-from lmnr.opentelemetry_lib.tracing.context import get_current_context
-from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import MaskInputOptions
 
 try:
@@ -34,7 +41,7 @@ except ImportError as e:
         "or `pip install patchright` to install one of the supported browsers."
     ) from e
 
-logger = logging.getLogger(__name__)
+logger = get_default_logger(__name__)
 
 OLD_BUFFER_TIMEOUT = 60
 
@@ -43,7 +50,7 @@ with open(os.path.join(current_dir, "recorder", "record.umd.min.cjs"), "r") as f
     RRWEB_CONTENT = f"() => {{ {f.read()} }}"
 
 INJECT_PLACEHOLDER = """
-(mask_input_options) => {
+(maskInputOptions) => {
     const BATCH_TIMEOUT = 2000; // Send events after 2 seconds
     const MAX_WORKER_PROMISES = 50; // Max concurrent worker promises
     const HEARTBEAT_INTERVAL = 2000;
@@ -316,7 +323,7 @@ INJECT_PLACEHOLDER = """
     }
 
     // Worker-based compression for large objects
-    async function compressLargeObject(data, isLarge = true) {
+    async function compressLargeObject(data) {
         // Check if workers are supported first - if not, use main thread compression
         if (!testWorkerSupport()) {
             return await compressSmallObject(data);
@@ -380,7 +387,6 @@ INJECT_PLACEHOLDER = """
     function isLargeEvent(type) {
         const LARGE_EVENT_TYPES = [
             2, // FullSnapshot
-            3, // IncrementalSnapshot
         ];
 
         if (LARGE_EVENT_TYPES.includes(type)) {
@@ -470,8 +476,6 @@ INJECT_PLACEHOLDER = """
         }
     }
 
-    setInterval(sendBatchIfReady, BATCH_TIMEOUT);
-
     async function bufferToBase64(buffer) {
         const base64url = await new Promise(r => {
             const reader = new FileReader()
@@ -481,51 +485,57 @@ INJECT_PLACEHOLDER = """
         return base64url.slice(base64url.indexOf(',') + 1);
     }
  
-    window.lmnrRrweb.record({
-        async emit(event) {
-            try {
-                const isLarge = isLargeEvent(event.type);
-                const compressedResult = isLarge ?
-                    await compressLargeObject(event.data, true) :
-                    await compressSmallObject(event.data);
+    if (!window.lmnrStartedRecordingEvents) {
+        setInterval(sendBatchIfReady, BATCH_TIMEOUT);
 
-                const base64Data = await bufferToBase64(compressedResult);
-                const eventToSend = {
-                    ...event,
-                    data: base64Data,
-                };
-                window.lmnrRrwebEventsBatch.push(eventToSend);
-            } catch (error) {
-                console.warn('Failed to push event to batch', error);
+        window.lmnrRrweb.record({
+            async emit(event) {
+                try {
+                    const isLarge = isLargeEvent(event.type);
+                    const compressedResult = isLarge ?
+                        await compressLargeObject(event.data) :
+                        await compressSmallObject(event.data);
+
+                    const base64Data = await bufferToBase64(compressedResult);
+                    const eventToSend = {
+                        ...event,
+                        data: base64Data,
+                    };
+                    window.lmnrRrwebEventsBatch.push(eventToSend);
+                } catch (error) {
+                    console.warn('Failed to push event to batch', error);
+                }
+            },
+            recordCanvas: true,
+            collectFonts: true,
+            recordCrossOriginIframes: true,
+            maskInputOptions: {
+                password: true,
+                textarea: maskInputOptions.textarea || false,
+                text: maskInputOptions.text || false,
+                number: maskInputOptions.number || false,
+                select: maskInputOptions.select || false,
+                email: maskInputOptions.email || false,
+                tel: maskInputOptions.tel || false,
             }
-        },
-        recordCanvas: true,
-        collectFonts: true,
-        recordCrossOriginIframes: true,
-        maskInputOptions: {
-            password: true,
-            textarea: mask_input_options.textarea || false,
-            text: mask_input_options.text || false,
-            number: mask_input_options.number || false,
-            select: mask_input_options.select || false,
-            email: mask_input_options.email || false,
-            tel: mask_input_options.tel || false,
+        });
+
+        function heartbeat() {
+            // Add heartbeat events
+            setInterval(
+                () => {
+                    window.lmnrRrweb.record.addCustomEvent('heartbeat', {
+                        title: document.title,
+                        url: document.URL,
+                    })
+                },
+                HEARTBEAT_INTERVAL,
+            );
         }
-    });
 
-    function heartbeat() {
-        // Add heartbeat events
-        setInterval(() => {
-            window.lmnrRrweb.record.addCustomEvent('heartbeat', {
-                title: document.title,
-                    url: document.URL,
-                })
-            }, HEARTBEAT_INTERVAL
-        );
+        heartbeat();
+        window.lmnrStartedRecordingEvents = true;
     }
-
-    heartbeat();
-
 }
 """
 
@@ -571,6 +581,8 @@ def inject_session_recorder_sync(page: SyncPage):
 
             def load_session_recorder():
                 try:
+                    if page.is_closed():
+                        return False
                     page.evaluate(RRWEB_CONTENT)
                     return True
                 except Exception as e:
@@ -585,7 +597,8 @@ def inject_session_recorder_sync(page: SyncPage):
                 return
 
             try:
-                page.evaluate(INJECT_PLACEHOLDER, get_mask_input_setting())
+                if not page.is_closed():
+                    page.evaluate(INJECT_PLACEHOLDER, get_mask_input_setting())
             except Exception as e:
                 logger.debug(f"Failed to inject session recorder: {e}")
 
@@ -607,6 +620,8 @@ async def inject_session_recorder_async(page: Page):
 
             async def load_session_recorder():
                 try:
+                    if page.is_closed():
+                        return False
                     await page.evaluate(RRWEB_CONTENT)
                     return True
                 except Exception as e:
@@ -621,7 +636,8 @@ async def inject_session_recorder_async(page: Page):
                 return
 
             try:
-                await page.evaluate(INJECT_PLACEHOLDER, get_mask_input_setting())
+                if not page.is_closed():
+                    await page.evaluate(INJECT_PLACEHOLDER, get_mask_input_setting())
             except Exception as e:
                 logger.debug(f"Failed to inject session recorder placeholder: {e}")
 
@@ -689,8 +705,14 @@ def start_recording_events_sync(page: SyncPage, session_id: str, client: Laminar
         except Exception as e:
             logger.debug(f"Could not send events: {e}")
 
+    def submit_event(chunk):
+        try:
+            submit_sync_task(send_events_from_browser, chunk)
+        except Exception as e:
+            logger.debug(f"Error submitting event: {e}")
+
     try:
-        page.expose_function("lmnrSendEvents", send_events_from_browser)
+        page.expose_function("lmnrSendEvents", submit_event)
     except Exception as e:
         logger.debug(f"Could not expose function: {e}")
 
@@ -698,9 +720,10 @@ def start_recording_events_sync(page: SyncPage, session_id: str, client: Laminar
 
     def on_load(p):
         try:
-            inject_session_recorder_sync(p)
+            if not p.is_closed():
+                inject_session_recorder_sync(p)
         except Exception as e:
-            logger.error(f"Error in on_load handler: {e}")
+            logger.debug(f"Error in on_load handler: {e}")
 
     page.on("domcontentloaded", on_load)
 
@@ -713,6 +736,9 @@ async def start_recording_events_async(
     span = trace.get_current_span(ctx)
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
+
+    # Get the background loop for async sends (independent of Playwright's loop)
+    background_loop = get_background_loop()
 
     # Buffer for reassembling chunks
     chunk_buffers = {}
@@ -746,9 +772,13 @@ async def start_recording_events_async(
                 # Parse the JSON
                 events = orjson.loads(full_data)
 
-                # Send to server
+                # Send to server in background loop (independent of Playwright's loop)
                 if events and len(events) > 0:
-                    await client._browser_events.send(session_id, trace_id, events)
+                    future = asyncio.run_coroutine_threadsafe(
+                        client._browser_events.send(session_id, trace_id, events),
+                        background_loop,
+                    )
+                    track_async_send(future)
 
                 # Clean up buffer
                 del chunk_buffers[batch_id]
@@ -775,9 +805,11 @@ async def start_recording_events_async(
 
     async def on_load(p):
         try:
-            await inject_session_recorder_async(p)
+            # Check if page is closed before attempting to inject
+            if not p.is_closed():
+                await inject_session_recorder_async(p)
         except Exception as e:
-            logger.error(f"Error in on_load handler: {e}")
+            logger.debug(f"Error in on_load handler: {e}")
 
     page.on("domcontentloaded", on_load)
 

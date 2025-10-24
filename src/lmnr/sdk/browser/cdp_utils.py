@@ -499,12 +499,14 @@ INJECT_PLACEHOLDER = """
 
         function heartbeat() {
             // Add heartbeat events
-            setInterval(() => {
-                window.lmnrRrweb.record.addCustomEvent('heartbeat', {
-                    title: document.title,
+            setInterval(
+                () => {
+                    window.lmnrRrweb.record.addCustomEvent('heartbeat', {
+                        title: document.title,
                         url: document.URL,
                     })
-                }, HEARTBEAT_INTERVAL
+                },
+                HEARTBEAT_INTERVAL,
             );
         }
 
