@@ -11,7 +11,7 @@ from lmnr.opentelemetry_lib.tracing import TracerWrapper
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from lmnr.sdk.decorators import observe
 from lmnr.sdk.browser.utils import retry_sync, retry_async
-from lmnr.sdk.browser.pw_background_sending import (
+from lmnr.sdk.browser.background_send_events import (
     get_background_loop,
     submit_sync_task,
     track_async_send,

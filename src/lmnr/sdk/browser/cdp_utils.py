@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import orjson
 import os
 import time
@@ -8,12 +7,17 @@ from opentelemetry import trace
 
 from lmnr.sdk.decorators import observe
 from lmnr.sdk.browser.utils import retry_async
+from lmnr.sdk.browser.background_send_events import (
+    get_background_loop,
+    track_async_send,
+)
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import MaskInputOptions
 
-logger = logging.getLogger(__name__)
+logger = get_default_logger(__name__)
 
 OLD_BUFFER_TIMEOUT = 60
 CDP_OPERATION_TIMEOUT_SECONDS = 10
@@ -787,6 +791,9 @@ async def start_recording_events(
         logger.debug("Failed to inject session recorder, not registering bindings")
         return
 
+    # Get the background loop for async sends (independent of CDP's loop)
+    background_loop = get_background_loop()
+
     # Buffer for reassembling chunks
     chunk_buffers = {}
 
@@ -819,9 +826,13 @@ async def start_recording_events(
                 # Parse the JSON
                 events = orjson.loads(full_data)
 
-                # Send to server
+                # Send to server in background loop (independent of CDP's loop)
                 if events and len(events) > 0:
-                    await client._browser_events.send(lmnr_session_id, trace_id, events)
+                    future = asyncio.run_coroutine_threadsafe(
+                        client._browser_events.send(lmnr_session_id, trace_id, events),
+                        background_loop,
+                    )
+                    track_async_send(future)
 
                 # Clean up buffer
                 del chunk_buffers[batch_id]
