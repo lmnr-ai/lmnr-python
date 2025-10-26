@@ -154,7 +154,7 @@ def _cleanup_background_loop():
     pending_count = len(futures_to_wait)
 
     if pending_count > 0:
-        logger.info(f"Finsihing sending {pending_count} browser events...")
+        logger.info(f"Finishing sending {pending_count} browser events...")
 
         # Wait for all pending futures to complete
         for future in futures_to_wait:
