@@ -1,5 +1,6 @@
 import grpc
 import re
+import threading
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
@@ -22,6 +23,7 @@ class LaminarSpanExporter(SpanExporter):
     headers: dict[str, str]
     timeout: float
     force_http: bool
+    _instance_lock: threading.RLock
 
     def __init__(
         self,
@@ -31,6 +33,7 @@ class LaminarSpanExporter(SpanExporter):
         timeout_seconds: int = 30,
         force_http: bool = False,
     ):
+        self._instance_lock = threading.RLock()
         url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
         url = url.rstrip("/")
         if match := re.search(r":(\d{1,5})$", url):
@@ -74,27 +77,45 @@ class LaminarSpanExporter(SpanExporter):
                 "- set the OTEL_ENDPOINT environment variable\n"
                 "- pass the base_url parameter to Laminar.initialize"
             )
+        self._init_instance()
 
+    def _init_instance(self):
+        # Create new instance first (outside critical section for performance)
         if self.force_http:
-            self.instance = HTTPOTLPSpanExporter(
+            new_instance = HTTPOTLPSpanExporter(
                 endpoint=self.endpoint,
                 headers=self.headers,
                 compression=HTTPCompression.Gzip,
                 timeout=self.timeout,
             )
         else:
-            self.instance = OTLPSpanExporter(
+            new_instance = OTLPSpanExporter(
                 endpoint=self.endpoint,
                 headers=self.headers,
                 timeout=self.timeout,
                 compression=grpc.Compression.Gzip,
             )
 
+        # Atomic swap with proper cleanup
+        with self._instance_lock:
+            old_instance: OTLPSpanExporter | HTTPOTLPSpanExporter | None = getattr(
+                self, "instance", None
+            )
+            if old_instance is not None:
+                try:
+                    old_instance.shutdown()
+                except Exception as e:
+                    logger.warning(f"Error shutting down old exporter instance: {e}")
+            self.instance = new_instance
+
     def export(self, spans: list[ReadableSpan]) -> SpanExportResult:
-        return self.instance.export(spans)
+        with self._instance_lock:
+            return self.instance.export(spans)
 
     def shutdown(self) -> None:
-        return self.instance.shutdown()
+        with self._instance_lock:
+            return self.instance.shutdown()
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
-        return self.instance.force_flush(timeout_millis)
+        with self._instance_lock:
+            return self.instance.force_flush(timeout_millis)
