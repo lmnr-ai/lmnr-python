@@ -23,7 +23,7 @@ class LaminarSpanExporter(SpanExporter):
     headers: dict[str, str]
     timeout: float
     force_http: bool
-    _lock: threading.RLock
+    _instance_lock: threading.RLock
 
     def __init__(
         self,
@@ -33,7 +33,7 @@ class LaminarSpanExporter(SpanExporter):
         timeout_seconds: int = 30,
         force_http: bool = False,
     ):
-        self._lock = threading.RLock()
+        self._instance_lock = threading.RLock()
         url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
         url = url.rstrip("/")
         if match := re.search(r":(\d{1,5})$", url):
@@ -97,7 +97,7 @@ class LaminarSpanExporter(SpanExporter):
             )
 
         # Atomic swap with proper cleanup
-        with self._lock:
+        with self._instance_lock:
             old_instance: OTLPSpanExporter | HTTPOTLPSpanExporter | None = getattr(
                 self, "instance", None
             )
@@ -109,13 +109,13 @@ class LaminarSpanExporter(SpanExporter):
             self.instance = new_instance
 
     def export(self, spans: list[ReadableSpan]) -> SpanExportResult:
-        with self._lock:
+        with self._instance_lock:
             return self.instance.export(spans)
 
     def shutdown(self) -> None:
-        with self._lock:
+        with self._instance_lock:
             return self.instance.shutdown()
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
-        with self._lock:
+        with self._instance_lock:
             return self.instance.force_flush(timeout_millis)

@@ -31,7 +31,7 @@ class LaminarSpanProcessor(SpanProcessor):
     __span_id_to_path: dict[int, list[str]] = {}
     __span_id_lists: dict[int, list[str]] = {}
     max_export_batch_size: int
-    _lock: threading.RLock
+    _lock_for_instance_and_paths: threading.RLock
 
     def __init__(
         self,
@@ -44,7 +44,7 @@ class LaminarSpanProcessor(SpanProcessor):
         disable_batch: bool = False,
         exporter: SpanExporter | None = None,
     ):
-        self._lock = threading.RLock()
+        self._lock_for_instance_and_paths = threading.RLock()
         self.logger = get_default_logger(__name__)
         self.max_export_batch_size = max_export_batch_size
         self.exporter = exporter or LaminarSpanExporter(
@@ -85,17 +85,17 @@ class LaminarSpanProcessor(SpanProcessor):
             for key, value in graph_context.items():
                 span.set_attribute(f"lmnr.association.properties.{key}", value)
 
-        with self._lock:
+        with self._lock_for_instance_and_paths:
             self.__span_id_to_path[span.get_span_context().span_id] = span_path
             self.__span_id_lists[span.get_span_context().span_id] = span_ids_path
             self.instance.on_start(span, parent_context)
 
     def on_end(self, span: Span):
-        with self._lock:
+        with self._lock_for_instance_and_paths:
             self.instance.on_end(span)
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
-        with self._lock:
+        with self._lock_for_instance_and_paths:
             return self.instance.force_flush(timeout_millis)
 
     def force_reinit(self):
@@ -108,7 +108,7 @@ class LaminarSpanProcessor(SpanProcessor):
         # Reinitialize exporter (thread-safe, handles its own locking)
         self.exporter._init_instance()
 
-        with self._lock:
+        with self._lock_for_instance_and_paths:
             old_instance = self.instance
             disable_batch = isinstance(old_instance, SimpleSpanProcessor)
 
@@ -126,10 +126,10 @@ class LaminarSpanProcessor(SpanProcessor):
             )
 
     def shutdown(self):
-        with self._lock:
+        with self._lock_for_instance_and_paths:
             self.instance.shutdown()
 
     def clear(self):
-        with self._lock:
+        with self._lock_for_instance_and_paths:
             self.__span_id_to_path = {}
             self.__span_id_lists = {}
