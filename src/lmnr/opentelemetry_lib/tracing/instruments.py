@@ -124,7 +124,7 @@ def init_instrumentations(
             continue
 
         try:
-            instrumentor = initializer.init_instrumentor(client, async_client)
+            instrumentor = initializer.init_instrumentor(async_client)
             if instrumentor is None:
                 continue
             if not instrumentor.is_instrumented_by_opentelemetry:

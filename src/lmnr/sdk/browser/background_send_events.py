@@ -1,17 +1,13 @@
 """
-Background sending for browser events (sync and async).
+Background sending for browser events.
 
 This module provides background execution for HTTP requests that send browser events,
 ensuring sends never block the main execution flow while guaranteeing completion at
 program exit.
 
-## Sync Version (ThreadPoolExecutor)
-For synchronous Playwright code, uses a thread pool to handle sends in background
-threads. The executor automatically waits for completion on shutdown.
-
-## Async Version (Background Event Loop)
-For async Playwright code, uses a dedicated event loop running in a separate thread
-to handle async HTTP requests. This architecture provides:
+## Background Event Loop Architecture
+Uses a dedicated event loop running in a separate thread to handle async HTTP requests.
+This architecture provides:
 
 1. **Non-blocking execution**: Sends happen in the background, never blocking the main
    thread or Playwright's event loop, allowing browser automation to continue smoothly.
@@ -24,15 +20,14 @@ to handle async HTTP requests. This architecture provides:
    program exit.
 
 The pattern uses `asyncio.run_coroutine_threadsafe()` to submit async coroutines
-from Playwright's loop to our background loop, maintaining pure async code while
-achieving cross-loop execution.
+from any thread (sync or async) to our background loop, maintaining pure async code
+while achieving cross-thread execution.
 """
 
 import asyncio
 import atexit
 import threading
-from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable
+from typing import Any
 
 from lmnr.sdk.log import get_default_logger
 
@@ -48,28 +43,7 @@ LOOP_CREATION_TIMEOUT_SECONDS = 5
 THREAD_JOIN_TIMEOUT_SECONDS = 5
 
 # ==============================================================================
-# Sync version: ThreadPoolExecutor for background sends
-# ==============================================================================
-
-_sync_executor = ThreadPoolExecutor(thread_name_prefix="lmnr-sync-submit")
-
-
-def submit_sync_task(func: Callable, *args) -> None:
-    """
-    Submit a synchronous task to run in the background thread pool.
-
-    The task will execute in a background thread without blocking the main thread.
-    On program exit, the executor automatically waits for all pending tasks.
-
-    Args:
-        func: The function to execute
-        *args: Arguments to pass to the function
-    """
-    _sync_executor.submit(func, *args)
-
-
-# ==============================================================================
-# Async version: Background event loop for async sends
+# Background event loop for async sends
 # ==============================================================================
 
 # Background event loop state
@@ -154,7 +128,10 @@ def _cleanup_background_loop():
     pending_count = len(futures_to_wait)
 
     if pending_count > 0:
-        logger.info(f"Finishing sending {pending_count} browser events...")
+        logger.info(
+            f"Finishing sending {pending_count} browser events... "
+            "Ctrl+C to cancel (may result in incomplete session recording)."
+        )
 
         # Wait for all pending futures to complete
         for future in futures_to_wait:
