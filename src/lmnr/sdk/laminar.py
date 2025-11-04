@@ -427,6 +427,14 @@ class Laminar:
         attributes manually. See `Laminar.set_span_attributes` for more
         information.
 
+        Note that spans started with this method must be ended manually.
+        In addition, they must be ended in LIFO order, e.g.
+        span1 = Laminar.start_span("span1")
+        span2 = Laminar.start_span("span2")
+        span2.end()
+        span1.end()
+        Otherwise, the behavior is undefined.
+
         Usage example:
         ```python
         from src.lmnr import Laminar
@@ -662,7 +670,15 @@ class Laminar:
         unexpected results. When propagating spans across different async or
         threading contexts, it is recommended to either:
         - Make sure to start and end the span in the same async context or thread, or
-        - Use `Laminar.start_span` + `Laminar.use_span` where possible 
+        - Use `Laminar.start_span` + `Laminar.use_span` where possible.
+
+        Note that spans started with this method must be ended manually.
+        In addition, they must be ended in LIFO order, e.g.
+        span1 = Laminar.start_active_span("span1")
+        span2 = Laminar.start_active_span("span2")
+        span2.end()
+        span1.end()
+        Otherwise, the behavior is undefined.
 
         Usage example:
         ```python

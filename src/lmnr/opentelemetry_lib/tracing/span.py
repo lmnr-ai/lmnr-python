@@ -32,9 +32,9 @@ class LaminarSpan(Span, ReadableSpan):
         if hasattr(self, "_lmnr_ctx_token") and not self._popped:
             try:
                 pop_span_context()
-                self._popped = True
                 # Internally handles and logs the error
                 detach(self._lmnr_ctx_token)
+                self._popped = True
             except Exception:
                 pass
 
