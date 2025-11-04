@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from contextvars import Context, Token
+from contextvars import Context
 import warnings
 from lmnr.opentelemetry_lib import TracerManager
 from lmnr.opentelemetry_lib.tracing import TracerWrapper, get_current_context
@@ -427,6 +427,14 @@ class Laminar:
         attributes manually. See `Laminar.set_span_attributes` for more
         information.
 
+        Note that spans started with this method must be ended manually.
+        In addition, they must be ended in LIFO order, e.g.
+        span1 = Laminar.start_span("span1")
+        span2 = Laminar.start_span("span2")
+        span2.end()
+        span1.end()
+        Otherwise, the behavior is undefined.
+
         Usage example:
         ```python
         from src.lmnr import Laminar
@@ -651,28 +659,46 @@ class Laminar:
         context: Context | None = None,
         parent_span_context: LaminarSpanContext | None = None,
         tags: list[str] | None = None,
-    ) -> tuple[Span, Token[Context] | None]:
-        """Start a new span. Useful for manual instrumentation.
+    ) -> Span:
+        """Start a span and mark it as active within the current context.
+        All spans started after this one will be children of this span.
+        Useful for manual instrumentation. Must be ended manually.
         If `span_type` is set to `"LLM"`, you should report usage and response
         attributes manually. See `Laminar.set_span_attributes` for more
-        information. Returns the span and a context token that can be used to
-        detach the context.
+        information. Returns the span object.
+
+        Note that ending the started span in a different async context yields
+        unexpected results. When propagating spans across different async or
+        threading contexts, it is recommended to either:
+        - Make sure to start and end the span in the same async context or thread, or
+        - Use `Laminar.start_span` + `Laminar.use_span` where possible.
+
+        Note that spans started with this method must be ended manually.
+        In addition, they must be ended in LIFO order, e.g.
+        span1 = Laminar.start_active_span("span1")
+        span2 = Laminar.start_active_span("span2")
+        span2.end()
+        span1.end()
+        Otherwise, the behavior is undefined.
 
         Usage example:
         ```python
-        from src.lmnr import Laminar
+        from src.lmnr import Laminar, observe
+
+        @observe()
         def foo():
-            with Laminar.start_active_span("foo_inner"):
+            with Laminar.start_as_current_span("foo_inner"):
                 some_function()
         
+        @observe()
         def bar():
             openai_client.chat.completions.create()
         
-        span, ctx_token = Laminar.start_active_span("outer")
+        span = Laminar.start_active_span("outer")
         foo()
         bar()
         # IMPORTANT: End the span manually
-        Laminar.end_active_span(span, ctx_token)
+        span.end()
         
         # Results in:
         # | outer
@@ -705,28 +731,20 @@ class Laminar:
                 Defaults to None.
         """
         span = cls.start_span(
-            name, input, span_type, context, parent_span_context, tags
+            name=name,
+            input=input,
+            span_type=span_type,
+            context=context,
+            parent_span_context=parent_span_context,
+            tags=tags,
         )
         if not cls.is_initialized():
-            return span, None
+            return span
         wrapper = TracerWrapper()
         context = wrapper.push_span_context(span)
         context_token = context_api.attach(context)
-        return span, context_token
-
-    @classmethod
-    def end_active_span(cls, span: Span, ctx_token: Token[Context]):
-        """End an active span."""
-        span.end()
-        if not cls.is_initialized():
-            return
-        wrapper = TracerWrapper()
-        try:
-            wrapper.pop_span_context()
-            if ctx_token is not None:
-                context_api.detach(ctx_token)
-        except Exception:
-            pass
+        span._lmnr_ctx_token = context_token
+        return span
 
     @classmethod
     def set_span_output(cls, output: Any = None):

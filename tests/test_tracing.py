@@ -685,9 +685,9 @@ def test_tags_deduplication(span_exporter: InMemorySpanExporter):
 
 
 def test_start_active_span_simple(span_exporter: InMemorySpanExporter):
-    span, ctx_token = Laminar.start_active_span("outer", input="test_input")
+    span = Laminar.start_active_span("outer", input="test_input")
     Laminar.set_span_output("test_output")
-    Laminar.end_active_span(span, ctx_token)
+    span.end()
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
@@ -702,12 +702,12 @@ def test_start_active_span_with_nested_context_manager(
     span_exporter: InMemorySpanExporter,
 ):
     """Test start_active_span with nested start_as_current_span."""
-    span, ctx_token = Laminar.start_active_span("outer")
+    span = Laminar.start_active_span("outer")
 
     with Laminar.start_as_current_span("inner"):
         Laminar.set_span_output("inner_output")
 
-    Laminar.end_active_span(span, ctx_token)
+    span.end()
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
@@ -731,14 +731,14 @@ def test_start_active_span_with_nested_context_manager(
 
 def test_start_active_span_deeply_nested(span_exporter: InMemorySpanExporter):
     """Test multiple levels of nesting with start_active_span."""
-    outer_span, outer_token = Laminar.start_active_span("outer")
+    outer_span = Laminar.start_active_span("outer")
 
     with Laminar.start_as_current_span("middle"):
-        inner_span, inner_token = Laminar.start_active_span("inner")
+        inner_span = Laminar.start_active_span("inner")
         Laminar.set_span_output("inner_output")
-        Laminar.end_active_span(inner_span, inner_token)
+        inner_span.end()
 
-    Laminar.end_active_span(outer_span, outer_token)
+    outer_span.end()
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
@@ -780,7 +780,7 @@ def test_start_active_span_deeply_nested(span_exporter: InMemorySpanExporter):
 
 def test_start_active_span_sequential_siblings(span_exporter: InMemorySpanExporter):
     """Test sequential siblings under an active span."""
-    parent_span, parent_token = Laminar.start_active_span("parent")
+    parent_span = Laminar.start_active_span("parent")
 
     with Laminar.start_as_current_span("child1"):
         Laminar.set_span_output("output1")
@@ -788,7 +788,7 @@ def test_start_active_span_sequential_siblings(span_exporter: InMemorySpanExport
     with Laminar.start_as_current_span("child2"):
         Laminar.set_span_output("output2")
 
-    Laminar.end_active_span(parent_span, parent_token)
+    parent_span.end()
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
@@ -818,10 +818,10 @@ def test_start_active_span_with_tags_and_span_type(
     span_exporter: InMemorySpanExporter,
 ):
     """Test start_active_span with tags and span_type."""
-    span, ctx_token = Laminar.start_active_span(
+    span = Laminar.start_active_span(
         "test_span", input={"key": "value"}, span_type="LLM", tags=["tag1", "tag2"]
     )
-    Laminar.end_active_span(span, ctx_token)
+    span.end()
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
@@ -838,13 +838,13 @@ def test_start_active_span_with_tags_and_span_type(
 
 def test_start_active_span_multiple_active_spans(span_exporter: InMemorySpanExporter):
     """Test multiple active spans in sequence (not nested)."""
-    span1, token1 = Laminar.start_active_span("span1")
+    span1 = Laminar.start_active_span("span1")
     Laminar.set_span_output("output1")
-    Laminar.end_active_span(span1, token1)
+    span1.end()
 
-    span2, token2 = Laminar.start_active_span("span2")
+    span2 = Laminar.start_active_span("span2")
     Laminar.set_span_output("output2")
-    Laminar.end_active_span(span2, token2)
+    span2.end()
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
@@ -874,9 +874,9 @@ async def test_start_active_span_async(span_exporter: InMemorySpanExporter):
         with Laminar.start_as_current_span("async_inner"):
             Laminar.set_span_output("async_output")
 
-    span, ctx_token = Laminar.start_active_span("async_outer")
+    span = Laminar.start_active_span("async_outer")
     await async_work()
-    Laminar.end_active_span(span, ctx_token)
+    span.end()
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
@@ -902,13 +902,13 @@ async def test_start_active_span_async_nested(span_exporter: InMemorySpanExporte
             pass
 
     async def nested_level1():
-        span, token = Laminar.start_active_span("level1")
+        span = Laminar.start_active_span("level1")
         await nested_level2()
-        Laminar.end_active_span(span, token)
+        span.end()
 
-    span, ctx_token = Laminar.start_active_span("level0")
+    span = Laminar.start_active_span("level0")
     await nested_level1()
-    Laminar.end_active_span(span, ctx_token)
+    span.end()
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 3

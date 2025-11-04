@@ -630,9 +630,9 @@ async def test_start_active_span_asyncio_parallel_with_observe(
 
     from lmnr import Laminar
 
-    span, ctx_token = Laminar.start_active_span("parent")
+    span = Laminar.start_active_span("parent")
     results = await asyncio.gather(child_task("a"), child_task("b"), child_task("c"))
-    Laminar.end_active_span(span, ctx_token)
+    span.end()
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 4  # 1 parent + 3 children
@@ -666,7 +666,7 @@ def test_start_active_span_threading_parallel_with_observe(
         results.append(result)
         return result
 
-    span, ctx_token = Laminar.start_active_span("parent")
+    span = Laminar.start_active_span("parent")
 
     # Create and start threads
     threads = []
@@ -679,7 +679,7 @@ def test_start_active_span_threading_parallel_with_observe(
     for thread in threads:
         thread.join()
 
-    Laminar.end_active_span(span, ctx_token)
+    span.end()
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 4  # 1 parent + 3 children
@@ -709,7 +709,7 @@ def test_start_active_span_threadpool_parallel_with_observe(
         time.sleep(0.01)
         return f"child_{task_id}"
 
-    span, ctx_token = Laminar.start_active_span("parent")
+    span = Laminar.start_active_span("parent")
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = [executor.submit(child_worker, str(i)) for i in range(3)]
@@ -717,7 +717,7 @@ def test_start_active_span_threadpool_parallel_with_observe(
             future.result() for future in concurrent.futures.as_completed(futures)
         ]
 
-    Laminar.end_active_span(span, ctx_token)
+    span.end()
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 4  # 1 parent + 3 children
@@ -748,7 +748,7 @@ def test_start_active_span_nested_threading_with_observe(
         return f"leaf_{task_id}"
 
     def branch_worker(branch_id: str):
-        span, token = Laminar.start_active_span(f"branch_{branch_id}")
+        span = Laminar.start_active_span(f"branch_{branch_id}")
 
         threads = []
         for i in range(2):
@@ -759,9 +759,9 @@ def test_start_active_span_nested_threading_with_observe(
         for thread in threads:
             thread.join()
 
-        Laminar.end_active_span(span, token)
+        span.end()
 
-    outer_span, outer_token = Laminar.start_active_span("root")
+    outer_span = Laminar.start_active_span("root")
 
     threads = []
     for i in range(2):
@@ -772,7 +772,7 @@ def test_start_active_span_nested_threading_with_observe(
     for thread in threads:
         thread.join()
 
-    Laminar.end_active_span(outer_span, outer_token)
+    outer_span.end()
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 7  # 1 root + 2 branches + 4 leaves
@@ -813,20 +813,20 @@ async def test_start_active_span_nested_asyncio_with_observe(
         return f"leaf_{task_id}"
 
     async def branch_task(branch_id: str):
-        span, token = Laminar.start_active_span(f"branch_{branch_id}")
+        span = Laminar.start_active_span(f"branch_{branch_id}")
 
         results = await asyncio.gather(
             leaf_task(f"{branch_id}_1"), leaf_task(f"{branch_id}_2")
         )
 
-        Laminar.end_active_span(span, token)
+        span.end()
         return results
 
-    outer_span, outer_token = Laminar.start_active_span("root")
+    outer_span = Laminar.start_active_span("root")
 
     await asyncio.gather(branch_task("a"), branch_task("b"))
 
-    Laminar.end_active_span(outer_span, outer_token)
+    outer_span.end()
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 7  # 1 root + 2 branches + 4 leaves
@@ -866,10 +866,10 @@ def test_start_active_span_threadpool_context_isolation_with_observe(
         return "inner_done"
 
     def worker(task_id: str):
-        span, token = Laminar.start_active_span(f"worker_{task_id}")
+        span = Laminar.start_active_span(f"worker_{task_id}")
         result = inner_work()
         Laminar.set_span_output(f"output_{task_id}")
-        Laminar.end_active_span(span, token)
+        span.end()
         return result
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
