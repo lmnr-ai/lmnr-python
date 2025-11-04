@@ -21,19 +21,22 @@ class LaminarSpan(Span, ReadableSpan):
     # Instead, we rely on the tracer to create the span for us, and then we
     # wrap it in a LaminarSpan.
     span: SDKSpan
+    _popped: bool = False
 
     def __init__(self, span: SDKSpan):
         self.span = span
         self.logger = get_default_logger(__name__)
 
     def end(self, end_time: int | None = None) -> None:
-        if not self.span.is_recording():
-            return
-        if hasattr(self, "_lmnr_ctx_token"):
-            pop_span_context()
-            # Internally handles and logs the error
-            detach(self._lmnr_ctx_token)
         self.span.end(end_time)
+        if hasattr(self, "_lmnr_ctx_token") and not self._popped:
+            try:
+                pop_span_context()
+                self._popped = True
+                # Internally handles and logs the error
+                detach(self._lmnr_ctx_token)
+            except Exception:
+                pass
 
     ### ========================================================================
     # The below methods are just passthrough of abstract Span methods
