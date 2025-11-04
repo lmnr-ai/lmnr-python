@@ -652,11 +652,17 @@ class Laminar:
         parent_span_context: LaminarSpanContext | None = None,
         tags: list[str] | None = None,
     ) -> Span:
-        """Start a new span. Useful for manual instrumentation.
+        """Start a span and mark it as active within the current context.\
+        Useful for manual instrumentation. Must be ended manually.
         If `span_type` is set to `"LLM"`, you should report usage and response
         attributes manually. See `Laminar.set_span_attributes` for more
-        information. Returns the span and a context token that can be used to
-        detach the context.
+        information. Returns the span object.
+
+        Note that ending the started span in a different async context yields
+        unexpected results. When propagating spans across different async or
+        threading contexts, it is recommended to either:
+        - Make sure to start and end the span in the same async context or thread, or
+        - Use `Laminar.start_span` + `Laminar.use_span` where possible 
 
         Usage example:
         ```python

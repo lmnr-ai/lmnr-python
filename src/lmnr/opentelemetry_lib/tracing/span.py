@@ -27,14 +27,12 @@ class LaminarSpan(Span, ReadableSpan):
         self.logger = get_default_logger(__name__)
 
     def end(self, end_time: int | None = None) -> None:
+        if not self.span.is_recording():
+            return
         if hasattr(self, "_lmnr_ctx_token"):
             pop_span_context()
-            try:
-                detach(self._lmnr_ctx_token)
-            except ValueError:
-                self.logger.info(
-                    "Laminar Span was created in a different async context."
-                )
+            # Internally handles and logs the error
+            detach(self._lmnr_ctx_token)
         self.span.end(end_time)
 
     ### ========================================================================
@@ -115,15 +113,15 @@ class LaminarSpan(Span, ReadableSpan):
 
     @property
     def dropped_attributes(self) -> int:
-        return super().dropped_attributes
+        return self.span.dropped_attributes
 
     @property
     def dropped_events(self) -> int:
-        return super().dropped_events
+        return self.span.dropped_events
 
     @property
     def dropped_links(self) -> int:
-        return super().dropped_links
+        return self.span.dropped_links
 
     @property
     def attributes(self) -> dict[str, AttributeValue]:
