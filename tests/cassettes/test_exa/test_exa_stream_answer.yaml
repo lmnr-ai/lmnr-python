@@ -1,0 +1,90 @@
+interactions:
+- request:
+    body: '{"query": "What is machine learning?", "text": false, "stream": true}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '69'
+      Content-Type:
+      - application/json
+      User-Agent:
+      - exa-py unknown
+    method: POST
+    uri: https://api.exa.ai/answer
+  response:
+    body:
+      string: "data: {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"Machine\"},\"index\":0}]}\n\ndata:
+        {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\" learning (\"},\"index\":0}]}\n\ndata:
+        {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"ML) is a subfield
+        of artificial intelligence (AI) that enables computers to learn from\"},\"index\":0}]}\n\ndata:
+        {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\" data and improve
+        with experience without being explicitly programmed ([SAP](https://www.sap.com\"},\"index\":0}]}\n\ndata:
+        {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"/products/artificial-intelligence/what-is-machine-learning.html),
+        [Google Cloud](https://cloud.google.com/learn/what\"},\"index\":0}]}\n\ndata:
+        {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"-is-machine-learning)).
+        It involves algorithms trained on datasets to identify patterns, make predictions,
+        and perform tasks ([Coursera](https://www.coursera\"},\"index\":0}]}\n\ndata:
+        {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\".org/articles/what-is-machine-learning),
+        [Google for Developers](https://developers.google.com/machine-learning/intro-to-ml/what-is-ml)).
+        ML is used in various applications, including recommendation\"},\"index\":0}]}\n\ndata:
+        {\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\" engines, fraud
+        detection, and autonomous vehicles ([Coursera](https://www.coursera.org/articles/what-is-machine-learning)).\\n\"},\"index\":0,\"finish_reason\":\"STOP\"}]}\n\ndata:
+        {\"citations\":[{\"id\":\"https://developers.google.com/machine-learning/intro-to-ml/what-is-ml\",\"url\":\"https://developers.google.com/machine-learning/intro-to-ml/what-is-ml\",\"image\":\"https://www.gstatic.com/devrel-devsite/prod/ve761bca974e16662f27aa8810df6d144acde5bdbeeca0dfd50e25f86621eaa19/developers/images/opengraph/white.png\",\"snippet\":\"ML
+        is the process of training a piece of software, called a model, to make useful
+        predictions or generate content (like text, images, audio, or video) from
+        ...\",\"title\":\"What is Machine Learning? - Google for Developers\"},{\"id\":\"https://coursera.org/articles/what-is-machine-learning\",\"url\":\"https://www.coursera.org/articles/what-is-machine-learning\",\"publishedDate\":\"2025-08-14T00:00:00.000Z\",\"image\":\"https://images.ctfassets.net/wp1lcwdav1p1/6FKRfGRZHgDcW6yvBeh1lF/3e8197c12e158d61998938349ede074b/GettyImages-1175946304.jpg?w=1500&h=680&q=60&fit=fill&f=faces&fm=jpg&fl=progressive\",\"favicon\":\"https://d3njjcbhbojbot.cloudfront.net/web/images/favicons/apple-touch-icon-v2-57x57.png\",\"snippet\":\"Machine
+        learning is a subfield of artificial intelligence (AI) that uses algorithms
+        trained on data sets to create self-learning models.\",\"title\":\"What Is
+        Machine Learning? Definition, Types, and Examples\"},{\"id\":\"https://cloud.google.com/learn/what-is-machine-learning\",\"url\":\"https://cloud.google.com/learn/what-is-machine-learning\",\"image\":\"https://cloud.google.com/_static/cloud/images/social-icon-google-cloud-1200-630.png\",\"snippet\":\"Machine
+        learning is a subset of artificial intelligence that enables a system to autonomously
+        learn and improve using neural networks and deep learning.\",\"title\":\"What
+        is Machine Learning? Types and uses - Google Cloud\"},{\"id\":\"https://sap.com/products/artificial-intelligence/what-is-machine-learning.html\",\"url\":\"https://www.sap.com/products/artificial-intelligence/what-is-machine-learning.html\",\"image\":\"http://www.sap.com/dam/application/shared/logos/sap_logo_rgb_onwhite_0300_0300.png.adapt.png/1656382976488.png\",\"snippet\":\"Machine
+        learning is a subset of artificial intelligence (AI) in which computers learn
+        from data and improve with experience without being explicitly programmed.\",\"title\":\"Machine
+        Learning | Definition, types, and examples - SAP\"},{\"id\":\"https://ibm.com/think/topics/machine-learning\",\"url\":\"https://www.ibm.com/think/topics/machine-learning\",\"image\":\"https://www.ibm.com/content/dam/connectedassets-adobe-cms/worldwide-content/stock-assets/getty/image/photography/f9/51/4e691eeb-0deb-479d-88d8-ea822f0f7bd8.jpg/_jcr_content/renditions/cq5dam.web.1280.1280.jpeg\",\"snippet\":\"Machine
+        learning is the subset of artificial intelligence (AI) focused on algorithms
+        that can \u201Clearn\u201D the patterns of training data and, subsequently,
+        ...\",\"title\":\"What is Machine Learning (ML) ? | IBM\"},{\"id\":\"https://mitsloan.mit.edu/ideas-made-to-matter/machine-learning-explained\",\"url\":\"https://mitsloan.mit.edu/ideas-made-to-matter/machine-learning-explained\",\"publishedDate\":\"2021-04-21T00:00:00.000Z\",\"image\":\"https://mitsloan.mit.edu/sites/default/files/styles/og_image/public/2021-04/machine-learning_6.jpg?h=fcf9bc07&itok=tsDKovSV\",\"snippet\":\"Machine
+        learning is a subfield of artificial intelligence that gives computers the
+        ability to learn without explicitly being programmed.\",\"title\":\"Machine
+        learning, explained | MIT Sloan\"},{\"id\":\"https://energy.gov/science/doe-explainsmachine-learning\",\"url\":\"https://www.energy.gov/science/doe-explainsmachine-learning\",\"image\":\"https://www.energy.gov/sites/default/files/2024-07/doe-explains-machine-learning.jpg\",\"favicon\":\"https://www.energy.gov/themes/custom/energy_gov/favicon.ico\",\"snippet\":\"Machine
+        learning is the process of using computers to detect patterns in massive datasets
+        and then make predictions based on what the computer learns from ...\",\"title\":\"DOE
+        Explains...Machine Learning - Department of Energy\"},{\"id\":\"https://en.wikipedia.org/wiki/Machine_learning\",\"url\":\"https://en.wikipedia.org/wiki/Machine_learning\",\"snippet\":\"Machine
+        learning (ML) is a field of study in artificial intelligence concerned with
+        the development and study of statistical algorithms that can learn from data\",\"title\":\"Machine
+        learning - Wikipedia\"}]}\n\ndata: {\"costDollars\":{\"total\":0.005},\"requestId\":\"ee4dfea5c3e192bba04ac11b3c56e6bf\"}\n\n"
+    headers:
+      Access-Control-Allow-Credentials:
+      - 'true'
+      Cache-Control:
+      - no-cache
+      Connection:
+      - keep-alive
+      Content-Type:
+      - text/event-stream
+      Date:
+      - Mon, 15 Sep 2025 20:48:16 GMT
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      X-Powered-By:
+      - Express
+      X-RateLimit-Limit:
+      - '9007199254740991'
+      X-RateLimit-Remaining:
+      - '9007199254740990'
+      X-RateLimit-Reset:
+      - '1757969297'
+    status:
+      code: 200
+      message: OK
+version: 1

@@ -1,0 +1,75 @@
+interactions:
+- request:
+    body: '{"query": "What is the capital of France?", "stream": false, "text": false}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '75'
+      Content-Type:
+      - application/json
+      User-Agent:
+      - exa-py unknown
+    method: POST
+    uri: https://api.exa.ai/answer
+  response:
+    body:
+      string: "{\"requestId\":\"e5df850dd9cd5f94e1f2e84a1036d050\",\"answer\":\"Paris
+        is the capital of France. ([Wikipedia](https://en.wikipedia.org/wiki/Paris),
+        [Britannica](https://www.britannica.com/place/Paris))\\n\",\"citations\":[{\"id\":\"https://en.wikipedia.org/wiki/Paris\",\"title\":\"Paris
+        - Wikipedia\",\"url\":\"https://en.wikipedia.org/wiki/Paris\",\"snippet\":\"Paris
+        is the capital and largest city of France, with an estimated population of
+        2,048,472 in January 2025 in an area of more than 105 km2 (41 sq mi).\",\"image\":\"https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/La_Tour_Eiffel_vue_de_la_Tour_Saint-Jacques%2C_Paris_ao%C3%BBt_2014_%282%29.jpg/960px-La_Tour_Eiffel_vue_de_la_Tour_Saint-Jacques%2C_Paris_ao%C3%BBt_2014_%282%29.jpg\"},{\"id\":\"https://britannica.com/place/Paris\",\"title\":\"Paris
+        | Definition, Map, Population, Facts, & History - Britannica\",\"url\":\"https://www.britannica.com/place/Paris\",\"publishedDate\":\"2025-09-09T20:48:05.671Z\",\"snippet\":\"Paris,
+        city and capital of France, located along the Seine River, in the north-central
+        part of the country. Paris is one of the world's most ...\",\"image\":\"https://cdn.britannica.com/36/135436-050-ED1D0FCE/skyline-Eiffel-Tower-France-Paris.jpg\"},{\"id\":\"https://coe.int/en/web/interculturalcities/paris\",\"title\":\"Paris,
+        France - Intercultural Cities Programme - The Council of Europe\",\"url\":\"https://www.coe.int/en/web/interculturalcities/paris\",\"snippet\":\"Paris
+        is the capital and most populous city of France. Situated on the Seine River,
+        in the north of the country, it is in the centre of the \xCEle-de-France ...\",\"favicon\":\"https://www.coe.int/o/coe-2014-theme/images/favicon.ico\"},{\"id\":\"https://en.wikipedia.org/wiki/List_of_capitals_of_France\",\"title\":\"List
+        of capitals of France - Wikipedia\",\"url\":\"https://en.wikipedia.org/wiki/List_of_capitals_of_France\",\"snippet\":\"What
+        are the two capitals of France?\\nAlgiers (1943\u20131944), the city was made
+        the seat of Free France, to be closer to the war in Europe. Paris (1945\u2013present
+        day).\"},{\"id\":\"https://home.adelphi.edu/~ca19535/page%204.html\",\"title\":\"Paris
+        facts: the capital of France in history\",\"url\":\"https://home.adelphi.edu/~ca19535/page%204.html\",\"snippet\":\"Paris
+        is the capital of France, the largest country of Europe with 550 000 km2 (65
+        millions inhabitants). Paris has 2.234 million inhabitants end 2011.\"},{\"id\":\"https://cia-france.com/french-kids-teenage-courses/paris-school/visit-paris\",\"title\":\"Discover
+        the city of Paris | Paris the capital city of France\",\"url\":\"https://www.cia-france.com/french-kids-teenage-courses/paris-school/visit-paris\",\"snippet\":\"Paris
+        is the city of romance par excellence, the fashion capital and the best example
+        of French art de vivre. Exploring Paris is an essential rite of passage ...\",\"image\":\"https://www.cia-france.com/media/121/presentation-paris_1920x1080.jpg\"},{\"id\":\"https://youtube.com/watch?v=_6UBxbX4GiQ\",\"title\":\"Paris
+        4K - Paris Capital Of France In 4K | - YouTube\",\"url\":\"https://www.youtube.com/watch?v=_6UBxbX4GiQ\",\"publishedDate\":\"2024-12-07T00:00:00.000Z\",\"snippet\":\"Paris
+        Capital City Of France In 4K Ultra HD Video | Paris, France Capital And Largest
+        City | Paris Is A Major European City And A Global ...\",\"favicon\":\"https://www.youtube.com/s/desktop/5565b4e1/img/logos/favicon.ico\"},{\"id\":\"https://testbook.com/question-answer/which-is-the-capital-city-of-france--61c5718c1415c5341398033a\",\"title\":\"[Solved]
+        Which is the capital city of France?\",\"url\":\"https://testbook.com/question-answer/which-is-the-capital-city-of-france--61c5718c1415c5341398033a\",\"score\":0.3632946014404297,\"image\":\"https://cdn.testbook.com/meta-data/tb-og-images/tb-social.png\"}],\"costDollars\":{\"total\":0.005}}"
+    headers:
+      Access-Control-Allow-Credentials:
+      - 'true'
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '3659'
+      Content-Type:
+      - application/json; charset=utf-8
+      Date:
+      - Mon, 15 Sep 2025 20:48:06 GMT
+      ETag:
+      - W/"e4b-aOc+3OCnMXcHNN3naQxclNzLPQM"
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains
+      Vary:
+      - Origin
+      X-Powered-By:
+      - Express
+      X-RateLimit-Limit:
+      - '9007199254740991'
+      X-RateLimit-Remaining:
+      - '9007199254740990'
+      X-RateLimit-Reset:
+      - '1757969286'
+    status:
+      code: 200
+      message: OK
+version: 1
