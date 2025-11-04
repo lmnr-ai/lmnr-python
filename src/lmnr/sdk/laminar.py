@@ -652,7 +652,7 @@ class Laminar:
         parent_span_context: LaminarSpanContext | None = None,
         tags: list[str] | None = None,
     ) -> Span:
-        """Start a span and mark it as active within the current context.\
+        """Start a span and mark it as active within the current context.
         Useful for manual instrumentation. Must be ended manually.
         If `span_type` is set to `"LLM"`, you should report usage and response
         attributes manually. See `Laminar.set_span_attributes` for more
