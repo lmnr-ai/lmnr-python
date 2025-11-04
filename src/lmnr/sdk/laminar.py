@@ -713,7 +713,7 @@ class Laminar:
             tags=tags,
         )
         if not cls.is_initialized():
-            return span, None
+            return span
         wrapper = TracerWrapper()
         context = wrapper.push_span_context(span)
         context_token = context_api.attach(context)
