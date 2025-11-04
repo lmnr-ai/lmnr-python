@@ -170,6 +170,5 @@ class LaminarSpan(Span, ReadableSpan):
     def instrumentation_info(self) -> InstrumentationInfo:
         return self.span.instrumentation_info
 
-    @property
     def to_json(self) -> str:
         return self.span.to_json()
