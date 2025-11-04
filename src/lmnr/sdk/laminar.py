@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from contextvars import Context, Token
+from contextvars import Context
 import warnings
 from lmnr.opentelemetry_lib import TracerManager
 from lmnr.opentelemetry_lib.tracing import TracerWrapper, get_current_context
@@ -651,7 +651,7 @@ class Laminar:
         context: Context | None = None,
         parent_span_context: LaminarSpanContext | None = None,
         tags: list[str] | None = None,
-    ) -> tuple[Span, Token[Context] | None]:
+    ) -> Span:
         """Start a new span. Useful for manual instrumentation.
         If `span_type` is set to `"LLM"`, you should report usage and response
         attributes manually. See `Laminar.set_span_attributes` for more
@@ -668,11 +668,11 @@ class Laminar:
         def bar():
             openai_client.chat.completions.create()
         
-        span, ctx_token = Laminar.start_active_span("outer")
+        span = Laminar.start_active_span("outer")
         foo()
         bar()
         # IMPORTANT: End the span manually
-        Laminar.end_active_span(span, ctx_token)
+        span.end()
         
         # Results in:
         # | outer
@@ -705,28 +705,20 @@ class Laminar:
                 Defaults to None.
         """
         span = cls.start_span(
-            name, input, span_type, context, parent_span_context, tags
+            name=name,
+            input=input,
+            span_type=span_type,
+            context=context,
+            parent_span_context=parent_span_context,
+            tags=tags,
         )
         if not cls.is_initialized():
             return span, None
         wrapper = TracerWrapper()
         context = wrapper.push_span_context(span)
         context_token = context_api.attach(context)
-        return span, context_token
-
-    @classmethod
-    def end_active_span(cls, span: Span, ctx_token: Token[Context]):
-        """End an active span."""
-        span.end()
-        if not cls.is_initialized():
-            return
-        wrapper = TracerWrapper()
-        try:
-            wrapper.pop_span_context()
-            if ctx_token is not None:
-                context_api.detach(ctx_token)
-        except Exception:
-            pass
+        span._lmnr_ctx_token = context_token
+        return span
 
     @classmethod
     def set_span_output(cls, output: Any = None):

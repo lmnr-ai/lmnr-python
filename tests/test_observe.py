@@ -1165,9 +1165,9 @@ def test_start_active_span_with_observe(span_exporter: InMemorySpanExporter):
     def observed_func():
         return "observed_output"
 
-    span, ctx_token = Laminar.start_active_span("outer")
+    span = Laminar.start_active_span("outer")
     result = observed_func()
-    Laminar.end_active_span(span, ctx_token)
+    span.end()
 
     assert result == "observed_output"
 
@@ -1203,9 +1203,9 @@ def test_start_active_span_with_nested_observe(span_exporter: InMemorySpanExport
     def outer_func():
         return inner_func()
 
-    span, ctx_token = Laminar.start_active_span("root")
+    span = Laminar.start_active_span("root")
     result = outer_func()
-    Laminar.end_active_span(span, ctx_token)
+    span.end()
 
     assert result == "inner_output"
 
@@ -1250,10 +1250,10 @@ def test_start_active_span_multiple_observe_calls(
     def func2():
         return "output2"
 
-    span, ctx_token = Laminar.start_active_span("parent")
+    span = Laminar.start_active_span("parent")
     result1 = func1()
     result2 = func2()
-    Laminar.end_active_span(span, ctx_token)
+    span.end()
 
     assert result1 == "output1"
     assert result2 == "output2"
@@ -1293,9 +1293,9 @@ def test_start_active_span_with_observe_and_context_manager(
             Laminar.set_span_output("manual_output")
         return "observed_output"
 
-    span, ctx_token = Laminar.start_active_span("root")
+    span = Laminar.start_active_span("root")
     result = observed_func()
-    Laminar.end_active_span(span, ctx_token)
+    span.end()
 
     assert result == "observed_output"
 
@@ -1337,9 +1337,9 @@ async def test_start_active_span_with_observe_async(
     async def observed_func():
         return "observed_output"
 
-    span, ctx_token = Laminar.start_active_span("outer")
+    span = Laminar.start_active_span("outer")
     result = await observed_func()
-    Laminar.end_active_span(span, ctx_token)
+    span.end()
 
     assert result == "observed_output"
 
@@ -1375,9 +1375,9 @@ async def test_start_active_span_with_nested_observe_async(
     async def middle_func():
         return await inner_func()
 
-    span, ctx_token = Laminar.start_active_span("root")
+    span = Laminar.start_active_span("root")
     result = await middle_func()
-    Laminar.end_active_span(span, ctx_token)
+    span.end()
 
     assert result == "inner_output"
 
@@ -1423,10 +1423,10 @@ async def test_start_active_span_async_multiple_observe(
     async def func2():
         return "output2"
 
-    span, ctx_token = Laminar.start_active_span("parent")
+    span = Laminar.start_active_span("parent")
     result1 = await func1()
     result2 = await func2()
-    Laminar.end_active_span(span, ctx_token)
+    span.end()
 
     assert result1 == "output1"
     assert result2 == "output2"
@@ -1472,14 +1472,14 @@ async def test_start_active_span_deeply_nested_async(
         return await nested_level3()
 
     async def nested_level1():
-        span, token = Laminar.start_active_span("level1")
+        span = Laminar.start_active_span("level1")
         result = await nested_level2()
-        Laminar.end_active_span(span, token)
+        span.end()
         return result
 
-    span, ctx_token = Laminar.start_active_span("level0")
+    span = Laminar.start_active_span("level0")
     result = await nested_level1()
-    Laminar.end_active_span(span, ctx_token)
+    span.end()
 
     assert result == "level3_output"
 
@@ -1537,9 +1537,9 @@ def test_start_active_span_ids_path_with_observe(span_exporter: InMemorySpanExpo
 
         return func2()
 
-    span, ctx_token = Laminar.start_active_span("root")
+    span = Laminar.start_active_span("root")
     result = func1()
-    Laminar.end_active_span(span, ctx_token)
+    span.end()
 
     assert result == "result"
 

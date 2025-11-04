@@ -13,9 +13,10 @@ from lmnr.opentelemetry_lib.tracing.instruments import (
 )
 from lmnr.opentelemetry_lib.tracing.context import (
     attach_context,
-    detach_context,
+    pop_span_context as ctx_pop_span_context,
     get_current_context,
     get_token_stack,
+    push_span_context as ctx_push_span_context,
     _isolated_token_stack,
     _isolated_token_stack_storage,
     set_token_stack,
@@ -196,22 +197,14 @@ class TracerWrapper(object):
         """Push a new context with the given span onto the stack."""
         current_ctx = get_current_context()
         new_context = trace.set_span_in_context(span, current_ctx)
-        token = attach_context(new_context)
-
         # Store the token for later detachment - tokens are much lighter than contexts
-        current_stack = get_token_stack().copy()
-        current_stack.append(token)
-        set_token_stack(current_stack)
+        ctx_push_span_context(new_context)
 
         return new_context
 
     def pop_span_context(self) -> None:
         """Pop the current span context from the stack."""
-        current_stack = get_token_stack().copy()
-        if current_stack:
-            token = current_stack.pop()
-            set_token_stack(current_stack)
-            detach_context(token)
+        ctx_pop_span_context()
 
     @staticmethod
     def set_static_params(

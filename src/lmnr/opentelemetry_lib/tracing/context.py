@@ -124,3 +124,20 @@ def get_event_attributes_from_context(context: Context | None = None) -> dict[st
     if user_id := get_value(CONTEXT_USER_ID_KEY, context):
         attributes["lmnr.event.user_id"] = user_id
     return attributes
+
+
+def pop_span_context() -> None:
+    """Pop the current span context from the stack."""
+    current_stack = get_token_stack().copy()
+    if current_stack:
+        token = current_stack.pop()
+        set_token_stack(current_stack)
+        detach_context(token)
+
+
+def push_span_context(context: Context) -> None:
+    """Push a new span context onto the stack."""
+    token = attach_context(context)
+    token_stack = get_token_stack().copy()
+    token_stack.append(token)
+    set_token_stack(token_stack)
