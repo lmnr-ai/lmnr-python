@@ -661,6 +661,7 @@ class Laminar:
         tags: list[str] | None = None,
     ) -> Span:
         """Start a span and mark it as active within the current context.
+        All spans started after this one will be children of this span.
         Useful for manual instrumentation. Must be ended manually.
         If `span_type` is set to `"LLM"`, you should report usage and response
         attributes manually. See `Laminar.set_span_attributes` for more
@@ -682,11 +683,14 @@ class Laminar:
 
         Usage example:
         ```python
-        from src.lmnr import Laminar
+        from src.lmnr import Laminar, observe
+
+        @observe()
         def foo():
-            with Laminar.start_active_span("foo_inner"):
+            with Laminar.start_as_current_span("foo_inner"):
                 some_function()
         
+        @observe()
         def bar():
             openai_client.chat.completions.create()
         

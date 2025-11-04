@@ -21,6 +21,8 @@ class LaminarSpan(Span, ReadableSpan):
     # Instead, we rely on the tracer to create the span for us, and then we
     # wrap it in a LaminarSpan.
     span: SDKSpan
+    # Whether the span has been popped from the context stack to prevent
+    # double popping if span.end() is called multiple times.
     _popped: bool = False
 
     def __init__(self, span: SDKSpan):
