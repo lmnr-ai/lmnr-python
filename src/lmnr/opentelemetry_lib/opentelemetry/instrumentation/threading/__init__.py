@@ -163,7 +163,7 @@ class ThreadingInstrumentor(BaseInstrumentor):
             # possible to Thread().run() without Thread().start(), so in that case,
             # we need to capture the context here.
             # We still want to capture the context in __wrap_threading_start,
-            # in order to do stay close to the original implementation.
+            # in order to stay close to the original implementation.
             if not hasattr(instance, "_lmnr_otel_context"):
                 instance._lmnr_otel_context = get_current_context()
             token = attach_context(instance._lmnr_otel_context)
