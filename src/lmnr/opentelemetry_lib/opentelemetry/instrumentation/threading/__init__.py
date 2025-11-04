@@ -147,7 +147,7 @@ class ThreadingInstrumentor(BaseInstrumentor):
         args: tuple[()],
         kwargs: dict[str, Any],
     ) -> None:
-        instance._otel_context = get_current_context()
+        instance._lmnr_otel_context = get_current_context()
         return call_wrapped(*args, **kwargs)
 
     @staticmethod
@@ -159,7 +159,14 @@ class ThreadingInstrumentor(BaseInstrumentor):
     ) -> R:
         token = None
         try:
-            token = attach_context(instance._otel_context)
+            # Genearally, this must be set in __wrap_threading_start, but it is
+            # possible to Thread().run() without Thread().start(), so in that case,
+            # we need to capture the context here.
+            # We still want to capture the context in __wrap_threading_start,
+            # in order to stay close to the original implementation.
+            if not hasattr(instance, "_lmnr_otel_context"):
+                instance._lmnr_otel_context = get_current_context()
+            token = attach_context(instance._lmnr_otel_context)
             return call_wrapped(*args, **kwargs)
         finally:
             if token is not None:
