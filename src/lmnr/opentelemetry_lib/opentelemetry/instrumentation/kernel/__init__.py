@@ -1,7 +1,6 @@
 """OpenTelemetry Kernel instrumentation"""
 
 import functools
-import logging
 from typing import Collection
 
 from lmnr.opentelemetry_lib.decorators import json_dumps
@@ -17,7 +16,6 @@ from opentelemetry.instrumentation.utils import unwrap
 from opentelemetry.trace.status import Status, StatusCode
 from wrapt import wrap_function_wrapper
 
-logger = logging.getLogger(__name__)
 _instruments = ("kernel >= 0.2.0",)
 
 
@@ -309,9 +307,6 @@ class KernelInstrumentor(BaseInstrumentor):
                     _wrap(wrapped_method),
                 )
             except (ModuleNotFoundError, AttributeError):
-                logger.warning(
-                    f"Failed to wrap {wrap_package}.{wrap_object}.{wrap_method}"
-                )
                 pass  # that's ok, we don't want to fail if some methods do not exist
 
         for wrapped_method in WRAPPED_METHODS:
