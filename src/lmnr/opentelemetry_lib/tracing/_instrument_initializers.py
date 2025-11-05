@@ -199,6 +199,16 @@ class HaystackInstrumentorInitializer(InstrumentorInitializer):
         return HaystackInstrumentor()
 
 
+class KernelInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("kernel"):
+            return None
+
+        from ..opentelemetry.instrumentation.kernel import KernelInstrumentor
+
+        return KernelInstrumentor()
+
+
 class LanceDBInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("lancedb"):
