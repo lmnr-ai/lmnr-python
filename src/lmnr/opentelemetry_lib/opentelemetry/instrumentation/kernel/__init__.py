@@ -64,6 +64,7 @@ WRAPPED_METHODS = [
         "method": "capture_screenshot",
         "class_name": "Computer",
         "span_type": "TOOL",
+        "output_formatter": screenshot_tool_output_formatter,
     },
     {
         "package": "kernel.resources.browsers.computer",
@@ -106,7 +107,6 @@ WRAPPED_METHODS = [
         "method": "type_text",
         "class_name": "Computer",
         "span_type": "TOOL",
-        "output_formatter": screenshot_tool_output_formatter,
     },
     {
         "package": "kernel.resources.browsers.playwright",
