@@ -220,14 +220,15 @@ async def _wrap_async(
     kwargs,
 ):
     with Laminar.start_as_current_span(
-        f"{to_wrap.get('class_name')}.{to_wrap.get('method')}", span_type="TOOL"
+        f"{to_wrap.get('class_name')}.{to_wrap.get('method')}",
+        span_type=to_wrap.get("span_type", "DEFAULT"),
     ) as span:
         span.set_attribute(
             "lmnr.span.input",
             json_dumps(get_input_from_func_args(wrapped, True, args, kwargs)),
         )
         try:
-            result = wrapped(*args, **kwargs)
+            result = await wrapped(*args, **kwargs)
         except Exception as e:  # pylint: disable=broad-except
             span.set_status(Status(StatusCode.ERROR))
             span.record_exception(e)

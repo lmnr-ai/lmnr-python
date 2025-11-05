@@ -25,7 +25,6 @@ def screenshot_tool_output_formatter(output: Any) -> str:
 
 def process_tool_output_formatter(output: Any) -> str:
     if not isinstance(output, (dict, BaseModel)):
-        print(f"output is not a dict or BaseModel: {type(output)}")
         return json_dumps(output)
 
     output = output.model_dump() if isinstance(output, BaseModel) else output
