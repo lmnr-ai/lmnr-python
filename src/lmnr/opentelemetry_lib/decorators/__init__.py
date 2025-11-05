@@ -2,7 +2,7 @@ from functools import wraps
 import pydantic
 import orjson
 import types
-from typing import Any, AsyncGenerator, Callable, Generator, Literal
+from typing import Any, AsyncGenerator, Callable, Generator, Literal, TypeVar
 
 from opentelemetry import context as context_api
 from opentelemetry.trace import Span, Status, StatusCode
@@ -27,6 +27,8 @@ from lmnr.opentelemetry_lib.tracing import TracerWrapper
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
+
+F = TypeVar("F", bound=Callable[..., Any])
 
 DEFAULT_PLACEHOLDER = {}
 
@@ -179,8 +181,8 @@ def observe_base(
     input_formatter: Callable[..., str] | None = None,
     output_formatter: Callable[..., str] | None = None,
     preserve_global_context: bool = False,
-):
-    def decorate(fn):
+) -> Callable[[F], F]:
+    def decorate(fn: F) -> F:
         @wraps(fn)
         def wrap(*args, **kwargs):
             if not TracerWrapper.verify_initialized():
@@ -257,8 +259,8 @@ def async_observe_base(
     input_formatter: Callable[..., str] | None = None,
     output_formatter: Callable[..., str] | None = None,
     preserve_global_context: bool = False,
-):
-    def decorate(fn):
+) -> Callable[[F], F]:
+    def decorate(fn: F) -> F:
         @wraps(fn)
         async def wrap(*args, **kwargs):
             if not TracerWrapper.verify_initialized():
