@@ -5,6 +5,7 @@ from typing import Collection
 
 from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.kernel.utils import (
+    process_tool_output_formatter,
     screenshot_tool_output_formatter,
 )
 from lmnr.sdk.decorators import observe
@@ -117,36 +118,48 @@ WRAPPED_METHODS = [
         "object": "ProcessResource",
         "method": "exec",
         "class_name": "Process",
+        "span_type": "TOOL",
+        "output_formatter": process_tool_output_formatter,
     },
     {
         "package": "kernel.resources.browsers.process",
         "object": "ProcessResource",
         "method": "kill",
         "class_name": "Process",
+        "span_type": "TOOL",
+        "output_formatter": process_tool_output_formatter,
     },
     {
         "package": "kernel.resources.browsers.process",
         "object": "ProcessResource",
         "method": "spawn",
         "class_name": "Process",
+        "span_type": "TOOL",
+        "output_formatter": process_tool_output_formatter,
     },
     {
         "package": "kernel.resources.browsers.process",
         "object": "ProcessResource",
         "method": "status",
         "class_name": "Process",
+        "span_type": "TOOL",
+        "output_formatter": process_tool_output_formatter,
     },
     {
         "package": "kernel.resources.browsers.process",
         "object": "ProcessResource",
         "method": "stdin",
         "class_name": "Process",
+        "span_type": "TOOL",
+        "output_formatter": process_tool_output_formatter,
     },
     {
         "package": "kernel.resources.browsers.process",
         "object": "ProcessResource",
         "method": "stdout_stream",
         "class_name": "Process",
+        "span_type": "TOOL",
+        "output_formatter": process_tool_output_formatter,
     },
 ]
 
@@ -320,9 +333,6 @@ class KernelInstrumentor(BaseInstrumentor):
                     _wrap_async(wrapped_method),
                 )
             except (ModuleNotFoundError, AttributeError):
-                logger.warning(
-                    f"Failed to wrap {wrap_package}.{wrap_object}.{wrap_method}"
-                )
                 pass  # that's ok, we don't want to fail if some methods do not exist
 
         try:

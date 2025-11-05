@@ -1,5 +1,9 @@
 # import base64
+import base64
 from typing import Any
+
+from lmnr.opentelemetry_lib.decorators import json_dumps
+from pydantic import BaseModel
 
 
 def screenshot_tool_output_formatter(output: Any) -> str:
@@ -17,3 +21,16 @@ def screenshot_tool_output_formatter(output: Any) -> str:
     #     response_bytes.append(chunk)
     # response_base64 = base64.b64encode(response_bytes).decode("utf-8")
     # return f"data:image/png;base64,{response_base64}"
+
+
+def process_tool_output_formatter(output: Any) -> str:
+    if not isinstance(output, (dict, BaseModel)):
+        print(f"output is not a dict or BaseModel: {type(output)}")
+        return json_dumps(output)
+
+    output = output.model_dump() if isinstance(output, BaseModel) else output
+    if "stderr_b64" in output:
+        output["stderr"] = base64.b64decode(output["stderr_b64"]).decode("utf-8")
+    if "stdout_b64" in output:
+        output["stdout"] = base64.b64decode(output["stdout_b64"]).decode("utf-8")
+    return json_dumps(output)
