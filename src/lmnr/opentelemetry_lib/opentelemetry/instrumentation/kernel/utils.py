@@ -1,5 +1,6 @@
 # import base64
 import base64
+from copy import deepcopy
 from typing import Any
 
 from lmnr.opentelemetry_lib.decorators import json_dumps
@@ -27,7 +28,7 @@ def process_tool_output_formatter(output: Any) -> str:
     if not isinstance(output, (dict, BaseModel)):
         return json_dumps(output)
 
-    output = output.model_dump() if isinstance(output, BaseModel) else output
+    output = output.model_dump() if isinstance(output, BaseModel) else deepcopy(output)
     if "stderr_b64" in output:
         output["stderr"] = base64.b64decode(output["stderr_b64"]).decode("utf-8")
     if "stdout_b64" in output:
