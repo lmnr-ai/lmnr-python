@@ -10,7 +10,6 @@ from lmnr.sdk.browser.pw_utils import (
 )
 from lmnr.sdk.browser.utils import with_tracer_and_client_wrapper
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
-from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.version import __version__
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
@@ -55,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 @with_tracer_and_client_wrapper
 def _wrap_new_browser_sync(
-    tracer: Tracer, client: LaminarClient, to_wrap, wrapped, instance, args, kwargs
+    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
 ):
     browser: SyncBrowser = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
@@ -98,7 +97,7 @@ async def _wrap_new_browser_async(
 
 @with_tracer_and_client_wrapper
 def _wrap_new_context_sync(
-    tracer: Tracer, client: LaminarClient, to_wrap, wrapped, instance, args, kwargs
+    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
 ):
     context: SyncBrowserContext = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
@@ -140,7 +139,7 @@ async def _wrap_new_context_async(
 
 @with_tracer_and_client_wrapper
 def _wrap_bring_to_front_sync(
-    tracer: Tracer, client: LaminarClient, to_wrap, wrapped, instance, args, kwargs
+    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
 ):
     wrapped(*args, **kwargs)
     take_full_snapshot(instance)
@@ -156,7 +155,7 @@ async def _wrap_bring_to_front_async(
 
 @with_tracer_and_client_wrapper
 def _wrap_browser_new_page_sync(
-    tracer: Tracer, client: LaminarClient, to_wrap, wrapped, instance, args, kwargs
+    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
 ):
     page = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
@@ -266,9 +265,8 @@ WRAPPED_METHODS_ASYNC = [
 
 
 class PlaywrightInstrumentor(BaseInstrumentor):
-    def __init__(self, client: LaminarClient, async_client: AsyncLaminarClient):
+    def __init__(self, async_client: AsyncLaminarClient):
         super().__init__()
-        self.client = client
         self.async_client = async_client
 
     def instrumentation_dependencies(self) -> Collection[str]:
@@ -278,6 +276,8 @@ class PlaywrightInstrumentor(BaseInstrumentor):
         tracer_provider = kwargs.get("tracer_provider")
         tracer = get_tracer(__name__, __version__, tracer_provider)
 
+        # Both sync and async methods use async_client because we are using
+        # a background asyncio loop for async sends
         for wrapped_method in WRAPPED_METHODS:
             wrap_package = wrapped_method.get("package")
             wrap_object = wrapped_method.get("object")
@@ -288,7 +288,7 @@ class PlaywrightInstrumentor(BaseInstrumentor):
                     f"{wrap_object}.{wrap_method}",
                     wrapped_method.get("wrapper")(
                         tracer,
-                        self.client,
+                        self.async_client,
                         wrapped_method,
                     ),
                 )

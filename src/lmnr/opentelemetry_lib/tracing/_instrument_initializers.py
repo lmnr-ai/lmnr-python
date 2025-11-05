@@ -80,7 +80,7 @@ class BrowserUseInstrumentorInitializer(InstrumentorInitializer):
 
 class BrowserUseSessionInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(
-        self, client, async_client, *args, **kwargs
+        self, async_client, *args, **kwargs
     ) -> BaseInstrumentor | None:
         if not is_package_installed("browser-use"):
             return None
@@ -344,17 +344,17 @@ class OpenTelemetryInstrumentorInitializer(InstrumentorInitializer):
 
 class PatchrightInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(
-        self, client, async_client, *args, **kwargs
+        self, async_client, *args, **kwargs
     ) -> BaseInstrumentor | None:
         if not is_package_installed("patchright"):
             return None
 
         from lmnr.sdk.browser.patchright_otel import PatchrightInstrumentor
 
-        if client is None and async_client is None:
+        if async_client is None:
             return None
 
-        return PatchrightInstrumentor(client, async_client)
+        return PatchrightInstrumentor(async_client)
 
 
 class PineconeInstrumentorInitializer(InstrumentorInitializer):
@@ -371,17 +371,17 @@ class PineconeInstrumentorInitializer(InstrumentorInitializer):
 
 class PlaywrightInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(
-        self, client, async_client, *args, **kwargs
+        self, async_client, *args, **kwargs
     ) -> BaseInstrumentor | None:
         if not is_package_installed("playwright"):
             return None
 
         from lmnr.sdk.browser.playwright_otel import PlaywrightInstrumentor
 
-        if client is None and async_client is None:
+        if async_client is None:
             return None
 
-        return PlaywrightInstrumentor(client, async_client)
+        return PlaywrightInstrumentor(async_client)
 
 
 class QdrantInstrumentorInitializer(InstrumentorInitializer):
