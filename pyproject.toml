@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.7.21a1"
+version = "0.7.21"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -141,7 +141,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.7.21,<0.8"]
+requires = ["uv_build>=0.9.7,<0.10"]
 build-backend = "uv_build"
 
 [tool.uv.workspace]

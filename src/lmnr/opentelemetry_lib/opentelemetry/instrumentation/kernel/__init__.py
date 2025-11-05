@@ -8,6 +8,7 @@ from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.kernel.utils import (
     screenshot_tool_output_formatter,
 )
+from lmnr.sdk.decorators import observe
 from lmnr.sdk.utils import get_input_from_func_args, is_async
 from lmnr import Laminar
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
@@ -17,43 +18,42 @@ from opentelemetry.trace.status import Status, StatusCode
 from wrapt import wrap_function_wrapper
 
 logger = logging.getLogger(__name__)
-# TODO: test older versions
-_instruments = ("kernel >= 0.18.0",)
+_instruments = ("kernel >= 0.2.0",)
 
 
 WRAPPED_METHODS = [
     {
-        "package": "kernel.resources.browsers.browsers",
+        "package": "kernel.resources.browsers",
         "object": "BrowsersResource",
         "method": "create",
         "class_name": "Browser",
     },
     {
-        "package": "kernel.resources.browsers.browsers",
+        "package": "kernel.resources.browsers",
         "object": "BrowsersResource",
         "method": "retrieve",
         "class_name": "Browser",
     },
     {
-        "package": "kernel.resources.browsers.browsers",
+        "package": "kernel.resources.browsers",
         "object": "BrowsersResource",
         "method": "list",
         "class_name": "Browser",
     },
     {
-        "package": "kernel.resources.browsers.browsers",
+        "package": "kernel.resources.browsers",
         "object": "BrowsersResource",
         "method": "delete",
         "class_name": "Browser",
     },
     {
-        "package": "kernel.resources.browsers.browsers",
+        "package": "kernel.resources.browsers",
         "object": "BrowsersResource",
         "method": "delete_by_id",
         "class_name": "Browser",
     },
     {
-        "package": "kernel.resources.browsers.browsers",
+        "package": "kernel.resources.browsers",
         "object": "BrowsersResource",
         "method": "load_extensions",
         "class_name": "Browser",
@@ -252,61 +252,39 @@ def _wrap_app_action(
 
     # Create a wrapper for the decorator that intercepts the handler
     def tracing_decorator(handler):
-        # Check if the handler is async or sync
+        # Apply the observe decorator to add tracing
+        observed_handler = observe(
+            name=f"action.{action_name}",
+            span_type="DEFAULT",
+        )(handler)
+
+        # Create an additional wrapper to add post-execution logic
         if is_async(handler):
-            # Async handler wrapper
-            @functools.wraps(handler)
-            async def async_wrapped_handler(*handler_args, **handler_kwargs):
-                with Laminar.start_as_current_span(
-                    f"action.{action_name}",
-                    span_type="DEFAULT",
-                ) as span:
-                    span.set_attribute(
-                        "lmnr.span.input",
-                        json_dumps(
-                            get_input_from_func_args(
-                                handler, True, handler_args, handler_kwargs
-                            )
-                        ),
-                    )
-                    try:
-                        result = await handler(*handler_args, **handler_kwargs)
-                    except Exception as e:
-                        span.set_status(Status(StatusCode.ERROR))
-                        span.record_exception(e)
-                        raise
-                    span.set_attribute("lmnr.span.output", json_dumps(result))
-                    return result
 
-            # Register the wrapped async handler with the original decorator
-            return original_decorator(async_wrapped_handler)
+            @functools.wraps(handler)
+            async def async_wrapper_with_flush(*handler_args, **handler_kwargs):
+                # Execute the observed handler (tracing happens here)
+                result = await observed_handler(*handler_args, **handler_kwargs)
+
+                Laminar.flush()
+
+                return result
+
+            # Register the wrapper with the original decorator
+            return original_decorator(async_wrapper_with_flush)
         else:
-            # Sync handler wrapper
-            @functools.wraps(handler)
-            def sync_wrapped_handler(*handler_args, **handler_kwargs):
-                with Laminar.start_as_current_span(
-                    f"action.{action_name}",
-                    span_type="DEFAULT",
-                ) as span:
-                    span.set_attribute(
-                        "lmnr.span.input",
-                        json_dumps(
-                            get_input_from_func_args(
-                                handler, True, handler_args, handler_kwargs
-                            )
-                        ),
-                    )
-                    try:
-                        result = handler(*handler_args, **handler_kwargs)
-                    except Exception as e:
-                        span.set_status(Status(StatusCode.ERROR))
-                        span.record_exception(e)
-                        raise
-                    span.set_attribute("lmnr.span.output", json_dumps(result))
-                    return result
 
-            # Register the wrapped sync handler with the original decorator
-            return original_decorator(sync_wrapped_handler)
+            @functools.wraps(handler)
+            def sync_wrapper_with_flush(*handler_args, **handler_kwargs):
+                # Execute the observed handler (tracing happens here)
+                result = observed_handler(*handler_args, **handler_kwargs)
+
+                Laminar.flush()
+
+                return result
+
+            # Register the wrapper with the original decorator
+            return original_decorator(sync_wrapper_with_flush)
 
     return tracing_decorator
 
@@ -331,6 +309,9 @@ class KernelInstrumentor(BaseInstrumentor):
                     _wrap(wrapped_method),
                 )
             except (ModuleNotFoundError, AttributeError):
+                logger.warning(
+                    f"Failed to wrap {wrap_package}.{wrap_object}.{wrap_method}"
+                )
                 pass  # that's ok, we don't want to fail if some methods do not exist
 
         for wrapped_method in WRAPPED_METHODS:
@@ -344,6 +325,9 @@ class KernelInstrumentor(BaseInstrumentor):
                     _wrap_async(wrapped_method),
                 )
             except (ModuleNotFoundError, AttributeError):
+                logger.warning(
+                    f"Failed to wrap {wrap_package}.{wrap_object}.{wrap_method}"
+                )
                 pass  # that's ok, we don't want to fail if some methods do not exist
 
         try:
