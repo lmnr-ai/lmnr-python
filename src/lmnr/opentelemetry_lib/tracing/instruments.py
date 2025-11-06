@@ -27,6 +27,7 @@ class Instruments(Enum):
     GOOGLE_GENAI = "google_genai"
     GROQ = "groq"
     HAYSTACK = "haystack"
+    KERNEL = "kernel"
     LANCEDB = "lancedb"
     LANGCHAIN = "langchain"
     LANGGRAPH = "langgraph"
@@ -74,6 +75,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.GOOGLE_GENAI: initializers.GoogleGenAIInstrumentorInitializer(),
     Instruments.GROQ: initializers.GroqInstrumentorInitializer(),
     Instruments.HAYSTACK: initializers.HaystackInstrumentorInitializer(),
+    Instruments.KERNEL: initializers.KernelInstrumentorInitializer(),
     Instruments.LANCEDB: initializers.LanceDBInstrumentorInitializer(),
     Instruments.LANGCHAIN: initializers.LangchainInstrumentorInitializer(),
     Instruments.LANGGRAPH: initializers.LanggraphInstrumentorInitializer(),

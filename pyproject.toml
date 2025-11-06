@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.7.20"
+version = "0.7.21"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -50,6 +50,7 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
 ]
 
 [project.scripts]
@@ -136,10 +137,11 @@ dev = [
   "groq>=0.30.0",
   "anthropic[bedrock]>=0.60.0",
   "langchain-openai>=0.3.32",
+  "kernel>=0.18.0",
 ]
 
 [build-system]
-requires = ["uv_build>=0.7.21,<0.8"]
+requires = ["uv_build>=0.9.7,<0.10"]
 build-backend = "uv_build"
 
 [tool.uv.workspace]
