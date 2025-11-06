@@ -411,12 +411,13 @@ async def test_evaluate_with_human_evaluator_async(span_exporter: InMemorySpanEx
                 mock_datapoints.call_count == 2
             )  # Called once for partial, once for final
 
+            scores = result["average_scores"]
             # Verify return values - human evaluator scores should be None
-            assert "accuracy" in result
-            assert result["accuracy"] == 1  # Regular evaluator should have a score
+            assert "accuracy" in scores
+            assert scores["accuracy"] == 1  # Regular evaluator should have a score
             # Human evaluators should not contribute to average scores since they're None
-            assert "human_quality" not in result
-            assert "human_relevance" not in result
+            assert "human_quality" not in scores
+            assert "human_relevance" not in scores
 
             # Get the finished spans
             spans = span_exporter.get_finished_spans()
@@ -540,11 +541,12 @@ def test_evaluate_with_human_evaluator(span_exporter: InMemorySpanExporter):
             mock_init.assert_called_once()
             assert mock_datapoints.call_count == 2
 
+            scores = result["average_scores"]
             # Verify return values
-            assert "precision" in result
-            assert result["precision"] == 0.9
+            assert "precision" in scores
+            assert scores["precision"] == 0.9
             # Human evaluator should not be in results since score is None
-            assert "human_evaluation" not in result
+            assert "human_evaluation" not in scores
 
             # Get the finished spans
             spans = span_exporter.get_finished_spans()

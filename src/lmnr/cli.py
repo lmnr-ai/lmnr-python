@@ -86,6 +86,9 @@ async def run_evaluation(args):
     scores = []
     try:
         for file in files:
+            # Reset EVALUATION_INSTANCES before loading each file
+            EVALUATION_INSTANCES.set([])
+
             LOG.info(f"Running evaluation from {file}")
             file = os.path.abspath(file)
             name = "user_module" + file
@@ -116,11 +119,13 @@ async def run_evaluation(args):
 
             for evaluation in evaluations:
                 try:
-                    eval_scores = await evaluation.run()
+                    eval_result = await evaluation.run()
                     scores.append(
                         {
                             "file": file,
-                            "scores": eval_scores,
+                            "scores": eval_result["average_scores"],
+                            "evaluation_id": str(eval_result["evaluation_id"]),
+                            "url": eval_result["url"],
                         }
                     )
                 except Exception as e:

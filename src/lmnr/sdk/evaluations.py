@@ -3,7 +3,8 @@ import re
 import uuid
 
 from tqdm import tqdm
-from typing import Any, Awaitable
+from typing import Any
+from typing_extensions import TypedDict
 
 from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
@@ -31,6 +32,14 @@ from lmnr.sdk.utils import from_env, is_async
 
 DEFAULT_BATCH_SIZE = 5
 MAX_EXPORT_BATCH_SIZE = 64
+
+
+class EvaluationRunResult(TypedDict):
+    average_scores: dict[str, Numeric]
+    evaluation_id: uuid.UUID
+    project_id: uuid.UUID
+    url: str
+    error_message: str | None
 
 
 def get_evaluation_url(
@@ -80,7 +89,7 @@ class EvaluationReporter:
     def update(self, batch_length: int):
         self.cli_progress.update(batch_length)
 
-    def stopWithError(self, error: Exception):
+    def stop_with_error(self, error: Exception):
         self.cli_progress.close()
         raise error
 
@@ -88,13 +97,12 @@ class EvaluationReporter:
         self, average_scores: dict[str, Numeric], project_id: str, evaluation_id: str
     ):
         self.cli_progress.close()
-        print(
-            f"\nCheck the results at {get_evaluation_url(project_id, evaluation_id, self.base_url)}\n"
-        )
         print("Average scores:")
         for name, score in average_scores.items():
             print(f"{name}: {score}")
-        print("\n")
+        print(
+            f"Check the results at {get_evaluation_url(project_id, evaluation_id, self.base_url)}\n"
+        )
 
 
 class Evaluation:
@@ -248,10 +256,10 @@ class Evaluation:
             export_timeout_seconds=trace_export_timeout_seconds,
         )
 
-    async def run(self) -> Awaitable[dict[str, int | float]]:
+    async def run(self) -> EvaluationRunResult:
         return await self._run()
 
-    async def _run(self) -> dict[str, int | float]:
+    async def _run(self) -> EvaluationRunResult:
         if isinstance(self.data, LaminarDataset):
             self.data.set_client(
                 LaminarClient(
@@ -259,13 +267,18 @@ class Evaluation:
                     self.project_api_key,
                 )
             )
-        self.reporter.start(len(self.data))
         try:
             evaluation = await self.client.evals.init(
                 name=self.name, group_name=self.group_name, metadata=self.metadata
             )
-            result_datapoints = await self._evaluate_in_batches(evaluation.id)
+            evaluation_id = evaluation.id
+            project_id = evaluation.projectId
+            url = get_evaluation_url(project_id, evaluation_id, self.reporter.base_url)
 
+            print(f"Check the results at {url}")
+
+            self.reporter.start(len(self.data))
+            result_datapoints = await self._evaluate_in_batches(evaluation.id)
             # Wait for all background upload tasks to complete
             if self.upload_tasks:
                 self._logger.debug(
@@ -274,14 +287,19 @@ class Evaluation:
                 await asyncio.gather(*self.upload_tasks)
                 self._logger.debug("All upload tasks completed")
         except Exception as e:
-            self.reporter.stopWithError(e)
             await self._shutdown()
-            raise
+            self.reporter.stop_with_error(e)
 
         average_scores = get_average_scores(result_datapoints)
         self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
         await self._shutdown()
-        return average_scores
+        return {
+            "average_scores": average_scores,
+            "evaluation_id": evaluation_id,
+            "project_id": project_id,
+            "url": url,
+            "error_message": None,
+        }
 
     async def _shutdown(self):
         # We use flush() instead of shutdown() because multiple evaluations
@@ -450,7 +468,7 @@ def evaluate(
     ) = None,
     max_export_batch_size: int | None = MAX_EXPORT_BATCH_SIZE,
     trace_export_timeout_seconds: int | None = None,
-) -> Awaitable[None] | None:
+) -> EvaluationRunResult | None:
     """
     If added to the file which is called through `lmnr eval` command, then
     registers the evaluation; otherwise, runs the evaluation.
