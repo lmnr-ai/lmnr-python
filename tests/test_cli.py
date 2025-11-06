@@ -2,6 +2,7 @@ import tempfile
 from argparse import Namespace
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
+import uuid
 
 import pytest
 
@@ -23,7 +24,12 @@ def mock_args():
 def mock_evaluation():
     """Create a mock evaluation that returns sample scores."""
     mock_eval = AsyncMock(spec=Evaluation)
-    mock_eval.run.return_value = {"accuracy": 0.85, "precision": 0.92}
+    mock_eval.run.return_value = {
+        "average_scores": {"accuracy": 0.85, "precision": 0.92},
+        "evaluation_id": uuid.uuid4(),
+        "project_id": uuid.uuid4(),
+        "url": "https://example.com",
+    }
     return mock_eval
 
 
