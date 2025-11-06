@@ -298,6 +298,7 @@ class Evaluation:
             "evaluation_id": evaluation_id,
             "project_id": project_id,
             "url": url,
+            "error_message": None,
         }
 
     async def _shutdown(self):
