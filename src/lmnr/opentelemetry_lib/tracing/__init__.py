@@ -4,7 +4,6 @@ import threading
 
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
-from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.types import SessionRecordingOptions
 from lmnr.sdk.log import VerboseColorfulFormatter
 from lmnr.opentelemetry_lib.tracing.instruments import (
@@ -44,7 +43,6 @@ class TracerWrapper(object):
     _lock = threading.Lock()
     _tracer_provider: TracerProvider | None = None
     _logger: logging.Logger
-    _client: LaminarClient
     _async_client: AsyncLaminarClient
     _resource: Resource
     _span_processor: SpanProcessor
@@ -80,16 +78,11 @@ class TracerWrapper(object):
                 cls.session_recording_options = session_recording_options or {}
 
                 if project_api_key:
-                    obj._client = LaminarClient(
-                        base_url=base_http_url or "https://api.lmnr.ai",
-                        project_api_key=project_api_key,
-                    )
                     obj._async_client = AsyncLaminarClient(
                         base_url=base_http_url or "https://api.lmnr.ai",
                         project_api_key=project_api_key,
                     )
                 else:
-                    obj._client = None
                     obj._async_client = None
 
                 obj._resource = Resource(attributes=TracerWrapper.resource_attributes)
@@ -130,7 +123,6 @@ class TracerWrapper(object):
                     tracer_provider=obj._tracer_provider,
                     instruments=instruments,
                     block_instruments=block_instruments,
-                    client=obj._client,
                     async_client=obj._async_client,
                 )
 
