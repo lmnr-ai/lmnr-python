@@ -105,7 +105,6 @@ def init_instrumentations(
     tracer_provider: TracerProvider,
     instruments: set[Instruments] | None = None,
     block_instruments: set[Instruments] | None = None,
-    client: LaminarClient | None = None,
     async_client: AsyncLaminarClient | None = None,
 ):
     block_instruments = block_instruments or set()
