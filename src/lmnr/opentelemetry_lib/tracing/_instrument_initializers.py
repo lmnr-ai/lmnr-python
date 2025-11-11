@@ -121,6 +121,16 @@ class ChromaInstrumentorInitializer(InstrumentorInitializer):
         return ChromaInstrumentor()
 
 
+class ClaudeAgentInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("claude-agent-sdk"):
+            return None
+
+        from ..opentelemetry.instrumentation.claude_agent import ClaudeAgentInstrumentor
+
+        return ClaudeAgentInstrumentor()
+
+
 class CohereInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("cohere"):

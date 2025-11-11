@@ -20,6 +20,7 @@ class Instruments(Enum):
     BROWSER_USE_SESSION = "browser_use_session"
     BUBUS = "bubus"
     CHROMA = "chroma"
+    CLAUDE_AGENT = "claude_agent"
     COHERE = "cohere"
     CREWAI = "crewai"
     CUA_AGENT = "cua_agent"
@@ -68,6 +69,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.BROWSER_USE_SESSION: initializers.BrowserUseSessionInstrumentorInitializer(),
     Instruments.BUBUS: initializers.BubusInstrumentorInitializer(),
     Instruments.CHROMA: initializers.ChromaInstrumentorInitializer(),
+    Instruments.CLAUDE_AGENT: initializers.ClaudeAgentInstrumentorInitializer(),
     Instruments.COHERE: initializers.CohereInstrumentorInitializer(),
     Instruments.CREWAI: initializers.CrewAIInstrumentorInitializer(),
     Instruments.CUA_AGENT: initializers.CuaAgentInstrumentorInitializer(),
