@@ -151,7 +151,6 @@ class AsyncEvals(BaseAsyncResource):
                 f"Error saving evaluation datapoints: [{response.status_code}] {response.text}"
             )
 
-    @warnings.deprecated("Use client.datasets.pull instead")
     async def get_datapoints(
         self,
         dataset_name: str,
@@ -171,6 +170,11 @@ class AsyncEvals(BaseAsyncResource):
         Raises:
             ValueError: If there's an error fetching the datapoints.
         """
+        warnings.warn(
+            "Use client.datasets.pull instead",
+            DeprecationWarning,
+        )
+
         params = {"name": dataset_name, "offset": offset, "limit": limit}
         response = await self._client.get(
             self._base_url + "/v1/datasets/datapoints",

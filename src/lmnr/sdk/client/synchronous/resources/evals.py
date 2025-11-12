@@ -183,7 +183,6 @@ class Evals(BaseResource):
         if response.status_code != 200:
             raise ValueError(f"Error updating evaluation datapoint: {response.text}")
 
-    @warnings.deprecated("Use client.datasets.pull instead")
     def get_datapoints(
         self,
         dataset_name: str,
@@ -203,6 +202,12 @@ class Evals(BaseResource):
         Raises:
             ValueError: If there's an error fetching the datapoints.
         """
+
+        warnings.warn(
+            "Use client.datasets.pull instead",
+            DeprecationWarning,
+        )
+
         params = {"name": dataset_name, "offset": offset, "limit": limit}
         response = self._client.get(
             self._base_url + "/v1/datasets/datapoints",
