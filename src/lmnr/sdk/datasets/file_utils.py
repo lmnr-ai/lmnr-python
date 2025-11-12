@@ -52,7 +52,9 @@ def _read_file(file: Path) -> list[dict[str, Any]]:
     elif file.suffix == ".csv":
         return [dict(row) for row in csv.DictReader(file.read_text().splitlines())]
     elif file.suffix == ".jsonl":
-        return [orjson.loads(line) for line in file.read_text().splitlines()]
+        return [
+            orjson.loads(line) for line in file.read_text().splitlines() if line.strip()
+        ]
     else:
         raise ValueError(f"Unsupported file type: {file.suffix}")
 

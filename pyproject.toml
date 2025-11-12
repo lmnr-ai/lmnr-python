@@ -71,7 +71,7 @@ cohere=["opentelemetry-instrumentation-cohere>=0.47.1"]
 crewai=["opentelemetry-instrumentation-crewai>=0.47.1"]
 haystack=["opentelemetry-instrumentation-haystack>=0.47.1"]
 lancedb=["opentelemetry-instrumentation-lancedb>=0.47.1"]
-langchain=["opentelemetry-instrumentation-langchain(>=0.47.1,<0.48.0)"]
+langchain=["opentelemetry-instrumentation-langchain>=0.47.1,<0.48.0"]
 llamaindex=["opentelemetry-instrumentation-llamaindex>=0.47.1"]
 marqo=["opentelemetry-instrumentation-marqo>=0.47.1"]
 mcp=["opentelemetry-instrumentation-mcp>=0.47.1"]
@@ -99,7 +99,7 @@ all = [
   "opentelemetry-instrumentation-crewai>=0.47.1",
   "opentelemetry-instrumentation-haystack>=0.47.1",
   "opentelemetry-instrumentation-lancedb>=0.47.1",
-  "opentelemetry-instrumentation-langchain(>=0.47.1,<0.48.0)",
+  "opentelemetry-instrumentation-langchain>=0.47.1,<0.48.0",
   "opentelemetry-instrumentation-llamaindex>=0.47.1",
   "opentelemetry-instrumentation-marqo>=0.47.1",
   "opentelemetry-instrumentation-mcp>=0.47.1",

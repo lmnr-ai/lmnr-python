@@ -53,7 +53,7 @@ class LaminarDataset(EvaluationDataset):
 
     def _fetch_batch(self):
         self._logger.debug(
-            f"dataset {self.name}. Fetching batch from {self._offset} to "
+            f"dataset name: {self.name}, id: {self.id}. Fetching batch from {self._offset} to "
             + f"{self._offset + self._fetch_size}"
         )
         identifier = {"id": self.id} if self.id is not None else {"name": self.name}
@@ -89,4 +89,6 @@ class LaminarDataset(EvaluationDataset):
             return
         identifier = {"id": self.id} if self.id is not None else {"name": self.name}
         self.client.datasets.push(data, **identifier)
-        LOG.info(f"Successfully pushed {len(data)} datapoints to dataset {self.name}")
+        LOG.info(
+            f"Successfully pushed {len(data)} datapoints to dataset [{identifier}]"
+        )
