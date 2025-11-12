@@ -54,12 +54,12 @@ def sample_eval_files():
         yield temp_dir, eval_files
 
 
-@patch("lmnr.cli.os.getcwd")
-@patch("lmnr.cli.os.listdir")
-@patch("lmnr.cli.importlib.util.spec_from_file_location")
-@patch("lmnr.cli.importlib.util.module_from_spec")
-@patch("lmnr.cli.EVALUATION_INSTANCES")
-@patch("lmnr.cli.PREPARE_ONLY")
+@patch("lmnr.cli.evals.os.getcwd")
+@patch("lmnr.cli.evals.os.listdir")
+@patch("lmnr.cli.evals.importlib.util.spec_from_file_location")
+@patch("lmnr.cli.evals.importlib.util.module_from_spec")
+@patch("lmnr.cli.evals.EVALUATION_INSTANCES")
+@patch("lmnr.cli.evals.PREPARE_ONLY")
 @pytest.mark.asyncio
 async def test_run_evaluation_auto_discovery(
     mock_prepare_only,
@@ -102,11 +102,11 @@ async def test_run_evaluation_auto_discovery(
     mock_prepare_only.reset.assert_called_once_with(mock_token)
 
 
-@patch("lmnr.cli.glob.glob")
-@patch("lmnr.cli.importlib.util.spec_from_file_location")
-@patch("lmnr.cli.importlib.util.module_from_spec")
-@patch("lmnr.cli.EVALUATION_INSTANCES")
-@patch("lmnr.cli.PREPARE_ONLY")
+@patch("lmnr.cli.evals.glob.glob")
+@patch("lmnr.cli.evals.importlib.util.spec_from_file_location")
+@patch("lmnr.cli.evals.importlib.util.module_from_spec")
+@patch("lmnr.cli.evals.EVALUATION_INSTANCES")
+@patch("lmnr.cli.evals.PREPARE_ONLY")
 @pytest.mark.asyncio
 async def test_run_evaluation_explicit_files(
     mock_prepare_only,
@@ -145,8 +145,8 @@ async def test_run_evaluation_explicit_files(
     mock_prepare_only.reset.assert_called_once_with(mock_token)
 
 
-@patch("lmnr.cli.os.listdir")
-@patch("lmnr.cli.LOG")
+@patch("lmnr.cli.evals.os.listdir")
+@patch("lmnr.cli.evals.LOG")
 @pytest.mark.asyncio
 async def test_run_evaluation_no_eval_files_found(
     mock_log,
@@ -167,8 +167,8 @@ async def test_run_evaluation_no_eval_files_found(
     )
 
 
-@patch("lmnr.cli.importlib.util.spec_from_file_location")
-@patch("lmnr.cli.LOG")
+@patch("lmnr.cli.evals.importlib.util.spec_from_file_location")
+@patch("lmnr.cli.evals.LOG")
 @pytest.mark.asyncio
 async def test_run_evaluation_module_load_error(
     mock_log,
@@ -188,11 +188,11 @@ async def test_run_evaluation_module_load_error(
     assert "Could not load module specification" in str(mock_log.error.call_args)
 
 
-@patch("lmnr.cli.importlib.util.spec_from_file_location")
-@patch("lmnr.cli.importlib.util.module_from_spec")
-@patch("lmnr.cli.EVALUATION_INSTANCES")
-@patch("lmnr.cli.PREPARE_ONLY")
-@patch("lmnr.cli.LOG")
+@patch("lmnr.cli.evals.importlib.util.spec_from_file_location")
+@patch("lmnr.cli.evals.importlib.util.module_from_spec")
+@patch("lmnr.cli.evals.EVALUATION_INSTANCES")
+@patch("lmnr.cli.evals.PREPARE_ONLY")
+@patch("lmnr.cli.evals.LOG")
 @pytest.mark.asyncio
 async def test_run_evaluation_no_evaluation_instances(
     mock_log,
@@ -226,11 +226,11 @@ async def test_run_evaluation_no_evaluation_instances(
     assert "Evaluation instance not found" in str(mock_log.warning.call_args)
 
 
-@patch("lmnr.cli.importlib.util.spec_from_file_location")
-@patch("lmnr.cli.importlib.util.module_from_spec")
-@patch("lmnr.cli.EVALUATION_INSTANCES")
-@patch("lmnr.cli.PREPARE_ONLY")
-@patch("lmnr.cli.LOG")
+@patch("lmnr.cli.evals.importlib.util.spec_from_file_location")
+@patch("lmnr.cli.evals.importlib.util.module_from_spec")
+@patch("lmnr.cli.evals.EVALUATION_INSTANCES")
+@patch("lmnr.cli.evals.PREPARE_ONLY")
+@patch("lmnr.cli.evals.LOG")
 @pytest.mark.asyncio
 async def test_run_evaluation_continue_on_error(
     mock_log,
@@ -267,11 +267,11 @@ async def test_run_evaluation_continue_on_error(
     mock_log.error.assert_called()
 
 
-@patch("lmnr.cli.importlib.util.spec_from_file_location")
-@patch("lmnr.cli.importlib.util.module_from_spec")
-@patch("lmnr.cli.EVALUATION_INSTANCES")
-@patch("lmnr.cli.PREPARE_ONLY")
-@patch("lmnr.cli.LOG")
+@patch("lmnr.cli.evals.importlib.util.spec_from_file_location")
+@patch("lmnr.cli.evals.importlib.util.module_from_spec")
+@patch("lmnr.cli.evals.EVALUATION_INSTANCES")
+@patch("lmnr.cli.evals.PREPARE_ONLY")
+@patch("lmnr.cli.evals.LOG")
 @pytest.mark.asyncio
 async def test_run_evaluation_evaluation_error_no_continue(
     mock_log,
@@ -308,11 +308,11 @@ async def test_run_evaluation_evaluation_error_no_continue(
     mock_log.error.assert_called()
 
 
-@patch("lmnr.cli.importlib.util.spec_from_file_location")
-@patch("lmnr.cli.importlib.util.module_from_spec")
-@patch("lmnr.cli.EVALUATION_INSTANCES")
-@patch("lmnr.cli.PREPARE_ONLY")
-@patch("lmnr.cli.LOG")
+@patch("lmnr.cli.evals.importlib.util.spec_from_file_location")
+@patch("lmnr.cli.evals.importlib.util.module_from_spec")
+@patch("lmnr.cli.evals.EVALUATION_INSTANCES")
+@patch("lmnr.cli.evals.PREPARE_ONLY")
+@patch("lmnr.cli.evals.LOG")
 @pytest.mark.asyncio
 async def test_run_evaluation_evaluation_error_with_continue(
     mock_log,
@@ -349,8 +349,8 @@ async def test_run_evaluation_evaluation_error_with_continue(
     mock_prepare_only.reset.assert_called_once_with(mock_token)
 
 
-@patch("lmnr.cli.sys.path")
-@patch("lmnr.cli.os.getcwd")
+@patch("lmnr.cli.evals.sys.path")
+@patch("lmnr.cli.evals.os.getcwd")
 @pytest.mark.asyncio
 async def test_run_evaluation_adds_cwd_to_path(
     mock_getcwd,
@@ -363,7 +363,7 @@ async def test_run_evaluation_adds_cwd_to_path(
     mock_sys_path.append = Mock()
 
     # Mock empty file list to avoid further processing
-    with patch("lmnr.cli.os.listdir", return_value=[]):
+    with patch("lmnr.cli.evals.os.listdir", return_value=[]):
         await run_evaluation(mock_args)
 
     # Verify sys.path.append was called with cwd

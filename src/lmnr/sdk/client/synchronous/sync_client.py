@@ -14,6 +14,7 @@ from lmnr.sdk.client.synchronous.resources import (
     Evaluators,
     Tags,
 )
+from lmnr.sdk.client.synchronous.resources.datasets import Datasets
 from lmnr.sdk.utils import from_env
 
 _T = TypeVar("_T", bound="LaminarClient")
@@ -103,6 +104,9 @@ class LaminarClient:
             self.__client, self.__base_url, self.__project_api_key
         )
         self.__tags = Tags(self.__client, self.__base_url, self.__project_api_key)
+        self.__datasets = Datasets(
+            self.__client, self.__base_url, self.__project_api_key
+        )
 
     @property
     def agent(self) -> Agent:
@@ -148,6 +152,15 @@ class LaminarClient:
             Evaluators: The Evaluators resource instance.
         """
         return self.__evaluators
+
+    @property
+    def datasets(self) -> Datasets:
+        """Get the Datasets resource.
+
+        Returns:
+            Datasets: The Datasets resource instance.
+        """
+        return self.__datasets
 
     def shutdown(self):
         """Shutdown the client by closing underlying connections."""

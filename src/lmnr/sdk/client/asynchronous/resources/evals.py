@@ -1,7 +1,8 @@
 """Evals resource for interacting with Laminar evaluations API."""
 
-import urllib
 import uuid
+import warnings
+
 from typing import Any
 
 from lmnr.sdk.client.asynchronous.resources.base import BaseAsyncResource
@@ -150,6 +151,7 @@ class AsyncEvals(BaseAsyncResource):
                 f"Error saving evaluation datapoints: [{response.status_code}] {response.text}"
             )
 
+    @warnings.deprecated("Use client.datasets.pull instead")
     async def get_datapoints(
         self,
         dataset_name: str,
@@ -170,10 +172,11 @@ class AsyncEvals(BaseAsyncResource):
             ValueError: If there's an error fetching the datapoints.
         """
         params = {"name": dataset_name, "offset": offset, "limit": limit}
-        url = (
-            self._base_url + "/v1/datasets/datapoints?" + urllib.parse.urlencode(params)
+        response = await self._client.get(
+            self._base_url + "/v1/datasets/datapoints",
+            params=params,
+            headers=self._headers(),
         )
-        response = await self._client.get(url, headers=self._headers())
         if response.status_code != 200:
             try:
                 resp_json = response.json()

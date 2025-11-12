@@ -30,8 +30,22 @@ class Datapoint(pydantic.BaseModel):
     # input to the executor function.
     data: EvaluationDatapointData
     # input to the evaluator function (alongside the executor output).
-    target: EvaluationDatapointTarget = pydantic.Field(default=None)
-    metadata: EvaluationDatapointMetadata = pydantic.Field(default=None)
+    target: EvaluationDatapointTarget = pydantic.Field(default={})
+    metadata: EvaluationDatapointMetadata = pydantic.Field(default={})
+    id: uuid.UUID | None = pydantic.Field(default=None)
+    created_at: datetime.datetime | None = pydantic.Field(
+        default=None, alias="createdAt"
+    )
+
+
+class Dataset(pydantic.BaseModel):
+    id: uuid.UUID = pydantic.Field()
+    name: str = pydantic.Field()
+    created_at: datetime.datetime = pydantic.Field(alias="createdAt")
+
+
+class PushDatapointsResponse(pydantic.BaseModel):
+    dataset_id: uuid.UUID = pydantic.Field(alias="datasetId")
 
 
 ExecutorFunctionReturnType = Any
@@ -69,6 +83,19 @@ class InitEvaluationResponse(pydantic.BaseModel):
     projectId: uuid.UUID
 
 
+class EvaluationDatapointDatasetLink(pydantic.BaseModel):
+    dataset_id: uuid.UUID
+    datapoint_id: uuid.UUID
+    created_at: datetime.datetime
+
+    def to_dict(self):
+        return {
+            "datasetId": str(self.dataset_id),
+            "datapointId": str(self.datapoint_id),
+            "createdAt": self.created_at.isoformat(),
+        }
+
+
 class PartialEvaluationDatapoint(pydantic.BaseModel):
     id: uuid.UUID
     data: EvaluationDatapointData
@@ -77,6 +104,7 @@ class PartialEvaluationDatapoint(pydantic.BaseModel):
     trace_id: uuid.UUID
     executor_span_id: uuid.UUID
     metadata: EvaluationDatapointMetadata = pydantic.Field(default=None)
+    dataset_link: EvaluationDatapointDatasetLink | None = pydantic.Field(default=None)
 
     # uuid is not serializable by default, so we need to convert it to a string
     def to_dict(self, max_data_length: int = DEFAULT_DATAPOINT_MAX_DATA_LENGTH):
@@ -105,6 +133,11 @@ class PartialEvaluationDatapoint(pydantic.BaseModel):
                 "metadata": (
                     serialize(self.metadata) if self.metadata is not None else {}
                 ),
+                "datasetLink": (
+                    self.dataset_link.to_dict()
+                    if self.dataset_link is not None
+                    else None
+                ),
             }
         except Exception as e:
             raise ValueError(f"Error serializing PartialEvaluationDatapoint: {e}")
@@ -120,6 +153,7 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
     trace_id: uuid.UUID
     executor_span_id: uuid.UUID
     metadata: EvaluationDatapointMetadata = pydantic.Field(default=None)
+    dataset_link: EvaluationDatapointDatasetLink | None = pydantic.Field(default=None)
 
     # uuid is not serializable by default, so we need to convert it to a string
     def to_dict(self, max_data_length: int = DEFAULT_DATAPOINT_MAX_DATA_LENGTH):
@@ -156,6 +190,11 @@ class EvaluationResultDatapoint(pydantic.BaseModel):
                 "metadata": (
                     serialize(self.metadata) if self.metadata is not None else {}
                 ),
+                "datasetLink": (
+                    self.dataset_link.to_dict()
+                    if self.dataset_link is not None
+                    else None
+                ),
             }
         except Exception as e:
             raise ValueError(f"Error serializing EvaluationResultDatapoint: {e}")
@@ -178,7 +217,7 @@ class TraceType(Enum):
 
 class GetDatapointsResponse(pydantic.BaseModel):
     items: list[Datapoint]
-    totalCount: int
+    total_count: int = pydantic.Field(alias="totalCount")
 
 
 class LaminarSpanContext(pydantic.BaseModel):

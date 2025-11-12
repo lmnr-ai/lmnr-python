@@ -1,60 +1,31 @@
-from argparse import ArgumentParser
-import asyncio
+from argparse import Namespace
+
 import glob
 import importlib.util
 import json
 import os
 import re
 import sys
-import urllib.request
-import urllib.error
-from pathlib import Path
 
 from lmnr.sdk.evaluations import Evaluation
-
-from .sdk.eval_control import PREPARE_ONLY, EVALUATION_INSTANCES
-from .sdk.log import get_default_logger
+from lmnr.sdk.eval_control import PREPARE_ONLY, EVALUATION_INSTANCES
+from lmnr.sdk.log import get_default_logger
 
 LOG = get_default_logger(__name__)
-
-
 EVAL_DIR = "evals"
+DEFAULT_DATASET_PULL_BATCH_SIZE = 100
+DEFAULT_DATASET_PUSH_BATCH_SIZE = 100
 
 
-def add_cursor_rules():
-    """Download laminar.mdc file from a hardcoded public URL and save it to .cursor/rules/laminar.mdc"""
-    # Hardcoded URL for the laminar.mdc file
-    url = "https://raw.githubusercontent.com/lmnr-ai/lmnr/dev/rules/laminar.mdc"
-
-    # Create .cursor/rules directory if it doesn't exist
-    rules_dir = Path(".cursor/rules")
-    rules_dir.mkdir(parents=True, exist_ok=True)
-
-    # Define the target file path
-    target_file = rules_dir / "laminar.mdc"
-
-    try:
-        LOG.info(f"Downloading laminar.mdc from {url}")
-
-        # Download the file
-        with urllib.request.urlopen(url) as response:
-            content = response.read()
-
-        # Write the content to the target file (this will overwrite if it exists)
-        with open(target_file, "wb") as f:
-            f.write(content)
-
-        LOG.info(f"Successfully downloaded laminar.mdc to {target_file}")
-
-    except urllib.error.URLError as e:
-        LOG.error(f"Failed to download file from {url}: {e}")
-        sys.exit(1)
-    except Exception as e:
-        LOG.error(f"Unexpected error: {e}")
-        sys.exit(1)
+def log_evaluation_instance_not_found() -> None:
+    LOG.warning(
+        "Evaluation instance not found. "
+        "`evaluate` must be called at the top level of the file, "
+        "not inside a function when running evaluations from the CLI."
+    )
 
 
-async def run_evaluation(args):
+async def run_evaluation(args: Namespace) -> None:
     sys.path.append(os.getcwd())
 
     if len(args.file) == 0:
@@ -138,61 +109,3 @@ async def run_evaluation(args):
                 json.dump(scores, f, indent=2)
     finally:
         PREPARE_ONLY.reset(prep_token)
-
-
-def log_evaluation_instance_not_found():
-    LOG.warning(
-        "Evaluation instance not found. "
-        "`evaluate` must be called at the top level of the file, "
-        "not inside a function when running evaluations from the CLI."
-    )
-
-
-def cli():
-    parser = ArgumentParser(
-        prog="lmnr",
-        description="CLI for Laminar. Call `lmnr [subcommand] --help` for more information on each subcommand.",
-    )
-
-    subparsers = parser.add_subparsers(title="subcommands", dest="subcommand")
-
-    parser_eval = subparsers.add_parser(
-        "eval",
-        description="Run an evaluation",
-        help="Run an evaluation",
-    )
-    parser_eval.add_argument(
-        "file",
-        nargs="*",
-        help="Files or a file containing the evaluation to run."
-        + "If no file name is provided, all evaluation files in the `evals` directory are run as long"
-        + "as they match *_eval.py or eval_*.py",
-        default=[],
-    )
-
-    parser_eval.add_argument(
-        "--continue-on-error",
-        action="store_true",
-        default=False,
-        help="Continue execution upon errors",
-    )
-
-    parser_eval.add_argument(
-        "--output-file",
-        help="Output file to write the results to. Outputs are written in JSON format.",
-        nargs="?",
-    )
-
-    subparsers.add_parser(
-        "add-cursor-rules",
-        description="Download laminar.mdc file and add it to .cursor/rules",
-        help="Download laminar.mdc file and add it to .cursor/rules",
-    )
-
-    parsed = parser.parse_args()
-    if parsed.subcommand == "eval":
-        asyncio.run(run_evaluation(parsed))
-    elif parsed.subcommand == "add-cursor-rules":
-        add_cursor_rules()
-    else:
-        parser.print_help()
