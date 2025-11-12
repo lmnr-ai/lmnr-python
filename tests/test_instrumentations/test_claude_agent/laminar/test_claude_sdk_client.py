@@ -22,8 +22,16 @@ def test_claude_agent_query(span_exporter: InMemorySpanExporter):
     asyncio.run(_collect_messages())
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
-    assert spans[0].name == "ClaudeSDKClient.query"
-    assert spans[0].attributes["lmnr.span.path"] == ("ClaudeSDKClient.query",)
-    assert spans[0].attributes["lmnr.span.input"] == '{"prompt":"What\'s the capital of France?"}'
-    # TODO: validate spans have same trace id [?]
+    assert len(spans) == 8
+    assert spans[0].name == "ClaudeSDKClient.connect"
+    assert spans[1].name == "ClaudeSDKClient.query"
+    assert spans[1].attributes["lmnr.span.path"] == ("ClaudeSDKClient.query",)
+    assert spans[1].attributes["lmnr.span.input"] == '{"prompt":"What\'s the capital of France?"}'
+    assert spans[2].name == "ClaudeSDKClient.receive_response"
+    assert spans[3].name == "ClaudeSDKClient.query"
+    assert spans[4].name == "ClaudeSDKClient.receive_messages"
+    assert spans[4].parent.trace_id == spans[2].context.trace_id
+    assert spans[5].name == "ClaudeSDKClient.receive_response"
+    assert spans[6].name == "ClaudeSDKClient.receive_messages"
+    assert "million" in str(spans[6].attributes["lmnr.span.output"])
+    assert spans[7].name == "ClaudeSDKClient.disconnect"
