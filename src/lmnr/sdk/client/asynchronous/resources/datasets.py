@@ -54,7 +54,7 @@ class AsyncDatasets(BaseAsyncResource):
         id: uuid.UUID | None = None,
         batch_size: int = DEFAULT_DATASET_PUSH_BATCH_SIZE,
         create_dataset: bool = False,
-    ) -> PushDatapointsResponse:
+    ) -> PushDatapointsResponse | None:
         """Push data to a dataset."""
 
         if name is None and id is None:
@@ -70,6 +70,7 @@ class AsyncDatasets(BaseAsyncResource):
 
         batch_num = 0
         total_batches = math.ceil(len(points) / batch_size)
+        response = None
         for i in range(0, len(points), batch_size):
             batch_num += 1
             logger.debug(f"Pushing batch {batch_num} of {total_batches}")
@@ -90,7 +91,10 @@ class AsyncDatasets(BaseAsyncResource):
                     f"Error pushing data to dataset: [{response.status_code}] {response.text}"
                 )
 
-            return PushDatapointsResponse.model_validate(response.json())
+            response = PushDatapointsResponse.model_validate(response.json())
+        # Currently, the response only contains the dataset ID,
+        # so it's safe to return the last response only.
+        return response
 
     async def pull(
         self,

@@ -30,8 +30,8 @@ class Datapoint(pydantic.BaseModel):
     # input to the executor function.
     data: EvaluationDatapointData
     # input to the evaluator function (alongside the executor output).
-    target: EvaluationDatapointTarget = pydantic.Field(default={})
-    metadata: EvaluationDatapointMetadata = pydantic.Field(default={})
+    target: EvaluationDatapointTarget = pydantic.Field(default_factory=dict)
+    metadata: EvaluationDatapointMetadata = pydantic.Field(default_factory=dict)
     id: uuid.UUID | None = pydantic.Field(default=None)
     created_at: datetime.datetime | None = pydantic.Field(
         default=None, alias="createdAt"
@@ -72,7 +72,7 @@ class HumanEvaluatorOptionsEntry(TypedDict):
 
 
 class HumanEvaluator(pydantic.BaseModel):
-    options: list[HumanEvaluatorOptionsEntry] = pydantic.Field(default=[])
+    options: list[HumanEvaluatorOptionsEntry] = pydantic.Field(default_factory=list)
 
 
 class InitEvaluationResponse(pydantic.BaseModel):

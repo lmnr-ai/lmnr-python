@@ -1,8 +1,10 @@
 from argparse import Namespace
 from pathlib import Path
-import sys
+from typing import Any
 
 import csv
+import sys
+
 import orjson
 
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
@@ -15,7 +17,7 @@ DEFAULT_DATASET_PULL_BATCH_SIZE = 100
 DEFAULT_DATASET_PUSH_BATCH_SIZE = 100
 
 
-def _dump_json(data: dict) -> str:
+def _dump_json(data: Any) -> str:
     return orjson.dumps(
         data,
         option=orjson.OPT_INDENT_2
@@ -34,7 +36,7 @@ async def _pull_all_data(
     limit: int | None = None,
 ) -> list[Datapoint]:
     """
-    Pull all data from a dataset.
+    Pull all data from a dataset. This function does not close the client.
 
     Args:
         client: The AsyncLaminarClient instance
@@ -118,7 +120,8 @@ def _write_data_to_file(
             for item in data:
                 writer.writerow([item.model_dump()[key] for key in keys])
     elif format == "jsonl":
-        output_path.write_text(_dump_json([item.model_dump() for item in data]))
+        for item in data:
+            output_path.write_text(_dump_json(item.model_dump()) + "\n")
 
     return True
 
@@ -174,6 +177,8 @@ async def handle_datasets_list(args: Namespace) -> None:
     except Exception as e:
         LOG.error(f"Failed to list datasets: {e}")
         return
+    finally:
+        await client.close()
 
     if not datasets:
         print("No datasets found.")
@@ -227,6 +232,8 @@ async def handle_datasets_push(args: Namespace) -> None:
         LOG.info(f"Pushed {len(data)} data points to dataset {args.name or args.id}")
     except Exception as e:
         LOG.error(f"Failed to push dataset: {e}")
+    finally:
+        await client.close()
 
 
 async def handle_datasets_pull(args: Namespace) -> None:
@@ -260,6 +267,8 @@ async def handle_datasets_pull(args: Namespace) -> None:
     except Exception as e:
         LOG.error(f"Failed to pull dataset: {e}")
         return
+    finally:
+        await client.close()
 
     # Write to file or print to console
     if args.output_path:
@@ -325,6 +334,8 @@ async def handle_datasets_create(args: Namespace) -> None:
     except Exception as e:
         LOG.error(f"Failed to pull dataset after creation: {e}")
         return
+    finally:
+        await client.close()
 
     # Save to output file
     if not _write_data_to_file(

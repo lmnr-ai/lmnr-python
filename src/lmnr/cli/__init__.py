@@ -23,8 +23,8 @@ def setup_eval_parser(subparsers: _SubParsersAction) -> None:
     parser_eval.add_argument(
         "file",
         nargs="*",
-        help="Files or a file containing the evaluation to run."
-        + "If no file name is provided, all evaluation files in the `evals` directory are run as long"
+        help="Files or a file containing the evaluation to run. "
+        + "If no file name is provided, all evaluation files in the `evals` directory are run as long "
         + "as they match *_eval.py or eval_*.py",
         default=[],
     )
@@ -54,18 +54,17 @@ def setup_laminar_args(parser: ArgumentParser) -> None:
     """Setup the laminar arguments parser."""
     parser.add_argument(
         "--project-api-key",
-        help="[Optional] Project API key to use for the command. If no project API key is provided, the project API key will be read from the environment variable LMNR_PROJECT_API_KEY.",
+        help="[Optional] Project API key to use for the command. "
+        + "If no project API key is provided, the project API key will be read "
+        + "from the environment variable LMNR_PROJECT_API_KEY.",
         default=from_env("LMNR_PROJECT_API_KEY"),
     )
     parser.add_argument(
         "--base-url",
-        help="[Optional] Base URL to use for the command. If no base URL is provided, the base URL will be read from the environment variable LMNR_BASE_URL or we default to https://api.lmnr.ai.",
+        help="[Optional] Base URL to use for the command. "
+        + "If no base URL is provided, the base URL will be read from the "
+        + "'LMNR_BASE_URL' environment variable or we default to 'https://api.lmnr.ai'.",
         default=from_env("LMNR_BASE_URL") or "https://api.lmnr.ai",
-    )
-    parser.add_argument(
-        "--port",
-        help="[Optional] Port to use for the command. If no port is provided, the port will be read from the environment variable LMNR_PORT or we default to 443.",
-        default=from_env("LMNR_PORT") or 443,
     )
 
 
@@ -100,7 +99,8 @@ def setup_datasets_push_parser(subparsers: _SubParsersAction) -> None:
     parser_datasets_push.add_argument(
         "paths",
         nargs="*",
-        help="Paths to the files or directories containing the data to push to the dataset. Supported formats: JSON, CSV, JSONL",
+        help="Paths to the files or directories containing the data to push to the dataset. "
+        + "Supported formats: JSON, CSV, JSONL",
     )
     parser_datasets_push.add_argument(
         "-r",
@@ -112,7 +112,8 @@ def setup_datasets_push_parser(subparsers: _SubParsersAction) -> None:
     parser_datasets_push.add_argument(
         "--batch-size",
         type=int,
-        help=f"Batch size to push data in. If no batch size is provided, data is pushed in batches of {DEFAULT_DATASET_PUSH_BATCH_SIZE}.",
+        help="Batch size to push data in. If no batch size is provided, "
+        + f"data is pushed in batches of '{DEFAULT_DATASET_PUSH_BATCH_SIZE}'.",
         default=DEFAULT_DATASET_PUSH_BATCH_SIZE,
     )
     setup_laminar_args(parser_datasets_push)
@@ -138,30 +139,36 @@ def setup_datasets_pull_parser(subparsers: _SubParsersAction) -> None:
     )
     parser_datasets_pull.add_argument(
         "output_path",
-        help="Path to the file to save the data to. If no path is provided, data is printed to the console in the format specified by --output-format.",
+        help="Path to the file to save the data to. "
+        + "If no path is provided, data is printed to the console in the format "
+        + "specified by '--output-format'.",
         nargs="?",
     )
     parser_datasets_pull.add_argument(
         "--output-format",
         default="json",
         choices=["json", "csv", "jsonl"],
-        help="Output format to save the data to. If no format is provided, it is inferred from the file extension.",
+        help="Output format to save the data to. "
+        + "If no format is provided, it is inferred from the file extension.",
     )
     parser_datasets_pull.add_argument(
         "--batch-size",
         type=int,
-        help=f"Batch size to pull data in. If no batch size is provided, data is pulled in batches of {DEFAULT_DATASET_PULL_BATCH_SIZE}.",
+        help="Batch size to pull data in. If no batch size is provided, "
+        + f"data is pulled in batches of '{DEFAULT_DATASET_PULL_BATCH_SIZE}'.",
         default=DEFAULT_DATASET_PULL_BATCH_SIZE,
     )
     parser_datasets_pull.add_argument(
         "--limit",
         type=int,
-        help="Limit the number of data points to pull. If no limit is provided, all data points are pulled.",
+        help="Limit the number of data points to pull. "
+        + "If no limit is provided, all data points are pulled.",
     )
     parser_datasets_pull.add_argument(
         "--offset",
         type=int,
-        help="Offset the number of data points to pull. If no offset is provided, data is pulled from the beginning.",
+        help="Offset the number of data points to pull. "
+        + "If no offset is provided, data is pulled from the beginning.",
     )
     setup_laminar_args(parser_datasets_pull)
 
@@ -180,7 +187,8 @@ def setup_datasets_create_parser(subparsers: _SubParsersAction) -> None:
     parser_datasets_create.add_argument(
         "paths",
         nargs="+",
-        help="Paths to the files or directories containing the data to push to the dataset. Supported formats: JSON, CSV, JSONL",
+        help="Paths to the files or directories containing the data to push to the dataset. "
+        + "Supported formats: JSON, CSV, JSONL",
     )
     parser_datasets_create.add_argument(
         "-o",
@@ -191,7 +199,8 @@ def setup_datasets_create_parser(subparsers: _SubParsersAction) -> None:
     parser_datasets_create.add_argument(
         "--output-format",
         choices=["json", "csv", "jsonl"],
-        help="Output format to save the data to. If no format is provided, it is inferred from the output file extension.",
+        help="Output format to save the data to. "
+        + "If no format is provided, it is inferred from the output file extension.",
     )
     parser_datasets_create.add_argument(
         "-r",
@@ -203,7 +212,8 @@ def setup_datasets_create_parser(subparsers: _SubParsersAction) -> None:
     parser_datasets_create.add_argument(
         "--batch-size",
         type=int,
-        help=f"Batch size to push/pull data in. If no batch size is provided, data is processed in batches of {DEFAULT_DATASET_PUSH_BATCH_SIZE}.",
+        help="Batch size to push/pull data in. If no batch size is provided, "
+        + f"data is processed in batches of '{DEFAULT_DATASET_PUSH_BATCH_SIZE}'.",
         default=DEFAULT_DATASET_PUSH_BATCH_SIZE,
     )
     setup_laminar_args(parser_datasets_create)
@@ -233,7 +243,8 @@ def cli() -> None:
     """Main CLI entry point."""
     parser = ArgumentParser(
         prog="lmnr",
-        description="CLI for Laminar. Call `lmnr [subcommand] --help` for more information on each subcommand.",
+        description="CLI for Laminar. "
+        + "Call `lmnr [subcommand] --help` for more information on each subcommand.",
     )
 
     subparsers = parser.add_subparsers(title="subcommands", dest="subcommand")
