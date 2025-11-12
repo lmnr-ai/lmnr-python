@@ -17,10 +17,10 @@ DEFAULT_DATASET_PULL_BATCH_SIZE = 100
 DEFAULT_DATASET_PUSH_BATCH_SIZE = 100
 
 
-def _dump_json(data: Any) -> str:
+def _dump_json(data: Any, do_indent: bool = True) -> str:
     return orjson.dumps(
         data,
-        option=orjson.OPT_INDENT_2
+        option=(orjson.OPT_INDENT_2 if do_indent else 0)
         | orjson.OPT_SERIALIZE_DATACLASS
         | orjson.OPT_SERIALIZE_UUID
         | orjson.OPT_UTC_Z
@@ -69,6 +69,8 @@ async def _pull_all_data(
             has_more = False
         current_offset += batch_size
 
+    if limit is not None:
+        return result[:limit]
     return result
 
 
@@ -120,8 +122,9 @@ def _write_data_to_file(
             for item in data:
                 writer.writerow([item.model_dump()[key] for key in keys])
     elif format == "jsonl":
-        for item in data:
-            output_path.write_text(_dump_json(item.model_dump()) + "\n")
+        with output_path.open("w") as f:
+            for item in data:
+                f.write(_dump_json(item.model_dump(), do_indent=False) + "\n")
 
     return True
 
@@ -154,7 +157,7 @@ def _print_data_to_console(data: list[Datapoint], output_format: str = "json") -
             writer.writerow([item.model_dump()[key] for key in keys])
     elif output_format == "jsonl":
         for item in data:
-            print(_dump_json(item.model_dump()))
+            print(_dump_json(item.model_dump(), do_indent=False))
     print()
 
     return True

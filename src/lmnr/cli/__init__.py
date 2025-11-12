@@ -66,6 +66,14 @@ def setup_laminar_args(parser: ArgumentParser) -> None:
         + "'LMNR_BASE_URL' environment variable or we default to 'https://api.lmnr.ai'.",
         default=from_env("LMNR_BASE_URL") or "https://api.lmnr.ai",
     )
+    parser.add_argument(
+        "--port",
+        help="[Optional] Port to use for the command. "
+        + "If no port is provided, the port will be read from the "
+        + "'LMNR_PORT' environment variable or we default to '443'.",
+        type=int,
+        default=from_env("LMNR_PORT") or 443,
+    )
 
 
 def setup_datasets_list_parser(subparsers: _SubParsersAction) -> None:
@@ -146,7 +154,6 @@ def setup_datasets_pull_parser(subparsers: _SubParsersAction) -> None:
     )
     parser_datasets_pull.add_argument(
         "--output-format",
-        default="json",
         choices=["json", "csv", "jsonl"],
         help="Output format to save the data to. "
         + "If no format is provided, it is inferred from the file extension.",
