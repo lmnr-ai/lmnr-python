@@ -81,6 +81,7 @@ class Laminar:
         set_global_tracer_provider: bool = True,
         otel_logger_level: int = logging.ERROR,
         session_recording_options: SessionRecordingOptions | None = None,
+        force_http: bool = False,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -131,7 +132,8 @@ class Laminar:
                 for browser session recording. Currently supports 'mask_input'\
                 (bool) to control whether input fields are masked during recording.\
                 Defaults to None (uses default masking behavior).
-
+            force_http (bool, optional): If set to True, the HTTP OTEL exporter will be\
+                used instead of the gRPC OTEL exporter. Defaults to False.
         Raises:
             ValueError: If project API key is not set
         """
@@ -198,6 +200,7 @@ class Laminar:
             set_global_tracer_provider=set_global_tracer_provider,
             otel_logger_level=otel_logger_level,
             session_recording_options=session_recording_options,
+            force_http=force_http,
         )
 
     @classmethod
