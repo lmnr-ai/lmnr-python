@@ -1,6 +1,3 @@
-import importlib
-import inspect
-
 from lmnr import Laminar
 from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.sdk.utils import get_input_from_func_args, is_method
@@ -161,23 +158,44 @@ async def _wrap_async(to_wrap, wrapped, instance, args, kwargs):
 @_with_wrapper
 def _wrap_async_gen(to_wrap, wrapped, instance, args, kwargs):
     async def generator():
-        with Laminar.start_as_current_span(
+        span = Laminar.start_span(
             _span_name(to_wrap),
             span_type=to_wrap.get("span_type", "DEFAULT"),
-        ) as span:
-            _record_input(span, wrapped, args, kwargs)
-            collected = []
+        )
+        collected = []
+        async_iter = None
 
-            try:
-                async for item in wrapped(*args, **kwargs):
-                    collected.append(item)
-                    yield item
-            except Exception as e:  # pylint: disable=broad-except
+        try:
+            with Laminar.use_span(span):
+                _record_input(span, wrapped, args, kwargs)
+                async_source = wrapped(*args, **kwargs)
+                async_iter = (
+                    async_source.__aiter__() if hasattr(async_source, "__aiter__") else async_source
+                )
+
+            while True:
+                try:
+                    with Laminar.use_span(span):
+                        item = await async_iter.__anext__()
+                        collected.append(item)
+                except StopAsyncIteration:
+                    break
+                yield item
+        except Exception as e:  # pylint: disable=broad-except
+            with Laminar.use_span(span):
                 span.set_status(Status(StatusCode.ERROR))
                 span.record_exception(e)
-                raise
-            finally:
+            raise
+        finally:
+            if async_iter and hasattr(async_iter, "aclose"):
+                try:
+                    with Laminar.use_span(span):
+                        await async_iter.aclose()
+                except Exception:  # pylint: disable=broad-except
+                    pass
+            with Laminar.use_span(span):
                 _record_output(span, to_wrap, collected)
+                span.end()
 
     return generator()
 
