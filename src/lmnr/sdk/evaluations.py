@@ -2,9 +2,10 @@ import asyncio
 import re
 import uuid
 
-from tqdm import tqdm
 from typing import Any
 from typing_extensions import TypedDict
+
+from tqdm import tqdm
 
 from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
@@ -18,6 +19,7 @@ from lmnr.sdk.laminar import Laminar as L
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import (
     Datapoint,
+    EvaluationDatapointDatasetLink,
     EvaluationResultDatapoint,
     EvaluatorFunction,
     ExecutorFunction,
@@ -90,7 +92,8 @@ class EvaluationReporter:
         self.cli_progress.update(batch_length)
 
     def stop_with_error(self, error: Exception):
-        self.cli_progress.close()
+        if hasattr(self, "cli_progress"):
+            self.cli_progress.close()
         raise error
 
     def stop(
@@ -213,6 +216,8 @@ class Evaluation:
             ]
         else:
             self.data = data
+        if not isinstance(self.data, LaminarDataset) and len(self.data) == 0:
+            raise ValueError("No data provided. Skipping evaluation")
         self.executor = executor
         self.evaluators = evaluators
         self.group_name = group_name
@@ -263,10 +268,23 @@ class Evaluation:
         if isinstance(self.data, LaminarDataset):
             self.data.set_client(
                 LaminarClient(
-                    self.base_http_url,
-                    self.project_api_key,
+                    base_url=self.base_http_url,
+                    project_api_key=self.project_api_key,
                 )
             )
+            if not self.data.id:
+                try:
+                    datasets = await self.client.datasets.get_dataset_by_name(
+                        self.data.name
+                    )
+                    if len(datasets) == 0:
+                        self._logger.warning(f"Dataset {self.data.name} not found")
+                    else:
+                        self.data.id = datasets[0].id
+                except Exception as e:
+                    # Backward compatibility with old Laminar API (self hosted)
+                    self._logger.warning(f"Error getting dataset {self.data.name}: {e}")
+
         try:
             evaluation = await self.client.evals.init(
                 name=self.name, group_name=self.group_name, metadata=self.metadata
@@ -354,6 +372,7 @@ class Evaluation:
                     int=executor_span.get_span_context().span_id
                 )
                 trace_id = uuid.UUID(int=executor_span.get_span_context().trace_id)
+
                 partial_datapoint = PartialEvaluationDatapoint(
                     id=evaluation_id,
                     data=datapoint.data,
@@ -363,6 +382,12 @@ class Evaluation:
                     executor_span_id=executor_span_id,
                     metadata=datapoint.metadata,
                 )
+                if isinstance(self.data, LaminarDataset):
+                    partial_datapoint.dataset_link = EvaluationDatapointDatasetLink(
+                        dataset_id=self.data.id,
+                        datapoint_id=datapoint.id,
+                        created_at=datapoint.created_at,
+                    )
                 # First, create datapoint with trace_id so that we can show the dp in the UI
                 await self.client.evals.save_datapoints(
                     eval_id, [partial_datapoint], self.group_name
@@ -426,7 +451,7 @@ class Evaluation:
 
             trace_id = uuid.UUID(int=evaluation_span.get_span_context().trace_id)
 
-        datapoint = EvaluationResultDatapoint(
+        eval_datapoint = EvaluationResultDatapoint(
             id=evaluation_id,
             data=datapoint.data,
             target=target,
@@ -437,14 +462,22 @@ class Evaluation:
             index=index,
             metadata=datapoint.metadata,
         )
+        if isinstance(self.data, LaminarDataset):
+            eval_datapoint.dataset_link = EvaluationDatapointDatasetLink(
+                dataset_id=self.data.id,
+                datapoint_id=datapoint.id,
+                created_at=datapoint.created_at,
+            )
 
         # Create background upload task without awaiting it
         upload_task = asyncio.create_task(
-            self.client.evals.save_datapoints(eval_id, [datapoint], self.group_name)
+            self.client.evals.save_datapoints(
+                eval_id, [eval_datapoint], self.group_name
+            )
         )
         self.upload_tasks.append(upload_task)
 
-        return datapoint
+        return eval_datapoint
 
 
 def evaluate(

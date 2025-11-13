@@ -1,369 +1,326 @@
 import json
 import pytest
 from unittest.mock import patch, MagicMock
+from datetime import datetime
 
 from lmnr import Laminar
 from lmnr.sdk.evaluations import evaluate, get_average_scores
-from lmnr.sdk.types import HumanEvaluator, EvaluationResultDatapoint
+from lmnr.sdk.types import HumanEvaluator, EvaluationResultDatapoint, Datapoint
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 import uuid
 
 
+# Fixtures for common mock objects
+@pytest.fixture
+def mock_eval_response():
+    """Create a mock evaluation response."""
+    response = MagicMock()
+    response.id = "00000000-0000-0000-0000-000000000000"
+    response.projectId = "mock-project-id"
+    return response
+
+
+@pytest.fixture
+def mock_datapoints_response():
+    """Create a mock datapoints response."""
+    return MagicMock()
+
+
+@pytest.fixture
+def mock_dataset_push_response():
+    """Create a mock dataset push response."""
+    response = MagicMock()
+    response.dataset_id = "00000000-0000-0000-0000-000000000001"
+    return response
+
+
+@pytest.fixture
+def mock_dataset_pull_response():
+    """Create a mock dataset pull response."""
+    response = MagicMock()
+    response.items = [
+        Datapoint(
+            id=uuid.uuid4(),
+            data="test",
+            target="test",
+            createdAt=datetime.now(),
+        )
+    ]
+    response.total_count = 1
+    return response
+
+
+# Helper functions for common test logic
+def verify_basic_api_calls(
+    mock_init, mock_dataset_push, mock_dataset_pull, mock_datapoints
+):
+    """Verify the expected API calls were made."""
+    mock_init.assert_called_once()
+    # TODO: add tests with Laminar dataset and verify pull
+    assert mock_datapoints.call_count == 2
+
+
+def verify_basic_spans(spans, expected_evaluator_names):
+    """Verify the basic span structure and return categorized spans."""
+    evaluation_span = next(
+        (
+            span
+            for span in spans
+            if span.attributes.get("lmnr.span.type") == "EVALUATION"
+        ),
+        None,
+    )
+    executor_span = next(
+        (span for span in spans if span.attributes.get("lmnr.span.type") == "EXECUTOR"),
+        None,
+    )
+    evaluator_spans = [
+        span for span in spans if span.attributes.get("lmnr.span.type") == "EVALUATOR"
+    ]
+
+    assert evaluation_span.name == "evaluation"
+    assert executor_span.name == "executor"
+    assert sorted([span.name for span in evaluator_spans]) == sorted(
+        expected_evaluator_names
+    )
+
+    return evaluation_span, executor_span, evaluator_spans
+
+
+def verify_human_evaluator_spans(spans, expected_human_evaluator_names):
+    """Verify human evaluator spans and return them."""
+    human_evaluator_spans = [
+        span
+        for span in spans
+        if span.attributes.get("lmnr.span.type") == "HUMAN_EVALUATOR"
+    ]
+    assert sorted([span.name for span in human_evaluator_spans]) == sorted(
+        expected_human_evaluator_names
+    )
+
+    for human_span in human_evaluator_spans:
+        assert human_span.attributes.get("lmnr.span.type") == "HUMAN_EVALUATOR"
+
+    return human_evaluator_spans
+
+
 @pytest.mark.asyncio
-async def test_evaluate_with_mocks_async(span_exporter: InMemorySpanExporter):
-    """
-    Test the evaluate function with mocked API calls.
-    """
-    mock_eval_id = "00000000-0000-0000-0000-000000000000"
+@patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
+@patch("lmnr.sdk.client.asynchronous.resources.datasets.AsyncDatasets.push")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+async def test_evaluate_with_mocks_async(
+    mock_init,
+    mock_datapoints,
+    mock_dataset_push,
+    mock_dataset_pull,
+    mock_eval_response,
+    mock_datapoints_response,
+    mock_dataset_push_response,
+    mock_dataset_pull_response,
+    span_exporter: InMemorySpanExporter,
+):
+    """Test the evaluate function with mocked API calls (async)."""
+    # Set up mock return values
+    mock_init.return_value = mock_eval_response
+    mock_datapoints.return_value = mock_datapoints_response
+    mock_dataset_push.return_value = mock_dataset_push_response
+    mock_dataset_pull.return_value = mock_dataset_pull_response
 
-    # Mock the init eval endpoint
-    init_eval_response = MagicMock()
-    init_eval_response.id = mock_eval_id
-    init_eval_response.projectId = "mock-project-id"
+    # Run the evaluate function
+    await evaluate(
+        data=[{"data": "test", "target": "test"}],
+        executor=lambda data: data,
+        evaluators={
+            "test": lambda output, target: 1 if output == target else 0,
+            "test2": lambda output, target: 1 if output == target else 0,
+        },
+        project_api_key="test",
+    )
 
-    # Mock the datapoints endpoint
-    datapoints_response = MagicMock()
+    # Flush the traces
+    Laminar.flush()
 
-    # Patch the AsyncLaminarClient._evals.init method
-    with patch(
-        "lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init",
-        return_value=init_eval_response,
-    ) as mock_init:
-        # Patch the datapoints method
-        with patch(
-            "lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints",
-            return_value=datapoints_response,
-        ) as mock_datapoints:
+    # Verify the API calls
+    verify_basic_api_calls(
+        mock_init, mock_dataset_push, mock_dataset_pull, mock_datapoints
+    )
 
-            # Run the evaluate function
-            await evaluate(
-                data=[
-                    {
-                        "data": "test",
-                        "target": "test",
-                    },
-                ],
-                executor=lambda data: data,
-                evaluators={
-                    "test": lambda output, target: 1 if output == target else 0,
-                    "test2": lambda output, target: 1 if output == target else 0,
-                },
-                project_api_key="test",
-            )
-
-            # Flush the traces
-            Laminar.flush()
-
-            # Verify the API calls
-            mock_init.assert_called_once()
-            assert mock_datapoints.call_count == 2  # Called once for each evaluator
-
-            # Get the finished spans
-            spans = span_exporter.get_finished_spans()
-
-            # Verify the spans
-            assert len(spans) == 4
-
-            # Find the specific span types
-            evaluation_span = next(
-                (
-                    span
-                    for span in spans
-                    if span.attributes.get("lmnr.span.type") == "EVALUATION"
-                ),
-                None,
-            )
-            executor_span = next(
-                (
-                    span
-                    for span in spans
-                    if span.attributes.get("lmnr.span.type") == "EXECUTOR"
-                ),
-                None,
-            )
-            evaluator_spans = [
-                span
-                for span in spans
-                if span.attributes.get("lmnr.span.type") == "EVALUATOR"
-            ]
-
-            # Verify the span names
-            assert evaluation_span.name == "evaluation"
-            assert executor_span.name == "executor"
-            assert sorted([span.name for span in evaluator_spans]) == ["test", "test2"]
+    # Get the finished spans and verify
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 4
+    verify_basic_spans(spans, ["test", "test2"])
 
 
-def test_evaluate_with_mocks(span_exporter: InMemorySpanExporter):
-    """
-    Test the evaluate function with mocked API calls.
-    """
-    mock_eval_id = "00000000-0000-0000-0000-000000000000"
+@patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
+@patch("lmnr.sdk.client.asynchronous.resources.datasets.AsyncDatasets.push")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+def test_evaluate_with_mocks(
+    mock_init,
+    mock_datapoints,
+    mock_dataset_push,
+    mock_dataset_pull,
+    mock_eval_response,
+    mock_datapoints_response,
+    mock_dataset_push_response,
+    mock_dataset_pull_response,
+    span_exporter: InMemorySpanExporter,
+):
+    """Test the evaluate function with mocked API calls (sync)."""
+    # Set up mock return values
+    mock_init.return_value = mock_eval_response
+    mock_datapoints.return_value = mock_datapoints_response
+    mock_dataset_push.return_value = mock_dataset_push_response
+    mock_dataset_pull.return_value = mock_dataset_pull_response
 
-    # Mock the init eval endpoint
-    init_eval_response = MagicMock()
-    init_eval_response.id = mock_eval_id
-    init_eval_response.projectId = "mock-project-id"
+    # Run the evaluate function
+    evaluate(
+        data=[{"data": "test", "target": "test"}],
+        executor=lambda data: data,
+        evaluators={
+            "test": lambda output, target: 1 if output == target else 0,
+            "test2": lambda output, target: 1 if output == target else 0,
+        },
+        project_api_key="test",
+    )
 
-    # Mock the datapoints endpoint
-    datapoints_response = MagicMock()
+    # Flush the traces
+    Laminar.flush()
 
-    # Patch the AsyncLaminarClient._evals.init method
-    with patch(
-        "lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init",
-        return_value=init_eval_response,
-    ) as mock_init:
-        # Patch the datapoints method
-        with patch(
-            "lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints",
-            return_value=datapoints_response,
-        ) as mock_datapoints:
+    # Verify the API calls
+    verify_basic_api_calls(
+        mock_init, mock_dataset_push, mock_dataset_pull, mock_datapoints
+    )
 
-            # Run the evaluate function
-            evaluate(
-                data=[
-                    {
-                        "data": "test",
-                        "target": "test",
-                    },
-                ],
-                executor=lambda data: data,
-                evaluators={
-                    "test": lambda output, target: 1 if output == target else 0,
-                    "test2": lambda output, target: 1 if output == target else 0,
-                },
-                project_api_key="test",
-            )
-
-            # Flush the traces
-            Laminar.flush()
-
-            # Verify the API calls
-            mock_init.assert_called_once()
-            assert mock_datapoints.call_count == 2  # Called once for each evaluator
-
-            # Get the finished spans
-            spans = span_exporter.get_finished_spans()
-
-            # Verify the spans
-            assert len(spans) == 4
-
-            # Find the specific span types
-            evaluation_span = next(
-                (
-                    span
-                    for span in spans
-                    if span.attributes.get("lmnr.span.type") == "EVALUATION"
-                ),
-                None,
-            )
-            executor_span = next(
-                (
-                    span
-                    for span in spans
-                    if span.attributes.get("lmnr.span.type") == "EXECUTOR"
-                ),
-                None,
-            )
-            evaluator_spans = [
-                span
-                for span in spans
-                if span.attributes.get("lmnr.span.type") == "EVALUATOR"
-            ]
-
-            # Verify the span names
-            assert evaluation_span.name == "evaluation"
-            assert executor_span.name == "executor"
-            assert sorted([span.name for span in evaluator_spans]) == ["test", "test2"]
+    # Get the finished spans and verify
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 4
+    verify_basic_spans(spans, ["test", "test2"])
 
 
-def test_evaluate_after_init(span_exporter: InMemorySpanExporter):
-    """
-    Test the evaluate function with mocked API calls.
-    """
-    mock_eval_id = "00000000-0000-0000-0000-000000000000"
+@patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
+@patch("lmnr.sdk.client.asynchronous.resources.datasets.AsyncDatasets.push")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+def test_evaluate_after_init(
+    mock_init,
+    mock_datapoints,
+    mock_dataset_push,
+    mock_dataset_pull,
+    mock_eval_response,
+    mock_datapoints_response,
+    mock_dataset_push_response,
+    mock_dataset_pull_response,
+    span_exporter: InMemorySpanExporter,
+):
+    """Test the evaluate function after Laminar.initialize() has been called."""
+    # Set up mock return values
+    mock_init.return_value = mock_eval_response
+    mock_datapoints.return_value = mock_datapoints_response
+    mock_dataset_push.return_value = mock_dataset_push_response
+    mock_dataset_pull.return_value = mock_dataset_pull_response
 
-    # Mock the init eval endpoint
-    init_eval_response = MagicMock()
-    init_eval_response.id = mock_eval_id
-    init_eval_response.projectId = "mock-project-id"
+    Laminar.initialize(project_api_key="test")
 
-    # Mock the datapoints endpoint
-    datapoints_response = MagicMock()
+    # Run the evaluate function
+    evaluate(
+        data=[{"data": "test", "target": "test"}],
+        executor=lambda data: data,
+        evaluators={
+            "test": lambda output, target: 1 if output == target else 0,
+            "test2": lambda output, target: 1 if output == target else 0,
+        },
+        project_api_key="test",
+    )
 
-    # Patch the AsyncLaminarClient._evals.init method
-    with patch(
-        "lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init",
-        return_value=init_eval_response,
-    ) as mock_init:
-        # Patch the datapoints method
-        with patch(
-            "lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints",
-            return_value=datapoints_response,
-        ) as mock_datapoints:
+    # Flush the traces
+    Laminar.flush()
 
-            Laminar.initialize(
-                project_api_key="test",
-            )
+    # Verify the API calls
+    verify_basic_api_calls(
+        mock_init, mock_dataset_push, mock_dataset_pull, mock_datapoints
+    )
 
-            # Run the evaluate function
-            evaluate(
-                data=[
-                    {
-                        "data": "test",
-                        "target": "test",
-                    },
-                ],
-                executor=lambda data: data,
-                evaluators={
-                    "test": lambda output, target: 1 if output == target else 0,
-                    "test2": lambda output, target: 1 if output == target else 0,
-                },
-                project_api_key="test",
-            )
-
-            # Flush the traces
-            Laminar.flush()
-
-            # Verify the API calls
-            mock_init.assert_called_once()
-            assert mock_datapoints.call_count == 2  # Called once for each evaluator
-
-            # Get the finished spans
-            spans = span_exporter.get_finished_spans()
-
-            # Verify the spans
-            assert len(spans) == 4
-
-            # Find the specific span types
-            evaluation_span = next(
-                (
-                    span
-                    for span in spans
-                    if span.attributes.get("lmnr.span.type") == "EVALUATION"
-                ),
-                None,
-            )
-            executor_span = next(
-                (
-                    span
-                    for span in spans
-                    if span.attributes.get("lmnr.span.type") == "EXECUTOR"
-                ),
-                None,
-            )
-            evaluator_spans = [
-                span
-                for span in spans
-                if span.attributes.get("lmnr.span.type") == "EVALUATOR"
-            ]
-
-            # Verify the span names
-            assert evaluation_span.name == "evaluation"
-            assert executor_span.name == "executor"
-            assert sorted([span.name for span in evaluator_spans]) == ["test", "test2"]
+    # Get the finished spans and verify
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 4
+    verify_basic_spans(spans, ["test", "test2"])
 
 
-def test_evaluate_with_flush(span_exporter: InMemorySpanExporter):
-    """
-    Test the evaluate function with mocked API calls.
-    """
-    mock_eval_id = "00000000-0000-0000-0000-000000000000"
-
-    # Mock the init eval endpoint
-    init_eval_response = MagicMock()
-    init_eval_response.id = mock_eval_id
-    init_eval_response.projectId = "mock-project-id"
-
-    # Mock the datapoints endpoint
-    datapoints_response = MagicMock()
+@patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
+@patch("lmnr.sdk.client.asynchronous.resources.datasets.AsyncDatasets.push")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+def test_evaluate_with_flush(
+    mock_init,
+    mock_datapoints,
+    mock_dataset_push,
+    mock_dataset_pull,
+    mock_eval_response,
+    mock_datapoints_response,
+    mock_dataset_push_response,
+    mock_dataset_pull_response,
+    span_exporter: InMemorySpanExporter,
+):
+    """Test the evaluate function when flush is called within the executor."""
+    # Set up mock return values
+    mock_init.return_value = mock_eval_response
+    mock_datapoints.return_value = mock_datapoints_response
+    mock_dataset_push.return_value = mock_dataset_push_response
+    mock_dataset_pull.return_value = mock_dataset_pull_response
 
     def mock_executor(data):
         Laminar.flush()
         return data
 
-    # Patch the AsyncLaminarClient._evals.init method
-    with patch(
-        "lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init",
-        return_value=init_eval_response,
-    ) as mock_init:
-        # Patch the datapoints method
-        with patch(
-            "lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints",
-            return_value=datapoints_response,
-        ) as mock_datapoints:
+    # Run the evaluate function
+    evaluate(
+        data=[{"data": "test", "target": "test"}],
+        executor=mock_executor,
+        evaluators={
+            "test": lambda output, target: 1 if output == target else 0,
+            "test2": lambda output, target: 1 if output == target else 0,
+        },
+        project_api_key="test",
+    )
 
-            # Run the evaluate function
-            evaluate(
-                data=[
-                    {
-                        "data": "test",
-                        "target": "test",
-                    },
-                ],
-                executor=mock_executor,
-                evaluators={
-                    "test": lambda output, target: 1 if output == target else 0,
-                    "test2": lambda output, target: 1 if output == target else 0,
-                },
-                project_api_key="test",
-            )
+    # Flush the traces
+    Laminar.flush()
 
-            # Flush the traces
-            Laminar.flush()
+    # Verify the API calls
+    verify_basic_api_calls(
+        mock_init, mock_dataset_push, mock_dataset_pull, mock_datapoints
+    )
 
-            # Verify the API calls
-            mock_init.assert_called_once()
-            assert mock_datapoints.call_count == 2  # Called once for each evaluator
-
-            # Get the finished spans
-            spans = span_exporter.get_finished_spans()
-
-            # Verify the spans
-            assert len(spans) == 4
-
-            # Find the specific span types
-            evaluation_span = next(
-                (
-                    span
-                    for span in spans
-                    if span.attributes.get("lmnr.span.type") == "EVALUATION"
-                ),
-                None,
-            )
-            executor_span = next(
-                (
-                    span
-                    for span in spans
-                    if span.attributes.get("lmnr.span.type") == "EXECUTOR"
-                ),
-                None,
-            )
-            evaluator_spans = [
-                span
-                for span in spans
-                if span.attributes.get("lmnr.span.type") == "EVALUATOR"
-            ]
-
-            # Verify the span names
-            assert evaluation_span.name == "evaluation"
-            assert executor_span.name == "executor"
-            assert sorted([span.name for span in evaluator_spans]) == ["test", "test2"]
+    # Get the finished spans and verify
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 4
+    verify_basic_spans(spans, ["test", "test2"])
 
 
 @pytest.mark.asyncio
-async def test_evaluate_with_human_evaluator_async(span_exporter: InMemorySpanExporter):
-    """
-    Test the evaluate function with HumanEvaluator instances (async version).
-    """
-    mock_eval_id = "00000000-0000-0000-0000-000000000000"
-
-    # Mock the init eval endpoint
-    init_eval_response = MagicMock()
-    init_eval_response.id = mock_eval_id
-    init_eval_response.projectId = "mock-project-id"
-
-    # Mock the datapoints endpoint
-    datapoints_response = MagicMock()
+@patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
+@patch("lmnr.sdk.client.asynchronous.resources.datasets.AsyncDatasets.push")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+async def test_evaluate_with_human_evaluator_async(
+    mock_init,
+    mock_datapoints,
+    mock_dataset_push,
+    mock_dataset_pull,
+    mock_eval_response,
+    mock_datapoints_response,
+    mock_dataset_push_response,
+    mock_dataset_pull_response,
+    span_exporter: InMemorySpanExporter,
+):
+    """Test the evaluate function with HumanEvaluator instances (async)."""
+    # Set up mock return values
+    mock_init.return_value = mock_eval_response
+    mock_datapoints.return_value = mock_datapoints_response
+    mock_dataset_push.return_value = mock_dataset_push_response
+    mock_dataset_pull.return_value = mock_dataset_pull_response
 
     options = [
         {"label": "relevant", "value": 1},
@@ -374,214 +331,139 @@ async def test_evaluate_with_human_evaluator_async(span_exporter: InMemorySpanEx
     human_evaluator1 = HumanEvaluator()
     human_evaluator2 = HumanEvaluator(options=options)
 
-    # Patch the AsyncLaminarClient._evals.init method
-    with patch(
-        "lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init",
-        return_value=init_eval_response,
-    ) as mock_init:
-        # Patch the datapoints method
-        with patch(
-            "lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints",
-            return_value=datapoints_response,
-        ) as mock_datapoints:
+    # Run the evaluate function with mixed evaluators
+    result = await evaluate(
+        data=[{"data": "test", "target": "test"}],
+        executor=lambda data: data,
+        evaluators={
+            "accuracy": lambda output, target: 1 if output == target else 0,
+            "human_quality": human_evaluator1,
+            "human_relevance": human_evaluator2,
+        },
+        project_api_key="test",
+    )
 
-            # Run the evaluate function with mixed evaluators
-            result = await evaluate(
-                data=[
-                    {
-                        "data": "test",
-                        "target": "test",
-                    },
-                ],
-                executor=lambda data: data,
-                evaluators={
-                    "accuracy": lambda output, target: 1 if output == target else 0,
-                    "human_quality": human_evaluator1,
-                    "human_relevance": human_evaluator2,
-                },
-                project_api_key="test",
-            )
+    # Flush the traces
+    Laminar.flush()
 
-            # Flush the traces
-            Laminar.flush()
+    # Verify the API calls
+    verify_basic_api_calls(
+        mock_init, mock_dataset_push, mock_dataset_pull, mock_datapoints
+    )
 
-            # Verify the API calls
-            mock_init.assert_called_once()
-            assert (
-                mock_datapoints.call_count == 2
-            )  # Called once for partial, once for final
+    # Verify return values - human evaluator scores should be None
+    scores = result["average_scores"]
+    assert "accuracy" in scores
+    assert scores["accuracy"] == 1  # Regular evaluator should have a score
+    # Human evaluators should not contribute to average scores since they're None
+    assert "human_quality" not in scores
+    assert "human_relevance" not in scores
 
-            scores = result["average_scores"]
-            # Verify return values - human evaluator scores should be None
-            assert "accuracy" in scores
-            assert scores["accuracy"] == 1  # Regular evaluator should have a score
-            # Human evaluators should not contribute to average scores since they're None
-            assert "human_quality" not in scores
-            assert "human_relevance" not in scores
+    # Get the finished spans and verify
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 5  # evaluation, executor, 1 evaluator, 2 human_evaluators
 
-            # Get the finished spans
-            spans = span_exporter.get_finished_spans()
+    # Verify basic spans
+    evaluation_span, executor_span, evaluator_spans = verify_basic_spans(
+        spans, ["accuracy"]
+    )
+    assert len(evaluator_spans) == 1
 
-            # Verify the spans - should have evaluation, executor, regular evaluator, and 2 human evaluator spans
-            assert len(spans) == 5
+    # Verify human evaluator spans
+    verify_human_evaluator_spans(spans, ["human_quality", "human_relevance"])
 
-            # Find the specific span types
-            evaluation_span = next(
-                (
-                    span
-                    for span in spans
-                    if span.attributes.get("lmnr.span.type") == "EVALUATION"
-                ),
-                None,
-            )
-            executor_span = next(
-                (
-                    span
-                    for span in spans
-                    if span.attributes.get("lmnr.span.type") == "EXECUTOR"
-                ),
-                None,
-            )
-            evaluator_spans = [
-                span
-                for span in spans
-                if span.attributes.get("lmnr.span.type") == "EVALUATOR"
-            ]
-            human_evaluator_spans = [
-                span
-                for span in spans
-                if span.attributes.get("lmnr.span.type") == "HUMAN_EVALUATOR"
-            ]
-
-            # Verify the span names and types
-            assert evaluation_span.name == "evaluation"
-            assert executor_span.name == "executor"
-            assert len(evaluator_spans) == 1
-            assert evaluator_spans[0].name == "accuracy"
-            assert len(human_evaluator_spans) == 2
-            assert sorted([span.name for span in human_evaluator_spans]) == [
-                "human_quality",
-                "human_relevance",
-            ]
-            options_span = next(
-                (
-                    span
-                    for span in spans
-                    if span.attributes.get("lmnr.span.type") == "HUMAN_EVALUATOR"
-                    and span.name == "human_relevance"
-                ),
-            )
-            assert (
-                json.loads(
-                    options_span.attributes.get("lmnr.span.human_evaluator_options")
-                )
-                == options
-            )
-
-            # Verify human evaluator spans have correct attributes
-            for human_span in human_evaluator_spans:
-                assert human_span.attributes.get("lmnr.span.type") == "HUMAN_EVALUATOR"
+    # Verify options are correctly set on human_relevance span
+    options_span = next(
+        span
+        for span in spans
+        if span.attributes.get("lmnr.span.type") == "HUMAN_EVALUATOR"
+        and span.name == "human_relevance"
+    )
+    assert (
+        json.loads(options_span.attributes.get("lmnr.span.human_evaluator_options"))
+        == options
+    )
 
 
-def test_evaluate_with_human_evaluator(span_exporter: InMemorySpanExporter):
-    """
-    Test the evaluate function with HumanEvaluator instances (sync version).
-    """
-    mock_eval_id = "00000000-0000-0000-0000-000000000000"
-
-    # Mock the init eval endpoint
-    init_eval_response = MagicMock()
-    init_eval_response.id = mock_eval_id
-    init_eval_response.projectId = "mock-project-id"
-
-    # Mock the datapoints endpoint
-    datapoints_response = MagicMock()
+@patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
+@patch("lmnr.sdk.client.asynchronous.resources.datasets.AsyncDatasets.push")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+def test_evaluate_with_human_evaluator(
+    mock_init,
+    mock_datapoints,
+    mock_dataset_push,
+    mock_dataset_pull,
+    mock_eval_response,
+    mock_datapoints_response,
+    mock_dataset_push_response,
+    mock_dataset_pull_response,
+    span_exporter: InMemorySpanExporter,
+):
+    """Test the evaluate function with HumanEvaluator instances (sync)."""
+    # Set up mock return values
+    mock_init.return_value = mock_eval_response
+    mock_datapoints.return_value = mock_datapoints_response
+    mock_dataset_push.return_value = mock_dataset_push_response
+    mock_dataset_pull.return_value = mock_dataset_pull_response
 
     options = [
         {"label": "relevant", "value": 1},
         {"label": "irrelevant", "value": 0},
     ]
 
-    # Create HumanEvaluator instance
+    # Create HumanEvaluator instances
     human_evaluator1 = HumanEvaluator()
     human_evaluator2 = HumanEvaluator(options=options)
 
-    # Patch the AsyncLaminarClient._evals.init method
-    with patch(
-        "lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init",
-        return_value=init_eval_response,
-    ) as mock_init:
-        # Patch the datapoints method
-        with patch(
-            "lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints",
-            return_value=datapoints_response,
-        ) as mock_datapoints:
+    # Run the evaluate function with mixed evaluators
+    result = evaluate(
+        data=[{"data": "test", "target": "test"}],
+        executor=lambda data: data,
+        evaluators={
+            "precision": lambda output, target: 0.9,
+            "human_quality": human_evaluator1,
+            "human_relevance": human_evaluator2,
+        },
+        project_api_key="test",
+    )
 
-            # Run the evaluate function with mixed evaluators
-            result = evaluate(
-                data=[
-                    {
-                        "data": "test",
-                        "target": "test",
-                    },
-                ],
-                executor=lambda data: data,
-                evaluators={
-                    "precision": lambda output, target: 0.9,
-                    "human_quality": human_evaluator1,
-                    "human_relevance": human_evaluator2,
-                },
-                project_api_key="test",
-            )
+    # Flush the traces
+    Laminar.flush()
 
-            # Flush the traces
-            Laminar.flush()
+    # Verify the API calls
+    verify_basic_api_calls(
+        mock_init, mock_dataset_push, mock_dataset_pull, mock_datapoints
+    )
 
-            # Verify the API calls
-            mock_init.assert_called_once()
-            assert mock_datapoints.call_count == 2
+    # Verify return values
+    scores = result["average_scores"]
+    assert "precision" in scores
+    assert scores["precision"] == 0.9
+    # Human evaluator should not be in results since score is None
+    assert "human_evaluation" not in scores
 
-            scores = result["average_scores"]
-            # Verify return values
-            assert "precision" in scores
-            assert scores["precision"] == 0.9
-            # Human evaluator should not be in results since score is None
-            assert "human_evaluation" not in scores
+    # Get the finished spans and verify
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 5  # evaluation, executor, evaluator, 2x human_evaluator
 
-            # Get the finished spans
-            spans = span_exporter.get_finished_spans()
+    # Verify basic spans
+    verify_basic_spans(spans, ["precision"])
 
-            # Verify the spans
-            assert (
-                len(spans) == 5
-            )  # evaluation, executor, evaluator, 2x human_evaluator
+    # Verify human evaluator spans
+    verify_human_evaluator_spans(spans, ["human_quality", "human_relevance"])
 
-            # Find the human evaluator span
-            human_evaluator_spans = [
-                span
-                for span in spans
-                if span.attributes.get("lmnr.span.type") == "HUMAN_EVALUATOR"
-            ]
-
-            assert len(human_evaluator_spans) == 2
-            assert sorted([span.name for span in human_evaluator_spans]) == [
-                "human_quality",
-                "human_relevance",
-            ]
-            options_span = next(
-                (
-                    span
-                    for span in spans
-                    if span.attributes.get("lmnr.span.type") == "HUMAN_EVALUATOR"
-                    and span.name == "human_relevance"
-                ),
-            )
-            assert (
-                json.loads(
-                    options_span.attributes.get("lmnr.span.human_evaluator_options")
-                )
-                == options
-            )
+    # Verify options are correctly set on human_relevance span
+    options_span = next(
+        span
+        for span in spans
+        if span.attributes.get("lmnr.span.type") == "HUMAN_EVALUATOR"
+        and span.name == "human_relevance"
+    )
+    assert (
+        json.loads(options_span.attributes.get("lmnr.span.human_evaluator_options"))
+        == options
+    )
 
 
 def test_get_average_scores_with_human_evaluators():

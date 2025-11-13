@@ -14,6 +14,7 @@ from lmnr.sdk.client.asynchronous.resources import (
     AsyncTags,
     AsyncEvaluators,
 )
+from lmnr.sdk.client.asynchronous.resources.datasets import AsyncDatasets
 from lmnr.sdk.utils import from_env
 
 _T = TypeVar("_T", bound="AsyncLaminarClient")
@@ -102,13 +103,16 @@ class AsyncLaminarClient:
             self.__client, self.__base_url, self.__project_api_key
         )
         self.__tags = AsyncTags(self.__client, self.__base_url, self.__project_api_key)
+        self.__datasets = AsyncDatasets(
+            self.__client, self.__base_url, self.__project_api_key
+        )
 
     @property
     def agent(self) -> AsyncAgent:
         """Get the Agent resource.
 
         Returns:
-            Agent: The Agent resource instance.
+            AsyncAgent: The Agent resource instance.
         """
         return self.__agent
 
@@ -126,7 +130,7 @@ class AsyncLaminarClient:
         """Get the BrowserEvents resource.
 
         Returns:
-            BrowserEvents: The BrowserEvents resource instance.
+            AsyncBrowserEvents: The BrowserEvents resource instance.
         """
         return self.__browser_events
 
@@ -144,10 +148,20 @@ class AsyncLaminarClient:
         """Get the Evaluators resource.
 
         Returns:
-            Evaluators: The Evaluators resource instance.
+            AsyncEvaluators: The Evaluators resource instance.
         """
         return self.__evaluators
 
+    @property
+    def datasets(self) -> AsyncDatasets:
+        """Get the Datasets resource.
+
+        Returns:
+            AsyncDatasets: The Datasets resource instance.
+        """
+        return self.__datasets
+
+    @property
     def is_closed(self) -> bool:
         return self.__client.is_closed
 

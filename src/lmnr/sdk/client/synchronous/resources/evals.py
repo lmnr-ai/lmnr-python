@@ -1,7 +1,8 @@
 """Evals resource for interacting with Laminar evaluations API."""
 
 import uuid
-import urllib.parse
+import warnings
+
 from typing import Any
 
 from lmnr.sdk.client.synchronous.resources.base import BaseResource
@@ -201,11 +202,18 @@ class Evals(BaseResource):
         Raises:
             ValueError: If there's an error fetching the datapoints.
         """
-        params = {"name": dataset_name, "offset": offset, "limit": limit}
-        url = (
-            self._base_url + "/v1/datasets/datapoints?" + urllib.parse.urlencode(params)
+
+        warnings.warn(
+            "Use client.datasets.pull instead",
+            DeprecationWarning,
         )
-        response = self._client.get(url, headers=self._headers())
+
+        params = {"name": dataset_name, "offset": offset, "limit": limit}
+        response = self._client.get(
+            self._base_url + "/v1/datasets/datapoints",
+            params=params,
+            headers=self._headers(),
+        )
         if response.status_code != 200:
             try:
                 resp_json = response.json()

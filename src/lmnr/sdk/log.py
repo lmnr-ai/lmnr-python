@@ -62,11 +62,16 @@ class VerboseFormatter(CustomFormatter):
         return formatter.format(record)
 
 
-def get_default_logger(name: str, level: int = logging.INFO, propagate: bool = False):
+def get_default_logger(
+    name: str, level: int = logging.INFO, propagate: bool = False, verbose: bool = True
+) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(level)
     console_log_handler = logging.StreamHandler()
-    console_log_handler.setFormatter(VerboseColorfulFormatter())
+    if verbose:
+        console_log_handler.setFormatter(VerboseColorfulFormatter())
+    else:
+        console_log_handler.setFormatter(ColorfulFormatter())
     logger.addHandler(console_log_handler)
     logger.propagate = propagate
     return logger
