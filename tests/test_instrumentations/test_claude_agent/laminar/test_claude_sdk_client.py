@@ -10,7 +10,7 @@ load_dotenv()
 @pytest.mark.vcr(record_mode='once')
 def test_claude_agent_query(span_exporter: InMemorySpanExporter):
     async def _collect_messages():
-        async with ClaudeSDKClient(ClaudeAgentOptions(max_thinking_tokens=1024)) as client:
+        async with ClaudeSDKClient(ClaudeAgentOptions()) as client:
             await client.query("What's the capital of France?")
             async for _ in client.receive_response():
                 pass

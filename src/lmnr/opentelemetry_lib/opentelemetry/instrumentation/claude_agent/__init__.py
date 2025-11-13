@@ -62,10 +62,9 @@ WRAPPED_METHODS = [
         "is_streaming": False,
     },
     {
-        "package": "claude_agent_sdk.query",
+        "package": "claude_agent_sdk",
         "object": "",
         "method": "query",
-        "class_name": "",
         "is_async": True,
         "is_streaming": True,
     },
@@ -204,11 +203,16 @@ class ClaudeAgentInstrumentor(BaseInstrumentor):
             else:
                 wrapper_factory = _wrap_sync
 
-            wrap_name = f"{wrap_object}.{wrap_method}" if wrap_object else wrap_method
+            # For class methods: "Class.method", for module functions: just "function_name"
+            if wrap_object:
+                target = f"{wrap_object}.{wrap_method}"
+            else:
+                target = wrap_method
+
             try:
                 wrap_function_wrapper(
                     wrap_package,
-                    wrap_name,
+                    target,
                     wrapper_factory(wrapped_method),
                 )
             except (ModuleNotFoundError, AttributeError):
@@ -219,8 +223,14 @@ class ClaudeAgentInstrumentor(BaseInstrumentor):
             wrap_package = wrapped_method.get("package")
             wrap_object = wrapped_method.get("object")
             wrap_method = wrapped_method.get("method")
-            target_module = f"{wrap_package}.{wrap_object}" if wrap_object else wrap_package
+            
+            # For class methods: "package.Class", for module functions: just "package"
+            if wrap_object:
+                module_path = f"{wrap_package}.{wrap_object}"
+            else:
+                module_path = wrap_package
+
             try:
-                unwrap(target_module, wrap_method)
+                unwrap(module_path, wrap_method)
             except (ModuleNotFoundError, AttributeError):
                 pass  # that's ok, we don't want to fail if some methods do not exist
