@@ -1,6 +1,7 @@
 import grpc
 import re
 import threading
+from urllib.parse import urlparse, urlunparse
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
@@ -79,11 +80,42 @@ class LaminarSpanExporter(SpanExporter):
             )
         self._init_instance()
 
+    def _normalize_http_endpoint(self, endpoint: str) -> str:
+        """
+        Normalize HTTP endpoint URL by adding /v1/traces path if no path is present.
+
+        Args:
+            endpoint: The endpoint URL to normalize
+
+        Returns:
+            The normalized endpoint URL with /v1/traces path if needed
+        """
+        try:
+            parsed = urlparse(endpoint)
+            # Check if there's no path or only a trailing slash
+            if not parsed.path or parsed.path == "/":
+                # Add /v1/traces to the endpoint
+                new_parsed = parsed._replace(path="/v1/traces")
+                normalized_url = urlunparse(new_parsed)
+                logger.info(
+                    f"No path found in HTTP endpoint URL. "
+                    f"Adding default path /v1/traces: {endpoint} -> {normalized_url}"
+                )
+                return normalized_url
+            return endpoint
+        except Exception as e:
+            logger.warning(
+                f"Failed to parse endpoint URL '{endpoint}': {e}. Using as-is."
+            )
+            return endpoint
+
     def _init_instance(self):
         # Create new instance first (outside critical section for performance)
         if self.force_http:
+            # Normalize HTTP endpoint to ensure it has a path
+            http_endpoint = self._normalize_http_endpoint(self.endpoint)
             new_instance = HTTPOTLPSpanExporter(
-                endpoint=self.endpoint,
+                endpoint=http_endpoint,
                 headers=self.headers,
                 compression=HTTPCompression.Gzip,
                 timeout=self.timeout,
