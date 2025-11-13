@@ -69,10 +69,8 @@ def setup_laminar_args(parser: ArgumentParser) -> None:
     parser.add_argument(
         "--port",
         help="[Optional] Port to use for the command. "
-        + "If no port is provided, the port will be read from the "
-        + "'LMNR_PORT' environment variable or we default to '443'.",
+        + "If no port is provided, the port defaults to '443'.",
         type=int,
-        default=from_env("LMNR_PORT") or 443,
     )
 
 
