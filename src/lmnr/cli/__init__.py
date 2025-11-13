@@ -76,12 +76,11 @@ def setup_laminar_args(parser: ArgumentParser) -> None:
 
 def setup_datasets_list_parser(subparsers: _SubParsersAction) -> None:
     """Setup the datasets list subcommand parser."""
-    parser_datasets_list: ArgumentParser = subparsers.add_parser(
+    subparsers.add_parser(
         "list",
         description="List datasets",
         help="List datasets",
     )
-    setup_laminar_args(parser_datasets_list)
 
 
 def setup_datasets_push_parser(subparsers: _SubParsersAction) -> None:
@@ -122,7 +121,6 @@ def setup_datasets_push_parser(subparsers: _SubParsersAction) -> None:
         + f"data is pushed in batches of '{DEFAULT_DATASET_PUSH_BATCH_SIZE}'.",
         default=DEFAULT_DATASET_PUSH_BATCH_SIZE,
     )
-    setup_laminar_args(parser_datasets_push)
 
 
 def setup_datasets_pull_parser(subparsers: _SubParsersAction) -> None:
@@ -175,7 +173,6 @@ def setup_datasets_pull_parser(subparsers: _SubParsersAction) -> None:
         help="Offset the number of data points to pull. "
         + "If no offset is provided, data is pulled from the beginning.",
     )
-    setup_laminar_args(parser_datasets_pull)
 
 
 def setup_datasets_create_parser(subparsers: _SubParsersAction) -> None:
@@ -221,7 +218,6 @@ def setup_datasets_create_parser(subparsers: _SubParsersAction) -> None:
         + f"data is processed in batches of '{DEFAULT_DATASET_PUSH_BATCH_SIZE}'.",
         default=DEFAULT_DATASET_PUSH_BATCH_SIZE,
     )
-    setup_laminar_args(parser_datasets_create)
 
 
 def setup_datasets_parser(subparsers: _SubParsersAction) -> None:
@@ -231,6 +227,8 @@ def setup_datasets_parser(subparsers: _SubParsersAction) -> None:
         description="Manage datasets",
         help="Manage datasets",
     )
+
+    setup_laminar_args(parser_datasets)
 
     parser_datasets_subparsers = parser_datasets.add_subparsers(
         title="command",
