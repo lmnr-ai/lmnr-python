@@ -19,7 +19,7 @@ WRAPPED_METHODS = [
         "method": "connect",
         "class_name": "ClaudeSDKClient",
         "is_async": True,
-        "is_async_generator": False,
+        "is_streaming": False,
     },
     {
         "package": "claude_agent_sdk.client",
@@ -27,7 +27,7 @@ WRAPPED_METHODS = [
         "method": "query",
         "class_name": "ClaudeSDKClient",
         "is_async": True,
-        "is_async_generator": False,
+        "is_streaming": False,
     },
     {
         "package": "claude_agent_sdk.client",
@@ -35,7 +35,7 @@ WRAPPED_METHODS = [
         "method": "receive_messages",
         "class_name": "ClaudeSDKClient",
         "is_async": True,
-        "is_async_generator": True,
+        "is_streaming": True,
     },
     {
         "package": "claude_agent_sdk.client",
@@ -43,7 +43,7 @@ WRAPPED_METHODS = [
         "method": "receive_response",
         "class_name": "ClaudeSDKClient",
         "is_async": True,
-        "is_async_generator": True,
+        "is_streaming": True,
     },
     {
         "package": "claude_agent_sdk.client",
@@ -51,7 +51,7 @@ WRAPPED_METHODS = [
         "method": "interrupt",
         "class_name": "ClaudeSDKClient",
         "is_async": True,
-        "is_async_generator": False,
+        "is_streaming": False,
     },
     {
         "package": "claude_agent_sdk.client",
@@ -59,7 +59,7 @@ WRAPPED_METHODS = [
         "method": "disconnect",
         "class_name": "ClaudeSDKClient",
         "is_async": True,
-        "is_async_generator": False,
+        "is_streaming": False,
     },
     {
         "package": "claude_agent_sdk.query",
@@ -67,7 +67,7 @@ WRAPPED_METHODS = [
         "method": "query",
         "class_name": "",
         "is_async": True,
-        "is_async_generator": False,
+        "is_streaming": True,
     },
 ]
 
@@ -114,8 +114,7 @@ def _record_input(span, wrapped, args, kwargs):
 
 
 def _record_output(span, to_wrap, value):
-    # TODO: do we need a custom output formatter?
-    output_formatter = to_wrap.get("output_formatter") or (lambda x: json_dumps(x))
+    output_formatter = lambda x: json_dumps(x)
     try:
         span.set_attribute("lmnr.span.output", output_formatter(value))
     except Exception:
@@ -195,10 +194,10 @@ class ClaudeAgentInstrumentor(BaseInstrumentor):
             wrap_package = wrapped_method.get("package")
             wrap_object = wrapped_method.get("object")
             wrap_method = wrapped_method.get("method")
-            is_async_generator = wrapped_method.get("is_async_generator", False)
+            is_streaming = wrapped_method.get("is_streaming", False)
             is_async = wrapped_method.get("is_async", False)
 
-            if is_async_generator:
+            if is_streaming:
                 wrapper_factory = _wrap_async_gen
             elif is_async:
                 wrapper_factory = _wrap_async
