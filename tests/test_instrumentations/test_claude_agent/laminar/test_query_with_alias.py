@@ -1,13 +1,12 @@
-import asyncio, pytest
+import asyncio
 from dotenv import load_dotenv
 
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from claude_agent_sdk import ClaudeAgentOptions, query as claude_query
 
-# TODO: remove this once cassetes are recorded
+# TODO: remove this after adding mock claude cli calls
 load_dotenv()
 
-@pytest.mark.vcr(record_mode='once')
 def test_claude_agent_query(span_exporter: InMemorySpanExporter):
     options = ClaudeAgentOptions(
         model="claude-sonnet-4-5",

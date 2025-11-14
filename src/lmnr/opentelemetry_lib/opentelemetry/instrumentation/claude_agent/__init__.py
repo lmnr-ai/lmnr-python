@@ -68,6 +68,13 @@ WRAPPED_METHODS = [
         "is_async": True,
         "is_streaming": True,
     },
+    {
+        # No "object" and "class_name" fields for module-level functions
+        "package": "claude_agent_sdk",
+        "method": "create_sdk_mcp_server",
+        "is_async": False,
+        "is_streaming": False,
+    },
 ]
 
 _MODULE_FUNCTION_ORIGINALS: dict[tuple[str, str], Any] = {}
