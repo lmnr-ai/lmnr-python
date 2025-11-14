@@ -1,11 +1,14 @@
+import importlib
+import sys
+
 from lmnr import Laminar
 from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.sdk.utils import get_input_from_func_args, is_method
 from opentelemetry.trace import Status, StatusCode
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
-from typing import Collection
-from wrapt import wrap_function_wrapper
+from typing import Any, Collection
+from wrapt import FunctionWrapper, wrap_function_wrapper
 
 _instruments = ("claude-agent-sdk >= 0.1.0",)
 
@@ -59,13 +62,15 @@ WRAPPED_METHODS = [
         "is_streaming": False,
     },
     {
+        # No "object" and "class_name" fields for module-level functions
         "package": "claude_agent_sdk",
-        "object": "",
         "method": "query",
         "is_async": True,
         "is_streaming": True,
     },
 ]
+
+_MODULE_FUNCTION_ORIGINALS: dict[tuple[str, str], Any] = {}
 
 def _with_wrapper(func):
     """Helper for providing tracer for wrapper functions. Includes metric collectors."""
@@ -85,6 +90,53 @@ def _with_wrapper(func):
         return wrapper
 
     return wrapper
+
+
+def _replace_function_aliases(original, wrapped):
+    for module in list(sys.modules.values()):
+        module_dict = getattr(module, "__dict__", None)
+        if not module_dict:
+            continue
+        for attr, value in list(module_dict.items()):
+            if value is original:
+                setattr(module, attr, wrapped)
+
+
+def _wrap_module_function(module_name: str, function_name: str, wrapper):
+    try:
+        module = sys.modules.get(module_name) or importlib.import_module(module_name)
+    except ModuleNotFoundError:
+        return
+
+    try:
+        original = getattr(module, function_name)
+    except AttributeError:
+        return
+
+    key = (module_name, function_name)
+    if key not in _MODULE_FUNCTION_ORIGINALS:
+        _MODULE_FUNCTION_ORIGINALS[key] = original
+
+    wrapped_function = FunctionWrapper(original, wrapper)
+    setattr(module, function_name, wrapped_function)
+    _replace_function_aliases(original, wrapped_function)
+
+
+def _unwrap_module_function(module_name: str, function_name: str):
+    key = (module_name, function_name)
+    original = _MODULE_FUNCTION_ORIGINALS.get(key)
+    if not original:
+        return
+
+    module = sys.modules.get(module_name)
+    if not module:
+        return
+
+    current = getattr(module, function_name, None)
+    setattr(module, function_name, original)
+    if current is not None:
+        _replace_function_aliases(current, original)
+    del _MODULE_FUNCTION_ORIGINALS[key]
 
 def _span_name(to_wrap: dict[str, str]) -> str:
     class_name = to_wrap.get("class_name")
@@ -223,20 +275,27 @@ class ClaudeAgentInstrumentor(BaseInstrumentor):
             else:
                 wrapper_factory = _wrap_sync
 
-            # For class methods: "Class.method", for module functions: just "function_name"
+            wrapper = wrapper_factory(wrapped_method)
+
             if wrap_object:
                 target = f"{wrap_object}.{wrap_method}"
+                try:
+                    wrap_function_wrapper(
+                        wrap_package,
+                        target,
+                        wrapper,
+                    )
+                except (ModuleNotFoundError, AttributeError):
+                    pass  # that's ok, we don't want to fail if some methods do not exist
             else:
-                target = wrap_method
-
-            try:
-                wrap_function_wrapper(
-                    wrap_package,
-                    target,
-                    wrapper_factory(wrapped_method),
-                )
-            except (ModuleNotFoundError, AttributeError):
-                pass  # that's ok, we don't want to fail if some methods do not exist
+                try:
+                    _wrap_module_function(
+                        wrap_package,
+                        wrap_method,
+                        wrapper,
+                    )
+                except (ModuleNotFoundError, AttributeError):
+                    pass  # that's ok
 
     def _uninstrument(self, **kwargs):
         for wrapped_method in WRAPPED_METHODS:
@@ -244,13 +303,11 @@ class ClaudeAgentInstrumentor(BaseInstrumentor):
             wrap_object = wrapped_method.get("object")
             wrap_method = wrapped_method.get("method")
             
-            # For class methods: "package.Class", for module functions: just "package"
             if wrap_object:
                 module_path = f"{wrap_package}.{wrap_object}"
+                try:
+                    unwrap(module_path, wrap_method)
+                except (ModuleNotFoundError, AttributeError):
+                    pass  # that's ok, we don't want to fail if some methods do not exist
             else:
-                module_path = wrap_package
-
-            try:
-                unwrap(module_path, wrap_method)
-            except (ModuleNotFoundError, AttributeError):
-                pass  # that's ok, we don't want to fail if some methods do not exist
+                _unwrap_module_function(wrap_package, wrap_method)
