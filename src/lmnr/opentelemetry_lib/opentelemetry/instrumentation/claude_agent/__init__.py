@@ -1,14 +1,22 @@
 import importlib
+import logging
 import sys
 
 from lmnr import Laminar
 from lmnr.opentelemetry_lib.decorators import json_dumps
+from lmnr.opentelemetry_lib.tracing import get_current_context
 from lmnr.sdk.utils import get_input_from_func_args, is_method
-from opentelemetry.trace import Status, StatusCode
+from opentelemetry import trace
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
-from typing import Any, Collection
+from opentelemetry.trace import Status, StatusCode
+from typing import Any, Collection, Optional
 from wrapt import FunctionWrapper, wrap_function_wrapper
+
+import httpx
+from .proxy import ensure_cc_proxy_running, release_cc_proxy
+
+logger = logging.getLogger(__name__)
 
 _instruments = ("claude-agent-sdk >= 0.1.0",)
 
@@ -75,9 +83,34 @@ WRAPPED_METHODS = [
         "is_async": False,
         "is_streaming": False,
     },
+    {
+        "package": "claude_agent_sdk._internal.transport.subprocess_cli",
+        "object": "SubprocessCLITransport",
+        "method": "connect",
+        "class_name": "SubprocessCLITransport",
+        "is_async": True,
+        "is_streaming": False,
+    },
+    {
+        "package": "claude_agent_sdk._internal.transport.subprocess_cli",
+        "object": "SubprocessCLITransport",
+        "method": "close",
+        "class_name": "SubprocessCLITransport",
+        "is_async": True,
+        "is_streaming": False,
+    },
+    {
+        "package": "claude_agent_sdk._internal.transport.subprocess_cli",
+        "object": "SubprocessCLITransport",
+        "method": "write",
+        "class_name": "SubprocessCLITransport",
+        "is_async": True,
+        "is_streaming": False,
+    }
 ]
 
 _MODULE_FUNCTION_ORIGINALS: dict[tuple[str, str], Any] = {}
+
 
 def _with_wrapper(func):
     """Helper for providing tracer for wrapper functions. Includes metric collectors."""
@@ -145,6 +178,7 @@ def _unwrap_module_function(module_name: str, function_name: str):
         _replace_function_aliases(current, original)
     del _MODULE_FUNCTION_ORIGINALS[key]
 
+
 def _span_name(to_wrap: dict[str, str]) -> str:
     class_name = to_wrap.get("class_name")
     method = to_wrap.get("method")
@@ -203,6 +237,13 @@ async def _wrap_async(to_wrap, wrapped, instance, args, kwargs):
     ) as span:
         _record_input(span, wrapped, args, kwargs)
 
+        # TODO: manage this cleaner
+        if to_wrap.get("object") == "SubprocessCLITransport" and to_wrap.get("method") == "write":
+            proxy_base_url = ensure_cc_proxy_running()
+            logger.debug("write(): Proxy base url:" + proxy_base_url)
+            if proxy_base_url:
+                await publish_span_context(proxy_base_url)
+
         try:
             result = await wrapped(*args, **kwargs)
         except Exception as e:  # pylint: disable=broad-except
@@ -259,6 +300,76 @@ def _wrap_async_gen(to_wrap, wrapped, instance, args, kwargs):
                 span.end()
 
     return generator()
+    
+def _get_span_context_payload() -> Optional[dict[str, str]]:
+    current_span = trace.get_current_span(context=get_current_context())
+    if current_span is trace.INVALID_SPAN:
+        return None
+
+    span_context = current_span.get_span_context()
+    if span_context is None or not span_context.is_valid:
+        return None
+
+    project_api_key = Laminar.get_project_api_key()
+
+    return {
+        "trace_id": f"{span_context.trace_id:032x}",
+        "span_id": f"{span_context.span_id:016x}",
+        "project_api_key": project_api_key or "",
+    }
+
+async def publish_span_context(proxy_base_url: str) -> None:
+    if httpx is None:
+        return
+
+    payload = _get_span_context_payload()
+    if not payload:
+        return
+
+    url = f"{proxy_base_url.rstrip('/')}/lmnr-internal/span-context"
+    try:
+        async with httpx.AsyncClient(timeout=1.0) as client:
+            await client.post(url, json=payload)
+        logger.debug("Span context published:" + json_dumps(payload))
+    except Exception as exc:  # pragma: no cover
+        logger.debug("Failed to publish span context to cc-proxy: %s", exc)
+
+
+@_with_wrapper
+async def _wrap_transport_connect(to_wrap, wrapped, instance, args, kwargs):
+    should_start_proxy = True
+    if to_wrap.get("class_name") == "ClaudeSDKClient":
+        custom_transport = getattr(instance, "_custom_transport", None)
+        if custom_transport is not None:
+            logger.debug("Custom transport found. Skipping proxy startup.")
+            should_start_proxy = False
+
+    setattr(instance, "_lmnr_proxy_acquired", False)
+    if should_start_proxy:
+        proxy_base_url = ensure_cc_proxy_running()
+        logger.debug("Started the proxy server, base url:" + proxy_base_url)
+        if proxy_base_url:
+            await publish_span_context(proxy_base_url)
+            setattr(instance, "_lmnr_proxy_acquired", True)
+
+    try:
+        result = await wrapped(*args, **kwargs)
+    except Exception as e:  # pylint: disable=broad-except
+        raise
+
+    return result
+
+
+@_with_wrapper
+async def _wrap_transport_disconnect(to_wrap, wrapped, instance, args, kwargs):
+    try:
+        result = await wrapped(*args, **kwargs)
+    finally:
+        if getattr(instance, "_lmnr_proxy_acquired", False):
+            release_cc_proxy()
+            setattr(instance, "_lmnr_proxy_acquired", False)
+    return result
+
 
 class ClaudeAgentInstrumentor(BaseInstrumentor):
     def __init__(self):
@@ -275,7 +386,12 @@ class ClaudeAgentInstrumentor(BaseInstrumentor):
             is_streaming = wrapped_method.get("is_streaming", False)
             is_async = wrapped_method.get("is_async", False)
 
-            if is_streaming:
+            # TODO: manage this cleaner
+            if wrap_object == "SubprocessCLITransport" and wrap_method == "connect":
+                wrapper_factory = _wrap_transport_connect
+            elif wrap_object == "SubprocessCLITransport" and wrap_method == "close":
+                wrapper_factory = _wrap_transport_disconnect
+            elif is_streaming:
                 wrapper_factory = _wrap_async_gen
             elif is_async:
                 wrapper_factory = _wrap_async
