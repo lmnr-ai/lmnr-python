@@ -5,6 +5,10 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from claude_agent_sdk import ClaudeAgentOptions
 import claude_agent_sdk
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.mock_transport import (
+    MockClaudeTransport,
+)
+
 # Note: can not use alias "query" aka "from claude_agent_sdk import query" because it is not wrapped by Laminar
 
 # TODO: remove this after adding mock claude cli calls
@@ -22,7 +26,10 @@ def test_claude_agent_query(span_exporter: InMemorySpanExporter):
         async for message in claude_agent_sdk.query(
             # prompt="Create a readme doc for the test_claude_agent package. Then delete it. Return task status.",
             prompt="What is the capital of France?",
-            options=options
+            options=options,
+            transport=MockClaudeTransport(
+                auto_respond_on_connect=True, close_after_responses=True
+            ),
         ):
             messages.append(message)
         return messages

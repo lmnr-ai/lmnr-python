@@ -2,14 +2,15 @@ import asyncio
 from dotenv import load_dotenv
 
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
+from claude_agent_sdk import ClaudeSDKClient
 
-# TODO: remove this after adding mock claude cli calls
-load_dotenv()
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.mock_transport import (
+    MockClaudeTransport,
+)
 
 def test_claude_agent_query(span_exporter: InMemorySpanExporter):
     async def _collect_messages():
-        async with ClaudeSDKClient(ClaudeAgentOptions()) as client:
+        async with ClaudeSDKClient(transport=MockClaudeTransport()) as client:
             await client.query("What's the capital of France?")
             async for _ in client.receive_response():
                 pass

@@ -4,6 +4,10 @@ from dotenv import load_dotenv
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from claude_agent_sdk import ClaudeAgentOptions, query as claude_query
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.mock_transport import (
+    MockClaudeTransport,
+)
+
 # TODO: remove this after adding mock claude cli calls
 load_dotenv()
 
@@ -19,7 +23,10 @@ def test_claude_agent_query(span_exporter: InMemorySpanExporter):
         async for message in claude_query(
             # prompt="Create a readme doc for the test_claude_agent package. Then delete it. Return task status.",
             prompt="What is the capital of France?",
-            options=options
+            options=options,
+            transport=MockClaudeTransport(
+                auto_respond_on_connect=True, close_after_responses=True
+            ),
         ):
             messages.append(message)
         return messages

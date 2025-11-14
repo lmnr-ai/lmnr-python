@@ -1,7 +1,18 @@
 import asyncio
 from typing import Any
-from claude_agent_sdk import tool, create_sdk_mcp_server, ClaudeAgentOptions, AssistantMessage, TextBlock, ClaudeSDKClient
+from claude_agent_sdk import (
+    tool,
+    create_sdk_mcp_server,
+    ClaudeAgentOptions,
+    AssistantMessage,
+    TextBlock,
+    ClaudeSDKClient,
+)
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.mock_transport import (
+    MockClaudeTransport,
+)
 
 @tool("calculate", "Perform mathematical calculations", {"expression": str})
 async def calculate(args: dict[str, Any]) -> dict[str, Any]:
@@ -50,8 +61,10 @@ def test_claude_agent_tool(span_exporter: InMemorySpanExporter):
     )
 
     # Use ClaudeSDKClient for interactive tool usage
-    async def _collect_messages():        
-        async with ClaudeSDKClient(options=options) as client:
+    async def _collect_messages():
+        async with ClaudeSDKClient(
+            options=options, transport=MockClaudeTransport()
+        ) as client:
             await client.query("What's 123 * 456?")
             async for _ in client.receive_response():
                 pass
