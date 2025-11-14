@@ -175,7 +175,9 @@ def _wrap_async_gen(to_wrap, wrapped, instance, args, kwargs):
 
             while True:
                 try:
-                    with Laminar.use_span(span):
+                    with Laminar.use_span(
+                        span, record_exception=False, set_status_on_exception=False
+                    ):
                         item = await async_iter.__anext__()
                         collected.append(item)
                 except StopAsyncIteration:
