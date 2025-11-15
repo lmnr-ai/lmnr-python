@@ -28,9 +28,6 @@ _CC_PROXY_USAGE_COUNT = 0
 
 def _resolve_cc_proxy_binary() -> Optional[str]:
     bundled_binary = Path(__file__).with_name("cc-proxy")
-    print("====>", bundled_binary)
-    print("====>", bundled_binary.exists())
-    print("====>", os.access(bundled_binary, os.X_OK))
     if bundled_binary.exists() and os.access(bundled_binary, os.X_OK):
         return str(bundled_binary)
 
@@ -96,8 +93,10 @@ def _register_proxy_shutdown():
         atexit.register(_stop_cc_proxy)
         _CC_PROXY_SHUTDOWN_REGISTERED = True
 
-
-def ensure_cc_proxy_running() -> Optional[str]:
+def get_cc_proxy_base_url() -> str | None:
+    return _CC_PROXY_BASE_URL if _CC_PROXY_PROCESS and _CC_PROXY_PROCESS.poll() is None else None
+    
+async def start_proxy() -> Optional[str]:
     binary_path = _resolve_cc_proxy_binary()
     if not binary_path:
         logger.debug("cc-proxy binary not found. Skipping proxy startup.")
@@ -149,15 +148,16 @@ def ensure_cc_proxy_running() -> Optional[str]:
         _register_proxy_shutdown()
         _CC_PROXY_USAGE_COUNT = 1
 
+        logger.info("Started claude proxy server on: " + str(proxy_base_url))
         return proxy_base_url
 
 
-def release_cc_proxy() -> None:
+async def release_proxy() -> None:
     with _CC_PROXY_LOCK:
         global _CC_PROXY_USAGE_COUNT
         if _CC_PROXY_USAGE_COUNT > 0:
             _CC_PROXY_USAGE_COUNT -= 1
             if _CC_PROXY_USAGE_COUNT == 0:
                 _stop_cc_proxy_locked()
-
+                logger.info("Released claude proxy server")
  
