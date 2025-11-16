@@ -1,22 +1,35 @@
 import importlib
-import logging
 import sys
 
 from lmnr import Laminar
 from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.opentelemetry_lib.tracing import get_current_context
+from lmnr.opentelemetry_lib.tracing.attributes import SPAN_IDS_PATH, SPAN_PATH
+from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import get_input_from_func_args, is_method
+
 from opentelemetry import trace
+from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
 from opentelemetry.trace import Status, StatusCode
-from typing import Any, Collection, Optional
+from typing import Any, Collection
+from typing_extensions import TypedDict
 from wrapt import FunctionWrapper, wrap_function_wrapper
 
-import httpx
-from .proxy import start_proxy, release_proxy, get_cc_proxy_base_url
+from .proxy import start_proxy, release_proxy, get_cc_proxy_base_url, set_trace_to_proxy
 
-logger = logging.getLogger(__name__)
+logger = get_default_logger(__name__)
+
+
+class SpanContextPayload(TypedDict):
+    trace_id: str
+    span_id: str
+    project_api_key: str
+    span_ids_path: list[str]
+    span_path: list[str]
+    laminar_url: str
+
 
 _instruments = ("claude-agent-sdk >= 0.1.0",)
 
@@ -28,9 +41,9 @@ WRAPPED_METHODS = [
         "class_name": "ClaudeSDKClient",
         "is_async": True,
         "is_streaming": False,
-        # start proxy on connection 
+        # start proxy on connection
         "is_start_proxy": True,
-        "is_publish_span_context": True, # TODO: is there a need to publish span context here?
+        "is_publish_span_context": True,  # TODO: is there a need to publish span context here?
         "is_release_proxy": False,
     },
     {
@@ -91,7 +104,6 @@ WRAPPED_METHODS = [
         "is_start_proxy": True,
         "is_publish_span_context": True,
         "is_release_proxy": True,
-        
     },
     {
         # No "object" and "class_name" fields for module-level functions
@@ -196,15 +208,14 @@ def _record_input(span, wrapped, args, kwargs):
 
 
 def _record_output(span, to_wrap, value):
-    output_formatter = lambda x: json_dumps(x)
     try:
-        span.set_attribute("lmnr.span.output", output_formatter(value))
+        span.set_attribute("lmnr.span.output", json_dumps(value))
     except Exception:
         pass
 
 
-def _get_span_context_payload() -> Optional[dict[str, str]]:
-    current_span = trace.get_current_span(context=get_current_context())
+def _get_span_context_payload() -> dict[str, str] | None:
+    current_span: ReadableSpan = trace.get_current_span(context=get_current_context())
     if current_span is trace.INVALID_SPAN:
         return None
 
@@ -212,30 +223,39 @@ def _get_span_context_payload() -> Optional[dict[str, str]]:
     if span_context is None or not span_context.is_valid:
         return None
 
+    span_ids_path = []
+    span_path = []
+    if hasattr(current_span, "attributes"):
+        readable_span: ReadableSpan = current_span
+        span_ids_path = list(readable_span.attributes.get(SPAN_IDS_PATH, tuple()))
+        span_path = list(readable_span.attributes.get(SPAN_PATH, tuple()))
+
     project_api_key = Laminar.get_project_api_key()
+    laminar_url = Laminar.get_base_http_url()
 
     return {
         "trace_id": f"{span_context.trace_id:032x}",
         "span_id": f"{span_context.span_id:016x}",
         "project_api_key": project_api_key or "",
+        "span_ids_path": span_ids_path,
+        "span_path": span_path,
+        "laminar_url": laminar_url,
     }
 
 
-async def _publish_span_context(proxy_base_url: str) -> None:
-    if httpx is None:
-        return
-
+def _publish_span_context() -> None:
     payload = _get_span_context_payload()
     if not payload:
         return
 
-    url = f"{proxy_base_url.rstrip('/')}/-lmnr-internal/span-context"
-    try:
-        async with httpx.AsyncClient(timeout=1.0) as client:
-            await client.post(url, json=payload)
-            logger.info("Published span context to claude proxy server")
-    except Exception as exc:  # pragma: no cover
-        logger.debug("Failed to publish span context to cc-proxy: %s", exc)
+    set_trace_to_proxy(
+        trace_id=payload["trace_id"],
+        span_id=payload["span_id"],
+        project_api_key=payload["project_api_key"],
+        span_ids_path=payload["span_ids_path"],
+        span_path=payload["span_path"],
+        laminar_url=payload["laminar_url"],
+    )
 
 
 @_with_wrapper
@@ -266,14 +286,16 @@ async def _wrap_async(to_wrap, wrapped, instance, args, kwargs):
         _record_input(span, wrapped, args, kwargs)
 
         if to_wrap.get("is_start_proxy"):
-            await start_proxy()
+            start_proxy()
 
         if to_wrap.get("is_publish_span_context"):
             proxy_base_url = get_cc_proxy_base_url()
             if proxy_base_url:
-                await _publish_span_context(proxy_base_url)
+                _publish_span_context()
             else:
-                logger.debug("No claude proxy server found. Skipping span context publication.")
+                logger.debug(
+                    "No claude proxy server found. Skipping span context publication."
+                )
 
         try:
             result = await wrapped(*args, **kwargs)
@@ -283,10 +305,10 @@ async def _wrap_async(to_wrap, wrapped, instance, args, kwargs):
             raise
 
         if to_wrap.get("is_release_proxy"):
-            await release_proxy()
+            release_proxy()
 
         _record_output(span, to_wrap, result)
-        
+
         return result
 
 
@@ -307,16 +329,20 @@ def _wrap_async_gen(to_wrap, wrapped, instance, args, kwargs):
             with Laminar.use_span(span):
                 proxy_base_url = get_cc_proxy_base_url()
                 if proxy_base_url:
-                    await _publish_span_context(proxy_base_url)
+                    _publish_span_context()
                 else:
-                    logger.debug("No claude proxy server found. Skipping span context publication.")
+                    logger.debug(
+                        "No claude proxy server found. Skipping span context publication."
+                    )
 
         try:
             with Laminar.use_span(span):
                 _record_input(span, wrapped, args, kwargs)
                 async_source = wrapped(*args, **kwargs)
                 async_iter = (
-                    async_source.__aiter__() if hasattr(async_source, "__aiter__") else async_source
+                    async_source.__aiter__()
+                    if hasattr(async_source, "__aiter__")
+                    else async_source
                 )
 
             while True:
@@ -400,7 +426,7 @@ class ClaudeAgentInstrumentor(BaseInstrumentor):
             wrap_package = wrapped_method.get("package")
             wrap_object = wrapped_method.get("object")
             wrap_method = wrapped_method.get("method")
-            
+
             if wrap_object:
                 module_path = f"{wrap_package}.{wrap_object}"
                 try:

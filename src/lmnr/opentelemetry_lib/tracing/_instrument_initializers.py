@@ -126,6 +126,9 @@ class ClaudeAgentInstrumentorInitializer(InstrumentorInitializer):
         if not is_package_installed("claude-agent-sdk"):
             return None
 
+        if not is_package_installed("lmnr-claude-code-proxy"):
+            return None
+
         from ..opentelemetry.instrumentation.claude_agent import ClaudeAgentInstrumentor
 
         return ClaudeAgentInstrumentor()
