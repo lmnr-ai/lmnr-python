@@ -100,7 +100,7 @@ WRAPPED_METHODS = [
         "method": "query",
         "is_async": True,
         "is_streaming": True,
-        # start, send spand to, and release proxy here as it is a module-level function doing all on its own
+        # start, send span to, and release proxy here as it is a module-level function doing all on its own
         "is_start_proxy": True,
         "is_publish_span_context": True,
         "is_release_proxy": True,
