@@ -67,7 +67,7 @@ lmnr = "lmnr.cli:cli"
 alephalpha=["opentelemetry-instrumentation-alephalpha>=0.47.1"]
 bedrock=["opentelemetry-instrumentation-bedrock>=0.47.1"]
 chromadb=["opentelemetry-instrumentation-chromadb>=0.47.1"]
-claude-agent-sdk=["lmnr-claude-code-proxy>=0.1.0a3"]
+claude-agent-sdk=["lmnr-claude-code-proxy>=0.1.0a4"]
 cohere=["opentelemetry-instrumentation-cohere>=0.47.1"]
 crewai=["opentelemetry-instrumentation-crewai>=0.47.1"]
 haystack=["opentelemetry-instrumentation-haystack>=0.47.1"]
