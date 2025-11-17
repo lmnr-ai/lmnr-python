@@ -1,7 +1,7 @@
 import json
 import pytest
 
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
@@ -16,6 +16,7 @@ def test_responses(
     response = openai_client.responses.create(
         model="gpt-4.1-nano",
         input="What is the capital of France?",
+        service_tier="default",
     )
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
@@ -30,6 +31,37 @@ def test_responses(
     assert span.attributes["gen_ai.prompt.0.role"] == "user"
     assert span.attributes["gen_ai.completion.0.content"] == response.output_text
     assert span.attributes["gen_ai.completion.0.role"] == "assistant"
+    assert span.attributes["openai.request.service_tier"] == "default"
+    assert span.attributes["openai.response.service_tier"] == "default"
+
+
+@pytest.mark.vcr
+@pytest.mark.asyncio
+async def test_responses_async(
+    instrument_legacy,
+    span_exporter: InMemorySpanExporter,
+    async_openai_client: AsyncOpenAI,
+):
+    response = await async_openai_client.responses.create(
+        model="gpt-4.1-nano",
+        input="What is the capital of France?",
+        service_tier="default",
+    )
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.name == "openai.response"
+    assert span.attributes["gen_ai.system"] == "openai"
+    assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
+    assert span.attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
+    assert (
+        span.attributes["gen_ai.prompt.0.content"] == "What is the capital of France?"
+    )
+    assert span.attributes["gen_ai.prompt.0.role"] == "user"
+    assert span.attributes["gen_ai.completion.0.content"] == response.output_text
+    assert span.attributes["gen_ai.completion.0.role"] == "assistant"
+    assert span.attributes["openai.request.service_tier"] == "default"
+    assert span.attributes["openai.response.service_tier"] == "default"
 
 
 @pytest.mark.vcr

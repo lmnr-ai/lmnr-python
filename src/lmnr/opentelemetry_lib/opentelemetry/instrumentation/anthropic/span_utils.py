@@ -91,6 +91,9 @@ async def aset_input_attributes(span, kwargs):
         span, SpanAttributes.LLM_PRESENCE_PENALTY, kwargs.get("presence_penalty")
     )
     set_span_attribute(span, SpanAttributes.LLM_IS_STREAMING, kwargs.get("stream"))
+    set_span_attribute(
+        span, "anthropic.request.service_tier", kwargs.get("service_tier")
+    )
 
     if should_send_prompts():
         if kwargs.get("prompt") is not None:
@@ -308,9 +311,15 @@ async def aset_response_attributes(span, response):
     set_span_attribute(span, SpanAttributes.LLM_RESPONSE_MODEL, response.get("model"))
     set_span_attribute(span, GEN_AI_RESPONSE_ID, response.get("id"))
 
-    if response.get("usage"):
-        prompt_tokens = response.get("usage").input_tokens
-        completion_tokens = response.get("usage").output_tokens
+    if usage := response.get("usage"):
+        if hasattr(usage, "service_tier"):
+            set_span_attribute(
+                span,
+                "anthropic.response.service_tier",
+                usage.service_tier,
+            )
+        prompt_tokens = usage.input_tokens
+        completion_tokens = usage.output_tokens
         set_span_attribute(span, SpanAttributes.LLM_USAGE_PROMPT_TOKENS, prompt_tokens)
         set_span_attribute(
             span, SpanAttributes.LLM_USAGE_COMPLETION_TOKENS, completion_tokens
@@ -330,9 +339,15 @@ def set_response_attributes(span, response):
     set_span_attribute(span, SpanAttributes.LLM_RESPONSE_MODEL, response.get("model"))
     set_span_attribute(span, GEN_AI_RESPONSE_ID, response.get("id"))
 
-    if response.get("usage"):
-        prompt_tokens = response.get("usage").input_tokens
-        completion_tokens = response.get("usage").output_tokens
+    if usage := response.get("usage"):
+        if hasattr(usage, "service_tier"):
+            set_span_attribute(
+                span,
+                "anthropic.response.service_tier",
+                usage.service_tier,
+            )
+        prompt_tokens = usage.input_tokens
+        completion_tokens = usage.output_tokens
         set_span_attribute(span, SpanAttributes.LLM_USAGE_PROMPT_TOKENS, prompt_tokens)
         set_span_attribute(
             span, SpanAttributes.LLM_USAGE_COMPLETION_TOKENS, completion_tokens

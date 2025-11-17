@@ -1,61 +1,61 @@
 interactions:
 - request:
-    body: '{"max_tokens": 1024, "messages": [{"role": "user", "content": "Tell me
-      a joke about OpenTelemetry"}], "model": "claude-3-opus-20240229"}'
+    body: '{"max_tokens":1024,"messages":[{"role":"user","content":"Tell me a joke
+      about OpenTelemetry"}],"model":"claude-3-5-haiku-20241022","service_tier":"standard_only"}'
     headers:
       accept:
       - application/json
       accept-encoding:
-      - gzip, deflate
+      - gzip, deflate, zstd
       anthropic-version:
       - '2023-06-01'
       connection:
       - keep-alive
       content-length:
-      - '136'
+      - '162'
       content-type:
       - application/json
       host:
       - api.anthropic.com
       user-agent:
-      - Anthropic/Python 0.21.3
+      - Anthropic/Python 0.72.1
       x-stainless-arch:
-      - other:amd64
+      - arm64
       x-stainless-async:
       - 'false'
       x-stainless-lang:
       - python
       x-stainless-os:
-      - Windows
+      - MacOS
       x-stainless-package-version:
-      - 0.21.3
+      - 0.72.1
+      x-stainless-read-timeout:
+      - '600'
+      x-stainless-retry-count:
+      - '0'
       x-stainless-runtime:
       - CPython
       x-stainless-runtime-version:
-      - 3.9.13
+      - 3.14.0rc3
+      x-stainless-timeout:
+      - '600'
     method: POST
     uri: https://api.anthropic.com/v1/messages
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA5SUwW7cRgyGX4WZi1tAazjboml1KVIghxyMuqiBFogKY1biSvSOhhOSo7Vg+N2L
-        md24dpBLTwI4HPL/P3L06GhwrZt1vLt6e3vz93S44Z/v15/WP67lerpP9P6Da5ytCUsWqvoRXeOE
-        Qwl4VVLz0Vzjeo6G0Vz76fFLvuFDOamf1v2ZBRuYUPBCwcM9HxD8jrPB7wnjLQac0WRtu9jFv6YV
-        BhrAJoQBFwycUMAPnL7K/rWLv2Hvs2LJXeHoo+EAxmDi+xokATVMCj4OMKOhnKNJeBRUfVM6fnhI
-        wUdvxLHt4qseQOUucMK4Uc7SI/BOURa/o0C2wl78jEeWA9jkrdRdaMBiUtGA9/D+5qM2EGgnXgi1
-        qVKMOWhRSlFN8ozRGhgxonjDBnoOAXs75eJDYjGwZ0mDNw/fVY/aFFdC/blu4FG/hz0LDKQmtMuF
-        iK5qOOsl3E54Yp+CXxU4VshHlkGhc7Vi52qhzlVaTefgOFE/gReEA67Qc+wxmQLF19O4LCQ30Lnb
-        r+F3DgT3KNXwS12lIcWxObeguHBYUEGwZxkojlVe8jYVkB4EP2dUA69AVm4vWChOwnmcCvHqs+TO
-        1AuXMVGPennSdf2N8b+S9kzyP8efs49G5o0WhBm9ZsEyLD0JOjW8UEgoe5bZxx4rvh1OfiGWCuWZ
-        uuZxRDU9rco39huH10yLqtFThB1aEb+Q0nnvSpccB5TyBisr3p/N+ZQC9XWdL/RZSr3xQmcD91kN
-        Ah0QJj4CR4SZxsn+x+spSyDoAwTa46V7+qdxMw8YXOv64POAmx82nLJutlfbH6+2219c49Q43Ql6
-        5ehah3G4syzxy4GWEcceXRtzCI3L9afTPjqKKdud8QGjuvbtu8Zxtpeh7fbq6elfAAAA//8DALAq
-        KXrTBAAA
+        H4sIAAAAAAAAA3SSzaoTQRCFX6WsjQoTSaKXwGxEBRECin9XwcjQ6a6k2/RUj13VuRlCdj6EO1/R
+        R5AZDNcorgrqO+dwmq4jtslRxBptNMXR5OHkauJN2JXJfDp/NJvO51hhcFhjK9tmOnu5fTuXj/b1
+        m+X75fpm+fww218fnmGF2nc0qEjEbAkrzCkOCyMSRA0rVmgTK7Fi/el41isdBjKOGl9QprsChuFV
+        R/yOIrWkuYcvaUewSRn6VOoVr/iD78EFB+oJHO0ppo4yxLSnS+fjQfyUrClCEBQ8xY4c+NCCZmMJ
+        fBDoclpHagXWxu5A05gqqWRLd+Dnj+/fhpB7T2AdFNIGlKznYE0EX9qUoYumD7yFxKNxhUNy4O0K
+        YVPYakhsYtB+8F6Uq+DGB+vHUnL7DBmr7cCwAxfMltPQXaSQQGBwQTSHdVFyIL0otfLgPp4+Vyia
+        uiaTkcRYI7FrtGTG30DoayG2hDWXGCss4z/VRwzcFW007YgF69miQmusp8ZmMkP55lIwPfNMxv2P
+        nb1DPnWeWsomNlftv/pbOvN/01OFqeifq8WiQqG8D5YaDZSxxuG4nMkOT79UCwAAAP//AwCSj8vF
+        zgIAAA==
     headers:
-      CF-Cache-Status:
-      - DYNAMIC
       CF-RAY:
-      - 87084f30df5f31f7-LAX
+      - 9a088a422b9b77b4-LHR
       Connection:
       - keep-alive
       Content-Encoding:
@@ -63,29 +63,49 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Sun, 07 Apr 2024 07:30:05 GMT
+      - Tue, 18 Nov 2025 15:35:53 GMT
       Server:
       - cloudflare
       Transfer-Encoding:
       - chunked
+      X-Robots-Tag:
+      - none
+      anthropic-organization-id:
+      - 04aa8588-6567-40cb-9042-a54b20ebaf4f
+      anthropic-ratelimit-input-tokens-limit:
+      - '400000'
+      anthropic-ratelimit-input-tokens-remaining:
+      - '400000'
+      anthropic-ratelimit-input-tokens-reset:
+      - '2025-11-18T15:35:51Z'
+      anthropic-ratelimit-output-tokens-limit:
+      - '80000'
+      anthropic-ratelimit-output-tokens-remaining:
+      - '80000'
+      anthropic-ratelimit-output-tokens-reset:
+      - '2025-11-18T15:35:53Z'
       anthropic-ratelimit-requests-limit:
-      - '5'
+      - '4000'
       anthropic-ratelimit-requests-remaining:
-      - '5'
+      - '3999'
       anthropic-ratelimit-requests-reset:
-      - '2024-04-07T07:31:00Z'
+      - '2025-11-18T15:35:51Z'
       anthropic-ratelimit-tokens-limit:
-      - '10000'
+      - '480000'
       anthropic-ratelimit-tokens-remaining:
-      - '10000'
+      - '480000'
       anthropic-ratelimit-tokens-reset:
-      - '2024-04-07T07:31:00Z'
+      - '2025-11-18T15:35:51Z'
+      cf-cache-status:
+      - DYNAMIC
       request-id:
-      - req_01A7u6aDNi2C6mvDawgML8jB
-      via:
-      - 1.1 google
-      x-cloud-trace-context:
-      - ef9f2bfaf4cbc96c6557e43e805aa4f1
+      - req_011CVFbq29yJj8ZA5x3w6BzP
+      retry-after:
+      - '9'
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      x-envoy-upstream-service-time:
+      - '2078'
     status:
       code: 200
       message: OK

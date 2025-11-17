@@ -149,6 +149,11 @@ def _set_request_attributes(span, kwargs, instance=None):
         SpanAttributes.LLM_REQUEST_REASONING_EFFORT,
         kwargs.get("reasoning_effort"),
     )
+    _set_span_attribute(
+        span,
+        "openai.request.service_tier",
+        kwargs.get("service_tier"),
+    )
     if response_format := kwargs.get("response_format"):
         # backward-compatible check for
         # openai.types.shared_params.response_format_json_schema.ResponseFormatJSONSchema
@@ -245,6 +250,11 @@ def _set_response_attributes(span, response):
     )
     _log_prompt_filter(span, response)
     usage = response.get("usage")
+    _set_span_attribute(
+        span,
+        "openai.response.service_tier",
+        response.get("service_tier"),
+    )
     if not usage:
         return
 

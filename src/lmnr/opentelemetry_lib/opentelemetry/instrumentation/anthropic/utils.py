@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 import logging
 import os
@@ -58,7 +59,7 @@ def dont_throw(func):
         if Config.exception_logger:
             Config.exception_logger(e)
 
-    return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
+    return async_wrapper if inspect.iscoroutinefunction(func) else sync_wrapper
 
 
 async def _aextract_response_data(response):
