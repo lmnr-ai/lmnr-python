@@ -1,4 +1,4 @@
-import asyncio
+import pytest
 
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from claude_agent_sdk import ClaudeSDKClient
@@ -6,18 +6,16 @@ from claude_agent_sdk import ClaudeSDKClient
 from mock_transport import MockClaudeTransport
 
 
-def test_claude_agent_query(span_exporter: InMemorySpanExporter):
-    async def _collect_messages():
-        async with ClaudeSDKClient(transport=MockClaudeTransport()) as client:
-            await client.query("What's the capital of France?")
-            async for _ in client.receive_response():
-                pass
+@pytest.mark.asyncio
+async def test_claude_agent_query(span_exporter: InMemorySpanExporter):
+    async with ClaudeSDKClient(transport=MockClaudeTransport()) as client:
+        await client.query("What's the capital of France?")
+        async for _ in client.receive_response():
+            pass
 
-            await client.query("What's the population of that city?")
-            async for _ in client.receive_response():
-                pass
-
-    asyncio.run(_collect_messages())
+        await client.query("What's the population of that city?")
+        async for _ in client.receive_response():
+            pass
 
     spans_tuple = span_exporter.get_finished_spans()
     spans = sorted(list(spans_tuple), key=lambda x: x.start_time)

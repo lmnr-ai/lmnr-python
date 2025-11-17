@@ -1,4 +1,4 @@
-import asyncio
+import pytest
 from typing import Any
 from claude_agent_sdk import (
     tool,
@@ -31,31 +31,27 @@ async def get_time(args: dict[str, Any]) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": f"Current time: {current_time}"}]}
 
 
-def test_claude_agent_tool(span_exporter: InMemorySpanExporter):
+@pytest.mark.asyncio
+async def test_claude_agent_tool(span_exporter: InMemorySpanExporter):
     my_server = create_sdk_mcp_server(
         name="utilities", version="1.0.0", tools=[calculate, get_time]
     )
 
-    # Configure options with the server
     options = ClaudeAgentOptions(
         mcp_servers={"utils": my_server},
         allowed_tools=["mcp__utils__calculate", "mcp__utils__get_time"],
     )
 
-    # Use ClaudeSDKClient for interactive tool usage
-    async def _collect_messages():
-        async with ClaudeSDKClient(
-            options=options, transport=MockClaudeTransport()
-        ) as client:
-            await client.query("What's 123 * 456?")
-            async for _ in client.receive_response():
-                pass
+    async with ClaudeSDKClient(
+        options=options, transport=MockClaudeTransport()
+    ) as client:
+        await client.query("What's 123 * 456?")
+        async for _ in client.receive_response():
+            pass
 
-            await client.query("What time is it now?")
-            async for _ in client.receive_response():
-                pass
-
-    asyncio.run(_collect_messages())
+        await client.query("What time is it now?")
+        async for _ in client.receive_response():
+            pass
 
     spans_tuple = span_exporter.get_finished_spans()
     spans = sorted(list(spans_tuple), key=lambda x: x.start_time)
