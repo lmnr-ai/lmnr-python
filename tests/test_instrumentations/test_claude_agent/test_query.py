@@ -1,35 +1,27 @@
-import asyncio
+import claude_agent_sdk
+import pytest
 
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from claude_agent_sdk import ClaudeAgentOptions
-import claude_agent_sdk
 
 from mock_transport import MockClaudeTransport
 
-# Note: can not use alias "query" aka "from claude_agent_sdk import query" because it is not wrapped by Laminar
 
-
-def test_claude_agent_query(span_exporter: InMemorySpanExporter):
+@pytest.mark.asyncio
+async def test_claude_agent_query(span_exporter: InMemorySpanExporter):
     options = ClaudeAgentOptions(
         model="claude-sonnet-4-5",
         system_prompt="You are an expert software engineer.",
         permission_mode="acceptEdits",
     )
 
-    async def _collect_messages():
-        messages = []
-        async for message in claude_agent_sdk.query(
-            # prompt="Create a readme doc for the test_claude_agent package. Then delete it. Return task status.",
-            prompt="What is the capital of France?",
-            options=options,
-            transport=MockClaudeTransport(
-                auto_respond_on_connect=True, close_after_responses=True
-            ),
-        ):
-            messages.append(message)
-        return messages
-
-    for _ in asyncio.run(_collect_messages()):
+    async for message in claude_agent_sdk.query(
+        prompt="What is the capital of France?",
+        options=options,
+        transport=MockClaudeTransport(
+            auto_respond_on_connect=True, close_after_responses=True
+        ),
+    ):
         pass
 
     spans = span_exporter.get_finished_spans()
