@@ -1,24 +1,19 @@
 import asyncio
-from dotenv import load_dotenv
 
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from claude_agent_sdk import ClaudeAgentOptions
 import claude_agent_sdk
 
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.mock_transport import (
-    MockClaudeTransport,
-)
+from mock_transport import MockClaudeTransport
 
 # Note: can not use alias "query" aka "from claude_agent_sdk import query" because it is not wrapped by Laminar
 
-# TODO: remove this after adding mock claude cli calls
-load_dotenv()
 
 def test_claude_agent_query(span_exporter: InMemorySpanExporter):
     options = ClaudeAgentOptions(
         model="claude-sonnet-4-5",
         system_prompt="You are an expert software engineer.",
-        permission_mode='acceptEdits',
+        permission_mode="acceptEdits",
     )
 
     async def _collect_messages():

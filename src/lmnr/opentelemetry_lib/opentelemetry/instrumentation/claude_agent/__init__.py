@@ -1,4 +1,5 @@
 import importlib
+import os
 import sys
 
 from lmnr import Laminar
@@ -285,7 +286,9 @@ async def _wrap_async(to_wrap, wrapped, instance, args, kwargs):
     ) as span:
         _record_input(span, wrapped, args, kwargs)
 
+        original_base_url = None
         if to_wrap.get("is_start_proxy"):
+            original_base_url = os.environ.get("ANTHROPIC_BASE_URL")
             start_proxy()
 
         if to_wrap.get("is_publish_span_context"):
@@ -300,12 +303,17 @@ async def _wrap_async(to_wrap, wrapped, instance, args, kwargs):
         try:
             result = await wrapped(*args, **kwargs)
         except Exception as e:  # pylint: disable=broad-except
+            if original_base_url is not None:
+                if original_base_url:
+                    os.environ["ANTHROPIC_BASE_URL"] = original_base_url
+                else:
+                    os.environ.pop("ANTHROPIC_BASE_URL", None)
             span.set_status(Status(StatusCode.ERROR))
             span.record_exception(e)
             raise
-
-        if to_wrap.get("is_release_proxy"):
-            release_proxy()
+        finally:
+            if to_wrap.get("is_release_proxy"):
+                release_proxy()
 
         _record_output(span, to_wrap, result)
 
@@ -322,8 +330,10 @@ def _wrap_async_gen(to_wrap, wrapped, instance, args, kwargs):
         collected = []
         async_iter = None
 
+        original_base_url = None
         if to_wrap.get("is_start_proxy"):
-            await start_proxy()
+            original_base_url = os.environ.get("ANTHROPIC_BASE_URL")
+            start_proxy()
 
         if to_wrap.get("is_publish_span_context"):
             with Laminar.use_span(span):
@@ -356,6 +366,11 @@ def _wrap_async_gen(to_wrap, wrapped, instance, args, kwargs):
                     break
                 yield item
         except Exception as e:  # pylint: disable=broad-except
+            if original_base_url is not None:
+                if original_base_url:
+                    os.environ["ANTHROPIC_BASE_URL"] = original_base_url
+                else:
+                    os.environ.pop("ANTHROPIC_BASE_URL", None)
             with Laminar.use_span(span):
                 span.set_status(Status(StatusCode.ERROR))
                 span.record_exception(e)
@@ -372,7 +387,7 @@ def _wrap_async_gen(to_wrap, wrapped, instance, args, kwargs):
                 span.end()
 
             if to_wrap.get("is_release_proxy"):
-                await release_proxy()
+                release_proxy()
 
     return generator()
 

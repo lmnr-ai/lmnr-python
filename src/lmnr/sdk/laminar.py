@@ -604,9 +604,11 @@ class Laminar:
                 this mechanism if it was previously set manually.
         """
         if not cls.is_initialized():
-            yield from use_span(
+            with use_span(
                 span, end_on_exit, record_exception, set_status_on_exception
-            )
+            ) as s:
+                yield s
+            return
 
         wrapper = TracerWrapper()
 

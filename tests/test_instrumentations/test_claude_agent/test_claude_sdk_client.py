@@ -1,12 +1,10 @@
 import asyncio
-from dotenv import load_dotenv
 
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from claude_agent_sdk import ClaudeSDKClient
 
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.mock_transport import (
-    MockClaudeTransport,
-)
+from mock_transport import MockClaudeTransport
+
 
 def test_claude_agent_query(span_exporter: InMemorySpanExporter):
     async def _collect_messages():
@@ -35,7 +33,10 @@ def test_claude_agent_query(span_exporter: InMemorySpanExporter):
     assert spans[7].name == "ClaudeSDKClient.disconnect"
 
     assert spans[1].attributes["lmnr.span.path"] == ("ClaudeSDKClient.query",)
-    assert spans[1].attributes["lmnr.span.input"] == '{"prompt":"What\'s the capital of France?"}'
+    assert (
+        spans[1].attributes["lmnr.span.input"]
+        == '{"prompt":"What\'s the capital of France?"}'
+    )
     assert spans[3].parent.trace_id == spans[2].context.trace_id
     assert spans[3].parent.span_id == spans[2].context.span_id
     assert "million" in str(spans[6].attributes["lmnr.span.output"])

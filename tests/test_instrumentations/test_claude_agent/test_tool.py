@@ -4,60 +4,42 @@ from claude_agent_sdk import (
     tool,
     create_sdk_mcp_server,
     ClaudeAgentOptions,
-    AssistantMessage,
-    TextBlock,
     ClaudeSDKClient,
 )
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.mock_transport import (
-    MockClaudeTransport,
-)
+from mock_transport import MockClaudeTransport
+
 
 @tool("calculate", "Perform mathematical calculations", {"expression": str})
 async def calculate(args: dict[str, Any]) -> dict[str, Any]:
     try:
         result = eval(args["expression"], {"__builtins__": {}})
-        return {
-            "content": [{
-                "type": "text",
-                "text": f"Result: {result}"
-            }]
-        }
+        return {"content": [{"type": "text", "text": f"Result: {result}"}]}
     except Exception as e:
         return {
-            "content": [{
-                "type": "text",
-                "text": f"Error: {str(e)}"
-            }],
-            "is_error": True
+            "content": [{"type": "text", "text": f"Error: {str(e)}"}],
+            "is_error": True,
         }
+
 
 @tool("get_time", "Get current time", {})
 async def get_time(args: dict[str, Any]) -> dict[str, Any]:
     from datetime import datetime
+
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    return {
-        "content": [{
-            "type": "text",
-            "text": f"Current time: {current_time}"
-        }]
-    }
+    return {"content": [{"type": "text", "text": f"Current time: {current_time}"}]}
+
 
 def test_claude_agent_tool(span_exporter: InMemorySpanExporter):
     my_server = create_sdk_mcp_server(
-        name="utilities",
-        version="1.0.0",
-        tools=[calculate, get_time]
+        name="utilities", version="1.0.0", tools=[calculate, get_time]
     )
 
     # Configure options with the server
     options = ClaudeAgentOptions(
         mcp_servers={"utils": my_server},
-        allowed_tools=[
-            "mcp__utils__calculate",
-            "mcp__utils__get_time"
-        ]
+        allowed_tools=["mcp__utils__calculate", "mcp__utils__get_time"],
     )
 
     # Use ClaudeSDKClient for interactive tool usage
