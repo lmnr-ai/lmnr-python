@@ -4,7 +4,6 @@ from enum import Enum
 
 from opentelemetry.trace import TracerProvider
 import lmnr.opentelemetry_lib.tracing._instrument_initializers as initializers
-from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 
 module_logger = logging.getLogger(__name__)
@@ -20,6 +19,7 @@ class Instruments(Enum):
     BROWSER_USE_SESSION = "browser_use_session"
     BUBUS = "bubus"
     CHROMA = "chroma"
+    CLAUDE_AGENT = "claude_agent"
     COHERE = "cohere"
     CREWAI = "crewai"
     CUA_AGENT = "cua_agent"
@@ -68,6 +68,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.BROWSER_USE_SESSION: initializers.BrowserUseSessionInstrumentorInitializer(),
     Instruments.BUBUS: initializers.BubusInstrumentorInitializer(),
     Instruments.CHROMA: initializers.ChromaInstrumentorInitializer(),
+    Instruments.CLAUDE_AGENT: initializers.ClaudeAgentInstrumentorInitializer(),
     Instruments.COHERE: initializers.CohereInstrumentorInitializer(),
     Instruments.CREWAI: initializers.CrewAIInstrumentorInitializer(),
     Instruments.CUA_AGENT: initializers.CuaAgentInstrumentorInitializer(),

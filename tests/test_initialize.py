@@ -9,15 +9,22 @@ from lmnr.sdk.evaluations import Evaluation
 @pytest.fixture(autouse=True)
 def setup_and_teardown():
     """Reset Laminar state before each test."""
-    # Reset the initialized state
+    # Save the current state
+    original_initialized = Laminar._Laminar__initialized
+    original_base_http_url = Laminar._Laminar__base_http_url
+    original_project_api_key = Laminar._Laminar__project_api_key
+
+    # Reset the initialized state for the test
     Laminar._Laminar__initialized = False
     Laminar._Laminar__base_http_url = None
     Laminar._Laminar__project_api_key = None
+
     yield
-    # Clean up after test
-    Laminar._Laminar__initialized = False
-    Laminar._Laminar__base_http_url = None
-    Laminar._Laminar__project_api_key = None
+
+    # Restore the original state after test
+    Laminar._Laminar__initialized = original_initialized
+    Laminar._Laminar__base_http_url = original_base_http_url
+    Laminar._Laminar__project_api_key = original_project_api_key
 
 
 def test_laminar_initialize_url_parsing():
