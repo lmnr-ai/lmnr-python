@@ -16,7 +16,6 @@ logger = get_default_logger(__name__)
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 DEFAULT_CC_PROXY_PORT = 45667
 CC_PROXY_PORT_ATTEMPTS = 5
-GRACE_TO_FLUSH_SECONDS = 3
 
 _CC_PROXY_LOCK = threading.Lock()
 _CC_PROXY_PORT: int | None = None
@@ -67,13 +66,8 @@ def _stop_cc_proxy_locked():
 
 
 def _stop_cc_proxy():
-    def _stop_in_background():
-        time.sleep(GRACE_TO_FLUSH_SECONDS)
-        with _CC_PROXY_LOCK:
-            _stop_cc_proxy_locked()
-
-    thread = threading.Thread(target=_stop_in_background, daemon=True)
-    thread.start()
+    with _CC_PROXY_LOCK:
+        _stop_cc_proxy_locked()
 
 
 def _register_proxy_shutdown():
