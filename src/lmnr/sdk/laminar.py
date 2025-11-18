@@ -892,7 +892,9 @@ class Laminar:
 
     @classmethod
     def force_flush(cls):
-        """Force flush the internal tracer.
+        """Force flush the internal tracer. WARNING: Any active spans are
+        removed from context; that is, spans started afterwards will start
+        a new trace.
 
         Actually shuts down the span processor and re-initializes it as long
         as it is a LaminarSpanProcessor. This is not recommended in production
