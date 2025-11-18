@@ -196,9 +196,13 @@ def _wrap(
         f"{to_wrap.get('class_name')}.{to_wrap.get('method')}",
         span_type=to_wrap.get("span_type", "DEFAULT"),
     ) as span:
+        input_kv = get_input_from_func_args(wrapped, True, args, kwargs)
+        if "id" in input_kv:
+            input_kv["session_id"] = input_kv.get("id")
+            input_kv.pop("id")
         span.set_attribute(
             "lmnr.span.input",
-            json_dumps(get_input_from_func_args(wrapped, True, args, kwargs)),
+            json_dumps(input_kv),
         )
         try:
             result = wrapped(*args, **kwargs)
@@ -223,9 +227,13 @@ async def _wrap_async(
         f"{to_wrap.get('class_name')}.{to_wrap.get('method')}",
         span_type=to_wrap.get("span_type", "DEFAULT"),
     ) as span:
+        input_kv = get_input_from_func_args(wrapped, True, args, kwargs)
+        if "id" in input_kv:
+            input_kv["session_id"] = input_kv.get("id")
+            input_kv.pop("id")
         span.set_attribute(
             "lmnr.span.input",
-            json_dumps(get_input_from_func_args(wrapped, True, args, kwargs)),
+            json_dumps(input_kv),
         )
         try:
             result = await wrapped(*args, **kwargs)
