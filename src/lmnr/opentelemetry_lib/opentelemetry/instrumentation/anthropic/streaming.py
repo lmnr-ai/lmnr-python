@@ -32,7 +32,9 @@ logger = logging.getLogger(__name__)
 def _process_response_item(item, complete_response):
     if item.type == "message_start":
         complete_response["model"] = item.message.model
-        complete_response["usage"] = dict(item.message.usage)
+        usage = dict(item.message.usage)
+        complete_response["usage"] = usage
+        complete_response["service_tier"] = usage.get("service_tier") or None
         complete_response["id"] = item.message.id
     elif item.type == "content_block_start":
         index = item.index
@@ -67,6 +69,11 @@ def _process_response_item(item, complete_response):
                 )
             else:
                 complete_response["usage"] = dict(item.usage)
+    elif item.type in ["message_stop", "message_start"]:
+        # raw stream returns the service_tier in the message_start event
+        # messages.stream returns the service_tier in the message_stop event
+        usage = dict(item.message.usage or {})
+        complete_response["service_tier"] = usage.get("service_tier")
 
 
 def _set_token_usage(
@@ -159,7 +166,14 @@ def build_from_streaming_response(
     event_logger: Optional[EventLogger] = None,
     kwargs: dict = {},
 ):
-    complete_response = {"events": [], "model": "", "usage": {}, "id": ""}
+    complete_response = {
+        "events": [],
+        "model": "",
+        "usage": {},
+        "id": "",
+        "service_tier": None,
+    }
+
     for item in response:
         try:
             yield item
@@ -172,6 +186,11 @@ def build_from_streaming_response(
 
     metric_attributes = shared_metrics_attributes(complete_response)
     set_span_attribute(span, GEN_AI_RESPONSE_ID, complete_response.get("id"))
+    set_span_attribute(
+        span,
+        "anthropic.response.service_tier",
+        complete_response.get("service_tier"),
+    )
     if duration_histogram:
         duration = time.time() - start_time
         duration_histogram.record(
@@ -235,7 +254,13 @@ async def abuild_from_streaming_response(
     event_logger: Optional[EventLogger] = None,
     kwargs: dict = {},
 ):
-    complete_response = {"events": [], "model": "", "usage": {}, "id": ""}
+    complete_response = {
+        "events": [],
+        "model": "",
+        "usage": {},
+        "id": "",
+        "service_tier": None,
+    }
     async for item in response:
         try:
             yield item
@@ -247,6 +272,11 @@ async def abuild_from_streaming_response(
         _process_response_item(item, complete_response)
 
     set_span_attribute(span, GEN_AI_RESPONSE_ID, complete_response.get("id"))
+    set_span_attribute(
+        span,
+        "anthropic.response.service_tier",
+        complete_response.get("service_tier"),
+    )
 
     metric_attributes = shared_metrics_attributes(complete_response)
 

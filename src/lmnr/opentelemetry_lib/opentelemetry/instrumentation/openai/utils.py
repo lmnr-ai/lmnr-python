@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import inspect
 import os
 import threading
 import traceback
@@ -163,7 +164,7 @@ def dont_throw(func):
         if Config.exception_logger:
             Config.exception_logger(e)
 
-    return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
+    return async_wrapper if inspect.iscoroutinefunction(func) else sync_wrapper
 
 
 def run_async(method):

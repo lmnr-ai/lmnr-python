@@ -26,8 +26,9 @@ from .utils import assert_request_contains_tracecontext, spy_decorator
 @pytest.mark.vcr
 def test_chat(instrument_legacy, span_exporter, log_exporter, openai_client):
     openai_client.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model="gpt-5-nano",
         messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
+        service_tier="default",
     )
 
     spans = span_exporter.get_finished_spans()
@@ -45,17 +46,13 @@ def test_chat(instrument_legacy, span_exporter, log_exporter, openai_client):
         open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
         == "https://api.openai.com/v1/"
     )
-    assert (
-        open_ai_span.attributes.get(
-            SpanAttributes.LLM_OPENAI_RESPONSE_SYSTEM_FINGERPRINT
-        )
-        == "fp_2b778c6b35"
-    )
     assert open_ai_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is False
     assert (
         open_ai_span.attributes.get("gen_ai.response.id")
-        == "chatcmpl-908MD9ivBBLb6EaIjlqwFokntayQK"
+        == "chatcmpl-CdGqqj1iK4R9EgoAo2k2ZvzxgmgGt"
     )
+    assert open_ai_span.attributes.get("openai.request.service_tier") == "default"
+    assert open_ai_span.attributes.get("openai.response.service_tier") == "default"
 
     logs = log_exporter.get_finished_logs()
     assert (
@@ -575,9 +572,10 @@ def test_chat_pydantic_based_tool_calls_with_events_with_no_content(
 @pytest.mark.vcr
 def test_chat_streaming(instrument_legacy, span_exporter, log_exporter, openai_client):
     response = openai_client.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model="gpt-5-nano",
         messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
         stream=True,
+        service_tier="default",
     )
 
     chunk_count = 0
@@ -614,8 +612,10 @@ def test_chat_streaming(instrument_legacy, span_exporter, log_exporter, openai_c
     assert completion_tokens + prompt_tokens == total_tokens
     assert (
         open_ai_span.attributes.get("gen_ai.response.id")
-        == "chatcmpl-908MECg5dMyTTbJEltubwQXeeWlBA"
+        == "chatcmpl-CdGr0EeaCKMNoLQ4cH79NjnMpgckv"
     )
+    assert open_ai_span.attributes.get("openai.request.service_tier") == "default"
+    assert open_ai_span.attributes.get("openai.response.service_tier") == "default"
 
     logs = log_exporter.get_finished_logs()
     assert (
@@ -750,7 +750,7 @@ async def test_chat_async_streaming(
     instrument_legacy, span_exporter, log_exporter, async_openai_client
 ):
     response = await async_openai_client.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model="gpt-4.1-nano",
         messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
         stream=True,
     )
@@ -789,7 +789,7 @@ async def test_chat_async_streaming(
     assert completion_tokens + prompt_tokens == total_tokens
     assert (
         open_ai_span.attributes.get("gen_ai.response.id")
-        == "chatcmpl-9AGW3t9akkLW9f5f93B7mOhiqhNMC"
+        == "chatcmpl-CdGt5qCx5Rzql1NaxAplDRwFojACg"
     )
 
     logs = log_exporter.get_finished_logs()
@@ -925,7 +925,7 @@ def test_with_asyncio_run(
 ):
     asyncio.run(
         async_openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4.1-nano",
             messages=[
                 {"role": "user", "content": "Tell me a joke about opentelemetry"}
             ],
@@ -939,7 +939,7 @@ def test_with_asyncio_run(
     open_ai_span = spans[0]
     assert (
         open_ai_span.attributes.get("gen_ai.response.id")
-        == "chatcmpl-ANnyEsyt6uxfIIA7lcPLH95lKcEeK"
+        == "chatcmpl-CdGt66e4DLUiaHScvU4EpKsSU0sCu"
     )
 
     logs = log_exporter.get_finished_logs()

@@ -77,7 +77,8 @@ def test_anthropic_message_create_legacy(
                 "content": "Tell me a joke about OpenTelemetry",
             }
         ],
-        model="claude-3-opus-20240229",
+        model="claude-3-5-haiku-20241022",
+        service_tier="standard_only",
     )
     try:
         anthropic_client.messages.create(
@@ -111,7 +112,14 @@ def test_anthropic_message_create_legacy(
     )
     assert (
         anthropic_span.attributes.get("gen_ai.response.id")
-        == "msg_01TPXhkPo8jy6yQMrMhjpiAE"
+        == "msg_01NgS2sXcQRKUKbwKFx1vVxC"
+    )
+    assert (
+        anthropic_span.attributes.get("anthropic.request.service_tier")
+        == "standard_only"
+    )
+    assert (
+        anthropic_span.attributes.get("anthropic.response.service_tier") == "standard"
     )
 
     logs = log_exporter.get_finished_logs()
@@ -706,8 +714,9 @@ def test_anthropic_message_streaming_legacy(
                 "content": "Tell me a joke about OpenTelemetry",
             }
         ],
-        model="claude-3-haiku-20240307",
+        model="claude-3-5-haiku-20241022",
         stream=True,
+        service_tier="standard_only",
     )
     try:
         anthropic_client.messages.create(
@@ -747,9 +756,15 @@ def test_anthropic_message_streaming_legacy(
     )
     assert (
         anthropic_span.attributes.get("gen_ai.response.id")
-        == "msg_01MXWxhWoPSgrYhjTuMDM6F1"
+        == "msg_019bVafnfSbR9K5SGmoy6gcX"
     )
-
+    assert (
+        anthropic_span.attributes.get("anthropic.request.service_tier")
+        == "standard_only"
+    )
+    assert (
+        anthropic_span.attributes.get("anthropic.response.service_tier") == "standard"
+    )
     logs = log_exporter.get_finished_logs()
     assert (
         len(logs) == 0
@@ -884,7 +899,8 @@ async def test_async_anthropic_message_create_legacy(
                 "content": "Tell me a joke about OpenTelemetry",
             }
         ],
-        model="claude-3-opus-20240229",
+        model="claude-3-5-haiku-20241022",
+        service_tier="standard_only",
     )
     try:
         await async_anthropic_client.messages.create(
@@ -919,9 +935,15 @@ async def test_async_anthropic_message_create_legacy(
     )
     assert (
         anthropic_span.attributes.get("gen_ai.response.id")
-        == "msg_01UFDDjsFn5BPQnfNwmsMnAY"
+        == "msg_01HCcR31VQpZtUqtJ6gZnX34"
     )
-
+    assert (
+        anthropic_span.attributes.get("anthropic.request.service_tier")
+        == "standard_only"
+    )
+    assert (
+        anthropic_span.attributes.get("anthropic.response.service_tier") == "standard"
+    )
     logs = log_exporter.get_finished_logs()
     assert (
         len(logs) == 0
@@ -1030,7 +1052,7 @@ async def test_async_anthropic_message_create_with_events_with_no_content(
     assert_message_in_logs(logs[1], "gen_ai.choice", choice_event)
 
 
-@pytest.mark.vcr
+@pytest.mark.vcr(record_mode="once")
 @pytest.mark.asyncio
 async def test_async_anthropic_message_streaming_legacy(
     instrument_legacy, async_anthropic_client, span_exporter, log_exporter
@@ -1050,7 +1072,8 @@ async def test_async_anthropic_message_streaming_legacy(
                 "content": "Tell me a joke about OpenTelemetry",
             }
         ],
-        model="claude-3-haiku-20240307",
+        model="claude-3-5-haiku-20241022",
+        service_tier="standard_only",
         stream=True,
     )
     response_content = ""
@@ -1084,9 +1107,15 @@ async def test_async_anthropic_message_streaming_legacy(
     )
     assert (
         anthropic_span.attributes.get("gen_ai.response.id")
-        == "msg_016o6A7zDmgjucf5mWv1rrPD"
+        == "msg_01TwQxsi2T5Pat3DNJW7m2wx"
     )
-
+    assert (
+        anthropic_span.attributes.get("anthropic.request.service_tier")
+        == "standard_only"
+    )
+    assert (
+        anthropic_span.attributes.get("anthropic.response.service_tier") == "standard"
+    )
     logs = log_exporter.get_finished_logs()
     assert (
         len(logs) == 0
@@ -1944,7 +1973,7 @@ def assert_message_in_logs(log: LogData, event_name: str, expected_content: dict
         assert dict(log.log_record.body) == expected_content
 
 
-@pytest.mark.vcr
+@pytest.mark.vcr(record_mode="once")
 def test_anthropic_message_stream_manager(
     instrument_legacy, anthropic_client, span_exporter, log_exporter
 ):
@@ -1958,6 +1987,7 @@ def test_anthropic_message_stream_manager(
             }
         ],
         model="claude-3-5-haiku-20241022",
+        service_tier="standard_only",
     ) as stream:
         for event in stream:
             if event.type == "content_block_delta" and event.delta.type == "text_delta":
@@ -1985,7 +2015,13 @@ def test_anthropic_message_stream_manager(
         anthropic_span.attributes.get("gen_ai.response.id")
         == "msg_01MCkQZZtEKF3nVbFaExwATe"
     )
-
+    assert (
+        anthropic_span.attributes.get("anthropic.request.service_tier")
+        == "standard_only"
+    )
+    assert (
+        anthropic_span.attributes.get("anthropic.response.service_tier") == "standard"
+    )
     logs = log_exporter.get_finished_logs()
     assert (
         len(logs) == 0
@@ -2007,6 +2043,7 @@ async def test_async_anthropic_message_stream_manager(
             }
         ],
         model="claude-3-5-haiku-20241022",
+        service_tier="standard_only",
     ) as stream:
         async for event in stream:
             if event.type == "content_block_delta" and event.delta.type == "text_delta":
@@ -2032,7 +2069,14 @@ async def test_async_anthropic_message_stream_manager(
     )
     assert (
         anthropic_span.attributes.get("gen_ai.response.id")
-        == "msg_01E414PCSTg6skd6JWPTX5Uc"
+        == "msg_01QnFxEDGs7cHJegKR367cJ7"
+    )
+    assert (
+        anthropic_span.attributes.get("anthropic.request.service_tier")
+        == "standard_only"
+    )
+    assert (
+        anthropic_span.attributes.get("anthropic.response.service_tier") == "standard"
     )
 
     logs = log_exporter.get_finished_logs()

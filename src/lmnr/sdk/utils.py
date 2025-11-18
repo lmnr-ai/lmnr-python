@@ -1,4 +1,3 @@
-import asyncio
 import datetime
 import dataclasses
 import dotenv
@@ -33,7 +32,7 @@ def is_async(func: typing.Callable) -> bool:
         return False
 
     # Check if the function is asynchronous
-    if asyncio.iscoroutinefunction(func):
+    if inspect.iscoroutinefunction(func):
         return True
 
     # Fallback: check if the function's code object contains 'async'.
