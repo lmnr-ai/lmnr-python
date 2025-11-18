@@ -12,12 +12,11 @@ from lmnr.opentelemetry_lib.tracing.instruments import (
 )
 from lmnr.opentelemetry_lib.tracing.context import (
     attach_context,
+    clear_context,
     pop_span_context as ctx_pop_span_context,
     get_current_context,
     get_token_stack,
     push_span_context as ctx_push_span_context,
-    _isolated_token_stack,
-    _isolated_token_stack_storage,
     set_token_stack,
 )
 
@@ -230,14 +229,7 @@ class TracerWrapper(object):
         if isinstance(cls.instance._span_processor, LaminarSpanProcessor):
             cls.instance._span_processor.clear()
         # Clear the isolated context state for clean test state
-        try:
-            _isolated_token_stack.set([])
-        except LookupError:
-            pass
-        if hasattr(_isolated_token_stack_storage, "token_stack"):
-            _isolated_token_stack_storage.token_stack = []
-        # Reset the isolated context to a fresh state
-        attach_context(Context())
+        clear_context()
 
     def shutdown(self):
         if self._tracer_provider is None:
@@ -254,6 +246,9 @@ class TracerWrapper(object):
         if isinstance(self._span_processor, LaminarSpanProcessor):
             self._span_processor.force_flush()
             self._span_processor.force_reinit()
+            # Clear the isolated context to prevent subsequent invocations
+            # (e.g., in Lambda) from continuing traces from previous invocations
+            clear_context()
         else:
             self._logger.warning(
                 "Not using LaminarSpanProcessor, cannot force reinit processor"

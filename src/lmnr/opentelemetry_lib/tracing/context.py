@@ -141,3 +141,29 @@ def push_span_context(context: Context) -> None:
     token_stack = get_token_stack().copy()
     token_stack.append(token)
     set_token_stack(token_stack)
+
+
+def clear_context() -> None:
+    """Clear the isolated context and token stack.
+
+    This is primarily used during force_flush operations in Lambda-like
+    environments to ensure subsequent invocations don't continue traces
+    from previous invocations.
+
+    Warning: This should only be called when you're certain no spans are
+    actively being processed, as it will reset all context state.
+    """
+    # Clear the token stack first
+    try:
+        _isolated_token_stack.set([])
+    except LookupError:
+        pass
+
+    # Clear thread-local storage if it exists
+    if hasattr(_isolated_token_stack_storage, "token_stack"):
+        _isolated_token_stack_storage.token_stack = []
+
+    # Reset the context to a fresh empty context
+    # This doesn't require manually detaching tokens since we're
+    # intentionally resetting everything to a clean state
+    _ISOLATED_RUNTIME_CONTEXT._current_context.set(Context())
