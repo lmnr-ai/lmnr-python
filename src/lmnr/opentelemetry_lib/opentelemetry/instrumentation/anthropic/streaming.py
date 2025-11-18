@@ -254,7 +254,13 @@ async def abuild_from_streaming_response(
     event_logger: Optional[EventLogger] = None,
     kwargs: dict = {},
 ):
-    complete_response = {"events": [], "model": "", "usage": {}, "id": ""}
+    complete_response = {
+        "events": [],
+        "model": "",
+        "usage": {},
+        "id": "",
+        "service_tier": None,
+    }
     async for item in response:
         try:
             yield item
