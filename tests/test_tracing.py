@@ -1,4 +1,5 @@
 import json
+import os
 import pytest
 import uuid
 
@@ -669,6 +670,47 @@ def test_span_context_dict_fallback(span_exporter: InMemorySpanExporter):
         inner_span.get_span_context().trace_id == outer_span.get_span_context().trace_id
     )
     assert inner_span.parent.span_id == outer_span.get_span_context().span_id
+
+
+def test_span_context_from_env_variables(span_exporter: InMemorySpanExporter):
+    test_trace_id = "01234567-89ab-cdef-0123-456789abcdef"
+    test_span_id = "00000000-0000-0000-0123-456789abcdef"
+    test_span_id2 = "00000000-0000-0000-fedc-ba9876543210"
+    old_val = os.getenv("LMNR_SPAN_CONTEXT")
+    test_context = LaminarSpanContext(
+        trace_id=test_trace_id,
+        span_id=test_span_id2,
+        span_path=["grandparent", "parent"],
+        span_ids_path=[test_span_id, test_span_id2],
+    )
+
+    os.environ["LMNR_SPAN_CONTEXT"] = str(test_context)
+
+    Laminar._initialize_context_from_env()
+    with Laminar.start_as_current_span("test"):
+        pass
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    span_id = spans[0].get_span_context().span_id
+    assert spans[0].name == "test"
+    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert spans[0].attributes["lmnr.span.path"] == (
+        "grandparent",
+        "parent",
+        "test",
+    )
+    assert spans[0].attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(test_span_id)),
+        str(uuid.UUID(test_span_id2)),
+        str(uuid.UUID(int=span_id)),
+    )
+    assert spans[0].get_span_context().trace_id == uuid.UUID(test_trace_id).int
+    assert spans[0].parent.span_id == uuid.UUID(test_span_id2).int
+    if old_val:
+        os.environ["LMNR_SPAN_CONTEXT"] = old_val
+    else:
+        os.environ.pop("LMNR_SPAN_CONTEXT", None)
 
 
 def test_tags_deduplication(span_exporter: InMemorySpanExporter):
