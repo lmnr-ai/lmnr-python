@@ -60,6 +60,7 @@ class Laminar:
     __project_api_key: str | None = None
     __initialized: bool = False
     __base_http_url: str | None = None
+    __default_parent_span_context: LaminarSpanContext | None = None
 
     @classmethod
     def initialize(
@@ -203,6 +204,44 @@ class Laminar:
             force_http=force_http,
         )
 
+        cls._initialize_context_from_env()
+
+    @classmethod
+    def _initialize_context_from_env(cls) -> None:
+        """Attach upstream Laminar context from the environment, if provided."""
+        context_payload = os.getenv("LMNR_SPAN_CONTEXT")
+        cls.__default_parent_span_context = None
+        if not context_payload:
+            return
+
+        try:
+            laminar_context = LaminarSpanContext.deserialize(context_payload)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            cls.__logger.warning(
+                "LMNR_SPAN_CONTEXT is set but could not be deserialized: %s", exc
+            )
+            return
+
+        cls.__default_parent_span_context = laminar_context
+
+        try:
+            otel_span_context = LaminarSpanContext.try_to_otel_span_context(
+                laminar_context, cls.__logger
+            )
+        except ValueError as exc:
+            cls.__logger.warning(
+                "LMNR_SPAN_CONTEXT is set but invalid span context provided: %s", exc
+            )
+            cls.__default_parent_span_context = None
+            return
+
+        base_context = trace.set_span_in_context(
+            trace.NonRecordingSpan(otel_span_context),
+            get_current_context(),
+        )
+        attach_context(base_context)
+        cls.__logger.debug("Initialized Laminar parent context from LMNR_SPAN_CONTEXT.")
+
     @classmethod
     def is_initialized(cls):
         """Check if Laminar is initialized. A utility to make sure other
@@ -333,6 +372,7 @@ class Laminar:
             ctx = context or isolated_context
             path = []
             span_ids_path = []
+            parent_span_context = parent_span_context or cls.__default_parent_span_context
             if parent_span_context is not None:
                 if isinstance(parent_span_context, (dict, str)):
                     try:
@@ -501,6 +541,7 @@ class Laminar:
             ctx = context or isolated_context
             path = []
             span_ids_path = []
+            parent_span_context = parent_span_context or cls.__default_parent_span_context
             if parent_span_context is not None:
                 if isinstance(parent_span_context, (dict, str)):
                     try:
