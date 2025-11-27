@@ -8,8 +8,10 @@ from lmnr.opentelemetry_lib.tracing.context import (
     CONTEXT_USER_ID_KEY,
     attach_context,
     get_event_attributes_from_context,
+    push_span_context,
 )
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
+from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
@@ -60,7 +62,6 @@ class Laminar:
     __project_api_key: str | None = None
     __initialized: bool = False
     __base_http_url: str | None = None
-    __default_parent_span_context: LaminarSpanContext | None = None
 
     @classmethod
     def initialize(
@@ -209,20 +210,17 @@ class Laminar:
     @classmethod
     def _initialize_context_from_env(cls) -> None:
         """Attach upstream Laminar context from the environment, if provided."""
-        context_payload = os.getenv("LMNR_SPAN_CONTEXT")
-        cls.__default_parent_span_context = None
-        if not context_payload:
+        env_context = os.getenv("LMNR_SPAN_CONTEXT")
+        if not env_context:
             return
 
         try:
-            laminar_context = LaminarSpanContext.deserialize(context_payload)
+            laminar_context = LaminarSpanContext.deserialize(env_context)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             cls.__logger.warning(
                 "LMNR_SPAN_CONTEXT is set but could not be deserialized: %s", exc
             )
             return
-
-        cls.__default_parent_span_context = laminar_context
 
         try:
             otel_span_context = LaminarSpanContext.try_to_otel_span_context(
@@ -232,14 +230,19 @@ class Laminar:
             cls.__logger.warning(
                 "LMNR_SPAN_CONTEXT is set but invalid span context provided: %s", exc
             )
-            cls.__default_parent_span_context = None
             return
 
         base_context = trace.set_span_in_context(
-            trace.NonRecordingSpan(otel_span_context),
-            get_current_context(),
+            trace.NonRecordingSpan(otel_span_context), get_current_context()
         )
-        attach_context(base_context)
+        processor = TracerWrapper.instance._span_processor
+        if isinstance(processor, LaminarSpanProcessor):
+            processor.set_parent_path_info(
+                otel_span_context.span_id,
+                laminar_context.span_path,
+                laminar_context.span_ids_path,
+            )
+        push_span_context(base_context)
         cls.__logger.debug("Initialized Laminar parent context from LMNR_SPAN_CONTEXT.")
 
     @classmethod
@@ -372,7 +375,6 @@ class Laminar:
             ctx = context or isolated_context
             path = []
             span_ids_path = []
-            parent_span_context = parent_span_context or cls.__default_parent_span_context
             if parent_span_context is not None:
                 if isinstance(parent_span_context, (dict, str)):
                     try:
@@ -541,7 +543,6 @@ class Laminar:
             ctx = context or isolated_context
             path = []
             span_ids_path = []
-            parent_span_context = parent_span_context or cls.__default_parent_span_context
             if parent_span_context is not None:
                 if isinstance(parent_span_context, (dict, str)):
                     try:

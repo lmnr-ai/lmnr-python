@@ -140,3 +140,13 @@ class LaminarSpanProcessor(SpanProcessor):
         with self._paths_lock:
             self.__span_id_to_path = {}
             self.__span_id_lists = {}
+
+    def set_parent_path_info(
+        self,
+        parent_span_id: int,
+        span_path: list[str],
+        span_ids_path: list[str],
+    ):
+        with self._paths_lock:
+            self.__span_id_to_path[parent_span_id] = span_path
+            self.__span_id_lists[parent_span_id] = span_ids_path
