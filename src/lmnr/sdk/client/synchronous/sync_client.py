@@ -8,7 +8,6 @@ from typing import TypeVar
 from types import TracebackType
 
 from lmnr.sdk.client.synchronous.resources import (
-    Agent,
     BrowserEvents,
     Evals,
     Evaluators,
@@ -25,8 +24,6 @@ class LaminarClient:
     __project_api_key: str
     __client: httpx.Client = None
 
-    # Resource properties
-    __agent: Agent | None = None
     __evals: Evals | None = None
     __tags: Tags | None = None
     __evaluators: Evaluators | None = None
@@ -95,7 +92,6 @@ class LaminarClient:
         )
 
         # Initialize resource objects
-        self.__agent = Agent(self.__client, self.__base_url, self.__project_api_key)
         self.__evals = Evals(self.__client, self.__base_url, self.__project_api_key)
         self.__evaluators = Evaluators(
             self.__client, self.__base_url, self.__project_api_key
@@ -107,15 +103,6 @@ class LaminarClient:
         self.__datasets = Datasets(
             self.__client, self.__base_url, self.__project_api_key
         )
-
-    @property
-    def agent(self) -> Agent:
-        """Get the Agent resource.
-
-        Returns:
-            Agent: The Agent resource instance.
-        """
-        return self.__agent
 
     @property
     def evals(self) -> Evals:

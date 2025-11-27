@@ -8,7 +8,6 @@ from typing import TypeVar
 from types import TracebackType
 
 from lmnr.sdk.client.asynchronous.resources import (
-    AsyncAgent,
     AsyncBrowserEvents,
     AsyncEvals,
     AsyncTags,
@@ -90,9 +89,6 @@ class AsyncLaminarClient:
         )
 
         # Initialize resource objects
-        self.__agent = AsyncAgent(
-            self.__client, self.__base_url, self.__project_api_key
-        )
         self.__evals = AsyncEvals(
             self.__client, self.__base_url, self.__project_api_key
         )
@@ -106,15 +102,6 @@ class AsyncLaminarClient:
         self.__datasets = AsyncDatasets(
             self.__client, self.__base_url, self.__project_api_key
         )
-
-    @property
-    def agent(self) -> AsyncAgent:
-        """Get the Agent resource.
-
-        Returns:
-            AsyncAgent: The Agent resource instance.
-        """
-        return self.__agent
 
     @property
     def evals(self) -> AsyncEvals:
