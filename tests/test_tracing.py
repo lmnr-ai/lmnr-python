@@ -710,7 +710,7 @@ def test_span_context_from_env_variables(span_exporter: InMemorySpanExporter):
     if old_val:
         os.environ["LMNR_SPAN_CONTEXT"] = old_val
     else:
-        os.unsetenv("LMNR_SPAN_CONTEXT")
+        os.environ.pop("LMNR_SPAN_CONTEXT", None)
 
 
 def test_tags_deduplication(span_exporter: InMemorySpanExporter):

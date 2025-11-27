@@ -1608,4 +1608,4 @@ def test_span_context_from_env_variables_observe(span_exporter: InMemorySpanExpo
     if old_val:
         os.environ["LMNR_SPAN_CONTEXT"] = old_val
     else:
-        os.unsetenv("LMNR_SPAN_CONTEXT")
+        os.environ.pop("LMNR_SPAN_CONTEXT", None)
