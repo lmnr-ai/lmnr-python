@@ -1,7 +1,6 @@
 from lmnr.opentelemetry_lib.decorators import (
     observe_base,
     async_observe_base,
-    json_dumps,
 )
 from opentelemetry.trace import INVALID_SPAN, get_current_span
 
@@ -136,15 +135,6 @@ def observe(
             association_properties["session_id"] = session_id
         if user_id is not None:
             association_properties["user_id"] = user_id
-        if metadata is not None:
-            association_properties.update(
-                {
-                    f"metadata.{k}": (
-                        v if isinstance(v, (str, int, float, bool)) else json_dumps(v)
-                    )
-                    for k, v in metadata.items()
-                }
-            )
         if tags is not None:
             if not isinstance(tags, list) or not all(
                 isinstance(tag, str) for tag in tags
@@ -178,6 +168,7 @@ def observe(
                 ignore_input=ignore_input,
                 ignore_output=ignore_output,
                 span_type=span_type,
+                metadata=metadata,
                 ignore_inputs=ignore_inputs,
                 input_formatter=input_formatter,
                 output_formatter=output_formatter,
@@ -190,6 +181,7 @@ def observe(
                 ignore_input=ignore_input,
                 ignore_output=ignore_output,
                 span_type=span_type,
+                metadata=metadata,
                 ignore_inputs=ignore_inputs,
                 input_formatter=input_formatter,
                 output_formatter=output_formatter,

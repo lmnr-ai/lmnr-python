@@ -4,10 +4,15 @@ import dotenv
 import enum
 import inspect
 import os
+import orjson
 import pydantic
 import queue
 import typing
 import uuid
+
+from lmnr.sdk.log import get_default_logger
+
+logger = get_default_logger(__name__)
 
 
 def is_method(func: typing.Callable) -> bool:
@@ -201,3 +206,38 @@ def format_id(id_value: str | int | uuid.UUID) -> str:
         return id_value
     else:
         raise ValueError(f"Invalid ID type: {type(id_value)}")
+
+
+DEFAULT_PLACEHOLDER = {}
+
+
+def default_json(o):
+    if isinstance(o, pydantic.BaseModel):
+        return o.model_dump()
+
+    # Handle various sequence types, but not strings or bytes
+    if isinstance(o, (list, tuple, set, frozenset)):
+        return list(o)
+
+    try:
+        return str(o)
+    except Exception:
+        logger.debug("Failed to serialize data to JSON, inner type: %s", type(o))
+        pass
+    return DEFAULT_PLACEHOLDER
+
+
+def json_dumps(data: dict) -> str:
+    try:
+        return orjson.dumps(
+            data,
+            default=default_json,
+            option=orjson.OPT_SERIALIZE_DATACLASS
+            | orjson.OPT_SERIALIZE_UUID
+            | orjson.OPT_UTC_Z
+            | orjson.OPT_NON_STR_KEYS,
+        ).decode("utf-8")
+    except Exception:
+        # Log the exception and return a placeholder if serialization completely fails
+        logger.info("Failed to serialize data to JSON, type: %s", type(data))
+        return "{}"  # Return an empty JSON object as a fallback

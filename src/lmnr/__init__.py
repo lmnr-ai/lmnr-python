@@ -11,6 +11,7 @@ from .opentelemetry_lib.litellm import LaminarLiteLLMCallback
 from .opentelemetry_lib.tracing.attributes import Attributes
 from .opentelemetry_lib.tracing.instruments import Instruments
 from .opentelemetry_lib.tracing.processor import LaminarSpanProcessor
+from .opentelemetry_lib.tracing.span import LaminarSpan
 from .opentelemetry_lib.tracing.tracer import get_laminar_tracer_provider, get_tracer
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "LaminarLiteLLMCallback",
     "LaminarSpanContext",
     "LaminarSpanProcessor",
+    "LaminarSpan",
     "get_laminar_tracer_provider",
     "get_tracer",
     "evaluate",

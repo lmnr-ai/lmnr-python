@@ -11,7 +11,7 @@ from opentelemetry.trace import SpanContext, TraceFlags
 from typing import Any, Awaitable, Callable, Optional
 from typing_extensions import TypedDict  # compatibility with python < 3.12
 
-from .utils import serialize
+from .utils import serialize, json_dumps
 
 DEFAULT_DATAPOINT_MAX_DATA_LENGTH = 16_000_000  # 16MB
 
@@ -107,10 +107,8 @@ class PartialEvaluationDatapoint(BaseModel):
     def to_dict(self, max_data_length: int = DEFAULT_DATAPOINT_MAX_DATA_LENGTH):
         serialized_data = serialize(self.data)
         serialized_target = serialize(self.target)
-        # TODO: use json_dumps instead of json.dumps once we
-        # move it to utils so we can avoid circular imports
-        str_data = json.dumps(serialized_data)
-        str_target = json.dumps(serialized_target)
+        str_data = json_dumps(serialized_data)
+        str_target = json_dumps(serialized_target)
         try:
             return {
                 "id": str(self.id),

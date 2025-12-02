@@ -3,7 +3,6 @@
 import sys
 from typing import Collection
 
-from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     SESSION_ID,
@@ -11,7 +10,7 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
 )
 from lmnr.opentelemetry_lib.utils.wrappers import _with_tracer_wrapper
 from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.utils import get_input_from_func_args
+from lmnr.sdk.utils import get_input_from_func_args, json_dumps
 from lmnr import Laminar
 from lmnr.version import __version__
 

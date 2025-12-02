@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from contextvars import ContextVar
 from opentelemetry.context import Context, Token, create_key, get_value
 
-from lmnr.opentelemetry_lib.tracing.attributes import SESSION_ID, USER_ID
+from lmnr.opentelemetry_lib.tracing.attributes import METADATA, SESSION_ID, USER_ID
 
 
 class _IsolatedRuntimeContext(ABC):
@@ -113,6 +113,7 @@ def detach_context(token: Token[Context]) -> None:
 
 CONTEXT_USER_ID_KEY = create_key(f"lmnr.{USER_ID}")
 CONTEXT_SESSION_ID_KEY = create_key(f"lmnr.{SESSION_ID}")
+CONTEXT_METADATA_KEY = create_key(f"lmnr.{METADATA}")
 
 
 def get_event_attributes_from_context(context: Context | None = None) -> dict[str, str]:
