@@ -1609,3 +1609,38 @@ def test_span_context_from_env_variables_observe(span_exporter: InMemorySpanExpo
         os.environ["LMNR_SPAN_CONTEXT"] = old_val
     else:
         os.environ.pop("LMNR_SPAN_CONTEXT", None)
+
+
+def test_add_span_tags(span_exporter: InMemorySpanExporter):
+    @observe(tags=["foo"])
+    def test():
+        Laminar.add_span_tags(["bar", "baz", "foo"])
+        Laminar.add_span_tags(["qux", "bar"])
+
+    test()
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert sorted(spans[0].attributes["lmnr.association.properties.tags"]) == [
+        "bar",
+        "baz",
+        "foo",
+        "qux",
+    ]
+
+
+def test_set_span_tags_add_span_tags(span_exporter: InMemorySpanExporter):
+    @observe(tags=["foo"])
+    def test():
+        Laminar.set_span_tags(["bar", "baz"])
+        Laminar.add_span_tags(["qux", "bar"])
+
+    test()
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert sorted(spans[0].attributes["lmnr.association.properties.tags"]) == [
+        "bar",
+        "baz",
+        "qux",
+    ]

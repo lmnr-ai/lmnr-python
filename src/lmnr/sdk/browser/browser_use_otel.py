@@ -1,7 +1,6 @@
-from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr import Laminar
 from lmnr.sdk.browser.utils import with_tracer_wrapper
-from lmnr.sdk.utils import get_input_from_func_args
+from lmnr.sdk.utils import get_input_from_func_args, json_dumps
 from lmnr.version import __version__
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor

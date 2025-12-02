@@ -24,6 +24,7 @@ HUMAN_EVALUATOR_OPTIONS = "lmnr.span.human_evaluator_options"
 ASSOCIATION_PROPERTIES = "lmnr.association.properties"
 SESSION_ID = "session_id"
 USER_ID = "user_id"
+METADATA = "metadata"
 TRACE_TYPE = "trace_type"
 TRACING_LEVEL = "tracing_level"
 
