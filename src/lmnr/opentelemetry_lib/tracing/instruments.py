@@ -12,6 +12,7 @@ module_logger = logging.getLogger(__name__)
 class Instruments(Enum):
     # The list of libraries which will be autoinstrumented
     # if no specific instruments are provided to initialize()
+    AGNO = "agno"
     ALEPHALPHA = "alephalpha"
     ANTHROPIC = "anthropic"
     BEDROCK = "bedrock"
@@ -61,6 +62,7 @@ class Instruments(Enum):
 INSTRUMENTATION_INITIALIZERS: dict[
     Instruments, initializers.InstrumentorInitializer
 ] = {
+    Instruments.AGNO: initializers.AgnoInstrumentorInitializer(),
     Instruments.ALEPHALPHA: initializers.AlephAlphaInstrumentorInitializer(),
     Instruments.ANTHROPIC: initializers.AnthropicInstrumentorInitializer(),
     Instruments.BEDROCK: initializers.BedrockInstrumentorInitializer(),

@@ -14,6 +14,16 @@ class InstrumentorInitializer(abc.ABC):
         pass
 
 
+class AgnoInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("agno"):
+            return None
+
+        from ..opentelemetry.instrumentation.agno import AgnoInstrumentor
+
+        return AgnoInstrumentor()
+
+
 class AlephAlphaInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("aleph_alpha_client"):
