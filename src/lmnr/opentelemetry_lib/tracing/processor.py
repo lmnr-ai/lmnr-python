@@ -12,16 +12,27 @@ from opentelemetry.sdk.trace import Span
 from opentelemetry.context import Context, get_value
 
 from lmnr.opentelemetry_lib.tracing.attributes import (
+    ASSOCIATION_PROPERTIES,
     PARENT_SPAN_IDS_PATH,
     PARENT_SPAN_PATH,
+    SESSION_ID,
     SPAN_IDS_PATH,
     SPAN_INSTRUMENTATION_SOURCE,
     SPAN_LANGUAGE_VERSION,
     SPAN_PATH,
     SPAN_SDK_VERSION,
+    TRACE_TYPE,
+    USER_ID,
+)
+from lmnr.opentelemetry_lib.tracing.context import (
+    CONTEXT_METADATA_KEY,
+    CONTEXT_SESSION_ID_KEY,
+    CONTEXT_TRACE_TYPE_KEY,
+    CONTEXT_USER_ID_KEY,
 )
 from lmnr.opentelemetry_lib.tracing.exporter import LaminarSpanExporter
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.utils import is_otel_attribute_value_type, json_dumps
 from lmnr.version import PYTHON_VERSION, __version__
 
 
@@ -88,6 +99,36 @@ class LaminarSpanProcessor(SpanProcessor):
         span.set_attribute(SPAN_INSTRUMENTATION_SOURCE, "python")
         span.set_attribute(SPAN_SDK_VERSION, __version__)
         span.set_attribute(SPAN_LANGUAGE_VERSION, f"python@{PYTHON_VERSION}")
+
+        if parent_context:
+            trace_type = get_value(CONTEXT_TRACE_TYPE_KEY, parent_context)
+            if trace_type:
+                span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{TRACE_TYPE}", trace_type)
+            user_id = get_value(CONTEXT_USER_ID_KEY, parent_context)
+            if user_id:
+                span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{USER_ID}", user_id)
+            session_id = get_value(CONTEXT_SESSION_ID_KEY, parent_context)
+            if session_id:
+                span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}", session_id)
+            ctx_metadata = get_value(CONTEXT_METADATA_KEY, parent_context)
+            if ctx_metadata and isinstance(ctx_metadata, dict):
+                span_metadata = {}
+                if hasattr(span, "attributes") and hasattr(span.attributes, "items"):
+                    for key, value in span.attributes.items():
+                        if key.startswith(f"{ASSOCIATION_PROPERTIES}.metadata."):
+                            span_metadata[
+                                key.replace(f"{ASSOCIATION_PROPERTIES}.metadata.", "")
+                            ] = value
+
+                for key, value in {**ctx_metadata, **span_metadata}.items():
+                    span.set_attribute(
+                        f"{ASSOCIATION_PROPERTIES}.metadata.{key}",
+                        (
+                            value
+                            if is_otel_attribute_value_type(value)
+                            else json_dumps(value)
+                        ),
+                    )
 
         if span.name == "LangGraph.workflow":
             graph_context = get_value("lmnr.langgraph.graph") or {}

@@ -1,6 +1,7 @@
 from logging import Logger
 from inspect import Traceback
 from typing import Any, Literal
+import orjson
 import uuid
 
 from opentelemetry.sdk.resources import Resource
@@ -13,7 +14,6 @@ from opentelemetry.trace import Link, Span, SpanContext, SpanKind, Status
 from opentelemetry.util.types import AttributeValue
 from opentelemetry.context import detach
 
-from lmnr.opentelemetry_lib import MAX_MANUAL_SPAN_PAYLOAD_SIZE
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     SPAN_IDS_PATH,
@@ -22,11 +22,14 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
     SPAN_PATH,
 )
 from lmnr.opentelemetry_lib.tracing.context import (
+    detach_context,
     pop_span_context,
 )
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import LaminarSpanContext
 from lmnr.sdk.utils import is_otel_attribute_value_type, json_dumps
+
+MAX_MANUAL_SPAN_PAYLOAD_SIZE = 1024 * 1024 * 10  # 10MB
 
 
 class LaminarSpanInterfaceMixin:
@@ -165,17 +168,47 @@ class LaminarSpanInterfaceMixin:
 
     @property
     def tags(self) -> list[str]:
-        self.logger.debug(
-            "[LaminarSpan.tags] WARNING. Reading current span attributes to get tags. "
-            "This works in default OTel SDK, but is not guaranteed by the "
-            "OpenTelemetry API specification. If you are using a custom SDK, "
-            "you may need to implement your own way to get the tags. In such case, "
-            "this function returns an empty list."
-        )
+        if not hasattr(self.span, "attributes"):
+            self.logger.debug(
+                "[LaminarSpan.tags] WARNING. Current span does not have attributes object. "
+                "Perhaps, the span was created with a custom OTel SDK. Returning an empty list."
+                "Help: OpenTelemetry API does not guarantee reading attributes from a span, but OTel SDK ",
+                "allows it by default. Laminar SDK allows to read attributes too.",
+            )
+            return []
         try:
             return list(self.span.attributes.get(f"{ASSOCIATION_PROPERTIES}.tags", []))
         except Exception:
             return []
+
+    @property
+    def laminar_association_properties(self) -> dict[str, Any]:
+        if not hasattr(self.span, "attributes"):
+            self.logger.debug(
+                "[LaminarSpan.laminar_association_properties] WARNING. Current span "
+                "does not have attributes object. Perhaps, the span was created with a "
+                "custom OTel SDK. Returning an empty dictionary."
+                "Help: OpenTelemetry API does not guarantee reading attributes from a span, but OTel SDK "
+                "allows it by default. Laminar SDK allows to read attributes too.",
+            )
+            return {}
+        try:
+            values = {}
+            for key, value in self.span.attributes.items():
+                if key.startswith(f"{ASSOCIATION_PROPERTIES}."):
+                    if key.startswith(f"{ASSOCIATION_PROPERTIES}.metadata."):
+                        meta_key = key.replace(
+                            f"{ASSOCIATION_PROPERTIES}.metadata.", ""
+                        )
+                        try:
+                            values[meta_key] = orjson.loads(value)
+                        except Exception:
+                            values[meta_key] = value
+                    else:
+                        values[key] = value
+            return values
+        except Exception:
+            return {}
 
 
 class SpanDelegationMixin:
@@ -317,6 +350,10 @@ class LaminarSpan(LaminarSpanInterfaceMixin, SpanDelegationMixin, Span, Readable
                 self._popped = True
             except Exception:
                 pass
+        if hasattr(self, "_lmnr_isolated_ctx_token"):
+            detach_context(self._lmnr_isolated_ctx_token)
+        if hasattr(self, "_lmnr_assoc_props_token") and self._lmnr_assoc_props_token:
+            detach_context(self._lmnr_assoc_props_token)
 
     def __enter__(self) -> "LaminarSpan":
         return self
