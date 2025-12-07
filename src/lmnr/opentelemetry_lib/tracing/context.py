@@ -2,9 +2,16 @@ import threading
 
 from abc import ABC, abstractmethod
 from contextvars import ContextVar
-from opentelemetry.context import Context, Token, create_key, get_value
+from typing import Any
+from opentelemetry.context import Context, Token, create_key, get_value, set_value
 
-from lmnr.opentelemetry_lib.tracing.attributes import METADATA, SESSION_ID, USER_ID
+from lmnr.opentelemetry_lib.tracing.attributes import (
+    METADATA,
+    SESSION_ID,
+    TRACE_TYPE,
+    USER_ID,
+)
+from lmnr.sdk.types import TraceType
 
 
 class _IsolatedRuntimeContext(ABC):
@@ -114,6 +121,7 @@ def detach_context(token: Token[Context]) -> None:
 CONTEXT_USER_ID_KEY = create_key(f"lmnr.{USER_ID}")
 CONTEXT_SESSION_ID_KEY = create_key(f"lmnr.{SESSION_ID}")
 CONTEXT_METADATA_KEY = create_key(f"lmnr.{METADATA}")
+CONTEXT_TRACE_TYPE_KEY = create_key(f"lmnr.{TRACE_TYPE}")
 
 
 def get_event_attributes_from_context(context: Context | None = None) -> dict[str, str]:
@@ -125,6 +133,28 @@ def get_event_attributes_from_context(context: Context | None = None) -> dict[st
     if user_id := get_value(CONTEXT_USER_ID_KEY, context):
         attributes["lmnr.event.user_id"] = user_id
     return attributes
+
+
+def set_association_prop_context(
+    user_id: str | None = None,
+    session_id: str | None = None,
+    trace_type: TraceType | None = None,
+    context: Context | None = None,
+    metadata: dict[str, Any] | None = None,
+    attach: bool = True,
+) -> Context:
+    context = context or get_current_context()
+    if user_id is not None:
+        context = set_value(CONTEXT_USER_ID_KEY, user_id, context)
+    if session_id is not None:
+        context = set_value(CONTEXT_SESSION_ID_KEY, session_id, context)
+    if trace_type is not None:
+        context = set_value(CONTEXT_TRACE_TYPE_KEY, trace_type.value, context)
+    if metadata is not None:
+        context = set_value(CONTEXT_METADATA_KEY, metadata, context)
+    if attach:
+        attach_context(context)
+    return context
 
 
 def pop_span_context() -> None:

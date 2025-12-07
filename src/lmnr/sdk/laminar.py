@@ -1,16 +1,20 @@
 from contextlib import contextmanager
-from contextvars import Context
+from contextvars import Context, Token
 import warnings
 from lmnr.opentelemetry_lib import TracerManager
 from lmnr.opentelemetry_lib.tracing import TracerWrapper, get_current_context
 from lmnr.opentelemetry_lib.tracing.context import (
     CONTEXT_METADATA_KEY,
     CONTEXT_SESSION_ID_KEY,
+    CONTEXT_TRACE_TYPE_KEY,
     CONTEXT_USER_ID_KEY,
     attach_context,
+    detach_context,
     get_event_attributes_from_context,
     push_span_context,
+    set_association_prop_context,
 )
+from opentelemetry.context import get_value, set_value
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
@@ -50,6 +54,54 @@ from .types import (
     SessionRecordingOptions,
     TraceType,
 )
+
+
+def _set_span_association_props_in_context(span: Span) -> Token[Context] | None:
+    """Set association properties from span in context.
+
+    Extracts association properties from span attributes and sets them in the
+    isolated context so child spans can inherit them.
+
+    Returns the token that needs to be stored on the span for cleanup.
+    """
+    if not isinstance(span, LaminarSpan):
+        return None
+
+    props = span.laminar_association_properties
+    user_id_key = f"{ASSOCIATION_PROPERTIES}.{USER_ID}"
+    session_id_key = f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}"
+    trace_type_key = f"{ASSOCIATION_PROPERTIES}.{TRACE_TYPE}"
+
+    # Extract values from props
+    extracted_user_id = props.get(user_id_key)
+    extracted_session_id = props.get(session_id_key)
+    extracted_trace_type = props.get(trace_type_key)
+
+    # Extract metadata from props (keys without ASSOCIATION_PROPERTIES prefix)
+    metadata_dict = {}
+    for key, value in props.items():
+        if not key.startswith(f"{ASSOCIATION_PROPERTIES}."):
+            metadata_dict[key] = value
+
+    # Set context with association props
+    current_ctx = get_current_context()
+    ctx_with_props = current_ctx
+    if extracted_user_id:
+        ctx_with_props = set_value(
+            CONTEXT_USER_ID_KEY, extracted_user_id, ctx_with_props
+        )
+    if extracted_session_id:
+        ctx_with_props = set_value(
+            CONTEXT_SESSION_ID_KEY, extracted_session_id, ctx_with_props
+        )
+    if extracted_trace_type:
+        ctx_with_props = set_value(
+            CONTEXT_TRACE_TYPE_KEY, extracted_trace_type, ctx_with_props
+        )
+    if metadata_dict:
+        ctx_with_props = set_value(CONTEXT_METADATA_KEY, metadata_dict, ctx_with_props)
+
+    return attach_context(ctx_with_props)
 
 
 class Laminar:
@@ -411,15 +463,32 @@ class Laminar:
                 ctx = trace.set_span_in_context(
                     trace.NonRecordingSpan(span_context), ctx
                 )
-            if user_id is not None:
-                ctx = cls._set_association_prop_context(
-                    user_id=user_id, context=ctx, attach=False
-                )
-            if session_id is not None:
-                ctx = cls._set_association_prop_context(
-                    session_id=session_id, context=ctx, attach=False
-                )
+            trace_type = None
+            if span_type in ["EVALUATION", "EXECUTOR", "EVALUATOR"]:
+                trace_type = TraceType.EVALUATION
+
+            # Merge metadata: context (inherited) + global + explicit (explicit wins)
+            # Get metadata from context if it exists
+            ctx_metadata = get_value(CONTEXT_METADATA_KEY, ctx) or {}
+            # Merge: context metadata + global metadata + explicit metadata
+            # Later keys override earlier ones
+            merged_metadata = {
+                **ctx_metadata,
+                **cls.__global_metadata,
+                **(metadata or {}),
+            }
+
+            ctx = set_association_prop_context(
+                trace_type=trace_type,
+                user_id=user_id,
+                session_id=session_id,
+                metadata=merged_metadata if merged_metadata else None,
+                context=ctx,
+                # we need a token separately, so we manually attach the context
+                attach=False,
+            )
             ctx_token = context_api.attach(ctx)
+            isolated_context_token = attach_context(ctx)
             label_props = {}
             try:
                 if labels:
@@ -443,12 +512,6 @@ class Laminar:
                         "Tags will be ignored."
                     )
 
-            association_props = cls._get_association_prop_attributes(
-                user_id=user_id,
-                session_id=session_id,
-                metadata=metadata,
-            )
-
             with tracer.start_as_current_span(
                 name,
                 context=ctx,
@@ -458,7 +521,8 @@ class Laminar:
                     PARENT_SPAN_IDS_PATH: span_ids_path,
                     **(label_props),
                     **(tag_props),
-                    **(association_props),
+                    # Association properties are attached to context above
+                    # and the relevant attributes are populated in the processor
                 },
             ) as span:
                 if not isinstance(span, LaminarSpan):
@@ -469,6 +533,7 @@ class Laminar:
 
             wrapper.pop_span_context()
             try:
+                detach_context(isolated_context_token)
                 context_api.detach(ctx_token)
             except Exception:
                 pass
@@ -594,6 +659,18 @@ class Laminar:
                 ctx = trace.set_span_in_context(
                     trace.NonRecordingSpan(span_context), ctx
                 )
+
+            # Get association props from context (fallback values)
+            ctx_user_id = (
+                get_value(CONTEXT_USER_ID_KEY, ctx) if user_id is None else None
+            )
+            ctx_session_id = (
+                get_value(CONTEXT_SESSION_ID_KEY, ctx) if session_id is None else None
+            )
+            ctx_metadata = (
+                get_value(CONTEXT_METADATA_KEY, ctx) if metadata is None else None
+            )
+
             label_props = {}
             try:
                 if labels:
@@ -619,10 +696,25 @@ class Laminar:
                         + "Tags will be ignored."
                     )
 
+            trace_type = None
+            if span_type in ["EVALUATION", "EXECUTOR", "EVALUATOR"]:
+                trace_type = TraceType.EVALUATION
+            # Get trace_type from context if not set explicitly
+            ctx_trace_type = (
+                get_value(CONTEXT_TRACE_TYPE_KEY, ctx) if trace_type is None else None
+            )
+            if ctx_trace_type:
+                try:
+                    trace_type = TraceType(ctx_trace_type)
+                except (ValueError, TypeError):
+                    pass
+
+            # Build association_props using explicit params or context fallbacks
             association_props = cls._get_association_prop_attributes(
-                user_id=user_id,
-                session_id=session_id,
-                metadata=metadata,
+                user_id=user_id or ctx_user_id,
+                session_id=session_id or ctx_session_id,
+                metadata=metadata or ctx_metadata,
+                trace_type=trace_type,
             )
 
             span = tracer.start_span(
@@ -679,11 +771,18 @@ class Laminar:
         wrapper = TracerWrapper()
 
         try:
+            # Set association props in context before push_span_context
+            # so child spans inherit them
+            assoc_props_token = _set_span_association_props_in_context(span)
+            if assoc_props_token and isinstance(span, LaminarSpan):
+                span._lmnr_assoc_props_token = assoc_props_token
+
             context = wrapper.push_span_context(span)
             # Some auto-instrumentations are not under our control, so they
             # don't have access to our isolated context. We attach the context
             # to the OTEL global context, so that spans know their parent
             # span and trace_id.
+            isolated_context_token = attach_context(context)
             context_token = context_api.attach(context)
             try:
                 if isinstance(span, LaminarSpan):
@@ -692,6 +791,7 @@ class Laminar:
                     yield LaminarSpan(span)
             finally:
                 context_api.detach(context_token)
+                detach_context(isolated_context_token)
                 wrapper.pop_span_context()
 
         # Record only exceptions that inherit Exception class but not BaseException, because
@@ -827,9 +927,18 @@ class Laminar:
         if not cls.is_initialized():
             return span
         wrapper = TracerWrapper()
+
+        # Set association props in context before push_span_context
+        # so child spans inherit them
+        assoc_props_token = _set_span_association_props_in_context(span)
+        if assoc_props_token and isinstance(span, LaminarSpan):
+            span._lmnr_assoc_props_token = assoc_props_token
+
         context = wrapper.push_span_context(span)
         context_token = context_api.attach(context)
+        isolated_context_token = attach_context(context)
         span._lmnr_ctx_token = context_token
+        span._lmnr_isolated_ctx_token = isolated_context_token
         if isinstance(span, LaminarSpan):
             return span
         else:
@@ -1031,7 +1140,7 @@ class Laminar:
         if not cls.is_initialized():
             return
 
-        context = cls._set_association_prop_context(session_id=session_id, attach=True)
+        context = set_association_prop_context(session_id=session_id, attach=True)
 
         span = cls.current_span(context=context)
         if span is None:
@@ -1050,7 +1159,7 @@ class Laminar:
         if not cls.is_initialized():
             return
 
-        context = cls._set_association_prop_context(user_id=user_id, attach=True)
+        context = set_association_prop_context(user_id=user_id, attach=True)
 
         span = cls.current_span(context=context)
         if span is None:
@@ -1133,6 +1242,7 @@ class Laminar:
         cls,
         user_id: str | None = None,
         session_id: str | None = None,
+        trace_type: TraceType | None = None,
         metadata: dict[str, AttributeValue] | None = None,
     ) -> dict[str, AttributeValue]:
         association_properties = {}
@@ -1142,6 +1252,14 @@ class Laminar:
             association_properties[f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}"] = (
                 session_id
             )
+        if trace_type is not None:
+            trace_type_val = (
+                trace_type.value if isinstance(trace_type, TraceType) else trace_type
+            )
+            association_properties[f"{ASSOCIATION_PROPERTIES}.{TRACE_TYPE}"] = (
+                trace_type_val
+            )
+
         merged_metadata = {**cls.__global_metadata, **(metadata or {})}
         association_properties.update(
             {
@@ -1152,23 +1270,6 @@ class Laminar:
             }
         )
         return association_properties
-
-    @classmethod
-    def _set_association_prop_context(
-        cls,
-        user_id: str | None = None,
-        session_id: str | None = None,
-        context: Context | None = None,
-        attach: bool = True,
-    ) -> Context:
-        context = context or get_current_context()
-        if user_id is not None:
-            context = context_api.set_value(CONTEXT_USER_ID_KEY, user_id, context)
-        if session_id is not None:
-            context = context_api.set_value(CONTEXT_SESSION_ID_KEY, session_id, context)
-        if attach:
-            attach_context(context)
-        return context
 
     @property
     def global_metadata(cls) -> dict[str, AttributeValue]:

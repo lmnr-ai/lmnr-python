@@ -9,6 +9,7 @@ from typing_extensions import ParamSpec
 
 from lmnr.opentelemetry_lib.tracing.attributes import SESSION_ID
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.types import TraceType
 
 from .utils import is_async
 
@@ -135,6 +136,8 @@ def observe(
             association_properties["session_id"] = session_id
         if user_id is not None:
             association_properties["user_id"] = user_id
+        if span_type in ["EVALUATION", "EXECUTOR", "EVALUATOR"]:
+            association_properties["trace_type"] = TraceType.EVALUATION.value
         if tags is not None:
             if not isinstance(tags, list) or not all(
                 isinstance(tag, str) for tag in tags
