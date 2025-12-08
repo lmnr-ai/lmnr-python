@@ -107,6 +107,13 @@ class LaminarSpanInterfaceMixin:
                 "Attributes object is not available. Most likely the span is not a LaminarSpan "
                 "and not an OpenTelemetry default SDK span. Span path and ids path will be empty.",
             )
+            return LaminarSpanContext(
+                trace_id=uuid.UUID(int=self.span.get_span_context().trace_id),
+                span_id=uuid.UUID(int=self.span.get_span_context().span_id),
+                is_remote=self.span.get_span_context().is_remote,
+                span_path=span_path,
+                span_ids_path=span_ids_path,
+            )
         return LaminarSpanContext(
             trace_id=uuid.UUID(int=self.span.get_span_context().trace_id),
             span_id=uuid.UUID(int=self.span.get_span_context().span_id),
