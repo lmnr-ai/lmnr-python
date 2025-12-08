@@ -1,7 +1,7 @@
 import json
 
 import pytest
-from opentelemetry.sdk._logs import LogData
+from opentelemetry.sdk._logs import ReadableLogRecord
 from opentelemetry.semconv._incubating.attributes import (
     event_attributes as EventAttributes,
 )
@@ -778,7 +778,9 @@ def test_chat_reasoning(
     assert span.attributes["gen_ai.usage.reasoning_tokens"] > 0
 
 
-def assert_message_in_logs(log: LogData, event_name: str, expected_content: dict):
+def assert_message_in_logs(
+    log: ReadableLogRecord, event_name: str, expected_content: dict
+):
     assert log.log_record.attributes.get(EventAttributes.EVENT_NAME) == event_name
     assert (
         log.log_record.attributes.get(GenAIAttributes.GEN_AI_SYSTEM)

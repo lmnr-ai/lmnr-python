@@ -40,7 +40,7 @@ class ComplexPydanticModel(BaseModel):
 
     class Config:
         # Test with pydantic config
-        allow_population_by_field_name = True
+        validate_by_name = True
 
 
 # Test dataclasses

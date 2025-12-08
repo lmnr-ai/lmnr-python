@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import httpx
 import pytest
-from opentelemetry.sdk._logs import LogData
+from opentelemetry.sdk._logs import ReadableLogRecord
 from opentelemetry.semconv._incubating.attributes import (
     event_attributes as EventAttributes,
 )
@@ -946,14 +946,18 @@ def test_completion_exception(instrument_legacy, span_exporter, openai_client):
     assert event.name == "exception"
     assert event.attributes["exception.type"] == "openai.AuthenticationError"
     assert event.attributes["exception.message"].startswith("Error code: 401")
-    assert "Traceback (most recent call last):" in event.attributes["exception.stacktrace"]
+    assert (
+        "Traceback (most recent call last):" in event.attributes["exception.stacktrace"]
+    )
     assert "openai.AuthenticationError" in event.attributes["exception.stacktrace"]
     assert "invalid_api_key" in event.attributes["exception.stacktrace"]
     assert open_ai_span.attributes.get("error.type") == "AuthenticationError"
 
 
 @pytest.mark.asyncio
-async def test_async_completion_exception(instrument_legacy, span_exporter, async_openai_client):
+async def test_async_completion_exception(
+    instrument_legacy, span_exporter, async_openai_client
+):
     async_openai_client.api_key = "invalid"
     with pytest.raises(Exception):
         await async_openai_client.completions.create(
@@ -978,13 +982,17 @@ async def test_async_completion_exception(instrument_legacy, span_exporter, asyn
     assert event.name == "exception"
     assert event.attributes["exception.type"] == "openai.AuthenticationError"
     assert event.attributes["exception.message"].startswith("Error code: 401")
-    assert "Traceback (most recent call last):" in event.attributes["exception.stacktrace"]
+    assert (
+        "Traceback (most recent call last):" in event.attributes["exception.stacktrace"]
+    )
     assert "openai.AuthenticationError" in event.attributes["exception.stacktrace"]
     assert "invalid_api_key" in event.attributes["exception.stacktrace"]
     assert open_ai_span.attributes.get("error.type") == "AuthenticationError"
 
 
-def assert_message_in_logs(log: LogData, event_name: str, expected_content: dict):
+def assert_message_in_logs(
+    log: ReadableLogRecord, event_name: str, expected_content: dict
+):
     assert log.log_record.attributes.get(EventAttributes.EVENT_NAME) == event_name
     assert (
         log.log_record.attributes.get(GenAIAttributes.GEN_AI_SYSTEM)
