@@ -36,6 +36,7 @@ from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
 from opentelemetry.util.types import AttributeValue
 
 from typing import Any, Iterator, Literal
+from typing_extensions import TypedDict
 
 import datetime
 import logging
@@ -54,6 +55,18 @@ from .types import (
     SessionRecordingOptions,
     TraceType,
 )
+
+
+class ParsedParentSpanContext(TypedDict):
+    """Parsed information from a parent span context."""
+
+    otel_span_context: trace.SpanContext | None
+    path: list[str]
+    span_ids_path: list[str]
+    user_id: str | None
+    session_id: str | None
+    trace_type: TraceType | None
+    metadata: dict[str, Any] | None
 
 
 def _set_span_association_props_in_context(span: Span) -> Token[Context] | None:
@@ -102,6 +115,97 @@ def _set_span_association_props_in_context(span: Span) -> Token[Context] | None:
         ctx_with_props = set_value(CONTEXT_METADATA_KEY, metadata_dict, ctx_with_props)
 
     return attach_context(ctx_with_props)
+
+
+def _parse_parent_span_context(
+    parent_span_context: LaminarSpanContext | dict | str | None,
+    logger: logging.Logger,
+) -> ParsedParentSpanContext:
+    """Parse parent_span_context and extract all relevant information.
+
+    Args:
+        parent_span_context: Parent span context to parse
+        logger: Logger for warnings
+
+    Returns:
+        ParsedParentSpanContext with otel_span_context, path, span_ids_path,
+        user_id, session_id, trace_type, and metadata
+    """
+    if parent_span_context is None:
+        return ParsedParentSpanContext(
+            otel_span_context=None,
+            path=[],
+            span_ids_path=[],
+            user_id=None,
+            session_id=None,
+            trace_type=None,
+            metadata=None,
+        )
+
+    path = []
+    span_ids_path = []
+    user_id = None
+    session_id = None
+    trace_type = None
+    metadata = None
+    laminar_span_context = None
+
+    # Try to deserialize if dict or str
+    if isinstance(parent_span_context, (dict, str)):
+        try:
+            laminar_span_context = LaminarSpanContext.deserialize(parent_span_context)
+        except Exception:
+            logger.warning(
+                f"Could not deserialize parent_span_context: {parent_span_context}. "
+                "Will use it as is."
+            )
+            laminar_span_context = parent_span_context
+    else:
+        laminar_span_context = parent_span_context
+
+    # Extract path and association props from LaminarSpanContext
+    if isinstance(laminar_span_context, LaminarSpanContext):
+        path = laminar_span_context.span_path
+        span_ids_path = laminar_span_context.span_ids_path
+        user_id = laminar_span_context.user_id
+        session_id = laminar_span_context.session_id
+        if laminar_span_context.trace_type is not None:
+            try:
+                trace_type = (
+                    TraceType(laminar_span_context.trace_type)
+                    if isinstance(laminar_span_context.trace_type, str)
+                    else laminar_span_context.trace_type
+                )
+            except (ValueError, TypeError):
+                pass
+        metadata = laminar_span_context.metadata
+
+    # Convert to OTEL span context
+    try:
+        otel_span_context = LaminarSpanContext.try_to_otel_span_context(
+            laminar_span_context, logger
+        )
+    except ValueError as exc:
+        logger.warning(f"Invalid span context provided: {exc}")
+        return ParsedParentSpanContext(
+            otel_span_context=None,
+            path=path,
+            span_ids_path=span_ids_path,
+            user_id=user_id,
+            session_id=session_id,
+            trace_type=trace_type,
+            metadata=metadata,
+        )
+
+    return ParsedParentSpanContext(
+        otel_span_context=otel_span_context,
+        path=path,
+        span_ids_path=span_ids_path,
+        user_id=user_id,
+        session_id=session_id,
+        trace_type=trace_type,
+        metadata=metadata,
+    )
 
 
 class Laminar:
@@ -406,8 +510,7 @@ class Laminar:
                 obtained from `Laminar.get_laminar_span_context_dict()` or\
                 `Laminar.get_laminar_span_context_str()` respectively, it will be\
                 converted to a `LaminarSpanContext` if possible. See also\
-                `Laminar.get_span_context`, `Laminar.get_span_context_dict` and\
-                `Laminar.get_span_context_str` for more information.
+                `Laminar.serialize_span_context` for more information.
                 Defaults to None.
             labels (list[str] | None, optional): [DEPRECATED] Use tags\
                 instead. Labels to set for the span. Defaults to None.
@@ -431,56 +534,62 @@ class Laminar:
             )
             return
 
-        wrapper = TracerWrapper()
-
         with get_tracer_with_context() as (tracer, isolated_context):
             ctx = context or isolated_context
-            path = []
-            span_ids_path = []
-            if parent_span_context is not None:
-                if isinstance(parent_span_context, (dict, str)):
-                    try:
-                        laminar_span_context = LaminarSpanContext.deserialize(
-                            parent_span_context
-                        )
-                        path = laminar_span_context.span_path
-                        span_ids_path = laminar_span_context.span_ids_path
-                    except Exception:
-                        cls.__logger.warning(
-                            f"`start_as_current_span` Could not deserialize parent_span_context: {parent_span_context}. "
-                            "Will use it as is."
-                        )
-                        laminar_span_context = parent_span_context
-                else:
-                    laminar_span_context = parent_span_context
-                    if isinstance(laminar_span_context, LaminarSpanContext):
-                        path = laminar_span_context.span_path
-                        span_ids_path = laminar_span_context.span_ids_path
-                span_context = LaminarSpanContext.try_to_otel_span_context(
-                    laminar_span_context, cls.__logger
-                )
+
+            # Parse parent_span_context and extract all info
+            parsed = _parse_parent_span_context(parent_span_context, cls.__logger)
+
+            # Set parent span in context if present
+            if parsed["otel_span_context"] is not None:
                 ctx = trace.set_span_in_context(
-                    trace.NonRecordingSpan(span_context), ctx
+                    trace.NonRecordingSpan(parsed["otel_span_context"]), ctx
                 )
+
+            # Determine trace_type with proper priority
             trace_type = None
             if span_type in ["EVALUATION", "EXECUTOR", "EVALUATOR"]:
                 trace_type = TraceType.EVALUATION
+            elif parsed["trace_type"] is not None:
+                trace_type = parsed["trace_type"]
 
-            # Merge metadata: context (inherited) + global + explicit (explicit wins)
+            # Merge metadata: context (inherited) + global + parent + explicit (explicit wins)
             # Get metadata from context if it exists
             ctx_metadata = get_value(CONTEXT_METADATA_KEY, ctx) or {}
-            # Merge: context metadata + global metadata + explicit metadata
-            # Later keys override earlier ones
+            # Merge with priority: global < context < parent < explicit
             merged_metadata = {
-                **ctx_metadata,
-                **cls.__global_metadata,
+                **(cls.__global_metadata or {}),
+                **(ctx_metadata or {}),
+                **(parsed["metadata"] or {}),
                 **(metadata or {}),
             }
 
+            # Get association props from context (fallback values)
+            ctx_user_id = get_value(CONTEXT_USER_ID_KEY, ctx)
+            ctx_session_id = get_value(CONTEXT_SESSION_ID_KEY, ctx)
+
+            # Merge user_id and session_id with priority: context < parent < explicit
+            final_user_id = (
+                user_id
+                if user_id is not None
+                else (
+                    parsed["user_id"] if parsed["user_id"] is not None else ctx_user_id
+                )
+            )
+            final_session_id = (
+                session_id
+                if session_id is not None
+                else (
+                    parsed["session_id"]
+                    if parsed["session_id"] is not None
+                    else ctx_session_id
+                )
+            )
+
             ctx = set_association_prop_context(
                 trace_type=trace_type,
-                user_id=user_id,
-                session_id=session_id,
+                user_id=final_user_id,
+                session_id=final_session_id,
                 metadata=merged_metadata if merged_metadata else None,
                 context=ctx,
                 # we need a token separately, so we manually attach the context
@@ -516,8 +625,8 @@ class Laminar:
                 context=ctx,
                 attributes={
                     SPAN_TYPE: span_type,
-                    PARENT_SPAN_PATH: path,
-                    PARENT_SPAN_IDS_PATH: span_ids_path,
+                    PARENT_SPAN_PATH: parsed["path"],
+                    PARENT_SPAN_IDS_PATH: parsed["span_ids_path"],
                     **(label_props),
                     **(tag_props),
                     # Association properties are attached to context above
@@ -629,44 +738,20 @@ class Laminar:
 
         with get_tracer_with_context() as (tracer, isolated_context):
             ctx = context or isolated_context
-            path = []
-            span_ids_path = []
-            if parent_span_context is not None:
-                if isinstance(parent_span_context, (dict, str)):
-                    try:
-                        laminar_span_context = LaminarSpanContext.deserialize(
-                            parent_span_context
-                        )
-                        path = laminar_span_context.span_path
-                        span_ids_path = laminar_span_context.span_ids_path
-                    except Exception:
-                        cls.__logger.warning(
-                            f"`start_span` Could not deserialize parent_span_context: {parent_span_context}. "
-                            "Will use it as is."
-                        )
-                        laminar_span_context = parent_span_context
-                else:
-                    laminar_span_context = parent_span_context
-                    if isinstance(laminar_span_context, LaminarSpanContext):
-                        path = laminar_span_context.span_path
-                        span_ids_path = laminar_span_context.span_ids_path
-                span_context = LaminarSpanContext.try_to_otel_span_context(
-                    laminar_span_context, cls.__logger
-                )
+
+            # Parse parent_span_context and extract all info
+            parsed = _parse_parent_span_context(parent_span_context, cls.__logger)
+
+            # Set parent span in context if present
+            if parsed["otel_span_context"] is not None:
                 ctx = trace.set_span_in_context(
-                    trace.NonRecordingSpan(span_context), ctx
+                    trace.NonRecordingSpan(parsed["otel_span_context"]), ctx
                 )
 
             # Get association props from context (fallback values)
-            ctx_user_id = (
-                get_value(CONTEXT_USER_ID_KEY, ctx) if user_id is None else None
-            )
-            ctx_session_id = (
-                get_value(CONTEXT_SESSION_ID_KEY, ctx) if session_id is None else None
-            )
-            ctx_metadata = (
-                get_value(CONTEXT_METADATA_KEY, ctx) if metadata is None else None
-            )
+            ctx_user_id = get_value(CONTEXT_USER_ID_KEY, ctx)
+            ctx_session_id = get_value(CONTEXT_SESSION_ID_KEY, ctx)
+            ctx_metadata = get_value(CONTEXT_METADATA_KEY, ctx)
 
             label_props = {}
             try:
@@ -693,24 +778,52 @@ class Laminar:
                         + "Tags will be ignored."
                     )
 
+            # Determine trace_type with proper priority: explicit > parent > context
             trace_type = None
             if span_type in ["EVALUATION", "EXECUTOR", "EVALUATOR"]:
                 trace_type = TraceType.EVALUATION
-            # Get trace_type from context if not set explicitly
-            ctx_trace_type = (
-                get_value(CONTEXT_TRACE_TYPE_KEY, ctx) if trace_type is None else None
-            )
-            if ctx_trace_type:
-                try:
-                    trace_type = TraceType(ctx_trace_type)
-                except (ValueError, TypeError):
-                    pass
+            elif parsed["trace_type"] is not None:
+                trace_type = parsed["trace_type"]
+            else:
+                # Get trace_type from context if not set explicitly or from parent
+                ctx_trace_type = get_value(CONTEXT_TRACE_TYPE_KEY, ctx)
+                if ctx_trace_type:
+                    try:
+                        trace_type = TraceType(ctx_trace_type)
+                    except (ValueError, TypeError):
+                        pass
 
-            # Build association_props using explicit params or context fallbacks
+            # Merge with priority: global < context < parent < explicit
+            merged_metadata = {
+                **(cls.__global_metadata or {}),
+                **(ctx_metadata or {}),
+                **(parsed["metadata"] or {}),
+                **(metadata or {}),
+            }
+
+            # Merge user_id and session_id with priority: context < parent < explicit
+            final_user_id = (
+                user_id
+                if user_id is not None
+                else (
+                    parsed["user_id"] if parsed["user_id"] is not None else ctx_user_id
+                )
+            )
+            final_session_id = (
+                session_id
+                if session_id is not None
+                else (
+                    parsed["session_id"]
+                    if parsed["session_id"] is not None
+                    else ctx_session_id
+                )
+            )
+
+            # Build association_props using merged values
             association_props = cls._get_association_prop_attributes(
-                user_id=user_id or ctx_user_id,
-                session_id=session_id or ctx_session_id,
-                metadata=metadata or ctx_metadata,
+                user_id=final_user_id,
+                session_id=final_session_id,
+                metadata=merged_metadata if merged_metadata else None,
                 trace_type=trace_type,
             )
 
@@ -719,8 +832,8 @@ class Laminar:
                 context=ctx,
                 attributes={
                     SPAN_TYPE: span_type,
-                    PARENT_SPAN_PATH: path,
-                    PARENT_SPAN_IDS_PATH: span_ids_path,
+                    PARENT_SPAN_PATH: parsed["path"],
+                    PARENT_SPAN_IDS_PATH: parsed["span_ids_path"],
                     **(label_props),
                     **(tag_props),
                     **(association_props),
@@ -983,7 +1096,7 @@ class Laminar:
             attributes (dict[Attributes | str, Any]): attributes to set for the span
         """
         span = cls.current_span()
-        if span == trace.INVALID_SPAN:
+        if span == trace.INVALID_SPAN or span is None:
             return
 
         for key, value in attributes.items():
@@ -1005,7 +1118,7 @@ class Laminar:
             return None
 
         span = span or cls.current_span()
-        if span == trace.INVALID_SPAN:
+        if span == trace.INVALID_SPAN or span is None:
             return None
         if not isinstance(span, LaminarSpan):
             span = LaminarSpan(span)
@@ -1060,6 +1173,18 @@ class Laminar:
 
     @classmethod
     def current_span(cls, context: Context | None = None) -> LaminarSpan | None:
+        """Get the current active span. If a context is provided, the span will
+        be retrieved from that context.
+
+        Args:
+            context (Context | None, optional): The context to get the span\
+                from. If not provided, the current context will be used.
+                Defaults to None.
+
+        Returns:
+            LaminarSpan | None: The current active span, or None if there is no\
+                active span.
+        """
         context = context or get_current_context()
         span = trace.get_current_span(context=context)
         if span == trace.INVALID_SPAN:

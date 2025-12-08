@@ -3,7 +3,7 @@ from lmnr import Laminar, observe
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 
-def _assert_assoiation_properties(
+def _assert_association_properties(
     span: ReadableSpan,
     user_id: str,
     session_id: str,
@@ -32,10 +32,10 @@ def test_ctx_prop_parent_sc_child_s(span_exporter: InMemorySpanExporter):
     assert len(spans) == 2
     parent_span = [s for s in spans if s.name == "parent"][0]
     child_span = [s for s in spans if s.name == "child"][0]
-    _assert_assoiation_properties(
+    _assert_association_properties(
         parent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
-    _assert_assoiation_properties(
+    _assert_association_properties(
         child_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
 
@@ -55,10 +55,10 @@ def test_ctx_prop_parent_sc_child_sc(span_exporter: InMemorySpanExporter):
     assert len(spans) == 2
     parent_span = [s for s in spans if s.name == "parent"][0]
     child_span = [s for s in spans if s.name == "child"][0]
-    _assert_assoiation_properties(
+    _assert_association_properties(
         parent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
-    _assert_assoiation_properties(
+    _assert_association_properties(
         child_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
 
@@ -81,10 +81,10 @@ def test_ctx_prop_parent_sc_child_obs(span_exporter: InMemorySpanExporter):
     assert len(spans) == 2
     parent_span = [s for s in spans if s.name == "parent"][0]
     child_span = [s for s in spans if s.name == "child"][0]
-    _assert_assoiation_properties(
+    _assert_association_properties(
         parent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
-    _assert_assoiation_properties(
+    _assert_association_properties(
         child_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
 
@@ -105,10 +105,10 @@ def test_ctx_prop_parent_sa_child_s(span_exporter: InMemorySpanExporter):
     assert len(spans) == 2
     parent_span = [s for s in spans if s.name == "parent"][0]
     child_span = [s for s in spans if s.name == "child"][0]
-    _assert_assoiation_properties(
+    _assert_association_properties(
         parent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
-    _assert_assoiation_properties(
+    _assert_association_properties(
         child_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
 
@@ -129,10 +129,10 @@ def test_ctx_prop_parent_sa_child_sc(span_exporter: InMemorySpanExporter):
     assert len(spans) == 2
     parent_span = [s for s in spans if s.name == "parent"][0]
     child_span = [s for s in spans if s.name == "child"][0]
-    _assert_assoiation_properties(
+    _assert_association_properties(
         parent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
-    _assert_assoiation_properties(
+    _assert_association_properties(
         child_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
 
@@ -156,10 +156,10 @@ def test_ctx_prop_parent_sa_child_obs(span_exporter: InMemorySpanExporter):
     assert len(spans) == 2
     parent_span = [s for s in spans if s.name == "parent"][0]
     child_span = [s for s in spans if s.name == "child"][0]
-    _assert_assoiation_properties(
+    _assert_association_properties(
         parent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
-    _assert_assoiation_properties(
+    _assert_association_properties(
         child_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
 
@@ -181,10 +181,10 @@ def test_ctx_prop_parent_obs_child_s(span_exporter: InMemorySpanExporter):
     assert len(spans) == 2
     parent_span = [s for s in spans if s.name == "parent"][0]
     child_span = [s for s in spans if s.name == "child"][0]
-    _assert_assoiation_properties(
+    _assert_association_properties(
         parent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
-    _assert_assoiation_properties(
+    _assert_association_properties(
         child_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
 
@@ -205,9 +205,51 @@ def test_ctx_prop_parent_use_span(span_exporter: InMemorySpanExporter):
     assert len(spans) == 2
     parent_span = [s for s in spans if s.name == "parent"][0]
     child_span = [s for s in spans if s.name == "child"][0]
-    _assert_assoiation_properties(
+    _assert_association_properties(
         parent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
-    _assert_assoiation_properties(
+    _assert_association_properties(
+        child_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
+    )
+
+
+def test_ctx_prop_laminar_span_context(span_exporter: InMemorySpanExporter):
+    span = Laminar.start_span(
+        "parent",
+        user_id="user_id",
+        session_id="session_id",
+        span_type="EVALUATION",
+        metadata={"foo": "bar"},
+    )
+    span_context = Laminar.get_laminar_span_context(span)
+    passed_span_context = Laminar.serialize_span_context(span)
+    span2 = Laminar.start_span(
+        "child",
+        parent_span_context=Laminar.deserialize_span_context(passed_span_context),
+    )
+    span2.end()
+    span.end()
+
+    assert span_context is not None
+    assert span_context.user_id == "user_id"
+    assert span_context.session_id == "session_id"
+    assert span_context.trace_type.value == "EVALUATION"
+    assert span_context.metadata == {"foo": "bar"}
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 2
+    parent_span = [s for s in spans if s.name == "parent"][0]
+    child_span = [s for s in spans if s.name == "child"][0]
+
+    assert (
+        parent_span.get_span_context().trace_id
+        == child_span.get_span_context().trace_id
+    )
+    assert child_span.parent.span_id == parent_span.get_span_context().span_id
+
+    _assert_association_properties(
+        parent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
+    )
+    _assert_association_properties(
         child_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )

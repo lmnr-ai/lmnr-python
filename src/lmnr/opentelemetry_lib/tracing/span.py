@@ -16,10 +16,14 @@ from opentelemetry.context import detach
 
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
+    METADATA,
+    SESSION_ID,
     SPAN_IDS_PATH,
     SPAN_INPUT,
     SPAN_OUTPUT,
     SPAN_PATH,
+    TRACE_TYPE,
+    USER_ID,
 )
 from lmnr.opentelemetry_lib.tracing.context import (
     detach_context,
@@ -79,9 +83,28 @@ class LaminarSpanInterfaceMixin:
         if hasattr(self.span, "attributes"):
             span_path = list(self.span.attributes.get(SPAN_PATH, tuple()))
             span_ids_path = list(self.span.attributes.get(SPAN_IDS_PATH, tuple()))
+            user_id = self.span.attributes.get(
+                f"{ASSOCIATION_PROPERTIES}.{USER_ID}", None
+            )
+            session_id = self.span.attributes.get(
+                f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}", None
+            )
+            trace_type = self.span.attributes.get(
+                f"{ASSOCIATION_PROPERTIES}.{TRACE_TYPE}", None
+            )
+            metadata = {
+                k.replace(f"{ASSOCIATION_PROPERTIES}.{METADATA}.", ""): v
+                for k, v in self.span.attributes.items()
+                if k.startswith(f"{ASSOCIATION_PROPERTIES}.{METADATA}.")
+            }
+            for k, v in metadata.items():
+                try:
+                    metadata[k] = orjson.loads(v)
+                except Exception:
+                    metadata[k] = v
         else:
             self.logger.warning(
-                "Attributes object is not available. Most likely the span is not a LaminarSpan ",
+                "Attributes object is not available. Most likely the span is not a LaminarSpan "
                 "and not an OpenTelemetry default SDK span. Span path and ids path will be empty.",
             )
         return LaminarSpanContext(
@@ -90,6 +113,10 @@ class LaminarSpanInterfaceMixin:
             is_remote=self.span.get_span_context().is_remote,
             span_path=span_path,
             span_ids_path=span_ids_path,
+            user_id=user_id,
+            session_id=session_id,
+            trace_type=trace_type,
+            metadata=metadata,
         )
 
     def span_id(self, format: Literal["int", "uuid"] = "int") -> int | uuid.UUID:
@@ -172,7 +199,7 @@ class LaminarSpanInterfaceMixin:
             self.logger.debug(
                 "[LaminarSpan.tags] WARNING. Current span does not have attributes object. "
                 "Perhaps, the span was created with a custom OTel SDK. Returning an empty list."
-                "Help: OpenTelemetry API does not guarantee reading attributes from a span, but OTel SDK ",
+                "Help: OpenTelemetry API does not guarantee reading attributes from a span, but OTel SDK "
                 "allows it by default. Laminar SDK allows to read attributes too.",
             )
             return []

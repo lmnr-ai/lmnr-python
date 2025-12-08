@@ -219,9 +219,8 @@ class LaminarSpanContext(BaseModel):
     """
     A span context that can be used to continue a trace across services. This
     is a slightly modified version of the OpenTelemetry span context. For
-    usage examples, see `Laminar.get_laminar_span_context_dict`,
-    `Laminar.get_laminar_span_context_str`, `Laminar.get_span_context`, and
-    `Laminar.deserialize_laminar_span_context`.
+    usage examples, see `Laminar.serialize_span_context`,
+    `Laminar.get_span_context`, and `Laminar.deserialize_laminar_span_context`.
 
     The difference between this and the OpenTelemetry span context is that
     the `trace_id` and `span_id` are stored as UUIDs instead of integers for
@@ -233,6 +232,10 @@ class LaminarSpanContext(BaseModel):
     is_remote: bool = Field(default=False)
     span_path: list[str] = Field(default=[])
     span_ids_path: list[str] = Field(default=[])  # stringified UUIDs
+    user_id: str | None = Field(default=None)
+    session_id: str | None = Field(default=None)
+    trace_type: TraceType | None = Field(default=None)
+    metadata: dict[str, Any] | None = Field(default=None)
 
     def __str__(self) -> str:
         return self.model_dump_json()
@@ -288,6 +291,10 @@ class LaminarSpanContext(BaseModel):
                 "span_path": data.get("span_path") or data.get("spanPath", []),
                 "span_ids_path": data.get("span_ids_path")
                 or data.get("spanIdsPath", []),
+                "user_id": data.get("user_id") or data.get("userId"),
+                "session_id": data.get("session_id") or data.get("sessionId"),
+                "trace_type": data.get("trace_type") or data.get("traceType"),
+                "metadata": data.get("metadata") or data.get("metadata", {}),
             }
             return cls.model_validate(converted_data)
         elif isinstance(data, str):
