@@ -80,6 +80,10 @@ class LaminarSpanInterfaceMixin:
     def get_laminar_span_context(self) -> LaminarSpanContext:
         span_path = []
         span_ids_path = []
+        user_id = None
+        session_id = None
+        trace_type = None
+        metadata = {}
         if hasattr(self.span, "attributes"):
             span_path = list(self.span.attributes.get(SPAN_PATH, tuple()))
             span_ids_path = list(self.span.attributes.get(SPAN_IDS_PATH, tuple()))
@@ -106,13 +110,6 @@ class LaminarSpanInterfaceMixin:
             self.logger.warning(
                 "Attributes object is not available. Most likely the span is not a LaminarSpan "
                 "and not an OpenTelemetry default SDK span. Span path and ids path will be empty.",
-            )
-            return LaminarSpanContext(
-                trace_id=uuid.UUID(int=self.span.get_span_context().trace_id),
-                span_id=uuid.UUID(int=self.span.get_span_context().span_id),
-                is_remote=self.span.get_span_context().is_remote,
-                span_path=span_path,
-                span_ids_path=span_ids_path,
             )
         return LaminarSpanContext(
             trace_id=uuid.UUID(int=self.span.get_span_context().trace_id),
