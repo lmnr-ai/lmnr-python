@@ -894,15 +894,14 @@ class Laminar:
             # span and trace_id.
             isolated_context_token = attach_context(context)
             context_token = context_api.attach(context)
-            try:
-                if isinstance(span, LaminarSpan):
-                    yield span
-                else:
-                    yield LaminarSpan(span)
-            finally:
-                context_api.detach(context_token)
-                detach_context(isolated_context_token)
-                wrapper.pop_span_context()
+            if isinstance(span, LaminarSpan):
+                yield span
+            else:
+                yield LaminarSpan(span)
+
+            context_api.detach(context_token)
+            detach_context(isolated_context_token)
+            wrapper.pop_span_context()
 
         # Record only exceptions that inherit Exception class but not BaseException, because
         # classes that directly inherit BaseException are not technically errors, e.g. GeneratorExit.
@@ -1392,7 +1391,3 @@ class Laminar:
             }
         )
         return association_properties
-
-    @property
-    def global_metadata(cls) -> dict[str, AttributeValue]:
-        return cls.__global_metadata
