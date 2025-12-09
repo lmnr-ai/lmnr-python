@@ -1,4 +1,5 @@
 from opentelemetry.sdk.trace import ReadableSpan
+from opentelemetry.trace import INVALID_SPAN_ID
 from lmnr import Laminar, observe
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
@@ -17,50 +18,83 @@ def _assert_association_properties(
         assert span.attributes[f"lmnr.association.properties.metadata.{key}"] == value
 
 
+def _assert_same_trace_and_inheritance(
+    spans: list[ReadableSpan], expected_parent_span_id: str | None = None
+):
+    trace_ids = [span.get_span_context().trace_id for span in spans]
+    assert len(set(trace_ids)) == 1
+    if expected_parent_span_id is not None:
+        assert spans[0].parent.span_id == expected_parent_span_id
+    else:
+        assert (
+            spans[0].parent is None
+            or spans[0].parent.span_id is None
+            or spans[0].parent.span_id == INVALID_SPAN_ID
+        )
+    assert spans[0].get_span_context().trace_id == trace_ids[0]
+
+    for i, span in enumerate(spans[1:]):
+        assert span.get_span_context().trace_id == trace_ids[0]
+        assert span.parent.span_id == spans[i].get_span_context().span_id
+
+
 def test_ctx_prop_parent_sc_child_s(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span(
-        "parent",
+        "grandparent",
         user_id="user_id",
         session_id="session_id",
         span_type="EVALUATION",
         metadata={"foo": "bar"},
     ):
-        inner_span = Laminar.start_span("child")
-        inner_span.end()
+        p_span = Laminar.start_span("parent")
+        with Laminar.use_span(p_span, end_on_exit=True):
+            c_span = Laminar.start_span("child")
+            c_span.end()
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
+    assert len(spans) == 3
+    grandparent_span = [s for s in spans if s.name == "grandparent"][0]
     parent_span = [s for s in spans if s.name == "parent"][0]
     child_span = [s for s in spans if s.name == "child"][0]
+    _assert_association_properties(
+        grandparent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
+    )
     _assert_association_properties(
         parent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
     _assert_association_properties(
         child_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
+    _assert_same_trace_and_inheritance([grandparent_span, parent_span, child_span])
 
 
 def test_ctx_prop_parent_sc_child_sc(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span(
-        "parent",
+        "grandparent",
         user_id="user_id",
         session_id="session_id",
         span_type="EVALUATION",
         metadata={"foo": "bar"},
     ):
-        with Laminar.start_as_current_span("child"):
-            pass
+        with Laminar.start_as_current_span("parent"):
+            with Laminar.start_as_current_span("child"):
+                pass
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
+    assert len(spans) == 3
+    grandparent_span = [s for s in spans if s.name == "grandparent"][0]
     parent_span = [s for s in spans if s.name == "parent"][0]
     child_span = [s for s in spans if s.name == "child"][0]
+    _assert_association_properties(
+        grandparent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
+    )
     _assert_association_properties(
         parent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
     _assert_association_properties(
         child_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
+    _assert_same_trace_and_inheritance([grandparent_span, parent_span, child_span])
 
 
 def test_ctx_prop_parent_sc_child_obs(span_exporter: InMemorySpanExporter):
@@ -68,65 +102,84 @@ def test_ctx_prop_parent_sc_child_obs(span_exporter: InMemorySpanExporter):
     def child():
         pass
 
+    @observe()
+    def parent():
+        child()
+
     with Laminar.start_as_current_span(
-        "parent",
+        "grandparent",
         user_id="user_id",
         session_id="session_id",
         span_type="EVALUATION",
         metadata={"foo": "bar"},
     ):
-        child()
+        parent()
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
+    assert len(spans) == 3
+    grandparent_span = [s for s in spans if s.name == "grandparent"][0]
     parent_span = [s for s in spans if s.name == "parent"][0]
     child_span = [s for s in spans if s.name == "child"][0]
+    _assert_association_properties(
+        grandparent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
+    )
     _assert_association_properties(
         parent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
     _assert_association_properties(
         child_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
+    _assert_same_trace_and_inheritance([grandparent_span, parent_span, child_span])
 
 
 def test_ctx_prop_parent_sa_child_s(span_exporter: InMemorySpanExporter):
-    span = Laminar.start_active_span(
-        "parent",
+    g_span = Laminar.start_active_span(
+        "grandparent",
         user_id="user_id",
         session_id="session_id",
         span_type="EVALUATION",
         metadata={"foo": "bar"},
     )
-    inner_span = Laminar.start_span("child")
-    inner_span.end()
-    span.end()
+    p_span = Laminar.start_span("parent")
+    with Laminar.use_span(p_span, end_on_exit=True):
+        c_span = Laminar.start_span("child")
+        c_span.end()
+    g_span.end()
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
+    assert len(spans) == 3
+    grandparent_span = [s for s in spans if s.name == "grandparent"][0]
     parent_span = [s for s in spans if s.name == "parent"][0]
     child_span = [s for s in spans if s.name == "child"][0]
+    _assert_association_properties(
+        grandparent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
+    )
     _assert_association_properties(
         parent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
     _assert_association_properties(
         child_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
+    _assert_same_trace_and_inheritance([grandparent_span, parent_span, child_span])
 
 
 def test_ctx_prop_parent_sa_child_sc(span_exporter: InMemorySpanExporter):
-    span = Laminar.start_active_span(
-        "parent",
+    grandparent_span = Laminar.start_active_span(
+        "grandparent",
         user_id="user_id",
         session_id="session_id",
         span_type="EVALUATION",
         metadata={"foo": "bar"},
     )
-    inner_span = Laminar.start_span("child")
-    inner_span.end()
-    span.end()
+
+    with Laminar.start_as_current_span("parent"):
+        with Laminar.start_as_current_span("child"):
+            pass
+    grandparent_span.end()
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
+    assert len(spans) == 3
+    grandparent_span = [s for s in spans if s.name == "grandparent"][0]
     parent_span = [s for s in spans if s.name == "parent"][0]
     child_span = [s for s in spans if s.name == "child"][0]
     _assert_association_properties(
@@ -135,6 +188,7 @@ def test_ctx_prop_parent_sa_child_sc(span_exporter: InMemorySpanExporter):
     _assert_association_properties(
         child_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
+    _assert_same_trace_and_inheritance([grandparent_span, parent_span, child_span])
 
 
 def test_ctx_prop_parent_sa_child_obs(span_exporter: InMemorySpanExporter):
@@ -142,26 +196,35 @@ def test_ctx_prop_parent_sa_child_obs(span_exporter: InMemorySpanExporter):
     def child():
         pass
 
-    span = Laminar.start_active_span(
-        "parent",
+    @observe()
+    def parent():
+        child()
+
+    g_span = Laminar.start_active_span(
+        "grandparent",
         user_id="user_id",
         session_id="session_id",
         span_type="EVALUATION",
         metadata={"foo": "bar"},
     )
-    child()
-    span.end()
+    parent()
+    g_span.end()
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
+    assert len(spans) == 3
+    grandparent_span = [s for s in spans if s.name == "grandparent"][0]
     parent_span = [s for s in spans if s.name == "parent"][0]
     child_span = [s for s in spans if s.name == "child"][0]
+    _assert_association_properties(
+        grandparent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
+    )
     _assert_association_properties(
         parent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
     _assert_association_properties(
         child_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
+    _assert_same_trace_and_inheritance([grandparent_span, parent_span, child_span])
 
 
 def test_ctx_prop_parent_obs_child_s(span_exporter: InMemorySpanExporter):
@@ -171,46 +234,60 @@ def test_ctx_prop_parent_obs_child_s(span_exporter: InMemorySpanExporter):
         span_type="EVALUATION",
         metadata={"foo": "bar"},
     )
-    def parent():
-        inner_span = Laminar.start_span("child")
-        inner_span.end()
+    def grandparent():
+        p_span = Laminar.start_span("parent")
+        with Laminar.use_span(p_span, end_on_exit=True):
+            c_span = Laminar.start_span("child")
+            c_span.end()
 
-    parent()
+    grandparent()
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
+    assert len(spans) == 3
+    grandparent_span = [s for s in spans if s.name == "grandparent"][0]
     parent_span = [s for s in spans if s.name == "parent"][0]
     child_span = [s for s in spans if s.name == "child"][0]
+    _assert_association_properties(
+        grandparent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
+    )
     _assert_association_properties(
         parent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
     _assert_association_properties(
         child_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
+    _assert_same_trace_and_inheritance([grandparent_span, parent_span, child_span])
 
 
 def test_ctx_prop_parent_use_span(span_exporter: InMemorySpanExporter):
-    span = Laminar.start_span(
-        "parent",
+    g_span = Laminar.start_span(
+        "grandparent",
         user_id="user_id",
         session_id="session_id",
         span_type="EVALUATION",
         metadata={"foo": "bar"},
     )
-    with Laminar.use_span(span, end_on_exit=True):
-        inner_span = Laminar.start_span("child")
-        inner_span.end()
+    with Laminar.use_span(g_span, end_on_exit=True):
+        p_span = Laminar.start_span("parent")
+        with Laminar.use_span(p_span, end_on_exit=True):
+            c_span = Laminar.start_span("child")
+            c_span.end()
 
     spans = span_exporter.get_finished_spans()
-    assert len(spans) == 2
+    assert len(spans) == 3
+    grandparent_span = [s for s in spans if s.name == "grandparent"][0]
     parent_span = [s for s in spans if s.name == "parent"][0]
     child_span = [s for s in spans if s.name == "child"][0]
+    _assert_association_properties(
+        grandparent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
+    )
     _assert_association_properties(
         parent_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
     _assert_association_properties(
         child_span, "user_id", "session_id", {"foo": "bar"}, "EVALUATION"
     )
+    _assert_same_trace_and_inheritance([grandparent_span, parent_span, child_span])
 
 
 def test_ctx_prop_laminar_span_context(span_exporter: InMemorySpanExporter):

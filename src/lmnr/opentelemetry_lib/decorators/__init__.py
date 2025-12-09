@@ -7,29 +7,22 @@ from opentelemetry.trace import Span, Status, StatusCode
 
 from lmnr.opentelemetry_lib.tracing.context import (
     CONTEXT_METADATA_KEY,
-    CONTEXT_SESSION_ID_KEY,
-    CONTEXT_TRACE_TYPE_KEY,
-    CONTEXT_USER_ID_KEY,
     attach_context,
     detach_context,
-    get_current_context,
     get_event_attributes_from_context,
 )
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
+from lmnr.opentelemetry_lib.tracing.utils import set_association_props_in_context
 from lmnr.sdk.utils import get_input_from_func_args, is_method
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     METADATA,
     SPAN_TYPE,
-    USER_ID,
-    SESSION_ID,
-    TRACE_TYPE,
 )
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import is_otel_attribute_value_type, json_dumps
-from opentelemetry.context import set_value
 
 logger = get_default_logger(__name__)
 
@@ -145,51 +138,6 @@ def _cleanup_span(span: Span, wrapper: TracerWrapper):
     wrapper.pop_span_context()
 
 
-def _set_association_props_in_context(span: Span):
-    """Set association properties from span in context before push_span_context.
-
-    Returns the token that needs to be detached when the span ends.
-    """
-    if not isinstance(span, LaminarSpan):
-        return None
-
-    props = span.laminar_association_properties
-    user_id_key = f"{ASSOCIATION_PROPERTIES}.{USER_ID}"
-    session_id_key = f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}"
-    trace_type_key = f"{ASSOCIATION_PROPERTIES}.{TRACE_TYPE}"
-
-    # Extract values from props
-    extracted_user_id = props.get(user_id_key)
-    extracted_session_id = props.get(session_id_key)
-    extracted_trace_type = props.get(trace_type_key)
-
-    # Extract metadata from props (keys without ASSOCIATION_PROPERTIES prefix)
-    metadata_dict = {}
-    for key, value in props.items():
-        if not key.startswith(f"{ASSOCIATION_PROPERTIES}."):
-            metadata_dict[key] = value
-
-    # Set context with association props
-    current_ctx = get_current_context()
-    ctx_with_props = current_ctx
-    if extracted_user_id:
-        ctx_with_props = set_value(
-            CONTEXT_USER_ID_KEY, extracted_user_id, ctx_with_props
-        )
-    if extracted_session_id:
-        ctx_with_props = set_value(
-            CONTEXT_SESSION_ID_KEY, extracted_session_id, ctx_with_props
-        )
-    if extracted_trace_type:
-        ctx_with_props = set_value(
-            CONTEXT_TRACE_TYPE_KEY, extracted_trace_type, ctx_with_props
-        )
-    if metadata_dict:
-        ctx_with_props = set_value(CONTEXT_METADATA_KEY, metadata_dict, ctx_with_props)
-
-    return attach_context(ctx_with_props)
-
-
 def observe_base(
     *,
     name: str | None = None,
@@ -222,7 +170,7 @@ def observe_base(
 
             # Set association props in context before push_span_context
             # so child spans inherit them
-            assoc_props_token = _set_association_props_in_context(span)
+            assoc_props_token = set_association_props_in_context(span)
             if assoc_props_token and isinstance(span, LaminarSpan):
                 span._lmnr_assoc_props_token = assoc_props_token
 
@@ -304,7 +252,7 @@ def async_observe_base(
 
             # Set association props in context before push_span_context
             # so child spans inherit them
-            assoc_props_token = _set_association_props_in_context(span)
+            assoc_props_token = set_association_props_in_context(span)
             if assoc_props_token and isinstance(span, LaminarSpan):
                 span._lmnr_assoc_props_token = assoc_props_token
 

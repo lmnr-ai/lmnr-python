@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from contextvars import Context, Token
+from contextvars import Context
 import warnings
 from lmnr.opentelemetry_lib import TracerManager
 from lmnr.opentelemetry_lib.tracing import TracerWrapper, get_current_context
@@ -14,11 +14,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
     push_span_context,
     set_association_prop_context,
 )
-from opentelemetry.context import get_value, set_value
-from lmnr.opentelemetry_lib.tracing.instruments import Instruments
-from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
-from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
-from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
+from opentelemetry.context import get_value
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     PARENT_SPAN_IDS_PATH,
@@ -27,6 +23,11 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
     Attributes,
     SPAN_TYPE,
 )
+from lmnr.opentelemetry_lib.tracing.instruments import Instruments
+from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
+from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
+from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
+from lmnr.opentelemetry_lib.tracing.utils import set_association_props_in_context
 from lmnr.sdk.utils import get_otel_env_var
 
 from opentelemetry import trace
@@ -67,54 +68,6 @@ class ParsedParentSpanContext(TypedDict):
     session_id: str | None
     trace_type: TraceType | None
     metadata: dict[str, Any] | None
-
-
-def _set_span_association_props_in_context(span: Span) -> Token[Context] | None:
-    """Set association properties from span in context.
-
-    Extracts association properties from span attributes and sets them in the
-    isolated context so child spans can inherit them.
-
-    Returns the token that needs to be stored on the span for cleanup.
-    """
-    if not isinstance(span, LaminarSpan):
-        return None
-
-    props = span.laminar_association_properties
-    user_id_key = f"{ASSOCIATION_PROPERTIES}.{USER_ID}"
-    session_id_key = f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}"
-    trace_type_key = f"{ASSOCIATION_PROPERTIES}.{TRACE_TYPE}"
-
-    # Extract values from props
-    extracted_user_id = props.get(user_id_key)
-    extracted_session_id = props.get(session_id_key)
-    extracted_trace_type = props.get(trace_type_key)
-
-    # Extract metadata from props (keys without ASSOCIATION_PROPERTIES prefix)
-    metadata_dict = {}
-    for key, value in props.items():
-        if not key.startswith(f"{ASSOCIATION_PROPERTIES}."):
-            metadata_dict[key] = value
-
-    # Set context with association props
-    current_ctx = get_current_context()
-    ctx_with_props = current_ctx
-    if extracted_user_id:
-        ctx_with_props = set_value(
-            CONTEXT_USER_ID_KEY, extracted_user_id, ctx_with_props
-        )
-    if extracted_session_id:
-        ctx_with_props = set_value(
-            CONTEXT_SESSION_ID_KEY, extracted_session_id, ctx_with_props
-        )
-    if extracted_trace_type:
-        ctx_with_props = set_value(
-            CONTEXT_TRACE_TYPE_KEY, extracted_trace_type, ctx_with_props
-        )
-    if metadata_dict:
-        ctx_with_props = set_value(CONTEXT_METADATA_KEY, metadata_dict, ctx_with_props)
-
-    return attach_context(ctx_with_props)
 
 
 def _parse_parent_span_context(
@@ -883,7 +836,7 @@ class Laminar:
         try:
             # Set association props in context before push_span_context
             # so child spans inherit them
-            assoc_props_token = _set_span_association_props_in_context(span)
+            assoc_props_token = set_association_props_in_context(span)
             if assoc_props_token and isinstance(span, LaminarSpan):
                 span._lmnr_assoc_props_token = assoc_props_token
 
@@ -1039,7 +992,7 @@ class Laminar:
 
         # Set association props in context before push_span_context
         # so child spans inherit them
-        assoc_props_token = _set_span_association_props_in_context(span)
+        assoc_props_token = set_association_props_in_context(span)
         if assoc_props_token and isinstance(span, LaminarSpan):
             span._lmnr_assoc_props_token = assoc_props_token
 
@@ -1062,7 +1015,7 @@ class Laminar:
             output (Any, optional): output of the span. Will be sent as an\
                 attribute, so must be json serializable. Defaults to None.
         """
-        span = cls.current_span()
+        span = cls.get_current_span()
         if span is None:
             return
         span.set_output(output)
@@ -1094,7 +1047,7 @@ class Laminar:
         Args:
             attributes (dict[Attributes | str, Any]): attributes to set for the span
         """
-        span = cls.current_span()
+        span = cls.get_current_span()
         if span == trace.INVALID_SPAN or span is None:
             return
 
@@ -1116,7 +1069,7 @@ class Laminar:
         if not cls.is_initialized():
             return None
 
-        span = span or cls.current_span()
+        span = span or cls.get_current_span()
         if span == trace.INVALID_SPAN or span is None:
             return None
         if not isinstance(span, LaminarSpan):
@@ -1171,7 +1124,7 @@ class Laminar:
         return LaminarSpanContext.deserialize(span_context)
 
     @classmethod
-    def current_span(cls, context: Context | None = None) -> LaminarSpan | None:
+    def get_current_span(cls, context: Context | None = None) -> LaminarSpan | None:
         """Get the current active span. If a context is provided, the span will
         be retrieved from that context.
 
@@ -1237,7 +1190,7 @@ class Laminar:
         if not cls.is_initialized():
             return
 
-        span = cls.current_span()
+        span = cls.get_current_span()
         if span is None:
             return
         span.set_tags(tags)
@@ -1245,7 +1198,7 @@ class Laminar:
     @classmethod
     def add_span_tags(cls, tags: list[str]):
         """Add tags to the current span."""
-        span = cls.current_span()
+        span = cls.get_current_span()
         if span is None:
             return
         span.add_tags(tags)
@@ -1263,7 +1216,7 @@ class Laminar:
 
         context = set_association_prop_context(session_id=session_id, attach=True)
 
-        span = cls.current_span(context=context)
+        span = cls.get_current_span(context=context)
         if span is None:
             cls.__logger.warning("No active span to set session id on")
             return
@@ -1282,7 +1235,7 @@ class Laminar:
 
         context = set_association_prop_context(user_id=user_id, attach=True)
 
-        span = cls.current_span(context=context)
+        span = cls.get_current_span(context=context)
         if span is None:
             cls.__logger.warning("No active span to set user id on")
             return
@@ -1300,7 +1253,7 @@ class Laminar:
 
         merged_metadata = {**cls.__global_metadata, **(metadata or {})}
 
-        span = cls.current_span()
+        span = cls.get_current_span()
         if span is None:
             cls.__logger.warning("No active span to set metadata on")
             return
