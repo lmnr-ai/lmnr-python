@@ -880,11 +880,13 @@ class Laminar:
             raise
 
         finally:
-            context_api.detach(context_token)
-            detach_context(isolated_context_token)
-            wrapper.pop_span_context()
-            if end_on_exit:
-                span.end()
+            try:
+                context_api.detach(context_token)
+                detach_context(isolated_context_token)
+                wrapper.pop_span_context()
+            finally:
+                if end_on_exit:
+                    span.end()
 
     @classmethod
     def start_active_span(
