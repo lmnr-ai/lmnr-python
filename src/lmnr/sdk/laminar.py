@@ -573,29 +573,30 @@ class Laminar:
                         "Tags will be ignored."
                     )
 
-            with tracer.start_as_current_span(
-                name,
-                context=ctx,
-                attributes={
-                    SPAN_TYPE: span_type,
-                    PARENT_SPAN_PATH: parsed["path"],
-                    PARENT_SPAN_IDS_PATH: parsed["span_ids_path"],
-                    **(label_props),
-                    **(tag_props),
-                    # Association properties are attached to context above
-                    # and the relevant attributes are populated in the processor
-                },
-            ) as span:
-                if not isinstance(span, LaminarSpan):
-                    span = LaminarSpan(span)
-                span.set_input(input)
-                yield span
-
             try:
-                detach_context(isolated_context_token)
-                context_api.detach(ctx_token)
-            except Exception:
-                pass
+                with tracer.start_as_current_span(
+                    name,
+                    context=ctx,
+                    attributes={
+                        SPAN_TYPE: span_type,
+                        PARENT_SPAN_PATH: parsed["path"],
+                        PARENT_SPAN_IDS_PATH: parsed["span_ids_path"],
+                        **(label_props),
+                        **(tag_props),
+                        # Association properties are attached to context above
+                        # and the relevant attributes are populated in the processor
+                    },
+                ) as span:
+                    if not isinstance(span, LaminarSpan):
+                        span = LaminarSpan(span)
+                    span.set_input(input)
+                    yield span
+            finally:
+                try:
+                    detach_context(isolated_context_token)
+                    context_api.detach(ctx_token)
+                except Exception:
+                    pass
 
     @classmethod
     def start_span(
@@ -852,10 +853,6 @@ class Laminar:
             else:
                 yield LaminarSpan(span)
 
-            context_api.detach(context_token)
-            detach_context(isolated_context_token)
-            wrapper.pop_span_context()
-
         # Record only exceptions that inherit Exception class but not BaseException, because
         # classes that directly inherit BaseException are not technically errors, e.g. GeneratorExit.
         # See https://github.com/open-telemetry/opentelemetry-python/issues/4484
@@ -883,6 +880,9 @@ class Laminar:
             raise
 
         finally:
+            context_api.detach(context_token)
+            detach_context(isolated_context_token)
+            wrapper.pop_span_context()
             if end_on_exit:
                 span.end()
 
