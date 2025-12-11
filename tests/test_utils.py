@@ -6,8 +6,7 @@ import uuid
 from typing import Any, Dict, List
 from pydantic import BaseModel
 
-from lmnr.opentelemetry_lib.decorators import json_dumps
-from lmnr.sdk.utils import is_otel_attribute_value_type, format_id
+from lmnr.sdk.utils import is_otel_attribute_value_type, format_id, json_dumps
 
 
 class SimplePydanticModel(BaseModel):

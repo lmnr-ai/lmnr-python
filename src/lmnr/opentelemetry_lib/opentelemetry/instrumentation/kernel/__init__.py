@@ -3,13 +3,12 @@
 import functools
 from typing import Collection
 
-from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.kernel.utils import (
     process_tool_output_formatter,
     screenshot_tool_output_formatter,
 )
 from lmnr.sdk.decorators import observe
-from lmnr.sdk.utils import get_input_from_func_args, is_async
+from lmnr.sdk.utils import get_input_from_func_args, is_async, json_dumps
 from lmnr import Laminar
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap

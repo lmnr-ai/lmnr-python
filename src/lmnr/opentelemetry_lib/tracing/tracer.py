@@ -48,5 +48,10 @@ class LaminarTracer(trace.Tracer):
 
     @contextmanager
     def start_as_current_span(self, *args, **kwargs) -> Iterator[trace.Span]:
+        wrapper = TracerWrapper()
         with self._instance.start_as_current_span(*args, **kwargs) as span:
-            yield LaminarSpan(span)
+            wrapper.push_span_context(span)
+            try:
+                yield LaminarSpan(span)
+            finally:
+                wrapper.pop_span_context()

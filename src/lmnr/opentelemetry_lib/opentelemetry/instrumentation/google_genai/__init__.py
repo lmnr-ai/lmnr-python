@@ -8,11 +8,11 @@ from typing import AsyncGenerator, Callable, Collection, Generator
 
 from google.genai import types
 
-from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.opentelemetry_lib.tracing.context import (
     get_current_context,
     get_event_attributes_from_context,
 )
+from lmnr.sdk.utils import json_dumps
 
 from .config import (
     Config,

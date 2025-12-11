@@ -8,8 +8,6 @@ from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
 from lmnr.sdk.types import SessionRecordingOptions
 
-MAX_MANUAL_SPAN_PAYLOAD_SIZE = 1024 * 1024 * 10  # 10MB
-
 
 class TracerManager:
     __tracer_wrapper: TracerWrapper

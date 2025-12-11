@@ -1,6 +1,5 @@
-from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.sdk.browser.utils import with_tracer_wrapper
-from lmnr.sdk.utils import get_input_from_func_args
+from lmnr.sdk.utils import get_input_from_func_args, json_dumps
 from lmnr.version import __version__
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
@@ -25,14 +24,14 @@ WRAPPED_METHODS = [
     {
         "package": "skyvern.library.skyvern",
         "object": "Skyvern",  # Class name
-        "method": "run_task", # Method name
+        "method": "run_task",  # Method name
         "span_name": "Skyvern.run_task",
         "span_type": "DEFAULT",
     },
     {
         "package": "skyvern.webeye.scraper.scraper",
         # No "object" field for module-level functions
-        "method": "get_interactable_element_tree", # Function name
+        "method": "get_interactable_element_tree",  # Function name
         "span_name": "get_interactable_element_tree",
         "span_type": "DEFAULT",
     },
@@ -43,31 +42,31 @@ WRAPPED_METHODS = [
         "span_name": "ForgeAgent.execute_step",
         "span_type": "DEFAULT",
     },
-    {  
-        "package": "skyvern.services.task_v2_service",  
-        "method": "initialize_task_v2",  
-        "span_name": "initialize_task_v2",  
-        "span_type": "DEFAULT",  
+    {
+        "package": "skyvern.services.task_v2_service",
+        "method": "initialize_task_v2",
+        "span_name": "initialize_task_v2",
+        "span_type": "DEFAULT",
     },
-    {  
-        "package": "skyvern.services.task_v2_service",  
-        "method": "run_task_v2_helper",  
-        "span_name": "run_task_v2_helper",  
-        "span_type": "DEFAULT",  
+    {
+        "package": "skyvern.services.task_v2_service",
+        "method": "run_task_v2_helper",
+        "span_name": "run_task_v2_helper",
+        "span_type": "DEFAULT",
     },
-    {  
+    {
         "package": "skyvern.forge.sdk.workflow.models.block",
         "object": "Block",
-        "method": "_generate_workflow_run_block_description",  
-        "span_name": "Block._generate_workflow_run_block_description",  
-        "span_type": "DEFAULT",  
-    },       
-    {  
-        "package": "skyvern.webeye.actions.handler",  
-        "method": "extract_information_for_navigation_goal",  
-        "span_name": "extract_information_for_navigation_goal",  
-        "span_type": "DEFAULT",  
-    },  
+        "method": "_generate_workflow_run_block_description",
+        "span_name": "Block._generate_workflow_run_block_description",
+        "span_type": "DEFAULT",
+    },
+    {
+        "package": "skyvern.webeye.actions.handler",
+        "method": "extract_information_for_navigation_goal",
+        "span_name": "extract_information_for_navigation_goal",
+        "span_type": "DEFAULT",
+    },
 ]
 
 
@@ -77,36 +76,36 @@ async def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     attributes = {
         "lmnr.span.type": to_wrap.get("span_type"),
     }
-    
+
     attributes["lmnr.span.input"] = json_dumps(
         get_input_from_func_args(wrapped, True, args, kwargs)
     )
-    
+
     with tracer.start_as_current_span(span_name, attributes=attributes) as span:
-        try:  
-            result = await wrapped(*args, **kwargs)  
-                
-            to_serialize = result  
-            serialized = (  
-                to_serialize.model_dump_json()  
-                if isinstance(to_serialize, pydantic.BaseModel)  
-                else json_dumps(to_serialize)  
-            )  
-            span.set_attribute("lmnr.span.output", serialized)  
-            return result  
-                
-        except Exception as e:  
-            span.record_exception(e)  
+        try:
+            result = await wrapped(*args, **kwargs)
+
+            to_serialize = result
+            serialized = (
+                to_serialize.model_dump_json()
+                if isinstance(to_serialize, pydantic.BaseModel)
+                else json_dumps(to_serialize)
+            )
+            span.set_attribute("lmnr.span.output", serialized)
+            return result
+
+        except Exception as e:
+            span.record_exception(e)
             raise
 
 
-def instrument_llm_handler(tracer: Tracer):  
-    from skyvern.forge import app  
-      
-    # Store the original handler  
-    original_handler = app.LLM_API_HANDLER  
-      
-    async def wrapped_llm_handler(*args, **kwargs):  
+def instrument_llm_handler(tracer: Tracer):
+    from skyvern.forge import app
+
+    # Store the original handler
+    original_handler = app.LLM_API_HANDLER
+
+    async def wrapped_llm_handler(*args, **kwargs):
 
         prompt_name = kwargs.get("prompt_name", "")
 
@@ -115,13 +114,13 @@ def instrument_llm_handler(tracer: Tracer):
         else:
             span_name = "app.LLM_API_HANDLER"
 
-        attributes = {  
-            "lmnr.span.type": "DEFAULT",  
-        }  
+        attributes = {
+            "lmnr.span.type": "DEFAULT",
+        }
 
-        with tracer.start_as_current_span(span_name, attributes=attributes) as span:  
-            try:  
-                result = await original_handler(*args, **kwargs)  
+        with tracer.start_as_current_span(span_name, attributes=attributes) as span:
+            try:
+                result = await original_handler(*args, **kwargs)
 
                 to_serialize = result
                 serialized = (
@@ -129,13 +128,13 @@ def instrument_llm_handler(tracer: Tracer):
                     if isinstance(to_serialize, pydantic.BaseModel)
                     else json_dumps(to_serialize)
                 )
-                span.set_attribute("lmnr.span.output", serialized)  
-                return result  
-            except Exception as e:  
-                span.record_exception(e)  
+                span.set_attribute("lmnr.span.output", serialized)
+                return result
+            except Exception as e:
+                span.record_exception(e)
                 raise
-      
-    # Replace the global handler  
+
+    # Replace the global handler
     app.LLM_API_HANDLER = wrapped_llm_handler
 
 
@@ -190,4 +189,3 @@ class SkyvernInstrumentor(BaseInstrumentor):
                 module_path = wrap_package
 
             unwrap(module_path, wrap_method)
-

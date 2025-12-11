@@ -3,7 +3,7 @@ import base64
 from copy import deepcopy
 from typing import Any
 
-from lmnr.opentelemetry_lib.decorators import json_dumps
+from lmnr.sdk.utils import json_dumps
 from pydantic import BaseModel
 
 

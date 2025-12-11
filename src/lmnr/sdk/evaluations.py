@@ -7,7 +7,6 @@ from typing_extensions import TypedDict
 
 from tqdm import tqdm
 
-from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.opentelemetry_lib.tracing.attributes import HUMAN_EVALUATOR_OPTIONS, SPAN_TYPE
 
@@ -30,7 +29,7 @@ from lmnr.sdk.types import (
     SpanType,
     TraceType,
 )
-from lmnr.sdk.utils import from_env, is_async
+from lmnr.sdk.utils import from_env, is_async, json_dumps
 
 DEFAULT_BATCH_SIZE = 5
 MAX_EXPORT_BATCH_SIZE = 64
