@@ -79,8 +79,6 @@ def _process_input(
     try:
         if input_formatter is not None:
             inp = input_formatter(*args, **kwargs)
-            if not isinstance(inp, str):
-                inp = json_dumps(inp)
         else:
             inp = get_input_from_func_args(
                 fn,
@@ -117,8 +115,6 @@ def _process_output(
     try:
         if output_formatter is not None:
             output = output_formatter(result)
-            if not isinstance(output, str):
-                output = json_dumps(output)
         else:
             output = result
 
