@@ -36,11 +36,11 @@ except ImportError:
     ResponseOutputMessageParam = Dict[str, Any]
     RESPONSES_AVAILABLE = False
 
-from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.opentelemetry_lib.tracing.context import (
     get_current_context,
     get_event_attributes_from_context,
 )
+from lmnr.sdk.utils import json_dumps
 from openai._legacy_response import LegacyAPIResponse
 from opentelemetry import context as context_api
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY

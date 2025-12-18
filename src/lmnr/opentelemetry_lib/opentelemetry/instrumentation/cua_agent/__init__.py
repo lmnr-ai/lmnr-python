@@ -3,8 +3,8 @@
 import logging
 from typing import Any, AsyncGenerator, Collection
 
-from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr import Laminar
+from lmnr.sdk.utils import json_dumps
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
 

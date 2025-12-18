@@ -289,6 +289,47 @@ def test_session_id(span_exporter: InMemorySpanExporter):
     assert spans[0].attributes["lmnr.span.path"] == ("test",)
 
 
+def test_session_id_start_span(span_exporter: InMemorySpanExporter):
+    span = Laminar.start_span(
+        "test", session_id="123", user_id="123", metadata={"foo": "bar"}
+    )
+    span.end()
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "test"
+    assert spans[0].attributes["lmnr.association.properties.session_id"] == "123"
+    assert spans[0].attributes["lmnr.association.properties.metadata.foo"] == "bar"
+    assert spans[0].attributes["lmnr.association.properties.user_id"] == "123"
+
+
+def test_session_id_start_as_current_span(span_exporter: InMemorySpanExporter):
+    with Laminar.start_as_current_span(
+        "test", session_id="123", user_id="123", metadata={"foo": "bar"}
+    ):
+        pass
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].attributes["lmnr.association.properties.session_id"] == "123"
+    assert spans[0].name == "test"
+    assert spans[0].attributes["lmnr.association.properties.metadata.foo"] == "bar"
+    assert spans[0].attributes["lmnr.association.properties.user_id"] == "123"
+
+
+def test_session_id_start_active_span(span_exporter: InMemorySpanExporter):
+    span = Laminar.start_active_span(
+        "test", session_id="123", user_id="123", metadata={"foo": "bar"}
+    )
+    span.end()
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].attributes["lmnr.association.properties.session_id"] == "123"
+    assert spans[0].name == "test"
+    assert spans[0].attributes["lmnr.association.properties.metadata.foo"] == "bar"
+
+
 def test_session_id_doesnt_leak(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("no_session"):
         pass
@@ -974,3 +1015,32 @@ async def test_start_active_span_async_nested(span_exporter: InMemorySpanExporte
     assert level0.attributes["lmnr.span.path"] == ("level0",)
     assert level1.attributes["lmnr.span.path"] == ("level0", "level1")
     assert level2.attributes["lmnr.span.path"] == ("level0", "level1", "level2")
+
+
+def test_add_span_tags(span_exporter: InMemorySpanExporter):
+    with Laminar.start_as_current_span("test"):
+        Laminar.add_span_tags(["bar", "baz", "foo"])
+        Laminar.add_span_tags(["qux", "bar"])
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert sorted(spans[0].attributes["lmnr.association.properties.tags"]) == [
+        "bar",
+        "baz",
+        "foo",
+        "qux",
+    ]
+
+
+def test_set_span_tags_add_span_tags(span_exporter: InMemorySpanExporter):
+    with Laminar.start_as_current_span("test"):
+        Laminar.set_span_tags(["bar", "baz"])
+        Laminar.add_span_tags(["qux", "bar"])
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert sorted(spans[0].attributes["lmnr.association.properties.tags"]) == [
+        "bar",
+        "baz",
+        "qux",
+    ]

@@ -5,7 +5,6 @@ from datetime import datetime
 
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import GEN_AI_PROMPT
 from opentelemetry.trace import SpanKind, Status, StatusCode, Tracer
-from lmnr.opentelemetry_lib.decorators import json_dumps
 from lmnr.opentelemetry_lib.litellm.utils import (
     get_tool_definition,
     is_validator_iterator,
@@ -21,6 +20,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
 from lmnr.opentelemetry_lib.tracing.attributes import ASSOCIATION_PROPERTIES
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.utils import json_dumps
 
 logger = get_default_logger(__name__)
 

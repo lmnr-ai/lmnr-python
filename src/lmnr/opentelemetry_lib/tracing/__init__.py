@@ -188,9 +188,7 @@ class TracerWrapper(object):
         """Push a new context with the given span onto the stack."""
         current_ctx = get_current_context()
         new_context = trace.set_span_in_context(span, current_ctx)
-        # Store the token for later detachment - tokens are much lighter than contexts
         ctx_push_span_context(new_context)
-
         return new_context
 
     def pop_span_context(self) -> None:
