@@ -302,15 +302,15 @@ async def _wrap_async(to_wrap, wrapped, instance, args, kwargs):
         try:
             result = await wrapped(*args, **kwargs)
         except Exception as e:  # pylint: disable=broad-except
+            span.set_status(Status(StatusCode.ERROR))
+            span.record_exception(e)
+            raise
+        finally:
             if original_base_url is not None:
                 if original_base_url:
                     os.environ["ANTHROPIC_BASE_URL"] = original_base_url
                 else:
                     os.environ.pop("ANTHROPIC_BASE_URL", None)
-            span.set_status(Status(StatusCode.ERROR))
-            span.record_exception(e)
-            raise
-        finally:
             if to_wrap.get("is_release_proxy"):
                 release_proxy()
 
@@ -365,16 +365,16 @@ def _wrap_async_gen(to_wrap, wrapped, instance, args, kwargs):
                     break
                 yield item
         except Exception as e:  # pylint: disable=broad-except
-            if original_base_url is not None:
-                if original_base_url:
-                    os.environ["ANTHROPIC_BASE_URL"] = original_base_url
-                else:
-                    os.environ.pop("ANTHROPIC_BASE_URL", None)
             with Laminar.use_span(span):
                 span.set_status(Status(StatusCode.ERROR))
                 span.record_exception(e)
             raise
         finally:
+            if original_base_url is not None:
+                if original_base_url:
+                    os.environ["ANTHROPIC_BASE_URL"] = original_base_url
+                else:
+                    os.environ.pop("ANTHROPIC_BASE_URL", None)
             if async_iter and hasattr(async_iter, "aclose"):
                 try:
                     with Laminar.use_span(span):

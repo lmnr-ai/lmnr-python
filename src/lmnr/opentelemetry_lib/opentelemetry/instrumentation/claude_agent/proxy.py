@@ -94,6 +94,8 @@ def start_proxy() -> Optional[str]:
             _CC_PROXY_TARGET_URL
             or os.environ.get("ANTHROPIC_ORIGINAL_BASE_URL")
             or os.environ.get("ANTHROPIC_BASE_URL")
+            or os.environ.get("HTTP_PROXY")
+            or os.environ.get("HTTPS_PROXY")
             or DEFAULT_ANTHROPIC_BASE_URL
         )
         _CC_PROXY_TARGET_URL = target_url
