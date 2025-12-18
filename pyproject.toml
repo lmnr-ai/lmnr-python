@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.7.24"
+version = "0.7.25"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -67,7 +67,7 @@ lmnr = "lmnr.cli:cli"
 alephalpha=["opentelemetry-instrumentation-alephalpha>=0.47.1"]
 bedrock=["opentelemetry-instrumentation-bedrock>=0.47.1"]
 chromadb=["opentelemetry-instrumentation-chromadb>=0.47.1"]
-claude-agent-sdk=["lmnr-claude-code-proxy>=0.1.3"]
+claude-agent-sdk=["lmnr-claude-code-proxy>=0.1.5"]
 cohere=["opentelemetry-instrumentation-cohere>=0.47.1"]
 crewai=["opentelemetry-instrumentation-crewai>=0.47.1"]
 haystack=["opentelemetry-instrumentation-haystack>=0.47.1"]
@@ -93,7 +93,7 @@ weaviate=["opentelemetry-instrumentation-weaviate>=0.47.1"]
 # we suggest using package-manager-specific commands instead,
 # like `uv add lmnr --all-extras`
 all = [
-  "lmnr-claude-code-proxy>=0.1.3",
+  "lmnr-claude-code-proxy>=0.1.5",
   "opentelemetry-instrumentation-alephalpha>=0.47.1",
   "opentelemetry-instrumentation-bedrock>=0.47.1",
   "opentelemetry-instrumentation-chromadb>=0.47.1",
@@ -141,6 +141,7 @@ dev = [
   "langchain-openai>=0.3.32",
   "kernel>=0.18.0",
   "claude-agent-sdk>=0.1.6",
+  "fastapi>=0.125.0",
 ]
 
 [build-system]
