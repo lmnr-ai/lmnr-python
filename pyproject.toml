@@ -141,6 +141,7 @@ dev = [
   "langchain-openai>=0.3.32",
   "kernel>=0.18.0",
   "claude-agent-sdk>=0.1.6",
+  "fastapi>=0.125.0",
 ]
 
 [build-system]
