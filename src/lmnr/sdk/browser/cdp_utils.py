@@ -4,6 +4,8 @@ import os
 import threading
 import time
 
+from weakref import WeakKeyDictionary
+
 from opentelemetry import trace
 
 from lmnr.sdk.decorators import observe
@@ -27,7 +29,7 @@ CDP_OPERATION_TIMEOUT_SECONDS = 10
 frame_to_isolated_context_id: dict[str, int] = {}
 
 # Store locks per event loop to avoid pytest-asyncio issues
-_locks: dict[asyncio.AbstractEventLoop, asyncio.Lock] = {}
+_locks: WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = WeakKeyDictionary()
 _locks_lock = threading.Lock()
 _fallback_lock = asyncio.Lock()
 
