@@ -1,0 +1,215 @@
+import inspect
+import json
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Callable
+
+
+@dataclass
+class Bundle:
+    """
+    Represents a bundled evaluation code package for remote execution.
+    
+    Contains all information needed to execute an evaluation remotely:
+    source files, function names, and dependencies.
+    """
+    
+    # Source file containing the executor and evaluators
+    entry_file: Path
+    
+    # Project root directory (where pyproject.toml is located)
+    project_root: Path
+    
+    # Name of the executor function to call
+    executor_name: str
+    
+    # Mapping of evaluator display names to function names
+    # e.g., {"accuracy": "check_accuracy", "relevance": "check_relevance"}
+    evaluator_names: dict[str, str]
+
+    @classmethod
+    def from_functions(
+        cls,
+        executor: Callable[..., Any],
+        evaluators: dict[str, Callable[..., Any]],
+    ) -> "Bundle":
+        """
+        Create a Bundle by introspecting executor and evaluator functions.
+        
+        Args:
+            executor: The executor function
+            evaluators: Dict of evaluator name to evaluator function/HumanEvaluator
+            
+        Returns:
+            A Bundle instance with source file and function info extracted
+        """
+        # Get source file from executor
+        source_file = inspect.getsourcefile(executor)
+        if source_file is None:
+            raise ValueError("Cannot determine source file for executor")
+        entry_file = Path(source_file).resolve()
+        
+        # Find project root (walk up to find pyproject.toml)
+        project_root = cls._find_project_root(entry_file)
+        
+        # Get function names
+        executor_name = executor.__name__
+        
+        # Extract evaluator function names (skip non-callable like HumanEvaluator)
+        evaluator_names = {}
+        for name, func in evaluators.items():
+            if callable(func) and hasattr(func, "__name__"):
+                evaluator_names[name] = func.__name__
+        
+        return cls(
+            entry_file=entry_file,
+            project_root=project_root,
+            executor_name=executor_name,
+            evaluator_names=evaluator_names,
+        )
+
+    @staticmethod
+    def _find_project_root(start_file: Path) -> Path:
+        """Walk up directory tree to find pyproject.toml"""
+        current = start_file.parent
+        for _ in range(10):  # Max 10 levels up
+            if (current / "pyproject.toml").exists():
+                return current
+            if current.parent == current:  # Reached filesystem root
+                break
+            current = current.parent
+        
+        # Fallback: use the file's directory
+        return start_file.parent
+
+    def to_files(self) -> dict[str, bytes]:
+        """
+        Get files to upload to sandbox as a dict of path -> content.
+        
+        Includes all Python source files and project configuration files
+        from the project root, excluding common non-essential directories.
+        
+        Returns:
+            Dict mapping relative file paths to file contents
+        """
+        files = {}
+        
+        # Directories to exclude
+        exclude_dirs = {
+            ".git", ".venv", "venv", "__pycache__", ".pytest_cache",
+            "node_modules", ".mypy_cache", ".ruff_cache", "dist", "build",
+            ".eggs", "*.egg-info", ".tox", ".nox",
+        }
+        
+        # File extensions to include
+        include_extensions = {".py", ".toml", ".txt", ".json", ".yaml", ".yml"}
+        
+        # Walk the project directory
+        for path in self.project_root.rglob("*"):
+            if not path.is_file():
+                continue
+            
+            # Skip excluded directories
+            parts = path.relative_to(self.project_root).parts
+            if any(part in exclude_dirs or part.endswith(".egg-info") for part in parts):
+                continue
+            
+            # Include files with matching extensions
+            if path.suffix in include_extensions:
+                relative_path = path.relative_to(self.project_root)
+                content = path.read_bytes()
+                
+                # Sanitize pyproject.toml to remove local path dependencies
+                if path.name == "pyproject.toml":
+                    content = self._sanitize_pyproject(content)
+                
+                files[str(relative_path)] = content
+        
+        # Note: We intentionally skip uv.lock because it may contain
+        # references to local path dependencies that won't work in sandbox
+        
+        return files
+    
+    def _sanitize_pyproject(self, content: bytes) -> bytes:
+        """
+        Remove local path dependencies from pyproject.toml.
+        
+        Handles two formats:
+        1. Inline: lmnr @ file:///Users/foo/lmnr-python -> lmnr
+        2. UV sources section: lmnr = { path = "/path" } -> (removed)
+        
+        This allows the sandbox to install packages from PyPI instead
+        of trying to use non-existent local paths.
+        """
+        text = content.decode("utf-8")
+        
+        # Pattern to match: "package @ file:///path/to/local"
+        # Replace with just the package name
+        # Handles both quoted and unquoted versions
+        patterns = [
+            # "package @ file:///path" -> "package"
+            r'"([a-zA-Z0-9_-]+)\s*@\s*file://[^"]*"',
+            # 'package @ file:///path' -> 'package'  
+            r"'([a-zA-Z0-9_-]+)\s*@\s*file://[^']*'",
+            # package @ file:///path (unquoted, in arrays)
+            r'([a-zA-Z0-9_-]+)\s*@\s*file://[^\s,\]]+',
+        ]
+        
+        for pattern in patterns:
+            text = re.sub(pattern, r'"\1"', text)
+        
+        # Remove [tool.uv.sources] entries with local paths
+        # Matches: lmnr = { path = "/some/path" } or lmnr = { path = "/some/path", ... }
+        text = re.sub(
+            r'^[a-zA-Z0-9_-]+\s*=\s*\{[^}]*path\s*=\s*["\'][^"\']*["\'][^}]*\}\s*$',
+            '',
+            text,
+            flags=re.MULTILINE
+        )
+        
+        # Remove empty [tool.uv.sources] section if all entries were removed
+        # This cleans up the section header if it's now empty
+        text = re.sub(
+            r'\[tool\.uv\.sources\]\s*(?=\[|\Z)',
+            '',
+            text
+        )
+        
+        return text.encode("utf-8")
+
+    def get_execution_command(
+        self,
+        func_name: str,
+        args: tuple[Any, ...],
+    ) -> list[str]:
+        """
+        Generate command to execute a function in the sandbox.
+        
+        Args:
+            func_name: Name of function to call
+            args: Arguments to pass to function
+            
+        Returns:
+            Command as list of strings
+        """
+        # Get the module name from entry file
+        relative_path = self.entry_file.relative_to(self.project_root)
+        module_path = str(relative_path.with_suffix("")).replace("/", ".")
+        
+        # Serialize args to JSON
+        args_json = json.dumps(args[0]) if args else "{}"
+        
+        # Build Python code to execute
+        python_code = f"""
+import json
+import sys
+sys.path.insert(0, '.')
+from {module_path} import {func_name}
+data = json.loads('''{args_json}''')
+result = {func_name}(data)
+print(json.dumps(result))
+"""
+        
+        # Use uv run to execute within the virtual environment
+        return ["uv", "run", "python", "-c", python_code]

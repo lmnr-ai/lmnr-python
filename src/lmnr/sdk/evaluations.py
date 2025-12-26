@@ -29,6 +29,8 @@ from lmnr.sdk.types import (
     SpanType,
     TraceType,
 )
+from lmnr.sdk.sandbox.sandbox import SandboxConfig
+from lmnr.sdk.sandbox.bundle import Bundle
 from lmnr.sdk.utils import from_env, is_async, json_dumps
 
 DEFAULT_BATCH_SIZE = 5
@@ -130,6 +132,7 @@ class Evaluation:
         ) = None,
         max_export_batch_size: int | None = MAX_EXPORT_BATCH_SIZE,
         trace_export_timeout_seconds: int | None = None,
+        sandboxConfig: SandboxConfig | None = None,
     ):
         """
         Initializes an instance of the Evaluation class.
@@ -260,10 +263,25 @@ class Evaluation:
             export_timeout_seconds=trace_export_timeout_seconds,
         )
 
+        # Sandbox setup - config is used to create sandbox per datapoint
+        self.sandbox_config = sandboxConfig
+        self.bundle = None
+        if sandboxConfig:
+            self._logger.info(f"🔧 Sandbox mode enabled (type={sandboxConfig.type.value})")
+            self.bundle = Bundle.from_functions(executor, evaluators)
+            self._logger.info(
+                f"📦 Bundle created: {self.bundle.entry_file.name} "
+                f"(executor={self.bundle.executor_name}, "
+                f"evaluators={list(self.bundle.evaluator_names.keys())})"
+            )
+
     async def run(self) -> EvaluationRunResult:
         return await self._run()
 
     async def _run(self) -> EvaluationRunResult:
+        mode = "sandbox" if self.sandbox_config else "local"
+        self._logger.info(f"🏃 Starting evaluation '{self.name}' in {mode} mode...")
+        
         if isinstance(self.data, LaminarDataset):
             self.data.set_client(
                 LaminarClient(
@@ -310,6 +328,10 @@ class Evaluation:
         average_scores = get_average_scores(result_datapoints)
         self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
         await self._shutdown()
+        self._logger.info(
+            f"🎉 Evaluation '{self.name}' completed! "
+            f"Processed {len(result_datapoints)} datapoints."
+        )
         return {
             "average_scores": average_scores,
             "evaluation_id": evaluation_id,
@@ -392,14 +414,19 @@ class Evaluation:
                     eval_id, [partial_datapoint], self.group_name
                 )
                 executor_span.set_attribute(SPAN_TYPE, SpanType.EXECUTOR.value)
-                # Run synchronous executors in a thread pool to avoid blocking
-                if not is_async(self.executor):
-                    loop = asyncio.get_event_loop()
-                    output = await loop.run_in_executor(
-                        None, self.executor, datapoint.data
-                    )
+                
+                if self.sandbox_config:
+                    # Run in sandbox (new sandbox per datapoint for isolation)
+                    output = await self._execute_in_sandbox(datapoint)
                 else:
-                    output = await self.executor(datapoint.data)
+                    # Run locally
+                    if not is_async(self.executor):
+                        loop = asyncio.get_event_loop()
+                        output = await loop.run_in_executor(
+                            None, self.executor, datapoint.data
+                        )
+                    else:
+                        output = await self.executor(datapoint.data)
 
                 L.set_span_output(output)
             target = datapoint.target
@@ -478,6 +505,86 @@ class Evaluation:
 
         return eval_datapoint
 
+    async def _execute_in_sandbox(self, datapoint: Datapoint) -> Any:
+        """
+        Execute the evaluation in a sandbox environment.
+        
+        Creates a fresh sandbox per datapoint for isolation.
+        This runs the executor remotely in an isolated container.
+        
+        The Docker image can be specified per-datapoint via metadata["image"],
+        otherwise falls back to the default image in SandboxConfig.
+        """
+        import json
+        
+        # Get image from datapoint metadata, or use default
+        image = None
+        if datapoint.metadata and "image" in datapoint.metadata:
+            image = datapoint.metadata["image"]
+        
+        # Create a new sandbox for this datapoint
+        datapoint_id = datapoint.metadata.get("id", "unknown") if datapoint.metadata else "unknown"
+        self._logger.info(f"🚀 Creating sandbox for datapoint {datapoint_id} (image={image or 'default'})")
+        sandbox = self.sandbox_config.create_sandbox(image=image)
+        
+        try:
+            # Start sandbox
+            self._logger.info(f"⏳ Starting sandbox for datapoint {datapoint_id}...")
+            await sandbox.start()
+            self._logger.info(f"✅ Sandbox started for datapoint {datapoint_id}")
+            
+            # Upload bundle files
+            files = self.bundle.to_files()
+            self._logger.info(f"📤 Uploading {len(files)} files to sandbox:")
+            for file_path in sorted(files.keys()):
+                self._logger.info(f"   - {file_path}")
+            await sandbox.upload_files(files)
+            self._logger.info(f"✅ Files uploaded to sandbox")
+            
+            # Install uv package manager
+            self._logger.info(f"🔧 Installing uv package manager...")
+            uv_install = await sandbox.execute(["pip", "install", "uv"])
+            if not uv_install.success:
+                self._logger.error(f"❌ Failed to install uv: {uv_install.stderr}")
+                raise RuntimeError(f"Failed to install uv: {uv_install.stderr}")
+            
+            # Install dependencies using uv
+            self._logger.info(f"📦 Installing dependencies in sandbox...")
+            install_result = await sandbox.execute(["uv", "sync", "--frozen"])
+            if not install_result.success:
+                # If --frozen fails (no lockfile), try without it
+                self._logger.warning(f"⚠️ Frozen sync failed, trying regular sync...")
+                install_result = await sandbox.execute(["uv", "sync"])
+                if not install_result.success:
+                    self._logger.error(f"❌ Dependency installation failed: {install_result.stderr}")
+                    raise RuntimeError(f"Dependency installation failed: {install_result.stderr}")
+            self._logger.info(f"✅ Dependencies installed")
+            
+            # Build the command to run
+            command = self.bundle.get_execution_command(
+                func_name=self.bundle.executor_name,
+                args=(datapoint.data,),
+            )
+            
+            # Execute in sandbox
+            self._logger.info(f"▶️ Executing evaluation in sandbox...")
+            result = await sandbox.execute(command)
+            
+            if not result.success:
+                self._logger.error(f"❌ Sandbox execution failed: {result.stderr}")
+                raise RuntimeError(f"Sandbox execution failed: {result.stderr}")
+            
+            self._logger.info(f"✅ Sandbox execution completed for datapoint {datapoint_id}")
+            
+            # Parse output
+            output = json.loads(result.stdout)
+            return output
+        finally:
+            # Always clean up the sandbox
+            self._logger.info(f"🛑 Stopping sandbox for datapoint {datapoint_id}...")
+            await sandbox.stop()
+            self._logger.info(f"✅ Sandbox stopped for datapoint {datapoint_id}")
+
 
 def evaluate(
     data: EvaluationDataset | list[Datapoint | dict],
@@ -500,6 +607,7 @@ def evaluate(
     ) = None,
     max_export_batch_size: int | None = MAX_EXPORT_BATCH_SIZE,
     trace_export_timeout_seconds: int | None = None,
+    sandbox: SandboxConfig | None = None,
 ) -> EvaluationRunResult | None:
     """
     If added to the file which is called through `lmnr eval` command, then
@@ -582,6 +690,7 @@ def evaluate(
         disabled_instruments=disabled_instruments,
         max_export_batch_size=max_export_batch_size,
         trace_export_timeout_seconds=trace_export_timeout_seconds,
+        sandboxConfig=sandbox,
     )
 
     if PREPARE_ONLY.get():
