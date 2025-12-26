@@ -22,9 +22,10 @@ class ModalSandbox(Sandbox):
     def __init__(
         self,
         image: str,
-        app_name: str = "lmnr-sandbox",
+        app_name: str = "default-sandbox",
         timeout: int = 5 * 60,
         env: dict[str, str] | None = None,
+        dockerfile: str | None = None,
     ):
         """
         Initialize the Modal sandbox.
@@ -34,10 +35,12 @@ class ModalSandbox(Sandbox):
             app_name: Modal app name to use
             timeout: Maximum sandbox lifetime in seconds (default: 5 minutes)
             env: Environment variables to set in the sandbox
+            dockerfile: Path to Dockerfile to build (takes precedence over image)
         """
         super().__init__(image=image, env=env)
         self.app_name = app_name
         self.timeout = timeout
+        self.dockerfile = dockerfile
         self._sandbox: modal.Sandbox | None = None
         self._app: modal.App | None = None
 
@@ -48,8 +51,11 @@ class ModalSandbox(Sandbox):
         # Get or create the Modal app
         self._app = modal.App.lookup(self.app_name, create_if_missing=True)
         
-        # Build the image
-        modal_image = modal.Image.from_registry(self.image)
+        # Build the image from Dockerfile or use registry image
+        if self.dockerfile:
+            modal_image = modal.Image.from_dockerfile(self.dockerfile)
+        else:
+            modal_image = modal.Image.from_registry(self.image)
         
         # Create the sandbox with environment variables
         self._sandbox = modal.Sandbox.create(
