@@ -40,6 +40,7 @@ dependencies = [
   "orjson (>=3.0.0)",
   "packaging (>=22.0)",
   "opentelemetry-instrumentation-threading>=0.57b0",
+  "modal>=1.3.0.post1",
 ]
 # poetry would auto-generate these based on requires-python, but other build
 # systems don't, so we need to specify them manually.
