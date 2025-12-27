@@ -15,7 +15,7 @@ class Bundle:
     source files, function names, and dependencies.
     """
     
-    # Source file containing the executor and evaluators
+    # Source file containing the executor
     entry_file: Path
     
     # Project root directory (where pyproject.toml is located)
@@ -24,9 +24,10 @@ class Bundle:
     # Name of the executor function to call
     executor_name: str
     
-    # Mapping of evaluator display names to function names
-    # e.g., {"accuracy": "check_accuracy", "relevance": "check_relevance"}
-    evaluator_names: dict[str, str]
+    # Mapping of evaluator display names to (function_name, module_path)
+    # e.g., {"accuracy": ("check_accuracy", "myevals.accuracy")}
+    # Evaluators can be in different files from the executor
+    evaluator_names: dict[str, tuple[str, str]]
 
     @classmethod
     def from_functions(
@@ -56,11 +57,17 @@ class Bundle:
         # Get function names
         executor_name = executor.__name__
         
-        # Extract evaluator function names (skip non-callable like HumanEvaluator)
+        # Extract evaluator function names AND their source files
+        # (evaluators can be in different files from executor)
         evaluator_names = {}
         for name, func in evaluators.items():
             if callable(func) and hasattr(func, "__name__"):
-                evaluator_names[name] = func.__name__
+                eval_source = inspect.getsourcefile(func)
+                if eval_source:
+                    eval_path = Path(eval_source).resolve()
+                    eval_relative = eval_path.relative_to(project_root)
+                    eval_module = str(eval_relative.with_suffix("")).replace("/", ".")
+                    evaluator_names[name] = (func.__name__, eval_module)
         
         return cls(
             entry_file=entry_file,
@@ -229,19 +236,24 @@ print(json.dumps(result))
         Returns:
             Command that outputs JSON: {"output": <executor_result>, "scores": {...}}
         """
-        # Get the module name from entry file
+        # Get the module name from entry file (for executor)
         relative_path = self.entry_file.relative_to(self.project_root)
-        module_path = str(relative_path.with_suffix("")).replace("/", ".")
+        executor_module = str(relative_path.with_suffix("")).replace("/", ".")
         
         # Serialize args to JSON
         data_json = json.dumps(executor_args[0]) if executor_args else "{}"
         target_json = json.dumps(target)
         
-        # Build list of evaluator function names to import
-        evaluator_imports = ", ".join(self.evaluator_names.values())
+        # Build import statements for each evaluator (may be from different modules)
+        evaluator_imports = []
+        for name, (func_name, eval_module) in self.evaluator_names.items():
+            evaluator_imports.append(f"from {eval_module} import {func_name}")
+        evaluator_imports_str = "\n".join(evaluator_imports)
+        
+        # Build evaluator mapping
         evaluator_mapping = ", ".join(
             f'"{name}": {func_name}' 
-            for name, func_name in self.evaluator_names.items()
+            for name, (func_name, _) in self.evaluator_names.items()
         )
         
         # Build Python code to execute both executor and evaluators
@@ -250,9 +262,11 @@ import json
 import sys
 sys.path.insert(0, '.')
 
-# Import executor and evaluators from user's module
-from {module_path} import {self.executor_name}
-from {module_path} import {evaluator_imports}
+# Import executor
+from {executor_module} import {self.executor_name}
+
+# Import evaluators (may be from different modules)
+{evaluator_imports_str}
 
 # Map evaluator names to functions
 evaluators = {{{evaluator_mapping}}}
