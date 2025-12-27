@@ -103,7 +103,7 @@ class Bundle:
         }
         
         # File extensions to include
-        include_extensions = {".py", ".toml", ".txt", ".json", ".yaml", ".yml"}
+        include_extensions = {".py", ".toml", ".txt", ".json", ".yaml", ".yml", ".lock"}
         
         # Walk the project directory
         for path in self.project_root.rglob("*"):
@@ -125,9 +125,6 @@ class Bundle:
                     content = self._sanitize_pyproject(content)
                 
                 files[str(relative_path)] = content
-        
-        # Note: We intentionally skip uv.lock because it may contain
-        # references to local path dependencies that won't work in sandbox
         
         return files
     

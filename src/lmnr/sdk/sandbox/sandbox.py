@@ -18,11 +18,10 @@ class SandboxConfig:
     
     type: SandboxType
     default_image: str = "python:3.11-slim"
-    dockerfile: str | None = None  # Path to Dockerfile (takes precedence over image)
     timeout: int = 5 * 60  # Default 5 minutes
     env: dict[str, str] = field(default_factory=dict)
     
-    def create_sandbox(self, image: str | None = None) -> "Sandbox":
+    def create_sandbox(self, image: str | None = None, dockerfile: str | None = None) -> "Sandbox":
         """
         Create a new sandbox instance based on this config.
         
@@ -36,7 +35,7 @@ class SandboxConfig:
             from lmnr.sdk.sandbox.modal import ModalSandbox
             return ModalSandbox(
                 image=actual_image,
-                dockerfile=self.dockerfile,
+                dockerfile=dockerfile,
                 timeout=self.timeout,
                 app_name="evals",
                 env=self.env,

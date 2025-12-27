@@ -521,11 +521,15 @@ class Evaluation:
         image = None
         if datapoint.metadata and "image" in datapoint.metadata:
             image = datapoint.metadata["image"]
+
+        dockerfile = None
+        if datapoint.metadata:
+            dockerfile = datapoint.metadata.get("dockerfile", None)
         
         # Create a new sandbox for this datapoint
         datapoint_id = datapoint.metadata.get("id", "unknown") if datapoint.metadata else "unknown"
         self._logger.info(f"🚀 Creating sandbox for datapoint {datapoint_id} (image={image or 'default'})")
-        sandbox = self.sandbox_config.create_sandbox(image=image)
+        sandbox = self.sandbox_config.create_sandbox(image=image, dockerfile=dockerfile)
         
         try:
             # Start sandbox
@@ -548,16 +552,13 @@ class Evaluation:
                 self._logger.error(f"❌ Failed to install uv: {uv_install.stderr}")
                 raise RuntimeError(f"Failed to install uv: {uv_install.stderr}")
             
-            # Install dependencies using uv
+            # Install dependencies using uv with locked versions
             self._logger.info(f"📦 Installing dependencies in sandbox...")
+            # NOTE: remove --frozen when testing with local dev installs
             install_result = await sandbox.execute(["uv", "sync", "--frozen"])
             if not install_result.success:
-                # If --frozen fails (no lockfile), try without it
-                self._logger.warning(f"⚠️ Frozen sync failed, trying regular sync...")
-                install_result = await sandbox.execute(["uv", "sync"])
-                if not install_result.success:
-                    self._logger.error(f"❌ Dependency installation failed: {install_result.stderr}")
-                    raise RuntimeError(f"Dependency installation failed: {install_result.stderr}")
+                self._logger.error(f"❌ Dependency installation failed: {install_result.stderr}")
+                raise RuntimeError(f"Dependency installation failed: {install_result.stderr}")
             self._logger.info(f"✅ Dependencies installed")
             
             # Build the command to run
@@ -578,6 +579,7 @@ class Evaluation:
             
             # Parse output
             output = json.loads(result.stdout)
+            self._logger.info(f"✅✅ Sandbox output: {output}")
             return output
         finally:
             # Always clean up the sandbox
