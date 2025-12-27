@@ -210,3 +210,76 @@ print(json.dumps(result))
         
         # Use uv run to execute within the virtual environment
         return ["uv", "run", "python", "-c", python_code]
+
+    def get_full_execution_command(
+        self,
+        executor_args: tuple[Any, ...],
+        target: Any,
+    ) -> list[str]:
+        """
+        Generate command to execute executor AND evaluators in the sandbox.
+        
+        This runs both in the same sandbox session, allowing evaluators to
+        access any files created/modified by the executor.
+        
+        Args:
+            executor_args: Arguments to pass to executor
+            target: Target value for evaluators
+            
+        Returns:
+            Command that outputs JSON: {"output": <executor_result>, "scores": {...}}
+        """
+        # Get the module name from entry file
+        relative_path = self.entry_file.relative_to(self.project_root)
+        module_path = str(relative_path.with_suffix("")).replace("/", ".")
+        
+        # Serialize args to JSON
+        data_json = json.dumps(executor_args[0]) if executor_args else "{}"
+        target_json = json.dumps(target)
+        
+        # Build list of evaluator function names to import
+        evaluator_imports = ", ".join(self.evaluator_names.values())
+        evaluator_mapping = ", ".join(
+            f'"{name}": {func_name}' 
+            for name, func_name in self.evaluator_names.items()
+        )
+        
+        # Build Python code to execute both executor and evaluators
+        python_code = f"""
+import json
+import sys
+sys.path.insert(0, '.')
+
+# Import executor and evaluators from user's module
+from {module_path} import {self.executor_name}
+from {module_path} import {evaluator_imports}
+
+# Map evaluator names to functions
+evaluators = {{{evaluator_mapping}}}
+
+# Run executor
+data = json.loads('''{data_json}''')
+output = {self.executor_name}(data)
+
+# Run evaluators
+target = json.loads('''{target_json}''')
+scores = {{}}
+for name, evaluator in evaluators.items():
+    try:
+        score = evaluator(output, target)
+        if isinstance(score, (int, float, bool)):
+            scores[name] = score
+        elif isinstance(score, dict):
+            scores.update(score)
+        else:
+            scores[name] = float(score)
+    except Exception as e:
+        print(f"Evaluator {{name}} failed: {{e}}", file=sys.stderr)
+        scores[name] = None
+
+# Output combined result
+print(json.dumps({{"output": output, "scores": scores}}))
+"""
+        
+        # Use uv run to execute within the virtual environment
+        return ["uv", "run", "python", "-c", python_code]

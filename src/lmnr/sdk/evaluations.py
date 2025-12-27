@@ -416,8 +416,11 @@ class Evaluation:
                 executor_span.set_attribute(SPAN_TYPE, SpanType.EXECUTOR.value)
                 
                 if self.sandbox_config:
-                    # Run in sandbox (new sandbox per datapoint for isolation)
-                    output = await self._execute_in_sandbox(datapoint)
+                    # Run executor + evaluators in sandbox (for file-based workflows)
+                    sandbox_result = await self._execute_in_sandbox(datapoint)
+                    output = sandbox_result["output"]
+                    scores = sandbox_result["scores"]
+                    L.set_span_output(output)
                 else:
                     # Run locally
                     if not is_async(self.executor):
@@ -427,53 +430,54 @@ class Evaluation:
                         )
                     else:
                         output = await self.executor(datapoint.data)
+                    L.set_span_output(output)
 
-                L.set_span_output(output)
             target = datapoint.target
 
-            # Iterate over evaluators
-            scores: dict[str, Numeric] = {}
-            for evaluator_name, evaluator in self.evaluators.items():
-                # Check if evaluator is a HumanEvaluator instance
-                if isinstance(evaluator, HumanEvaluator):
-                    # Create an empty span for human evaluators
-                    with L.start_as_current_span(
-                        evaluator_name, input={"output": output, "target": target}
-                    ) as human_evaluator_span:
-                        human_evaluator_span.set_attribute(
-                            SPAN_TYPE, SpanType.HUMAN_EVALUATOR.value
-                        )
-                        if evaluator.options:
+            # Run evaluators locally (only when not using sandbox)
+            if not self.sandbox_config:
+                scores: dict[str, Numeric] = {}
+                for evaluator_name, evaluator in self.evaluators.items():
+                    # Check if evaluator is a HumanEvaluator instance
+                    if isinstance(evaluator, HumanEvaluator):
+                        # Create an empty span for human evaluators
+                        with L.start_as_current_span(
+                            evaluator_name, input={"output": output, "target": target}
+                        ) as human_evaluator_span:
                             human_evaluator_span.set_attribute(
-                                HUMAN_EVALUATOR_OPTIONS, json_dumps(evaluator.options)
+                                SPAN_TYPE, SpanType.HUMAN_EVALUATOR.value
                             )
-                        # Human evaluators don't execute automatically, just create the span
-                        L.set_span_output(None)
+                            if evaluator.options:
+                                human_evaluator_span.set_attribute(
+                                    HUMAN_EVALUATOR_OPTIONS, json_dumps(evaluator.options)
+                                )
+                            # Human evaluators don't execute automatically, just create the span
+                            L.set_span_output(None)
 
-                    # We don't want to save the score for human evaluators
-                    scores[evaluator_name] = None
-                else:
-                    # Regular evaluator function
-                    with L.start_as_current_span(
-                        evaluator_name, input={"output": output, "target": target}
-                    ) as evaluator_span:
-                        evaluator_span.set_attribute(
-                            SPAN_TYPE, SpanType.EVALUATOR.value
-                        )
-                        if is_async(evaluator):
-                            value = await evaluator(output, target)
-                        else:
-                            loop = asyncio.get_event_loop()
-                            value = await loop.run_in_executor(
-                                None, evaluator, output, target
-                            )
-                        L.set_span_output(value)
-
-                    # If evaluator returns a single number, use evaluator name as key
-                    if isinstance(value, NumericTypes):
-                        scores[evaluator_name] = value
+                        # We don't want to save the score for human evaluators
+                        scores[evaluator_name] = None
                     else:
-                        scores.update(value)
+                        # Regular evaluator function
+                        with L.start_as_current_span(
+                            evaluator_name, input={"output": output, "target": target}
+                        ) as evaluator_span:
+                            evaluator_span.set_attribute(
+                                SPAN_TYPE, SpanType.EVALUATOR.value
+                            )
+                            if is_async(evaluator):
+                                value = await evaluator(output, target)
+                            else:
+                                loop = asyncio.get_event_loop()
+                                value = await loop.run_in_executor(
+                                    None, evaluator, output, target
+                                )
+                            L.set_span_output(value)
+
+                        # If evaluator returns a single number, use evaluator name as key
+                        if isinstance(value, NumericTypes):
+                            scores[evaluator_name] = value
+                        else:
+                            scores.update(value)
 
             trace_id = uuid.UUID(int=evaluation_span.get_span_context().trace_id)
 
@@ -561,14 +565,14 @@ class Evaluation:
                 raise RuntimeError(f"Dependency installation failed: {install_result.stderr}")
             self._logger.info(f"✅ Dependencies installed")
             
-            # Build the command to run
-            command = self.bundle.get_execution_command(
-                func_name=self.bundle.executor_name,
-                args=(datapoint.data,),
+            # Build the command to run executor + evaluators together
+            command = self.bundle.get_full_execution_command(
+                executor_args=(datapoint.data,),
+                target=datapoint.target,
             )
             
             # Execute in sandbox
-            self._logger.info(f"▶️ Executing evaluation in sandbox...")
+            self._logger.info(f"▶️ Executing executor + evaluators in sandbox...")
             result = await sandbox.execute(command)
             
             if not result.success:
@@ -577,10 +581,10 @@ class Evaluation:
             
             self._logger.info(f"✅ Sandbox execution completed for datapoint {datapoint_id}")
             
-            # Parse output
-            output = json.loads(result.stdout)
-            self._logger.info(f"✅✅ Sandbox output: {output}")
-            return output
+            # Parse output - contains both output and scores
+            parsed = json.loads(result.stdout)
+            self._logger.info(f"📊 Sandbox result: output={parsed.get('output')}, scores={parsed.get('scores')}")
+            return parsed  # {"output": ..., "scores": {...}}
         finally:
             # Always clean up the sandbox
             self._logger.info(f"🛑 Stopping sandbox for datapoint {datapoint_id}...")
