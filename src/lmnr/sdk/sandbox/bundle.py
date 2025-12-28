@@ -55,58 +55,25 @@ class Bundle:
             raise ValueError("Cannot determine source file for executor")
         entry_file = Path(source_file).resolve()
         
-        # Find project root (walk up to find pyproject.toml)
-        # Start from current working directory if executor is from installed package
-        entry_file_str = str(entry_file)
-        executor_is_installed = (
-            ".venv" in entry_file_str or 
-            "site-packages" in entry_file_str
-        )
-        
+        # Find project root - use cwd if executor is from installed package
+        executor_is_installed = cls._is_installed_package(entry_file)
         if executor_is_installed:
-            # Use current working directory to find project root
             project_root = cls._find_project_root(Path.cwd())
-            # Use the actual module name for installed packages
-            executor_module = executor.__module__
-            # Don't track entry_file for installed packages
             entry_file_resolved = None
         else:
             project_root = cls._find_project_root(entry_file)
-            # Calculate module path from file path for project files
-            relative_path = entry_file.relative_to(project_root)
-            executor_module = str(relative_path.with_suffix("")).replace("/", ".")
             entry_file_resolved = entry_file
         
-        # Get function names
+        # Get executor module path
         executor_name = executor.__name__
+        executor_module = cls._get_module_path(executor, project_root)
         
-        # Extract evaluator function names AND their source files
-        # (evaluators can be in different files from executor)
+        # Extract evaluator function names and module paths
         evaluator_names = {}
         for name, func in evaluators.items():
             if callable(func) and hasattr(func, "__name__"):
-                eval_source = inspect.getsourcefile(func)
-                if eval_source:
-                    eval_path = Path(eval_source).resolve()
-                    
-                    # Check if evaluator is from an installed package (in .venv or site-packages)
-                    # If so, use its __module__ directly instead of calculating from file path
-                    eval_path_str = str(eval_path)
-                    is_installed_package = (
-                        ".venv" in eval_path_str or 
-                        "site-packages" in eval_path_str or
-                        not eval_path_str.startswith(str(project_root))
-                    )
-                    
-                    if is_installed_package:
-                        # Use the actual module name for installed packages
-                        eval_module = func.__module__
-                    else:
-                        # For project files, calculate relative module path
-                        eval_relative = eval_path.relative_to(project_root)
-                        eval_module = str(eval_relative.with_suffix("")).replace("/", ".")
-                    
-                    evaluator_names[name] = (func.__name__, eval_module)
+                eval_module = cls._get_module_path(func, project_root)
+                evaluator_names[name] = (func.__name__, eval_module)
         
         return cls(
             entry_file=entry_file_resolved,
@@ -115,6 +82,36 @@ class Bundle:
             executor_module=executor_module,
             evaluator_names=evaluator_names,
         )
+
+    @staticmethod
+    def _is_installed_package(file_path: Path, project_root: Path | None = None) -> bool:
+        """Check if a file is from an installed package (in .venv or site-packages)."""
+        path_str = str(file_path)
+        if ".venv" in path_str or "site-packages" in path_str:
+            return True
+        if project_root and not path_str.startswith(str(project_root)):
+            return True
+        return False
+    
+    @staticmethod
+    def _get_module_path(func: Callable[..., Any], project_root: Path) -> str:
+        """
+        Get the module path for a function.
+        
+        For installed packages, returns func.__module__ (e.g., "lmnr.decorators").
+        For project files, calculates relative path (e.g., "agent.core").
+        """
+        source_file = inspect.getsourcefile(func)
+        if source_file is None:
+            return func.__module__
+        
+        file_path = Path(source_file).resolve()
+        
+        if Bundle._is_installed_package(file_path, project_root):
+            return func.__module__
+        else:
+            relative_path = file_path.relative_to(project_root)
+            return str(relative_path.with_suffix("")).replace("/", ".")
 
     @staticmethod
     def _find_project_root(start_path: Path) -> Path:
