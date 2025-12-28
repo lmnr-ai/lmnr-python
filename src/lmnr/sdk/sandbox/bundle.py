@@ -1,3 +1,4 @@
+import base64
 import inspect
 import json
 import re
@@ -15,14 +16,17 @@ class Bundle:
     source files, function names, and dependencies.
     """
     
-    # Source file containing the executor
-    entry_file: Path
+    # Source file containing the executor (may be None for installed packages)
+    entry_file: Path | None
     
     # Project root directory (where pyproject.toml is located)
     project_root: Path
     
     # Name of the executor function to call
     executor_name: str
+    
+    # Module path for the executor (e.g., "agent.core" or "lmnr.decorators")
+    executor_module: str
     
     # Mapping of evaluator display names to (function_name, module_path)
     # e.g., {"accuracy": ("check_accuracy", "myevals.accuracy")}
@@ -52,7 +56,26 @@ class Bundle:
         entry_file = Path(source_file).resolve()
         
         # Find project root (walk up to find pyproject.toml)
-        project_root = cls._find_project_root(entry_file)
+        # Start from current working directory if executor is from installed package
+        entry_file_str = str(entry_file)
+        executor_is_installed = (
+            ".venv" in entry_file_str or 
+            "site-packages" in entry_file_str
+        )
+        
+        if executor_is_installed:
+            # Use current working directory to find project root
+            project_root = cls._find_project_root(Path.cwd())
+            # Use the actual module name for installed packages
+            executor_module = executor.__module__
+            # Don't track entry_file for installed packages
+            entry_file_resolved = None
+        else:
+            project_root = cls._find_project_root(entry_file)
+            # Calculate module path from file path for project files
+            relative_path = entry_file.relative_to(project_root)
+            executor_module = str(relative_path.with_suffix("")).replace("/", ".")
+            entry_file_resolved = entry_file
         
         # Get function names
         executor_name = executor.__name__
@@ -65,21 +88,40 @@ class Bundle:
                 eval_source = inspect.getsourcefile(func)
                 if eval_source:
                     eval_path = Path(eval_source).resolve()
-                    eval_relative = eval_path.relative_to(project_root)
-                    eval_module = str(eval_relative.with_suffix("")).replace("/", ".")
+                    
+                    # Check if evaluator is from an installed package (in .venv or site-packages)
+                    # If so, use its __module__ directly instead of calculating from file path
+                    eval_path_str = str(eval_path)
+                    is_installed_package = (
+                        ".venv" in eval_path_str or 
+                        "site-packages" in eval_path_str or
+                        not eval_path_str.startswith(str(project_root))
+                    )
+                    
+                    if is_installed_package:
+                        # Use the actual module name for installed packages
+                        eval_module = func.__module__
+                    else:
+                        # For project files, calculate relative module path
+                        eval_relative = eval_path.relative_to(project_root)
+                        eval_module = str(eval_relative.with_suffix("")).replace("/", ".")
+                    
                     evaluator_names[name] = (func.__name__, eval_module)
         
         return cls(
-            entry_file=entry_file,
+            entry_file=entry_file_resolved,
             project_root=project_root,
             executor_name=executor_name,
+            executor_module=executor_module,
             evaluator_names=evaluator_names,
         )
 
     @staticmethod
-    def _find_project_root(start_file: Path) -> Path:
+    def _find_project_root(start_path: Path) -> Path:
         """Walk up directory tree to find pyproject.toml"""
-        current = start_file.parent
+        # Handle both files and directories
+        current = start_path if start_path.is_dir() else start_path.parent
+        
         for _ in range(10):  # Max 10 levels up
             if (current / "pyproject.toml").exists():
                 return current
@@ -87,8 +129,8 @@ class Bundle:
                 break
             current = current.parent
         
-        # Fallback: use the file's directory
-        return start_file.parent
+        # Fallback: use the starting directory
+        return start_path if start_path.is_dir() else start_path.parent
 
     def to_files(self) -> dict[str, bytes]:
         """
@@ -197,20 +239,18 @@ class Bundle:
         Returns:
             Command as list of strings
         """
-        # Get the module name from entry file
-        relative_path = self.entry_file.relative_to(self.project_root)
-        module_path = str(relative_path.with_suffix("")).replace("/", ".")
-        
-        # Serialize args to JSON
+        # Serialize args to JSON and encode as base64 to avoid escaping issues
         args_json = json.dumps(args[0]) if args else "{}"
+        args_b64 = base64.b64encode(args_json.encode()).decode()
         
         # Build Python code to execute
         python_code = f"""
+import base64
 import json
 import sys
 sys.path.insert(0, '.')
-from {module_path} import {func_name}
-data = json.loads('''{args_json}''')
+from {self.executor_module} import {func_name}
+data = json.loads(base64.b64decode('{args_b64}').decode())
 result = {func_name}(data)
 print(json.dumps(result))
 """
@@ -236,13 +276,11 @@ print(json.dumps(result))
         Returns:
             Command that outputs JSON: {"output": <executor_result>, "scores": {...}}
         """
-        # Get the module name from entry file (for executor)
-        relative_path = self.entry_file.relative_to(self.project_root)
-        executor_module = str(relative_path.with_suffix("")).replace("/", ".")
-        
-        # Serialize args to JSON
+        # Serialize args to JSON and encode as base64 to avoid escaping issues
         data_json = json.dumps(executor_args[0]) if executor_args else "{}"
         target_json = json.dumps(target)
+        data_b64 = base64.b64encode(data_json.encode()).decode()
+        target_b64 = base64.b64encode(target_json.encode()).decode()
         
         # Build import statements for each evaluator (may be from different modules)
         evaluator_imports = []
@@ -258,12 +296,13 @@ print(json.dumps(result))
         
         # Build Python code to execute both executor and evaluators
         python_code = f"""
+import base64
 import json
 import sys
 sys.path.insert(0, '.')
 
 # Import executor
-from {executor_module} import {self.executor_name}
+from {self.executor_module} import {self.executor_name}
 
 # Import evaluators (may be from different modules)
 {evaluator_imports_str}
@@ -271,12 +310,12 @@ from {executor_module} import {self.executor_name}
 # Map evaluator names to functions
 evaluators = {{{evaluator_mapping}}}
 
-# Run executor
-data = json.loads('''{data_json}''')
+# Run executor (decode base64 to avoid escaping issues with special chars)
+data = json.loads(base64.b64decode('{data_b64}').decode())
 output = {self.executor_name}(data)
 
 # Run evaluators
-target = json.loads('''{target_json}''')
+target = json.loads(base64.b64decode('{target_b64}').decode())
 scores = {{}}
 for name, evaluator in evaluators.items():
     try:
@@ -291,9 +330,13 @@ for name, evaluator in evaluators.items():
         print(f"Evaluator {{name}} failed: {{e}}", file=sys.stderr)
         scores[name] = None
 
-# Output combined result
-print(json.dumps({{"output": output, "scores": scores}}))
+# Write result to file (avoids mixing with user's stdout prints)
+with open('/tmp/__lmnr_result__.json', 'w') as f:
+    json.dump({{"output": output, "scores": scores}}, f)
 """
         
         # Use uv run to execute within the virtual environment
         return ["uv", "run", "python", "-c", python_code]
+    
+    # Path where the result file is written in the sandbox
+    RESULT_FILE_PATH = "/tmp/__lmnr_result__.json"

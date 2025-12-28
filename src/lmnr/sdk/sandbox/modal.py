@@ -1,5 +1,3 @@
-import asyncio
-
 import modal
 
 from lmnr.sdk.sandbox.sandbox import Sandbox, ExecutionResult
@@ -46,46 +44,40 @@ class ModalSandbox(Sandbox):
         self._sandbox: modal.Sandbox | None = None
         self._app: modal.App | None = None
 
-    def _create_sandbox_sync(self) -> modal.Sandbox:
-        """Synchronous helper to create the sandbox (runs in thread pool)."""
+    async def start(self) -> None:
+        """
+        Start the Modal sandbox container.
+        """
         # Get or create the Modal app
         self._app = modal.App.lookup(self.app_name, create_if_missing=True)
         
         # Build the image from Dockerfile or use registry image
+        # Always ensure Python and uv are available by layering on top
         if self.dockerfile:
-            modal_image = modal.Image.from_dockerfile(self.dockerfile)
+            base_image = modal.Image.from_dockerfile(self.dockerfile)
         else:
-            modal_image = modal.Image.from_registry(self.image)
+            base_image = modal.Image.from_registry(self.image)
+        
+        modal_image = (
+            base_image
+            .apt_install("python3", "python3-pip", "python3-venv", "curl")
+            .run_commands(
+                # Use official uv installer (avoids PEP 668 externally-managed-environment error)
+                "curl -LsSf https://astral.sh/uv/install.sh | sh",
+                # Add uv to PATH
+                "echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> /etc/profile",
+            )
+            .env({"PATH": "/root/.local/bin:/usr/local/bin:/usr/bin:/bin"})
+        )
         
         # Create the sandbox with environment variables
-        return modal.Sandbox.create(
+        modal.enable_output()
+        self._sandbox = await modal.Sandbox.create.aio(
             app=self._app,
             image=modal_image,
             timeout=self.timeout,
             env=self.env if self.env else None,
         )
-
-    async def start(self) -> None:
-        """
-        Start the Modal sandbox container.
-        """
-        # Run blocking Modal SDK calls in thread pool to avoid blocking event loop
-        self._sandbox = await asyncio.to_thread(self._create_sandbox_sync)
-
-    def _upload_files_sync(self, files: dict[str, bytes]) -> None:
-        """Synchronous helper to upload files (runs in thread pool)."""
-        for path, content in files.items():
-            # Create parent directories if needed
-            parent_dir = "/".join(path.split("/")[:-1])
-            if parent_dir:
-                self._sandbox.exec("mkdir", "-p", parent_dir)
-            
-            # Write file content
-            with self._sandbox.open(path, "w") as f:
-                if isinstance(content, bytes):
-                    f.write(content.decode("utf-8"))
-                else:
-                    f.write(content)
 
     async def upload_files(self, files: dict[str, bytes]) -> None:
         """
@@ -97,26 +89,19 @@ class ModalSandbox(Sandbox):
         if self._sandbox is None:
             raise RuntimeError("Sandbox not started. Call start() first.")
         
-        # Run blocking file operations in thread pool
-        await asyncio.to_thread(self._upload_files_sync, files)
-
-    def _execute_sync(self, command: list[str]) -> ExecutionResult:
-        """Synchronous helper to execute command (runs in thread pool)."""
-        # Execute the command
-        process = self._sandbox.exec(*command)
-        
-        # Read stdout and stderr
-        stdout = process.stdout.read()
-        stderr = process.stderr.read()
-        
-        # Wait for process to complete and get return code
-        return_code = process.wait()
-        
-        return ExecutionResult(
-            stdout=stdout,
-            stderr=stderr,
-            return_code=return_code,
-        )
+        for path, content in files.items():
+            # Create parent directories if needed
+            parent_dir = "/".join(path.split("/")[:-1])
+            if parent_dir:
+                process = await self._sandbox.exec.aio("mkdir", "-p", parent_dir)
+                await process.wait.aio()
+            
+            # Write file content
+            if isinstance(content, str):
+                content = content.encode("utf-8")
+            
+            async with await self._sandbox.open.aio(path, "wb") as f:
+                await f.write.aio(content)
 
     async def execute(self, command: list[str]) -> ExecutionResult:
         """
@@ -131,18 +116,26 @@ class ModalSandbox(Sandbox):
         if self._sandbox is None:
             raise RuntimeError("Sandbox not started. Call start() first.")
         
-        # Run blocking execution in thread pool
-        return await asyncio.to_thread(self._execute_sync, command)
-
-    def _stop_sync(self) -> None:
-        """Synchronous helper to stop sandbox (runs in thread pool)."""
-        if self._sandbox is not None:
-            self._sandbox.terminate()
-            self._sandbox = None
+        # Execute the command
+        process = await self._sandbox.exec.aio(*command)
+        
+        # Read stdout and stderr
+        stdout = await process.stdout.read.aio()
+        stderr = await process.stderr.read.aio()
+        
+        # Wait for process to complete and get return code
+        return_code = await process.wait.aio()
+        
+        return ExecutionResult(
+            stdout=stdout,
+            stderr=stderr,
+            return_code=return_code,
+        )
 
     async def stop(self) -> None:
         """
         Stop and clean up the Modal sandbox.
         """
         if self._sandbox is not None:
-            await asyncio.to_thread(self._stop_sync)
+            await self._sandbox.terminate.aio()
+            self._sandbox = None

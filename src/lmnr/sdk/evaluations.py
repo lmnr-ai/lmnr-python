@@ -269,8 +269,9 @@ class Evaluation:
         if sandboxConfig:
             self._logger.info(f"🔧 Sandbox mode enabled (type={sandboxConfig.type.value})")
             self.bundle = Bundle.from_functions(executor, evaluators)
+            entry_name = self.bundle.entry_file.name if self.bundle.entry_file else self.bundle.executor_module
             self._logger.info(
-                f"📦 Bundle created: {self.bundle.entry_file.name} "
+                f"📦 Bundle created: {entry_name} "
                 f"(executor={self.bundle.executor_name}, "
                 f"evaluators={list(self.bundle.evaluator_names.keys())})"
             )
@@ -549,17 +550,10 @@ class Evaluation:
             await sandbox.upload_files(files)
             self._logger.info(f"✅ Files uploaded to sandbox")
             
-            # Install uv package manager
-            self._logger.info(f"🔧 Installing uv package manager...")
-            uv_install = await sandbox.execute(["pip", "install", "uv"])
-            if not uv_install.success:
-                self._logger.error(f"❌ Failed to install uv: {uv_install.stderr}")
-                raise RuntimeError(f"Failed to install uv: {uv_install.stderr}")
-            
-            # Install dependencies using uv with locked versions
+            # Install dependencies using uv (uv is pre-installed in the image)
             self._logger.info(f"📦 Installing dependencies in sandbox...")
-            # NOTE: remove --frozen when testing with local dev installs
-            install_result = await sandbox.execute(["uv", "sync", "--frozen"])
+            # TODO: add --frozen, currently disabled for testing with local dev installs
+            install_result = await sandbox.execute(["uv", "sync"])
             if not install_result.success:
                 self._logger.error(f"❌ Dependency installation failed: {install_result.stderr}")
                 raise RuntimeError(f"Dependency installation failed: {install_result.stderr}")
@@ -581,9 +575,24 @@ class Evaluation:
             
             self._logger.info(f"✅ Sandbox execution completed for datapoint {datapoint_id}")
             
-            # Parse output - contains both output and scores
-            parsed = json.loads(result.stdout)
+            # Log stdout from user's code (prints, debug output, etc.)
+            if result.stdout.strip():
+                self._logger.info(f"📝 Executor stdout:\n{result.stdout}")
+            
+            # Read result from file (avoids mixing with user's stdout prints)
+            file_result = await sandbox.execute(["cat", Bundle.RESULT_FILE_PATH])
+            if not file_result.success:
+                self._logger.error(f"❌ Failed to read result file: {file_result.stderr}")
+                raise RuntimeError(f"Failed to read result file: {file_result.stderr}")
+            
+            parsed = json.loads(file_result.stdout)
             self._logger.info(f"📊 Sandbox result: output={parsed.get('output')}, scores={parsed.get('scores')}")
+            
+            # Log stderr if there are evaluator errors (None scores)
+            scores = parsed.get('scores', {})
+            if any(v is None for v in scores.values()) and result.stderr:
+                self._logger.warning(f"⚠️ Evaluator errors: {result.stderr}")
+            
             return parsed  # {"output": ..., "scores": {...}}
         finally:
             # Always clean up the sandbox

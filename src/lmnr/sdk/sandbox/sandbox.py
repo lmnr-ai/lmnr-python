@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING
+from lmnr.sdk.laminar import Laminar
 
 if TYPE_CHECKING:
     pass
@@ -30,6 +31,7 @@ class SandboxConfig:
                    Ignored if dockerfile is set.
         """
         actual_image = image or self.default_image
+        self.env["LMNR_SPAN_CONTEXT"] = Laminar.serialize_span_context()
         
         if self.type == SandboxType.MODAL:
             from lmnr.sdk.sandbox.modal import ModalSandbox
