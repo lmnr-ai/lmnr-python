@@ -267,7 +267,7 @@ class Evaluation:
         self.sandbox_config = sandboxConfig
         self.bundle = None
         if sandboxConfig:
-            self._logger.info(f"🔧 Sandbox mode enabled (type={sandboxConfig.type.value})")
+            self._logger.info(f"🔧 Sandbox mode enabled")
             self.bundle = Bundle.from_functions(executor, evaluators)
             entry_name = self.bundle.entry_file.name if self.bundle.entry_file else self.bundle.executor_module
             self._logger.info(

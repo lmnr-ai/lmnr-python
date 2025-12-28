@@ -1,23 +1,13 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import TYPE_CHECKING
+
 from lmnr.sdk.laminar import Laminar
-
-if TYPE_CHECKING:
-    pass
-
-
-class SandboxType(Enum):
-    """Supported sandbox types."""
-    MODAL = "modal"
 
 
 @dataclass
 class SandboxConfig:
     """Configuration for creating sandboxes."""
     
-    type: SandboxType
     default_image: str = "python:3.11-slim"
     timeout: int = 5 * 60  # Default 5 minutes
     env: dict[str, str] = field(default_factory=dict)
@@ -29,21 +19,21 @@ class SandboxConfig:
         Args:
             image: Docker image to use. Falls back to default_image if not specified.
                    Ignored if dockerfile is set.
+            dockerfile: Path to Dockerfile (per-datapoint, takes precedence over image)
         """
-        actual_image = image or self.default_image
-        self.env["LMNR_SPAN_CONTEXT"] = Laminar.serialize_span_context()
+        from lmnr.sdk.sandbox.modal import ModalSandbox
         
-        if self.type == SandboxType.MODAL:
-            from lmnr.sdk.sandbox.modal import ModalSandbox
-            return ModalSandbox(
-                image=actual_image,
-                dockerfile=dockerfile,
-                timeout=self.timeout,
-                app_name="evals",
-                env=self.env,
-            )
-        else:
-            raise ValueError(f"Unknown sandbox type: {self.type}")
+        actual_image = image or self.default_image
+        env = dict(self.env)  # Copy to avoid mutating original
+        env["LMNR_SPAN_CONTEXT"] = Laminar.serialize_span_context()
+        
+        return ModalSandbox(
+            image=actual_image,
+            dockerfile=dockerfile,
+            timeout=self.timeout,
+            app_name="evals",
+            env=env,
+        )
 
 
 @dataclass
