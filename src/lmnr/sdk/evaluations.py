@@ -560,7 +560,7 @@ class Evaluation:
             self._logger.info(f"✅ Dependencies installed")
             
             # Build the command to run executor + evaluators together
-            command = self.bundle.get_full_execution_command(
+            command = self.bundle.get_execution_command(
                 executor_args=(datapoint.data,),
                 target=datapoint.target,
             )

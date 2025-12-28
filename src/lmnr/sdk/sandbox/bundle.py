@@ -224,41 +224,8 @@ class Bundle:
         
         return text.encode("utf-8")
 
+    
     def get_execution_command(
-        self,
-        func_name: str,
-        args: tuple[Any, ...],
-    ) -> list[str]:
-        """
-        Generate command to execute a function in the sandbox.
-        
-        Args:
-            func_name: Name of function to call
-            args: Arguments to pass to function
-            
-        Returns:
-            Command as list of strings
-        """
-        # Serialize args to JSON and encode as base64 to avoid escaping issues
-        args_json = json.dumps(args[0]) if args else "{}"
-        args_b64 = base64.b64encode(args_json.encode()).decode()
-        
-        # Build Python code to execute
-        python_code = f"""
-import base64
-import json
-import sys
-sys.path.insert(0, '.')
-from {self.executor_module} import {func_name}
-data = json.loads(base64.b64decode('{args_b64}').decode())
-result = {func_name}(data)
-print(json.dumps(result))
-"""
-        
-        # Use uv run to execute within the virtual environment
-        return ["uv", "run", "python", "-c", python_code]
-
-    def get_full_execution_command(
         self,
         executor_args: tuple[Any, ...],
         target: Any,

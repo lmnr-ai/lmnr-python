@@ -1,3 +1,6 @@
+import io
+import zipfile
+
 import modal
 
 from lmnr.sdk.sandbox.sandbox import Sandbox, ExecutionResult
@@ -60,7 +63,7 @@ class ModalSandbox(Sandbox):
         
         modal_image = (
             base_image
-            .apt_install("python3", "python3-pip", "python3-venv", "curl")
+            .apt_install("python3", "python3-pip", "python3-venv", "curl", "unzip")
             .run_commands(
                 # Use official uv installer (avoids PEP 668 externally-managed-environment error)
                 "curl -LsSf https://astral.sh/uv/install.sh | sh",
@@ -83,25 +86,37 @@ class ModalSandbox(Sandbox):
         """
         Upload files to the Modal sandbox.
         
+        Creates a zip archive of all files locally and uploads it as a single file,
+        then extracts it in the sandbox. This is much faster than uploading files
+        individually due to reduced network round-trips.
+        
         Args:
             files: Mapping of relative file paths to file contents
         """
         if self._sandbox is None:
             raise RuntimeError("Sandbox not started. Call start() first.")
         
-        for path, content in files.items():
-            # Create parent directories if needed
-            parent_dir = "/".join(path.split("/")[:-1])
-            if parent_dir:
-                process = await self._sandbox.exec.aio("mkdir", "-p", parent_dir)
-                await process.wait.aio()
-            
-            # Write file content
-            if isinstance(content, str):
-                content = content.encode("utf-8")
-            
-            async with await self._sandbox.open.aio(path, "wb") as f:
-                await f.write.aio(content)
+        # Create zip archive in memory
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for path, content in files.items():
+                if isinstance(content, str):
+                    content = content.encode("utf-8")
+                zf.writestr(path, content)
+        
+        zip_data = zip_buffer.getvalue()
+        
+        # Upload single zip file
+        async with await self._sandbox.open.aio("/tmp/__bundle__.zip", "wb") as f:
+            await f.write.aio(zip_data)
+        
+        # Extract zip in sandbox
+        process = await self._sandbox.exec.aio("unzip", "-o", "-q", "/tmp/__bundle__.zip", "-d", ".")
+        await process.wait.aio()
+        
+        # Clean up zip file
+        process = await self._sandbox.exec.aio("rm", "/tmp/__bundle__.zip")
+        await process.wait.aio()
 
     async def execute(self, command: list[str]) -> ExecutionResult:
         """
