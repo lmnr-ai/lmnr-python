@@ -276,6 +276,23 @@ class Evaluation:
                 f"evaluators={list(self.bundle.evaluator_names.keys())})"
             )
 
+    def set_sandbox_config(self, config: SandboxConfig) -> None:
+        """
+        Set sandbox configuration for remote execution.
+        
+        This can be called after initialization to enable sandbox mode,
+        useful when the config comes from CLI arguments.
+        """
+        self.sandbox_config = config
+        self.bundle = Bundle.from_functions(self.executor, self.evaluators)
+        entry_name = self.bundle.entry_file.name if self.bundle.entry_file else self.bundle.executor_module
+        self._logger.info(f"🔧 Sandbox mode enabled")
+        self._logger.info(
+            f"📦 Bundle created: {entry_name} "
+            f"(executor={self.bundle.executor_name}, "
+            f"evaluators={list(self.bundle.evaluator_names.keys())})"
+        )
+
     async def run(self) -> EvaluationRunResult:
         return await self._run()
 

@@ -145,11 +145,11 @@ class Bundle:
         exclude_dirs = {
             ".git", ".venv", "venv", "__pycache__", ".pytest_cache",
             "node_modules", ".mypy_cache", ".ruff_cache", "dist", "build",
-            ".eggs", "*.egg-info", ".tox", ".nox",
+            ".eggs", ".tox", ".nox", ".cursor", ".idea", ".vscode", ".gitignore",
         }
         
-        # File extensions to include
-        include_extensions = {".py", ".toml", ".txt", ".json", ".yaml", ".yml", ".lock"}
+        # Files to exclude (sensitive or unnecessary)
+        exclude_files = {".env", ".env.local", ".env.production", ".DS_Store"}
         
         # Walk the project directory
         for path in self.project_root.rglob("*"):
@@ -161,16 +161,18 @@ class Bundle:
             if any(part in exclude_dirs or part.endswith(".egg-info") for part in parts):
                 continue
             
-            # Include files with matching extensions
-            if path.suffix in include_extensions:
-                relative_path = path.relative_to(self.project_root)
-                content = path.read_bytes()
-                
-                # Sanitize pyproject.toml to remove local path dependencies
-                if path.name == "pyproject.toml":
-                    content = self._sanitize_pyproject(content)
-                
-                files[str(relative_path)] = content
+            # Skip excluded files
+            if path.name in exclude_files:
+                continue
+            
+            relative_path = path.relative_to(self.project_root)
+            content = path.read_bytes()
+            
+            # Sanitize pyproject.toml to remove local path dependencies
+            if path.name == "pyproject.toml":
+                content = self._sanitize_pyproject(content)
+            
+            files[str(relative_path)] = content
         
         return files
     

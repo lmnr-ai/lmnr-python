@@ -10,11 +10,29 @@ import sys
 from lmnr.sdk.evaluations import Evaluation
 from lmnr.sdk.eval_control import PREPARE_ONLY, EVALUATION_INSTANCES
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.sandbox import SandboxConfig
 
 LOG = get_default_logger(__name__)
 EVAL_DIR = "evals"
 DEFAULT_DATASET_PULL_BATCH_SIZE = 100
 DEFAULT_DATASET_PUSH_BATCH_SIZE = 100
+
+
+def build_sandbox_config(args: Namespace) -> SandboxConfig | None:
+    """Build SandboxConfig from CLI arguments if --remote is set."""
+    if not args.remote:
+        return None
+    
+    config = SandboxConfig(
+        default_image=args.default_image,
+        timeout=args.timeout,
+        env_file=args.env_file,
+    )
+    
+    if args.env_file:
+        LOG.info(f"Loaded {len(config.env)} environment variables from {args.env_file}")
+    
+    return config
 
 
 def log_evaluation_instance_not_found() -> None:
@@ -53,6 +71,9 @@ async def run_evaluation(args: Namespace) -> None:
                 # If no matches found, treat as literal filename
                 files.append(pattern)
 
+    # Build sandbox config from CLI args (if --remote is set)
+    sandbox_config = build_sandbox_config(args)
+    
     prep_token = PREPARE_ONLY.set(True)
     scores = []
     try:
@@ -90,6 +111,10 @@ async def run_evaluation(args: Namespace) -> None:
 
             for evaluation in evaluations:
                 try:
+                    # Inject sandbox config from CLI if provided
+                    if sandbox_config:
+                        evaluation.set_sandbox_config(sandbox_config)
+                    
                     eval_result = await evaluation.run()
                     scores.append(
                         {

@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+import os
 
 from lmnr.sdk.laminar import Laminar
 
@@ -11,6 +12,41 @@ class SandboxConfig:
     default_image: str = "python:3.11-slim"
     timeout: int = 5 * 60  # Default 5 minutes
     env: dict[str, str] = field(default_factory=dict)
+    env_file: str | None = None  # Path to .env file to load
+    
+    def __post_init__(self):
+        """Load env vars from file if specified."""
+        if self.env_file:
+            file_env = self._parse_env_file(self.env_file)
+            # Merge: env_file first, then env overrides
+            merged = dict(file_env)
+            merged.update(self.env)
+            self.env = merged
+    
+    @staticmethod
+    def _parse_env_file(path: str) -> dict[str, str]:
+        """Parse a .env file and return a dict of key-value pairs."""
+        env = {}
+        try:
+            with open(path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    # Skip empty lines and comments
+                    if not line or line.startswith('#'):
+                        continue
+                    # Parse KEY=VALUE (handle quotes)
+                    if '=' in line:
+                        key, _, value = line.partition('=')
+                        key = key.strip()
+                        value = value.strip()
+                        # Remove surrounding quotes if present
+                        if (value.startswith('"') and value.endswith('"')) or \
+                           (value.startswith("'") and value.endswith("'")):
+                            value = value[1:-1]
+                        env[key] = value
+        except FileNotFoundError:
+            pass  # Silently ignore missing file
+        return env
     
     def create_sandbox(self, image: str | None = None, dockerfile: str | None = None) -> "Sandbox":
         """
@@ -26,6 +62,7 @@ class SandboxConfig:
         actual_image = image or self.default_image
         env = dict(self.env)  # Copy to avoid mutating original
         env["LMNR_SPAN_CONTEXT"] = Laminar.serialize_span_context()
+        env["LMNR_PROJECT_API_KEY"] = os.getenv("LMNR_PROJECT_API_KEY") or ""
         
         return ModalSandbox(
             image=actual_image,

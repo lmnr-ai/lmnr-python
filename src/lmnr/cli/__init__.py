@@ -39,6 +39,29 @@ def setup_eval_parser(subparsers: _SubParsersAction) -> None:
         help="Output file to write the results to. Outputs are written in JSON format.",
         nargs="?",
     )
+    # Sandbox mode options
+    parser_eval.add_argument(
+        "--remote",
+        action="store_true",
+        default=False,
+        help="Run evaluations in remote sandbox (Modal)",
+    )
+    parser_eval.add_argument(
+        "--timeout",
+        type=int,
+        default=5 * 60,
+        help="Sandbox timeout in seconds (default: 300)",
+    )
+    parser_eval.add_argument(
+        "--default-image",
+        default="python:3.11-slim",
+        help="Docker image for sandbox (default: python:3.11-slim)",
+    )
+    parser_eval.add_argument(
+        "--env-file",
+        default=None,
+        help="Path to .env file to load environment variables from (e.g., --env-file .env)",
+    )
 
 
 def setup_add_cursor_rules_parser(subparsers: _SubParsersAction) -> None:
