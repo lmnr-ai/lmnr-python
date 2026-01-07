@@ -202,7 +202,7 @@ class LaminarSpanInterfaceMixin:
         if not hasattr(self.span, "attributes"):
             self.logger.debug(
                 "[LaminarSpan.tags] WARNING. Current span does not have attributes object. "
-                "Perhaps, the span was created with a custom OTel SDK. Returning an empty list."
+                "Perhaps, the span was created with a custom OTel SDK. Returning an empty list. "
                 "Help: OpenTelemetry API does not guarantee reading attributes from a span, but OTel SDK "
                 "allows it by default. Laminar SDK allows to read attributes too.",
             )

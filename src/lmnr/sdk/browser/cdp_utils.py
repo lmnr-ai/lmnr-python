@@ -1,7 +1,10 @@
 import asyncio
 import orjson
 import os
+import threading
 import time
+
+from weakref import WeakKeyDictionary
 
 from opentelemetry import trace
 
@@ -24,7 +27,32 @@ CDP_OPERATION_TIMEOUT_SECONDS = 10
 
 # CDP ContextId is int
 frame_to_isolated_context_id: dict[str, int] = {}
-lock = asyncio.Lock()
+
+# Store locks per event loop to avoid pytest-asyncio issues
+_locks: WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Lock] = WeakKeyDictionary()
+_locks_lock = threading.Lock()
+_fallback_lock = asyncio.Lock()
+
+
+def get_lock() -> asyncio.Lock:
+    """Get or create a lock for the current event loop.
+
+    This ensures each event loop gets its own lock instance, avoiding
+    cross-event-loop binding issues that occur in pytest-asyncio when
+    tests run in different event loops.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        # No event loop running
+        logger.warning("No event loop running, using fallback lock")
+        return _fallback_lock
+
+    with _locks_lock:
+        if loop not in _locks:
+            _locks[loop] = asyncio.Lock()
+        return _locks[loop]
+
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(current_dir, "recorder", "record.umd.min.cjs"), "r") as f:
@@ -155,7 +183,7 @@ def get_mask_input_setting() -> MaskInputOptions:
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 async def get_isolated_context_id(cdp_session) -> int | None:
-    async with lock:
+    async with get_lock():
         tree = {}
         try:
             tree = await asyncio.wait_for(
