@@ -65,7 +65,7 @@ try:
                     openai_instrumentor
                     and openai_instrumentor.is_instrumented_by_opentelemetry
                 ):
-                    logger.info(
+                    logger.debug(
                         "Disabling OpenTelemetry instrumentation for OpenAI to avoid double-instrumentation of LiteLLM."
                     )
                     openai_instrumentor.uninstrument()

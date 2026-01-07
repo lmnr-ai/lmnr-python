@@ -75,6 +75,12 @@ def get_tool_definition(tool: dict) -> ToolDefinition:
             parameters["display_height"] = tool.get("display_height")
         if environment:  # Literal['browser', 'mac', 'windows', 'ubuntu']
             parameters["environment"] = environment
+    else:
+        # Some versions of LiteLLM (around 1.69.0) flatten the tool definition in
+        # anthropic style, not the OpenAI style as they do with other tool types.
+        function = tool.get("function") or tool
+        parameters = function.get("parameters") or function.get("input_schema")
+        description = function.get("description") or ""
 
     return ToolDefinition(
         name=name,
