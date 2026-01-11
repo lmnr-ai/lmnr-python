@@ -1,10 +1,14 @@
 import logging
 
 from enum import Enum
+from typing import TYPE_CHECKING
 
 from opentelemetry.trace import TracerProvider
 import lmnr.opentelemetry_lib.tracing._instrument_initializers as initializers
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
+
+if TYPE_CHECKING:
+    from opentelemetry.sdk._events import EventLoggerProvider
 
 module_logger = logging.getLogger(__name__)
 
@@ -22,6 +26,7 @@ class Instruments(Enum):
     CLAUDE_AGENT = "claude_agent"
     COHERE = "cohere"
     CREWAI = "crewai"
+    DAYTONA = "daytona"
     CUA_AGENT = "cua_agent"
     CUA_COMPUTER = "cua_computer"
     GOOGLE_GENAI = "google_genai"
@@ -71,6 +76,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.CLAUDE_AGENT: initializers.ClaudeAgentInstrumentorInitializer(),
     Instruments.COHERE: initializers.CohereInstrumentorInitializer(),
     Instruments.CREWAI: initializers.CrewAIInstrumentorInitializer(),
+    Instruments.DAYTONA: initializers.DaytonaInstrumentorInitializer(),
     Instruments.CUA_AGENT: initializers.CuaAgentInstrumentorInitializer(),
     Instruments.CUA_COMPUTER: initializers.CuaComputerInstrumentorInitializer(),
     Instruments.GOOGLE_GENAI: initializers.GoogleGenAIInstrumentorInitializer(),
@@ -106,6 +112,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
 
 def init_instrumentations(
     tracer_provider: TracerProvider,
+    event_logger_provider: "EventLoggerProvider | None" = None,
     instruments: set[Instruments] | None = None,
     block_instruments: set[Instruments] | None = None,
     async_client: AsyncLaminarClient | None = None,
@@ -130,7 +137,10 @@ def init_instrumentations(
             if instrumentor is None:
                 continue
             if not instrumentor.is_instrumented_by_opentelemetry:
-                instrumentor.instrument(tracer_provider=tracer_provider)
+                instrumentor.instrument(
+                    tracer_provider=tracer_provider,
+                    event_logger_provider=event_logger_provider,
+                )
         except Exception as e:
             if "No module named 'langchain_community'" in str(e):
                 # LangChain instrumentor does not require langchain_community,
