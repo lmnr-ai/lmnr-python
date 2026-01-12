@@ -61,16 +61,16 @@ class LaminarSpanExporter(SpanExporter):
         if get_otel_env_var("ENDPOINT"):
             if not base_url:
                 self.endpoint = get_otel_env_var("ENDPOINT")
+                protocol = get_otel_env_var("PROTOCOL") or "grpc/protobuf"
+                exporter_type = from_env("OTEL_EXPORTER") or "otlp_grpc"
+                self.force_http = (
+                    protocol in ("http/protobuf", "http/json")
+                    or exporter_type == "otlp_http"
+                )
             else:
                 logger.warning(
                     "OTEL_ENDPOINT is set, but Laminar base URL is also set. Ignoring OTEL_ENDPOINT."
                 )
-            protocol = get_otel_env_var("PROTOCOL") or "grpc/protobuf"
-            exporter_type = from_env("OTEL_EXPORTER") or "otlp_grpc"
-            self.force_http = (
-                protocol in ("http/protobuf", "http/json")
-                or exporter_type == "otlp_http"
-            )
         if not self.endpoint:
             raise ValueError(
                 "Laminar base URL is not set and OTEL_ENDPOINT is not set. Please either\n"
