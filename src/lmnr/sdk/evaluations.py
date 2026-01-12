@@ -29,6 +29,8 @@ from lmnr.sdk.types import (
     SpanType,
     TraceType,
 )
+from lmnr.sdk.sandbox.sandbox import SandboxConfig
+from lmnr.sdk.sandbox.bundle import Bundle
 from lmnr.sdk.utils import from_env, is_async, json_dumps
 
 DEFAULT_BATCH_SIZE = 5
@@ -130,6 +132,7 @@ class Evaluation:
         ) = None,
         max_export_batch_size: int | None = MAX_EXPORT_BATCH_SIZE,
         trace_export_timeout_seconds: int | None = None,
+        sandboxConfig: SandboxConfig | None = None,
     ):
         """
         Initializes an instance of the Evaluation class.
@@ -260,10 +263,43 @@ class Evaluation:
             export_timeout_seconds=trace_export_timeout_seconds,
         )
 
+        # Sandbox setup - config is used to create sandbox per datapoint
+        self.sandbox_config = sandboxConfig
+        self.bundle = None
+        if sandboxConfig:
+            self._logger.info(f"🔧 Sandbox mode enabled")
+            self.bundle = Bundle.from_functions(executor, evaluators)
+            entry_name = self.bundle.entry_file.name if self.bundle.entry_file else self.bundle.executor_module
+            self._logger.info(
+                f"📦 Bundle created: {entry_name} "
+                f"(executor={self.bundle.executor_name}, "
+                f"evaluators={list(self.bundle.evaluator_names.keys())})"
+            )
+
+    def set_sandbox_config(self, config: SandboxConfig) -> None:
+        """
+        Set sandbox configuration for remote execution.
+        
+        This can be called after initialization to enable sandbox mode,
+        useful when the config comes from CLI arguments.
+        """
+        self.sandbox_config = config
+        self.bundle = Bundle.from_functions(self.executor, self.evaluators)
+        entry_name = self.bundle.entry_file.name if self.bundle.entry_file else self.bundle.executor_module
+        self._logger.info(f"🔧 Sandbox mode enabled")
+        self._logger.info(
+            f"📦 Bundle created: {entry_name} "
+            f"(executor={self.bundle.executor_name}, "
+            f"evaluators={list(self.bundle.evaluator_names.keys())})"
+        )
+
     async def run(self) -> EvaluationRunResult:
         return await self._run()
 
     async def _run(self) -> EvaluationRunResult:
+        mode = "sandbox" if self.sandbox_config else "local"
+        self._logger.info(f"🏃 Starting evaluation '{self.name}' in {mode} mode...")
+        
         if isinstance(self.data, LaminarDataset):
             self.data.set_client(
                 LaminarClient(
@@ -310,6 +346,10 @@ class Evaluation:
         average_scores = get_average_scores(result_datapoints)
         self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
         await self._shutdown()
+        self._logger.info(
+            f"🎉 Evaluation '{self.name}' completed! "
+            f"Processed {len(result_datapoints)} datapoints."
+        )
         return {
             "average_scores": average_scores,
             "evaluation_id": evaluation_id,
@@ -392,61 +432,70 @@ class Evaluation:
                     eval_id, [partial_datapoint], self.group_name
                 )
                 executor_span.set_attribute(SPAN_TYPE, SpanType.EXECUTOR.value)
-                # Run synchronous executors in a thread pool to avoid blocking
-                if not is_async(self.executor):
-                    loop = asyncio.get_event_loop()
-                    output = await loop.run_in_executor(
-                        None, self.executor, datapoint.data
-                    )
+                
+                if self.sandbox_config:
+                    # Run executor + evaluators in sandbox (for file-based workflows)
+                    sandbox_result = await self._execute_in_sandbox(datapoint)
+                    output = sandbox_result["output"]
+                    scores = sandbox_result["scores"]
+                    L.set_span_output(output)
                 else:
-                    output = await self.executor(datapoint.data)
+                    # Run locally
+                    if not is_async(self.executor):
+                        loop = asyncio.get_event_loop()
+                        output = await loop.run_in_executor(
+                            None, self.executor, datapoint.data
+                        )
+                    else:
+                        output = await self.executor(datapoint.data)
+                    L.set_span_output(output)
 
-                L.set_span_output(output)
             target = datapoint.target
 
-            # Iterate over evaluators
-            scores: dict[str, Numeric] = {}
-            for evaluator_name, evaluator in self.evaluators.items():
-                # Check if evaluator is a HumanEvaluator instance
-                if isinstance(evaluator, HumanEvaluator):
-                    # Create an empty span for human evaluators
-                    with L.start_as_current_span(
-                        evaluator_name, input={"output": output, "target": target}
-                    ) as human_evaluator_span:
-                        human_evaluator_span.set_attribute(
-                            SPAN_TYPE, SpanType.HUMAN_EVALUATOR.value
-                        )
-                        if evaluator.options:
+            # Run evaluators locally (only when not using sandbox)
+            if not self.sandbox_config:
+                scores: dict[str, Numeric] = {}
+                for evaluator_name, evaluator in self.evaluators.items():
+                    # Check if evaluator is a HumanEvaluator instance
+                    if isinstance(evaluator, HumanEvaluator):
+                        # Create an empty span for human evaluators
+                        with L.start_as_current_span(
+                            evaluator_name, input={"output": output, "target": target}
+                        ) as human_evaluator_span:
                             human_evaluator_span.set_attribute(
-                                HUMAN_EVALUATOR_OPTIONS, json_dumps(evaluator.options)
+                                SPAN_TYPE, SpanType.HUMAN_EVALUATOR.value
                             )
-                        # Human evaluators don't execute automatically, just create the span
-                        L.set_span_output(None)
+                            if evaluator.options:
+                                human_evaluator_span.set_attribute(
+                                    HUMAN_EVALUATOR_OPTIONS, json_dumps(evaluator.options)
+                                )
+                            # Human evaluators don't execute automatically, just create the span
+                            L.set_span_output(None)
 
-                    # We don't want to save the score for human evaluators
-                    scores[evaluator_name] = None
-                else:
-                    # Regular evaluator function
-                    with L.start_as_current_span(
-                        evaluator_name, input={"output": output, "target": target}
-                    ) as evaluator_span:
-                        evaluator_span.set_attribute(
-                            SPAN_TYPE, SpanType.EVALUATOR.value
-                        )
-                        if is_async(evaluator):
-                            value = await evaluator(output, target)
-                        else:
-                            loop = asyncio.get_event_loop()
-                            value = await loop.run_in_executor(
-                                None, evaluator, output, target
-                            )
-                        L.set_span_output(value)
-
-                    # If evaluator returns a single number, use evaluator name as key
-                    if isinstance(value, NumericTypes):
-                        scores[evaluator_name] = value
+                        # We don't want to save the score for human evaluators
+                        scores[evaluator_name] = None
                     else:
-                        scores.update(value)
+                        # Regular evaluator function
+                        with L.start_as_current_span(
+                            evaluator_name, input={"output": output, "target": target}
+                        ) as evaluator_span:
+                            evaluator_span.set_attribute(
+                                SPAN_TYPE, SpanType.EVALUATOR.value
+                            )
+                            if is_async(evaluator):
+                                value = await evaluator(output, target)
+                            else:
+                                loop = asyncio.get_event_loop()
+                                value = await loop.run_in_executor(
+                                    None, evaluator, output, target
+                                )
+                            L.set_span_output(value)
+
+                        # If evaluator returns a single number, use evaluator name as key
+                        if isinstance(value, NumericTypes):
+                            scores[evaluator_name] = value
+                        else:
+                            scores.update(value)
 
             trace_id = uuid.UUID(int=evaluation_span.get_span_context().trace_id)
 
@@ -478,6 +527,96 @@ class Evaluation:
 
         return eval_datapoint
 
+    async def _execute_in_sandbox(self, datapoint: Datapoint) -> Any:
+        """
+        Execute the evaluation in a sandbox environment.
+        
+        Creates a fresh sandbox per datapoint for isolation.
+        This runs the executor remotely in an isolated container.
+        
+        The Docker image can be specified per-datapoint via metadata["image"],
+        otherwise falls back to the default image in SandboxConfig.
+        """
+        import json
+        
+        # Get image from datapoint metadata, or use default
+        image = None
+        if datapoint.metadata and "image" in datapoint.metadata:
+            image = datapoint.metadata["image"]
+
+        dockerfile = None
+        if datapoint.metadata:
+            dockerfile = datapoint.metadata.get("dockerfile", None)
+        
+        # Create a new sandbox for this datapoint
+        datapoint_id = datapoint.metadata.get("id", "unknown") if datapoint.metadata else "unknown"
+        self._logger.info(f"🚀 Creating sandbox for datapoint {datapoint_id} (image={image or 'default'})")
+        sandbox = self.sandbox_config.create_sandbox(image=image, dockerfile=dockerfile)
+        
+        try:
+            # Start sandbox
+            self._logger.info(f"⏳ Starting sandbox for datapoint {datapoint_id}...")
+            await sandbox.start()
+            self._logger.info(f"✅ Sandbox started for datapoint {datapoint_id}")
+            
+            # Upload bundle files
+            files = self.bundle.to_files()
+            self._logger.info(f"📤 Uploading {len(files)} files to sandbox:")
+            for file_path in sorted(files.keys()):
+                self._logger.info(f"   - {file_path}")
+            await sandbox.upload_files(files)
+            self._logger.info(f"✅ Files uploaded to sandbox")
+            
+            # Install dependencies using uv (uv is pre-installed in the image)
+            self._logger.info(f"📦 Installing dependencies in sandbox...")
+            # TODO: add --frozen, currently disabled for testing with local dev installs
+            install_result = await sandbox.execute(["uv", "sync"])
+            if not install_result.success:
+                self._logger.error(f"❌ Dependency installation failed: {install_result.stderr}")
+                raise RuntimeError(f"Dependency installation failed: {install_result.stderr}")
+            self._logger.info(f"✅ Dependencies installed")
+            
+            # Build the command to run executor + evaluators together
+            command = self.bundle.get_execution_command(
+                executor_args=(datapoint.data,),
+                target=datapoint.target,
+            )
+            
+            # Execute in sandbox
+            self._logger.info(f"▶️ Executing executor + evaluators in sandbox...")
+            result = await sandbox.execute(command)
+            
+            if not result.success:
+                self._logger.error(f"❌ Sandbox execution failed: {result.stderr}")
+                raise RuntimeError(f"Sandbox execution failed: {result.stderr}")
+            
+            self._logger.info(f"✅ Sandbox execution completed for datapoint {datapoint_id}")
+            
+            # Log stdout from user's code (prints, debug output, etc.)
+            if result.stdout.strip():
+                self._logger.info(f"📝 Executor stdout:\n{result.stdout}")
+            
+            # Read result from file (avoids mixing with user's stdout prints)
+            file_result = await sandbox.execute(["cat", Bundle.RESULT_FILE_PATH])
+            if not file_result.success:
+                self._logger.error(f"❌ Failed to read result file: {file_result.stderr}")
+                raise RuntimeError(f"Failed to read result file: {file_result.stderr}")
+            
+            parsed = json.loads(file_result.stdout)
+            self._logger.info(f"📊 Sandbox result: output={parsed.get('output')}, scores={parsed.get('scores')}")
+            
+            # Log stderr if there are evaluator errors (None scores)
+            scores = parsed.get('scores', {})
+            if any(v is None for v in scores.values()) and result.stderr:
+                self._logger.warning(f"⚠️ Evaluator errors: {result.stderr}")
+            
+            return parsed  # {"output": ..., "scores": {...}}
+        finally:
+            # Always clean up the sandbox
+            self._logger.info(f"🛑 Stopping sandbox for datapoint {datapoint_id}...")
+            await sandbox.stop()
+            self._logger.info(f"✅ Sandbox stopped for datapoint {datapoint_id}")
+
 
 def evaluate(
     data: EvaluationDataset | list[Datapoint | dict],
@@ -500,6 +639,7 @@ def evaluate(
     ) = None,
     max_export_batch_size: int | None = MAX_EXPORT_BATCH_SIZE,
     trace_export_timeout_seconds: int | None = None,
+    sandbox: SandboxConfig | None = None,
 ) -> EvaluationRunResult | None:
     """
     If added to the file which is called through `lmnr eval` command, then
@@ -582,6 +722,7 @@ def evaluate(
         disabled_instruments=disabled_instruments,
         max_export_batch_size=max_export_batch_size,
         trace_export_timeout_seconds=trace_export_timeout_seconds,
+        sandboxConfig=sandbox,
     )
 
     if PREPARE_ONLY.get():
