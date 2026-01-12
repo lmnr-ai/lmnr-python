@@ -1644,3 +1644,94 @@ def test_set_span_tags_add_span_tags(span_exporter: InMemorySpanExporter):
         "baz",
         "qux",
     ]
+
+
+def test_observe_disable_tracing_simple(span_exporter: InMemorySpanExporter):
+    """Simple test: @observe decorated functions should not create spans when LMNR_DISABLE_TRACING=true."""
+    old_val = os.getenv("LMNR_DISABLE_TRACING")
+
+    try:
+        # Set env var to disable tracing
+        os.environ["LMNR_DISABLE_TRACING"] = "true"
+
+        @observe()
+        def disabled_func(x, y):
+            return x + y
+
+        result = disabled_func(1, 2)
+
+        # Function should still work normally
+        assert result == 3
+
+        # But no spans should be exported
+        spans = span_exporter.get_finished_spans()
+        assert len(spans) == 0
+    finally:
+        # Restore original value
+        if old_val:
+            os.environ["LMNR_DISABLE_TRACING"] = old_val
+        else:
+            os.environ.pop("LMNR_DISABLE_TRACING", None)
+
+
+def test_observe_disable_tracing_nested_toggle(span_exporter: InMemorySpanExporter):
+    """Corner case: nested @observe functions with dynamic tracing toggle.
+
+    Tests that:
+    1. Nested observed functions work when tracing is enabled
+    2. Nested observed functions don't create spans when disabled
+    3. Toggling mid-execution affects only new spans
+    4. Function execution is unaffected by tracing state
+    """
+    old_val = os.getenv("LMNR_DISABLE_TRACING")
+
+    try:
+
+        @observe()
+        def inner_func():
+            return "inner_result"
+
+        @observe()
+        def outer_func():
+            return inner_func()
+
+        # Test 1: Enabled tracing - should create nested spans
+        os.environ.pop("LMNR_DISABLE_TRACING", None)
+        result = outer_func()
+        assert result == "inner_result"
+
+        spans = span_exporter.get_finished_spans()
+        assert len(spans) == 2
+        outer_span = [s for s in spans if s.name == "outer_func"][0]
+        inner_span = [s for s in spans if s.name == "inner_func"][0]
+        assert inner_span.parent.span_id == outer_span.get_span_context().span_id
+        span_exporter.clear()
+
+        # Test 2: Disabled tracing - no spans created but functions still work
+        os.environ["LMNR_DISABLE_TRACING"] = "true"
+        result = outer_func()
+        assert result == "inner_result"
+
+        spans = span_exporter.get_finished_spans()
+        assert len(spans) == 0
+        span_exporter.clear()
+
+        # Test 3: Re-enable tracing - spans created again with correct structure
+        os.environ.pop("LMNR_DISABLE_TRACING", None)
+        result = outer_func()
+        assert result == "inner_result"
+
+        spans = span_exporter.get_finished_spans()
+        assert len(spans) == 2
+        outer_span = [s for s in spans if s.name == "outer_func"][0]
+        inner_span = [s for s in spans if s.name == "inner_func"][0]
+        # Verify proper nesting after re-enabling
+        assert inner_span.parent.span_id == outer_span.get_span_context().span_id
+        assert inner_span.attributes["lmnr.span.path"] == ("outer_func", "inner_func")
+
+    finally:
+        # Restore original value
+        if old_val:
+            os.environ["LMNR_DISABLE_TRACING"] = old_val
+        else:
+            os.environ.pop("LMNR_DISABLE_TRACING", None)

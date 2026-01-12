@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.7.26"
+version = "0.7.27"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -35,7 +35,7 @@ dependencies = [
   # Related issue:
   # https://discuss.ai.google.dev/t/warning-all-log-messages-before-absl-initializelog-is-called-are-written-to-stderr-e0000-001731955515-629532-17124-init-cc-229-grpc-wait-for-shutdown-with-timeout-timed-out/50020
   # https://github.com/grpc/grpc/issues/38490
-  "grpcio (>=1)",
+  "grpcio>=1",
   "httpx (>=0.24.0)",
   "orjson (>=3.0.0)",
   "packaging (>=22.0)",
@@ -135,7 +135,9 @@ dev = [
   "langgraph>=0.4.8",
   "langchain-core>=0.3.75",
   "langchain>=0.3.27",
-  "litellm>=1.79.1",
+  # litellm started doing weird things with grpcio and broke the responses
+  # instrumentation. TODO: check how to fix and which versions to use.
+  "litellm (>=1.79.1,<1.80.6)",
   "groq>=0.30.0",
   "anthropic[bedrock]>=0.60.0",
   "langchain-openai>=0.3.32",

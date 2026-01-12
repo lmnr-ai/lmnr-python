@@ -32,7 +32,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
 )
 from lmnr.opentelemetry_lib.tracing.exporter import LaminarSpanExporter
 from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.utils import is_otel_attribute_value_type, json_dumps
+from lmnr.sdk.utils import from_env, is_otel_attribute_value_type, json_dumps
 from lmnr.version import PYTHON_VERSION, __version__
 
 
@@ -76,6 +76,13 @@ class LaminarSpanProcessor(SpanProcessor):
         )
 
     def on_start(self, span: Span, parent_context: Context | None = None):
+        is_disabled = (
+            from_env("LMNR_DISABLE_TRACING") or "false"
+        ).lower().strip() == "true"
+
+        if is_disabled:
+            span.set_attribute("lmnr.internal.disabled", True)
+
         with self._paths_lock:
             parent_span_path = list(span.attributes.get(PARENT_SPAN_PATH, tuple())) or (
                 self.__span_id_to_path.get(span.parent.span_id) if span.parent else None
@@ -85,8 +92,11 @@ class LaminarSpanProcessor(SpanProcessor):
             ) or (
                 self.__span_id_lists.get(span.parent.span_id, []) if span.parent else []
             )
+            span_name_in_path = span.name if not is_disabled else "_"
             span_path = (
-                parent_span_path + [span.name] if parent_span_path else [span.name]
+                parent_span_path + [span_name_in_path]
+                if parent_span_path
+                else [span_name_in_path]
             )
             span_ids_path = parent_span_ids_path + [
                 str(uuid.UUID(int=span.get_span_context().span_id))
@@ -95,6 +105,9 @@ class LaminarSpanProcessor(SpanProcessor):
             span.set_attribute(SPAN_IDS_PATH, span_ids_path)
             self.__span_id_to_path[span.get_span_context().span_id] = span_path
             self.__span_id_lists[span.get_span_context().span_id] = span_ids_path
+
+        if is_disabled:
+            return
 
         span.set_attribute(SPAN_INSTRUMENTATION_SOURCE, "python")
         span.set_attribute(SPAN_SDK_VERSION, __version__)
@@ -139,6 +152,10 @@ class LaminarSpanProcessor(SpanProcessor):
             self.instance.on_start(span, parent_context)
 
     def on_end(self, span: Span):
+        if (from_env("LMNR_DISABLE_TRACING") or "false").lower().strip() == "true" or (
+            span.attributes and span.attributes.get("lmnr.internal.disabled")
+        ):
+            return
         with self._instance_lock:
             self.instance.on_end(span)
 
