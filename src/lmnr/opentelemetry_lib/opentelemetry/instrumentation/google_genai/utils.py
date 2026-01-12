@@ -129,6 +129,8 @@ def to_dict(obj: BaseModel | pydantic.BaseModel | dict) -> dict[str, Any]:
             return obj.model_dump()
         elif isinstance(obj, dict):
             return obj
+        elif obj is None:
+            return {}
         else:
             return dict(obj)
     except Exception as e:

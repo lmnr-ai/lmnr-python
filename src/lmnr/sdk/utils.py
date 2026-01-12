@@ -119,6 +119,43 @@ def from_env(key: str) -> str | None:
     return dotenv.main.DotEnv(dotenv_path, verbose=False, encoding="utf-8").get(key)
 
 
+def get_frontend_url(
+    base_url: str | None = None, frontend_port: int | None = None
+) -> str:
+    """
+    Get the frontend URL from the base API URL.
+
+    Converts API URLs to frontend URLs:
+    - https://api.lmnr.ai -> https://www.lmnr.ai
+    - http://localhost:8000 -> http://localhost:5667 (or custom frontend_port)
+    - http://127.0.0.1:8000 -> http://127.0.0.1:5667 (or custom frontend_port)
+
+    Args:
+        base_url: Base API URL (defaults to https://api.lmnr.ai)
+        frontend_port: Optional frontend port for localhost (defaults to 5667)
+
+    Returns:
+        Frontend URL
+    """
+    import re
+
+    if not base_url or base_url == "https://api.lmnr.ai":
+        base_url = "https://www.lmnr.ai"
+        return base_url
+
+    url = base_url.rstrip("/")
+
+    # Handle localhost/127.0.0.1 - set frontend port
+    if "localhost" in url or "127.0.0.1" in url:
+        # Remove existing port if present
+        url = re.sub(r":\d+$", "", url)
+        # Add frontend port (default 5667)
+        port = frontend_port or 5667
+        url = f"{url}:{port}"
+
+    return url
+
+
 def is_otel_attribute_value_type(value: typing.Any) -> bool:
     def is_primitive_type(value: typing.Any) -> bool:
         return isinstance(value, (int, float, str, bool))
