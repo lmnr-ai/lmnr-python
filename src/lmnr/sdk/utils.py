@@ -126,7 +126,7 @@ def get_frontend_url(
     Get the frontend URL from the base API URL.
 
     Converts API URLs to frontend URLs:
-    - https://api.lmnr.ai -> https://www.lmnr.ai
+    - https://api.lmnr.ai -> https://www.laminar.sh
     - http://localhost:8000 -> http://localhost:5667 (or custom frontend_port)
     - http://127.0.0.1:8000 -> http://127.0.0.1:5667 (or custom frontend_port)
 
@@ -140,7 +140,7 @@ def get_frontend_url(
     import re
 
     if not base_url or base_url == "https://api.lmnr.ai":
-        base_url = "https://www.lmnr.ai"
+        base_url = "https://www.laminar.sh"
         return base_url
 
     url = base_url.rstrip("/")
