@@ -1044,3 +1044,171 @@ def test_set_span_tags_add_span_tags(span_exporter: InMemorySpanExporter):
         "baz",
         "qux",
     ]
+
+
+def test_disable_tracing_simple(span_exporter: InMemorySpanExporter):
+    """Simple test: spans should not be exported when LMNR_DISABLE_TRACING=true."""
+    old_val = os.getenv("LMNR_DISABLE_TRACING")
+
+    try:
+        # Set env var to disable tracing
+        os.environ["LMNR_DISABLE_TRACING"] = "true"
+
+        with Laminar.start_as_current_span("disabled_span", input="test_input"):
+            Laminar.set_span_output("test_output")
+
+        # No spans should be exported
+        spans = span_exporter.get_finished_spans()
+        assert len(spans) == 0
+    finally:
+        # Restore original value
+        if old_val:
+            os.environ["LMNR_DISABLE_TRACING"] = old_val
+        else:
+            os.environ.pop("LMNR_DISABLE_TRACING", None)
+
+
+def test_disable_tracing_dynamic_toggle(span_exporter: InMemorySpanExporter):
+    """Corner case: dynamically enable/disable tracing mid-execution.
+
+    Tests that:
+    1. Spans are exported when tracing is enabled
+    2. Spans are not exported when tracing is disabled
+    3. Spans started while disabled don't leak to enabled state
+    4. Context propagation works correctly across disabled spans
+    """
+    old_val = os.getenv("LMNR_DISABLE_TRACING")
+
+    try:
+        # Start with tracing enabled - span should be exported
+        os.environ.pop("LMNR_DISABLE_TRACING", None)
+        with Laminar.start_as_current_span("enabled_span_1", input="enabled_1"):
+            Laminar.set_span_output("output_1")
+
+        spans = span_exporter.get_finished_spans()
+        assert len(spans) == 1
+        assert spans[0].name == "enabled_span_1"
+        span_exporter.clear()
+
+        # Disable tracing - spans should not be exported
+        os.environ["LMNR_DISABLE_TRACING"] = "true"
+        with Laminar.start_as_current_span("disabled_span", input="disabled"):
+            Laminar.set_span_output("should_not_export")
+
+            # Nested span while disabled
+            with Laminar.start_as_current_span("nested_disabled"):
+                pass
+
+        spans = span_exporter.get_finished_spans()
+        assert len(spans) == 0
+        span_exporter.clear()
+
+        # Re-enable tracing - spans should be exported again
+        os.environ.pop("LMNR_DISABLE_TRACING", None)
+        with Laminar.start_as_current_span("enabled_span_2", input="enabled_2"):
+            Laminar.set_span_output("output_2")
+
+        spans = span_exporter.get_finished_spans()
+        assert len(spans) == 1
+        assert spans[0].name == "enabled_span_2"
+        # Verify the disabled spans didn't interfere with path tracking
+        assert spans[0].attributes["lmnr.span.path"] == ("enabled_span_2",)
+
+    finally:
+        # Restore original value
+        if old_val:
+            os.environ["LMNR_DISABLE_TRACING"] = old_val
+        else:
+            os.environ.pop("LMNR_DISABLE_TRACING", None)
+
+
+def test_disable_tracing_skipped_middle_span(span_exporter: InMemorySpanExporter):
+    """Corner case: parent enabled, child disabled, grandchild re-enabled.
+
+    Tests that when a middle span is disabled but parent and grandchild are enabled:
+    1. Only parent and grandchild are exported (child is skipped)
+    2. Grandchild's OpenTelemetry parent is the disabled child (context propagation)
+    3. lmnr.span.path shows "_" for the disabled span
+    4. lmnr.span.ids_path includes all span IDs (enabled and disabled)
+
+    This is critical for ensuring context propagation works correctly
+    even when intermediate spans are disabled. The disabled span still exists
+    in the OpenTelemetry context (so parent relationships are preserved),
+    but it's not exported and is marked with "_" in the path.
+    """
+    old_val = os.getenv("LMNR_DISABLE_TRACING")
+
+    try:
+        # Start with tracing enabled
+        os.environ.pop("LMNR_DISABLE_TRACING", None)
+
+        with Laminar.start_as_current_span("parent", input="parent_input"):
+            Laminar.set_span_output("parent_output")
+
+            # Get parent span ID for later comparison
+            parent_span_obj = Laminar.get_current_span()
+            parent_span_id = parent_span_obj.get_span_context().span_id
+
+            # Disable tracing for the child span
+            os.environ["LMNR_DISABLE_TRACING"] = "true"
+            with Laminar.start_as_current_span("child", input="child_input"):
+                Laminar.set_span_output("child_output")
+
+                # Get child span ID - it exists but won't be exported
+                child_span_obj = Laminar.get_current_span()
+                child_span_id = child_span_obj.get_span_context().span_id
+
+                # Re-enable tracing before grandchild
+                os.environ.pop("LMNR_DISABLE_TRACING", None)
+                with Laminar.start_as_current_span(
+                    "grandchild", input="grandchild_input"
+                ):
+                    Laminar.set_span_output("grandchild_output")
+
+        spans = span_exporter.get_finished_spans()
+
+        # Only parent and grandchild should be exported
+        assert len(spans) == 2
+
+        parent_span = [s for s in spans if s.name == "parent"][0]
+        grandchild_span = [s for s in spans if s.name == "grandchild"][0]
+
+        # Verify no child span was exported
+        child_spans = [s for s in spans if s.name == "child"]
+        assert len(child_spans) == 0
+
+        # Critical checks:
+        # 1. Grandchild's OpenTelemetry parent is the disabled child span
+        # (this is expected - the span exists in context even if not exported)
+        assert grandchild_span.parent.span_id == child_span_id
+
+        # 2. All spans share the same trace ID
+        assert (
+            grandchild_span.get_span_context().trace_id
+            == parent_span.get_span_context().trace_id
+        )
+
+        # 3. lmnr.span.path should show "_" for the disabled child span
+        assert parent_span.attributes["lmnr.span.path"] == ("parent",)
+        assert grandchild_span.attributes["lmnr.span.path"] == (
+            "parent",
+            "_",  # Disabled span is marked with underscore
+            "grandchild",
+        )
+
+        # 4. lmnr.span.ids_path should include all span IDs (enabled and disabled)
+        assert parent_span.attributes["lmnr.span.ids_path"] == (
+            str(uuid.UUID(int=parent_span_id)),
+        )
+        assert grandchild_span.attributes["lmnr.span.ids_path"] == (
+            str(uuid.UUID(int=parent_span_id)),
+            str(uuid.UUID(int=child_span_id)),  # Disabled span ID is included
+            str(uuid.UUID(int=grandchild_span.get_span_context().span_id)),
+        )
+
+    finally:
+        # Restore original value
+        if old_val:
+            os.environ["LMNR_DISABLE_TRACING"] = old_val
+        else:
+            os.environ.pop("LMNR_DISABLE_TRACING", None)
