@@ -28,6 +28,10 @@ def log_evaluation_instance_not_found() -> None:
 async def run_evaluation(args: Namespace) -> None:
     sys.path.append(os.getcwd())
 
+    # Set frontend port in environment if specified
+    if hasattr(args, "frontend_port") and args.frontend_port:
+        os.environ["LMNR_FRONTEND_PORT"] = str(args.frontend_port)
+
     if len(args.file) == 0:
         files = [
             os.path.join(EVAL_DIR, f)

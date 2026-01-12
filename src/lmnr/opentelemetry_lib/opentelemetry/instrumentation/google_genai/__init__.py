@@ -9,9 +9,9 @@ from typing import AsyncGenerator, Callable, Collection, Generator
 from google.genai import types
 
 from lmnr.opentelemetry_lib.tracing.context import (
-    get_current_context,
     get_event_attributes_from_context,
 )
+from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.utils import json_dumps
 
 from .config import (
@@ -33,7 +33,7 @@ from opentelemetry.trace import Tracer
 from wrapt import wrap_function_wrapper
 
 from opentelemetry import context as context_api
-from opentelemetry.trace import get_tracer, SpanKind, Span, Status, StatusCode
+from opentelemetry.trace import get_tracer, Span, Status, StatusCode
 from opentelemetry.semconv._incubating.attributes import gen_ai_attributes
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 
@@ -490,21 +490,44 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     ):
         return wrapped(*args, **kwargs)
 
-    span = tracer.start_span(
-        to_wrap.get("span_name"),
-        kind=SpanKind.CLIENT,
-        attributes={
+    span = Laminar.start_span(
+        name=to_wrap.get("span_name"),
+        span_type="LLM",
+    )
+    span.set_attributes(
+        {
             SpanAttributes.LLM_SYSTEM: "gemini",
             SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
-        },
-        context=get_current_context(),
+        }
     )
 
-    if span.is_recording():
-        _set_request_attributes(span, args, kwargs)
+    _set_request_attributes(span, args, kwargs)
 
     try:
-        response = wrapped(*args, **kwargs)
+        # Check for rollout mode and apply caching/overrides
+        from lmnr.sdk.rollout_control import is_rollout_mode
+
+        if is_rollout_mode():
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.rollout import (
+                get_google_genai_rollout_wrapper,
+            )
+
+            rollout_wrapper = get_google_genai_rollout_wrapper()
+            if rollout_wrapper:
+                with Laminar.use_span(span):
+                    response = rollout_wrapper.wrap_generate_content(
+                        wrapped,
+                        instance,
+                        args,
+                        kwargs,
+                        is_streaming=to_wrap.get("is_streaming", False),
+                        is_async=False,
+                    )
+            else:
+                response = wrapped(*args, **kwargs)
+        else:
+            response = wrapped(*args, **kwargs)
+
         if to_wrap.get("is_streaming"):
             return _build_from_streaming_response(span, response)
         if span.is_recording():
@@ -527,21 +550,56 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     ):
         return await wrapped(*args, **kwargs)
 
-    span = tracer.start_span(
-        to_wrap.get("span_name"),
-        kind=SpanKind.CLIENT,
-        attributes={
+    span = Laminar.start_span(
+        name=to_wrap.get("span_name"),
+        span_type="LLM",
+    )
+    span.set_attributes(
+        {
             SpanAttributes.LLM_SYSTEM: "gemini",
             SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
-        },
-        context=get_current_context(),
+        }
     )
-
-    if span.is_recording():
-        _set_request_attributes(span, args, kwargs)
+    _set_request_attributes(span, args, kwargs)
 
     try:
-        response = await wrapped(*args, **kwargs)
+        # Check for rollout mode and apply caching/overrides
+        from lmnr.sdk.rollout_control import is_rollout_mode
+
+        if is_rollout_mode():
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.rollout import (
+                get_google_genai_rollout_wrapper,
+            )
+
+            rollout_wrapper = get_google_genai_rollout_wrapper()
+            if rollout_wrapper:
+                # For async, we need to handle both sync and async wrapped functions
+                # In rollout mode, wrapped might return cached (sync) or live (async)
+                with Laminar.use_span(span):
+                    result = rollout_wrapper.wrap_generate_content(
+                        wrapped,
+                        instance,
+                        args,
+                        kwargs,
+                        is_streaming=to_wrap.get("is_streaming", False),
+                        is_async=True,
+                    )
+                # If result is a coroutine or async generator, await/iterate it
+                import inspect
+
+                if inspect.iscoroutine(result):
+                    response = await result
+                elif inspect.isasyncgen(result):
+                    # It's an async generator (cached streaming response)
+                    response = result
+                else:
+                    # It's a sync response (cached non-streaming)
+                    response = result
+            else:
+                response = await wrapped(*args, **kwargs)
+        else:
+            response = await wrapped(*args, **kwargs)
+
         if to_wrap.get("is_streaming"):
             return _abuild_from_streaming_response(span, response)
         else:

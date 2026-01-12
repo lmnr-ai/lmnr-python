@@ -9,11 +9,13 @@ from types import TracebackType
 
 from lmnr.sdk.client.synchronous.resources import (
     BrowserEvents,
+    Datasets,
     Evals,
     Evaluators,
     Tags,
+    Rollout,
+    Sql,
 )
-from lmnr.sdk.client.synchronous.resources.datasets import Datasets
 from lmnr.sdk.utils import from_env
 
 _T = TypeVar("_T", bound="LaminarClient")
@@ -27,6 +29,7 @@ class LaminarClient:
     __evals: Evals | None = None
     __tags: Tags | None = None
     __evaluators: Evaluators | None = None
+    __rollout: Rollout | None = None
 
     def __init__(
         self,
@@ -103,6 +106,8 @@ class LaminarClient:
         self.__datasets = Datasets(
             self.__client, self.__base_url, self.__project_api_key
         )
+        self.__rollout = Rollout(self.__client, self.__base_url, self.__project_api_key)
+        self.__sql = Sql(self.__client, self.__base_url, self.__project_api_key)
 
     @property
     def evals(self) -> Evals:
@@ -148,6 +153,24 @@ class LaminarClient:
             Datasets: The Datasets resource instance.
         """
         return self.__datasets
+
+    @property
+    def rollout(self) -> Rollout:
+        """Get the Rollout resource.
+
+        Returns:
+            Rollout: The Rollout resource instance.
+        """
+        return self.__rollout
+
+    @property
+    def sql(self) -> Sql:
+        """Get the SQL resource.
+
+        Returns:
+            Sql: The SQL resource instance.
+        """
+        return self.__sql
 
     def shutdown(self):
         """Shutdown the client by closing underlying connections."""

@@ -9,11 +9,13 @@ from types import TracebackType
 
 from lmnr.sdk.client.asynchronous.resources import (
     AsyncBrowserEvents,
+    AsyncDatasets,
     AsyncEvals,
-    AsyncTags,
     AsyncEvaluators,
+    AsyncRollout,
+    AsyncTags,
+    AsyncSql,
 )
-from lmnr.sdk.client.asynchronous.resources.datasets import AsyncDatasets
 from lmnr.sdk.utils import from_env
 
 _T = TypeVar("_T", bound="AsyncLaminarClient")
@@ -102,6 +104,10 @@ class AsyncLaminarClient:
         self.__datasets = AsyncDatasets(
             self.__client, self.__base_url, self.__project_api_key
         )
+        self.__rollout = AsyncRollout(
+            self.__client, self.__base_url, self.__project_api_key
+        )
+        self.__sql = AsyncSql(self.__client, self.__base_url, self.__project_api_key)
 
     @property
     def evals(self) -> AsyncEvals:
@@ -147,6 +153,24 @@ class AsyncLaminarClient:
             AsyncDatasets: The Datasets resource instance.
         """
         return self.__datasets
+
+    @property
+    def rollout(self) -> AsyncRollout:
+        """Get the Rollout resource.
+
+        Returns:
+            AsyncRollout: The Rollout resource instance.
+        """
+        return self.__rollout
+
+    @property
+    def sql(self) -> AsyncSql:
+        """Get the SQL resource.
+
+        Returns:
+            AsyncSql: The SQL resource instance.
+        """
+        return self.__sql
 
     @property
     def is_closed(self) -> bool:

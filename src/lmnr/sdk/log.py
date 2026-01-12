@@ -1,4 +1,7 @@
 import logging
+import os
+
+import dotenv
 
 
 class CustomFormatter(logging.Formatter):
@@ -62,11 +65,33 @@ class VerboseFormatter(CustomFormatter):
         return formatter.format(record)
 
 
+def get_level_from_env() -> int:
+    env_level = None
+    if val := os.getenv("LMNR_LOG_LEVEL"):
+        env_level = val.upper().strip()
+    else:
+        dotenv_path = dotenv.find_dotenv(usecwd=True)
+        # use DotEnv directly so we can set verbose to False
+        env_level = (
+            (
+                dotenv.main.DotEnv(dotenv_path, verbose=False, encoding="utf-8").get(
+                    "LMNR_LOG_LEVEL"
+                )
+                or "INFO"
+            )
+            .upper()
+            .strip()
+        )
+    if env_level:
+        return logging._nameToLevel.get(env_level, logging.INFO)
+    return logging.INFO
+
+
 def get_default_logger(
-    name: str, level: int = logging.INFO, propagate: bool = False, verbose: bool = True
+    name: str, level: int | None = None, propagate: bool = False, verbose: bool = True
 ) -> logging.Logger:
     logger = logging.getLogger(name)
-    logger.setLevel(level)
+    logger.setLevel(level or get_level_from_env())
     console_log_handler = logging.StreamHandler()
     if verbose:
         console_log_handler.setFormatter(VerboseColorfulFormatter())

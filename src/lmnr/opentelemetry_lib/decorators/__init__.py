@@ -18,6 +18,7 @@ from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     METADATA,
+    ROLLOUT_SESSION_ID_ATTR,
     SPAN_TYPE,
 )
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
@@ -59,6 +60,9 @@ def _setup_span(
         if association_properties is not None:
             for key, value in association_properties.items():
                 span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)
+                if key == "rollout_session_id":
+                    # special case, rollout session id is stored in a separate attribute
+                    span.set_attribute(ROLLOUT_SESSION_ID_ATTR, value)
 
         return span
 
@@ -199,7 +203,9 @@ def observe_base(
                 detach_context(isolated_ctx_token)
             # span will be ended in the generator
             if isinstance(res, types.GeneratorType):
-                return _handle_generator(span, wrapper, res)
+                return _handle_generator(
+                    span, wrapper, res, ignore_output, output_formatter
+                )
             if isinstance(res, types.AsyncGeneratorType):
                 # async def foo() -> AsyncGenerator[int, None]:
                 # is not considered async in a classical sense in Python,
@@ -208,7 +214,9 @@ def observe_base(
                 # Flags are listed from LSB here:
                 # https://docs.python.org/3/library/inspect.html#inspect-module-co-flags
                 # See also: https://groups.google.com/g/python-tulip/c/6rWweGXLutU?pli=1
-                return _ahandle_generator(span, wrapper, res)
+                return _ahandle_generator(
+                    span, wrapper, res, ignore_output, output_formatter
+                )
 
             _process_output(span, res, ignore_output, output_formatter)
             _cleanup_span(span, wrapper)
@@ -284,7 +292,9 @@ def async_observe_base(
             if isinstance(res, types.AsyncGeneratorType):
                 # probably unreachable, read the comment in the similar
                 # part of the sync wrapper.
-                return await _ahandle_generator(span, wrapper, res)
+                return _ahandle_generator(
+                    span, wrapper, res, ignore_output, output_formatter
+                )
 
             _process_output(span, res, ignore_output, output_formatter)
             _cleanup_span(span, wrapper)

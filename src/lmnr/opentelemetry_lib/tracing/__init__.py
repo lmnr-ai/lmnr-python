@@ -89,7 +89,8 @@ class TracerWrapper(object):
                 obj._span_processor = LaminarSpanProcessor(
                     base_url=base_url,
                     api_key=project_api_key,
-                    port=http_port if force_http else port,
+                    http_port=http_port,
+                    grpc_port=port,
                     exporter=exporter,
                     max_export_batch_size=max_export_batch_size,
                     timeout_seconds=timeout_seconds,
