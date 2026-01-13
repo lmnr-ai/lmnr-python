@@ -62,6 +62,7 @@ class RolloutInstrumentationWrapper:
 
         client = self._get_cache_client()
         if client:
+            client.invalidate_cache()
             # Fetch initial metadata by making a dummy request
             # This populates the cache client's internal cache from server response
             client.get_cached_span("", 0)

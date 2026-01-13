@@ -363,3 +363,11 @@ def process_stream_chunk(
         role=role,
         model_version=model_version,
     )
+
+
+def is_model_valid(obj: Any, model: BaseModel) -> bool:
+    try:
+        model.model_validate(obj)
+        return True
+    except Exception:
+        return False

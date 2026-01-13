@@ -5,11 +5,15 @@ The cache client provides methods to fetch cached spans, path-to-count mappings,
 and overrides from the cache server.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 import httpx
 
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.rollout.types import (
+    CacheServerResponse,
+    CachedSpan,
+)
 
 logger = get_default_logger(__name__)
 
@@ -32,9 +36,9 @@ class CacheClient:
         """
         self.base_url = cache_server_url.rstrip("/")
         self.timeout = timeout
-        self._client: Optional[httpx.Client] = None
-        self._path_to_count_cache: Optional[Dict[str, int]] = None
-        self._overrides_cache: Optional[Dict[str, Any]] = None
+        self._client: httpx.Client | None = None
+        self._path_to_count_cache: dict[str, int] | None = None
+        self._overrides_cache: dict[str, Any] | None = None
 
     def _get_client(self) -> httpx.Client:
         """Get or create the HTTP client."""
@@ -56,7 +60,7 @@ class CacheClient:
         """Context manager exit."""
         self.close()
 
-    def get_cached_span(self, path: str, index: int) -> Optional[Dict[str, Any]]:
+    def get_cached_span(self, path: str, index: int) -> CachedSpan | None:
         """
         Fetch a cached span by path and index.
 
@@ -75,11 +79,11 @@ class CacheClient:
             )
 
             if response.status_code == 200:
-                data = response.json()
+                data: CacheServerResponse = response.json()
 
                 # Update cached metadata
-                if "path_to_count" in data:
-                    self._path_to_count_cache = data["path_to_count"]
+                if "pathToCount" in data:
+                    self._path_to_count_cache = data["pathToCount"]
                 if "overrides" in data:
                     self._overrides_cache = data["overrides"]
 
@@ -107,7 +111,7 @@ class CacheClient:
             )
             return None
 
-    def get_path_to_count(self) -> Dict[str, int]:
+    def get_path_to_count(self) -> dict[str, int]:
         """
         Fetch the path-to-count mapping from cache server.
 
@@ -119,29 +123,37 @@ class CacheClient:
         if self._path_to_count_cache is not None:
             return self._path_to_count_cache
 
+        # Fetch metadata by requesting any cached span (with dummy values)
+        # The cache server returns metadata with every /cached request
         try:
             client = self._get_client()
-            response = client.get(f"{self.base_url}/path_to_count")
+            response = client.post(
+                f"{self.base_url}/cached",
+                json={"path": "__metadata__", "index": 0},
+            )
 
             if response.status_code == 200:
-                self._path_to_count_cache = response.json()
-                logger.debug(f"Fetched path_to_count: {self._path_to_count_cache}")
-                return self._path_to_count_cache
+                data: CacheServerResponse = response.json()
+                # Extract pathToCount from response
+                path_to_count = data.get("pathToCount", {})
+                self._path_to_count_cache = path_to_count
+                logger.debug(f"Fetched path_to_count: {path_to_count}")
+                return path_to_count
             else:
-                logger.warning(
+                logger.debug(
                     f"Cache server returned status {response.status_code} "
-                    "for path_to_count"
+                    "when fetching metadata"
                 )
                 return {}
 
         except httpx.TimeoutException:
-            logger.warning("Timeout fetching path_to_count")
+            logger.debug("Timeout fetching path_to_count metadata")
             return {}
         except Exception as e:
-            logger.warning(f"Error fetching path_to_count: {e}", exc_info=True)
+            logger.debug(f"Error fetching path_to_count metadata: {e}")
             return {}
 
-    def get_overrides(self) -> Dict[str, Any]:
+    def get_overrides(self) -> dict[str, Any]:
         """
         Fetch override parameters from cache server.
 
@@ -153,26 +165,34 @@ class CacheClient:
         if self._overrides_cache is not None:
             return self._overrides_cache
 
+        # Fetch metadata by requesting any cached span (with dummy values)
+        # The cache server returns metadata with every /cached request
         try:
             client = self._get_client()
-            response = client.get(f"{self.base_url}/overrides")
+            response = client.post(
+                f"{self.base_url}/cached",
+                json={"path": "__metadata__", "index": 0},
+            )
 
             if response.status_code == 200:
-                self._overrides_cache = response.json()
-                logger.debug(f"Fetched overrides: {self._overrides_cache}")
-                return self._overrides_cache
+                data: CacheServerResponse = response.json()
+                # Extract overrides from response
+                overrides = data.get("overrides", {})
+                self._overrides_cache = overrides
+                logger.debug(f"Fetched overrides: {overrides}")
+                return overrides
             else:
-                logger.warning(
+                logger.debug(
                     f"Cache server returned status {response.status_code} "
-                    "for overrides"
+                    "when fetching metadata"
                 )
                 return {}
 
         except httpx.TimeoutException:
-            logger.warning("Timeout fetching overrides")
+            logger.debug("Timeout fetching overrides metadata")
             return {}
         except Exception as e:
-            logger.warning(f"Error fetching overrides: {e}", exc_info=True)
+            logger.debug(f"Error fetching overrides metadata: {e}")
             return {}
 
     def should_use_cache(self, path: str, current_index: int) -> bool:
@@ -199,98 +219,3 @@ class CacheClient:
         self._path_to_count_cache = None
         self._overrides_cache = None
         logger.debug("Cache invalidated")
-
-    def update_path_to_count(self, path_to_count: Dict[str, int]) -> bool:
-        """
-        Update the path-to-count mapping on the cache server.
-
-        Args:
-            path_to_count: New path-to-count mapping
-
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            client = self._get_client()
-            response = client.post(
-                f"{self.base_url}/path_to_count",
-                json=path_to_count,
-            )
-
-            if response.status_code == 200:
-                self._path_to_count_cache = path_to_count
-                logger.debug(f"Updated path_to_count: {path_to_count}")
-                return True
-            else:
-                logger.warning(
-                    f"Cache server returned status {response.status_code} "
-                    "when updating path_to_count"
-                )
-                return False
-
-        except Exception as e:
-            logger.warning(f"Error updating path_to_count: {e}", exc_info=True)
-            return False
-
-    def update_overrides(self, overrides: Dict[str, Any]) -> bool:
-        """
-        Update override parameters on the cache server.
-
-        Args:
-            overrides: New override parameters
-
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            client = self._get_client()
-            response = client.post(
-                f"{self.base_url}/overrides",
-                json=overrides,
-            )
-
-            if response.status_code == 200:
-                self._overrides_cache = overrides
-                logger.debug(f"Updated overrides: {overrides}")
-                return True
-            else:
-                logger.warning(
-                    f"Cache server returned status {response.status_code} "
-                    "when updating overrides"
-                )
-                return False
-
-        except Exception as e:
-            logger.warning(f"Error updating overrides: {e}", exc_info=True)
-            return False
-
-    def update_spans(self, spans: Dict[str, Dict[str, Any]]) -> bool:
-        """
-        Update cached spans on the cache server.
-
-        Args:
-            spans: Dictionary mapping cache keys (e.g., "path:index") to span data
-
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            client = self._get_client()
-            response = client.post(
-                f"{self.base_url}/spans",
-                json=spans,
-            )
-
-            if response.status_code == 200:
-                logger.debug(f"Updated {len(spans)} cached spans")
-                return True
-            else:
-                logger.warning(
-                    f"Cache server returned status {response.status_code} "
-                    "when updating spans"
-                )
-                return False
-
-        except Exception as e:
-            logger.warning(f"Error updating spans: {e}", exc_info=True)
-            return False

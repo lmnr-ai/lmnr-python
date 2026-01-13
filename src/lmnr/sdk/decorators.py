@@ -132,15 +132,6 @@ def observe(
     def decorator(
         func: Callable[P, R] | Callable[P, Coroutine[Any, Any, R]],
     ) -> Callable[P, R] | Callable[P, Coroutine[Any, Any, R]]:
-        # Handle rollout entrypoint registration
-        if rollout_entrypoint:
-            from lmnr.sdk.rollout_control import is_rollout_mode, register_entrypoint
-
-            if is_rollout_mode():
-                # Register the function for rollout execution
-                entrypoint_name = name if name is not None else func.__name__
-                register_entrypoint(entrypoint_name, func)
-
         # Get rollout session ID from environment if in rollout mode
         rollout_session_id = os.environ.get("LMNR_ROLLOUT_SESSION_ID")
 
@@ -187,7 +178,7 @@ def observe(
             merged_metadata["rollout.session_id"] = rollout_session_id
 
         if is_async(func):
-            return async_observe_base(
+            wrapped_func = async_observe_base(
                 name=name,
                 ignore_input=ignore_input,
                 ignore_output=ignore_output,
@@ -200,7 +191,7 @@ def observe(
                 preserve_global_context=preserve_global_context,
             )(func)
         else:
-            return observe_base(
+            wrapped_func = observe_base(
                 name=name,
                 ignore_input=ignore_input,
                 ignore_output=ignore_output,
@@ -212,5 +203,16 @@ def observe(
                 association_properties=association_properties,
                 preserve_global_context=preserve_global_context,
             )(func)
+
+        # Handle rollout entrypoint registration (after wrapping)
+        if rollout_entrypoint:
+            from lmnr.sdk.rollout_control import is_rollout_mode, register_entrypoint
+
+            if is_rollout_mode():
+                # Register the WRAPPED function for rollout execution
+                entrypoint_name = name if name is not None else func.__name__
+                register_entrypoint(entrypoint_name, wrapped_func)
+
+        return wrapped_func
 
     return decorator

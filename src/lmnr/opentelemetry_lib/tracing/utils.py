@@ -30,7 +30,7 @@ def set_association_props_in_context(span: Span):
     props = span.laminar_association_properties
     user_id_key = f"{ASSOCIATION_PROPERTIES}.{USER_ID}"
     session_id_key = f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}"
-    rollout_session_id_key = ROLLOUT_SESSION_ID
+    rollout_session_id_key = f"{ASSOCIATION_PROPERTIES}.{ROLLOUT_SESSION_ID}"
     trace_type_key = f"{ASSOCIATION_PROPERTIES}.{TRACE_TYPE}"
 
     # Extract values from props

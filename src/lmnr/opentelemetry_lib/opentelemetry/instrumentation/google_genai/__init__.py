@@ -190,17 +190,19 @@ def _set_request_attributes(span, args, kwargs):
             "system_instruction"
         )
         if system_instruction:
+            system_content = (
+                get_content(process_content_union(system_instruction)) or {}
+            ).get("text", "")
             set_span_attribute(
                 span,
                 f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.content",
-                (get_content(process_content_union(system_instruction)) or {}).get(
-                    "text", ""
-                ),
+                system_content,
             )
             set_span_attribute(
                 span, f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.role", "system"
             )
             i += 1
+
         contents = kwargs.get("contents", [])
         if not isinstance(contents, list):
             contents = [contents]
@@ -259,6 +261,11 @@ def _set_request_attributes(span, args, kwargs):
                 role_from_content_union(content) or "user",
             )
             i += 1
+    if tools:
+        span.set_attribute(
+            "gen_ai.tool.definitions",
+            json_dumps([tool.model_dump() for tool in tools]),
+        )
 
 
 @dont_throw
@@ -373,6 +380,31 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
                 tool_call_index += 1
             if has_content:
                 i += 1
+
+
+@dont_throw
+def _set_raw_response_attribute(
+    span, response: types.GenerateContentResponse, record_raw_response: bool = False
+):
+    set_span_attribute(
+        span,
+        "gen_ai.output.messages",
+        json_dumps(
+            [
+                candidate.model_dump(exclude_unset=True, mode="json")
+                for candidate in response.candidates
+            ]
+        ),
+    )
+    if record_raw_response:
+        try:
+            set_span_attribute(
+                span,
+                "lmnr.sdk.raw.response",
+                json_dumps(response.model_dump(mode="json")),
+            )
+        except Exception:
+            logger.debug("Failed to set lmnr.sdk.raw.response attribute", exc_info=True)
 
 
 @dont_throw
@@ -507,7 +539,9 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         # Check for rollout mode and apply caching/overrides
         from lmnr.sdk.rollout_control import is_rollout_mode
 
-        if is_rollout_mode():
+        is_rollout = is_rollout_mode()
+
+        if is_rollout:
             from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.rollout import (
                 get_google_genai_rollout_wrapper,
             )
@@ -528,6 +562,7 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         else:
             response = wrapped(*args, **kwargs)
 
+        _set_raw_response_attribute(span, response, record_raw_response=is_rollout)
         if to_wrap.get("is_streaming"):
             return _build_from_streaming_response(span, response)
         if span.is_recording():
@@ -600,6 +635,7 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         else:
             response = await wrapped(*args, **kwargs)
 
+        _set_raw_response_attribute(span, response)
         if to_wrap.get("is_streaming"):
             return _abuild_from_streaming_response(span, response)
         else:

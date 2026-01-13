@@ -11,6 +11,9 @@ from typing import Any, AsyncGenerator, Generator
 from google.genai import types
 from opentelemetry.trace import Span
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
+    is_model_valid,
+)
 from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.rollout.instrumentation import RolloutInstrumentationWrapper
@@ -101,10 +104,6 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
 
             # Apply overrides to tools
             updated_tools = self._apply_tool_overrides(existing_tools, tool_overrides)
-
-            # TODO: apply tool overrides to span attributes
-            if span and span.is_recording():
-                pass
 
             # Set updated tools back
             if updated_tools is not None:
@@ -211,6 +210,28 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
             logger.error(f"Failed to parse output JSON: {e}")
             return None
 
+    def add_parsed_to_response(
+        self,
+        response: types.GenerateContentResponse,
+        parts: list[dict[str, Any]],
+        config: Any | None = None,
+    ) -> types.GenerateContentResponse:
+        # Handle structured output (parsed field)
+        if config:
+            response_schema = None
+            if isinstance(config, dict):
+                response_schema = config.get("response_schema")
+            elif hasattr(config, "response_schema"):
+                response_schema = config.response_schema
+
+            if response_schema is not None:
+                # Try to populate the parsed field
+                parsed_value = self._parse_structured_output(parts, response_schema)
+                if parsed_value is not None:
+                    # Set the parsed field on the response
+                    # Note: This is a bit hacky but necessary for cached responses
+                    response.parsed = parsed_value
+
     def cached_response_to_google_genai(
         self, cached_span: dict[str, Any], config: Any | None = None
     ) -> types.GenerateContentResponse | None:
@@ -224,6 +245,36 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
         Returns:
             Optional[types.GenerateContentResponse]: Reconstructed response or None
         """
+
+        def is_raw_genai_candidate_like(candidate: dict[str, Any]) -> bool:
+            if not isinstance(candidate, dict):
+                return False
+            if content := candidate.get("content"):
+                return (
+                    isinstance(content, dict)
+                    and isinstance(content.get("role"), str)
+                    and isinstance(content.get("parts"), list)
+                    and all(
+                        is_model_valid(part, types.Part)
+                        for part in content.get("parts", [])
+                    )
+                )
+            return False
+
+        if raw_response := cached_span.get("attributes", {}).get(
+            "lmnr.sdk.raw.response"
+        ):
+            try:
+                if isinstance(raw_response, dict):
+                    return types.GenerateContentResponse.model_validate(raw_response)
+                elif isinstance(raw_response, str):
+                    return types.GenerateContentResponse.model_validate_json(
+                        raw_response
+                    )
+            except Exception as e:
+                logger.debug(f"Failed to parse raw response: {e}")
+                pass  # fallback to the legacy parsing path
+
         try:
             output_str = cached_span.get("output", "")
             if not output_str:
@@ -240,6 +291,12 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
                 logger.warning(f"Unexpected output format: {type(parsed)}")
                 return None
 
+            if all(is_raw_genai_candidate_like(candidate) for candidate in parsed):
+                response = types.GenerateContentResponse.model_validate(
+                    {"candidates": parsed}
+                )
+                self.add_parsed_to_response(response, parsed[0].parts, config)
+                return response
             message = parsed[0]
             content_blocks = message.get("content", [])
 
@@ -279,29 +336,12 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
                 usage_metadata=None,  # Cached responses don't track tokens
                 model_version=None,
             )
-
-            # Handle structured output (parsed field)
-            if config:
-                response_schema = None
-                if isinstance(config, dict):
-                    response_schema = config.get("response_schema")
-                elif hasattr(config, "response_schema"):
-                    response_schema = config.response_schema
-
-                if response_schema is not None:
-                    # Try to populate the parsed field
-                    parsed_value = self._parse_structured_output(
-                        content_blocks, response_schema
-                    )
-                    if parsed_value is not None:
-                        # Set the parsed field on the response
-                        # Note: This is a bit hacky but necessary for cached responses
-                        response.parsed = parsed_value
+            self.add_parsed_to_response(response, content_blocks, config)
 
             return response
 
         except Exception as e:
-            logger.error(
+            logger.debug(
                 f"Failed to convert cached response to Google GenAI format: {e}",
                 exc_info=True,
             )
@@ -408,7 +448,7 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
         if self.should_use_cache(span_path, current_index):
             cached_span = self.get_cached_response(span_path, current_index)
             if cached_span:
-                logger.info(
+                logger.debug(
                     f"Using cached response for Google GenAI at {span_path}:{current_index}"
                 )
 
