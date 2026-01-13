@@ -232,6 +232,254 @@ def test_google_genai_tool_calls(span_exporter: InMemorySpanExporter):
     assert spans[0].attributes["gen_ai.completion.0.role"] == "model"
 
 
+@pytest.mark.vcr(record_mode="once")
+def test_google_genai_tool_calls_history(span_exporter: InMemorySpanExporter):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    client = Client(api_key="123")
+    system_instruction = "Be concise and to the point. Use tools as much as possible."
+    response = client.models.generate_content(
+        model="gemini-2.5-flash-lite",
+        contents=[
+            {
+                "role": "user",
+                "parts": [
+                    {"text": "What is the weather in Tokyo?"},
+                ],
+            }
+        ],
+        config=types.GenerateContentConfig(
+            system_instruction={"text": system_instruction},
+            tools=[types.Tool(function_declarations=[get_weather_declaration])],
+        ),
+    )
+    client.models.generate_content(
+        model="gemini-2.5-flash-lite",
+        contents=[
+            {
+                "role": "user",
+                "parts": [
+                    {"text": "What is the weather in Tokyo?"},
+                ],
+            },
+            {
+                "role": "model",
+                "parts": response.parts,
+            },
+            {
+                "role": "user",
+                "parts": [
+                    {
+                        "function_response": {
+                            "name": "get_weather",
+                            "response": {"output": "Sunny, 22°C."},
+                        }
+                    }
+                ],
+            },
+        ],
+        config=types.GenerateContentConfig(
+            system_instruction={"text": system_instruction},
+            tools=[types.Tool(function_declarations=[get_weather_declaration])],
+        ),
+    )
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 2
+    span1 = sorted(spans, key=lambda x: x.start_time)[0]
+    span2 = sorted(spans, key=lambda x: x.start_time)[1]
+
+    assert span1.attributes["gen_ai.completion.0.tool_calls.0.name"] == "get_weather"
+    assert json.loads(
+        span1.attributes["gen_ai.completion.0.tool_calls.0.arguments"]
+    ) == {"location": "Tokyo"}
+
+    for span in spans:
+        assert span.name == "gemini.generate_content"
+        assert span.attributes["gen_ai.request.model"] == "gemini-2.5-flash-lite"
+        assert span.attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+        assert span.attributes["gen_ai.prompt.0.content"] == system_instruction
+        assert span.attributes["gen_ai.prompt.0.role"] == "system"
+        user_content = json.loads(span.attributes["gen_ai.prompt.1.content"])
+        assert user_content[0]["type"] == "text"
+        assert user_content[0]["text"] == "What is the weather in Tokyo?"
+        assert span.attributes["gen_ai.prompt.1.role"] == "user"
+
+        assert span.attributes["gen_ai.completion.0.role"] == "model"
+
+    assert span2.attributes["gen_ai.prompt.2.role"] == "model"
+    assert json.loads(
+        span2.attributes["gen_ai.prompt.2.tool_calls.0.arguments"]
+    ) == json.loads(span1.attributes["gen_ai.completion.0.tool_calls.0.arguments"])
+    assert (
+        span2.attributes["gen_ai.prompt.2.tool_calls.0.name"]
+        == span1.attributes["gen_ai.completion.0.tool_calls.0.name"]
+    )
+    assert (
+        span2.attributes["gen_ai.prompt.2.tool_calls.0.id"]
+        == span1.attributes["gen_ai.completion.0.tool_calls.0.id"]
+    )
+    assert span2.attributes["gen_ai.prompt.3.role"] == "user"
+    assert json.loads(span2.attributes["gen_ai.prompt.3.content"]) == [
+        {
+            "function_response": {
+                "name": "get_weather",
+                "response": {"output": "Sunny, 22°C."},
+            }
+        }
+    ]
+    assert span2.attributes["gen_ai.completion.0.role"] == "model"
+    assert json.loads(span2.attributes["gen_ai.completion.0.content"]) == [
+        {
+            "type": "text",
+            "text": "The weather in Tokyo is sunny with a temperature of 22°C.",
+        }
+    ]
+
+
+@pytest.mark.vcr(record_mode="once")
+def test_google_genai_tool_calls_history_from_function_response(
+    span_exporter: InMemorySpanExporter,
+):
+    # The actual key was used during recording and the request/response was saved
+    # to the VCR cassette.
+    client = Client(api_key="123")
+    system_instruction = "Be concise and to the point. Use tools as much as possible."
+    response = client.models.generate_content(
+        model="gemini-2.5-flash-lite",
+        contents=[
+            {
+                "role": "user",
+                "parts": [
+                    {"text": "What is the weather in Tokyo?"},
+                ],
+            }
+        ],
+        config=types.GenerateContentConfig(
+            system_instruction={"text": system_instruction},
+            tools=[types.Tool(function_declarations=[get_weather_declaration])],
+        ),
+    )
+    client.models.generate_content(
+        model="gemini-2.5-flash-lite",
+        contents=[
+            {
+                "role": "user",
+                "parts": [
+                    {"text": "What is the weather in Tokyo?"},
+                ],
+            },
+            {
+                "role": "model",
+                "parts": response.parts,
+            },
+            {
+                "role": "user",
+                "parts": [
+                    types.Part.from_function_response(
+                        name="get_weather",
+                        response={"output": "Sunny, 22°C."},
+                    )
+                ],
+            },
+        ],
+        config=types.GenerateContentConfig(
+            system_instruction={"text": system_instruction},
+            tools=[types.Tool(function_declarations=[get_weather_declaration])],
+        ),
+    )
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 2
+    span1 = sorted(spans, key=lambda x: x.start_time)[0]
+    span2 = sorted(spans, key=lambda x: x.start_time)[1]
+
+    assert span1.attributes["gen_ai.completion.0.tool_calls.0.name"] == "get_weather"
+    assert json.loads(
+        span1.attributes["gen_ai.completion.0.tool_calls.0.arguments"]
+    ) == {"location": "Tokyo"}
+
+    for span in spans:
+        assert span.name == "gemini.generate_content"
+        assert span.attributes["gen_ai.request.model"] == "gemini-2.5-flash-lite"
+        assert span.attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+        assert span.attributes["gen_ai.prompt.0.content"] == system_instruction
+        assert span.attributes["gen_ai.prompt.0.role"] == "system"
+        user_content = json.loads(span.attributes["gen_ai.prompt.1.content"])
+        assert user_content[0]["type"] == "text"
+        assert user_content[0]["text"] == "What is the weather in Tokyo?"
+        assert span.attributes["gen_ai.prompt.1.role"] == "user"
+
+        assert span.attributes["gen_ai.completion.0.role"] == "model"
+
+    assert span2.attributes["gen_ai.prompt.2.role"] == "model"
+    assert json.loads(
+        span2.attributes["gen_ai.prompt.2.tool_calls.0.arguments"]
+    ) == json.loads(span1.attributes["gen_ai.completion.0.tool_calls.0.arguments"])
+    assert (
+        span2.attributes["gen_ai.prompt.2.tool_calls.0.name"]
+        == span1.attributes["gen_ai.completion.0.tool_calls.0.name"]
+    )
+    assert (
+        span2.attributes["gen_ai.prompt.2.tool_calls.0.id"]
+        == span1.attributes["gen_ai.completion.0.tool_calls.0.id"]
+    )
+    assert span2.attributes["gen_ai.prompt.3.role"] == "user"
+    assert json.loads(span2.attributes["gen_ai.prompt.3.content"]) == [
+        {
+            "function_response": {
+                "name": "get_weather",
+                "response": {"output": "Sunny, 22°C."},
+            }
+        }
+    ]
+    assert span2.attributes["gen_ai.completion.0.role"] == "model"
+    assert json.loads(span2.attributes["gen_ai.completion.0.content"]) == [
+        {
+            "type": "text",
+            "text": "The weather in Tokyo is sunny with a temperature of 22°C.",
+        }
+    ]
+
+
+#     # The actual key was used during recording and the request/response was saved
+#     # to the VCR cassette.
+#     client = Client(api_key="123")
+#     system_instruction = "Be concise and to the point. Use tools as much as possible."
+#     client.models.generate_content(
+#         model="gemini-2.5-flash-lite",
+#         contents=[
+#             {
+#                 "role": "user",
+#                 "parts": [
+#                     {"text": "What is the weather in Tokyo?"},
+#                 ],
+#             }
+#         ],
+#         config=types.GenerateContentConfig(
+#             system_instruction={"text": system_instruction},
+#             tools=[types.Tool(function_declarations=[get_weather_declaration])],
+#         ),
+#     )
+
+#     spans = span_exporter.get_finished_spans()
+#     assert len(spans) == 1
+#     assert spans[0].name == "gemini.generate_content"
+#     assert spans[0].attributes["gen_ai.request.model"] == "gemini-2.5-flash-lite"
+#     assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+#     assert spans[0].attributes["gen_ai.prompt.0.content"] == system_instruction
+#     assert spans[0].attributes["gen_ai.prompt.0.role"] == "system"
+#     user_content = json.loads(spans[0].attributes["gen_ai.prompt.1.content"])
+#     assert user_content[0]["type"] == "text"
+#     assert user_content[0]["text"] == "What is the weather in Tokyo?"
+#     assert spans[0].attributes["gen_ai.prompt.1.role"] == "user"
+#     assert spans[0].attributes["gen_ai.completion.0.tool_calls.0.name"] == "get_weather"
+#     assert json.loads(
+#         spans[0].attributes["gen_ai.completion.0.tool_calls.0.arguments"]
+#     ) == {"location": "Tokyo"}
+#     assert spans[0].attributes["gen_ai.completion.0.role"] == "model"
+
+
 @pytest.mark.vcr
 def test_google_genai_multiple_tool_calls(span_exporter: InMemorySpanExporter):
     # The actual key was used during recording and the request/response was saved
