@@ -55,13 +55,13 @@ class LaminarSpanExporter(SpanExporter):
                 else {"authorization": f"Bearer {api_key}"}
             )
         else:
-            if get_otel_env_var("HEADERS"):
-                self.headers = parse_otel_headers(get_otel_env_var("HEADERS"))
+            if env_headers := get_otel_env_var("HEADERS"):
+                self.headers = parse_otel_headers(env_headers)
             else:
                 self.headers = {}
-            if get_otel_env_var("ENDPOINT"):
+            if env_endpoint := get_otel_env_var("ENDPOINT"):
                 if not base_url:
-                    self.endpoint = get_otel_env_var("ENDPOINT")
+                    self.endpoint = env_endpoint
                     protocol = get_otel_env_var("PROTOCOL") or "grpc/protobuf"
                     exporter_type = from_env("OTEL_EXPORTER") or "otlp_grpc"
                     self.force_http = (
