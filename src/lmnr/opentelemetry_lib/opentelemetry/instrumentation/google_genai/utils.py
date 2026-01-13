@@ -1,6 +1,6 @@
 import base64
 from collections import defaultdict
-import logging
+import json
 import traceback
 from typing_extensions import TypedDict
 
@@ -12,6 +12,10 @@ from google.genai._common import BaseModel
 import pydantic
 from opentelemetry.trace import Span
 from typing import Any, Literal
+
+from lmnr.sdk.log import get_default_logger
+
+logger = get_default_logger(__name__)
 
 
 class ToolCall(pydantic.BaseModel):
@@ -29,10 +33,17 @@ class ImageUrl(pydantic.BaseModel):
     image_url: ImageUrlInner = pydantic.Field(default=ImageUrlInner())
 
 
+class ToolResult(pydantic.BaseModel):
+    name: str | None = pydantic.Field(default=None)
+    # {"output": "result"} or {"error": "error message"}
+    response: dict[str, Any] = pydantic.Field(default={})
+
+
 class ProcessedContentPart(pydantic.BaseModel):
     content: str | None = pydantic.Field(default=None)
     function_call: ToolCall | None = pydantic.Field(default=None)
     image_url: ImageUrl | None = pydantic.Field(default=None)
+    function_response: ToolResult | None = pydantic.Field(default=None)
 
 
 class ProcessChunkResult(TypedDict):
@@ -104,13 +115,13 @@ def dont_throw(func):
     @return: The wrapper function
     """
     # Obtain a logger specific to the function's module
-    logger = logging.getLogger(func.__module__)
+    func_logger = get_default_logger(func.__module__)
 
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            logger.debug(
+            func_logger.debug(
                 "Laminar failed to trace in %s, error: %s",
                 func.__name__,
                 traceback.format_exc(),
@@ -129,10 +140,12 @@ def to_dict(obj: BaseModel | pydantic.BaseModel | dict) -> dict[str, Any]:
             return obj.model_dump()
         elif isinstance(obj, dict):
             return obj
+        elif obj is None:
+            return {}
         else:
             return dict(obj)
     except Exception as e:
-        logging.error(f"Error converting to dict: {obj}, error: {e}")
+        logger.debug(f"Error converting to dict: {obj}, error: {e}")
         return dict(obj)
 
 
@@ -151,6 +164,13 @@ def get_content(
             }
         elif content.image_url:
             return content.image_url.model_dump()
+        elif content.function_response:
+            return {
+                "function_response": {
+                    "name": content.function_response.name,
+                    "response": content.function_response.response,
+                }
+            }
         else:
             return None
     elif isinstance(content, list):
@@ -226,10 +246,25 @@ def _process_part(
                 arguments=function_call_dict.get("args", {}),
             )
         )
+    elif part_dict.get("function_response"):
+        function_response_dict = to_dict(part_dict.get("function_response"))
+        return ProcessedContentPart(
+            function_response=ToolResult(
+                name=function_response_dict.get("name"),
+                response=function_response_dict.get("response", {}),
+            )
+        )
     elif part_dict.get("text") is not None:
         return ProcessedContentPart(content=part_dict.get("text"))
     else:
-        return None
+        try:
+            return ProcessedContentPart(content=json.dumps(part_dict))
+        except Exception:
+            pass
+        try:
+            return ProcessedContentPart(content=json.dumps(part_dict))
+        except Exception:
+            return None
 
 
 def role_from_content_union(

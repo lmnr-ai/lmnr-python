@@ -1,0 +1,134 @@
+interactions:
+- request:
+    body: '{"contents": [{"parts": [{"text": "What is the weather in Tokyo?"}], "role":
+      "user"}], "systemInstruction": {"parts": [{"text": "Be concise and to the point.
+      Use tools as much as possible."}], "role": "user"}, "tools": [{"functionDeclarations":
+      [{"description": "Gets the weather in a given city.", "name": "get_weather",
+      "parameters": {"properties": {"location": {"description": "The location to get
+      the weather for.", "type": "STRING"}}, "required": ["location"], "type": "OBJECT"}}]}],
+      "generationConfig": {}}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '512'
+      Content-Type:
+      - application/json
+      Host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - google-genai-sdk/1.57.0 gl-python/3.14.0rc3
+      x-goog-api-client:
+      - google-genai-sdk/1.57.0 gl-python/3.14.0rc3
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/3VRy2rDMBC8+yuETi3UoQ9CQ28h6aEHp6EJpVBCWOy1o1aWjKTQhJB/70q2Ezu0
+        PtjSzuzseuYQMcZTUJnIwKHlT+yTKowdwttjWjlUjoC2RMUKjDtz6+fQORMl36rUCa0mIGWvucEV
+        lEh1XqBb/yC4DRp+c0kCU9g/mgmROgUv7yWW+nuv+QXnGP13O59X54HcaBn2KXWGshU7tgSeCyXs
+        5g3B1jMXy9f5aV8uVIY7Kt9e8BO0Foqgm3hdVqBCQ0ZnrPWHpWTQlb0e1DP9cmEtvvWdCTqgYOBk
+        Aq+MLitHv4xqorchmMdmbCfHHn43bHCnHcgeNGqhjqyd0lAhu/l2oid/QAq3D8Y/fyw7oZF+b6vW
+        xPBdRY2dtcPvaGwTX4ElmRXfD4ZxLsFuYpLHIMsN2koriy+ZJ47drIR88TCppu+72Wi+jr9GyZhH
+        x+gXHpelTMYCAAA=
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Tue, 13 Jan 2026 23:19:30 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=266
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"contents": [{"parts": [{"text": "What is the weather in Tokyo?"}], "role":
+      "user"}, {"parts": [{"functionCall": {"args": {"location": "Tokyo"}, "name":
+      "get_weather"}}], "role": "model"}, {"parts": [{"functionResponse": {"name":
+      "get_weather", "response": {"output": "Sunny, 22\u00b0C."}}}], "role": "user"}],
+      "systemInstruction": {"parts": [{"text": "Be concise and to the point. Use tools
+      as much as possible."}], "role": "user"}, "tools": [{"functionDeclarations":
+      [{"description": "Gets the weather in a given city.", "name": "get_weather",
+      "parameters": {"properties": {"location": {"description": "The location to get
+      the weather for.", "type": "STRING"}}, "required": ["location"], "type": "OBJECT"}}]}],
+      "generationConfig": {}}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '737'
+      Content-Type:
+      - application/json
+      Host:
+      - generativelanguage.googleapis.com
+      user-agent:
+      - google-genai-sdk/1.57.0 gl-python/3.14.0rc3
+      x-goog-api-client:
+      - google-genai-sdk/1.57.0 gl-python/3.14.0rc3
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/2WQTU7DMBCF9znFyOu2alN+JHZVQaILoIKAkKqqGsi0sUjsyJ7Qhqh34gycDCdp
+        0hS8sK15z2/GX+EBiHdUoQyRyYorWLgKQFHtpaYVk2InNCVXTNHw0VuvonN3FqZd+UgEEcGWkCMy
+        IBUE+iPXIC3YTKkctpIjQGBKUjLImSHQa/D9n+/pQHQC9+192TuOYXRMZY9EhxQ39n1jEGuppI0e
+        Ca1Wpe0peJiLVpUqpJ0rD72mQRUtMosbuiNGBwTbb4vU6CRlNz6pqc4qIKPhZZ3WAXhquDjorBnj
+        U8kf9/4F22vXVsZdsh3o7pcYS84rqjevgeiQ4D9zNSyqc+kdqNSgXshYWRPZUOIY9f3BeX8do436
+        Lp+qXGHIplpZmoWlccL3CeLX6vYtH32Gs/kqHT/nkzPh7b1fUcwe0kICAAA=
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Tue, 13 Jan 2026 23:19:30 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=249
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1
