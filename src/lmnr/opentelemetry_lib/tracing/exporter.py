@@ -46,31 +46,32 @@ class LaminarSpanExporter(SpanExporter):
         final_url = f"{url}:{port or 443}"
         api_key = api_key or from_env("LMNR_PROJECT_API_KEY")
         self.endpoint = final_url
+        self.timeout = timeout_seconds
+        self.force_http = force_http
         if api_key:
             self.headers = (
                 {"Authorization": f"Bearer {api_key}"}
                 if force_http
                 else {"authorization": f"Bearer {api_key}"}
             )
-        elif get_otel_env_var("HEADERS"):
-            self.headers = parse_otel_headers(get_otel_env_var("HEADERS"))
         else:
-            self.headers = {}
-        self.timeout = timeout_seconds
-        self.force_http = force_http
-        if get_otel_env_var("ENDPOINT"):
-            if not base_url:
-                self.endpoint = get_otel_env_var("ENDPOINT")
-                protocol = get_otel_env_var("PROTOCOL") or "grpc/protobuf"
-                exporter_type = from_env("OTEL_EXPORTER") or "otlp_grpc"
-                self.force_http = (
-                    protocol in ("http/protobuf", "http/json")
-                    or exporter_type == "otlp_http"
-                )
+            if get_otel_env_var("HEADERS"):
+                self.headers = parse_otel_headers(get_otel_env_var("HEADERS"))
             else:
-                logger.warning(
-                    "OTEL_ENDPOINT is set, but Laminar base URL is also set. Ignoring OTEL_ENDPOINT."
-                )
+                self.headers = {}
+            if get_otel_env_var("ENDPOINT"):
+                if not base_url:
+                    self.endpoint = get_otel_env_var("ENDPOINT")
+                    protocol = get_otel_env_var("PROTOCOL") or "grpc/protobuf"
+                    exporter_type = from_env("OTEL_EXPORTER") or "otlp_grpc"
+                    self.force_http = (
+                        protocol in ("http/protobuf", "http/json")
+                        or exporter_type == "otlp_http"
+                    )
+                else:
+                    logger.warning(
+                        "OTEL_ENDPOINT is set, but Laminar base URL is also set. Ignoring OTEL_ENDPOINT."
+                    )
         if not self.endpoint:
             raise ValueError(
                 "Laminar base URL is not set and OTEL_ENDPOINT is not set. Please either\n"

@@ -67,20 +67,27 @@ class TestLaminarSpanExporterOtel:
 
     def test_otel_config_initialization(self):
         """Test exporter initialization with OTEL config."""
-        with patch.dict(
-            os.environ,
-            {
-                "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://custom-endpoint:4318",
-                "OTEL_EXPORTER_OTLP_TRACES_HEADERS": "Authorization=Bearer%20test-token",
-                "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "http/protobuf",
-            },
-            clear=True,
-        ):
-            exporter = LaminarSpanExporter()
+        old_env_api_key = os.environ.get("LMNR_PROJECT_API_KEY")
+        if old_env_api_key:
+            del os.environ["LMNR_PROJECT_API_KEY"]
+        try:
+            with patch.dict(
+                os.environ,
+                {
+                    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://custom-endpoint:4318",
+                    "OTEL_EXPORTER_OTLP_TRACES_HEADERS": "Authorization=Bearer%20test-token",
+                    "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "http/protobuf",
+                },
+                clear=True,
+            ):
+                exporter = LaminarSpanExporter()
 
-            assert exporter.endpoint == "http://custom-endpoint:4318"
-            assert exporter.headers == {"Authorization": "Bearer test-token"}
-            assert exporter.force_http is True
+                assert exporter.endpoint == "http://custom-endpoint:4318"
+                assert exporter.headers == {"Authorization": "Bearer test-token"}
+                assert exporter.force_http is True
+        finally:
+            if old_env_api_key:
+                os.environ["LMNR_PROJECT_API_KEY"] = old_env_api_key
 
     def test_otel_config_defaults(self):
         """Test OTEL config with defaults."""
