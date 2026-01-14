@@ -5,13 +5,13 @@ execute_session_command calls.
 
 The instrumentation handles both synchronous and asynchronous commands:
 
-Synchronous commands (var_async=False):
+Synchronous commands (run_async/var_async=False):
 1. Create a span when execute_session_command is called
 2. Execute the command and wait for completion
 3. End the span after the command returns
 4. Emit logs immediately from response.stdout/stderr
 
-Asynchronous commands (var_async=True):
+Asynchronous commands (run_async/var_async=True):
 1. Create a span when execute_session_command is called
 2. Execute the command (returns immediately with cmd_id)
 3. End the span after execute_session_command returns
@@ -88,8 +88,10 @@ def _set_request_attributes(span: Span, session_id: str, request):
     # Extract attributes from the request object
     if hasattr(request, "command"):
         set_span_attribute(span, "daytona.command", request.command)
-    if hasattr(request, "var_async"):
-        set_span_attribute(span, "daytona.async", request.var_async)
+    if getattr(request, "run_async", False) or getattr(request, "var_async", False):
+        set_span_attribute(span, "daytona.async", True)
+    else:
+        set_span_attribute(span, "daytona.async", False)
 
 
 @dont_throw
@@ -276,7 +278,7 @@ def _wrap(
     4. Sets response attributes
     5. Ends the span
     6. Emits logs:
-       - For async commands (var_async=True): starts background log streaming
+       - For async commands (run_async/var_async=True): starts background log streaming
        - For sync commands: emits logs immediately from response.stdout/stderr
     """
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
@@ -311,8 +313,8 @@ def _wrap(
         cmd_id = getattr(response, "cmd_id", None)
         if cmd_id and session_id:
             # Check if this is an async command
-            is_async_command = (
-                getattr(request, "var_async", False) if request else False
+            is_async_command = request is not None and (
+                getattr(request, "run_async", False) or getattr(request, "var_async", False)
             )
 
             if is_async_command:
@@ -352,7 +354,7 @@ async def _awrap(
     4. Sets response attributes
     5. Ends the span
     6. Emits logs:
-       - For async commands (var_async=True): starts background log streaming
+       - For async commands (run_async/var_async=True): starts background log streaming
        - For sync commands: emits logs immediately from response.stdout/stderr
     """
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
@@ -387,8 +389,8 @@ async def _awrap(
         cmd_id = getattr(response, "cmd_id", None)
         if cmd_id and session_id:
             # Check if this is an async command
-            is_async_command = (
-                getattr(request, "var_async", False) if request else False
+            is_async_command = request is not None and (
+                getattr(request, "run_async", False) or getattr(request, "var_async", False)
             )
 
             if is_async_command:
