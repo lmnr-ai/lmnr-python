@@ -170,18 +170,23 @@ class LaminarSpanProcessor(SpanProcessor):
             )
             return
 
-        # Reinitialize exporter (thread-safe, handles its own locking)
-        self.exporter._init_instance()
-
         with self._instance_lock:
             old_instance = self.instance
             disable_batch = isinstance(old_instance, SimpleSpanProcessor)
 
+            # CRITICAL: Shutdown old processor FIRST (uses old exporter)
+            # This flushes pending spans and joins the daemon thread.
+            # Only then, we can reinitialize the exporter.
             try:
                 old_instance.shutdown()
             except Exception as e:
                 self.logger.debug(f"Error shutting down old processor instance: {e}")
 
+            # reinitialize the exporter
+            # This is thread-safe as it has its own locking
+            self.exporter._init_instance()
+
+            # Create new processor with fresh exporter
             self.instance = (
                 SimpleSpanProcessor(self.exporter)
                 if disable_batch

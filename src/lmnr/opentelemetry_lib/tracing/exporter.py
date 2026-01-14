@@ -129,7 +129,6 @@ class LaminarSpanExporter(SpanExporter):
                 compression=grpc.Compression.Gzip,
             )
 
-        # Atomic swap with proper cleanup
         with self._instance_lock:
             old_instance: OTLPSpanExporter | HTTPOTLPSpanExporter | None = getattr(
                 self, "instance", None
