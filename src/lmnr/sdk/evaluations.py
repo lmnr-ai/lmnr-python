@@ -29,7 +29,7 @@ from lmnr.sdk.types import (
     SpanType,
     TraceType,
 )
-from lmnr.sdk.utils import from_env, is_async, json_dumps
+from lmnr.sdk.utils import from_env, is_async, json_dumps, get_frontend_url
 
 DEFAULT_BATCH_SIZE = 5
 MAX_EXPORT_BATCH_SIZE = 64
@@ -44,17 +44,35 @@ class EvaluationRunResult(TypedDict):
 
 
 def get_evaluation_url(
-    project_id: str, evaluation_id: str, base_url: str | None = None
+    project_id: str,
+    evaluation_id: str,
+    base_url: str | None = None,
+    frontend_port: int | None = None,
 ):
-    if not base_url or base_url == "https://api.lmnr.ai":
-        base_url = "https://www.lmnr.ai"
+    """
+    Get the frontend URL for an evaluation.
 
-    url = base_url
-    url = re.sub(r"\/$", "", url)
-    if url.endswith("localhost") or url.endswith("127.0.0.1"):
-        # We best effort assume that the frontend is running on port 5667
-        url = url + ":5667"
-    return f"{url}/project/{project_id}/evaluations/{evaluation_id}"
+    Args:
+        project_id: Project ID
+        evaluation_id: Evaluation ID
+        base_url: Base API URL
+        frontend_port: Optional frontend port for localhost (defaults to 5667)
+
+    Returns:
+        Full URL to the evaluation in the frontend
+    """
+
+    # Check environment variable if frontend_port not explicitly provided
+    if frontend_port is None:
+        port_str = from_env("LMNR_FRONTEND_PORT")
+        if port_str:
+            try:
+                frontend_port = int(port_str)
+            except ValueError:
+                pass
+
+    frontend_url = get_frontend_url(base_url, frontend_port)
+    return f"{frontend_url}/project/{project_id}/evaluations/{evaluation_id}"
 
 
 def get_average_scores(results: list[EvaluationResultDatapoint]) -> dict[str, Numeric]:
@@ -77,8 +95,9 @@ def get_average_scores(results: list[EvaluationResultDatapoint]) -> dict[str, Nu
 
 
 class EvaluationReporter:
-    def __init__(self, base_url):
+    def __init__(self, base_url, frontend_port: int | None = None):
         self.base_url = base_url
+        self.frontend_port = frontend_port
 
     def start(self, length: int):
         self.cli_progress = tqdm(
@@ -103,7 +122,7 @@ class EvaluationReporter:
         for name, score in average_scores.items():
             print(f"{name}: {score}")
         print(
-            f"Check the results at {get_evaluation_url(project_id, evaluation_id, self.base_url)}\n"
+            f"Check the results at {get_evaluation_url(project_id, evaluation_id, self.base_url, self.frontend_port)}\n"
         )
 
 
@@ -122,6 +141,7 @@ class Evaluation:
         base_http_url: str | None = None,
         http_port: int | None = None,
         grpc_port: int | None = None,
+        frontend_port: int | None = None,
         instruments: (
             set[Instruments] | list[Instruments] | tuple[Instruments] | None
         ) = None,
@@ -182,6 +202,8 @@ class Evaluation:
                 HTTP service. Defaults to 443 if not specified.
             grpc_port (int | None, optional): The port for Laminar API\
                 gRPC service. Defaults to 8443 if not specified.
+            frontend_port (int | None, optional): The port for the Laminar frontend.\
+                Defaults to 5667 if not specified.
             instruments (set[Instruments] | None, optional): Set of modules\
                 to auto-instrument. If None, all available instruments will be\
                 used.
@@ -207,7 +229,7 @@ class Evaluation:
 
         base_url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
 
-        self.reporter = EvaluationReporter(base_url)
+        self.reporter = EvaluationReporter(base_url, frontend_port)
         if isinstance(data, list):
             self.data = [
                 (Datapoint.model_validate(point) if isinstance(point, dict) else point)
@@ -492,6 +514,7 @@ def evaluate(
     base_http_url: str | None = None,
     http_port: int | None = None,
     grpc_port: int | None = None,
+    frontend_port: int | None = None,
     instruments: (
         set[Instruments] | list[Instruments] | tuple[Instruments] | None
     ) = None,
@@ -554,6 +577,8 @@ def evaluate(
         grpc_port (int | None, optional): The port for Laminar API's gRPC\
                         service. 8443 is used if not specified.
                         Defaults to None.
+        frontend_port (int | None, optional): The port for the Laminar frontend.\
+                        Defaults to 5667 if not specified.
         instruments (set[Instruments] | None, optional): Set of modules to\
                         auto-instrument. If None, all available instruments\
                         will be used.
@@ -578,6 +603,7 @@ def evaluate(
         base_http_url=base_http_url,
         http_port=http_port,
         grpc_port=grpc_port,
+        frontend_port=frontend_port,
         instruments=instruments,
         disabled_instruments=disabled_instruments,
         max_export_batch_size=max_export_batch_size,

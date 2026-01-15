@@ -9,9 +9,9 @@ from typing import AsyncGenerator, Callable, Collection, Generator
 from google.genai import types
 
 from lmnr.opentelemetry_lib.tracing.context import (
-    get_current_context,
     get_event_attributes_from_context,
 )
+from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.utils import json_dumps
 
 from .config import (
@@ -26,6 +26,7 @@ from .utils import (
     process_stream_chunk,
     role_from_content_union,
     set_span_attribute,
+    strip_none_values,
     to_dict,
     with_tracer_wrapper,
 )
@@ -33,7 +34,7 @@ from opentelemetry.trace import Tracer
 from wrapt import wrap_function_wrapper
 
 from opentelemetry import context as context_api
-from opentelemetry.trace import get_tracer, SpanKind, Span, Status, StatusCode
+from opentelemetry.trace import get_tracer, Span, Status, StatusCode
 from opentelemetry.semconv._incubating.attributes import gen_ai_attributes
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 
@@ -162,7 +163,11 @@ def _set_request_attributes(span, args, kwargs):
     if arg_tools:
         for tool in arg_tools:
             if isinstance(tool, types.Tool):
-                tools += tool.function_declarations or []
+                tools.extend(tool.function_declarations or [])
+            elif isinstance(tool, dict) and isinstance(
+                tool.get("function_declarations"), list
+            ):
+                tools.extend(tool.get("function_declarations", []))
             elif isinstance(tool, Callable):
                 tools.append(types.FunctionDeclaration.from_callable(tool))
 
@@ -178,11 +183,17 @@ def _set_request_attributes(span, args, kwargs):
             f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.{tool_num}.description",
             tool_dict.get("description"),
         )
-        set_span_attribute(
-            span,
-            f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.{tool_num}.parameters",
-            json_dumps(tool_dict.get("parameters")),
-        )
+        if parameters := tool_dict.get("parameters"):
+            if isinstance(parameters, dict):
+                # For some reason, pydantic completely ignores configs like `exclude_unset`,
+                # `exclude_defaults`, `exclude_none`, etc.
+                # for this type here, so we need to strip none values manually.
+                parameters = strip_none_values(parameters)
+            set_span_attribute(
+                span,
+                f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.{tool_num}.parameters",
+                json_dumps(parameters),
+            )
 
     if should_send_prompts():
         i = 0
@@ -190,17 +201,19 @@ def _set_request_attributes(span, args, kwargs):
             "system_instruction"
         )
         if system_instruction:
+            system_content = (
+                get_content(process_content_union(system_instruction)) or {}
+            ).get("text", "")
             set_span_attribute(
                 span,
                 f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.content",
-                (get_content(process_content_union(system_instruction)) or {}).get(
-                    "text", ""
-                ),
+                system_content,
             )
             set_span_attribute(
                 span, f"{gen_ai_attributes.GEN_AI_PROMPT}.{i}.role", "system"
             )
             i += 1
+
         contents = kwargs.get("contents", [])
         if not isinstance(contents, list):
             contents = [contents]
@@ -259,6 +272,11 @@ def _set_request_attributes(span, args, kwargs):
                 role_from_content_union(content) or "user",
             )
             i += 1
+    if tools:
+        span.set_attribute(
+            "gen_ai.tool.definitions",
+            json_dumps([to_dict(tool) for tool in tools]),
+        )
 
 
 @dont_throw
@@ -376,8 +394,35 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
 
 
 @dont_throw
+def _set_raw_response_attribute(
+    span, response: types.GenerateContentResponse, record_raw_response: bool = False
+):
+    set_span_attribute(
+        span,
+        "gen_ai.output.messages",
+        json_dumps(
+            [
+                candidate.model_dump_json(exclude_unset=True)
+                for candidate in (response.candidates or [])
+            ]
+        ),
+    )
+    if record_raw_response:
+        try:
+            set_span_attribute(
+                span,
+                "lmnr.sdk.raw.response",
+                response.model_dump_json(),
+            )
+        except Exception:
+            logger.debug("Failed to set lmnr.sdk.raw.response attribute", exc_info=True)
+
+
+@dont_throw
 def _build_from_streaming_response(
-    span: Span, response: Generator[types.GenerateContentResponse, None, None]
+    span: Span,
+    response: Generator[types.GenerateContentResponse, None, None],
+    record_raw_response: bool = False,
 ) -> Generator[types.GenerateContentResponse, None, None]:
     final_parts = []
     role = "model"
@@ -423,6 +468,9 @@ def _build_from_streaming_response(
             model_version=model_version,
         )
         if span.is_recording():
+            _set_raw_response_attribute(
+                span, compound_response, record_raw_response=record_raw_response
+            )
             _set_response_attributes(span, compound_response)
     finally:
         if span.is_recording():
@@ -431,7 +479,9 @@ def _build_from_streaming_response(
 
 @dont_throw
 async def _abuild_from_streaming_response(
-    span: Span, response: AsyncGenerator[types.GenerateContentResponse, None]
+    span: Span,
+    response: AsyncGenerator[types.GenerateContentResponse, None],
+    record_raw_response: bool = False,
 ) -> AsyncGenerator[types.GenerateContentResponse, None]:
     final_parts = []
     role = "model"
@@ -477,6 +527,9 @@ async def _abuild_from_streaming_response(
             model_version=model_version,
         )
         if span.is_recording():
+            _set_raw_response_attribute(
+                span, compound_response, record_raw_response=record_raw_response
+            )
             _set_response_attributes(span, compound_response)
     finally:
         if span.is_recording():
@@ -490,24 +543,55 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     ):
         return wrapped(*args, **kwargs)
 
-    span = tracer.start_span(
-        to_wrap.get("span_name"),
-        kind=SpanKind.CLIENT,
-        attributes={
+    span = Laminar.start_span(
+        name=to_wrap.get("span_name"),
+        span_type="LLM",
+    )
+    span.set_attributes(
+        {
             SpanAttributes.LLM_SYSTEM: "gemini",
             SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
-        },
-        context=get_current_context(),
+        }
     )
 
-    if span.is_recording():
-        _set_request_attributes(span, args, kwargs)
+    _set_request_attributes(span, args, kwargs)
 
     try:
-        response = wrapped(*args, **kwargs)
+        # Check for rollout mode and apply caching/overrides
+        from lmnr.sdk.rollout_control import is_rollout_mode
+
+        is_rollout = is_rollout_mode()
+    except Exception:
+        is_rollout = False
+
+    try:
+        if is_rollout:
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.rollout import (
+                get_google_genai_rollout_wrapper,
+            )
+
+            rollout_wrapper = get_google_genai_rollout_wrapper()
+            if rollout_wrapper:
+                with Laminar.use_span(span):
+                    response = rollout_wrapper.wrap_generate_content(
+                        wrapped,
+                        instance,
+                        args,
+                        kwargs,
+                        is_streaming=to_wrap.get("is_streaming", False),
+                        is_async=False,
+                    )
+            else:
+                response = wrapped(*args, **kwargs)
+        else:
+            response = wrapped(*args, **kwargs)
+
         if to_wrap.get("is_streaming"):
-            return _build_from_streaming_response(span, response)
+            return _build_from_streaming_response(
+                span, response, record_raw_response=is_rollout
+            )
         if span.is_recording():
+            _set_raw_response_attribute(span, response, record_raw_response=is_rollout)
             _set_response_attributes(span, response)
         span.end()
         return response
@@ -527,25 +611,71 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     ):
         return await wrapped(*args, **kwargs)
 
-    span = tracer.start_span(
-        to_wrap.get("span_name"),
-        kind=SpanKind.CLIENT,
-        attributes={
+    span = Laminar.start_span(
+        name=to_wrap.get("span_name"),
+        span_type="LLM",
+    )
+    span.set_attributes(
+        {
             SpanAttributes.LLM_SYSTEM: "gemini",
             SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
-        },
-        context=get_current_context(),
+        }
     )
-
-    if span.is_recording():
-        _set_request_attributes(span, args, kwargs)
+    _set_request_attributes(span, args, kwargs)
 
     try:
-        response = await wrapped(*args, **kwargs)
+        # Check for rollout mode and apply caching/overrides
+        from lmnr.sdk.rollout_control import is_rollout_mode
+
+        is_rollout = is_rollout_mode()
+    except Exception:
+        is_rollout = False
+
+    try:
+
+        if is_rollout:
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.rollout import (
+                get_google_genai_rollout_wrapper,
+            )
+
+            rollout_wrapper = get_google_genai_rollout_wrapper()
+            if rollout_wrapper:
+                # For async, we need to handle both sync and async wrapped functions
+                # In rollout mode, wrapped might return cached (sync) or live (async)
+                with Laminar.use_span(span):
+                    result = rollout_wrapper.wrap_generate_content(
+                        wrapped,
+                        instance,
+                        args,
+                        kwargs,
+                        is_streaming=to_wrap.get("is_streaming", False),
+                        is_async=True,
+                    )
+                # If result is a coroutine or async generator, await/iterate it
+                import inspect
+
+                if inspect.iscoroutine(result):
+                    response = await result
+                elif inspect.isasyncgen(result):
+                    # It's an async generator (cached streaming response)
+                    response = result
+                else:
+                    # It's a sync response (cached non-streaming)
+                    response = result
+            else:
+                response = await wrapped(*args, **kwargs)
+        else:
+            response = await wrapped(*args, **kwargs)
+
         if to_wrap.get("is_streaming"):
-            return _abuild_from_streaming_response(span, response)
+            return _abuild_from_streaming_response(
+                span, response, record_raw_response=is_rollout
+            )
         else:
             if span.is_recording():
+                _set_raw_response_attribute(
+                    span, response, record_raw_response=is_rollout
+                )
                 _set_response_attributes(span, response)
 
             span.end()

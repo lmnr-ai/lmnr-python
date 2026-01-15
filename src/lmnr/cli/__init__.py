@@ -2,6 +2,8 @@ from argparse import ArgumentParser, _SubParsersAction
 import asyncio
 
 from lmnr.cli.datasets import handle_datasets_command
+from lmnr.cli.dev import run_dev
+from lmnr.cli.discover import run_discover
 from lmnr.cli.evals import run_evaluation
 from lmnr.cli.rules import add_cursor_rules
 from lmnr.sdk.log import get_default_logger
@@ -38,6 +40,77 @@ def setup_eval_parser(subparsers: _SubParsersAction) -> None:
         "--output-file",
         help="Output file to write the results to. Outputs are written in JSON format.",
         nargs="?",
+    )
+    parser_eval.add_argument(
+        "--frontend-port",
+        help="[Optional] Port for the frontend when running locally. "
+        + "If no port is provided, defaults to '5667'.",
+        type=int,
+        default=None,
+    )
+
+
+def setup_dev_parser(subparsers: _SubParsersAction) -> None:
+    """Setup the dev subcommand parser."""
+    parser_dev = subparsers.add_parser(
+        "dev",
+        description="Start a rollout development session for interactive LLM debugging",
+        help="Start a rollout development session",
+    )
+    parser_dev.add_argument(
+        "file",
+        help="Path to Python file containing rollout entrypoint function(s)",
+    )
+    parser_dev.add_argument(
+        "--function",
+        "-f",
+        help="[Optional] Specific function name to use as entrypoint. "
+        + "If not provided, automatically discovers the rollout entrypoint. "
+        + "Required if multiple entrypoints exist in the file.",
+        default=None,
+    )
+    parser_dev.add_argument(
+        "--grpc-port",
+        help="[Optional] Port to use for the gRPC server. "
+        + "If no port is provided, the port defaults to '8443'.",
+        type=int,
+        default=8443,
+    )
+    parser_dev.add_argument(
+        "--frontend-port",
+        help="[Optional] Port for the frontend when running locally. "
+        + "If no port is provided, defaults to '5667'.",
+        type=int,
+        default=None,
+    )
+    setup_laminar_args(parser_dev)
+
+
+def setup_discover_parser(subparsers: _SubParsersAction) -> None:
+    """Setup the discover subcommand parser."""
+    parser_discover = subparsers.add_parser(
+        "discover",
+        description="Internal command for discovering rollout function metadata",
+        help="Discover rollout function metadata (internal command for CLI)",
+    )
+
+    # Mutually exclusive group for file vs module
+    mode_group = parser_discover.add_mutually_exclusive_group(required=True)
+    mode_group.add_argument(
+        "--file",
+        help="Path to Python file containing rollout function(s)",
+    )
+    mode_group.add_argument(
+        "--module",
+        "-m",
+        help="Python module path (e.g., src.myfile)",
+    )
+
+    parser_discover.add_argument(
+        "--function",
+        "-f",
+        help="Specific function name to discover. If not provided, discovers all entrypoints.",
+        default=None,
     )
 
 
@@ -254,6 +327,8 @@ def cli() -> None:
 
     # Setup all subcommand parsers
     setup_eval_parser(subparsers)
+    setup_dev_parser(subparsers)
+    setup_discover_parser(subparsers)
     setup_add_cursor_rules_parser(subparsers)
     setup_datasets_parser(subparsers)
 
@@ -262,6 +337,10 @@ def cli() -> None:
 
     if parsed.subcommand == "eval":
         asyncio.run(run_evaluation(parsed))
+    elif parsed.subcommand == "dev":
+        asyncio.run(run_dev(parsed))
+    elif parsed.subcommand == "discover":
+        run_discover(parsed)
     elif parsed.subcommand == "add-cursor-rules":
         add_cursor_rules()
     elif parsed.subcommand == "datasets":

@@ -132,12 +132,14 @@ def dont_throw(func):
     return wrapper
 
 
-def to_dict(obj: BaseModel | pydantic.BaseModel | dict) -> dict[str, Any]:
+def to_dict(
+    obj: BaseModel | pydantic.BaseModel | dict, pydantic_kwargs: dict[str, Any] = {}
+) -> dict[str, Any]:
     try:
         if isinstance(obj, BaseModel):
             return obj.model_dump()
         elif isinstance(obj, pydantic.BaseModel):
-            return obj.model_dump()
+            return obj.model_dump(**pydantic_kwargs)
         elif isinstance(obj, dict):
             return obj
         elif obj is None:
@@ -363,3 +365,19 @@ def process_stream_chunk(
         role=role,
         model_version=model_version,
     )
+
+
+def is_model_valid(obj: Any, model: BaseModel) -> bool:
+    try:
+        model.model_validate(obj)
+        return True
+    except Exception:
+        return False
+
+
+def strip_none_values(obj: dict[str, Any]) -> dict[str, Any]:
+    return {
+        k: strip_none_values(v) if isinstance(v, dict) else v
+        for k, v in obj.items()
+        if v is not None
+    }

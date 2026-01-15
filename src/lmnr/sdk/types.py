@@ -8,7 +8,7 @@ import uuid
 
 from enum import Enum
 from opentelemetry.trace import SpanContext, TraceFlags
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Literal, Optional
 from typing_extensions import TypedDict  # compatibility with python < 3.12
 
 from .utils import serialize, json_dumps
@@ -321,3 +321,76 @@ class MaskInputOptions(TypedDict):
 
 class SessionRecordingOptions(TypedDict):
     mask_input_options: MaskInputOptions | None
+
+
+class RolloutParam(TypedDict, total=False):
+    """
+    Parameter metadata for rollout functions.
+
+    Used to describe function parameters for the rollout UI.
+
+    Attributes:
+        name: The parameter name
+        type: The Python type of the parameter (e.g., "str", "int", "dict")
+        required: Whether the parameter is required (has no default value)
+        nested: For nested/structured parameters, contains nested parameter definitions
+        default: The default value of the parameter, if specified
+    """
+
+    name: str  # Required field
+    type: str
+    required: bool
+    nested: list["RolloutParam"]
+    default: str
+
+
+class RolloutToolOverride(TypedDict, total=False):
+    """Tool definition override for rollout."""
+
+    name: str
+    description: str
+    parameters: dict[str, Any]
+
+
+class RolloutLLMTextBlock(TypedDict, total=False):
+    """LLM text block for rollout."""
+
+    type: Literal["text"]
+    text: str
+
+
+class RolloutPathOverride(TypedDict, total=False):
+    """Override parameters for a specific path in rollout."""
+
+    system: str | list[RolloutLLMTextBlock]
+    tools: list[RolloutToolOverride]
+
+
+class RolloutRunEventData(TypedDict, total=False):
+    """Data payload for a rollout run event."""
+
+    trace_id: str
+    path_to_count: dict[str, int]
+    args: dict[str, Any] | list[Any]
+    overrides: dict[str, RolloutPathOverride]
+
+
+class RolloutRunEvent(TypedDict):
+    """Rollout run event from SSE stream."""
+
+    event_type: str  # Should be "run"
+    data: RolloutRunEventData
+
+
+class RolloutHandshakeEventData(TypedDict):
+    """Data payload for a rollout handshake event."""
+
+    project_id: str
+    session_id: str
+
+
+class RolloutHandshakeEvent(TypedDict):
+    """Rollout handshake event from SSE stream."""
+
+    event_type: str  # Should be "handshake"
+    data: RolloutHandshakeEventData
