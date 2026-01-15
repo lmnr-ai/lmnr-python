@@ -259,37 +259,24 @@ def _start_log_streaming(
     The trace_id and span_id are captured before calling this function so that 
     logs arriving later are correctly associated with the original command span.
     """
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        # No running event loop - try to get the event loop
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            # No event loop at all, create one
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+    # Always use a separate thread for log streaming.
+    # This ensures the streaming runs to completion regardless of the caller's 
+    # event loop lifecycle (asyncio.run() cancels pending tasks)
+    import threading
 
-    # Create the log streaming task
-    try:
-        # If we're in a running loop, create a task
-        if loop.is_running():
-            asyncio.create_task(
+    def run_in_thread():
+        try:
+            asyncio.run(
                 _stream_logs_async(event_logger, instance, session_id, cmd_id, trace_id, span_id)
             )
-        else:
-            # If no loop is running, run the coroutine in a new thread
-            import threading
+        except Exception as e:
+            logger.debug(f"Log streaming thread error: {e}")
 
-            def run_in_thread():
-                asyncio.run(
-                    _stream_logs_async(event_logger, instance, session_id, cmd_id, trace_id, span_id)
-                )
-
-            thread = threading.Thread(target=run_in_thread, daemon=True)
-            thread.start()
+    try:
+        thread = threading.Thread(target=run_in_thread, daemon=True)
+        thread.start()
     except Exception as e:
-        logger.debug(f"Failed to start Daytona log streaming task: {e}")
+        logger.debug(f"Failed to start Daytona log streaming thread: {e}")
 
 
 @with_tracer_wrapper
