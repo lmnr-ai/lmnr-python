@@ -275,7 +275,7 @@ def _set_request_attributes(span, args, kwargs):
     if tools:
         span.set_attribute(
             "gen_ai.tool.definitions",
-            json_dumps([tool.model_dump() for tool in tools]),
+            json_dumps([to_dict(tool) for tool in tools]),
         )
 
 
