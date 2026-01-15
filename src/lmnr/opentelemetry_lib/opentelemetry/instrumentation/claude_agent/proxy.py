@@ -7,9 +7,9 @@ import threading
 import time
 from typing import Optional
 
-from lmnr.sdk.log import get_default_logger
-
 from lmnr_claude_code_proxy import run_server, set_current_trace, stop_server
+
+from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
 
@@ -17,11 +17,23 @@ DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 DEFAULT_CC_PROXY_PORT = 45667
 CC_PROXY_PORT_ATTEMPTS = 5
 
+# Third-party API providers
+# Microsoft Foundry
+FOUNDRY_BASE_URL_ENV = "ANTHROPIC_FOUNDRY_BASE_URL"
+FOUNDRY_RESOURCE_ENV = "ANTHROPIC_FOUNDRY_RESOURCE"
+FOUNDRY_USE_ENV = "CLAUDE_CODE_USE_FOUNDRY"
+# TODO: Amazon Bedrock.
+# TODO: Google Vertex AI.
+
 _CC_PROXY_LOCK = threading.Lock()
 _CC_PROXY_PORT: int | None = None
 _CC_PROXY_BASE_URL: str | None = None
 _CC_PROXY_TARGET_URL: str | None = None
 _CC_PROXY_SHUTDOWN_REGISTERED = False
+_CC_PROXY_FOUNDRY_BASE_URL: str | None = None
+_CC_PROXY_FOUNDRY_BASE_URL_SET = False
+_CC_PROXY_FOUNDRY_RESOURCE: str | None = None
+_CC_PROXY_FOUNDRY_RESOURCE_SET = False
 
 
 def _find_available_port(start_port: int, attempts: int) -> Optional[int]:
@@ -51,7 +63,12 @@ def _wait_for_port(port: int, timeout: float = 5.0) -> bool:
 
 
 def _stop_cc_proxy_locked():
-    global _CC_PROXY_PORT, _CC_PROXY_BASE_URL
+    global _CC_PROXY_PORT
+    global _CC_PROXY_BASE_URL
+    global _CC_PROXY_FOUNDRY_BASE_URL
+    global _CC_PROXY_FOUNDRY_BASE_URL_SET
+    global _CC_PROXY_FOUNDRY_RESOURCE
+    global _CC_PROXY_FOUNDRY_RESOURCE_SET
 
     try:
         stop_server()
@@ -60,9 +77,21 @@ def _stop_cc_proxy_locked():
 
     if _CC_PROXY_TARGET_URL:
         os.environ["ANTHROPIC_BASE_URL"] = _CC_PROXY_TARGET_URL
+        if _CC_PROXY_FOUNDRY_BASE_URL_SET:
+            os.environ[FOUNDRY_BASE_URL_ENV] = _CC_PROXY_FOUNDRY_BASE_URL or ""
+        else:
+            os.environ.pop(FOUNDRY_BASE_URL_ENV, None)
+        if _CC_PROXY_FOUNDRY_RESOURCE_SET:
+            os.environ[FOUNDRY_RESOURCE_ENV] = _CC_PROXY_FOUNDRY_RESOURCE or ""
+        else:
+            os.environ.pop(FOUNDRY_RESOURCE_ENV, None)
 
     _CC_PROXY_PORT = None
     _CC_PROXY_BASE_URL = None
+    _CC_PROXY_FOUNDRY_BASE_URL = None
+    _CC_PROXY_FOUNDRY_BASE_URL_SET = False
+    _CC_PROXY_FOUNDRY_RESOURCE = None
+    _CC_PROXY_FOUNDRY_RESOURCE_SET = False
 
 
 def _stop_cc_proxy():
@@ -81,21 +110,58 @@ def get_cc_proxy_base_url() -> str | None:
     return _CC_PROXY_BASE_URL
 
 
+def _is_truthy_env(value: str | None) -> bool:
+    return value == "1"
+
+
+def _foundry_target_url() -> str | None:
+    if not _is_truthy_env(os.environ.get(FOUNDRY_USE_ENV)):
+        return None
+
+    base_url = os.environ.get(FOUNDRY_BASE_URL_ENV)
+    if base_url:
+        return base_url.rstrip("/")
+
+    resource = os.environ.get(FOUNDRY_RESOURCE_ENV)
+    if resource:
+        return f"https://{resource}.services.ai.azure.com/anthropic"
+
+    logger.error(
+        "%s is set but neither %s nor %s is configured. "
+        "Microsoft Foundry requires one of these values.",
+        FOUNDRY_USE_ENV,
+        FOUNDRY_BASE_URL_ENV,
+        FOUNDRY_RESOURCE_ENV,
+    )
+    return None
+
+
 def start_proxy() -> Optional[str]:
     with _CC_PROXY_LOCK:
-        global _CC_PROXY_PORT, _CC_PROXY_BASE_URL, _CC_PROXY_TARGET_URL
+        global _CC_PROXY_PORT
+        global _CC_PROXY_BASE_URL
+        global _CC_PROXY_TARGET_URL
+        global _CC_PROXY_FOUNDRY_BASE_URL
+        global _CC_PROXY_FOUNDRY_BASE_URL_SET
+        global _CC_PROXY_FOUNDRY_RESOURCE
+        global _CC_PROXY_FOUNDRY_RESOURCE_SET
 
         port = _find_available_port(DEFAULT_CC_PROXY_PORT, CC_PROXY_PORT_ATTEMPTS)
         if port is None:
             logger.warning("Unable to allocate port for cc-proxy.")
             return None
 
-        target_url = (
-            _CC_PROXY_TARGET_URL
-            or os.environ.get("ANTHROPIC_ORIGINAL_BASE_URL")
-            or os.environ.get("ANTHROPIC_BASE_URL")
-            or DEFAULT_ANTHROPIC_BASE_URL
-        )
+        target_url = _foundry_target_url()
+        if _is_truthy_env(os.environ.get(FOUNDRY_USE_ENV)) and target_url is None:
+            return None
+
+        if target_url is None:
+            target_url = (
+                _CC_PROXY_TARGET_URL
+                or os.environ.get("ANTHROPIC_ORIGINAL_BASE_URL")
+                or os.environ.get("ANTHROPIC_BASE_URL")
+                or DEFAULT_ANTHROPIC_BASE_URL
+            )
         _CC_PROXY_TARGET_URL = target_url
         os.environ.setdefault("ANTHROPIC_ORIGINAL_BASE_URL", target_url)
 
@@ -114,6 +180,14 @@ def start_proxy() -> Optional[str]:
         _CC_PROXY_PORT = port
         _CC_PROXY_BASE_URL = proxy_base_url
         os.environ["ANTHROPIC_BASE_URL"] = proxy_base_url
+        if _is_truthy_env(os.environ.get(FOUNDRY_USE_ENV)):
+            _CC_PROXY_FOUNDRY_BASE_URL = os.environ.get(FOUNDRY_BASE_URL_ENV)
+            _CC_PROXY_FOUNDRY_BASE_URL_SET = FOUNDRY_BASE_URL_ENV in os.environ
+            os.environ[FOUNDRY_BASE_URL_ENV] = proxy_base_url
+            if FOUNDRY_RESOURCE_ENV in os.environ:
+                _CC_PROXY_FOUNDRY_RESOURCE = os.environ.get(FOUNDRY_RESOURCE_ENV)
+                _CC_PROXY_FOUNDRY_RESOURCE_SET = True
+                os.environ.pop(FOUNDRY_RESOURCE_ENV, None)
         _register_proxy_shutdown()
 
         logger.info("Started claude proxy server on: " + str(proxy_base_url))
