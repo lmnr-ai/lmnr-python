@@ -24,7 +24,15 @@ actual package structure. Update WRAPPED_METHODS if the module path differs.
 
 import asyncio
 import logging
+from enum import Enum
 from typing import Collection
+from opentelemetry._logs.severity import SeverityNumber
+
+
+class LogStream(Enum):
+    """Enum for Daytona log stream types."""
+    STDOUT = "stdout"
+    STDERR = "stderr"
 
 from wrapt import wrap_function_wrapper
 
@@ -107,37 +115,47 @@ def _set_response_attributes(span: Span, response):
 
 def _emit_log_event(
     event_logger: EventLogger | None,
-    stream: str,
+    stream: LogStream,
     content: str,
     session_id: str,
     cmd_id: str,
+    trace_id: int,
+    span_id: int,
 ):
     """Emit a log event using the OpenTelemetry Logs API.
 
     This emits a proper OTel log record that is independent of any span,
     allowing logs to be captured even after the command span has ended.
+
+    Args:
+        trace_id: The trace ID to associate with this log (captured when streaming started)
+        span_id: The span ID to associate with this log (captured when streaming started)
     """
     if event_logger is None or not content:
         return
 
     try:
-        event_name = f"daytona.log.{stream}"
+        event_name = f"daytona.log.{stream.value}"
         event_body = {
             "content": content,
-            "stream": stream,
+            "stream": stream.value,
             "session_id": session_id,
             "cmd_id": cmd_id,
         }
+        event_severity_number = SeverityNumber.INFO if stream == LogStream.STDOUT else SeverityNumber.ERROR
 
         event_logger.emit(
             Event(
+                span_id=span_id,
+                trace_id=trace_id,
                 name=event_name,
                 body=event_body,
+                severity_number=event_severity_number,
                 attributes={
                     **DAYTONA_LOG_ATTRIBUTES,
                     "daytona.session_id": session_id,
                     "daytona.cmd_id": cmd_id,
-                    "daytona.log.stream": stream,
+                    "daytona.log.stream": stream.value,
                 },
             )
         )
@@ -150,6 +168,8 @@ def _emit_logs_from_response(
     response,
     session_id: str,
     cmd_id: str,
+    trace_id: int,
+    span_id: int,
 ):
     """Emit logs from a synchronous command response.
 
@@ -161,31 +181,37 @@ def _emit_logs_from_response(
 
     # Emit stdout logs
     if hasattr(response, "stdout") and response.stdout:
-        _emit_log_event(event_logger, "stdout", response.stdout, session_id, cmd_id)
+        _emit_log_event(event_logger, LogStream.STDOUT, response.stdout, session_id, cmd_id, trace_id, span_id)
 
     # Emit stderr logs
     if hasattr(response, "stderr") and response.stderr:
-        _emit_log_event(event_logger, "stderr", response.stderr, session_id, cmd_id)
+        _emit_log_event(event_logger, LogStream.STDERR, response.stderr, session_id, cmd_id, trace_id, span_id)
 
 
 def _create_log_callbacks(
     event_logger: EventLogger | None,
     session_id: str,
     cmd_id: str,
+    trace_id: int,
+    span_id: int,
 ):
     """Create stdout/stderr callbacks that emit OTel log events.
 
     These callbacks will emit OpenTelemetry log records for each log line
     received from the Daytona sandbox, independent of any span.
+
+    The trace_id and span_id are captured at callback creation time (when the
+    command span is active) and closed over, so logs emitted later in background
+    threads are still correctly associated with the original command span.
     """
 
     def on_stdout(content: str):
         """Callback for stdout log lines."""
-        _emit_log_event(event_logger, "stdout", content, session_id, cmd_id)
+        _emit_log_event(event_logger, LogStream.STDOUT, content, session_id, cmd_id, trace_id, span_id)
 
     def on_stderr(content: str):
         """Callback for stderr log lines."""
-        _emit_log_event(event_logger, "stderr", content, session_id, cmd_id)
+        _emit_log_event(event_logger, LogStream.STDERR, content, session_id, cmd_id, trace_id, span_id)
 
     return on_stdout, on_stderr
 
@@ -195,14 +221,16 @@ async def _stream_logs_async(
     process,
     session_id: str,
     cmd_id: str,
+    trace_id: int,
+    span_id: int,
 ):
     """Stream logs asynchronously and emit them as OTel log events.
 
     This function starts the log streaming in the background and emits
     OpenTelemetry log records for each stdout/stderr log line.
-    The logs are emitted independently of any span.
+    The logs are associated with the span that was active when streaming started.
     """
-    on_stdout, on_stderr = _create_log_callbacks(event_logger, session_id, cmd_id)
+    on_stdout, on_stderr = _create_log_callbacks(event_logger, session_id, cmd_id, trace_id, span_id)
 
     try:
         await process.get_session_command_logs_async(
@@ -220,11 +248,16 @@ def _start_log_streaming(
     instance,
     session_id: str,
     cmd_id: str,
+    trace_id: int,
+    span_id: int,
 ):
     """Start log streaming in the background.
 
     This function creates an asyncio task to stream logs from the Daytona
     sandbox. The logs are emitted as OpenTelemetry log records.
+
+    The trace_id and span_id are captured before calling this function so that 
+    logs arriving later are correctly associated with the original command span.
     """
     try:
         loop = asyncio.get_running_loop()
@@ -242,7 +275,7 @@ def _start_log_streaming(
         # If we're in a running loop, create a task
         if loop.is_running():
             asyncio.create_task(
-                _stream_logs_async(event_logger, instance, session_id, cmd_id)
+                _stream_logs_async(event_logger, instance, session_id, cmd_id, trace_id, span_id)
             )
         else:
             # If no loop is running, run the coroutine in a new thread
@@ -250,7 +283,7 @@ def _start_log_streaming(
 
             def run_in_thread():
                 asyncio.run(
-                    _stream_logs_async(event_logger, instance, session_id, cmd_id)
+                    _stream_logs_async(event_logger, instance, session_id, cmd_id, trace_id, span_id)
                 )
 
             thread = threading.Thread(target=run_in_thread, daemon=True)
@@ -301,6 +334,11 @@ def _wrap(
     if span.is_recording():
         _set_request_attributes(span, session_id, request)
 
+    # Capture span context BEFORE ending the span, so logs can be associated with it
+    span_context = span.get_span_context()
+    trace_id = span_context.trace_id
+    span_id = span_context.span_id
+
     try:
         response = wrapped(*args, **kwargs)
 
@@ -319,10 +357,10 @@ def _wrap(
 
             if is_async_command:
                 # For async commands, start background log streaming
-                _start_log_streaming(event_logger, instance, session_id, cmd_id)
+                _start_log_streaming(event_logger, instance, session_id, cmd_id, trace_id, span_id)
             else:
                 # For sync commands, emit logs immediately from response
-                _emit_logs_from_response(event_logger, response, session_id, cmd_id)
+                _emit_logs_from_response(event_logger, response, session_id, cmd_id, trace_id, span_id)
 
         return response
 
@@ -377,6 +415,11 @@ async def _awrap(
     if span.is_recording():
         _set_request_attributes(span, session_id, request)
 
+    # Capture span context BEFORE ending the span, so logs can be associated with it
+    span_context = span.get_span_context()
+    trace_id = span_context.trace_id
+    span_id = span_context.span_id
+
     try:
         response = await wrapped(*args, **kwargs)
 
@@ -395,10 +438,10 @@ async def _awrap(
 
             if is_async_command:
                 # For async commands, start background log streaming
-                _start_log_streaming(event_logger, instance, session_id, cmd_id)
+                _start_log_streaming(event_logger, instance, session_id, cmd_id, trace_id, span_id)
             else:
                 # For sync commands, emit logs immediately from response
-                _emit_logs_from_response(event_logger, response, session_id, cmd_id)
+                _emit_logs_from_response(event_logger, response, session_id, cmd_id, trace_id, span_id)
 
         return response
 
