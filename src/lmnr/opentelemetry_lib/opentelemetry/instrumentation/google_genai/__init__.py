@@ -403,7 +403,7 @@ def _set_raw_response_attribute(
         json_dumps(
             [
                 candidate.model_dump_json(exclude_unset=True)
-                for candidate in response.candidates
+                for candidate in (response.candidates or [])
             ]
         ),
     )

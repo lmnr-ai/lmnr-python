@@ -326,8 +326,6 @@ class LaminarSpanProcessor(SpanProcessor):
             session_id: Rollout session ID
             span_data: Span data to stream
         """
-        import atexit
-
         try:
 
             def stream_task():
@@ -339,7 +337,6 @@ class LaminarSpanProcessor(SpanProcessor):
             # Run in background thread to avoid blocking
             thread = threading.Thread(target=stream_task, daemon=True)
             thread.start()
-            atexit.register(thread.join)
 
         except Exception as e:
             self.logger.debug(f"Failed to start span streaming thread: {e}")
