@@ -13,6 +13,7 @@ from opentelemetry.trace import Span
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
     is_model_valid,
+    to_dict,
 )
 from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
@@ -214,7 +215,7 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
         self,
         response: types.GenerateContentResponse,
         parts: list[dict[str, Any]],
-        config: Any | None = None,
+        config: types.GenerateContentConfig | dict[str, Any] | None = None,
     ) -> types.GenerateContentResponse:
         # Handle structured output (parsed field)
         if config:
@@ -266,11 +267,20 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
         ):
             try:
                 if isinstance(raw_response, dict):
-                    return types.GenerateContentResponse.model_validate(raw_response)
-                elif isinstance(raw_response, str):
-                    return types.GenerateContentResponse.model_validate_json(
+                    response = types.GenerateContentResponse.model_validate(
                         raw_response
                     )
+                elif isinstance(raw_response, str):
+                    response = types.GenerateContentResponse.model_validate_json(
+                        raw_response
+                    )
+                if response:
+                    self._add_parsed_to_response(
+                        response,
+                        response.candidates[0].content.parts,
+                        config,
+                    )
+                    return response
             except Exception as e:
                 logger.debug(f"Failed to parse raw response: {e}")
                 pass  # fallback to the legacy parsing path
@@ -368,8 +378,11 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
             # Extract text content
             text_content = ""
             for block in content_blocks:
-                if block.get("type") == "text":
-                    text_content += block.get("text", "")
+                if (
+                    to_dict(block).get("type") == "text"
+                    or to_dict(block).get("text") is not None
+                ):
+                    text_content += to_dict(block).get("text", "")
 
             if not text_content:
                 return None

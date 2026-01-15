@@ -391,7 +391,7 @@ def _set_raw_response_attribute(
         "gen_ai.output.messages",
         json_dumps(
             [
-                candidate.model_dump(exclude_unset=True, mode="json")
+                candidate.model_dump_json(exclude_unset=True)
                 for candidate in response.candidates
             ]
         ),
@@ -401,7 +401,7 @@ def _set_raw_response_attribute(
             set_span_attribute(
                 span,
                 "lmnr.sdk.raw.response",
-                json_dumps(response.model_dump(mode="json")),
+                response.model_dump_json(),
             )
         except Exception:
             logger.debug("Failed to set lmnr.sdk.raw.response attribute", exc_info=True)
@@ -550,7 +550,10 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         from lmnr.sdk.rollout_control import is_rollout_mode
 
         is_rollout = is_rollout_mode()
+    except Exception:
+        is_rollout = False
 
+    try:
         if is_rollout:
             from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.rollout import (
                 get_google_genai_rollout_wrapper,
@@ -572,12 +575,12 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         else:
             response = wrapped(*args, **kwargs)
 
-        _set_raw_response_attribute(span, response, record_raw_response=is_rollout)
         if to_wrap.get("is_streaming"):
             return _build_from_streaming_response(
                 span, response, record_raw_response=is_rollout
             )
         if span.is_recording():
+            _set_raw_response_attribute(span, response, record_raw_response=is_rollout)
             _set_response_attributes(span, response)
         span.end()
         return response
@@ -614,6 +617,10 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         from lmnr.sdk.rollout_control import is_rollout_mode
 
         is_rollout = is_rollout_mode()
+    except Exception:
+        is_rollout = False
+
+    try:
 
         if is_rollout:
             from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.rollout import (
@@ -649,13 +656,15 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         else:
             response = await wrapped(*args, **kwargs)
 
-        _set_raw_response_attribute(span, response, record_raw_response=is_rollout)
         if to_wrap.get("is_streaming"):
             return _abuild_from_streaming_response(
                 span, response, record_raw_response=is_rollout
             )
         else:
             if span.is_recording():
+                _set_raw_response_attribute(
+                    span, response, record_raw_response=is_rollout
+                )
                 _set_response_attributes(span, response)
 
             span.end()
