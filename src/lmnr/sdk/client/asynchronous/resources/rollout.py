@@ -91,7 +91,7 @@ class AsyncRollout(BaseAsyncResource):
                         if span_data["parent_span_id"]
                         else None
                     ),
-                    "trace_id": str(span_data["trace_id"]),
+                    "traceId": str(span_data["trace_id"]),
                     "startTime": span_data["start_time"].isoformat(),
                     "attributes": span_data["attributes"],
                     "spanType": span_data["span_type"],
