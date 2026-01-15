@@ -26,6 +26,7 @@ from .utils import (
     process_stream_chunk,
     role_from_content_union,
     set_span_attribute,
+    strip_none_values,
     to_dict,
     with_tracer_wrapper,
 )
@@ -162,7 +163,11 @@ def _set_request_attributes(span, args, kwargs):
     if arg_tools:
         for tool in arg_tools:
             if isinstance(tool, types.Tool):
-                tools += tool.function_declarations or []
+                tools.extend(tool.function_declarations or [])
+            elif isinstance(tool, dict) and isinstance(
+                tool.get("function_declarations"), list
+            ):
+                tools.extend(tool.get("function_declarations", []))
             elif isinstance(tool, Callable):
                 tools.append(types.FunctionDeclaration.from_callable(tool))
 
@@ -178,11 +183,17 @@ def _set_request_attributes(span, args, kwargs):
             f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.{tool_num}.description",
             tool_dict.get("description"),
         )
-        set_span_attribute(
-            span,
-            f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.{tool_num}.parameters",
-            json_dumps(tool_dict.get("parameters")),
-        )
+        if parameters := tool_dict.get("parameters"):
+            if isinstance(parameters, dict):
+                # For some reason, pydantic completely ignores configs like `exclude_unset`,
+                # `exclude_defaults`, `exclude_none`, etc.
+                # for this type here, so we need to strip none values manually.
+                parameters = strip_none_values(parameters)
+            set_span_attribute(
+                span,
+                f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.{tool_num}.parameters",
+                json_dumps(parameters),
+            )
 
     if should_send_prompts():
         i = 0
