@@ -210,7 +210,7 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
             logger.error(f"Failed to parse output JSON: {e}")
             return None
 
-    def add_parsed_to_response(
+    def _add_parsed_to_response(
         self,
         response: types.GenerateContentResponse,
         parts: list[dict[str, Any]],
@@ -295,7 +295,11 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
                 response = types.GenerateContentResponse.model_validate(
                     {"candidates": parsed}
                 )
-                self.add_parsed_to_response(response, parsed[0].parts, config)
+                self._add_parsed_to_response(
+                    response,
+                    parsed[0]["content"]["parts"],
+                    config,
+                )
                 return response
             message = parsed[0]
             content_blocks = message.get("content", [])
@@ -336,7 +340,7 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
                 usage_metadata=None,  # Cached responses don't track tokens
                 model_version=None,
             )
-            self.add_parsed_to_response(response, content_blocks, config)
+            self._add_parsed_to_response(response, content_blocks, config)
 
             return response
 

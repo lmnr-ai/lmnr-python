@@ -409,7 +409,9 @@ def _set_raw_response_attribute(
 
 @dont_throw
 def _build_from_streaming_response(
-    span: Span, response: Generator[types.GenerateContentResponse, None, None]
+    span: Span,
+    response: Generator[types.GenerateContentResponse, None, None],
+    record_raw_response: bool = False,
 ) -> Generator[types.GenerateContentResponse, None, None]:
     final_parts = []
     role = "model"
@@ -455,6 +457,9 @@ def _build_from_streaming_response(
             model_version=model_version,
         )
         if span.is_recording():
+            _set_raw_response_attribute(
+                span, compound_response, record_raw_response=record_raw_response
+            )
             _set_response_attributes(span, compound_response)
     finally:
         if span.is_recording():
@@ -463,7 +468,9 @@ def _build_from_streaming_response(
 
 @dont_throw
 async def _abuild_from_streaming_response(
-    span: Span, response: AsyncGenerator[types.GenerateContentResponse, None]
+    span: Span,
+    response: AsyncGenerator[types.GenerateContentResponse, None],
+    record_raw_response: bool = False,
 ) -> AsyncGenerator[types.GenerateContentResponse, None]:
     final_parts = []
     role = "model"
@@ -509,6 +516,9 @@ async def _abuild_from_streaming_response(
             model_version=model_version,
         )
         if span.is_recording():
+            _set_raw_response_attribute(
+                span, compound_response, record_raw_response=record_raw_response
+            )
             _set_response_attributes(span, compound_response)
     finally:
         if span.is_recording():
@@ -564,7 +574,9 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
 
         _set_raw_response_attribute(span, response, record_raw_response=is_rollout)
         if to_wrap.get("is_streaming"):
-            return _build_from_streaming_response(span, response)
+            return _build_from_streaming_response(
+                span, response, record_raw_response=is_rollout
+            )
         if span.is_recording():
             _set_response_attributes(span, response)
         span.end()
@@ -601,7 +613,9 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         # Check for rollout mode and apply caching/overrides
         from lmnr.sdk.rollout_control import is_rollout_mode
 
-        if is_rollout_mode():
+        is_rollout = is_rollout_mode()
+
+        if is_rollout:
             from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.rollout import (
                 get_google_genai_rollout_wrapper,
             )
@@ -635,9 +649,11 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         else:
             response = await wrapped(*args, **kwargs)
 
-        _set_raw_response_attribute(span, response)
+        _set_raw_response_attribute(span, response, record_raw_response=is_rollout)
         if to_wrap.get("is_streaming"):
-            return _abuild_from_streaming_response(span, response)
+            return _abuild_from_streaming_response(
+                span, response, record_raw_response=is_rollout
+            )
         else:
             if span.is_recording():
                 _set_response_attributes(span, response)
