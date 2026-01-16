@@ -30,7 +30,7 @@ def test_foundry_base_url_overrides_target(monkeypatch):
     result = claude_proxy.start_proxy()
 
     assert result == proxy_url
-    assert calls["target_url"] == "https://foundry.example/anthropic/"
+    assert calls["target_url"] == "https://foundry.example/anthropic"
     assert os.environ["ANTHROPIC_FOUNDRY_BASE_URL"] == proxy_url
 
     claude_proxy.release_proxy()
@@ -49,7 +49,7 @@ def test_foundry_resource_builds_target_url(monkeypatch):
     assert result == proxy_url
     assert (
         calls["target_url"]
-        == "https://my-resource.services.ai.azure.com/anthropic/"
+        == "https://my-resource.services.ai.azure.com/anthropic"
     )
     assert os.environ["ANTHROPIC_FOUNDRY_BASE_URL"] == proxy_url
 

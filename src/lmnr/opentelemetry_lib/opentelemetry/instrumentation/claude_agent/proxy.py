@@ -30,10 +30,8 @@ _CC_PROXY_PORT: int | None = None
 _CC_PROXY_BASE_URL: str | None = None
 _CC_PROXY_TARGET_URL: str | None = None
 _CC_PROXY_SHUTDOWN_REGISTERED = False
-_CC_PROXY_FOUNDRY_BASE_URL: str | None = None
-_CC_PROXY_FOUNDRY_BASE_URL_SET = False
-_CC_PROXY_FOUNDRY_RESOURCE: str | None = None
-_CC_PROXY_FOUNDRY_RESOURCE_SET = False
+_CC_PROXY_ENV_SNAPSHOT: dict[str, str | None] | None = None
+_CC_PROXY_ENV_SNAPSHOT_SET: set[str] | None = None
 
 
 def _find_available_port(start_port: int, attempts: int) -> Optional[int]:
@@ -65,33 +63,26 @@ def _wait_for_port(port: int, timeout: float = 5.0) -> bool:
 def _stop_cc_proxy_locked():
     global _CC_PROXY_PORT
     global _CC_PROXY_BASE_URL
-    global _CC_PROXY_FOUNDRY_BASE_URL
-    global _CC_PROXY_FOUNDRY_BASE_URL_SET
-    global _CC_PROXY_FOUNDRY_RESOURCE
-    global _CC_PROXY_FOUNDRY_RESOURCE_SET
+    global _CC_PROXY_ENV_SNAPSHOT
+    global _CC_PROXY_ENV_SNAPSHOT_SET
 
     try:
         stop_server()
     except Exception as e:
         logger.debug("Unable to stop cc-proxy: %s", e)
 
-    if _CC_PROXY_TARGET_URL:
-        os.environ["ANTHROPIC_BASE_URL"] = _CC_PROXY_TARGET_URL
-        if _CC_PROXY_FOUNDRY_BASE_URL_SET:
-            os.environ[FOUNDRY_BASE_URL_ENV] = _CC_PROXY_FOUNDRY_BASE_URL or ""
-        else:
-            os.environ.pop(FOUNDRY_BASE_URL_ENV, None)
-        if _CC_PROXY_FOUNDRY_RESOURCE_SET:
-            os.environ[FOUNDRY_RESOURCE_ENV] = _CC_PROXY_FOUNDRY_RESOURCE or ""
-        else:
-            os.environ.pop(FOUNDRY_RESOURCE_ENV, None)
+    # Restore environment variables to the pre-proxy state to avoid leaks.
+    if _CC_PROXY_ENV_SNAPSHOT is not None and _CC_PROXY_ENV_SNAPSHOT_SET is not None:
+        for key, value in _CC_PROXY_ENV_SNAPSHOT.items():
+            if key in _CC_PROXY_ENV_SNAPSHOT_SET:
+                os.environ[key] = value if value is not None else ""
+            else:
+                os.environ.pop(key, None)
 
     _CC_PROXY_PORT = None
     _CC_PROXY_BASE_URL = None
-    _CC_PROXY_FOUNDRY_BASE_URL = None
-    _CC_PROXY_FOUNDRY_BASE_URL_SET = False
-    _CC_PROXY_FOUNDRY_RESOURCE = None
-    _CC_PROXY_FOUNDRY_RESOURCE_SET = False
+    _CC_PROXY_ENV_SNAPSHOT = None
+    _CC_PROXY_ENV_SNAPSHOT_SET = None
 
 
 def _stop_cc_proxy():
@@ -136,26 +127,39 @@ def _foundry_target_url() -> str | None:
     return None
 
 
+def _snapshot_env(keys: list[str]) -> tuple[dict[str, str | None], set[str]]:
+    # Track value + presence so we can restore or delete keys accurately.
+    snapshot: dict[str, str | None] = {}
+    set_keys: set[str] = set()
+    for key in keys:
+        if key in os.environ:
+            set_keys.add(key)
+            snapshot[key] = os.environ.get(key)
+        else:
+            snapshot[key] = None
+    return snapshot, set_keys
+
+
 def start_proxy() -> Optional[str]:
     with _CC_PROXY_LOCK:
         global _CC_PROXY_PORT
         global _CC_PROXY_BASE_URL
         global _CC_PROXY_TARGET_URL
-        global _CC_PROXY_FOUNDRY_BASE_URL
-        global _CC_PROXY_FOUNDRY_BASE_URL_SET
-        global _CC_PROXY_FOUNDRY_RESOURCE
-        global _CC_PROXY_FOUNDRY_RESOURCE_SET
+        global _CC_PROXY_ENV_SNAPSHOT
+        global _CC_PROXY_ENV_SNAPSHOT_SET
 
         port = _find_available_port(DEFAULT_CC_PROXY_PORT, CC_PROXY_PORT_ATTEMPTS)
         if port is None:
             logger.warning("Unable to allocate port for cc-proxy.")
             return None
 
+        # Resolve the upstream target. Third-party providers override Anthropic when enabled.
         target_url = _foundry_target_url()
         if _is_truthy_env(os.environ.get(FOUNDRY_USE_ENV)) and target_url is None:
             return None
 
         if target_url is None:
+            # Fallback to the Anthropic base URL chain if no provider is configured.
             target_url = (
                 _CC_PROXY_TARGET_URL
                 or os.environ.get("ANTHROPIC_ORIGINAL_BASE_URL")
@@ -163,6 +167,17 @@ def start_proxy() -> Optional[str]:
                 or DEFAULT_ANTHROPIC_BASE_URL
             )
         _CC_PROXY_TARGET_URL = target_url
+        if _CC_PROXY_ENV_SNAPSHOT is None:
+            # Capture env before any mutations so we can restore on shutdown.
+            _CC_PROXY_ENV_SNAPSHOT, _CC_PROXY_ENV_SNAPSHOT_SET = _snapshot_env(
+                [
+                    "ANTHROPIC_BASE_URL",
+                    "ANTHROPIC_ORIGINAL_BASE_URL",
+                    FOUNDRY_BASE_URL_ENV,
+                    FOUNDRY_RESOURCE_ENV,
+                ]
+            )
+        # Preserve the upstream URL for any consumers that expect it.
         os.environ.setdefault("ANTHROPIC_ORIGINAL_BASE_URL", target_url)
 
         try:
@@ -181,12 +196,9 @@ def start_proxy() -> Optional[str]:
         _CC_PROXY_BASE_URL = proxy_base_url
         os.environ["ANTHROPIC_BASE_URL"] = proxy_base_url
         if _is_truthy_env(os.environ.get(FOUNDRY_USE_ENV)):
-            _CC_PROXY_FOUNDRY_BASE_URL = os.environ.get(FOUNDRY_BASE_URL_ENV)
-            _CC_PROXY_FOUNDRY_BASE_URL_SET = FOUNDRY_BASE_URL_ENV in os.environ
+            # Foundry uses a separate base URL; route it through the proxy too.
             os.environ[FOUNDRY_BASE_URL_ENV] = proxy_base_url
             if FOUNDRY_RESOURCE_ENV in os.environ:
-                _CC_PROXY_FOUNDRY_RESOURCE = os.environ.get(FOUNDRY_RESOURCE_ENV)
-                _CC_PROXY_FOUNDRY_RESOURCE_SET = True
                 os.environ.pop(FOUNDRY_RESOURCE_ENV, None)
         _register_proxy_shutdown()
 
