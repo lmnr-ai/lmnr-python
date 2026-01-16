@@ -258,6 +258,16 @@ class LanggraphInstrumentorInitializer(InstrumentorInitializer):
         return LanggraphInstrumentor()
 
 
+class LitellmInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("litellm"):
+            return None
+
+        from ..opentelemetry.instrumentation.litellm import LitellmInstrumentor
+
+        return LitellmInstrumentor()
+
+
 class LlamaIndexInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not (
