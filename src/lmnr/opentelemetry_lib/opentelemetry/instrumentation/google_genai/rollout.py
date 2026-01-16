@@ -211,6 +211,13 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
             logger.error(f"Failed to parse output JSON: {e}")
             return None
 
+    def _set_response_usage_to_zero(self, response: types.GenerateContentResponse):
+        response.usage_metadata = types.GenerateContentResponseUsageMetadata(
+            prompt_token_count=0,
+            candidates_token_count=0,
+            total_token_count=0,
+        )
+
     def _add_parsed_to_response(
         self,
         response: types.GenerateContentResponse,
@@ -280,6 +287,7 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
                         response.candidates[0].content.parts,
                         config,
                     )
+                    self._set_response_usage_to_zero(response)
                     return response
             except Exception as e:
                 logger.debug(f"Failed to parse raw response: {e}")
@@ -310,6 +318,7 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
                     parsed[0]["content"]["parts"],
                     config,
                 )
+                self._set_response_usage_to_zero(response)
                 return response
             message = parsed[0]
             content_blocks = message.get("content", [])
@@ -351,6 +360,7 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
                 model_version=None,
             )
             self._add_parsed_to_response(response, content_blocks, config)
+            self._set_response_usage_to_zero(response)
 
             return response
 
