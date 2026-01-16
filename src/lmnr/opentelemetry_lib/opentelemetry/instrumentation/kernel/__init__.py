@@ -209,6 +209,12 @@ def _wrap(
             span.set_status(Status(StatusCode.ERROR))
             span.record_exception(e)
             raise
+
+        if to_wrap.get("method") == "create" and hasattr(result, "browser_live_view_url"):
+            Laminar.set_trace_metadata({
+                "browser_live_view_url": result.browser_live_view_url,
+            })
+
         output_formatter = to_wrap.get("output_formatter") or (lambda x: json_dumps(x))
         span.set_attribute("lmnr.span.output", output_formatter(result))
         return result
