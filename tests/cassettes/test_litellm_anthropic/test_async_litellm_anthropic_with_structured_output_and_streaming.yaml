@@ -7,7 +7,7 @@ interactions:
       "object", "title": "Event", "properties": {"name": {"type": "string", "title":
       "Name"}, "people": {"type": "array", "items": {"type": "string"}, "title": "People"},
       "dayOfWeek": {"type": "string", "title": "Dayofweek"}}, "required": ["name",
-      "people", "dayOfWeek"]}}], "max_tokens": 4096, "stream": true}'
+      "people", "dayOfWeek"]}}], "max_tokens": 8192, "stream": true}'
     headers:
       accept:
       - application/json
@@ -24,121 +24,111 @@ interactions:
       host:
       - api.anthropic.com
       user-agent:
-      - litellm/1.76.2
+      - litellm/1.80.16
     method: POST
     uri: https://api.anthropic.com/v1/messages
   response:
     body:
       string: 'event: message_start
 
-        data: {"type":"message_start","message":{"id":"msg_01WfuF8s5LmiCbHgPuGsGFQA","type":"message","role":"assistant","model":"claude-3-5-haiku-20241022","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":501,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":11,"service_tier":"standard"}}           }
+        data: {"type":"message_start","message":{"model":"claude-3-5-haiku-20241022","id":"msg_01E9zfJwTZ6eupqdTzGYmuUV","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":501,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":10,"service_tier":"standard"}}     }
 
 
         event: content_block_start
 
-        data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_01U7rnDe4v2ATRXxhfKthKXC","name":"json_tool_call","input":{}}
+        data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_01Myf2tyYdBhUGznLPKiApeM","name":"json_tool_call","input":{}}       }
+
+
+        event: ping
+
+        data: {"type": "ping"}
+
+
+        event: content_block_delta
+
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":""}
         }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":""}         }
-
-
-        event: ping
-
-        data: {"type": "ping"}
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"name\""}          }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"name\":
-        \"Sc"}         }
-
-
-        event: ping
-
-        data: {"type": "ping"}
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":":
+        \"Science "}              }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"ien"}    }
-
-
-        event: ping
-
-        data: {"type": "ping"}
-
-
-        event: content_block_delta
-
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"ce
-        Fair\""}       }
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"Fair\""}          }
 
 
         event: content_block_delta
 
         data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":",
-        \"people\": "}               }
+        \"peopl"}              }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"[\"Alice"}       }
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"e\":
+        [\"Al"}    }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\",\"Bob\"]"}         }
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"ice\","}}
+
+
+        event: content_block_delta
+
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\"Bob\"]"}    }
 
 
         event: content_block_delta
 
         data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":",
-        \"da"}}
+        \"d"}            }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"yO"}            }
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"ayOfWee"}          }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"fWeek\":"}            }
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"k\":
+        \"Frid"}}
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"
-        \"Frid"}             }
-
-
-        event: content_block_delta
-
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"ay\"}"}    }
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"ay\"}"}        }
 
 
         event: content_block_stop
 
-        data: {"type":"content_block_stop","index":0              }
+        data: {"type":"content_block_stop","index":0             }
 
 
         event: message_delta
 
-        data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":501,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":76}         }
+        data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":501,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":76}}
 
 
         event: message_stop
 
-        data: {"type":"message_stop"       }
+        data: {"type":"message_stop"           }
 
 
         '
     headers:
       CF-RAY:
-      - 97b74212490def0b-LHR
+      - 9beecaf9b9ecf8ba-LHR
       Cache-Control:
       - no-cache
       Connection:
@@ -146,13 +136,11 @@ interactions:
       Content-Type:
       - text/event-stream; charset=utf-8
       Date:
-      - Sun, 07 Sep 2025 15:32:19 GMT
+      - Fri, 16 Jan 2026 15:54:42 GMT
       Server:
       - cloudflare
       Transfer-Encoding:
       - chunked
-      Via:
-      - 1.1 google
       X-Robots-Tag:
       - none
       anthropic-organization-id:
@@ -162,120 +150,33 @@ interactions:
       anthropic-ratelimit-input-tokens-remaining:
       - '400000'
       anthropic-ratelimit-input-tokens-reset:
-      - '2025-09-07T15:32:19Z'
+      - '2026-01-16T15:54:41Z'
       anthropic-ratelimit-output-tokens-limit:
       - '80000'
       anthropic-ratelimit-output-tokens-remaining:
       - '80000'
       anthropic-ratelimit-output-tokens-reset:
-      - '2025-09-07T15:32:19Z'
+      - '2026-01-16T15:54:41Z'
       anthropic-ratelimit-requests-limit:
       - '4000'
       anthropic-ratelimit-requests-remaining:
       - '3999'
       anthropic-ratelimit-requests-reset:
-      - '2025-09-07T15:32:19Z'
+      - '2026-01-16T15:54:41Z'
       anthropic-ratelimit-tokens-limit:
       - '480000'
       anthropic-ratelimit-tokens-remaining:
       - '480000'
       anthropic-ratelimit-tokens-reset:
-      - '2025-09-07T15:32:19Z'
+      - '2026-01-16T15:54:41Z'
       cf-cache-status:
       - DYNAMIC
       request-id:
-      - req_011CSuHKS5CEPCRKyVxpCehk
+      - req_011CXBKzMXcQ1gywsQj1XW37
       strict-transport-security:
       - max-age=31536000; includeSubDomains; preload
       x-envoy-upstream-service-time:
-      - '535'
-    status:
-      code: 200
-      message: OK
-- request:
-    body: '{"model": "claude-3-5-haiku-latest", "messages": [{"role": "user", "content":
-      [{"type": "text", "text": "Alice and Bob are going to a science fair on Friday.
-      Extract the event information."}]}], "tool_choice": {"name": "json_tool_call",
-      "type": "tool"}, "tools": [{"name": "json_tool_call", "input_schema": {"type":
-      "object", "title": "Event", "properties": {"name": {"type": "string", "title":
-      "Name"}, "people": {"type": "array", "items": {"type": "string"}, "title": "People"},
-      "dayOfWeek": {"type": "string", "title": "Dayofweek"}}, "required": ["name",
-      "people", "dayOfWeek"]}}], "max_tokens": 4096, "stream": true}'
-    headers:
-      accept:
-      - application/json
-      accept-encoding:
-      - gzip, deflate, zstd
-      anthropic-version:
-      - '2023-06-01'
-      connection:
-      - keep-alive
-      content-length:
-      - '620'
-      content-type:
-      - application/json
-      host:
-      - api.anthropic.com
-      user-agent:
-      - litellm/1.76.2
-    method: POST
-    uri: https://api.anthropic.com/v1/messages
-  response:
-    body:
-      string: ''
-    headers:
-      CF-RAY:
-      - 97b74212490def0b-LHR
-      Cache-Control:
-      - no-cache
-      Connection:
-      - keep-alive
-      Content-Type:
-      - text/event-stream; charset=utf-8
-      Date:
-      - Sun, 07 Sep 2025 15:32:19 GMT
-      Server:
-      - cloudflare
-      Transfer-Encoding:
-      - chunked
-      Via:
-      - 1.1 google
-      X-Robots-Tag:
-      - none
-      anthropic-organization-id:
-      - 04aa8588-6567-40cb-9042-a54b20ebaf4f
-      anthropic-ratelimit-input-tokens-limit:
-      - '400000'
-      anthropic-ratelimit-input-tokens-remaining:
-      - '400000'
-      anthropic-ratelimit-input-tokens-reset:
-      - '2025-09-07T15:32:19Z'
-      anthropic-ratelimit-output-tokens-limit:
-      - '80000'
-      anthropic-ratelimit-output-tokens-remaining:
-      - '80000'
-      anthropic-ratelimit-output-tokens-reset:
-      - '2025-09-07T15:32:19Z'
-      anthropic-ratelimit-requests-limit:
-      - '4000'
-      anthropic-ratelimit-requests-remaining:
-      - '3999'
-      anthropic-ratelimit-requests-reset:
-      - '2025-09-07T15:32:19Z'
-      anthropic-ratelimit-tokens-limit:
-      - '480000'
-      anthropic-ratelimit-tokens-remaining:
-      - '480000'
-      anthropic-ratelimit-tokens-reset:
-      - '2025-09-07T15:32:19Z'
-      cf-cache-status:
-      - DYNAMIC
-      request-id:
-      - req_011CSuHKS5CEPCRKyVxpCehk
-      strict-transport-security:
-      - max-age=31536000; includeSubDomains; preload
-      x-envoy-upstream-service-time:
-      - '535'
+      - '670'
     status:
       code: 200
       message: OK

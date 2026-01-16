@@ -1,7 +1,7 @@
 interactions:
 - request:
     body: '{"model":"claude-3-5-haiku-latest","messages":[{"role":"user","content":[{"type":"text","text":"Alice
-      and Bob are going to a science fair on Friday. Extract the event information."}]}],"tool_choice":{"name":"json_tool_call","type":"tool"},"tools":[{"name":"json_tool_call","input_schema":{"type":"object","properties":{"name":{"title":"Name","type":"string"},"people":{"items":{"type":"string"},"title":"People","type":"array"},"dayOfWeek":{"title":"Dayofweek","type":"string"}},"required":["name","people","dayOfWeek"],"title":"Event","additionalProperties":false}}],"max_tokens":4096}'
+      and Bob are going to a science fair on Friday. Extract the event information."}]}],"tool_choice":{"name":"json_tool_call","type":"tool"},"tools":[{"name":"json_tool_call","input_schema":{"type":"object","properties":{"name":{"title":"Name","type":"string"},"people":{"items":{"type":"string"},"title":"People","type":"array"},"dayOfWeek":{"title":"Dayofweek","type":"string"}},"required":["name","people","dayOfWeek"],"title":"Event","additionalProperties":false}}],"max_tokens":8192}'
     headers:
       accept:
       - application/json
@@ -18,22 +18,21 @@ interactions:
       host:
       - api.anthropic.com
       user-agent:
-      - litellm/1.76.2
+      - litellm/1.80.16
     method: POST
     uri: https://api.anthropic.com/v1/messages
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA3SRS2sjMRCE/0qoswwzkzgJusULJviQeAlhYUMQbU3bI1sjzeqxMJj574scTF7s
-        Uf1VVRetI0wLiT7uVFU/9d24+hE2+83Sk3t+1s3m5+8dBNI4cFFxjLRjCARvy4BiNDGRSxDofcsW
-        EtpSbnl2OZvPOjKHPGuq5qqumgYC2rvELkG+HM+ZyXurciyhpyblnVVV3/r16K8W27p+WOzv5uv7
-        G73iewg46otvH71TJ7Mma4vbDTlBHs+CJ23Yab5YkgkQGNgPpfML7qzRZd3Cb/Aq0NL4uP3FfIDE
-        MpiWRkzTq0BMflCBKXr3ueYJRP6TSzyky9YK5NNh5PGthkr+wC5CzqtbAU26Y6UDUzLeqc+K6swD
-        U/s/dvaWBTx03HMgq+b9d/07rbuvdBLwOX0c3VwLRA5/jWaVDAdIlO9sKbSYpn8AAAD//wMA3LAT
-        ghwCAAA=
+        H4sIAAAAAAAA/3VRXUvDMBT9K5LnFrpuddq3Od1gMEVk6hxSsuTaxqVJlw+hjv13bwpFp/iWnI97
+        zk0OpNYcJMkJk9RziIdxFldU7HycJulokKQpiYjgKKhtWSSDy+1ovPbNTE9Xt4t5ufh8GQ8nE9S4
+        toGgAmtpCQgYLQNArRXWUeUQYlo5wFO+OfR6p7UsvIU+Jdw95sxdW94vl9PVGrZt9nxz/chX+zWq
+        FK2D791qVXRmRqUMbtV4nHzoBQ9MgGJwNqPCIN2AbkKfDZlIwULcld6S14hw2t69PQHs0DMzAq/k
+        eETcOt0UBijmnNbsCAt7H8aTXHkpI+K7pTG9q4HFdqAsybPkAremrIKC4SwnsPSpIul5pPl/XO8N
+        AdBUUIOhssjqv/pvdlD9Zo8R0d79hMbnuA6YD3yQwgkwuGj4Kk4Nx0f4AvSBdxYcAgAA
     headers:
       CF-RAY:
-      - 97b74388fd2bcd2c-LHR
+      - 9beecaedab0c94e5-LHR
       Connection:
       - keep-alive
       Content-Encoding:
@@ -41,13 +40,11 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Sun, 07 Sep 2025 15:33:20 GMT
+      - Fri, 16 Jan 2026 15:54:40 GMT
       Server:
       - cloudflare
       Transfer-Encoding:
       - chunked
-      Via:
-      - 1.1 google
       X-Robots-Tag:
       - none
       anthropic-organization-id:
@@ -57,114 +54,33 @@ interactions:
       anthropic-ratelimit-input-tokens-remaining:
       - '400000'
       anthropic-ratelimit-input-tokens-reset:
-      - '2025-09-07T15:33:19Z'
+      - '2026-01-16T15:54:40Z'
       anthropic-ratelimit-output-tokens-limit:
       - '80000'
       anthropic-ratelimit-output-tokens-remaining:
       - '80000'
       anthropic-ratelimit-output-tokens-reset:
-      - '2025-09-07T15:33:20Z'
+      - '2026-01-16T15:54:40Z'
       anthropic-ratelimit-requests-limit:
       - '4000'
       anthropic-ratelimit-requests-remaining:
       - '3999'
       anthropic-ratelimit-requests-reset:
-      - '2025-09-07T15:33:18Z'
+      - '2026-01-16T15:54:39Z'
       anthropic-ratelimit-tokens-limit:
       - '480000'
       anthropic-ratelimit-tokens-remaining:
       - '480000'
       anthropic-ratelimit-tokens-reset:
-      - '2025-09-07T15:33:19Z'
+      - '2026-01-16T15:54:40Z'
       cf-cache-status:
       - DYNAMIC
       request-id:
-      - req_011CSuHPrLKAsdspNugsy3QQ
+      - req_011CXBKzDJ1NEN598iiG1FXF
       strict-transport-security:
       - max-age=31536000; includeSubDomains; preload
       x-envoy-upstream-service-time:
-      - '1185'
-    status:
-      code: 200
-      message: OK
-- request:
-    body: '{"model":"claude-3-5-haiku-latest","messages":[{"role":"user","content":[{"type":"text","text":"Alice
-      and Bob are going to a science fair on Friday. Extract the event information."}]}],"tool_choice":{"name":"json_tool_call","type":"tool"},"tools":[{"name":"json_tool_call","input_schema":{"type":"object","properties":{"name":{"title":"Name","type":"string"},"people":{"items":{"type":"string"},"title":"People","type":"array"},"dayOfWeek":{"title":"Dayofweek","type":"string"}},"required":["name","people","dayOfWeek"],"title":"Event","additionalProperties":false}}],"max_tokens":4096}'
-    headers:
-      accept:
-      - application/json
-      accept-encoding:
-      - gzip, deflate, zstd
-      anthropic-version:
-      - '2023-06-01'
-      connection:
-      - keep-alive
-      content-length:
-      - '586'
-      content-type:
-      - application/json
-      host:
-      - api.anthropic.com
-      user-agent:
-      - litellm/1.76.2
-    method: POST
-    uri: https://api.anthropic.com/v1/messages
-  response:
-    body:
-      string: ''
-    headers:
-      CF-RAY:
-      - 97b74388fd2bcd2c-LHR
-      Connection:
-      - keep-alive
-      Content-Encoding:
-      - gzip
-      Content-Type:
-      - application/json
-      Date:
-      - Sun, 07 Sep 2025 15:33:20 GMT
-      Server:
-      - cloudflare
-      Transfer-Encoding:
-      - chunked
-      Via:
-      - 1.1 google
-      X-Robots-Tag:
-      - none
-      anthropic-organization-id:
-      - 04aa8588-6567-40cb-9042-a54b20ebaf4f
-      anthropic-ratelimit-input-tokens-limit:
-      - '400000'
-      anthropic-ratelimit-input-tokens-remaining:
-      - '400000'
-      anthropic-ratelimit-input-tokens-reset:
-      - '2025-09-07T15:33:19Z'
-      anthropic-ratelimit-output-tokens-limit:
-      - '80000'
-      anthropic-ratelimit-output-tokens-remaining:
-      - '80000'
-      anthropic-ratelimit-output-tokens-reset:
-      - '2025-09-07T15:33:20Z'
-      anthropic-ratelimit-requests-limit:
-      - '4000'
-      anthropic-ratelimit-requests-remaining:
-      - '3999'
-      anthropic-ratelimit-requests-reset:
-      - '2025-09-07T15:33:18Z'
-      anthropic-ratelimit-tokens-limit:
-      - '480000'
-      anthropic-ratelimit-tokens-remaining:
-      - '480000'
-      anthropic-ratelimit-tokens-reset:
-      - '2025-09-07T15:33:19Z'
-      cf-cache-status:
-      - DYNAMIC
-      request-id:
-      - req_011CSuHPrLKAsdspNugsy3QQ
-      strict-transport-security:
-      - max-age=31536000; includeSubDomains; preload
-      x-envoy-upstream-service-time:
-      - '1185'
+      - '1267'
     status:
       code: 200
       message: OK

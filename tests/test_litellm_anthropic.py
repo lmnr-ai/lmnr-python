@@ -910,9 +910,9 @@ def test_litellm_anthropic_with_structured_output(
     assert spans[0].attributes["gen_ai.request.model"] == "claude-3-5-haiku-latest"
     assert spans[0].attributes["gen_ai.response.model"] == "claude-3-5-haiku-20241022"
     assert spans[0].attributes["gen_ai.response.id"] == response.id
-    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 486
+    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 501
     assert spans[0].attributes["gen_ai.usage.output_tokens"] == 76
-    assert spans[0].attributes["llm.usage.total_tokens"] == 562
+    assert spans[0].attributes["llm.usage.total_tokens"] == 577
     assert (
         spans[0].attributes["gen_ai.prompt.0.content"]
         == "Alice and Bob are going to a science fair on Friday. Extract the event information."
@@ -1013,9 +1013,9 @@ def test_litellm_anthropic_with_structured_output_and_streaming(
     assert len(spans) == 1
     assert spans[0].name == "litellm.completion"
     assert spans[0].attributes["gen_ai.request.model"] == "claude-3-5-haiku-latest"
-    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 486
+    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 501
     assert spans[0].attributes["gen_ai.usage.output_tokens"] == 76
-    assert spans[0].attributes["llm.usage.total_tokens"] == 562
+    assert spans[0].attributes["llm.usage.total_tokens"] == 577
     assert (
         spans[0].attributes["gen_ai.prompt.0.content"]
         == "Alice and Bob are going to a science fair on Friday. Extract the event information."

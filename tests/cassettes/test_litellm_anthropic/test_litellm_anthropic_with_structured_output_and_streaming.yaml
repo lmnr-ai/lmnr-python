@@ -4,44 +4,39 @@ interactions:
       [{"type": "text", "text": "Alice and Bob are going to a science fair on Friday.
       Extract the event information."}]}], "tool_choice": {"name": "json_tool_call",
       "type": "tool"}, "tools": [{"name": "json_tool_call", "input_schema": {"type":
-      "object", "additionalProperties": false, "title": "Event", "properties": {"name":
-      {"type": "string"}, "people": {"type": "array", "items": {"type": "string"}},
-      "dayOfWeek": {"type": "string"}}, "required": ["name", "people", "dayOfWeek"]}}],
-      "max_tokens": 4096, "stream": true}'
+      "object", "title": "Event", "properties": {"name": {"type": "string", "title":
+      "Name"}, "people": {"type": "array", "items": {"type": "string"}, "title": "People"},
+      "dayOfWeek": {"type": "string", "title": "Dayofweek"}}, "required": ["name",
+      "people", "dayOfWeek"]}}], "max_tokens": 8192, "stream": true}'
     headers:
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '620'
+      Host:
+      - api.anthropic.com
+      User-Agent:
+      - litellm/1.80.16
       accept:
       - application/json
-      accept-encoding:
-      - gzip, deflate, zstd
       anthropic-version:
       - '2023-06-01'
-      connection:
-      - keep-alive
-      content-length:
-      - '593'
       content-type:
       - application/json
-      host:
-      - api.anthropic.com
-      user-agent:
-      - litellm/1.76.2
     method: POST
     uri: https://api.anthropic.com/v1/messages
   response:
     body:
       string: 'event: message_start
 
-        data: {"type":"message_start","message":{"id":"msg_01V3ebeNxZjzJ8TwyYfnPjD3","type":"message","role":"assistant","model":"claude-3-5-haiku-20241022","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":486,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":11,"service_tier":"standard"}}               }
+        data: {"type":"message_start","message":{"model":"claude-3-5-haiku-20241022","id":"msg_01ENXfVDQZEvSSnK9LRoojrW","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":501,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":10,"service_tier":"standard"}}     }
 
 
         event: content_block_start
 
-        data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_017Q9nvWTt6U18UrTV5Lm349","name":"json_tool_call","input":{}}             }
-
-
-        event: content_block_delta
-
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":""}        }
+        data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_01F3FU9p9MXyuUBcxRCoimys","name":"json_tool_call","input":{}}        }
 
 
         event: ping
@@ -51,103 +46,100 @@ interactions:
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"nam"}             }
-
-
-        event: ping
-
-        data: {"type": "ping"}
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":""}            }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"e\":
-        \""}              }
-
-
-        event: ping
-
-        data: {"type": "ping"}
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"name\":
+        \"S"}   }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"Scien"}          }
-
-
-        event: ping
-
-        data: {"type": "ping"}
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"cience
+        Fa"}       }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"ce
-        Fair\""}}
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"ir\""}        }
 
 
         event: content_block_delta
 
         data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":",
-        \"people\": "}   }
+        \"peopl"}          }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"[\"Al"}            }
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"e\":"}           }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"ice\",\"B"}   }
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"
+        ["} }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"ob"}           }
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\"Alice"}        }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\"]"}         }
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\",\"Bo"}     }
+
+
+        event: content_block_delta
+
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"b\""}
+        }
+
+
+        event: content_block_delta
+
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"]"}    }
 
 
         event: content_block_delta
 
         data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":",
-        \"dayOfWe"}        }
+        \"dayOfW"}  }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"ek\":
-        "}   }
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"eek\":"}            }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\"Friday\"}"}      }
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"
+        \"Friday\"}"}     }
 
 
         event: content_block_stop
 
-        data: {"type":"content_block_stop","index":0  }
+        data: {"type":"content_block_stop","index":0           }
 
 
         event: message_delta
 
-        data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":486,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":76}               }
+        data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null},"usage":{"input_tokens":501,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":76}            }
 
 
         event: message_stop
 
-        data: {"type":"message_stop"              }
+        data: {"type":"message_stop" }
 
 
         '
     headers:
       CF-RAY:
-      - 97b7376c8b343238-LHR
+      - 9beecab6ea6a4136-LHR
       Cache-Control:
       - no-cache
       Connection:
@@ -155,7 +147,7 @@ interactions:
       Content-Type:
       - text/event-stream; charset=utf-8
       Date:
-      - Sun, 07 Sep 2025 15:25:03 GMT
+      - Fri, 16 Jan 2026 15:54:31 GMT
       Server:
       - cloudflare
       Transfer-Encoding:
@@ -169,35 +161,33 @@ interactions:
       anthropic-ratelimit-input-tokens-remaining:
       - '400000'
       anthropic-ratelimit-input-tokens-reset:
-      - '2025-09-07T15:25:02Z'
+      - '2026-01-16T15:54:31Z'
       anthropic-ratelimit-output-tokens-limit:
       - '80000'
       anthropic-ratelimit-output-tokens-remaining:
       - '80000'
       anthropic-ratelimit-output-tokens-reset:
-      - '2025-09-07T15:25:02Z'
+      - '2026-01-16T15:54:30Z'
       anthropic-ratelimit-requests-limit:
       - '4000'
       anthropic-ratelimit-requests-remaining:
       - '3999'
       anthropic-ratelimit-requests-reset:
-      - '2025-09-07T15:25:02Z'
+      - '2026-01-16T15:54:30Z'
       anthropic-ratelimit-tokens-limit:
       - '480000'
       anthropic-ratelimit-tokens-remaining:
       - '480000'
       anthropic-ratelimit-tokens-reset:
-      - '2025-09-07T15:25:02Z'
+      - '2026-01-16T15:54:30Z'
       cf-cache-status:
       - DYNAMIC
       request-id:
-      - req_011CSuGmHNgDbgyAoLGjJd2H
+      - req_011CXBKyZpGAzzCmeTwpKWun
       strict-transport-security:
       - max-age=31536000; includeSubDomains; preload
-      via:
-      - 1.1 google
       x-envoy-upstream-service-time:
-      - '475'
+      - '609'
     status:
       code: 200
       message: OK

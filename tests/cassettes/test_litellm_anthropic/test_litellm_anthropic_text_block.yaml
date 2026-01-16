@@ -2,37 +2,37 @@ interactions:
 - request:
     body: '{"model": "claude-3-5-haiku-latest", "messages": [{"role": "user", "content":
       [{"type": "text", "text": "What is the capital of France?"}]}], "max_tokens":
-      4096}'
+      8192}'
     headers:
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '161'
+      Host:
+      - api.anthropic.com
+      User-Agent:
+      - litellm/1.80.16
       accept:
       - application/json
-      accept-encoding:
-      - gzip, deflate, zstd
       anthropic-version:
       - '2023-06-01'
-      connection:
-      - keep-alive
-      content-length:
-      - '161'
       content-type:
       - application/json
-      host:
-      - api.anthropic.com
-      user-agent:
-      - litellm/1.72.6
     method: POST
     uri: https://api.anthropic.com/v1/messages
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAAwAAAP//ZJBBSwMxEIX/yvLOWdluK0iOgl4sUrEXEQlDMrah22SbmYil9L/LFnsQ
-        TwPve+8xvBNigMVeNq6bLdfy9BL18HbUh6U+vx7v7lfzDAM9jjy5WIQ2DIOSh0kgkShKSWGwz4EH
-        WPiBauB23t62W4q72vZdv5h1fQ8Dn5NyUtj307VT+XtKX47FesuNpzEqDU3+bB4LJc9NlGZFJcoN
-        zh8Gonl0hUlyggWn4LSWhF8gfKicPMOmOgwG9fKxPSGmsarTvOMksLOFgSe/ZecLk8ac3F9Dd+WF
-        Kfxnueqfus5AuHxFz04jF1hMuwQqAefzDwAAAP//AwAJeZViZQEAAA==
+        H4sIAAAAAAAA/3WQwWrDMAyGXyXonIwkay859tDDdiljsMMYRrO1xtSxM1tuN0refUpZGN0YGGz0
+        fRK/dYYhGHLQgXaYDVW31brq0R5y1dbtqqnbFkqwRoQh7VXdPBy242a9aR9fd3HzFI7xdH93asTh
+        z5Fmi1LCPUkhBjcXMCWbGD1LSQfPJK/u+bz4TB8zuVwd7DDaVMjhngqNo2V0RXgrthG9phuYXkpI
+        HEYVCVPw0kHeKM7RwzdI9J5JXOh8dq6EfEnTncH6MbPicCCfoGtWkgZ1T0rLKLbBq2uhXrhg8x9b
+        euf5NPY0UESn1sNf/4c2/W86lRAyX6WTjkTxaDUpthTln/MKDUYD0/QFvRMmY7QBAAA=
     headers:
       CF-RAY:
-      - 9512ba646dd0cda2-LHR
+      - 9beec9d16ced60dc-LHR
       Connection:
       - keep-alive
       Content-Encoding:
@@ -40,7 +40,7 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Tue, 17 Jun 2025 13:00:11 GMT
+      - Fri, 16 Jan 2026 15:53:55 GMT
       Server:
       - cloudflare
       Transfer-Encoding:
@@ -54,33 +54,33 @@ interactions:
       anthropic-ratelimit-input-tokens-remaining:
       - '400000'
       anthropic-ratelimit-input-tokens-reset:
-      - '2025-06-17T13:00:11Z'
+      - '2026-01-16T15:53:54Z'
       anthropic-ratelimit-output-tokens-limit:
       - '80000'
       anthropic-ratelimit-output-tokens-remaining:
       - '80000'
       anthropic-ratelimit-output-tokens-reset:
-      - '2025-06-17T13:00:11Z'
+      - '2026-01-16T15:53:55Z'
       anthropic-ratelimit-requests-limit:
       - '4000'
       anthropic-ratelimit-requests-remaining:
       - '3999'
       anthropic-ratelimit-requests-reset:
-      - '2025-06-17T13:00:07Z'
+      - '2026-01-16T15:53:54Z'
       anthropic-ratelimit-tokens-limit:
       - '480000'
       anthropic-ratelimit-tokens-remaining:
       - '480000'
       anthropic-ratelimit-tokens-reset:
-      - '2025-06-17T13:00:11Z'
+      - '2026-01-16T15:53:54Z'
       cf-cache-status:
       - DYNAMIC
       request-id:
-      - req_011CQDqPFKnWiE9NWyqU8z5a
+      - req_011CXBKvrsbWaWoTcBiaQjkj
       strict-transport-security:
       - max-age=31536000; includeSubDomains; preload
-      via:
-      - 1.1 google
+      x-envoy-upstream-service-time:
+      - '941'
     status:
       code: 200
       message: OK

@@ -6,39 +6,39 @@ interactions:
       "properties": {"city": {"type": "string"}}}, "description": "Get the weather
       in a given city"}, {"name": "get_news", "input_schema": {"type": "object", "properties":
       {"city": {"type": "string"}}}, "description": "Get the news in a given city"}],
-      "max_tokens": 4096}'
+      "max_tokens": 8192}'
     headers:
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '507'
+      Host:
+      - api.anthropic.com
+      User-Agent:
+      - litellm/1.80.16
       accept:
       - application/json
-      accept-encoding:
-      - gzip, deflate, zstd
       anthropic-version:
       - '2023-06-01'
-      connection:
-      - keep-alive
-      content-length:
-      - '507'
       content-type:
       - application/json
-      host:
-      - api.anthropic.com
-      user-agent:
-      - litellm/1.72.6
     method: POST
     uri: https://api.anthropic.com/v1/messages
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAA2RRwW7bMAz9FYGXXpTBdlO00a0I0G7DsEuLDcM6CKzMRVoUyRWpZkbgfx+crliD
-        nQjy8T0+kgcIPRjY8cY27edye1nu1x8vursv48/b998ex2e/Ag0yDjR3ETNuCDSUHOcCMgcWTAIa
-        drmnCAZcxNrT4nxxsfAYtnXRNd2ybboONLichJKA+X541RT6PbOPwcCHsxiVpzioMVe1D+KVeFJ7
-        QvFUFKZeJdqzCkndYVI3BZML7LIqYeNF4R7Hdw/pId2EwqJVJDlj5Ty57VsdA5P+ZyDnaCvPWx1P
-        MefVNu3X+19Sn8L1ahnW3aehbblbXyFoSLibeRsS+1dvpqahCpgDuCAjGDhxB9P0QwNLHmwh5JxO
-        xx4BpqdKyRGYVGPUUI+XNocXZSt5S4nBnF8tNTh0nqwrhBJysqcdzSteCPv/sVzlbeVypYGpPAdH
-        VgIVMDA/tMfSwzT9AQAA//8DALD0v/geAgAA
+        H4sIAAAAAAAA/3WSX0/CMBTFv0rTF1+GYUMF9mZIIMaEEH0hEdPU7rI1dLezf0QkfHfvFgii8Wnr
+        /Z172nPbPa9tAYbnXBkZC+gNere9SupN7GX97CbtZxlPuC5IUPtS9NMZjoe1unuaZ3Vqp5PHkV/O
+        lgVpwq6BVgXeyxKo4KxpC9J77YPEQCVlMQD95S/7kz7AZ0u6T84froxhFZiG7Wxka40FszGwUAFT
+        0TnqZVuQtHRMEkPYeqaRPUtkUydRaa8sc7qsApNbubte4Qqn2vmQMAPhyjNVgdp0fkefnB+S82Gs
+        NSJ6OEVu15FCDxYwn95/ZeM3N1yUqp5NNtl6TCqUddtXQhBHv7YVm0hh9lzpsCN6cTp+OLwm3Afb
+        CAfSW7zctgMe3iOgImeMxiQ8dhMlw85ZBLsB9DwfjG5opJIiCUVeQVsUl4r+iRMu/mOn3nYDaCqo
+        wUkjbuu/+jNNq9/0kHC6qZ+lUUpxwH1oBSJomkzO23dQSFfQEL4B9KN5/nkCAAA=
     headers:
       CF-RAY:
-      - 9513c2f62c3af664-LHR
+      - 9beec9f43c18d188-LHR
       Connection:
       - keep-alive
       Content-Encoding:
@@ -46,7 +46,7 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Tue, 17 Jun 2025 16:00:46 GMT
+      - Fri, 16 Jan 2026 15:54:01 GMT
       Server:
       - cloudflare
       Transfer-Encoding:
@@ -60,33 +60,33 @@ interactions:
       anthropic-ratelimit-input-tokens-remaining:
       - '400000'
       anthropic-ratelimit-input-tokens-reset:
-      - '2025-06-17T16:00:46Z'
+      - '2026-01-16T15:54:00Z'
       anthropic-ratelimit-output-tokens-limit:
       - '80000'
       anthropic-ratelimit-output-tokens-remaining:
       - '80000'
       anthropic-ratelimit-output-tokens-reset:
-      - '2025-06-17T16:00:46Z'
+      - '2026-01-16T15:54:01Z'
       anthropic-ratelimit-requests-limit:
       - '4000'
       anthropic-ratelimit-requests-remaining:
       - '3999'
       anthropic-ratelimit-requests-reset:
-      - '2025-06-17T16:00:44Z'
+      - '2026-01-16T15:54:00Z'
       anthropic-ratelimit-tokens-limit:
       - '480000'
       anthropic-ratelimit-tokens-remaining:
       - '480000'
       anthropic-ratelimit-tokens-reset:
-      - '2025-06-17T16:00:46Z'
+      - '2026-01-16T15:54:00Z'
       cf-cache-status:
       - DYNAMIC
       request-id:
-      - req_011CQE5A5SEbHg3xh4cyzSEJ
+      - req_011CXBKwH58jPrraop9TH1gQ
       strict-transport-security:
       - max-age=31536000; includeSubDomains; preload
-      via:
-      - 1.1 google
+      x-envoy-upstream-service-time:
+      - '2067'
     status:
       code: 200
       message: OK
@@ -94,46 +94,47 @@ interactions:
     body: '{"model": "claude-3-5-haiku-latest", "messages": [{"role": "user", "content":
       [{"type": "text", "text": "What is the weather in San Francisco? Also, any news
       in town?"}]}, {"role": "assistant", "content": [{"type": "text", "text": "I''ll
-      help you with the weather and news in San Francisco right away.\n\nFirst, let''s
-      check the weather:"}, {"type": "tool_use", "id": "toolu_01WTjtuqiA94iC2Lp11s2C8a",
+      help you find out the current weather and news in San Francisco right away.\n\nFirst,
+      let''s check the weather:"}, {"type": "tool_use", "id": "toolu_013PeNFAz29br7PgcmGCk2f9",
       "name": "get_weather", "input": {"city": "San Francisco"}}]}, {"role": "user",
-      "content": [{"type": "tool_result", "tool_use_id": "toolu_01WTjtuqiA94iC2Lp11s2C8a",
+      "content": [{"type": "tool_result", "tool_use_id": "toolu_013PeNFAz29br7PgcmGCk2f9",
       "content": "Sunny as always!"}]}], "tools": [{"name": "get_weather", "input_schema":
       {"type": "object", "properties": {"city": {"type": "string"}}}, "description":
       "Get the weather in a given city"}, {"name": "get_news", "input_schema": {"type":
       "object", "properties": {"city": {"type": "string"}}}, "description": "Get the
-      news in a given city"}], "max_tokens": 4096}'
+      news in a given city"}], "max_tokens": 8192}'
     headers:
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '945'
+      Host:
+      - api.anthropic.com
+      User-Agent:
+      - litellm/1.80.16
       accept:
       - application/json
-      accept-encoding:
-      - gzip, deflate, zstd
       anthropic-version:
       - '2023-06-01'
-      connection:
-      - keep-alive
-      content-length:
-      - '933'
       content-type:
       - application/json
-      host:
-      - api.anthropic.com
-      user-agent:
-      - litellm/1.72.6
     method: POST
     uri: https://api.anthropic.com/v1/messages
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAAwAAAP//ZFFNSwMxEP0rYS5eUtiu9Su3ivVQwYsW/EBCSIbdtLvJmplYtex/l1RE
-        i6dh5s17bz524B0o6KnR1XS+7PMC+8XD3adreb2+37aYrkACfwxYupDINAgSUuxKwRB5YhMYJPTR
-        YQcKbGeyw8nx5GTSGr/Jk7qqZ9OqrkGCjYExMKjn3Y8m43th74OC27iVokM+IkGIYtsaFgG3JDyJ
-        1gwDBh8a4YO4M0FcJxOsJxsVjPJXMMZOZypT7lcredbV9HLp2maeVqvV0+otWze7Wa4fH0BCMH3h
-        Nci6WBVeGDKD2oH1/AEKDsxgHF8kEMdBJzQUw6HnHiB8zRgsggq56yTk/dnU7ltZc9xgIFCzs3MJ
-        1tgWtU1o2MegDzuqHzyhcf+xmPlv5fRCAmF68xY1e0ygoHzHmeRgHL8AAAD//wMAZAYCE+sBAAA=
+        H4sIAAAAAAAA/3VRy07DMBD8FcsXLqnUpg9BrkjtgQq1oqJFCFnGWSWmiR28NqGq8u+sI5VSECfb
+        M7Mzu+sjr20OFc+4qmTIYTAeTAel1PswSIfpZDRMU55wnZOgxkIMR4+71XY73j3NXlP7Bitcb6bN
+        EknjDw1EFSDKAghwtoqARNTopfEEKWs80C17Pp70Hj4j0x8Zv7dtwirwV8gQgLWl9MxAi0wjK2XT
+        gNGmYNqwB2nY3EmjNCqb8S45G1pbiYBwaju+AzU+WeQjk0/vdmvnJrflctPOD6sFqYysY10BXsSo
+        WGeaQN0cudL+QNRFGO+6l4Sjt41wINGay8yeQHgPYBTZmlBVCQ/9Ssiwdxbe7sEgzybXQ9qJVCUI
+        RV5eWyMuFd880fl/3Kk2BkBTQg1OVmJa/9Wf2VH5m+0SboP/Cc1uaBxwH1qB8BocDRo/MpcupyV8
+        AYYI/0E6AgAA
     headers:
       CF-RAY:
-      - 9513c302fb84edee-LHR
+      - 9beeca01f8d87a91-LHR
       Connection:
       - keep-alive
       Content-Encoding:
@@ -141,7 +142,7 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Tue, 17 Jun 2025 16:00:48 GMT
+      - Fri, 16 Jan 2026 15:54:03 GMT
       Server:
       - cloudflare
       Transfer-Encoding:
@@ -155,33 +156,33 @@ interactions:
       anthropic-ratelimit-input-tokens-remaining:
       - '400000'
       anthropic-ratelimit-input-tokens-reset:
-      - '2025-06-17T16:00:47Z'
+      - '2026-01-16T15:54:02Z'
       anthropic-ratelimit-output-tokens-limit:
       - '80000'
       anthropic-ratelimit-output-tokens-remaining:
       - '80000'
       anthropic-ratelimit-output-tokens-reset:
-      - '2025-06-17T16:00:48Z'
+      - '2026-01-16T15:54:03Z'
       anthropic-ratelimit-requests-limit:
       - '4000'
       anthropic-ratelimit-requests-remaining:
       - '3999'
       anthropic-ratelimit-requests-reset:
-      - '2025-06-17T16:00:46Z'
+      - '2026-01-16T15:54:02Z'
       anthropic-ratelimit-tokens-limit:
       - '480000'
       anthropic-ratelimit-tokens-remaining:
       - '480000'
       anthropic-ratelimit-tokens-reset:
-      - '2025-06-17T16:00:47Z'
+      - '2026-01-16T15:54:02Z'
       cf-cache-status:
       - DYNAMIC
       request-id:
-      - req_011CQE5AEDptjeoNLBMp9dks
+      - req_011CXBKwS2eBXTxjSSf8ySx9
       strict-transport-security:
       - max-age=31536000; includeSubDomains; preload
-      via:
-      - 1.1 google
+      x-envoy-upstream-service-time:
+      - '1221'
     status:
       code: 200
       message: OK
