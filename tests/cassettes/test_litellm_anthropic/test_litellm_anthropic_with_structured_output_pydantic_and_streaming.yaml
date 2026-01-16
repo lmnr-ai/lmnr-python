@@ -7,43 +7,37 @@ interactions:
       "object", "properties": {"name": {"title": "Name", "type": "string"}, "people":
       {"items": {"type": "string"}, "title": "People", "type": "array"}, "dayOfWeek":
       {"title": "Dayofweek", "type": "string"}}, "required": ["name", "people", "dayOfWeek"],
-      "title": "Event", "additionalProperties": false}}], "max_tokens": 4096, "stream":
+      "title": "Event", "additionalProperties": false}}], "max_tokens": 8192, "stream":
       true}'
     headers:
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '651'
+      Host:
+      - api.anthropic.com
+      User-Agent:
+      - litellm/1.80.16
       accept:
       - application/json
-      accept-encoding:
-      - gzip, deflate, zstd
       anthropic-version:
       - '2023-06-01'
-      connection:
-      - keep-alive
-      content-length:
-      - '651'
       content-type:
       - application/json
-      host:
-      - api.anthropic.com
-      user-agent:
-      - litellm/1.76.2
     method: POST
     uri: https://api.anthropic.com/v1/messages
   response:
     body:
       string: 'event: message_start
 
-        data: {"type":"message_start","message":{"id":"msg_014EP62H3y4ZbTgGYDC1X1hS","type":"message","role":"assistant","model":"claude-3-5-haiku-20241022","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":508,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":11,"service_tier":"standard"}}
-        }
+        data: {"type":"message_start","message":{"model":"claude-3-5-haiku-20241022","id":"msg_011NK1bop5PF5BcZCpBDmpXP","type":"message","role":"assistant","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":508,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":10,"service_tier":"standard"}}               }
 
 
         event: content_block_start
 
-        data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_017ZGbueAGW64csDcyjaRb7F","name":"json_tool_call","input":{}}    }
-
-
-        event: content_block_delta
-
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":""}            }
+        data: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_01EivQGuSRXtTjmrQYKyp5fg","name":"json_tool_call","input":{}}}
 
 
         event: ping
@@ -53,79 +47,68 @@ interactions:
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"name\":"}          }
-
-
-        event: ping
-
-        data: {"type": "ping"}
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":""}  }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"
-        \"Sci"}         }
-
-
-        event: ping
-
-        data: {"type": "ping"}
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"na"}     }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"ence
-        Fai"}               }
-
-
-        event: ping
-
-        data: {"type": "ping"}
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"me\":
+        \"Scienc"} }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"r\""}
-        }
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"e
+        Fa"}  }
+
+
+        event: content_block_delta
+
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"ir\""}            }
 
 
         event: content_block_delta
 
         data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":",
-        \"people\":"}        }
+        \"pe"}}
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"
-        [\"Ali"}   }
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"ople\":
+        [\""}         }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"ce\",\"Bob\"]"}}
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"Alice"}         }
+
+
+        event: content_block_delta
+
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\",\"Bob\"]"}        }
 
 
         event: content_block_delta
 
         data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":",
-        \"day"}           }
+        \"dayOfWee"}         }
 
 
         event: content_block_delta
 
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"OfWeek\":
-        "}            }
-
-
-        event: content_block_delta
-
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"\"Friday\"}"}}
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"k\":
+        \"Friday\"}"}     }
 
 
         event: content_block_stop
 
-        data: {"type":"content_block_stop","index":0  }
+        data: {"type":"content_block_stop","index":0          }
 
 
         event: message_delta
@@ -135,13 +118,13 @@ interactions:
 
         event: message_stop
 
-        data: {"type":"message_stop"          }
+        data: {"type":"message_stop"         }
 
 
         '
     headers:
       CF-RAY:
-      - 97b737759c493238-LHR
+      - 9beecac0bd31ada3-LHR
       Cache-Control:
       - no-cache
       Connection:
@@ -149,7 +132,7 @@ interactions:
       Content-Type:
       - text/event-stream; charset=utf-8
       Date:
-      - Sun, 07 Sep 2025 15:25:04 GMT
+      - Fri, 16 Jan 2026 15:54:33 GMT
       Server:
       - cloudflare
       Transfer-Encoding:
@@ -163,35 +146,33 @@ interactions:
       anthropic-ratelimit-input-tokens-remaining:
       - '400000'
       anthropic-ratelimit-input-tokens-reset:
-      - '2025-09-07T15:25:04Z'
+      - '2026-01-16T15:54:32Z'
       anthropic-ratelimit-output-tokens-limit:
       - '80000'
       anthropic-ratelimit-output-tokens-remaining:
       - '80000'
       anthropic-ratelimit-output-tokens-reset:
-      - '2025-09-07T15:25:04Z'
+      - '2026-01-16T15:54:32Z'
       anthropic-ratelimit-requests-limit:
       - '4000'
       anthropic-ratelimit-requests-remaining:
       - '3999'
       anthropic-ratelimit-requests-reset:
-      - '2025-09-07T15:25:04Z'
+      - '2026-01-16T15:54:32Z'
       anthropic-ratelimit-tokens-limit:
       - '480000'
       anthropic-ratelimit-tokens-remaining:
       - '480000'
       anthropic-ratelimit-tokens-reset:
-      - '2025-09-07T15:25:04Z'
+      - '2026-01-16T15:54:32Z'
       cf-cache-status:
       - DYNAMIC
       request-id:
-      - req_011CSuGmPbEFUbDjdJurN2z8
+      - req_011CXBKygboBG5KMwomzkm5o
       strict-transport-security:
       - max-age=31536000; includeSubDomains; preload
-      via:
-      - 1.1 google
       x-envoy-upstream-service-time:
-      - '501'
+      - '660'
     status:
       code: 200
       message: OK

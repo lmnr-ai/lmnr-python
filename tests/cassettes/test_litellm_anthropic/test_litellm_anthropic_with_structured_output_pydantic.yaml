@@ -7,39 +7,38 @@ interactions:
       "object", "properties": {"name": {"title": "Name", "type": "string"}, "people":
       {"items": {"type": "string"}, "title": "People", "type": "array"}, "dayOfWeek":
       {"title": "Dayofweek", "type": "string"}}, "required": ["name", "people", "dayOfWeek"],
-      "title": "Event", "additionalProperties": false}}], "max_tokens": 4096}'
+      "title": "Event", "additionalProperties": false}}], "max_tokens": 8192}'
     headers:
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '635'
+      Host:
+      - api.anthropic.com
+      User-Agent:
+      - litellm/1.80.16
       accept:
       - application/json
-      accept-encoding:
-      - gzip, deflate, zstd
       anthropic-version:
       - '2023-06-01'
-      connection:
-      - keep-alive
-      content-length:
-      - '635'
       content-type:
       - application/json
-      host:
-      - api.anthropic.com
-      user-agent:
-      - litellm/1.76.2
     method: POST
     uri: https://api.anthropic.com/v1/messages
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAAAwAAAP//dJHJTgMxEER/BdXZkWaGBJBvQSwHdnFgE7KM3WSceOzBS0QUzb8jB0Vs
-        4uh+VdWl9hpGg6OLM1HV5319eHrZ9NfTdOof3qfzy7dl1GBIq56KimKUMwJD8LYMZIwmJukSGDqv
-        yYJDWZk1jXZHk1ErzSKPmqoZ11XTgEF5l8gl8Kf1NjN5b0WOJXTTpLyzqOrJuHn0xwfL9ujicXzz
-        sDw7r+9nczA42RXfPHonNmYlrS1u1+cEvt4KbpUhp2jnRJoAhp58Xzo/YWqNKusO/QueGbRcXb3e
-        ES3AcRKMlisMwzNDTL4XgWT07mfNDYj0lks8uMvWMuTNYfj6s4ZIfkEugk+qAwYlVUtCBZLJeCd+
-        KqotDyT1f2zrLQuob6mjIK2YdH/1X7Ruf9OBwef0fbS/xxApLI0ikQwFcJTv1DJoDMMHAAAA//8D
-        AJwkcjAcAgAA
+        H4sIAAAAAAAA/3VRXUvDMBT9K5LnFtrObdK3ihvii+gmQ4aUa3q3Zk2TLh/qHPvv3hSKTvEtOR/3
+        nJscWasrlCxnXIKvMB7F47gG0fg4S7LLNMkyFjFRkaC12zJJl8VhUsyen9odNI2BTz7d6eqWNO7Q
+        YVChtbBFAoyWAQBrhXWgHEFcK4d0ytfHQe+0lqW3OKSEu6ec4uNu9T5bLcTjZpTu8eZh2S03QCoF
+        bfDtrFZlb+YgZXCrztPk4yBYcIGK48UchCG6Q92FPmtWSMFD3LV+ZS8Rq+Bwv1khNuSZG0FXdjoR
+        bp3uSoNAOec1e8Li3ofxLFdeyoj5fmlK72tQsQaVZfk4uaKtgddYcprlBJU+VyQDT3T1Hzd4QwB2
+        NbZoQJbj9q/+m03r3+wpYtq7n9B0QuugeaMHKZ1AQ4uGr6rAVPQIX9WWd8ocAgAA
     headers:
       CF-RAY:
-      - 97b737637b344887-LHR
+      - 9beecaad8c9c94a4-LHR
       Connection:
       - keep-alive
       Content-Encoding:
@@ -47,7 +46,7 @@ interactions:
       Content-Type:
       - application/json
       Date:
-      - Sun, 07 Sep 2025 15:25:02 GMT
+      - Fri, 16 Jan 2026 15:54:30 GMT
       Server:
       - cloudflare
       Transfer-Encoding:
@@ -61,35 +60,33 @@ interactions:
       anthropic-ratelimit-input-tokens-remaining:
       - '400000'
       anthropic-ratelimit-input-tokens-reset:
-      - '2025-09-07T15:25:01Z'
+      - '2026-01-16T15:54:29Z'
       anthropic-ratelimit-output-tokens-limit:
       - '80000'
       anthropic-ratelimit-output-tokens-remaining:
       - '80000'
       anthropic-ratelimit-output-tokens-reset:
-      - '2025-09-07T15:25:02Z'
+      - '2026-01-16T15:54:30Z'
       anthropic-ratelimit-requests-limit:
       - '4000'
       anthropic-ratelimit-requests-remaining:
       - '3999'
       anthropic-ratelimit-requests-reset:
-      - '2025-09-07T15:25:01Z'
+      - '2026-01-16T15:54:29Z'
       anthropic-ratelimit-tokens-limit:
       - '480000'
       anthropic-ratelimit-tokens-remaining:
       - '480000'
       anthropic-ratelimit-tokens-reset:
-      - '2025-09-07T15:25:01Z'
+      - '2026-01-16T15:54:29Z'
       cf-cache-status:
       - DYNAMIC
       request-id:
-      - req_011CSuGmBBcESbQb47dKjVzG
+      - req_011CXBKyTS31DeAdZNJqnQpc
       strict-transport-security:
       - max-age=31536000; includeSubDomains; preload
-      via:
-      - 1.1 google
       x-envoy-upstream-service-time:
-      - '1211'
+      - '1249'
     status:
       code: 200
       message: OK

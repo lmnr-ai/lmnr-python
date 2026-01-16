@@ -135,9 +135,7 @@ dev = [
   "langgraph>=0.4.8",
   "langchain-core>=0.3.75",
   "langchain>=0.3.27",
-  # litellm started doing weird things with grpcio and broke the responses
-  # instrumentation. TODO: check how to fix and which versions to use.
-  "litellm (>=1.79.1,<1.80.6)",
+  "litellm>=1.80.16",
   "groq>=0.30.0",
   "anthropic[bedrock]>=0.60.0",
   "langchain-openai>=0.3.32",

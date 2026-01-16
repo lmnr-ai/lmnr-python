@@ -17,23 +17,27 @@ interactions:
       host:
       - generativelanguage.googleapis.com
       user-agent:
-      - litellm/1.77.1
+      - litellm/1.80.16
     method: POST
     uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAC/4VTUW/TQAx+76/w7qUsSiO6Dib6ygYaGttYI4REefAatzma3kXnq7Kq2n/Hlyxp
-        OoTIQ+T4sz9/tuP9AEAt0GQ6Q0+spvBTPAD7+h0wazwZL0DrEmeJzh9im2ffsyXE01NIUlGU5gRz
-        9TBX8NFujQdt5HPmHVaP5NxuLiFzMzd3a9zFwBa8xG+ZHFRoPNefBXkvjqEbwuLAwR1HIuQ35IcM
-        j45wLTmaIbOVSeCTduzjmqWyLgMB+pmxZEr3Ne7RrciHiOOaCdzaKobrYVEAy6w6shgKa9farGBp
-        HRAuchHGHs2CwC5D6hRYascQuQje+ByDRGvoNAaMQTgfY6AWrezJaRfpiE5OE0iD0ZHyC2sCApAj
-        qUpNa2i4ErGap4dO+21Kl2GRKEyvB1rXAq83xAnM9KYsCMjY7SpP5kbFr7aaByAs1rst9bDn+P+/
-        QrOhZoEiYjMNa2cfSctR0CmGWLvgTY81YlkSOoYomkRRozX8Av9oNVF9YZ396yBROVtQkLSxGRVt
-        eNeDWmqjOX8gZGtC2Cy9u+9GobTJ6EncbwdtgZpabRlX9JU8yilhdzCqdHZT+tSuydQHIMjZeUPW
-        u7wjfNLi3nosjlPHH+K/ePlSquqif5K9a5UmsdB+FzpJr36kvaVKgSNZ7SQGvYG1Sz+WOH4/HryM
-        rJnid3Ksm3GtaCMDHJ0l70bLAjkfSXWqqypHXFrDdJ2FwIsvN4j3+vNteXlh+Op+Yke/Z9/U4Hnw
-        B15FvimYBAAA
+        H4sIAAAAAAAC/4VUUY/bNgx+z69g/eLNcII26aHdvR26DThgvRZLcBi27IEXM7YQWfIkuj730P8+
+        SrYT363A/GAI/Eh+5EdKTwuA5ICmUAUy+eQa/hILwFP8B8waJsMCTCYxNuj44jt8T7OzuDA9hqAk
+        y24M6v6rMiUgbFXdaIIPFTo8MDn4YFvDWbY3e/PphH0OFTlKPXQVMtymNXClzEmCV7CrCFovMR0a
+        9sAWjsoUYFuGynZQo+mBVU0CiacmDvlTlwI2DaHzoAzsE88Ouwdyrl/tE/iNWMgeHOEpMHkobGfA
+        956pRlYH1FpqQg+3gLrDPjisQrG/Kuc5F7MhKkItjTKNVYYjOXkvminUEJW6jsbOugKEYl5DLjWI
+        +BFndCUxHM7aiK+Uv4I72wlTqjWQqGd7qHsRopXsNXFlCzhaF6tfDV4+iNyDl7FeiEc9HvrxlMOJ
+        qBmm4lpjwukQhgH2GKOE2g+dl0PLW5uHWLHSIx1apoEzQJlMfCv1c8jSKa4g9SkswYTIAN7JNuSQ
+        8mBsaDSH6SzhpsJXMl0Mqa05Y5hKRBd+D/ILKqU0xIedKKfMQZw45RJlwEspKibibuK+kUjZlHGU
+        IXrci4tv5YheDd5hyzR6PsuU9sJeWPImZXBUKtkNF7vehV0V7SmPgkWOi4aB4cXGybDVyDaOatoe
+        yVK3GqOmJEX6TmqUq3dQnmSUofmDliWWs7GdsCf5i+tW2baswo1j19IM+5b//x0dbsFQufDX12N3
+        313ZfRKbf7MC8HJzXZaNAPzwRmSTtn/cm3VEY0h0Ceg6TDCimwvqIizoxk3oQP2d+5tlmywbr7ia
+        rfaL6pJ59+fz3xcdEmc1hb5rW5Ce3M9CJTJI5avfCb01wW27+/T5rHcibw49ivn1YiKIqZPWY0kf
+        iVEeUjw/l0njbN3wzp7IxLdOkPXbIdns3X2Gv3s/4mwZ9TNos3mX/yev/1lYlZ4/yLO3WppErbgP
+        nex++WM32xwheFbWpMRiJti0Wc9LXG+uFqNkg4r35Lwa5CqpFgGX69XV8ig3qVoKO0XWxJFvrPF0
+        WwTHL/c//YOIbz/i9v7x7v3nqy/HP1/f+GTxbfEv06kk9JcGAAA=
     headers:
       Alt-Svc:
       - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
@@ -42,63 +46,11 @@ interactions:
       Content-Type:
       - application/json; charset=UTF-8
       Date:
-      - Mon, 29 Sep 2025 14:08:44 GMT
+      - Fri, 16 Jan 2026 15:56:45 GMT
       Server:
       - scaffolding on HTTPServer2
       Server-Timing:
-      - gfet4t7; dur=1656
-      Transfer-Encoding:
-      - chunked
-      Vary:
-      - Origin
-      - X-Origin
-      - Referer
-      X-Content-Type-Options:
-      - nosniff
-      X-Frame-Options:
-      - SAMEORIGIN
-      X-XSS-Protection:
-      - '0'
-    status:
-      code: 200
-      message: OK
-- request:
-    body: '{"contents":[{"role":"user","parts":[{"text":"How many times does the letter
-      ''r'' appear in the word strawberry?"}]}],"system_instruction":{"parts":[{"text":"Think
-      deep and thoroughly step by step."}]},"generationConfig":{"thinkingConfig":{"includeThoughts":true,"thinkingBudget":512}}}'
-    headers:
-      accept:
-      - '*/*'
-      accept-encoding:
-      - gzip, deflate, zstd
-      connection:
-      - keep-alive
-      content-length:
-      - '285'
-      content-type:
-      - application/json
-      host:
-      - generativelanguage.googleapis.com
-      user-agent:
-      - litellm/1.77.1
-    method: POST
-    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent
-  response:
-    body:
-      string: ''
-    headers:
-      Alt-Svc:
-      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-      Content-Encoding:
-      - gzip
-      Content-Type:
-      - application/json; charset=UTF-8
-      Date:
-      - Mon, 29 Sep 2025 14:08:44 GMT
-      Server:
-      - scaffolding on HTTPServer2
-      Server-Timing:
-      - gfet4t7; dur=1656
+      - gfet4t7; dur=2372
       Transfer-Encoding:
       - chunked
       Vary:

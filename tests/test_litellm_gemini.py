@@ -46,9 +46,9 @@ def test_litellm_gemini_thinking(
     assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
     assert spans[0].attributes["gen_ai.response.id"] == response.id
     assert spans[0].attributes["gen_ai.usage.input_tokens"] == 24
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 272
+    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 289
     assert spans[0].attributes["gen_ai.usage.reasoning_tokens"] == 223
-    assert spans[0].attributes["llm.usage.total_tokens"] == 296
+    assert spans[0].attributes["llm.usage.total_tokens"] == 313
     assert (
         spans[0].attributes["gen_ai.prompt.0.content"]
         == "Think deep and thoroughly step by step."
@@ -108,9 +108,9 @@ def test_litellm_gemini_thinking_with_streaming(
     assert spans[0].attributes["gen_ai.request.model"] == "gemini-2.5-flash-lite"
     assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
     assert spans[0].attributes["gen_ai.usage.input_tokens"] == 24
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 238
-    assert spans[0].attributes["gen_ai.usage.reasoning_tokens"] == 187
-    assert spans[0].attributes["llm.usage.total_tokens"] == 262
+    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 303
+    assert spans[0].attributes["gen_ai.usage.reasoning_tokens"] == 220
+    assert spans[0].attributes["llm.usage.total_tokens"] == 327
     assert (
         spans[0].attributes["gen_ai.prompt.0.content"]
         == "Think deep and thoroughly step by step."
@@ -163,9 +163,9 @@ async def test_litellm_gemini_thinking_async(
     assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
     assert spans[0].attributes["gen_ai.response.id"] == response.id
     assert spans[0].attributes["gen_ai.usage.input_tokens"] == 24
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 195
-    assert spans[0].attributes["gen_ai.usage.reasoning_tokens"] == 161
-    assert spans[0].attributes["llm.usage.total_tokens"] == 219
+    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 313
+    assert spans[0].attributes["gen_ai.usage.reasoning_tokens"] == 235
+    assert spans[0].attributes["llm.usage.total_tokens"] == 337
     assert (
         spans[0].attributes["gen_ai.prompt.0.content"]
         == "Think deep and thoroughly step by step."
@@ -225,9 +225,9 @@ async def test_litellm_gemini_thinking_with_streaming_async(
     assert spans[0].attributes["gen_ai.request.model"] == "gemini-2.5-flash-lite"
     assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
     assert spans[0].attributes["gen_ai.usage.input_tokens"] == 24
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 259
-    assert spans[0].attributes["gen_ai.usage.reasoning_tokens"] == 212
-    assert spans[0].attributes["llm.usage.total_tokens"] == 283
+    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 269
+    assert spans[0].attributes["gen_ai.usage.reasoning_tokens"] == 222
+    assert spans[0].attributes["llm.usage.total_tokens"] == 293
     assert (
         spans[0].attributes["gen_ai.prompt.0.content"]
         == "Think deep and thoroughly step by step."
