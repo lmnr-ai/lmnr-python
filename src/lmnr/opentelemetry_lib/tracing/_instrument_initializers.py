@@ -158,6 +158,16 @@ class CrewAIInstrumentorInitializer(InstrumentorInitializer):
         return CrewAiInstrumentor()
 
 
+class DaytonaInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("daytona"):
+            return None
+
+        from ..opentelemetry.instrumentation.daytona import DaytonaSdkInstrumentor
+
+        return DaytonaSdkInstrumentor()
+
+
 class CuaAgentInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("cua-agent"):
