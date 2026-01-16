@@ -5,8 +5,8 @@ from typing import Sequence
 from urllib.parse import urlparse, urlunparse
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 from opentelemetry.sdk.trace import ReadableSpan
-from opentelemetry.sdk._logs import LogData
-from opentelemetry.sdk._logs.export import LogExporter, LogExportResult
+from opentelemetry.sdk._logs import ReadableLogRecord
+from opentelemetry.sdk._logs.export import LogRecordExporter, LogRecordExportResult
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
     OTLPSpanExporter,
 )
@@ -162,7 +162,7 @@ class LaminarSpanExporter(SpanExporter):
             return self.instance.force_flush(timeout_millis)
 
 
-class LaminarLogExporter(LogExporter):
+class LaminarLogExporter(LogRecordExporter):
     """Log exporter for Laminar that sends logs to the OTLP endpoint."""
 
     instance: OTLPLogExporter | HTTPOTLPLogExporter
@@ -286,7 +286,7 @@ class LaminarLogExporter(LogExporter):
                     logger.warning(f"Error shutting down old exporter instance: {e}")
             self.instance = new_instance
 
-    def export(self, batch: Sequence[LogData]) -> LogExportResult:
+    def export(self, batch: Sequence[ReadableLogRecord]) -> LogRecordExportResult:
         with self._instance_lock:
             return self.instance.export(batch)
 
