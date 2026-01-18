@@ -178,6 +178,17 @@ class CuaComputerInstrumentorInitializer(InstrumentorInitializer):
         return CuaComputerInstrumentor()
 
 
+class DaytonaSDKInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("daytona"):
+            return None
+
+        from ..opentelemetry.instrumentation.daytona import DaytonaSDKInstrumentor
+
+        return DaytonaSDKInstrumentor()
+
+
+
 class GoogleGenAIInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("google-genai"):
