@@ -63,6 +63,7 @@ def _wait_for_port(port: int, timeout: float = 5.0) -> bool:
 def _stop_cc_proxy_locked():
     global _CC_PROXY_PORT
     global _CC_PROXY_BASE_URL
+    global _CC_PROXY_TARGET_URL
     global _CC_PROXY_ENV_SNAPSHOT
     global _CC_PROXY_ENV_SNAPSHOT_SET
 
@@ -81,6 +82,7 @@ def _stop_cc_proxy_locked():
 
     _CC_PROXY_PORT = None
     _CC_PROXY_BASE_URL = None
+    _CC_PROXY_TARGET_URL = None
     _CC_PROXY_ENV_SNAPSHOT = None
     _CC_PROXY_ENV_SNAPSHOT_SET = None
 
@@ -140,6 +142,26 @@ def _snapshot_env(keys: list[str]) -> tuple[dict[str, str | None], set[str]]:
     return snapshot, set_keys
 
 
+def extract_3p_target_url() -> tuple[bool, Optional[str]]:
+    """
+    Extract the target URL for third-party Anthropic API providers.
+
+    Returns a tuple of (provider_enabled, target_url):
+    - (False, None): No third-party provider is configured
+    - (True, url): A provider is configured and valid
+    - (True, None): A provider is configured but invalid (should abort)
+    """
+    # Microsoft Foundry
+    if _is_truthy_env(os.environ.get(FOUNDRY_USE_ENV)):
+        target_url = _foundry_target_url()
+        return (True, target_url)
+
+    # TODO: Amazon Bedrock support
+    # TODO: Google Vertex AI support
+
+    return (False, None)
+
+
 def start_proxy() -> Optional[str]:
     with _CC_PROXY_LOCK:
         global _CC_PROXY_PORT
@@ -154,8 +176,9 @@ def start_proxy() -> Optional[str]:
             return None
 
         # Resolve the upstream target. Third-party providers override Anthropic when enabled.
-        target_url = _foundry_target_url()
-        if _is_truthy_env(os.environ.get(FOUNDRY_USE_ENV)) and target_url is None:
+        provider_enabled, target_url = extract_3p_target_url()
+        if provider_enabled and target_url is None:
+            # Provider explicitly configured but invalid; abort.
             return None
 
         if target_url is None:
