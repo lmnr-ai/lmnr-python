@@ -219,6 +219,29 @@ def start_or_connect_to_proxy() -> Optional[str]:
             proxy_base_url = f"http://127.0.0.1:{existing_port}"
             _CC_PROXY_PORT = existing_port
             _CC_PROXY_BASE_URL = proxy_base_url
+            # Capture env before any mutations so we can restore on shutdown.
+            if _CC_PROXY_ENV_SNAPSHOT is None:
+                _CC_PROXY_ENV_SNAPSHOT, _CC_PROXY_ENV_SNAPSHOT_SET = _snapshot_env(
+                    [
+                        "ANTHROPIC_BASE_URL",
+                        "ANTHROPIC_ORIGINAL_BASE_URL",
+                        FOUNDRY_BASE_URL_ENV,
+                        FOUNDRY_RESOURCE_ENV,
+                    ]
+                )
+            # Resolve and preserve the upstream target URL from snapshot values.
+            # This ensures correct fallback if the proxy dies and we need to restart.
+            if _CC_PROXY_TARGET_URL is None:
+                provider_enabled, target_url = extract_3p_target_url()
+                if not provider_enabled or target_url is None:
+                    # Use snapshot values to avoid circular reference to proxy URL.
+                    target_url = (
+                        _CC_PROXY_ENV_SNAPSHOT.get("ANTHROPIC_ORIGINAL_BASE_URL")
+                        or _CC_PROXY_ENV_SNAPSHOT.get("ANTHROPIC_BASE_URL")
+                        or DEFAULT_ANTHROPIC_BASE_URL
+                    )
+                _CC_PROXY_TARGET_URL = target_url
+                os.environ.setdefault("ANTHROPIC_ORIGINAL_BASE_URL", target_url)
             os.environ["ANTHROPIC_BASE_URL"] = proxy_base_url
             if _is_truthy_env(os.environ.get(FOUNDRY_USE_ENV)):
                 os.environ[FOUNDRY_BASE_URL_ENV] = proxy_base_url
