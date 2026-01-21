@@ -60,6 +60,17 @@ def _wait_for_port(port: int, timeout: float = 5.0) -> bool:
     return False
 
 
+def _is_port_open(port: int) -> bool:
+    """Check if a port is currently accepting connections (non-blocking)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.5)
+        try:
+            sock.connect(("127.0.0.1", port))
+            return True
+        except OSError:
+            return False
+
+
 def _stop_cc_proxy_locked():
     global _CC_PROXY_PORT
     global _CC_PROXY_BASE_URL
@@ -162,7 +173,26 @@ def extract_3p_target_url() -> tuple[bool, Optional[str]]:
     return (False, None)
 
 
-def start_proxy() -> Optional[str]:
+def _find_existing_proxy() -> Optional[int]:
+    """
+    Check if a proxy is already running on the default port range.
+    Returns the port if found, None otherwise.
+    """
+    for offset in range(CC_PROXY_PORT_ATTEMPTS):
+        port = DEFAULT_CC_PROXY_PORT + offset
+        if _is_port_open(port):
+            return port
+    return None
+
+
+def start_or_connect_to_proxy() -> Optional[str]:
+    """
+    Start a new proxy or connect to an existing one.
+
+    In serverless/lambda environments, containers may be reused and a proxy
+    from a previous invocation might still be running. This function checks
+    for an existing proxy first before starting a new one.
+    """
     with _CC_PROXY_LOCK:
         global _CC_PROXY_PORT
         global _CC_PROXY_BASE_URL
@@ -170,6 +200,58 @@ def start_proxy() -> Optional[str]:
         global _CC_PROXY_ENV_SNAPSHOT
         global _CC_PROXY_ENV_SNAPSHOT_SET
 
+        # Check if we already have a running proxy that we're tracking
+        if _CC_PROXY_PORT is not None and _CC_PROXY_BASE_URL is not None:
+            if _is_port_open(_CC_PROXY_PORT):
+                logger.debug(
+                    "Reusing existing tracked proxy on: %s", _CC_PROXY_BASE_URL
+                )
+                return _CC_PROXY_BASE_URL
+            else:
+                # Port is no longer open; reset state
+                logger.debug("Previously tracked proxy is no longer running")
+                _CC_PROXY_PORT = None
+                _CC_PROXY_BASE_URL = None
+
+        # Check if there's an existing proxy running from a previous container reuse
+        existing_port = _find_existing_proxy()
+        if existing_port is not None:
+            proxy_base_url = f"http://127.0.0.1:{existing_port}"
+            _CC_PROXY_PORT = existing_port
+            _CC_PROXY_BASE_URL = proxy_base_url
+            # Capture env before any mutations so we can restore on shutdown.
+            if _CC_PROXY_ENV_SNAPSHOT is None:
+                _CC_PROXY_ENV_SNAPSHOT, _CC_PROXY_ENV_SNAPSHOT_SET = _snapshot_env(
+                    [
+                        "ANTHROPIC_BASE_URL",
+                        "ANTHROPIC_ORIGINAL_BASE_URL",
+                        FOUNDRY_BASE_URL_ENV,
+                        FOUNDRY_RESOURCE_ENV,
+                    ]
+                )
+            # Resolve and preserve the upstream target URL from snapshot values.
+            # This ensures correct fallback if the proxy dies and we need to restart.
+            if _CC_PROXY_TARGET_URL is None:
+                provider_enabled, target_url = extract_3p_target_url()
+                if not provider_enabled or target_url is None:
+                    # Use snapshot values to avoid circular reference to proxy URL.
+                    target_url = (
+                        _CC_PROXY_ENV_SNAPSHOT.get("ANTHROPIC_ORIGINAL_BASE_URL")
+                        or _CC_PROXY_ENV_SNAPSHOT.get("ANTHROPIC_BASE_URL")
+                        or DEFAULT_ANTHROPIC_BASE_URL
+                    )
+                _CC_PROXY_TARGET_URL = target_url
+                os.environ.setdefault("ANTHROPIC_ORIGINAL_BASE_URL", target_url)
+            os.environ["ANTHROPIC_BASE_URL"] = proxy_base_url
+            if _is_truthy_env(os.environ.get(FOUNDRY_USE_ENV)):
+                os.environ[FOUNDRY_BASE_URL_ENV] = proxy_base_url
+                if FOUNDRY_RESOURCE_ENV in os.environ:
+                    os.environ.pop(FOUNDRY_RESOURCE_ENV, None)
+            _register_proxy_shutdown()
+            logger.info("Connected to existing proxy on: %s", proxy_base_url)
+            return proxy_base_url
+
+        # No existing proxy found; start a new one
         port = _find_available_port(DEFAULT_CC_PROXY_PORT, CC_PROXY_PORT_ATTEMPTS)
         if port is None:
             logger.warning("Unable to allocate port for cc-proxy.")
@@ -225,7 +307,7 @@ def start_proxy() -> Optional[str]:
                 os.environ.pop(FOUNDRY_RESOURCE_ENV, None)
         _register_proxy_shutdown()
 
-        logger.info("Started claude proxy server on: " + str(proxy_base_url))
+        logger.info("Started claude proxy server on: %s", proxy_base_url)
         return proxy_base_url
 
 

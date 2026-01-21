@@ -27,7 +27,7 @@ def test_foundry_base_url_overrides_target(monkeypatch):
     )
     monkeypatch.delenv("ANTHROPIC_FOUNDRY_RESOURCE", raising=False)
 
-    result = claude_proxy.start_proxy()
+    result = claude_proxy.start_or_connect_to_proxy()
 
     assert result == proxy_url
     assert calls["target_url"] == "https://foundry.example/anthropic"
@@ -44,7 +44,7 @@ def test_foundry_resource_builds_target_url(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_FOUNDRY_BASE_URL", raising=False)
     monkeypatch.setenv("ANTHROPIC_FOUNDRY_RESOURCE", "my-resource")
 
-    result = claude_proxy.start_proxy()
+    result = claude_proxy.start_or_connect_to_proxy()
 
     assert result == proxy_url
     assert (
@@ -65,7 +65,7 @@ def test_foundry_missing_config_fails(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_FOUNDRY_RESOURCE", raising=False)
     monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
 
-    result = claude_proxy.start_proxy()
+    result = claude_proxy.start_or_connect_to_proxy()
 
     assert result is None
     assert "target_url" not in calls
