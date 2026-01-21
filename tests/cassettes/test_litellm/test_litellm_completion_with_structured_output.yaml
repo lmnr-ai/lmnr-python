@@ -1,0 +1,63 @@
+interactions:
+- request:
+    body: '{"contents":[{"role":"user","parts":[{"text":"Alice and Bob go to a Science
+      fair on Friday. Extract the event information."}]}],"generationConfig":{"response_mime_type":"application/json","response_schema":{"type":"object","title":"Event","properties":{"name":{"type":"string","description":"The
+      name of the event"},"people":{"type":"array","items":{"type":"string","description":"The
+      name of the person attending the event"}},"dayOfWeek":{"type":"string","description":"The
+      day of the week the event is on"}},"required":["name","people","dayOfWeek"],"propertyOrdering":["name","people","dayOfWeek"]}}}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '602'
+      Content-Type:
+      - application/json
+      Host:
+      - generativelanguage.googleapis.com
+      User-Agent:
+      - litellm/1.81.0
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/2VRy27CMBC85yusPYeqpfR5oy+1Qi2oBFoJc3DjDVg4dmSbFhrl3+skBILqQ7yZ
+        Gc+ux3lACMRMccGZQwu3ZOYRQvLqW3JaOVTOEw3kwYwZd9DWK2/VXuJwUx6CnCpCKCiWIvX/FMax
+        QBUjSZgwFMKazlBnshLMKPSliH0devxOf1GY70ScbYfJB+KqNnoyfuYtBaoKaPUu9vU8PExstMRy
+        nFRzlI28aASQCCXs8h2Z1aqUjaPhCPasUBw3Hj4NmgaVNawtW+ArOuazY/uEIDM6zVykV6ju9brK
+        7uyqNmtFfcSfd3e8047JI6p3E/6ztQ++qZDtJ2i9jr8jk8Jty4tEj58RtHJwx1M1QVT7PNhFUqc0
+        RWNFHccCUx9Qp3ty0Ukks8uOt8fKFgzaTCuLL7wUDi6nPyzuDt4G498Vn4wW38/Xvf4EgiL4A4VJ
+        pKNqAgAA
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Wed, 21 Jan 2026 10:06:35 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=444
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1

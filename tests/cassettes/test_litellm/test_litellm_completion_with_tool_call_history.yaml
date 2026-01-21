@@ -1,0 +1,121 @@
+interactions:
+- request:
+    body: '{"contents":[{"role":"user","parts":[{"text":"What is the weather in Tokyo?"}]}],"tools":[{"function_declarations":[{"name":"get_weather","description":"Get
+      the current weather for a location","parameters":{"type":"object","properties":{"location":{"type":"string","description":"Location
+      of the weather to get, e.g. San Francisco, CA or Paris, France"}},"required":["location"]}}]}],"generationConfig":{}}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '406'
+      Content-Type:
+      - application/json
+      Host:
+      - generativelanguage.googleapis.com
+      User-Agent:
+      - litellm/1.81.0
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/3VRYUvDMBD93l8R8knBDh1MxK9TccJw6hCZjHE0166YJjXJNsfYf/eStls7tB/a
+        5N67d9f3dhFjPAElcgEOLb9ln1RhbBfeHtPKoXIENCUqlmDckVs9u9aZKOlKJS7XaghSdpprXEGB
+        VOcZusUGwS3R8ItTEpjM/tFMiNQJeHkvMdVfW81POPvov9vxPD8O5EbLsE+hBcpGbN8QeJqr3C5f
+        EWw18236PDnsy3Ml8IfKlyf8MVoLWdAde12WoUJDRgvW+MMSMujMnveqmX65sBZf+c4xOqBg4GAC
+        L40uSke/jGqoVyGY60E1tpVjB79qcKcdyA50U2/clrV3NDSX7Xxb0ZM/IHO3Dcbff0xboZF+Z6vG
+        xPCdR7WdlcPvaGwdX4YFmRX3e4M4lWCXMcljkOUGbamVxZHwxPLbbWC2iB91/2EtRpM4XT9lLyMe
+        7aNf+QRIe8cCAAA=
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Wed, 21 Jan 2026 10:34:14 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=376
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+- request:
+    body: "{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"What is the weather
+      in Tokyo?\"}]},{\"role\":\"model\",\"parts\":[{\"function_call\":{\"name\":\"get_weather\",\"args\":{\"location\":\"Tokyo\"}}}]},{\"parts\":[{\"function_response\":{\"name\":\"get_weather\",\"response\":{\"content\":\"Sunny,
+      22\xB0C.\"}}}]}],\"tools\":[{\"function_declarations\":[{\"name\":\"get_weather\",\"description\":\"Get
+      the current weather for a location\",\"parameters\":{\"type\":\"object\",\"properties\":{\"location\":{\"type\":\"string\",\"description\":\"Location
+      of the weather to get, e.g. San Francisco, CA or Paris, France\"}},\"required\":[\"location\"]}}]}],\"generationConfig\":{}}"
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '598'
+      Content-Type:
+      - application/json
+      Host:
+      - generativelanguage.googleapis.com
+      User-Agent:
+      - litellm/1.81.0
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/2WQTU7DMBCF9zmF5XVTNeFHiG1hwaKhhYBAqAuLTBqLxA72hCaKcifOwMlwnCZ1
+        wQvbmvf8xvO1HiH0nYmEJwxB02vyZiqEtHbvNSkQBBphLJliyRQevcNqnbuxINT9IxpnQPbAMANF
+        uCCx/Ggk4ZroSoiGmMYkDH++l3PqPO+m+3Z2bKpkDn1iIRPIR3s3GmjKBdfZAzAtRW97jO/XdFK5
+        SKA25YU3NrDRtNJsBytAZsZn05C0VLIo0XwWxFJWdvxgEQxpDq5Tw9lBR4ksP5WC89m/YH1j2vLc
+        5eggNlOynGNjGd6+xNQhgX/+NbKw59Y7UBlAPYPSfCCyg8Iw8sP5hZ/mTGe+yQebSxXoUgoNd0lv
+        LD9xz9JwE0Vfoo6u1pcr/iQ3r9TrvF91d4cMMAIAAA==
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Wed, 21 Jan 2026 10:34:14 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=315
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1

@@ -1,0 +1,112 @@
+interactions:
+- request:
+    body: '{"model":"gpt-4.1-nano","input":[{"content":"Be very crisp in your response.","role":"system"},{"content":"What
+      is the capital of France?","role":"user"}],"stream":true}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '169'
+      Content-Type:
+      - application/json
+      Host:
+      - api.openai.com
+      User-Agent:
+      - litellm/1.81.0
+    method: POST
+    uri: https://api.openai.com/v1/responses
+  response:
+    body:
+      string: 'event: response.created
+
+        data: {"type":"response.created","response":{"id":"resp_08ff32452c7e1f50006970e17d26108198a6fbd8acbee87f5c","object":"response","created_at":1769005437,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4.1-nano-2025-04-14","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
+
+
+        event: response.in_progress
+
+        data: {"type":"response.in_progress","response":{"id":"resp_08ff32452c7e1f50006970e17d26108198a6fbd8acbee87f5c","object":"response","created_at":1769005437,"status":"in_progress","background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4.1-nano-2025-04-14","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
+
+
+        event: response.output_item.added
+
+        data: {"type":"response.output_item.added","item":{"id":"msg_08ff32452c7e1f50006970e17d5874819884bb77cbef990cfb","type":"message","status":"in_progress","content":[],"role":"assistant"},"output_index":0,"sequence_number":2}
+
+
+        event: response.content_part.added
+
+        data: {"type":"response.content_part.added","content_index":0,"item_id":"msg_08ff32452c7e1f50006970e17d5874819884bb77cbef990cfb","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":""},"sequence_number":3}
+
+
+        event: response.output_text.delta
+
+        data: {"type":"response.output_text.delta","content_index":0,"delta":"Paris","item_id":"msg_08ff32452c7e1f50006970e17d5874819884bb77cbef990cfb","logprobs":[],"obfuscation":"nFo06VrUjOG","output_index":0,"sequence_number":4}
+
+
+        event: response.output_text.done
+
+        data: {"type":"response.output_text.done","content_index":0,"item_id":"msg_08ff32452c7e1f50006970e17d5874819884bb77cbef990cfb","logprobs":[],"output_index":0,"sequence_number":5,"text":"Paris"}
+
+
+        event: response.content_part.done
+
+        data: {"type":"response.content_part.done","content_index":0,"item_id":"msg_08ff32452c7e1f50006970e17d5874819884bb77cbef990cfb","output_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":"Paris"},"sequence_number":6}
+
+
+        event: response.output_item.done
+
+        data: {"type":"response.output_item.done","item":{"id":"msg_08ff32452c7e1f50006970e17d5874819884bb77cbef990cfb","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"Paris"}],"role":"assistant"},"output_index":0,"sequence_number":7}
+
+
+        event: response.completed
+
+        data: {"type":"response.completed","response":{"id":"resp_08ff32452c7e1f50006970e17d26108198a6fbd8acbee87f5c","object":"response","created_at":1769005437,"status":"completed","background":false,"completed_at":1769005437,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"model":"gpt-4.1-nano-2025-04-14","output":[{"id":"msg_08ff32452c7e1f50006970e17d5874819884bb77cbef990cfb","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":"Paris"}],"role":"assistant"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":25,"input_tokens_details":{"cached_tokens":0},"output_tokens":2,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":27},"user":null,"metadata":{}},"sequence_number":8}
+
+
+        '
+    headers:
+      CF-RAY:
+      - 9c1778ed89e394c7-LHR
+      Connection:
+      - keep-alive
+      Content-Type:
+      - text/event-stream; charset=utf-8
+      Date:
+      - Wed, 21 Jan 2026 14:23:57 GMT
+      Server:
+      - cloudflare
+      Set-Cookie:
+      - __cf_bm=qlBWjgWeCPYqI0gQ3E0SM2YLDVxWUcoC7LTF5.7RXBs-1769005437-1.0.1.1-JYs4o75p62B7exDdL12bi9ZReQe1i8b.AjAZtLd.qngjuc9NJ5_8..TrZM9WWdMhedGPJeGoXTCO0578Fwwrx1kjS3idhcb8cgbpm7pNCnM;
+        path=/; expires=Wed, 21-Jan-26 14:53:57 GMT; domain=.api.openai.com; HttpOnly;
+        Secure; SameSite=None
+      - _cfuvid=2q0Bej910mNnS5jnLQgCHWGa1CGhLdgc0_z8GhaNNGU-1769005437269-0.0.1.1-604800000;
+        path=/; domain=.api.openai.com; HttpOnly; Secure; SameSite=None
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      Transfer-Encoding:
+      - chunked
+      X-Content-Type-Options:
+      - nosniff
+      alt-svc:
+      - h3=":443"; ma=86400
+      cf-cache-status:
+      - DYNAMIC
+      openai-organization:
+      - user-xzaeeoqlanzncr8pomspsknu
+      openai-processing-ms:
+      - '56'
+      openai-project:
+      - proj_aT4OgTR5NJ9iNjg4xWc82hiE
+      openai-version:
+      - '2020-10-01'
+      x-envoy-upstream-service-time:
+      - '60'
+      x-request-id:
+      - req_dcc3d73b30664b23a80498b983c8e9cf
+    status:
+      code: 200
+      message: OK
+version: 1

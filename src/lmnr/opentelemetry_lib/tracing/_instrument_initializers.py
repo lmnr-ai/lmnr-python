@@ -6,6 +6,9 @@ from lmnr.opentelemetry_lib.utils.package_check import (
     get_package_version,
     is_package_installed,
 )
+from lmnr.sdk.log import get_default_logger
+
+logger = get_default_logger(__name__)
 
 
 class InstrumentorInitializer(abc.ABC):
