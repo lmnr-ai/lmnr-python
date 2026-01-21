@@ -17,7 +17,7 @@ from typing import Any, Collection
 from typing_extensions import TypedDict
 from wrapt import FunctionWrapper, wrap_function_wrapper
 
-from .proxy import start_proxy, release_proxy, get_cc_proxy_base_url, set_trace_to_proxy
+from .proxy import start_or_connect_to_proxy, release_proxy, get_cc_proxy_base_url, set_trace_to_proxy
 
 logger = get_default_logger(__name__)
 
@@ -288,7 +288,7 @@ async def _wrap_async(to_wrap, wrapped, instance, args, kwargs):
         original_base_url = None
         if to_wrap.get("is_start_proxy"):
             original_base_url = os.environ.get("ANTHROPIC_BASE_URL")
-            start_proxy()
+            start_or_connect_to_proxy()
 
         if to_wrap.get("is_publish_span_context"):
             proxy_base_url = get_cc_proxy_base_url()
@@ -332,7 +332,7 @@ def _wrap_async_gen(to_wrap, wrapped, instance, args, kwargs):
         original_base_url = None
         if to_wrap.get("is_start_proxy"):
             original_base_url = os.environ.get("ANTHROPIC_BASE_URL")
-            start_proxy()
+            start_or_connect_to_proxy()
 
         if to_wrap.get("is_publish_span_context"):
             with Laminar.use_span(span):
