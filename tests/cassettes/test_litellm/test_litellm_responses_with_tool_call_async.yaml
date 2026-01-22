@@ -1,0 +1,98 @@
+interactions:
+- request:
+    body: '{"model":"gpt-4.1-nano","input":[{"content":"Be very crisp in your response.","role":"system"},{"content":"What
+      is the weather in Tokyo?","role":"user"}],"tools":[{"type":"function","name":"get_weather","description":"Get
+      the current weather for a location","parameters":{"type":"object","properties":{"location":{"type":"string","description":"Location
+      of the weather to get, e.g. San Francisco, CA or Paris, France"}},"required":["location"]}}]}'
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '447'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      user-agent:
+      - litellm/1.81.0
+    method: POST
+    uri: https://api.openai.com/v1/responses
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAAwAAAP//fFXJjuM2EL37Kwid7Qbl3b4FATIIMocBJkEO6YFQooo2Y4pUyGLPGA3/
+        e0DK2tzdc5PqsR5reVV8nTGWqSo7ssyhbwq+4bmUcrNClMtcCM63hx3HVQlSbsQ+P+zLw2q145ty
+        yw8HsQaezSOFLf9FQR2NNR5bu3AIhFUBEct32wPnW57nCfMEFHz0EbZuNBJWrVMJ4nJyNpgYlwTt
+        sTUrrZU5ZUf2OmOMsayBK7roX+ELatugy2aM3dqLO8qHq5cJReds9DRB62SQDv8LaMS1aNCApmt2
+        ZPyJJ0yZjqyokEBpP/ZUxpMLgpQ1E3sNPwobqAlUkL3gW5Cs1YUAPaWrbYU65nRqaLF+yhcGjF0s
+        +XKz4OtFvr6XOxFnR/ZPqkRbj76TUnzcR7Fb5zz2Eap9teFL2ApRcag2iTiR0LXBRBNMSisFOcAf
+        tS2B4E6hRkMJf33OtBUQOZ6z43P2p71c7XN2G45H5qINOn1eVPnZr//4auDwV70s5afv+e9/76Ud
+        PAzUKbgTUvEdgc5t0xm7zRj7lorTgAOtUU8rTC60MmocejQC3+l04/BF2eCLTsRtbH1zGmfrhgoB
+        4ozFBa8fYg4JTcx7fMIheGsmCkYpraPRoVjfUNfgOu5e0B4k0rVQVSSWCify9ehelMCCVDcQEoKm
+        7D5n1uG4AoR1gw4oJHN+T57wBw2RSetqGP5Hskjn2pLfI35BV1qvUimzGisV6mEQ2yacrRLJGwK1
+        3UyAfyvhR/UNra/QC6eae1mzT0iMzshEcA4NsbsamLSOAeuE93Pl9GDUTI2Ezo9SHkVz32/zAWlc
+        XDikcOrBWK/5B/uIzZOLMphP0Yf8Pt9pmJUpzy4/suyENGf4dHpiX8Gw3xwYobywc/brL8w69gWc
+        8vPWjtnoklv/fRtlElefclj1vXjMozd+G3lBVamIgv4yrkRa17OHS1LC6XmIGnwYV7JNoe2pcbaM
+        BLw3NmNxumD6qmaV8lDq7rkIHk44KFeZyc7d7eZv7aNF/jrsInHGanDkE40/rvJV/h7wHm8/9h9R
+        kyXQA5jzfT88wU/nvEaCCggi/212+x8AAP//AwAXm5wZvgcAAA==
+    headers:
+      CF-RAY:
+      - 9c1786eabd1c7789-LHR
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Wed, 21 Jan 2026 14:33:32 GMT
+      Server:
+      - cloudflare
+      Set-Cookie:
+      - __cf_bm=l.d9ipARyALdbR0y4qeJtADFWSvOGRAQHlrcl2mdfIg-1769006012-1.0.1.1-wcRmknjfO4K1jLQouq8tuyoFup7Ihfa8LOENQJYhJ3TcBN5egbxOtjIyXQov8zT7puxeBq2Gb3p714G9yCJqNfCIDP4tanHxyAbWBONSUg4;
+        path=/; expires=Wed, 21-Jan-26 15:03:32 GMT; domain=.api.openai.com; HttpOnly;
+        Secure; SameSite=None
+      - _cfuvid=Y3a2lQkBt_v.1aVw7n_9KSBy8WScDaMoF0STdFyBHWM-1769006012703-0.0.1.1-604800000;
+        path=/; domain=.api.openai.com; HttpOnly; Secure; SameSite=None
+      Strict-Transport-Security:
+      - max-age=31536000; includeSubDomains; preload
+      Transfer-Encoding:
+      - chunked
+      X-Content-Type-Options:
+      - nosniff
+      alt-svc:
+      - h3=":443"; ma=86400
+      cf-cache-status:
+      - DYNAMIC
+      openai-organization:
+      - user-xzaeeoqlanzncr8pomspsknu
+      openai-processing-ms:
+      - '1655'
+      openai-project:
+      - proj_aT4OgTR5NJ9iNjg4xWc82hiE
+      openai-version:
+      - '2020-10-01'
+      x-envoy-upstream-service-time:
+      - '1659'
+      x-ratelimit-limit-requests:
+      - '30000'
+      x-ratelimit-limit-tokens:
+      - '150000000'
+      x-ratelimit-remaining-requests:
+      - '29999'
+      x-ratelimit-remaining-tokens:
+      - '149999707'
+      x-ratelimit-reset-requests:
+      - 2ms
+      x-ratelimit-reset-tokens:
+      - 0s
+      x-request-id:
+      - req_37e6443d5b8b43be834e621c8130d7c8
+    status:
+      code: 200
+      message: OK
+version: 1

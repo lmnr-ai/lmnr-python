@@ -240,7 +240,7 @@ def run_discover(args: Namespace) -> None:
             metadata = extract_function_metadata(func)
 
             # Output JSON to stdout
-            print(json.dumps(metadata))
+            print(f"LMNR_METADATA:{json.dumps(metadata)}")
             sys.exit(0)
 
         finally:

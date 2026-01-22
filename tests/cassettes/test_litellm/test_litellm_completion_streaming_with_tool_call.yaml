@@ -1,0 +1,63 @@
+interactions:
+- request:
+    body: '{"contents": [{"role": "user", "parts": [{"text": "What is the weather
+      in Tokyo?"}]}], "tools": [{"function_declarations": [{"name": "get_weather",
+      "description": "Get the current weather for a location", "parameters": {"type":
+      "object", "properties": {"location": {"type": "string", "description": "Location
+      of the weather to get, e.g. San Francisco, CA or Paris, France"}}, "required":
+      ["location"]}}]}], "generationConfig": {}}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '430'
+      Content-Type:
+      - application/json
+      Host:
+      - generativelanguage.googleapis.com
+      User-Agent:
+      - litellm/1.81.0
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?alt=sse
+  response:
+    body:
+      string: "data: {\"candidates\": [{\"content\": {\"parts\": [{\"functionCall\":
+        {\"name\": \"get_weather\",\"args\": {\"location\": \"Tokyo\"}}}],\"role\":
+        \"model\"},\"finishReason\": \"STOP\",\"index\": 0,\"finishMessage\": \"Model
+        generated function call(s).\"}],\"usageMetadata\": {\"promptTokenCount\":
+        65,\"candidatesTokenCount\": 15,\"totalTokenCount\": 80,\"promptTokensDetails\":
+        [{\"modality\": \"TEXT\",\"tokenCount\": 65}]},\"modelVersion\": \"gemini-2.5-flash-lite\",\"responseId\":
+        \"56lwaeSDDZOQvdIP7sOZ0AE\"}\r\n\r\n"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Disposition:
+      - attachment
+      Content-Type:
+      - text/event-stream
+      Date:
+      - Wed, 21 Jan 2026 10:26:47 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=435
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1

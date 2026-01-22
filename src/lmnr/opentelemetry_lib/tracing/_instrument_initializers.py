@@ -6,6 +6,9 @@ from lmnr.opentelemetry_lib.utils.package_check import (
     get_package_version,
     is_package_installed,
 )
+from lmnr.sdk.log import get_default_logger
+
+logger = get_default_logger(__name__)
 
 
 class InstrumentorInitializer(abc.ABC):
@@ -256,6 +259,16 @@ class LanggraphInstrumentorInitializer(InstrumentorInitializer):
         from ..opentelemetry.instrumentation.langgraph import LanggraphInstrumentor
 
         return LanggraphInstrumentor()
+
+
+class LitellmInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("litellm"):
+            return None
+
+        from ..opentelemetry.instrumentation.litellm import LitellmInstrumentor
+
+        return LitellmInstrumentor()
 
 
 class LlamaIndexInstrumentorInitializer(InstrumentorInitializer):

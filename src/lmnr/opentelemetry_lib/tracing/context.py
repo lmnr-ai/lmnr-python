@@ -1,8 +1,9 @@
 import threading
 
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Any
+from typing import Any, Generator
 from opentelemetry.context import Context, Token, create_key, get_value, set_value
 
 from lmnr.opentelemetry_lib.tracing.attributes import (
@@ -84,6 +85,9 @@ _isolated_token_stack: ContextVar[list[Token[Context]]] = ContextVar(
 
 # Thread-local storage for threading support
 _isolated_token_stack_storage = threading.local()
+
+# ContextVar to track if we're in a LiteLLM context
+_in_litellm_context: ContextVar[bool] = ContextVar("in_litellm_context", default=False)
 
 
 def get_token_stack() -> list[Token[Context]]:
@@ -200,3 +204,22 @@ def clear_context() -> None:
     # This doesn't require manually detaching tokens since we're
     # intentionally resetting everything to a clean state
     _ISOLATED_RUNTIME_CONTEXT._current_context.set(Context())
+
+
+def is_in_litellm_context() -> bool:
+    """Check if we're currently in a LiteLLM context."""
+    return _in_litellm_context.get()
+
+
+@contextmanager
+def in_litellm_context() -> Generator[None, None, None]:
+    """Context manager to run code in a LiteLLM context.
+
+    This sets a flag that can be checked by instrumentation code to determine
+    if it's being called from within LiteLLM, allowing it to avoid double-instrumentation.
+    """
+    token = _in_litellm_context.set(True)
+    try:
+        yield
+    finally:
+        _in_litellm_context.reset(token)

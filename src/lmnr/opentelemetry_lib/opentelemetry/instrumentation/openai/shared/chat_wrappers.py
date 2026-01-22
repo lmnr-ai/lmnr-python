@@ -43,6 +43,7 @@ from ..utils import (
 from lmnr.opentelemetry_lib.tracing.context import (
     get_current_context,
     get_event_attributes_from_context,
+    is_in_litellm_context,
 )
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.metrics import Counter, Histogram
@@ -86,6 +87,12 @@ def chat_wrapper(
     ):
         return wrapped(*args, **kwargs)
     # span needs to be opened and closed manually because the response is a generator
+
+    # LiteLLM calls OpenAI through OpenAI SDK, and to avoid double-instrumentation,
+    # we check if we're in a LiteLLM context and return the result directly if so.
+
+    if is_in_litellm_context():
+        return wrapped(*args, **kwargs)
 
     span = tracer.start_span(
         SPAN_NAME,
@@ -184,6 +191,11 @@ async def achat_wrapper(
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY) or context_api.get_value(
         SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY
     ):
+        return await wrapped(*args, **kwargs)
+
+    # LiteLLM calls OpenAI through OpenAI SDK, and to avoid double-instrumentation,
+    # we check if we're in a LiteLLM context and return the result directly if so.
+    if is_in_litellm_context():
         return await wrapped(*args, **kwargs)
 
     span = tracer.start_span(

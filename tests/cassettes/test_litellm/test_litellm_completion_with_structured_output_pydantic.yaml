@@ -1,0 +1,60 @@
+interactions:
+- request:
+    body: '{"contents":[{"role":"user","parts":[{"text":"Alice and Bob go to a Science
+      fair on Friday. Extract the event information."}]}],"generationConfig":{"response_mime_type":"application/json","response_schema":{"properties":{"name":{"title":"Name","type":"string"},"people":{"items":{"type":"string"},"title":"People","type":"array"},"dayOfWeek":{"title":"Dayofweek","type":"string"}},"required":["name","people","dayOfWeek"],"title":"Event","type":"object","propertyOrdering":["name","people","dayOfWeek"]}}}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '505'
+      Content-Type:
+      - application/json
+      Host:
+      - generativelanguage.googleapis.com
+      User-Agent:
+      - litellm/1.81.0
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/2VR0U6DMBR95yua+wxGp4vRt6nTGDVbHG4m6x4qXLZmpcW2i0PCv1tgbBD7QC/n
+        nJ57e1p4hEDEZMxjZtHALVk6hJCi/lackhaldUQLOTBj2p60zSo6tZNY3FeHoKCSEAqSpUjdP4VZ
+        xFFGSBLGNQW/oTNUmagFSwojwSNX+w6/U18UVgdRzPJJskDcNkaP2s2cU6CyhE7v8liv/NPEWgms
+        xklVjKKVl60AEi652bwjM0pWslk4mcKR5TLGvYPPvbZBbQ07w9b4hpa57NgxIci0SjMbqi3Ke7Wr
+        s7u4bsw6Uff4y8GBt8oy0aOubvx/tubBNeWi+wSd13F3ZILbvLpIOP4MoZOD7U/VBlHvK+8QSZPS
+        HLXhTRxrTF1AweBsGCSCmU3g7LG2BY0mU9Lgc1wJX1/mPwy5fjKLoTTj6fcu+M1HH+CV3h+MSWKB
+        agIAAA==
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Wed, 21 Jan 2026 10:06:36 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=440
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1

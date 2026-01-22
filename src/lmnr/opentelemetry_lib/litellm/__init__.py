@@ -48,6 +48,7 @@ try:
         """
 
         logged_openai_responses: set[str]
+        is_litellm_instrumented: bool = False
 
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
@@ -69,6 +70,24 @@ try:
                         "Disabling OpenTelemetry instrumentation for OpenAI to avoid double-instrumentation of LiteLLM."
                     )
                     openai_instrumentor.uninstrument()
+            try:
+                from lmnr.opentelemetry_lib.opentelemetry.instrumentation.litellm import (
+                    LitellmInstrumentor,
+                )
+
+                litellm_instrumentor = LitellmInstrumentor()
+                if (
+                    litellm_instrumentor
+                    and litellm_instrumentor.is_instrumented_by_opentelemetry
+                ):
+                    logger.warning(
+                        "Laminar LiteLLM callback is deprecated. "
+                        + "LiteLLM is already instrumented by Laminar. This callback will not have any effect. "
+                        + "You can safely remove the callback from your code.",
+                    )
+                    self.is_litellm_instrumented = True
+            except Exception:
+                self.is_litellm_instrumented = False
 
         def _get_tracer(self) -> Tracer:
             if not hasattr(TracerWrapper, "instance") or TracerWrapper.instance is None:
@@ -78,6 +97,8 @@ try:
         def log_success_event(
             self, kwargs, response_obj, start_time: datetime, end_time: datetime
         ):
+            if self.is_litellm_instrumented:
+                return
             if kwargs.get("call_type") not in SUPPORTED_CALL_TYPES:
                 return
             if kwargs.get("call_type") in ["responses", "aresponses"]:
@@ -98,6 +119,8 @@ try:
         def log_failure_event(
             self, kwargs, response_obj, start_time: datetime, end_time: datetime
         ):
+            if self.is_litellm_instrumented:
+                return
             if kwargs.get("call_type") not in SUPPORTED_CALL_TYPES:
                 return
             try:
@@ -110,11 +133,15 @@ try:
         async def async_log_success_event(
             self, kwargs, response_obj, start_time: datetime, end_time: datetime
         ):
+            if self.is_litellm_instrumented:
+                return
             self.log_success_event(kwargs, response_obj, start_time, end_time)
 
         async def async_log_failure_event(
             self, kwargs, response_obj, start_time: datetime, end_time: datetime
         ):
+            if self.is_litellm_instrumented:
+                return
             self.log_failure_event(kwargs, response_obj, start_time, end_time)
 
         def _create_span(

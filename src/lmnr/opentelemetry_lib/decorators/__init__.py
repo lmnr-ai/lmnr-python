@@ -1,3 +1,4 @@
+import asyncio
 from functools import wraps
 import types
 from typing import Any, AsyncGenerator, Callable, Generator, Literal, TypeVar
@@ -103,7 +104,6 @@ def _process_input(
             logger.warning(msg, exc_info=True)
         else:
             logger.debug(msg, exc_info=True)
-        pass
 
 
 def _process_output(
@@ -133,7 +133,6 @@ def _process_output(
             logger.warning(msg, exc_info=True)
         else:
             logger.debug(msg, exc_info=True)
-        pass
 
 
 def _cleanup_span(span: Span, wrapper: TracerWrapper):
@@ -184,6 +183,12 @@ def observe_base(
             # to the OTEL global context, so that spans know their parent
             # span and trace_id.
             ctx_token = context_api.attach(new_context)
+            current_task = None
+            try:
+                current_task = asyncio.current_task()
+            except Exception:
+                current_task = None
+            current_context_id = id(current_task)
             # update our isolated context too
             isolated_ctx_token = attach_context(new_context)
 
@@ -198,9 +203,22 @@ def observe_base(
                 _cleanup_span(span, wrapper)
                 raise
             finally:
-                # Always restore global context
-                context_api.detach(ctx_token)
-                detach_context(isolated_ctx_token)
+                current_task = None
+                try:
+                    current_task = asyncio.current_task()
+                except Exception:
+                    current_task = None
+                # Always restore global context if we are in the same asyncio context
+                if id(current_task) == current_context_id:
+                    context_api.detach(ctx_token)
+                else:
+                    logger.debug(
+                        "Not detaching global context, not in the same context"
+                    )
+                try:
+                    detach_context(isolated_ctx_token)
+                except Exception:
+                    logger.debug("Failed to detach isolated context", exc_info=True)
             # span will be ended in the generator
             if isinstance(res, types.GeneratorType):
                 return _handle_generator(
@@ -270,6 +288,12 @@ def async_observe_base(
             # to the OTEL global context, so that spans know their parent
             # span and trace_id.
             ctx_token = context_api.attach(new_context)
+            current_task = None
+            try:
+                current_task = asyncio.current_task()
+            except Exception:
+                current_task = None
+            current_context_id = id(current_task)
             # update our isolated context too
             isolated_ctx_token = attach_context(new_context)
 
@@ -284,9 +308,22 @@ def async_observe_base(
                 _cleanup_span(span, wrapper)
                 raise e
             finally:
-                # Always restore global context
-                context_api.detach(ctx_token)
-                detach_context(isolated_ctx_token)
+                # Always restore global context if we are in the same asyncio context
+                current_task = None
+                try:
+                    current_task = asyncio.current_task()
+                except Exception:
+                    current_task = None
+                if id(current_task) == current_context_id:
+                    context_api.detach(ctx_token)
+                else:
+                    logger.debug(
+                        "Not detaching global context, not in the same context"
+                    )
+                try:
+                    detach_context(isolated_ctx_token)
+                except Exception:
+                    logger.debug("Failed to detach isolated context", exc_info=True)
 
             # span will be ended in the generator
             if isinstance(res, types.AsyncGeneratorType):

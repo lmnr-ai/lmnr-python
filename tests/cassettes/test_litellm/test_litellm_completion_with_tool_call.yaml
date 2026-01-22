@@ -1,0 +1,61 @@
+interactions:
+- request:
+    body: '{"contents":[{"role":"user","parts":[{"text":"What is the weather in Tokyo?"}]}],"tools":[{"function_declarations":[{"name":"get_weather","description":"Get
+      the current weather for a location","parameters":{"type":"object","properties":{"location":{"type":"string","description":"Location
+      of the weather to get, e.g. San Francisco, CA or Paris, France"}},"required":["location"]}}]}],"generationConfig":{}}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '406'
+      Content-Type:
+      - application/json
+      Host:
+      - generativelanguage.googleapis.com
+      User-Agent:
+      - litellm/1.81.0
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/3VRXU/CMBR9369o+qSJEDWCxlcwkQcCKvEjhpib9TKqXTvbIhrCf/e222Ajuoet
+        vefcc+/O2SSM8RS0kAI8On7NXqnC2Ca+A2a0R+0JqEtULMD6Pbd8No0zURYrnXpp9ACUajVXuIYc
+        qc4z9G9rBL9Ey08OSWAz90czIcqkEOSDxMx8/Bh+wNkm/9325/l+ILdGxX1yI1DVYtuawBdSS7e8
+        R3DlzIfZZLrbl0st8JvKpwf8MToHWdQdB12WoUZLRgtW+8NSMujIHXfLmWG5uBZfhc4xeqBgYGcC
+        L6zJC0+/jHpgVjGYfq8c28ixhZ/VuDceVAu6qjZuyrohDZWqmW8jevIHlPQ/0fib51kjNNJvbVWb
+        GL/zpLKzdPgRraviyzAnszrn3V5nocAtOySPUZZbdIXRDkciEC/6ag0v75+TdHj7JUbTfHL5lN+N
+        eLJNfgFoZzLkxwIAAA==
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Wed, 21 Jan 2026 10:26:44 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=587
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1
