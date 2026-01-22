@@ -63,6 +63,10 @@ def wrap_completion(
     args: Sequence[Any] | None = None,
     kwargs: dict[str, Any] | None = None,
 ):
+    if kwargs is None:
+        kwargs = {}
+    if args is None:
+        args = []
     span = Laminar.start_span(
         name=to_wrap["span_name"],
         span_type=to_wrap["span_type"],
@@ -215,6 +219,8 @@ def wrap_responses(
 ):
     if kwargs is None:
         kwargs = {}
+    if args is None:
+        args = []
     span = Laminar.start_span(
         name=to_wrap["span_name"],
         span_type=to_wrap["span_type"],

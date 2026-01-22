@@ -1,7 +1,7 @@
 from collections import defaultdict
 from typing import Any, AsyncGenerator, Generator
 
-from opentelemetry.trace import Span
+from opentelemetry.trace import Span, Status, StatusCode
 
 from lmnr.sdk.utils import json_dumps
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
@@ -115,10 +115,16 @@ def process_completion_streaming_response(
             }
         ),
     }
-    for item in response:
-        _accumulate_chunk(accumulated, item)
-        yield item
-    _set_accumulated_attributes(span, accumulated, record_raw_response)
+    try:
+        for item in response:
+            _accumulate_chunk(accumulated, item)
+            yield item
+        _set_accumulated_attributes(span, accumulated, record_raw_response)
+    except Exception as e:
+        span.record_exception(e)
+        span.set_status(Status(StatusCode.ERROR, str(e)))
+        span.end()
+        raise
 
 
 async def process_completion_async_streaming_response(
@@ -139,7 +145,13 @@ async def process_completion_async_streaming_response(
             }
         ),
     }
-    async for item in response:
-        _accumulate_chunk(accumulated, item)
-        yield item
-    _set_accumulated_attributes(span, accumulated, record_raw_response)
+    try:
+        async for item in response:
+            _accumulate_chunk(accumulated, item)
+            yield item
+        _set_accumulated_attributes(span, accumulated, record_raw_response)
+    except Exception as e:
+        span.record_exception(e)
+        span.set_status(Status(StatusCode.ERROR, str(e)))
+        span.end()
+        raise

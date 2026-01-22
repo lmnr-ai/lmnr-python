@@ -87,7 +87,9 @@ class DualIteratorWrapper:
         """Sync iteration support."""
         if self._items is not None:
             # If we already consumed it, replay from cache
-            return iter(self._items)
+            for item in self._items:
+                yield item
+            return
 
         # First time iteration - consume and cache
         self._items = []
