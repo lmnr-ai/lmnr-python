@@ -152,7 +152,6 @@ try:
             end_time: datetime,
             is_success: bool,
         ):
-            logger.info(f"_create_span: {self.is_litellm_instrumented}")
             """Create an OpenTelemetry span for the LiteLLM call"""
             call_type = kwargs.get("call_type", "completion")
             if call_type == "aresponses":

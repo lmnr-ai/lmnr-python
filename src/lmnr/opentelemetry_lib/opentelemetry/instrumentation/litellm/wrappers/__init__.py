@@ -136,6 +136,7 @@ def wrap_completion(
                             logger.warning(
                                 "Result is not an iterator, but stream is True. This is not supported."
                             )
+                            span.end()
                             # Can't yield a non-iterator result; just return it
                             # This will likely cause issues but matches the original behavior
                     except Exception as e:
@@ -285,6 +286,7 @@ def wrap_responses(
                             logger.warning(
                                 "Result is not an iterator, but stream is True. This is not supported."
                             )
+                            span.end()
                             # Can't yield a non-iterator result; just return it
                             # This will likely cause issues but matches the original behavior
                     except Exception as e:

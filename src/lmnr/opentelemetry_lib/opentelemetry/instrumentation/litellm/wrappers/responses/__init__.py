@@ -81,7 +81,6 @@ def process_responses_inputs(
     if not isinstance(input_param, list):
         return
     for item in input_param:
-        item = to_dict(item)
         attr_input_items.append(to_dict(item))
 
     span.set_attribute("gen_ai.input.messages", json_dumps(attr_input_items))
