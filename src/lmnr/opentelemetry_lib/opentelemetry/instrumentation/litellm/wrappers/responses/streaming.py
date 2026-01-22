@@ -1,6 +1,6 @@
 from typing import Any, AsyncIterator, Iterator
 
-from opentelemetry.trace import Span
+from opentelemetry.trace import Span, Status, StatusCode
 
 from lmnr.sdk.utils import json_dumps
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
@@ -83,6 +83,7 @@ def process_responses_streaming_response(
                 final_response = chunk_dict.get("response")
             yield chunk
     except Exception as e:
+        span.set_status(Status(StatusCode.ERROR, str(e)))
         span.record_exception(e)
         raise
     finally:
@@ -113,6 +114,7 @@ async def process_responses_async_streaming_response(
                 final_response = chunk_dict.get("response")
             yield chunk
     except Exception as e:
+        span.set_status(Status(StatusCode.ERROR, str(e)))
         span.record_exception(e)
         raise
     finally:

@@ -11,6 +11,6 @@ def infer_provider(model: str | None) -> str:
         return "gemini"
     if "claude" in model:
         return "anthropic"
-    if "gpt" in model or re.match(r"^o[0-9]*$", model):
+    if "gpt" in model or re.match(r"^o\d+", model):
         return "openai"
     return "litellm"
