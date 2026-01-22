@@ -14,7 +14,9 @@ logger = get_default_logger(__name__)
 
 
 @dont_throw
-def _set_final_response_attributes(span: Span, final_response: dict):
+def _set_final_response_attributes(
+    span: Span, final_response: dict, record_raw_response: bool = False
+):
     """Set span attributes from the final completed response."""
     try:
         set_span_attribute(span, "gen_ai.response.id", final_response.get("id"))
@@ -52,6 +54,12 @@ def _set_final_response_attributes(span: Span, final_response: dict):
                 final_items.append(item_dict)
 
         span.set_attribute("gen_ai.output.messages", json_dumps(final_items))
+
+        # Record raw response in rollout mode
+        if record_raw_response:
+            set_span_attribute(
+                span, "lmnr.sdk.raw.response", json_dumps(final_response)
+            )
     finally:
         span.end()
 
@@ -59,6 +67,7 @@ def _set_final_response_attributes(span: Span, final_response: dict):
 def process_responses_streaming_response(
     span: Span,
     stream: Iterator[Any],
+    record_raw_response: bool = False,
 ) -> Iterator[Any]:
     """
     Process streaming responses for sync responses.
@@ -78,7 +87,9 @@ def process_responses_streaming_response(
         raise
     finally:
         if final_response:
-            _set_final_response_attributes(span, to_dict(final_response))
+            _set_final_response_attributes(
+                span, to_dict(final_response), record_raw_response
+            )
         else:
             span.end()
 
@@ -86,6 +97,7 @@ def process_responses_streaming_response(
 async def process_responses_async_streaming_response(
     span: Span,
     stream: AsyncIterator[Any],
+    record_raw_response: bool = False,
 ) -> AsyncIterator[Any]:
     """
     Process streaming responses for async responses.
@@ -105,6 +117,8 @@ async def process_responses_async_streaming_response(
         raise
     finally:
         if final_response:
-            _set_final_response_attributes(span, to_dict(final_response))
+            _set_final_response_attributes(
+                span, to_dict(final_response), record_raw_response
+            )
         else:
             span.end()

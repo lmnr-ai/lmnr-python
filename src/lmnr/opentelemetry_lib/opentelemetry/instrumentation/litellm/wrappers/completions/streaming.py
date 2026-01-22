@@ -34,7 +34,9 @@ def _accumulate_chunk(accumulated: dict, chunk: dict):
 
 
 @dont_throw
-def _set_accumulated_attributes(span: Span, accumulated: dict):
+def _set_accumulated_attributes(
+    span: Span, accumulated: dict, record_raw_response: bool = False
+):
     try:
         set_span_attribute(span, "gen_ai.response.id", accumulated["id"])
         set_span_attribute(span, "gen_ai.response.model", accumulated["model"])
@@ -60,6 +62,37 @@ def _set_accumulated_attributes(span: Span, accumulated: dict):
         set_span_attribute(
             span, "gen_ai.output.messages", json_dumps(formatted_choices)
         )
+
+        # Record raw response in rollout mode
+        if record_raw_response:
+            # Reconstruct full response from accumulated data
+            raw_response = {
+                "id": accumulated["id"],
+                "model": accumulated["model"],
+                "object": "chat.completion",
+                "choices": [],
+            }
+            for choice in accumulated["choices"].values():
+                raw_response["choices"].append(
+                    {
+                        "index": choice["index"],
+                        "message": {
+                            "role": choice["role"],
+                            "content": (
+                                choice["content"]
+                                if len(choice["content"]) > 0
+                                else None
+                            ),
+                            "tool_calls": (
+                                choice["tool_calls"] if choice["tool_calls"] else None
+                            ),
+                        },
+                        "finish_reason": (
+                            choice["finish_reason"] if choice["finish_reason"] else None
+                        ),
+                    }
+                )
+            set_span_attribute(span, "lmnr.sdk.raw.response", json_dumps(raw_response))
     finally:
         span.end()
 
@@ -67,6 +100,7 @@ def _set_accumulated_attributes(span: Span, accumulated: dict):
 def process_completion_streaming_response(
     span: Span,
     response: Generator[Any, None, None],
+    record_raw_response: bool = False,
 ) -> Generator[Any, None, None]:
     accumulated = {
         "id": None,
@@ -84,12 +118,13 @@ def process_completion_streaming_response(
     for item in response:
         _accumulate_chunk(accumulated, item)
         yield item
-    _set_accumulated_attributes(span, accumulated)
+    _set_accumulated_attributes(span, accumulated, record_raw_response)
 
 
 async def process_completion_async_streaming_response(
     span: Span,
     response: AsyncGenerator[Any, None],
+    record_raw_response: bool = False,
 ) -> AsyncGenerator[Any, None]:
     accumulated = {
         "id": None,
@@ -107,4 +142,4 @@ async def process_completion_async_streaming_response(
     async for item in response:
         _accumulate_chunk(accumulated, item)
         yield item
-    _set_accumulated_attributes(span, accumulated)
+    _set_accumulated_attributes(span, accumulated, record_raw_response)

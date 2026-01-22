@@ -91,6 +91,7 @@ def process_responses_inputs(
 def process_responses_response(
     span: Span,
     response: BaseModel,
+    record_raw_response: bool = False,
 ):
     """Process responses response."""
     response_dict = to_dict(response)
@@ -127,3 +128,7 @@ def process_responses_response(
             final_items.append(item)
 
     span.set_attribute("gen_ai.output.messages", json_dumps(final_items))
+
+    # Record raw response in rollout mode
+    if record_raw_response:
+        set_span_attribute(span, "lmnr.sdk.raw.response", json_dumps(response_dict))

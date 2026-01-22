@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import contextmanager
 from contextvars import Context
 import warnings
@@ -1003,6 +1004,11 @@ class Laminar:
         isolated_context_token = attach_context(context)
         span._lmnr_ctx_token = context_token
         span._lmnr_isolated_ctx_token = isolated_context_token
+        try:
+            current_task = asyncio.current_task()
+        except Exception:
+            current_task = None
+        span._lmnr_task_id = id(current_task)
         if isinstance(span, LaminarSpan):
             return span
         else:

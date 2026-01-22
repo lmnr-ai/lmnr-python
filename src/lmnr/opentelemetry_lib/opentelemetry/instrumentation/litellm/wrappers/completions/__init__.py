@@ -89,6 +89,7 @@ def process_completion_inputs(
 def process_completion_response(
     span: Span,
     response: BaseModel,
+    record_raw_response: bool = False,
 ):
     response_dict = to_dict(response)
     set_span_attribute(span, "gen_ai.response.id", response_dict.get("id"))
@@ -122,5 +123,9 @@ def process_completion_response(
         set_span_attribute(
             span, "gen_ai.usage.cache_creation_input_tokens", cache_creation_tokens
         )
+
+    # Record raw response in rollout mode
+    if record_raw_response:
+        set_span_attribute(span, "lmnr.sdk.raw.response", json_dumps(response_dict))
 
     return response

@@ -37,6 +37,21 @@ from .responses.streaming import (
 logger = get_default_logger(__name__)
 
 
+def _get_rollout_wrapper():
+    """Lazy import and get rollout wrapper to avoid circular imports."""
+    try:
+        from lmnr.sdk.rollout_control import is_rollout_mode
+
+        if not is_rollout_mode():
+            return None, False
+
+        from ..rollout import get_litellm_rollout_wrapper
+
+        return get_litellm_rollout_wrapper(), True
+    except Exception:
+        return None, False
+
+
 # this relies on users passing everything to `completion` as kwargs. LiteLLM
 # does not disallow args, so in theory one could call completion like:
 # completion(model, messages, timeout, temperature, top_p, ...).
@@ -71,9 +86,24 @@ def wrap_completion(
     process_completion_kwargs(span, args, kwargs)
     streaming_handled = False
     returned_coroutine = False
+
+    # Check for rollout mode
+    rollout_wrapper, is_rollout = _get_rollout_wrapper()
+
     try:
-        with in_litellm_context():
-            result = wrapped(*args, **kwargs)
+        # If in rollout mode, delegate to rollout wrapper
+        if rollout_wrapper:
+            with Laminar.use_span(span):
+                with in_litellm_context():
+                    result = rollout_wrapper.wrap_completion(
+                        wrapped,
+                        args,
+                        kwargs,
+                        is_streaming=kwargs.get("stream", False),
+                    )
+        else:
+            with in_litellm_context():
+                result = wrapped(*args, **kwargs)
 
         # Handle case where async methods call sync methods internally and return a coroutine
         if iscoroutine(result):
@@ -93,13 +123,13 @@ def wrap_completion(
                             async for (
                                 item
                             ) in process_completion_async_streaming_response(
-                                span, actual_result
+                                span, actual_result, record_raw_response=is_rollout
                             ):
                                 yield item
                         elif hasattr(actual_result, "__iter__"):
                             # Sync iterator from async context - yield from sync processor
                             for item in process_completion_streaming_response(
-                                span, actual_result
+                                span, actual_result, record_raw_response=is_rollout
                             ):
                                 yield item
                         else:
@@ -124,7 +154,9 @@ def wrap_completion(
                     token = _in_litellm_context.set(True)
                     try:
                         actual_result = await result
-                        process_completion_response(span, actual_result)
+                        process_completion_response(
+                            span, actual_result, record_raw_response=is_rollout
+                        )
                         return actual_result
                     except Exception as e:
                         span.record_exception(e)
@@ -137,19 +169,32 @@ def wrap_completion(
                 return process_non_streaming_coroutine()
 
         if kwargs.get("stream"):
-            if hasattr(result, "__iter__"):
+            # Check if this is our DualIteratorWrapper - if so, set attributes and return directly
+            from ..rollout import DualIteratorWrapper
+
+            if isinstance(result, DualIteratorWrapper):
+                # Set span attributes directly without consuming the iterator
+                result.set_span_attributes(span, record_raw_response=is_rollout)
                 streaming_handled = True
-                return process_completion_streaming_response(span, result)
+                span.end()
+                return result
+            elif hasattr(result, "__iter__"):
+                streaming_handled = True
+                return process_completion_streaming_response(
+                    span, result, record_raw_response=is_rollout
+                )
             elif hasattr(result, "__aiter__"):
                 streaming_handled = True
-                return process_completion_async_streaming_response(span, result)
+                return process_completion_async_streaming_response(
+                    span, result, record_raw_response=is_rollout
+                )
             else:
                 logger.warning(
                     "Result is not an iterator, but stream is True. This is not supported."
                 )
                 return result
         else:
-            process_completion_response(span, result)
+            process_completion_response(span, result, record_raw_response=is_rollout)
             return result
     except Exception as e:
         span.record_exception(e)
@@ -193,8 +238,21 @@ def wrap_responses(
     process_responses_kwargs(span, args, kwargs)
     streaming_handled = False
     returned_coroutine = False
+
+    # Check for rollout mode
+    rollout_wrapper, is_rollout = _get_rollout_wrapper()
+
     try:
-        with in_litellm_context():
+        # If in rollout mode, delegate to rollout wrapper
+        if rollout_wrapper:
+            with Laminar.use_span(span):
+                result = rollout_wrapper.wrap_responses(
+                    wrapped,
+                    args,
+                    kwargs,
+                    is_streaming=kwargs.get("stream", False),
+                )
+        else:
             result = wrapped(*args, **kwargs)
 
         # Handle case where async methods call sync methods internally and return a coroutine
@@ -214,13 +272,13 @@ def wrap_responses(
                             async for (
                                 item
                             ) in process_responses_async_streaming_response(
-                                span, actual_result
+                                span, actual_result, record_raw_response=is_rollout
                             ):
                                 yield item
                         elif hasattr(actual_result, "__iter__"):
                             # Sync iterator from async context - yield from sync processor
                             for item in process_responses_streaming_response(
-                                span, actual_result
+                                span, actual_result, record_raw_response=is_rollout
                             ):
                                 yield item
                         else:
@@ -245,7 +303,9 @@ def wrap_responses(
                     token = _in_litellm_context.set(True)
                     try:
                         actual_result = await result
-                        process_responses_response(span, actual_result)
+                        process_responses_response(
+                            span, actual_result, record_raw_response=is_rollout
+                        )
                         return actual_result
                     except Exception as e:
                         span.record_exception(e)
@@ -258,19 +318,32 @@ def wrap_responses(
                 return process_non_streaming_coroutine()
 
         if kwargs.get("stream"):
-            if hasattr(result, "__iter__"):
+            # Check if this is our DualIteratorWrapper - if so, set attributes and return directly
+            from ..rollout import DualIteratorWrapper
+
+            if isinstance(result, DualIteratorWrapper):
+                # Set span attributes directly without consuming the iterator
+                result.set_span_attributes(span, record_raw_response=is_rollout)
                 streaming_handled = True
-                return process_responses_streaming_response(span, result)
+                span.end()
+                return result
+            elif hasattr(result, "__iter__"):
+                streaming_handled = True
+                return process_responses_streaming_response(
+                    span, result, record_raw_response=is_rollout
+                )
             elif hasattr(result, "__aiter__"):
                 streaming_handled = True
-                return process_responses_async_streaming_response(span, result)
+                return process_responses_async_streaming_response(
+                    span, result, record_raw_response=is_rollout
+                )
             else:
                 logger.warning(
                     "Result is not an iterator, but stream is True. This is not supported."
                 )
                 return result
         else:
-            process_responses_response(span, result)
+            process_responses_response(span, result, record_raw_response=is_rollout)
             return result
     except Exception as e:
         span.record_exception(e)

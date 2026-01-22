@@ -1,3 +1,4 @@
+import asyncio
 from logging import Logger
 from inspect import Traceback
 from typing import Any, Literal
@@ -377,14 +378,34 @@ class LaminarSpan(LaminarSpanInterfaceMixin, SpanDelegationMixin, Span, Readable
         if hasattr(self, "_lmnr_ctx_token") and not self._popped:
             try:
                 pop_span_context()
-                detach(self._lmnr_ctx_token)
+                try:
+                    current_task = asyncio.current_task()
+                except Exception:
+                    current_task = None
+                if (
+                    hasattr(self, "_lmnr_task_id")
+                    and id(current_task) == self._lmnr_task_id
+                ):
+                    detach(self._lmnr_ctx_token)
+                else:
+                    self.logger.debug(
+                        "Not detaching global context, not in the same context"
+                    )
                 self._popped = True
             except Exception:
-                pass
+                self.logger.debug("Failed to pop span context", exc_info=True)
         if hasattr(self, "_lmnr_isolated_ctx_token"):
-            detach_context(self._lmnr_isolated_ctx_token)
+            try:
+                detach_context(self._lmnr_isolated_ctx_token)
+            except Exception:
+                self.logger.debug("Failed to detach isolated context", exc_info=True)
         if hasattr(self, "_lmnr_assoc_props_token") and self._lmnr_assoc_props_token:
-            detach_context(self._lmnr_assoc_props_token)
+            try:
+                detach_context(self._lmnr_assoc_props_token)
+            except Exception:
+                self.logger.debug(
+                    "Failed to detach association properties context", exc_info=True
+                )
 
     def __enter__(self) -> "LaminarSpan":
         return self
