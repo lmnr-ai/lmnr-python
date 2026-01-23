@@ -60,7 +60,7 @@ def start_proxy(
     Args:
         proxy: ProxyServer instance
         target_url: Upstream URL to proxy to (if None, will be resolved from environment)
-        max_retries: Maximum number of port allocation attempts (default: 50)
+        max_retries: Maximum number of port allocation attempts (default: 10)
 
     Returns:
         Proxy base URL (e.g., "http://127.0.0.1:45667")
