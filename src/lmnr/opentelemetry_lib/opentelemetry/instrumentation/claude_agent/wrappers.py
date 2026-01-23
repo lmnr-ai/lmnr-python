@@ -192,6 +192,8 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
             "proxy": proxy,
             "proxy_url": proxy_url,
             "is_custom_transport": is_custom,
+            "original_env": original_env,
+            "env_set_keys": env_set_keys,
         }
 
         instance.__lmnr_context = context
