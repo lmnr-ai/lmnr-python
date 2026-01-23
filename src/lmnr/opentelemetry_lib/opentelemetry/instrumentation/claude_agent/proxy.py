@@ -117,11 +117,14 @@ def start_proxy(
                 attempt + 1,
                 max_retries,
             )
-            proxy.stop_server()
-
-            # Release current port and allocate a new one
-            if hasattr(proxy, "_allocated_port"):
-                _release_port(proxy._allocated_port)  # type: ignore
+            try:
+                proxy.stop_server()
+            except Exception as e:
+                logger.debug("Error stopping proxy on port %d: %s", proxy.port, e)
+            finally:
+                # Release current port and allocate a new one
+                if hasattr(proxy, "_allocated_port"):
+                    _release_port(proxy._allocated_port)  # type: ignore
 
             if attempt < max_retries - 1:
                 new_port = _allocate_port()

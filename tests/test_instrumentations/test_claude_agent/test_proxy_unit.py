@@ -4,7 +4,8 @@ import os
 import socket
 import threading
 import time
-from unittest.mock import patch
+from unittest.mock import MagicMock, AsyncMock, patch
+
 
 import pytest
 
@@ -509,3 +510,103 @@ def test_port_reuse_after_cleanup(monkeypatch, clean_env):
         # Create second proxy - should get a new port (not reuse)
         proxy2 = claude_proxy.create_proxy_for_transport()
         assert proxy2.port != port1  # Sequential allocation, doesn't reuse immediately
+
+
+# ===== Wrapper Tests for SubprocessCLITransport Options =====
+
+
+def test_wrap_query_updates_subprocess_transport_options():
+    """Test that wrap_query updates SubprocessCLITransport._options.env with proxy config."""
+    import lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.wrappers as wrappers_module
+
+    # Try to import the actual SubprocessCLITransport class
+    try:
+        from claude_agent_sdk._internal.transport.subprocess_cli import (
+            SubprocessCLITransport,
+        )
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("SubprocessCLITransport not available")
+
+    # Create a simple class that inherits from SubprocessCLITransport for testing
+    class TestTransport(SubprocessCLITransport):
+        def __init__(self):
+            # Don't call super().__init__() to avoid requiring options
+            # Just set up what we need for the test
+            class MockOptions:
+                def __init__(self):
+                    self.env = {}
+
+            self._options = MockOptions()
+
+    mock_transport = TestTransport()
+
+    # Mock the wrapped function (query)
+    async def mock_query(*args, **kwargs):
+        # Return an async iterator
+        async def gen():
+            yield {"type": "test"}
+
+        return gen()
+
+    wrapped_query = AsyncMock(side_effect=mock_query)
+
+    # Create the wrapper
+    wrapper = wrappers_module.wrap_query({"method": "query", "span_type": "DEFAULT"})
+
+    # Call the wrapper with a SubprocessCLITransport
+    kwargs = {"prompt": "test", "transport": mock_transport}
+
+    # Execute the wrapper (it returns an async generator)
+    wrapper(wrapped_query, None, (), kwargs)
+
+    # Verify that the transport's _options.env was updated with proxy URL
+    assert "ANTHROPIC_BASE_URL" in mock_transport._options.env
+    assert mock_transport._options.env["ANTHROPIC_BASE_URL"].startswith(
+        "http://127.0.0.1:"
+    )
+
+
+def test_wrap_client_init_updates_subprocess_transport_options():
+    """Test that wrap_client_init updates SubprocessCLITransport._options.env with proxy config."""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.wrappers import (
+        wrap_client_init,
+    )
+
+    # Try to import the actual SubprocessCLITransport class
+    try:
+        from claude_agent_sdk._internal.transport.subprocess_cli import (
+            SubprocessCLITransport,
+        )
+    except (ImportError, ModuleNotFoundError):
+        pytest.skip("SubprocessCLITransport not available")
+
+    # Create a simple class that inherits from SubprocessCLITransport for testing
+    class TestTransport(SubprocessCLITransport):
+        def __init__(self):
+            # Don't call super().__init__() to avoid requiring options
+            # Just set up what we need for the test
+            class MockOptions:
+                def __init__(self):
+                    self.env = {}
+
+            self._options = MockOptions()
+
+    mock_transport = TestTransport()
+
+    # Mock the wrapped __init__
+    mock_init = MagicMock()
+
+    # Create the wrapper
+    wrapper = wrap_client_init({"method": "__init__", "class_name": "ClaudeSDKClient"})
+
+    # Call the wrapper with a SubprocessCLITransport
+    kwargs = {"transport": mock_transport}
+
+    # Execute the wrapper
+    wrapper(mock_init, None, (), kwargs)
+
+    # Verify that the transport's _options.env was updated with proxy URL
+    assert "ANTHROPIC_BASE_URL" in mock_transport._options.env
+    assert mock_transport._options.env["ANTHROPIC_BASE_URL"].startswith(
+        "http://127.0.0.1:"
+    )

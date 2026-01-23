@@ -7,7 +7,7 @@ from lmnr.sdk.log import get_default_logger
 
 from opentelemetry.trace import Status, StatusCode
 
-from .proxy import create_proxy_for_transport, start_proxy, stop_proxy
+from .proxy import create_proxy_for_transport, start_proxy, stop_proxy, _PORT_LOCK
 from .span_utils import (
     span_name,
     record_input,
@@ -147,7 +147,9 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
             )
         except (ImportError, ModuleNotFoundError):
             # If import fails, just call original without instrumentation
-            logger.warning("Failed to import SubprocessCLITransport, skipping proxy setup")
+            logger.warning(
+                "Failed to import SubprocessCLITransport, skipping proxy setup"
+            )
             return await wrapped(*args, **kwargs)
 
         # Create and start proxy
@@ -180,6 +182,7 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
             context["env_set_keys"] = env_set_keys
 
         instance.__lmnr_context = context
+        instance.__lmnr_wrapped = True
 
         # Connect transport
         try:
@@ -235,10 +238,12 @@ def wrap_transport_close(to_wrap: dict[str, Any]):
 
 def get_proxy_url_for_options() -> str:
     """Get the proxy URL that will be used for the next transport connection."""
-    from .proxy import _NEXT_PORT
 
-    # Return the URL that will be allocated
-    return f"http://127.0.0.1:{_NEXT_PORT}"
+    with _PORT_LOCK:
+        from .proxy import _NEXT_PORT
+
+        # Return the URL that will be allocated
+        return f"http://127.0.0.1:{_NEXT_PORT}"
 
 
 def update_options_env_for_proxy(options, proxy_url: str) -> None:
@@ -265,13 +270,29 @@ def wrap_query(to_wrap: dict[str, Any]):
     """Wrap query() function to set proxy env in options."""
 
     def wrapper(wrapped, instance, args, kwargs):
-        # Signature: async def query(*, prompt: str, options: ClaudeAgentOptions | None = None, ...)
 
         options = kwargs.get("options")
         transport = kwargs.get("transport")
 
-        # If user provided a custom transport, wrap it dynamically
+        # If user provided a custom transport, handle it
         if transport:
+            try:
+                from claude_agent_sdk._internal.transport.subprocess_cli import (
+                    SubprocessCLITransport,
+                )
+
+                if isinstance(transport, SubprocessCLITransport):
+                    # It's a SubprocessCLITransport - we can update its options.env
+                    if hasattr(transport, "_options"):
+                        transport_options = transport._options
+                        proxy_url = get_proxy_url_for_options()
+                        update_options_env_for_proxy(transport_options, proxy_url)
+            except (ImportError, ModuleNotFoundError):
+                logger.warning(
+                    "Failed to import SubprocessCLITransport, skipping proxy setup"
+                )
+
+            # Wrap the transport for proxy lifecycle management
             wrap_custom_transport_if_needed(transport)
         else:
             # For standard SubprocessCLITransport path, update options.env with proxy URL
@@ -283,14 +304,19 @@ def wrap_query(to_wrap: dict[str, Any]):
                     options = ClaudeAgentOptions()
                     kwargs["options"] = options
                 except (ImportError, ModuleNotFoundError):
-                    logger.warning("Failed to import ClaudeAgentOptions, skipping proxy setup")
-                    pass
+                    logger.warning(
+                        "Failed to import ClaudeAgentOptions, skipping proxy setup"
+                    )
+                    # Skip proxy setup if import failed
+                    options = None
 
-            # Get the proxy URL that will be allocated
-            proxy_url = get_proxy_url_for_options()
+            # Only update options if we successfully created/have them
+            if options is not None:
+                # Get the proxy URL that will be allocated
+                proxy_url = get_proxy_url_for_options()
 
-            # Update options.env to include proxy configuration
-            update_options_env_for_proxy(options, proxy_url)
+                # Update options.env to include proxy configuration
+                update_options_env_for_proxy(options, proxy_url)
 
         # Continue with normal async gen wrapping (since query is streaming)
         async def generator():
@@ -308,10 +334,9 @@ def wrap_query(to_wrap: dict[str, Any]):
                     # Note: Span context is published in wrap_transport_connect after connection
 
                     async for item in async_iter:
-                        try:
-                            collected.append(item)
-                        except StopAsyncIteration:
-                            break
+
+                        collected.append(item)
+
                         yield item
                 except Exception as e:
                     span.set_status(Status(StatusCode.ERROR))
@@ -341,7 +366,9 @@ def wrap_client_init(to_wrap: dict[str, Any]):
             )
         except (ImportError, ModuleNotFoundError):
             # If import fails, just call original without instrumentation
-            logger.warning("Failed to import SubprocessCLITransport, skipping proxy setup")
+            logger.warning(
+                "Failed to import SubprocessCLITransport, skipping proxy setup"
+            )
             return wrapped(*args, **kwargs)
 
         # Extract options and transport
@@ -383,14 +410,19 @@ def wrap_client_init(to_wrap: dict[str, Any]):
                     else:
                         kwargs["options"] = options
                 except (ImportError, ModuleNotFoundError):
-                    logger.warning("Failed to import ClaudeAgentOptions, skipping proxy setup")
-                    pass
+                    logger.warning(
+                        "Failed to import ClaudeAgentOptions, skipping proxy setup"
+                    )
+                    # Skip proxy setup if import failed
+                    options = None
 
-            # Get the proxy URL that will be allocated
-            proxy_url = get_proxy_url_for_options()
+            # Only update options if we successfully created/have them
+            if options is not None:
+                # Get the proxy URL that will be allocated
+                proxy_url = get_proxy_url_for_options()
 
-            # Update options.env to include proxy configuration
-            update_options_env_for_proxy(options, proxy_url)
+                # Update options.env to include proxy configuration
+                update_options_env_for_proxy(options, proxy_url)
 
         # Call original init
         return wrapped(*args, **kwargs)
@@ -406,14 +438,19 @@ def wrap_custom_transport_if_needed(transport):
         )
     except (ImportError, ModuleNotFoundError):
         # If import fails, skip wrapping
-        logger.warning("Failed to import SubprocessCLITransport, skipping transport wrapping")
+        logger.warning(
+            "Failed to import SubprocessCLITransport, skipping transport wrapping"
+        )
         return
 
     # Skip if already wrapped or is SubprocessCLITransport (handled by instrumentation)
-    if hasattr(transport, "__lmnr_context") or isinstance(
+    if hasattr(transport, "__lmnr_wrapped") or isinstance(
         transport, SubprocessCLITransport
     ):
         return
+
+    # Mark transport as wrapped immediately to prevent double wrapping
+    transport.__lmnr_wrapped = True
 
     # Create wrapper callables using the factory pattern
     connect_wrapper = wrap_transport_connect({"is_transport_connect": True})
