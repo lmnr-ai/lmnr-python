@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import threading
-from typing import Optional
 
 from lmnr_claude_code_proxy import ProxyServer
 
 from lmnr.sdk.log import get_default_logger
 
-from .utils import resolve_target_url, wait_for_port
+from .utils import wait_for_port
 
 logger = get_default_logger(__name__)
 
@@ -52,30 +51,22 @@ def create_proxy_for_transport() -> ProxyServer:
 
 
 def start_proxy(
-    proxy: ProxyServer, target_url: Optional[str] = None, max_retries: int = 10
+    proxy: ProxyServer, target_url: str, max_retries: int = 10
 ) -> str:
     """
     Start a proxy server, retrying with different ports if occupied.
 
     Args:
         proxy: ProxyServer instance
-        target_url: Upstream URL to proxy to (if None, will be resolved from environment)
+        target_url: Upstream URL to proxy to (required)
         max_retries: Maximum number of port allocation attempts (default: 10)
 
     Returns:
         Proxy base URL (e.g., "http://127.0.0.1:45667")
 
     Raises:
-        RuntimeError: If proxy fails to start after all retries or provider is misconfigured
+        RuntimeError: If proxy fails to start after all retries
     """
-    # Resolve target URL with provider support (Foundry, etc.)
-    if target_url is None:
-        target_url = resolve_target_url()
-
-    if target_url is None:
-        if hasattr(proxy, "_allocated_port"):
-            _release_port(proxy._allocated_port)  # type: ignore
-        raise RuntimeError("Invalid provider configuration")
 
     # Retry loop for port allocation
     for attempt in range(max_retries):

@@ -21,11 +21,14 @@ def test_foundry_base_url_overrides_target(monkeypatch):
     proxy = ProxyServer(port=45500)
     proxy._allocated_port = 45500
 
+    # Resolve target URL before starting proxy
+    target_url = claude_utils.resolve_target_url_from_env({})
+    
     with (
         patch.object(proxy, "run_server") as mock_run,
         patch.object(claude_proxy, "wait_for_port", return_value=True),
     ):
-        result = claude_proxy.start_proxy(proxy)
+        result = claude_proxy.start_proxy(proxy, target_url)
 
         assert result == "http://127.0.0.1:45500"
         mock_run.assert_called_once_with("https://foundry.example/anthropic")
@@ -44,11 +47,14 @@ def test_foundry_resource_builds_target_url(monkeypatch):
     proxy = ProxyServer(port=45501)
     proxy._allocated_port = 45501
 
+    # Resolve target URL before starting proxy
+    target_url = claude_utils.resolve_target_url_from_env({})
+    
     with (
         patch.object(proxy, "run_server") as mock_run,
         patch.object(claude_proxy, "wait_for_port", return_value=True),
     ):
-        result = claude_proxy.start_proxy(proxy)
+        result = claude_proxy.start_proxy(proxy, target_url)
 
         assert result == "http://127.0.0.1:45501"
         mock_run.assert_called_once_with(
@@ -71,8 +77,13 @@ def test_foundry_missing_config_fails(monkeypatch):
     proxy = ProxyServer(port=45502)
     proxy._allocated_port = 45502
 
-    with pytest.raises(RuntimeError, match="Invalid provider configuration"):
-        claude_proxy.start_proxy(proxy)
+    # Resolve target URL - should return None for invalid config
+    target_url = claude_utils.resolve_target_url_from_env({})
+    assert target_url is None
+    
+    # start_proxy should fail when target_url is None
+    with pytest.raises(RuntimeError):
+        claude_proxy.start_proxy(proxy, target_url)
 
     # Port should be released on failure
     assert 45502 not in claude_proxy._ALLOCATED_PORTS
