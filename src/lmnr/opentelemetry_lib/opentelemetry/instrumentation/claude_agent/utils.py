@@ -3,8 +3,9 @@
 import os
 import socket
 import time
-from typing import Optional
+from lmnr.sdk.log import get_default_logger
 
+logger = get_default_logger(__name__)
 # Constants
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 FOUNDRY_BASE_URL_ENV = "ANTHROPIC_FOUNDRY_BASE_URL"
@@ -89,85 +90,76 @@ def wait_for_port(port: int, timeout: float = 5.0) -> bool:
     return False
 
 
-def foundry_target_url() -> str | None:
+def resolve_target_url_from_env(
+    env_dict: dict[str, str], fallback: str = DEFAULT_ANTHROPIC_BASE_URL
+) -> str | None:
     """
-    Get Microsoft Foundry target URL if configured.
+    Resolve target URL from environment dictionary with os.environ fallback.
 
-    Returns:
-        Foundry URL or None if not configured/invalid
-    """
-    if not is_truthy_env(os.environ.get(FOUNDRY_USE_ENV)):
-        return None
+    This is the single source of truth for determining the target URL for the proxy.
 
-    base_url = os.environ.get(FOUNDRY_BASE_URL_ENV)
-    if base_url:
-        return base_url.rstrip("/")
+    Resolution order:
+    1. Check if CLAUDE_CODE_USE_FOUNDRY is truthy
+       - If yes, use ANTHROPIC_FOUNDRY_BASE_URL or construct from ANTHROPIC_FOUNDRY_RESOURCE
+       - BASE_URL and RESOURCE are mutually exclusive (BASE_URL takes precedence)
+    2. Otherwise, use ANTHROPIC_BASE_URL
+    3. Fall back to default
 
-    resource = os.environ.get(FOUNDRY_RESOURCE_ENV)
-    if resource:
-        return f"https://{resource}.services.ai.azure.com/anthropic"
-
-    # Log error but return None (handled by caller)
-    from lmnr.sdk.log import get_default_logger
-
-    logger = get_default_logger(__name__)
-    logger.error(
-        "%s is set but neither %s nor %s is configured. "
-        "Microsoft Foundry requires one of these values.",
-        FOUNDRY_USE_ENV,
-        FOUNDRY_BASE_URL_ENV,
-        FOUNDRY_RESOURCE_ENV,
-    )
-    return None
-
-
-def extract_3p_target_url() -> tuple[bool, Optional[str]]:
-    """
-    Extract target URL for third-party Anthropic API providers.
-
-    Returns:
-        Tuple of (provider_enabled, target_url):
-        - (False, None): No third-party provider configured
-        - (True, url): Provider configured and valid
-        - (True, None): Provider configured but invalid
-    """
-    # Microsoft Foundry
-    if is_truthy_env(os.environ.get(FOUNDRY_USE_ENV)):
-        target_url = foundry_target_url()
-        return (True, target_url)
-
-    # TODO: Amazon Bedrock support
-    # TODO: Google Vertex AI support
-
-    return (False, None)
-
-
-def resolve_target_url(fallback: str = DEFAULT_ANTHROPIC_BASE_URL) -> str | None:
-    """
-    Resolve the target URL for the proxy, checking providers and environment.
+    For each environment variable, checks env_dict first, then os.environ as fallback.
 
     Args:
-        fallback: Fallback URL if no other source found
+        env_dict: Dictionary of environment variables (e.g., from options.env)
+        fallback: Fallback URL if no other source found (default: DEFAULT_ANTHROPIC_BASE_URL)
 
     Returns:
         Resolved target URL, or None if provider is misconfigured
     """
-    # Check for third-party providers first
-    provider_enabled, target_url = extract_3p_target_url()
-    if provider_enabled:
-        return target_url  # Can be None if misconfigured
 
-    # Fallback to environment or default
-    return (
-        os.environ.get("ANTHROPIC_ORIGINAL_BASE_URL")
-        or os.environ.get("ANTHROPIC_BASE_URL")
-        or fallback
-    )
+    # Helper to get value from env_dict first, then os.environ
+    def get_env_value(key: str) -> str | None:
+        return env_dict.get(key) or os.environ.get(key)
+
+    # Check if foundry is enabled
+    foundry_enabled = is_truthy_env(get_env_value(FOUNDRY_USE_ENV))
+
+    if foundry_enabled:
+        # Try to get Foundry base URL first
+        foundry_base_url = get_env_value(FOUNDRY_BASE_URL_ENV)
+        if foundry_base_url:
+            return foundry_base_url.rstrip("/")
+
+        # Try to construct from resource
+        foundry_resource = get_env_value(FOUNDRY_RESOURCE_ENV)
+        if foundry_resource:
+            return f"https://{foundry_resource}.services.ai.azure.com/anthropic"
+
+        # Foundry is enabled but misconfigured
+
+        logger.error(
+            "%s is set but neither %s nor %s is configured. "
+            "Microsoft Foundry requires one of these values.",
+            FOUNDRY_USE_ENV,
+            FOUNDRY_BASE_URL_ENV,
+            FOUNDRY_RESOURCE_ENV,
+        )
+        return None
+
+    # Not using foundry - check for ANTHROPIC_BASE_URL
+    anthropic_base_url = get_env_value("ANTHROPIC_BASE_URL")
+    if anthropic_base_url:
+        return anthropic_base_url
+
+    # Use fallback
+    return fallback
 
 
 def setup_proxy_env(proxy_url: str) -> dict[str, str | None]:
     """
-    Configure environment to use proxy, returning snapshot for restoration.
+    Configure global environment to use proxy for custom transports.
+
+    This is only used for custom (non-SubprocessCLITransport) transports
+    where we can't control environment variable passing. We set ANTHROPIC_ORIGINAL_BASE_URL
+    so the proxy server knows where to forward requests.
 
     Args:
         proxy_url: Proxy base URL (e.g., "http://127.0.0.1:45667")
@@ -180,9 +172,10 @@ def setup_proxy_env(proxy_url: str) -> dict[str, str | None]:
         "ANTHROPIC_ORIGINAL_BASE_URL": os.environ.get("ANTHROPIC_ORIGINAL_BASE_URL"),
     }
 
-    # Determine target URL before proxying
+    # Store original target URL in ANTHROPIC_ORIGINAL_BASE_URL if not already set
+    # This is used by the proxy to know where to forward requests
     if "ANTHROPIC_ORIGINAL_BASE_URL" not in os.environ:
-        target = resolve_target_url()
+        target = resolve_target_url_from_env({})  # Check only os.environ
         if target:
             os.environ["ANTHROPIC_ORIGINAL_BASE_URL"] = target
             snapshot["ANTHROPIC_ORIGINAL_BASE_URL"] = None  # Was not set

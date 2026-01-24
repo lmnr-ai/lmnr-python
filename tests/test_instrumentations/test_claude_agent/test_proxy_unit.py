@@ -126,75 +126,48 @@ def test_wait_for_port_timeout():
     assert result is False
 
 
-def test_foundry_target_url(monkeypatch):
-    """Test Foundry URL resolution."""
-    # Not enabled
-    monkeypatch.delenv("CLAUDE_CODE_USE_FOUNDRY", raising=False)
-    assert claude_utils.foundry_target_url() is None
-
-    # With base URL
-    monkeypatch.setenv("CLAUDE_CODE_USE_FOUNDRY", "1")
-    monkeypatch.setenv("ANTHROPIC_FOUNDRY_BASE_URL", "https://foundry.example.com/")
-    assert claude_utils.foundry_target_url() == "https://foundry.example.com"
-
-    # With resource
-    monkeypatch.delenv("ANTHROPIC_FOUNDRY_BASE_URL", raising=False)
-    monkeypatch.setenv("ANTHROPIC_FOUNDRY_RESOURCE", "my-resource")
-    assert (
-        claude_utils.foundry_target_url()
-        == "https://my-resource.services.ai.azure.com/anthropic"
-    )
-
-    # Misconfigured
-    monkeypatch.delenv("ANTHROPIC_FOUNDRY_BASE_URL", raising=False)
-    monkeypatch.delenv("ANTHROPIC_FOUNDRY_RESOURCE", raising=False)
-    assert claude_utils.foundry_target_url() is None
-
-
-def test_extract_3p_target_url(monkeypatch):
-    """Test third-party provider extraction."""
-    # No provider
-    monkeypatch.delenv("CLAUDE_CODE_USE_FOUNDRY", raising=False)
-    enabled, url = claude_utils.extract_3p_target_url()
-    assert enabled is False
-    assert url is None
-
-    # Foundry enabled and valid
-    monkeypatch.setenv("CLAUDE_CODE_USE_FOUNDRY", "1")
-    monkeypatch.setenv("ANTHROPIC_FOUNDRY_BASE_URL", "https://foundry.example.com")
-    enabled, url = claude_utils.extract_3p_target_url()
-    assert enabled is True
-    assert url == "https://foundry.example.com"
-
-    # Foundry enabled but invalid
-    monkeypatch.delenv("ANTHROPIC_FOUNDRY_BASE_URL", raising=False)
-    monkeypatch.delenv("ANTHROPIC_FOUNDRY_RESOURCE", raising=False)
-    enabled, url = claude_utils.extract_3p_target_url()
-    assert enabled is True
-    assert url is None
-
-
-def test_resolve_target_url(monkeypatch, clean_env):
-    """Test target URL resolution."""
+def test_resolve_target_url_from_env(monkeypatch, clean_env):
+    """Test unified target URL resolution from env_dict with os.environ fallback."""
     # Default fallback
-    url = claude_utils.resolve_target_url()
+    url = claude_utils.resolve_target_url_from_env({})
     assert url == "https://api.anthropic.com"
 
-    # From ANTHROPIC_BASE_URL
+    # From ANTHROPIC_BASE_URL in os.environ
     monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://custom.anthropic.com")
-    url = claude_utils.resolve_target_url()
+    url = claude_utils.resolve_target_url_from_env({})
     assert url == "https://custom.anthropic.com"
 
-    # From ANTHROPIC_ORIGINAL_BASE_URL (takes precedence)
-    monkeypatch.setenv("ANTHROPIC_ORIGINAL_BASE_URL", "https://original.anthropic.com")
-    url = claude_utils.resolve_target_url()
-    assert url == "https://original.anthropic.com"
+    # From env_dict takes precedence over os.environ
+    url = claude_utils.resolve_target_url_from_env(
+        {"ANTHROPIC_BASE_URL": "https://dict.anthropic.com"}
+    )
+    assert url == "https://dict.anthropic.com"
 
-    # From Foundry provider
+    # From Foundry provider in os.environ
     monkeypatch.setenv("CLAUDE_CODE_USE_FOUNDRY", "1")
     monkeypatch.setenv("ANTHROPIC_FOUNDRY_BASE_URL", "https://foundry.example.com")
-    url = claude_utils.resolve_target_url()
+    url = claude_utils.resolve_target_url_from_env({})
     assert url == "https://foundry.example.com"
+
+    # From Foundry provider in env_dict
+    url = claude_utils.resolve_target_url_from_env(
+        {
+            "CLAUDE_CODE_USE_FOUNDRY": "1",
+            "ANTHROPIC_FOUNDRY_BASE_URL": "https://dict-foundry.example.com",
+        }
+    )
+    assert url == "https://dict-foundry.example.com"
+
+    # From Foundry resource in env_dict (clear os.environ foundry vars first)
+    monkeypatch.delenv("ANTHROPIC_FOUNDRY_BASE_URL", raising=False)
+    url = claude_utils.resolve_target_url_from_env(
+        {"CLAUDE_CODE_USE_FOUNDRY": "1", "ANTHROPIC_FOUNDRY_RESOURCE": "my-resource"}
+    )
+    assert url == "https://my-resource.services.ai.azure.com/anthropic"
+
+    # Foundry misconfigured returns None
+    url = claude_utils.resolve_target_url_from_env({"CLAUDE_CODE_USE_FOUNDRY": "1"})
+    assert url is None
 
 
 def test_setup_proxy_env(monkeypatch, clean_env):
@@ -310,11 +283,10 @@ def test_start_proxy_success(monkeypatch, clean_env):
         mock_run.assert_called_once_with("https://api.anthropic.com")
 
 
-def test_start_proxy_with_none_target_url(monkeypatch, clean_env):
-    """Test starting proxy with target_url=None (resolves from env)."""
+def test_start_proxy_with_explicit_target_url(monkeypatch, clean_env):
+    """Test starting proxy with explicit target_url."""
     from lmnr_claude_code_proxy import ProxyServer
 
-    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://custom.anthropic.com")
     proxy = ProxyServer(port=45401)
     proxy._allocated_port = 45401
 
@@ -322,28 +294,10 @@ def test_start_proxy_with_none_target_url(monkeypatch, clean_env):
         patch.object(proxy, "run_server") as mock_run,
         patch.object(claude_proxy, "wait_for_port", return_value=True),
     ):
-        url = claude_proxy.start_proxy(proxy)
+        url = claude_proxy.start_proxy(proxy, target_url="https://custom.anthropic.com")
 
         assert url == "http://127.0.0.1:45401"
         mock_run.assert_called_once_with("https://custom.anthropic.com")
-
-
-def test_start_proxy_invalid_provider(monkeypatch, clean_env):
-    """Test starting proxy with invalid provider configuration."""
-    from lmnr_claude_code_proxy import ProxyServer
-
-    monkeypatch.setenv("CLAUDE_CODE_USE_FOUNDRY", "1")
-    monkeypatch.delenv("ANTHROPIC_FOUNDRY_BASE_URL", raising=False)
-    monkeypatch.delenv("ANTHROPIC_FOUNDRY_RESOURCE", raising=False)
-
-    proxy = ProxyServer(port=45402)
-    proxy._allocated_port = 45402
-
-    with pytest.raises(RuntimeError, match="Invalid provider configuration"):
-        claude_proxy.start_proxy(proxy)
-
-    # Port should be released
-    assert 45402 not in claude_proxy._ALLOCATED_PORTS
 
 
 def test_start_proxy_server_fails(monkeypatch, clean_env):
@@ -515,8 +469,8 @@ def test_port_reuse_after_cleanup(monkeypatch, clean_env):
 # ===== Wrapper Tests for SubprocessCLITransport Options =====
 
 
-def test_wrap_query_updates_subprocess_transport_options():
-    """Test that wrap_query updates SubprocessCLITransport._options.env with proxy config."""
+def test_wrap_query_does_not_double_wrap_subprocess_transport():
+    """Test that wrap_query doesn't wrap SubprocessCLITransport (avoids double wrapping)."""
     import lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.wrappers as wrappers_module
 
     # Try to import the actual SubprocessCLITransport class
@@ -539,6 +493,7 @@ def test_wrap_query_updates_subprocess_transport_options():
             self._options = MockOptions()
 
     mock_transport = TestTransport()
+    original_connect = mock_transport.connect
 
     # Mock the wrapped function (query)
     async def mock_query(*args, **kwargs):
@@ -559,15 +514,14 @@ def test_wrap_query_updates_subprocess_transport_options():
     # Execute the wrapper (it returns an async generator)
     wrapper(wrapped_query, None, (), kwargs)
 
-    # Verify that the transport's _options.env was updated with proxy URL
-    assert "ANTHROPIC_BASE_URL" in mock_transport._options.env
-    assert mock_transport._options.env["ANTHROPIC_BASE_URL"].startswith(
-        "http://127.0.0.1:"
-    )
+    # Verify that the transport's connect method was NOT wrapped again
+    # (SubprocessCLITransport is already globally wrapped to avoid double wrapping)
+    assert mock_transport.connect == original_connect
+    assert not hasattr(mock_transport, "__lmnr_wrapped")
 
 
-def test_wrap_client_init_updates_subprocess_transport_options():
-    """Test that wrap_client_init updates SubprocessCLITransport._options.env with proxy config."""
+def test_wrap_client_init_does_not_double_wrap_subprocess_transport():
+    """Test that wrap_client_init doesn't wrap SubprocessCLITransport (avoids double wrapping)."""
     from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.wrappers import (
         wrap_client_init,
     )
@@ -592,6 +546,7 @@ def test_wrap_client_init_updates_subprocess_transport_options():
             self._options = MockOptions()
 
     mock_transport = TestTransport()
+    original_connect = mock_transport.connect
 
     # Mock the wrapped __init__
     mock_init = MagicMock()
@@ -605,8 +560,7 @@ def test_wrap_client_init_updates_subprocess_transport_options():
     # Execute the wrapper
     wrapper(mock_init, None, (), kwargs)
 
-    # Verify that the transport's _options.env was updated with proxy URL
-    assert "ANTHROPIC_BASE_URL" in mock_transport._options.env
-    assert mock_transport._options.env["ANTHROPIC_BASE_URL"].startswith(
-        "http://127.0.0.1:"
-    )
+    # Verify that the transport's connect method was NOT wrapped again
+    # (SubprocessCLITransport is already globally wrapped to avoid double wrapping)
+    assert mock_transport.connect == original_connect
+    assert not hasattr(mock_transport, "__lmnr_wrapped")

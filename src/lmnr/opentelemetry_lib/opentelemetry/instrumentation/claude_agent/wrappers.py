@@ -1,5 +1,6 @@
 """Wrapper functions for Claude Agent instrumentation."""
 
+import os
 from typing import Any
 
 from lmnr import Laminar
@@ -7,7 +8,7 @@ from lmnr.sdk.log import get_default_logger
 
 from opentelemetry.trace import Status, StatusCode
 
-from .proxy import create_proxy_for_transport, start_proxy, stop_proxy, _PORT_LOCK
+from .proxy import create_proxy_for_transport, start_proxy, stop_proxy
 from .span_utils import (
     span_name,
     record_input,
@@ -17,7 +18,7 @@ from .span_utils import (
 from .utils import (
     setup_proxy_env,
     restore_env,
-    resolve_target_url,
+    resolve_target_url_from_env,
     is_truthy_env,
     FOUNDRY_BASE_URL_ENV,
     FOUNDRY_RESOURCE_ENV,
@@ -152,34 +153,48 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
             )
             return await wrapped(*args, **kwargs)
 
-        # Create and start proxy
-        proxy = create_proxy_for_transport()
-        proxy_url = start_proxy(proxy)
+        # Resolve target URL from transport's options.env (with os.environ fallback)
+        # IMPORTANT: Read options.env BEFORE modifying options.env to avoid circular proxy config
+        env_dict = instance._options.env if hasattr(instance, "_options") else {}
+        target_url = resolve_target_url_from_env(env_dict)
 
-        # Determine if this is a truly custom transport (not SubprocessCLITransport)
+        if target_url is None:
+            raise RuntimeError("Invalid provider configuration")
+
+        # Create and start proxy with resolved target URL
+        proxy = create_proxy_for_transport()
+        proxy_url = start_proxy(proxy, target_url=target_url)
+
+        # Determine if this is a custom transport (not SubprocessCLITransport)
         # SubprocessCLITransport gets proxy config via options.env, custom ones need global env
         is_custom = not isinstance(instance, SubprocessCLITransport)
 
-        # For truly custom transports, we need to set global env vars as fallback
+        # For custom transports, we need to set global env vars as fallback
         # since we can't control how they handle environment.
-        # For SubprocessCLITransport, proxy config is already in options.env
+        # For SubprocessCLITransport, proxy config is in options.env
         if is_custom:
-
             original_env = setup_proxy_env(proxy_url)
             env_set_keys = {k for k, v in original_env.items() if v is not None}
         else:
-            original_env = None
-            env_set_keys = None
+            # For SubprocessCLITransport, update options.env with proxy config
+            if hasattr(instance, "_options"):
+                update_options_env_for_proxy(instance._options, proxy_url, target_url)
+
+            original_env = {}
+            env_set_keys = set()
+            if FOUNDRY_RESOURCE_ENV in os.environ:
+                original_env[FOUNDRY_RESOURCE_ENV] = os.environ[FOUNDRY_RESOURCE_ENV]
+                env_set_keys.add(FOUNDRY_RESOURCE_ENV)
+                os.environ.pop(FOUNDRY_RESOURCE_ENV)
 
         # Store context on instance
         context: dict[str, Any] = {
             "proxy": proxy,
             "proxy_url": proxy_url,
             "is_custom_transport": is_custom,
+            "original_env": original_env,
+            "env_set_keys": env_set_keys,
         }
-        if is_custom:
-            context["original_env"] = original_env
-            context["env_set_keys"] = env_set_keys
 
         instance.__lmnr_context = context
         instance.__lmnr_wrapped = True
@@ -194,12 +209,10 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
             return result
         except Exception:
             # If connect fails, clean up proxy
-
             stop_proxy(proxy)
 
-            # Restore env if custom transport
-            if is_custom and original_env:
-
+            # Restore env (for both custom transports and SubprocessCLITransport)
+            if original_env:
                 restore_env(original_env, env_set_keys or set())
 
             delattr(instance, "__lmnr_context")
@@ -221,8 +234,9 @@ def wrap_transport_close(to_wrap: dict[str, Any]):
             # Clean up proxy and restore environment if needed
             context: dict[str, Any] | None = getattr(instance, "__lmnr_context", None)
             if context:
-                # Restore global env only for custom transports
-                if context.get("is_custom_transport"):
+                # Restore global env for both custom transports and SubprocessCLITransport
+                # (SubprocessCLITransport might have had FOUNDRY_RESOURCE temporarily removed)
+                if context.get("original_env"):
                     from .utils import restore_env
 
                     restore_env(
@@ -236,87 +250,72 @@ def wrap_transport_close(to_wrap: dict[str, Any]):
     return wrapper
 
 
-def get_proxy_url_for_options() -> str:
-    """Get the proxy URL that will be used for the next transport connection."""
+def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> None:
+    """
+    Update options.env to point subprocess to proxy.
 
-    with _PORT_LOCK:
-        from .proxy import _NEXT_PORT
+    - Sets ANTHROPIC_BASE_URL to proxy URL
+    - Sets ANTHROPIC_ORIGINAL_BASE_URL to target URL (for proxy to forward to)
+    - If Foundry enabled:
+        - sets ANTHROPIC_FOUNDRY_BASE_URL to proxy URL
+        - Removes ANTHROPIC_FOUNDRY_RESOURCE from options.env (mutually exclusive)
+    - ALL OTHER env vars passed intact
 
-        # Return the URL that will be allocated
-        return f"http://127.0.0.1:{_NEXT_PORT}"
+    Note: ANTHROPIC_FOUNDRY_RESOURCE from os.environ is handled separately in
+    wrap_transport_connect by temporarily removing it before subprocess starts.
 
+    Args:
+        options: ClaudeAgentOptions instance with .env dict
+        proxy_url: Proxy URL (e.g., "http://127.0.0.1:45667")
+        target_url: Original target URL to forward to (e.g., "https://api.anthropic.com")
+    """
 
-def update_options_env_for_proxy(options, proxy_url: str) -> None:
-    """Update options.env dict with proxy environment variables."""
+    # Simple helper to check env
+    def get_env_value(key: str) -> str | None:
+        return options.env.get(key) or os.environ.get(key)
 
-    # Determine original target URL
-    if "ANTHROPIC_ORIGINAL_BASE_URL" not in options.env:
-        target_url = resolve_target_url()
-        if target_url:
-            options.env["ANTHROPIC_ORIGINAL_BASE_URL"] = target_url
+    foundry_enabled = is_truthy_env(get_env_value("CLAUDE_CODE_USE_FOUNDRY"))
 
     # Set proxy URL
     options.env["ANTHROPIC_BASE_URL"] = proxy_url
 
-    # Handle Foundry-specific env vars
-    if is_truthy_env(options.env.get("CLAUDE_CODE_USE_FOUNDRY")):
-        if FOUNDRY_BASE_URL_ENV in options.env:
-            options.env[FOUNDRY_BASE_URL_ENV] = proxy_url
-        # Remove FOUNDRY_RESOURCE_ENV if present
-        options.env.pop(FOUNDRY_RESOURCE_ENV, None)
+    # Store original target URL so proxy knows where to forward
+    options.env["ANTHROPIC_ORIGINAL_BASE_URL"] = target_url
+
+    # Remove FOUNDRY_RESOURCE from options.env (mutually exclusive with ANTHROPIC_BASE_URL)
+    if FOUNDRY_RESOURCE_ENV in options.env:
+        options.env.pop(FOUNDRY_RESOURCE_ENV)
+
+    if foundry_enabled:
+        if "CLAUDE_CODE_USE_FOUNDRY" not in options.env:
+            options.env["CLAUDE_CODE_USE_FOUNDRY"] = "1"
+        options.env[FOUNDRY_BASE_URL_ENV] = proxy_url
 
 
 def wrap_query(to_wrap: dict[str, Any]):
-    """Wrap query() function to set proxy env in options."""
+    """Wrap query() function - handles custom transport wrapping."""
 
     def wrapper(wrapped, instance, args, kwargs):
 
-        options = kwargs.get("options")
         transport = kwargs.get("transport")
 
-        # If user provided a custom transport, handle it
+        # If user provided a custom transport, wrap it for proxy lifecycle
+        # SubprocessCLITransport is already wrapped globally
         if transport:
             try:
                 from claude_agent_sdk._internal.transport.subprocess_cli import (
                     SubprocessCLITransport,
                 )
 
-                if isinstance(transport, SubprocessCLITransport):
-                    # It's a SubprocessCLITransport - we can update its options.env
-                    if hasattr(transport, "_options"):
-                        transport_options = transport._options
-                        proxy_url = get_proxy_url_for_options()
-                        update_options_env_for_proxy(transport_options, proxy_url)
+                # Only wrap non-SubprocessCLITransport (already globally wrapped)
+                if not isinstance(transport, SubprocessCLITransport):
+                    wrap_custom_transport_if_needed(transport)
             except (ImportError, ModuleNotFoundError):
-                logger.warning(
-                    "Failed to import SubprocessCLITransport, skipping proxy setup"
-                )
+                # If import fails, try wrapping anyway
+                wrap_custom_transport_if_needed(transport)
 
-            # Wrap the transport for proxy lifecycle management
-            wrap_custom_transport_if_needed(transport)
-        else:
-            # For standard SubprocessCLITransport path, update options.env with proxy URL
-            if options is None:
-                # Create default options if none provided
-                try:
-                    from claude_agent_sdk.types import ClaudeAgentOptions
-
-                    options = ClaudeAgentOptions()
-                    kwargs["options"] = options
-                except (ImportError, ModuleNotFoundError):
-                    logger.warning(
-                        "Failed to import ClaudeAgentOptions, skipping proxy setup"
-                    )
-                    # Skip proxy setup if import failed
-                    options = None
-
-            # Only update options if we successfully created/have them
-            if options is not None:
-                # Get the proxy URL that will be allocated
-                proxy_url = get_proxy_url_for_options()
-
-                # Update options.env to include proxy configuration
-                update_options_env_for_proxy(options, proxy_url)
+        # Note: We don't pre-configure proxy URL here because we don't know the port
+        # until the proxy is actually created in wrap_transport_connect
 
         # Continue with normal async gen wrapping (since query is streaming)
         async def generator():
@@ -357,7 +356,7 @@ def wrap_query(to_wrap: dict[str, Any]):
 
 
 def wrap_client_init(to_wrap: dict[str, Any]):
-    """Wrap ClaudeSDKClient.__init__ to set proxy env in options."""
+    """Wrap ClaudeSDKClient.__init__ to handle custom transport wrapping."""
 
     def wrapper(wrapped, instance, args, kwargs):
         try:
@@ -371,58 +370,20 @@ def wrap_client_init(to_wrap: dict[str, Any]):
             )
             return wrapped(*args, **kwargs)
 
-        # Extract options and transport
-        options = None
+        # Extract transport from args/kwargs
         transport = None
-
-        if args:
-            if len(args) > 0:
-                options = args[0]
-            if len(args) > 1:
-                transport = args[1]
-
-        if "options" in kwargs:
-            options = kwargs["options"]
+        if args and len(args) > 1:
+            transport = args[1]
         if "transport" in kwargs:
             transport = kwargs["transport"]
 
-        if transport:
-            # User provided a custom transport
-            if isinstance(transport, SubprocessCLITransport):
-                # It's a SubprocessCLITransport - we can update its options.env
-                if hasattr(transport, "_options"):
-                    transport_options = transport._options
-                    proxy_url = get_proxy_url_for_options()
-                    update_options_env_for_proxy(transport_options, proxy_url)
-
-            # Wrap the transport for proxy lifecycle management
+        # If user provided a custom transport, wrap it for proxy lifecycle
+        # SubprocessCLITransport is already wrapped globally
+        if transport and not isinstance(transport, SubprocessCLITransport):
             wrap_custom_transport_if_needed(transport)
-        else:
-            # Standard path: no custom transport, will use SubprocessCLITransport created by client
-            if options is None:
-                # Create default options if none provided
-                try:
-                    from claude_agent_sdk.types import ClaudeAgentOptions
 
-                    options = ClaudeAgentOptions()
-                    if args:
-                        args = (options, *args[1:])
-                    else:
-                        kwargs["options"] = options
-                except (ImportError, ModuleNotFoundError):
-                    logger.warning(
-                        "Failed to import ClaudeAgentOptions, skipping proxy setup"
-                    )
-                    # Skip proxy setup if import failed
-                    options = None
-
-            # Only update options if we successfully created/have them
-            if options is not None:
-                # Get the proxy URL that will be allocated
-                proxy_url = get_proxy_url_for_options()
-
-                # Update options.env to include proxy configuration
-                update_options_env_for_proxy(options, proxy_url)
+        # Note: We don't pre-configure proxy URL here because we don't know the port
+        # until the proxy is actually created in wrap_transport_connect
 
         # Call original init
         return wrapped(*args, **kwargs)
@@ -431,22 +392,14 @@ def wrap_client_init(to_wrap: dict[str, Any]):
 
 
 def wrap_custom_transport_if_needed(transport):
-    """Dynamically wrap custom transport's connect/close methods."""
-    try:
-        from claude_agent_sdk._internal.transport.subprocess_cli import (
-            SubprocessCLITransport,
-        )
-    except (ImportError, ModuleNotFoundError):
-        # If import fails, skip wrapping
-        logger.warning(
-            "Failed to import SubprocessCLITransport, skipping transport wrapping"
-        )
-        return
+    """
+    Dynamically wrap custom transport's connect/close methods.
 
-    # Skip if already wrapped or is SubprocessCLITransport (handled by instrumentation)
-    if hasattr(transport, "__lmnr_wrapped") or isinstance(
-        transport, SubprocessCLITransport
-    ):
+    Note: SubprocessCLITransport is already wrapped globally by the instrumentation
+    and should be handled before calling this function to avoid double wrapping.
+    """
+    # Skip if already wrapped
+    if hasattr(transport, "__lmnr_wrapped"):
         return
 
     # Mark transport as wrapped immediately to prevent double wrapping
