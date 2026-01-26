@@ -172,12 +172,15 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
         # For custom transports, we need to set global env vars as fallback
         # since we can't control how they handle environment.
         # For SubprocessCLITransport, proxy config is in options.env
+        options_env_snapshot = {}
         if is_custom:
             original_env = setup_proxy_env(proxy_url)
             env_set_keys = {k for k, v in original_env.items() if v is not None}
         else:
             # For SubprocessCLITransport, update options.env with proxy config
             if hasattr(instance, "_options"):
+                # Snapshot options.env before modifying it (for error recovery)
+                options_env_snapshot = snapshot_options_env_for_proxy(instance._options)
                 update_options_env_for_proxy(instance._options, proxy_url, target_url)
 
             original_env = {}
@@ -194,6 +197,7 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
             "is_custom_transport": is_custom,
             "original_env": original_env,
             "env_set_keys": env_set_keys,
+            "options_env_snapshot": options_env_snapshot,
         }
 
         instance.__lmnr_context = context
@@ -211,11 +215,20 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
             # If connect fails, clean up proxy
             stop_proxy(proxy)
 
-            # Restore env (for both custom transports and SubprocessCLITransport)
+            # Restore os.environ (for both custom transports and SubprocessCLITransport)
             if original_env:
                 restore_env(original_env, env_set_keys or set())
 
-            delattr(instance, "__lmnr_context")
+            # Restore options.env if we modified it
+            if options_env_snapshot and hasattr(instance, "_options"):
+                restore_options_env_from_snapshot(
+                    instance._options, options_env_snapshot
+                )
+
+            try:
+                delattr(instance, "__lmnr_context")
+            except Exception:
+                pass
             raise
 
     return wrapper
@@ -245,9 +258,57 @@ def wrap_transport_close(to_wrap: dict[str, Any]):
                     )
 
                 stop_proxy(context["proxy"])
-                delattr(instance, "__lmnr_context")
+                try:
+                    delattr(instance, "__lmnr_context")
+                except Exception:
+                    pass
 
     return wrapper
+
+
+def snapshot_options_env_for_proxy(options) -> dict[str, str | None]:
+    """
+    Snapshot keys in options.env that will be modified by update_options_env_for_proxy.
+
+    This enables restoration on error so retries work correctly.
+
+    Args:
+        options: ClaudeAgentOptions instance with .env dict
+
+    Returns:
+        Dictionary mapping keys to their original values (or None if not present)
+    """
+    keys_to_snapshot = [
+        "ANTHROPIC_BASE_URL",
+        "ANTHROPIC_ORIGINAL_BASE_URL",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        FOUNDRY_BASE_URL_ENV,
+        FOUNDRY_RESOURCE_ENV,
+    ]
+
+    snapshot = {}
+    for key in keys_to_snapshot:
+        snapshot[key] = options.env.get(key)
+
+    return snapshot
+
+
+def restore_options_env_from_snapshot(options, snapshot: dict[str, str | None]) -> None:
+    """
+    Restore options.env from a snapshot created by snapshot_options_env_for_proxy.
+
+    Args:
+        options: ClaudeAgentOptions instance with .env dict
+        snapshot: Dictionary mapping keys to their original values
+    """
+    for key, value in snapshot.items():
+        if value is None:
+            # Key was not present originally, remove it
+            options.env.pop(key, None)
+        else:
+            # Restore original value
+            options.env[key] = value
 
 
 def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> None:

@@ -123,12 +123,12 @@ def resolve_target_url_from_env(
         return env_dict.get(key) or os.environ.get(key)
 
     # 1. Check for HTTPS_PROXY (highest priority)
-    https_proxy = get_env_value("HTTPS_PROXY") or get_env_value("https_proxy")
+    https_proxy = get_env_value("HTTPS_PROXY")
     if https_proxy:
         return https_proxy.rstrip("/")
 
     # 2. Check for HTTP_PROXY
-    http_proxy = get_env_value("HTTP_PROXY") or get_env_value("http_proxy")
+    http_proxy = get_env_value("HTTP_PROXY")
     if http_proxy:
         return http_proxy.rstrip("/")
 
@@ -200,7 +200,7 @@ def setup_proxy_env(proxy_url: str) -> dict[str, str | None]:
     os.environ["ANTHROPIC_BASE_URL"] = proxy_url
 
     # Remove HTTP_PROXY and HTTPS_PROXY (our proxy will forward to them)
-    for proxy_var in ["HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy"]:
+    for proxy_var in ["HTTP_PROXY", "HTTPS_PROXY"]:
         os.environ.pop(proxy_var, None)
 
     # Handle Foundry-specific env vars
