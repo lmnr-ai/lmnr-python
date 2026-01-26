@@ -23,6 +23,8 @@ def clean_env(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_FOUNDRY_BASE_URL", raising=False)
     monkeypatch.delenv("ANTHROPIC_FOUNDRY_RESOURCE", raising=False)
     monkeypatch.delenv("CLAUDE_CODE_USE_FOUNDRY", raising=False)
+    monkeypatch.delenv("HTTP_PROXY", raising=False)
+    monkeypatch.delenv("HTTPS_PROXY", raising=False)
 
 
 @pytest.fixture(autouse=True)

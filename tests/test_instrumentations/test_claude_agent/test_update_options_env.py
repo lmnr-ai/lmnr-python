@@ -4,10 +4,13 @@ import pytest
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.wrappers import (
     update_options_env_for_proxy,
+    snapshot_options_env_for_proxy,
+    restore_options_env_from_snapshot,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.utils import (
     FOUNDRY_BASE_URL_ENV,
     FOUNDRY_RESOURCE_ENV,
+    resolve_target_url_from_env,
 )
 
 
@@ -26,6 +29,8 @@ def clean_env(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_FOUNDRY_BASE_URL", raising=False)
     monkeypatch.delenv("ANTHROPIC_FOUNDRY_RESOURCE", raising=False)
     monkeypatch.delenv("CLAUDE_CODE_USE_FOUNDRY", raising=False)
+    monkeypatch.delenv("HTTP_PROXY", raising=False)
+    monkeypatch.delenv("HTTPS_PROXY", raising=False)
 
 
 def test_basic_proxy_setup(clean_env):
@@ -184,9 +189,7 @@ def test_updates_dict_in_place(clean_env):
     assert options.env["ANTHROPIC_BASE_URL"] == proxy_url
 
 
-def test_sets_anthropic_original_base_url_in_options_env(
-    monkeypatch, clean_env
-):
+def test_sets_anthropic_original_base_url_in_options_env(monkeypatch, clean_env):
     """Test that ANTHROPIC_ORIGINAL_BASE_URL is set in options.env to target URL."""
     options = MockOptions()
     proxy_url = "http://127.0.0.1:45667"
@@ -249,3 +252,289 @@ def test_foundry_base_url_and_resource_are_mutually_exclusive(clean_env):
     assert options.env[FOUNDRY_BASE_URL_ENV] == proxy_url
     # Should remove FOUNDRY_RESOURCE (mutually exclusive)
     assert FOUNDRY_RESOURCE_ENV not in options.env
+
+
+def test_http_proxy_removed_from_options_env(clean_env):
+    """Test that HTTP_PROXY is removed from options.env."""
+    options = MockOptions(
+        {
+            "HTTP_PROXY": "http://corporate-proxy.example.com:8080",
+            "OTHER_VAR": "keep_me",
+        }
+    )
+    proxy_url = "http://127.0.0.1:45667"
+    target_url = "https://api.anthropic.com"
+
+    update_options_env_for_proxy(options, proxy_url, target_url)
+
+    # HTTP_PROXY should be removed
+    assert "HTTP_PROXY" not in options.env
+    # Other vars should be preserved
+    assert options.env["OTHER_VAR"] == "keep_me"
+    # Proxy config should be set
+    assert options.env["ANTHROPIC_BASE_URL"] == proxy_url
+    assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
+
+
+def test_https_proxy_removed_from_options_env(clean_env):
+    """Test that HTTPS_PROXY is removed from options.env."""
+    options = MockOptions(
+        {
+            "HTTPS_PROXY": "https://corporate-proxy.example.com:8443",
+            "OTHER_VAR": "keep_me",
+        }
+    )
+    proxy_url = "http://127.0.0.1:45667"
+    target_url = "https://api.anthropic.com"
+
+    update_options_env_for_proxy(options, proxy_url, target_url)
+
+    # HTTPS_PROXY should be removed
+    assert "HTTPS_PROXY" not in options.env
+    # Other vars should be preserved
+    assert options.env["OTHER_VAR"] == "keep_me"
+    # Proxy config should be set
+    assert options.env["ANTHROPIC_BASE_URL"] == proxy_url
+    assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
+
+
+def test_both_proxy_vars_removed_from_options_env(clean_env):
+    """Test that both HTTP_PROXY and HTTPS_PROXY are removed from options.env."""
+    options = MockOptions(
+        {
+            "HTTP_PROXY": "http://proxy1.example.com",
+            "HTTPS_PROXY": "https://proxy2.example.com",
+            "ANTHROPIC_BASE_URL": "https://custom.anthropic.com",
+        }
+    )
+    proxy_url = "http://127.0.0.1:45667"
+    # In real scenario, target_url would be resolved from HTTPS_PROXY
+    target_url = "https://proxy2.example.com"
+
+    update_options_env_for_proxy(options, proxy_url, target_url)
+
+    # Both proxy vars should be removed
+    assert "HTTP_PROXY" not in options.env
+    assert "HTTPS_PROXY" not in options.env
+    # Proxy config should be set
+    assert options.env["ANTHROPIC_BASE_URL"] == proxy_url
+    assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
+
+
+def test_https_proxy_resolution_from_options_env(monkeypatch, clean_env):
+    """Test that HTTPS_PROXY from options.env is used for target URL resolution."""
+    # Set conflicting values in os.environ
+    monkeypatch.setenv("HTTP_PROXY", "http://system-proxy.example.com")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://system.anthropic.com")
+
+    options = MockOptions(
+        {
+            "HTTPS_PROXY": "https://transport-proxy.example.com:8443",
+        }
+    )
+
+    # Resolve target URL using options.env
+    target_url = resolve_target_url_from_env(options.env)
+    assert target_url == "https://transport-proxy.example.com:8443"
+
+    # Update options.env
+    proxy_url = "http://127.0.0.1:45667"
+    update_options_env_for_proxy(options, proxy_url, target_url)
+
+    # HTTPS_PROXY should be removed, target stored
+    assert "HTTPS_PROXY" not in options.env
+    assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
+
+
+def test_http_proxy_resolution_from_options_env(monkeypatch, clean_env):
+    """Test that HTTP_PROXY from options.env is used for target URL resolution."""
+    # Set conflicting values in os.environ
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://system.anthropic.com")
+
+    options = MockOptions(
+        {
+            "HTTP_PROXY": "http://transport-proxy.example.com:8080",
+        }
+    )
+
+    # Resolve target URL using options.env
+    target_url = resolve_target_url_from_env(options.env)
+    assert target_url == "http://transport-proxy.example.com:8080"
+
+    # Update options.env
+    proxy_url = "http://127.0.0.1:45667"
+    update_options_env_for_proxy(options, proxy_url, target_url)
+
+    # HTTP_PROXY should be removed, target stored
+    assert "HTTP_PROXY" not in options.env
+    assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
+
+
+def test_snapshot_and_restore_options_env(clean_env):
+    """Test that options.env can be snapshotted and restored on error."""
+    # Initial state with proxy vars
+    options = MockOptions(
+        {
+            "HTTP_PROXY": "http://original-proxy.example.com:8080",
+            "HTTPS_PROXY": "https://original-proxy.example.com:8443",
+            "ANTHROPIC_BASE_URL": "https://custom.anthropic.com",
+            "OTHER_VAR": "keep_me",
+        }
+    )
+
+    # Snapshot before modification
+    snapshot = snapshot_options_env_for_proxy(options)
+
+    # Modify options.env
+    proxy_url = "http://127.0.0.1:45667"
+    target_url = "https://original-proxy.example.com:8443"
+    update_options_env_for_proxy(options, proxy_url, target_url)
+
+    # Verify modifications
+    assert "HTTP_PROXY" not in options.env
+    assert "HTTPS_PROXY" not in options.env
+    assert options.env["ANTHROPIC_BASE_URL"] == proxy_url
+    assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
+    assert options.env["OTHER_VAR"] == "keep_me"  # Unrelated vars preserved
+
+    # Simulate error scenario: restore from snapshot
+    restore_options_env_from_snapshot(options, snapshot)
+
+    # Verify restoration
+    assert options.env["HTTP_PROXY"] == "http://original-proxy.example.com:8080"
+    assert options.env["HTTPS_PROXY"] == "https://original-proxy.example.com:8443"
+    assert options.env["ANTHROPIC_BASE_URL"] == "https://custom.anthropic.com"
+    assert "ANTHROPIC_ORIGINAL_BASE_URL" not in options.env
+    assert options.env["OTHER_VAR"] == "keep_me"  # Still preserved
+
+
+def test_snapshot_and_restore_with_foundry(monkeypatch, clean_env):
+    """Test snapshot/restore with Foundry configuration."""
+    monkeypatch.setenv("CLAUDE_CODE_USE_FOUNDRY", "1")
+
+    options = MockOptions(
+        {
+            "ANTHROPIC_FOUNDRY_RESOURCE": "my-resource",
+            "HTTP_PROXY": "http://corporate-proxy.example.com",
+        }
+    )
+
+    # Snapshot
+    snapshot = snapshot_options_env_for_proxy(options)
+
+    # Modify
+    proxy_url = "http://127.0.0.1:45667"
+    target_url = "https://my-resource.services.ai.azure.com/anthropic"
+    update_options_env_for_proxy(options, proxy_url, target_url)
+
+    # Verify Foundry resource removed, HTTP_PROXY removed
+    assert FOUNDRY_RESOURCE_ENV not in options.env
+    assert "HTTP_PROXY" not in options.env
+    assert options.env[FOUNDRY_BASE_URL_ENV] == proxy_url
+
+    # Restore
+    restore_options_env_from_snapshot(options, snapshot)
+
+    # Verify original state restored
+    assert options.env["ANTHROPIC_FOUNDRY_RESOURCE"] == "my-resource"
+    assert options.env["HTTP_PROXY"] == "http://corporate-proxy.example.com"
+    assert FOUNDRY_BASE_URL_ENV not in options.env  # Was not present originally
+
+
+def test_retry_after_failed_connect_uses_correct_target(clean_env):
+    """
+    Test that retrying after failed connection uses the correct target URL.
+
+    This verifies the bug fix where HTTP_PROXY/HTTPS_PROXY removal from options.env
+    would cause retries to use the wrong target.
+    """
+    # Initial state: user has HTTPS_PROXY set
+    options = MockOptions(
+        {
+            "HTTPS_PROXY": "https://corporate-proxy.example.com:8443",
+        }
+    )
+
+    # First attempt: snapshot, modify, and simulate failure
+    snapshot = snapshot_options_env_for_proxy(options)
+    target_url = resolve_target_url_from_env(options.env)
+    assert target_url == "https://corporate-proxy.example.com:8443"
+
+    proxy_url = "http://127.0.0.1:45667"
+    update_options_env_for_proxy(options, proxy_url, target_url)
+
+    # After update, HTTPS_PROXY is removed
+    assert "HTTPS_PROXY" not in options.env
+    assert options.env["ANTHROPIC_BASE_URL"] == proxy_url
+
+    # Simulate connection failure - restore snapshot
+    restore_options_env_from_snapshot(options, snapshot)
+
+    # Retry: resolve target URL again (should work correctly now)
+    retry_target_url = resolve_target_url_from_env(options.env)
+    assert retry_target_url == "https://corporate-proxy.example.com:8443"
+
+    # Without the fix, retry_target_url would be proxy_url (wrong!)
+    assert retry_target_url != proxy_url
+
+
+def test_snapshot_includes_foundry_use_env(monkeypatch, clean_env):
+    """
+    Test that CLAUDE_CODE_USE_FOUNDRY is included in snapshot and properly restored.
+
+    This verifies the bug fix where CLAUDE_CODE_USE_FOUNDRY was missing from
+    keys_to_snapshot, causing it to remain in options.env after restoration.
+    """
+    # Scenario: User has foundry enabled in os.environ but not in options.env
+    monkeypatch.setenv("CLAUDE_CODE_USE_FOUNDRY", "1")
+    monkeypatch.setenv("ANTHROPIC_FOUNDRY_BASE_URL", "https://foundry.example.com")
+
+    options = MockOptions(
+        {
+            "OTHER_VAR": "keep_me",
+        }
+    )
+
+    # Take snapshot before modification
+    snapshot = snapshot_options_env_for_proxy(options)
+
+    # Verify CLAUDE_CODE_USE_FOUNDRY is in snapshot (even if None)
+    assert "CLAUDE_CODE_USE_FOUNDRY" in snapshot
+    assert snapshot["CLAUDE_CODE_USE_FOUNDRY"] is None
+
+    # Resolve target URL (will detect foundry from os.environ)
+    target_url = resolve_target_url_from_env(options.env)
+    assert target_url == "https://foundry.example.com"
+
+    # Update options.env for proxy
+    proxy_url = "http://127.0.0.1:45667"
+    update_options_env_for_proxy(options, proxy_url, target_url)
+
+    # Verify CLAUDE_CODE_USE_FOUNDRY was added to options.env
+    assert options.env["CLAUDE_CODE_USE_FOUNDRY"] == "1"
+    assert options.env["ANTHROPIC_BASE_URL"] == proxy_url
+
+    # Simulate connection failure - restore snapshot
+    restore_options_env_from_snapshot(options, snapshot)
+
+    # CLAUDE_CODE_USE_FOUNDRY should be removed (was not originally present)
+    assert "CLAUDE_CODE_USE_FOUNDRY" not in options.env
+    assert "ANTHROPIC_BASE_URL" not in options.env
+    # Other vars should be preserved
+    assert options.env["OTHER_VAR"] == "keep_me"
+
+    # Now simulate retry after user disables foundry in os.environ
+    monkeypatch.delenv("CLAUDE_CODE_USE_FOUNDRY")
+
+    # Retry: resolve target URL again
+    # Without the fix, this would incorrectly use foundry because
+    # CLAUDE_CODE_USE_FOUNDRY="1" would still be in options.env
+    retry_target_url = resolve_target_url_from_env(options.env)
+
+    # With foundry disabled, should fall back to default
+    # (ANTHROPIC_FOUNDRY_BASE_URL is ignored when CLAUDE_CODE_USE_FOUNDRY is not set)
+    assert retry_target_url == "https://api.anthropic.com"
+
+    # Most importantly, foundry should NOT be enabled from options.env
+    # since we removed CLAUDE_CODE_USE_FOUNDRY from it
+    assert "CLAUDE_CODE_USE_FOUNDRY" not in options.env

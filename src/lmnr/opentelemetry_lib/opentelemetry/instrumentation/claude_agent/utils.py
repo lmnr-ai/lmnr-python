@@ -98,12 +98,15 @@ def resolve_target_url_from_env(
 
     This is the single source of truth for determining the target URL for the proxy.
 
-    Resolution order:
-    1. Check if CLAUDE_CODE_USE_FOUNDRY is truthy
-       - If yes, use ANTHROPIC_FOUNDRY_BASE_URL or construct from ANTHROPIC_FOUNDRY_RESOURCE
-       - BASE_URL and RESOURCE are mutually exclusive (BASE_URL takes precedence)
-    2. Otherwise, use ANTHROPIC_BASE_URL
-    3. Fall back to default
+    Resolution order (highest to lowest priority):
+    1. HTTPS_PROXY - if set, use as target (our proxy will forward to it)
+    2. HTTP_PROXY - if set, use as target (our proxy will forward to it)
+    3. Third-party provider URLs (e.g., Foundry):
+       - If CLAUDE_CODE_USE_FOUNDRY is truthy:
+         - Use ANTHROPIC_FOUNDRY_BASE_URL, or
+         - Construct from ANTHROPIC_FOUNDRY_RESOURCE
+    4. ANTHROPIC_BASE_URL - standard Anthropic API base URL
+    5. Fall back to default (https://api.anthropic.com)
 
     For each environment variable, checks env_dict first, then os.environ as fallback.
 
@@ -119,9 +122,18 @@ def resolve_target_url_from_env(
     def get_env_value(key: str) -> str | None:
         return env_dict.get(key) or os.environ.get(key)
 
-    # Check if foundry is enabled
-    foundry_enabled = is_truthy_env(get_env_value(FOUNDRY_USE_ENV))
+    # 1. Check for HTTPS_PROXY (highest priority)
+    https_proxy = get_env_value("HTTPS_PROXY")
+    if https_proxy:
+        return https_proxy.rstrip("/")
 
+    # 2. Check for HTTP_PROXY
+    http_proxy = get_env_value("HTTP_PROXY")
+    if http_proxy:
+        return http_proxy.rstrip("/")
+
+    # 3. Check for third-party providers (Foundry)
+    foundry_enabled = is_truthy_env(get_env_value(FOUNDRY_USE_ENV))
     if foundry_enabled:
         # Try to get Foundry base URL first
         foundry_base_url = get_env_value(FOUNDRY_BASE_URL_ENV)
@@ -134,7 +146,6 @@ def resolve_target_url_from_env(
             return f"https://{foundry_resource}.services.ai.azure.com/anthropic"
 
         # Foundry is enabled but misconfigured
-
         logger.error(
             "%s is set but neither %s nor %s is configured. "
             "Microsoft Foundry requires one of these values.",
@@ -144,12 +155,12 @@ def resolve_target_url_from_env(
         )
         return None
 
-    # Not using foundry - check for ANTHROPIC_BASE_URL
+    # 4. Check for ANTHROPIC_BASE_URL
     anthropic_base_url = get_env_value("ANTHROPIC_BASE_URL")
     if anthropic_base_url:
-        return anthropic_base_url
+        return anthropic_base_url.rstrip("/")
 
-    # Use fallback
+    # 5. Use fallback
     return fallback
 
 
@@ -161,6 +172,9 @@ def setup_proxy_env(proxy_url: str) -> dict[str, str | None]:
     where we can't control environment variable passing. We set ANTHROPIC_ORIGINAL_BASE_URL
     so the proxy server knows where to forward requests.
 
+    Also removes HTTP_PROXY and HTTPS_PROXY from global env
+    since our proxy will handle forwarding to them.
+
     Args:
         proxy_url: Proxy base URL (e.g., "http://127.0.0.1:45667")
 
@@ -170,6 +184,8 @@ def setup_proxy_env(proxy_url: str) -> dict[str, str | None]:
     snapshot: dict[str, str | None] = {
         "ANTHROPIC_BASE_URL": os.environ.get("ANTHROPIC_BASE_URL"),
         "ANTHROPIC_ORIGINAL_BASE_URL": os.environ.get("ANTHROPIC_ORIGINAL_BASE_URL"),
+        "HTTP_PROXY": os.environ.get("HTTP_PROXY"),
+        "HTTPS_PROXY": os.environ.get("HTTPS_PROXY"),
     }
 
     # Store original target URL in ANTHROPIC_ORIGINAL_BASE_URL if not already set
@@ -182,6 +198,10 @@ def setup_proxy_env(proxy_url: str) -> dict[str, str | None]:
 
     # Set proxy URL
     os.environ["ANTHROPIC_BASE_URL"] = proxy_url
+
+    # Remove HTTP_PROXY and HTTPS_PROXY (our proxy will forward to them)
+    for proxy_var in ["HTTP_PROXY", "HTTPS_PROXY"]:
+        os.environ.pop(proxy_var, None)
 
     # Handle Foundry-specific env vars
     if is_truthy_env(os.environ.get(FOUNDRY_USE_ENV)):
