@@ -29,6 +29,8 @@ def clean_env(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_FOUNDRY_BASE_URL", raising=False)
     monkeypatch.delenv("ANTHROPIC_FOUNDRY_RESOURCE", raising=False)
     monkeypatch.delenv("CLAUDE_CODE_USE_FOUNDRY", raising=False)
+    monkeypatch.delenv("HTTP_PROXY", raising=False)
+    monkeypatch.delenv("HTTPS_PROXY", raising=False)
 
 
 def test_basic_proxy_setup(clean_env):
@@ -474,3 +476,65 @@ def test_retry_after_failed_connect_uses_correct_target(clean_env):
 
     # Without the fix, retry_target_url would be proxy_url (wrong!)
     assert retry_target_url != proxy_url
+
+
+def test_snapshot_includes_foundry_use_env(monkeypatch, clean_env):
+    """
+    Test that CLAUDE_CODE_USE_FOUNDRY is included in snapshot and properly restored.
+
+    This verifies the bug fix where CLAUDE_CODE_USE_FOUNDRY was missing from
+    keys_to_snapshot, causing it to remain in options.env after restoration.
+    """
+    # Scenario: User has foundry enabled in os.environ but not in options.env
+    monkeypatch.setenv("CLAUDE_CODE_USE_FOUNDRY", "1")
+    monkeypatch.setenv("ANTHROPIC_FOUNDRY_BASE_URL", "https://foundry.example.com")
+
+    options = MockOptions(
+        {
+            "OTHER_VAR": "keep_me",
+        }
+    )
+
+    # Take snapshot before modification
+    snapshot = snapshot_options_env_for_proxy(options)
+
+    # Verify CLAUDE_CODE_USE_FOUNDRY is in snapshot (even if None)
+    assert "CLAUDE_CODE_USE_FOUNDRY" in snapshot
+    assert snapshot["CLAUDE_CODE_USE_FOUNDRY"] is None
+
+    # Resolve target URL (will detect foundry from os.environ)
+    target_url = resolve_target_url_from_env(options.env)
+    assert target_url == "https://foundry.example.com"
+
+    # Update options.env for proxy
+    proxy_url = "http://127.0.0.1:45667"
+    update_options_env_for_proxy(options, proxy_url, target_url)
+
+    # Verify CLAUDE_CODE_USE_FOUNDRY was added to options.env
+    assert options.env["CLAUDE_CODE_USE_FOUNDRY"] == "1"
+    assert options.env["ANTHROPIC_BASE_URL"] == proxy_url
+
+    # Simulate connection failure - restore snapshot
+    restore_options_env_from_snapshot(options, snapshot)
+
+    # CLAUDE_CODE_USE_FOUNDRY should be removed (was not originally present)
+    assert "CLAUDE_CODE_USE_FOUNDRY" not in options.env
+    assert "ANTHROPIC_BASE_URL" not in options.env
+    # Other vars should be preserved
+    assert options.env["OTHER_VAR"] == "keep_me"
+
+    # Now simulate retry after user disables foundry in os.environ
+    monkeypatch.delenv("CLAUDE_CODE_USE_FOUNDRY")
+
+    # Retry: resolve target URL again
+    # Without the fix, this would incorrectly use foundry because
+    # CLAUDE_CODE_USE_FOUNDRY="1" would still be in options.env
+    retry_target_url = resolve_target_url_from_env(options.env)
+
+    # With foundry disabled, should fall back to default
+    # (ANTHROPIC_FOUNDRY_BASE_URL is ignored when CLAUDE_CODE_USE_FOUNDRY is not set)
+    assert retry_target_url == "https://api.anthropic.com"
+
+    # Most importantly, foundry should NOT be enabled from options.env
+    # since we removed CLAUDE_CODE_USE_FOUNDRY from it
+    assert "CLAUDE_CODE_USE_FOUNDRY" not in options.env

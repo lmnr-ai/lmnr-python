@@ -22,6 +22,7 @@ from .utils import (
     is_truthy_env,
     FOUNDRY_BASE_URL_ENV,
     FOUNDRY_RESOURCE_ENV,
+    FOUNDRY_USE_ENV,
 )
 
 logger = get_default_logger(__name__)
@@ -185,10 +186,21 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
 
             original_env = {}
             env_set_keys = set()
+            
+            # Remove FOUNDRY_RESOURCE_ENV from os.environ (mutually exclusive with ANTHROPIC_BASE_URL)
             if FOUNDRY_RESOURCE_ENV in os.environ:
                 original_env[FOUNDRY_RESOURCE_ENV] = os.environ[FOUNDRY_RESOURCE_ENV]
                 env_set_keys.add(FOUNDRY_RESOURCE_ENV)
                 os.environ.pop(FOUNDRY_RESOURCE_ENV)
+            
+            # Remove HTTP_PROXY and HTTPS_PROXY from os.environ
+            # Subprocess inherits os.environ, so we must remove these to prevent
+            # the subprocess from routing through corporate proxy instead of lmnr proxy
+            for proxy_var in ["HTTP_PROXY", "HTTPS_PROXY"]:
+                if proxy_var in os.environ:
+                    original_env[proxy_var] = os.environ[proxy_var]
+                    env_set_keys.add(proxy_var)
+                    os.environ.pop(proxy_var)
 
         # Store context on instance
         context: dict[str, Any] = {
@@ -248,7 +260,7 @@ def wrap_transport_close(to_wrap: dict[str, Any]):
             context: dict[str, Any] | None = getattr(instance, "__lmnr_context", None)
             if context:
                 # Restore global env for both custom transports and SubprocessCLITransport
-                # (SubprocessCLITransport might have had FOUNDRY_RESOURCE temporarily removed)
+                # (SubprocessCLITransport might have had HTTP_PROXY, HTTPS_PROXY, or FOUNDRY_RESOURCE temporarily removed)
                 if context.get("original_env"):
                     from .utils import restore_env
 
@@ -285,6 +297,7 @@ def snapshot_options_env_for_proxy(options) -> dict[str, str | None]:
         "HTTPS_PROXY",
         FOUNDRY_BASE_URL_ENV,
         FOUNDRY_RESOURCE_ENV,
+        FOUNDRY_USE_ENV,
     ]
 
     snapshot = {}
@@ -324,8 +337,9 @@ def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> No
         - Removes ANTHROPIC_FOUNDRY_RESOURCE from options.env (mutually exclusive)
     - ALL OTHER env vars passed intact
 
-    Note: ANTHROPIC_FOUNDRY_RESOURCE from os.environ is handled separately in
-    wrap_transport_connect by temporarily removing it before subprocess starts.
+    Note: For SubprocessCLITransport, HTTP_PROXY, HTTPS_PROXY, and ANTHROPIC_FOUNDRY_RESOURCE
+    from os.environ are handled separately in wrap_transport_connect by temporarily removing
+    them before subprocess starts (since subprocess inherits os.environ).
 
     Args:
         options: ClaudeAgentOptions instance with .env dict
