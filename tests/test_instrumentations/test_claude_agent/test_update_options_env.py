@@ -8,6 +8,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.wrappers 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.utils import (
     FOUNDRY_BASE_URL_ENV,
     FOUNDRY_RESOURCE_ENV,
+    resolve_target_url_from_env,
 )
 
 
@@ -184,9 +185,7 @@ def test_updates_dict_in_place(clean_env):
     assert options.env["ANTHROPIC_BASE_URL"] == proxy_url
 
 
-def test_sets_anthropic_original_base_url_in_options_env(
-    monkeypatch, clean_env
-):
+def test_sets_anthropic_original_base_url_in_options_env(monkeypatch, clean_env):
     """Test that ANTHROPIC_ORIGINAL_BASE_URL is set in options.env to target URL."""
     options = MockOptions()
     proxy_url = "http://127.0.0.1:45667"
@@ -249,3 +248,119 @@ def test_foundry_base_url_and_resource_are_mutually_exclusive(clean_env):
     assert options.env[FOUNDRY_BASE_URL_ENV] == proxy_url
     # Should remove FOUNDRY_RESOURCE (mutually exclusive)
     assert FOUNDRY_RESOURCE_ENV not in options.env
+
+
+def test_http_proxy_removed_from_options_env(clean_env):
+    """Test that HTTP_PROXY is removed from options.env."""
+    options = MockOptions(
+        {
+            "HTTP_PROXY": "http://corporate-proxy.example.com:8080",
+            "OTHER_VAR": "keep_me",
+        }
+    )
+    proxy_url = "http://127.0.0.1:45667"
+    target_url = "https://api.anthropic.com"
+
+    update_options_env_for_proxy(options, proxy_url, target_url)
+
+    # HTTP_PROXY should be removed
+    assert "HTTP_PROXY" not in options.env
+    # Other vars should be preserved
+    assert options.env["OTHER_VAR"] == "keep_me"
+    # Proxy config should be set
+    assert options.env["ANTHROPIC_BASE_URL"] == proxy_url
+    assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
+
+
+def test_https_proxy_removed_from_options_env(clean_env):
+    """Test that HTTPS_PROXY is removed from options.env."""
+    options = MockOptions(
+        {
+            "HTTPS_PROXY": "https://corporate-proxy.example.com:8443",
+            "OTHER_VAR": "keep_me",
+        }
+    )
+    proxy_url = "http://127.0.0.1:45667"
+    target_url = "https://api.anthropic.com"
+
+    update_options_env_for_proxy(options, proxy_url, target_url)
+
+    # HTTPS_PROXY should be removed
+    assert "HTTPS_PROXY" not in options.env
+    # Other vars should be preserved
+    assert options.env["OTHER_VAR"] == "keep_me"
+    # Proxy config should be set
+    assert options.env["ANTHROPIC_BASE_URL"] == proxy_url
+    assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
+
+
+def test_both_proxy_vars_removed_from_options_env(clean_env):
+    """Test that both HTTP_PROXY and HTTPS_PROXY are removed from options.env."""
+    options = MockOptions(
+        {
+            "HTTP_PROXY": "http://proxy1.example.com",
+            "HTTPS_PROXY": "https://proxy2.example.com",
+            "ANTHROPIC_BASE_URL": "https://custom.anthropic.com",
+        }
+    )
+    proxy_url = "http://127.0.0.1:45667"
+    # In real scenario, target_url would be resolved from HTTPS_PROXY
+    target_url = "https://proxy2.example.com"
+
+    update_options_env_for_proxy(options, proxy_url, target_url)
+
+    # Both proxy vars should be removed
+    assert "HTTP_PROXY" not in options.env
+    assert "HTTPS_PROXY" not in options.env
+    # Proxy config should be set
+    assert options.env["ANTHROPIC_BASE_URL"] == proxy_url
+    assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
+
+
+def test_https_proxy_resolution_from_options_env(monkeypatch, clean_env):
+    """Test that HTTPS_PROXY from options.env is used for target URL resolution."""
+    # Set conflicting values in os.environ
+    monkeypatch.setenv("HTTP_PROXY", "http://system-proxy.example.com")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://system.anthropic.com")
+
+    options = MockOptions(
+        {
+            "HTTPS_PROXY": "https://transport-proxy.example.com:8443",
+        }
+    )
+
+    # Resolve target URL using options.env
+    target_url = resolve_target_url_from_env(options.env)
+    assert target_url == "https://transport-proxy.example.com:8443"
+
+    # Update options.env
+    proxy_url = "http://127.0.0.1:45667"
+    update_options_env_for_proxy(options, proxy_url, target_url)
+
+    # HTTPS_PROXY should be removed, target stored
+    assert "HTTPS_PROXY" not in options.env
+    assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url
+
+
+def test_http_proxy_resolution_from_options_env(monkeypatch, clean_env):
+    """Test that HTTP_PROXY from options.env is used for target URL resolution."""
+    # Set conflicting values in os.environ
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://system.anthropic.com")
+
+    options = MockOptions(
+        {
+            "HTTP_PROXY": "http://transport-proxy.example.com:8080",
+        }
+    )
+
+    # Resolve target URL using options.env
+    target_url = resolve_target_url_from_env(options.env)
+    assert target_url == "http://transport-proxy.example.com:8080"
+
+    # Update options.env
+    proxy_url = "http://127.0.0.1:45667"
+    update_options_env_for_proxy(options, proxy_url, target_url)
+
+    # HTTP_PROXY should be removed, target stored
+    assert "HTTP_PROXY" not in options.env
+    assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == target_url

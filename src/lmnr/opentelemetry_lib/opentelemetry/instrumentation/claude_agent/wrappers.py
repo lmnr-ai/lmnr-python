@@ -256,6 +256,8 @@ def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> No
 
     - Sets ANTHROPIC_BASE_URL to proxy URL
     - Sets ANTHROPIC_ORIGINAL_BASE_URL to target URL (for proxy to forward to)
+    - Removes HTTP_PROXY and HTTPS_PROXY from options.env
+      since our proxy will handle forwarding to them
     - If Foundry enabled:
         - sets ANTHROPIC_FOUNDRY_BASE_URL to proxy URL
         - Removes ANTHROPIC_FOUNDRY_RESOURCE from options.env (mutually exclusive)
@@ -281,6 +283,11 @@ def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> No
 
     # Store original target URL so proxy knows where to forward
     options.env["ANTHROPIC_ORIGINAL_BASE_URL"] = target_url
+
+    # Remove HTTP_PROXY and HTTPS_PROXY
+    # Our proxy will handle forwarding to them based on target_url
+    for proxy_var in ["HTTP_PROXY", "HTTPS_PROXY"]:
+        options.env.pop(proxy_var, None)
 
     # Remove FOUNDRY_RESOURCE from options.env (mutually exclusive with ANTHROPIC_BASE_URL)
     if FOUNDRY_RESOURCE_ENV in options.env:
