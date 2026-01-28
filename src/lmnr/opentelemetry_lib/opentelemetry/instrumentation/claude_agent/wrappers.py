@@ -166,7 +166,7 @@ async def _cleanup_async_iter(async_iter, span) -> None:
         # This is critical because if aclose is interrupted, we get orphaned tasks
         with Laminar.use_span(span):
             await async_iter.aclose()
-    except Exception:  # pylint: disable=broad-except
+    except (Exception, BaseException):
         # Common cases:
         # - ProcessError when subprocess was killed (SIGTERM/-15/143)
         #     - this will still occasionally occur, because there are nested generators,
@@ -299,7 +299,6 @@ def wrap_transport_close(to_wrap: dict[str, Any]):
                 _cleanup_transport_context(instance)
             except Exception:
                 logger.debug("Transport cleanup failed, skipping")
-                pass
 
     return wrapper
 
