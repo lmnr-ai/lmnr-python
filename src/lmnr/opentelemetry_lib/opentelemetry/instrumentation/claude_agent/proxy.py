@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 
 from lmnr_claude_code_proxy import ProxyServer
@@ -14,19 +15,52 @@ logger = get_default_logger(__name__)
 
 # Thread-safe port allocation
 _PORT_LOCK = threading.Lock()
-_NEXT_PORT = 45667
+_DEFAULT_PORT = 45667
+_NEXT_PORT = _DEFAULT_PORT
 _ALLOCATED_PORTS: set[int] = set()
+_DEFAULT_MAX_PORTS = 5000
+_DEFAULT_MIN_PORTS = 10
+
+# Maximum port range: can be configured via LMNR_CC_PROXY_MAX_PORTS env var
+# Capped at 65535 - DEFAULT_PORT to stay within valid port range
+_MAX_PORTS_ABSOLUTE = 65535 - _DEFAULT_PORT  # = 19868
+
+
+def _get_max_ports() -> int:
+    """Get the configured max ports from env, capped at absolute maximum."""
+    try:
+        env_val = os.environ.get("LMNR_CC_PROXY_MAX_PORTS")
+        if env_val:
+            configured = abs(int(env_val))
+            return max(min(configured, _MAX_PORTS_ABSOLUTE), _DEFAULT_MIN_PORTS)
+    except (ValueError, TypeError):
+        pass
+    return max(min(_DEFAULT_MAX_PORTS, _MAX_PORTS_ABSOLUTE), _DEFAULT_MIN_PORTS)
 
 
 def _allocate_port() -> int:
-    """Allocate next available port in thread-safe manner."""
+    """Allocate next available port in thread-safe manner with wraparound."""
     with _PORT_LOCK:
         global _NEXT_PORT
+        max_ports = _get_max_ports()
+
+        # Try to find an available port, with wraparound
+        attempts = 0
         while _NEXT_PORT in _ALLOCATED_PORTS:
-            _NEXT_PORT += 1
+            _NEXT_PORT = _DEFAULT_PORT + ((_NEXT_PORT - _DEFAULT_PORT + 1) % max_ports)
+            attempts += 1
+            if attempts >= max_ports:
+                # All ports in range are allocated, expand beyond if possible
+                _NEXT_PORT = _DEFAULT_PORT + attempts
+                if _NEXT_PORT > 65535:
+                    raise RuntimeError(
+                        f"All {max_ports} proxy ports are in use. "
+                        "Increase LMNR_CC_PROXY_MAX_PORTS or wait for ports to be released."
+                    )
+
         port = _NEXT_PORT
         _ALLOCATED_PORTS.add(port)
-        _NEXT_PORT += 1
+        _NEXT_PORT = _DEFAULT_PORT + ((_NEXT_PORT - _DEFAULT_PORT + 1) % max_ports)
         return port
 
 
@@ -50,9 +84,7 @@ def create_proxy_for_transport() -> ProxyServer:
     return proxy
 
 
-def start_proxy(
-    proxy: ProxyServer, target_url: str, max_retries: int = 10
-) -> str:
+def start_proxy(proxy: ProxyServer, target_url: str, max_retries: int = 10) -> str:
     """
     Start a proxy server, retrying with different ports if occupied.
 
@@ -136,12 +168,18 @@ def start_proxy(
 
 
 def stop_proxy(proxy: ProxyServer) -> None:
-    """Stop proxy server and release resources."""
+    """
+    Stop proxy server and release resources.
+
+    The Rust proxy handles timeouts internally, so this is safe to call
+    from both sync and async contexts.
+    """
+    port = proxy.port
     try:
         proxy.stop_server()
-        logger.debug("Stopped proxy server on port %d", proxy.port)
+        logger.debug("Stopped proxy server on port %d", port)
     except Exception as e:
-        logger.debug("Error stopping proxy on port %d: %s", proxy.port, e)
+        logger.debug("Error stopping proxy on port %d: %s", port, e)
     finally:
         if hasattr(proxy, "_allocated_port"):
             _release_port(proxy._allocated_port)  # type: ignore
