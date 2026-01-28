@@ -306,10 +306,11 @@ def wrap_transport_close(to_wrap: dict[str, Any]):
 
 async def _cleanup_transport_context(instance) -> None:
     """
-    Background fallback cleanup for when cleanup is cancelled.
+    Cleanup proxy and restore environment when transport closes.
 
-    This is a last resort to prevent resource leaks. It schedules
-    the proxy stop in a background task.
+    Runs proxy stop in a thread pool to avoid blocking the event loop,
+    while awaiting completion to ensure cleanup finishes. Protected by
+    asyncio.shield() in the caller to prevent cancellation.
     """
     context: dict[str, Any] | None = getattr(instance, "__lmnr_context", None)
     if not context:
@@ -338,8 +339,8 @@ async def _cleanup_transport_context(instance) -> None:
             except Exception:
                 pass
 
-        # Schedule proxy stop in thread pool to avoid blocking event loop
-        # This allows potentially slow proxy shutdown to run without blocking
+        # Run proxy stop in thread pool to avoid blocking event loop
+        # Await completion to ensure cleanup finishes before proceeding
         if proxy:
             try:
                 loop = asyncio.get_running_loop()
