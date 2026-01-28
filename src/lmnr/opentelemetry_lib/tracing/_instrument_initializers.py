@@ -360,6 +360,18 @@ class OpenAIInstrumentorInitializer(InstrumentorInitializer):
         )
 
 
+class OpenAIAgentsInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("openai-agents"):
+            return None
+
+        from ..opentelemetry.instrumentation.openai_agents import (
+            OpenAIAgentsInstrumentor,
+        )
+
+        return OpenAIAgentsInstrumentor()
+
+
 class OpenHandsAIInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("openhands-ai"):
