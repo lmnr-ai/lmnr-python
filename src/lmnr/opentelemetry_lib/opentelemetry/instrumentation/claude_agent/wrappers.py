@@ -296,43 +296,17 @@ def wrap_transport_close(to_wrap: dict[str, Any]):
             # Clean up proxy and restore environment if needed
             # Shield from cancellation to ensure cleanup completes properly
             try:
-                await _cleanup_transport_context(instance)
-            except asyncio.CancelledError:
-                # If cancelled during cleanup, still try to clean up synchronously
-                # to prevent resource leaks
-                logger.debug("Transport cleanup was cancelled, attempting sync cleanup")
-                _cleanup_transport_context_sync(instance)
+                _cleanup_transport_context(instance)
+            except Exception:
+                logger.debug("Transport cleanup failed, skipping")
+                pass
 
     return wrapper
 
 
-async def _cleanup_transport_context(instance) -> None:
-    """Clean up transport context (proxy, env vars) asynchronously."""
-    context: dict[str, Any] | None = getattr(instance, "__lmnr_context", None)
-    if not context:
-        return
-
-    try:
-        # Restore global env for both custom transports and SubprocessCLITransport
-        # (SubprocessCLITransport might have had HTTP_PROXY, HTTPS_PROXY, or FOUNDRY_RESOURCE temporarily removed)
-        if context.get("original_env"):
-            restore_env(
-                context.get("original_env", {}),
-                context.get("env_set_keys", set()),
-            )
-
-        if context_proxy := context.get("proxy"):
-            stop_proxy(context_proxy)
-    finally:
-        try:
-            delattr(instance, "__lmnr_context")
-        except Exception:
-            pass
-
-
-def _cleanup_transport_context_sync(instance) -> None:
+def _cleanup_transport_context(instance) -> None:
     """
-    Synchronous fallback cleanup for when async cleanup is cancelled.
+    Background fallback cleanup for when cleanup is cancelled.
 
     This is a last resort to prevent resource leaks. It schedules
     the proxy stop in a background task.
