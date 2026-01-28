@@ -297,14 +297,14 @@ def wrap_transport_close(to_wrap: dict[str, Any]):
             # Clean up proxy and restore environment if needed
             # Shield from cancellation to ensure cleanup completes properly
             try:
-                _cleanup_transport_context(instance)
+                await asyncio.shield(_cleanup_transport_context(instance))
             except Exception:
                 logger.debug("Transport cleanup failed, skipping")
 
     return wrapper
 
 
-def _cleanup_transport_context(instance) -> None:
+async def _cleanup_transport_context(instance) -> None:
     """
     Background fallback cleanup for when cleanup is cancelled.
 
@@ -338,17 +338,14 @@ def _cleanup_transport_context(instance) -> None:
             except Exception:
                 pass
 
-        # Schedule proxy stop as a background task
-        # This ensures cleanup happens even if the current task is being cancelled
+        # Schedule proxy stop in thread pool to avoid blocking event loop
+        # This allows potentially slow proxy shutdown to run without blocking
         if proxy:
             try:
                 loop = asyncio.get_running_loop()
-                loop.create_task(
-                    _background_stop_proxy(proxy),
-                    name=f"lmnr_proxy_cleanup_{proxy.port}",
-                )
+                await loop.run_in_executor(None, stop_proxy, proxy)
             except RuntimeError:
-                # No running loop, try synchronous stop as last resort
+                # No running loop, call synchronously as fallback
                 try:
                     stop_proxy(proxy)
                 except Exception:
@@ -358,14 +355,6 @@ def _cleanup_transport_context(instance) -> None:
             delattr(instance, "__lmnr_context")
         except Exception:
             pass
-
-
-async def _background_stop_proxy(proxy) -> None:
-    """Background task to stop proxy, used when main cleanup is cancelled."""
-    try:
-        stop_proxy(proxy)
-    except Exception as e:
-        logger.debug("Background proxy stop failed: %s", e)
 
 
 def snapshot_options_env_for_proxy(options) -> dict[str, str | None]:
