@@ -1,5 +1,6 @@
 """Wrapper functions for Claude Agent instrumentation."""
 
+import asyncio
 import os
 from typing import Any
 
@@ -118,25 +119,61 @@ def wrap_async_gen(to_wrap: dict[str, Any]):
                     except StopAsyncIteration:
                         break
                     yield item
+            except GeneratorExit:
+                # User broke out of the loop - this is normal, don't record as error
+                raise
+            except asyncio.CancelledError:
+                # Request was cancelled (e.g., FastAPI client disconnect)
+                # Don't record as error, just propagate
+                raise
             except Exception as e:  # pylint: disable=broad-except
                 with Laminar.use_span(span):
                     span.set_status(Status(StatusCode.ERROR))
                     span.record_exception(e)
                 raise
             finally:
-                if async_iter and hasattr(async_iter, "aclose"):
-                    try:
-                        with Laminar.use_span(span):
-                            await async_iter.aclose()
-                    except Exception:  # pylint: disable=broad-except
-                        pass
+                # Shield cleanup from cancellation to ensure proper resource cleanup
+                # This prevents orphaned tasks and "Task exception was never retrieved" errors
+                try:
+                    await _cleanup_async_iter(async_iter, span)
+                except (asyncio.CancelledError, GeneratorExit):
+                    # If we're being cancelled/closed during cleanup, still try to clean up
+                    # but don't let it propagate and interfere with our cleanup
+                    pass
+
                 with Laminar.use_span(span):
                     record_output(span, to_wrap, collected)
-                    span.end()
+                span.end()
 
         return generator()
 
     return wrapper
+
+
+async def _cleanup_async_iter(async_iter, span) -> None:
+    """
+    Clean up an async iterator, handling various edge cases.
+
+    This is separated to allow for shielding from cancellation and
+    to handle the race condition where the underlying transport/process
+    might already be closed.
+    """
+    if not async_iter or not hasattr(async_iter, "aclose"):
+        return
+
+    try:
+        # Shield the aclose from cancellation to ensure cleanup completes
+        # This is critical because if aclose is interrupted, we get orphaned tasks
+        with Laminar.use_span(span):
+            await asyncio.shield(async_iter.aclose())
+    except asyncio.CancelledError:
+        # Even if shielded, CancelledError can still propagate in some cases
+        # Just log and continue - the iterator cleanup was attempted
+        logger.debug("Async iterator cleanup was cancelled")
+    except Exception:  # pylint: disable=broad-except
+        # Common case: ProcessError when subprocess was killed
+        # This is expected when user breaks early and transport.close() runs
+        pass
 
 
 def wrap_transport_connect(to_wrap: dict[str, Any]):
@@ -186,13 +223,13 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
 
             original_env = {}
             env_set_keys = set()
-            
+
             # Remove FOUNDRY_RESOURCE_ENV from os.environ (mutually exclusive with ANTHROPIC_BASE_URL)
             if FOUNDRY_RESOURCE_ENV in os.environ:
                 original_env[FOUNDRY_RESOURCE_ENV] = os.environ[FOUNDRY_RESOURCE_ENV]
                 env_set_keys.add(FOUNDRY_RESOURCE_ENV)
                 os.environ.pop(FOUNDRY_RESOURCE_ENV)
-            
+
             # Remove HTTP_PROXY and HTTPS_PROXY from os.environ
             # Subprocess inherits os.environ, so we must remove these to prevent
             # the subprocess from routing through corporate proxy instead of lmnr proxy
@@ -250,32 +287,99 @@ def wrap_transport_close(to_wrap: dict[str, Any]):
     """Wrap Transport.close to stop proxy after closing."""
 
     async def wrapper(wrapped, instance, args, kwargs):
-        from .proxy import stop_proxy
-
         try:
             # Close transport first
             return await wrapped(*args, **kwargs)
         finally:
             # Clean up proxy and restore environment if needed
-            context: dict[str, Any] | None = getattr(instance, "__lmnr_context", None)
-            if context:
-                # Restore global env for both custom transports and SubprocessCLITransport
-                # (SubprocessCLITransport might have had HTTP_PROXY, HTTPS_PROXY, or FOUNDRY_RESOURCE temporarily removed)
-                if context.get("original_env"):
-                    from .utils import restore_env
-
-                    restore_env(
-                        context.get("original_env", {}),
-                        context.get("env_set_keys", set()),
-                    )
-
-                stop_proxy(context["proxy"])
-                try:
-                    delattr(instance, "__lmnr_context")
-                except Exception:
-                    pass
+            # Shield from cancellation to ensure cleanup completes properly
+            try:
+                await _cleanup_transport_context(instance)
+            except asyncio.CancelledError:
+                # If cancelled during cleanup, still try to clean up synchronously
+                # to prevent resource leaks
+                logger.debug("Transport cleanup was cancelled, attempting sync cleanup")
+                _cleanup_transport_context_sync(instance)
 
     return wrapper
+
+
+async def _cleanup_transport_context(instance) -> None:
+    """Clean up transport context (proxy, env vars) asynchronously."""
+    context: dict[str, Any] | None = getattr(instance, "__lmnr_context", None)
+    if not context:
+        return
+
+    try:
+        # Restore global env for both custom transports and SubprocessCLITransport
+        # (SubprocessCLITransport might have had HTTP_PROXY, HTTPS_PROXY, or FOUNDRY_RESOURCE temporarily removed)
+        if context.get("original_env"):
+            from .utils import restore_env
+
+            restore_env(
+                context.get("original_env", {}),
+                context.get("env_set_keys", set()),
+            )
+
+        if context_proxy := context.get("proxy"):
+            stop_proxy(context_proxy)
+    finally:
+        try:
+            delattr(instance, "__lmnr_context")
+        except Exception:
+            pass
+
+
+def _cleanup_transport_context_sync(instance) -> None:
+    """
+    Synchronous fallback cleanup for when async cleanup is cancelled.
+
+    This is a last resort to prevent resource leaks. It schedules
+    the proxy stop in a background task.
+    """
+    context: dict[str, Any] | None = getattr(instance, "__lmnr_context", None)
+    if not context:
+        return
+
+    try:
+        # Restore env vars synchronously (this is fast)
+        if context.get("original_env"):
+            from .utils import restore_env
+
+            restore_env(
+                context.get("original_env", {}),
+                context.get("env_set_keys", set()),
+            )
+
+        # Schedule proxy stop as a background task
+        # This ensures cleanup happens even if the current task is being cancelled
+        proxy = context.get("proxy")
+        if proxy:
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(
+                    _background_stop_proxy(proxy),
+                    name=f"lmnr_proxy_cleanup_{proxy.port}",
+                )
+            except RuntimeError:
+                # No running loop, try synchronous stop as last resort
+                try:
+                    stop_proxy(proxy)
+                except Exception:
+                    pass
+    finally:
+        try:
+            delattr(instance, "__lmnr_context")
+        except Exception:
+            pass
+
+
+async def _background_stop_proxy(proxy) -> None:
+    """Background task to stop proxy, used when main cleanup is cancelled."""
+    try:
+        stop_proxy(proxy)
+    except Exception as e:
+        logger.debug("Background proxy stop failed: %s", e)
 
 
 def snapshot_options_env_for_proxy(options) -> dict[str, str | None]:
@@ -419,17 +523,22 @@ def wrap_query(to_wrap: dict[str, Any]):
                         collected.append(item)
 
                         yield item
+                except GeneratorExit:
+                    # User broke out of the loop - this is normal
+                    raise
+                except asyncio.CancelledError:
+                    # Request was cancelled (e.g., FastAPI client disconnect)
+                    raise
                 except Exception as e:
                     span.set_status(Status(StatusCode.ERROR))
                     span.record_exception(e)
                     raise
                 finally:
-                    if async_iter and hasattr(async_iter, "aclose"):
-                        try:
-                            with Laminar.use_span(span):
-                                await async_iter.aclose()
-                        except Exception:
-                            pass
+                    # Shield cleanup from cancellation
+                    try:
+                        await _cleanup_async_iter(async_iter, span)
+                    except (asyncio.CancelledError, GeneratorExit):
+                        pass
                     record_output(span, to_wrap, collected)
 
         return generator()
