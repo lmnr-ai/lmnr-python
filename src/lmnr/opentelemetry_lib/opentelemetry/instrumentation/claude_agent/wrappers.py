@@ -9,7 +9,7 @@ from lmnr.sdk.log import get_default_logger
 
 from opentelemetry.trace import Status, StatusCode
 
-from .proxy import create_proxy_for_transport, start_proxy, stop_proxy
+from .proxy import create_proxy_for_transport, start_proxy, stop_proxy, _release_port
 from .span_utils import (
     span_name,
     record_input,
@@ -166,7 +166,8 @@ async def _cleanup_async_iter(async_iter, span) -> None:
         # This is critical because if aclose is interrupted, we get orphaned tasks
         with Laminar.use_span(span):
             await async_iter.aclose()
-    except (Exception, BaseException):
+    # BaseException catches any Exception + "not-exactly-Exceptions", such as GeneratorExit
+    except BaseException:
         # Common cases:
         # - ProcessError when subprocess was killed (SIGTERM/-15/143)
         #     - this will still occasionally occur, because there are nested generators,
@@ -322,9 +323,16 @@ def _cleanup_transport_context(instance) -> None:
                 context.get("env_set_keys", set()),
             )
 
+        # Release port immediately and synchronously to prevent port leaks
+        # This must happen before scheduling background cleanup, because if the
+        # event loop shuts down before the background task runs, the port would
+        # never be released from _ALLOCATED_PORTS, causing port exhaustion
+        proxy = context.get("proxy")
+        if proxy and hasattr(proxy, "_allocated_port"):
+            _release_port(proxy._allocated_port)  # type: ignore
+
         # Schedule proxy stop as a background task
         # This ensures cleanup happens even if the current task is being cancelled
-        proxy = context.get("proxy")
         if proxy:
             try:
                 loop = asyncio.get_running_loop()
