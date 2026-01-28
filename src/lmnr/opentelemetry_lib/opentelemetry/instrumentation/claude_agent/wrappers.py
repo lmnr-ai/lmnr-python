@@ -28,6 +28,9 @@ from .utils import (
 
 logger = get_default_logger(__name__)
 
+# Timeout for cleanup operations to prevent hanging on stuck underlying calls
+DEFAULT_CLEANUP_TIMEOUT = 4.0
+
 
 def wrap_sync(to_wrap: dict[str, Any]):
     """Wrapper for synchronous methods."""
@@ -95,7 +98,6 @@ def wrap_async_gen(to_wrap: dict[str, Any]):
 
             if to_wrap.get("should_publish_span_context"):
                 with Laminar.use_span(span):
-                    # Get transport from instance (ClaudeSDKClient._transport)
                     if hasattr(instance, "_transport"):
                         publish_span_context_for_transport(instance._transport)
 
@@ -132,15 +134,7 @@ def wrap_async_gen(to_wrap: dict[str, Any]):
                     span.record_exception(e)
                 raise
             finally:
-                # Shield cleanup from cancellation to ensure proper resource cleanup
-                # This prevents orphaned tasks and "Task exception was never retrieved" errors
-                try:
-                    await _cleanup_async_iter(async_iter, span)
-                except (asyncio.CancelledError, GeneratorExit):
-                    # If we're being cancelled/closed during cleanup, still try to clean up
-                    # but don't let it propagate and interfere with our cleanup
-                    pass
-
+                await _cleanup_async_iter(async_iter, span)
                 with Laminar.use_span(span):
                     record_output(span, to_wrap, collected)
                 span.end()
@@ -152,30 +146,26 @@ def wrap_async_gen(to_wrap: dict[str, Any]):
 
 async def _cleanup_async_iter(async_iter, span) -> None:
     """
-    Clean up an async iterator, handling various edge cases.
+    Clean up an async iterator with timeout and cancellation protection.
 
-    This is separated to allow for shielding from cancellation and
-    to handle the race condition where the underlying transport/process
-    might already be closed.
+    Shields cleanup from cancellation and adds timeout to prevent hanging if
+    underlying close operations get stuck. Swallows all exceptions since cleanup
+    failures are expected in scenarios like early user breaks or closed transports.
     """
     if not async_iter or not hasattr(async_iter, "aclose"):
         return
 
     try:
-        # Shield the aclose from cancellation to ensure cleanup completes
-        # This is critical because if aclose is interrupted, we get orphaned tasks
         with Laminar.use_span(span):
-            await async_iter.aclose()
-    # BaseException catches any Exception + "not-exactly-Exceptions", such as GeneratorExit
+            # Shield from cancellation and add timeout to prevent hanging
+            await asyncio.wait_for(
+                asyncio.shield(async_iter.aclose()), timeout=DEFAULT_CLEANUP_TIMEOUT
+            )
     except BaseException:
-        # Common cases:
-        # - ProcessError when subprocess was killed (SIGTERM/-15/143)
-        #     - this will still occasionally occur, because there are nested generators,
-        #       and the user can break out of the loop at any time, which we don't have control over,
-        #       without moving our instrumentation to the deepest level possible.
-        # - GeneratorExit propagating through
-        # - CancelledError from request cancellation
-        # All are expected when user breaks early or transport.close() runs
+        # Swallow all exceptions - cleanup failures are expected when:
+        # - Subprocess already terminated (ProcessError)
+        # - User broke out of generator early (GeneratorExit)
+        # - Request was cancelled (CancelledError, TimeoutError)
         pass
 
 
@@ -188,61 +178,49 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
                 SubprocessCLITransport,
             )
         except (ImportError, ModuleNotFoundError):
-            # If import fails, just call original without instrumentation
             logger.warning(
                 "Failed to import SubprocessCLITransport, skipping proxy setup"
             )
             return await wrapped(*args, **kwargs)
 
-        # Resolve target URL from transport's options.env (with os.environ fallback)
-        # IMPORTANT: Read options.env BEFORE modifying options.env to avoid circular proxy config
+        # Read options.env BEFORE modifying to avoid circular proxy config
         env_dict = instance._options.env if hasattr(instance, "_options") else {}
         target_url = resolve_target_url_from_env(env_dict)
 
         if target_url is None:
             raise RuntimeError("Invalid provider configuration")
 
-        # Create and start proxy with resolved target URL
         proxy = create_proxy_for_transport()
         proxy_url = start_proxy(proxy, target_url=target_url)
 
-        # Determine if this is a custom transport (not SubprocessCLITransport)
-        # SubprocessCLITransport gets proxy config via options.env, custom ones need global env
+        # Custom transports use global env, SubprocessCLITransport uses options.env
         is_custom = not isinstance(instance, SubprocessCLITransport)
 
-        # For custom transports, we need to set global env vars as fallback
-        # since we can't control how they handle environment.
-        # For SubprocessCLITransport, proxy config is in options.env
         options_env_snapshot = {}
         if is_custom:
             original_env = setup_proxy_env(proxy_url)
             env_set_keys = {k for k, v in original_env.items() if v is not None}
         else:
-            # For SubprocessCLITransport, update options.env with proxy config
             if hasattr(instance, "_options"):
-                # Snapshot options.env before modifying it (for error recovery)
                 options_env_snapshot = snapshot_options_env_for_proxy(instance._options)
                 update_options_env_for_proxy(instance._options, proxy_url, target_url)
 
             original_env = {}
             env_set_keys = set()
 
-            # Remove FOUNDRY_RESOURCE_ENV from os.environ (mutually exclusive with ANTHROPIC_BASE_URL)
+            # Remove from os.environ (mutually exclusive with ANTHROPIC_BASE_URL)
             if FOUNDRY_RESOURCE_ENV in os.environ:
                 original_env[FOUNDRY_RESOURCE_ENV] = os.environ[FOUNDRY_RESOURCE_ENV]
                 env_set_keys.add(FOUNDRY_RESOURCE_ENV)
                 os.environ.pop(FOUNDRY_RESOURCE_ENV)
 
-            # Remove HTTP_PROXY and HTTPS_PROXY from os.environ
-            # Subprocess inherits os.environ, so we must remove these to prevent
-            # the subprocess from routing through corporate proxy instead of lmnr proxy
+            # Prevent subprocess from routing through corporate proxy
             for proxy_var in ["HTTP_PROXY", "HTTPS_PROXY"]:
                 if proxy_var in os.environ:
                     original_env[proxy_var] = os.environ[proxy_var]
                     env_set_keys.add(proxy_var)
                     os.environ.pop(proxy_var)
 
-        # Store context on instance
         context: dict[str, Any] = {
             "proxy": proxy,
             "proxy_url": proxy_url,
@@ -255,23 +233,16 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
         instance.__lmnr_context = context
         instance.__lmnr_wrapped = True
 
-        # Connect transport
         try:
             result = await wrapped(*args, **kwargs)
-
-            # After successful connection, publish current span context to proxy
             publish_span_context_for_transport(instance)
-
             return result
         except Exception:
-            # If connect fails, clean up proxy
             stop_proxy(proxy)
 
-            # Restore os.environ (for both custom transports and SubprocessCLITransport)
             if original_env:
                 restore_env(original_env, env_set_keys or set())
 
-            # Restore options.env if we modified it
             if options_env_snapshot and hasattr(instance, "_options"):
                 restore_options_env_from_snapshot(
                     instance._options, options_env_snapshot
@@ -291,15 +262,9 @@ def wrap_transport_close(to_wrap: dict[str, Any]):
 
     async def wrapper(wrapped, instance, args, kwargs):
         try:
-            # Close transport first
             return await wrapped(*args, **kwargs)
         finally:
-            # Clean up proxy and restore environment if needed
-            # Shield from cancellation to ensure cleanup completes properly
-            try:
-                await asyncio.shield(_cleanup_transport_context(instance))
-            except Exception:
-                logger.debug("Transport cleanup failed, skipping")
+            await _cleanup_transport_context(instance)
 
     return wrapper
 
@@ -308,54 +273,54 @@ async def _cleanup_transport_context(instance) -> None:
     """
     Cleanup proxy and restore environment when transport closes.
 
-    Runs proxy stop in a thread pool to avoid blocking the event loop,
-    while awaiting completion to ensure cleanup finishes. Protected by
-    asyncio.shield() in the caller to prevent cancellation.
+    Shields from cancellation and adds timeout to prevent hanging. Runs proxy stop
+    in thread pool to avoid blocking event loop while ensuring cleanup completes.
     """
     context: dict[str, Any] | None = getattr(instance, "__lmnr_context", None)
     if not context:
         return
 
-    try:
-        # Restore env vars synchronously (this is fast)
-        if context.get("original_env"):
-            restore_env(
-                context.get("original_env", {}),
-                context.get("env_set_keys", set()),
-            )
+    async def _do_cleanup():
+        try:
+            if context.get("original_env"):
+                restore_env(
+                    context.get("original_env", {}),
+                    context.get("env_set_keys", set()),
+                )
 
-        # Release port immediately and synchronously to prevent port leaks
-        # This must happen before scheduling background cleanup, because if the
-        # event loop shuts down before the background task runs, the port would
-        # never be released from _ALLOCATED_PORTS, causing port exhaustion
-        proxy = context.get("proxy")
-        if proxy and hasattr(proxy, "_allocated_port"):
-            _release_port(proxy._allocated_port)  # type: ignore
-            # Remove the attribute to prevent double-release in stop_proxy
-            # Without this, stop_proxy's finally block would release the port again,
-            # potentially corrupting another request's port ownership
+            # Release port immediately to prevent leaks
+            # Must happen before background cleanup in case event loop shuts down
+            proxy = context.get("proxy")
+            if proxy and hasattr(proxy, "_allocated_port"):
+                _release_port(proxy._allocated_port)  # type: ignore
+                # Prevent double-release in stop_proxy
+                try:
+                    delattr(proxy, "_allocated_port")
+                except Exception:
+                    pass
+
+            if proxy:
+                try:
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(None, stop_proxy, proxy)
+                except RuntimeError:
+                    try:
+                        stop_proxy(proxy)
+                    except Exception:
+                        pass
+        finally:
             try:
-                delattr(proxy, "_allocated_port")
+                delattr(instance, "__lmnr_context")
             except Exception:
                 pass
 
-        # Run proxy stop in thread pool to avoid blocking event loop
-        # Await completion to ensure cleanup finishes before proceeding
-        if proxy:
-            try:
-                loop = asyncio.get_running_loop()
-                await loop.run_in_executor(None, stop_proxy, proxy)
-            except RuntimeError:
-                # No running loop, call synchronously as fallback
-                try:
-                    stop_proxy(proxy)
-                except Exception:
-                    pass
-    finally:
-        try:
-            delattr(instance, "__lmnr_context")
-        except Exception:
-            pass
+    try:
+        await asyncio.wait_for(
+            asyncio.shield(_do_cleanup()), timeout=DEFAULT_CLEANUP_TIMEOUT
+        )
+    except BaseException:
+        # Swallow all exceptions - cleanup failures are expected
+        pass
 
 
 def snapshot_options_env_for_proxy(options) -> dict[str, str | None]:
@@ -427,24 +392,17 @@ def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> No
         target_url: Original target URL to forward to (e.g., "https://api.anthropic.com")
     """
 
-    # Simple helper to check env
     def get_env_value(key: str) -> str | None:
         return options.env.get(key) or os.environ.get(key)
 
     foundry_enabled = is_truthy_env(get_env_value("CLAUDE_CODE_USE_FOUNDRY"))
 
-    # Set proxy URL
     options.env["ANTHROPIC_BASE_URL"] = proxy_url
-
-    # Store original target URL so proxy knows where to forward
     options.env["ANTHROPIC_ORIGINAL_BASE_URL"] = target_url
 
-    # Remove HTTP_PROXY and HTTPS_PROXY
-    # Our proxy will handle forwarding to them based on target_url
     for proxy_var in ["HTTP_PROXY", "HTTPS_PROXY"]:
         options.env.pop(proxy_var, None)
 
-    # Remove FOUNDRY_RESOURCE from options.env (mutually exclusive with ANTHROPIC_BASE_URL)
     if FOUNDRY_RESOURCE_ENV in options.env:
         options.env.pop(FOUNDRY_RESOURCE_ENV)
 
@@ -461,25 +419,17 @@ def wrap_query(to_wrap: dict[str, Any]):
 
         transport = kwargs.get("transport")
 
-        # If user provided a custom transport, wrap it for proxy lifecycle
-        # SubprocessCLITransport is already wrapped globally
         if transport:
             try:
                 from claude_agent_sdk._internal.transport.subprocess_cli import (
                     SubprocessCLITransport,
                 )
 
-                # Only wrap non-SubprocessCLITransport (already globally wrapped)
                 if not isinstance(transport, SubprocessCLITransport):
                     wrap_custom_transport_if_needed(transport)
             except (ImportError, ModuleNotFoundError):
-                # If import fails, try wrapping anyway
                 wrap_custom_transport_if_needed(transport)
 
-        # Note: We don't pre-configure proxy URL here because we don't know the port
-        # until the proxy is actually created in wrap_transport_connect
-
-        # Continue with normal async gen wrapping (since query is streaming)
         async def generator():
             with Laminar.start_as_current_span(
                 span_name(to_wrap),
@@ -492,29 +442,19 @@ def wrap_query(to_wrap: dict[str, Any]):
                 try:
                     async_iter = wrapped(*args, **kwargs)
 
-                    # Note: Span context is published in wrap_transport_connect after connection
-
                     async for item in async_iter:
-
                         collected.append(item)
-
                         yield item
                 except GeneratorExit:
-                    # User broke out of the loop - this is normal
                     raise
                 except asyncio.CancelledError:
-                    # Request was cancelled (e.g., FastAPI client disconnect)
                     raise
                 except Exception as e:
                     span.set_status(Status(StatusCode.ERROR))
                     span.record_exception(e)
                     raise
                 finally:
-                    # Shield cleanup from cancellation
-                    try:
-                        await _cleanup_async_iter(async_iter, span)
-                    except (asyncio.CancelledError, GeneratorExit):
-                        pass
+                    await _cleanup_async_iter(async_iter, span)
                     record_output(span, to_wrap, collected)
 
         return generator()
@@ -531,13 +471,11 @@ def wrap_client_init(to_wrap: dict[str, Any]):
                 SubprocessCLITransport,
             )
         except (ImportError, ModuleNotFoundError):
-            # If import fails, just call original without instrumentation
             logger.warning(
                 "Failed to import SubprocessCLITransport, skipping proxy setup"
             )
             return wrapped(*args, **kwargs)
 
-        # Extract transport from args/kwargs
         transport = None
         if args and len(args) > 1:
             transport = args[1]
@@ -569,18 +507,14 @@ def wrap_custom_transport_if_needed(transport):
     if hasattr(transport, "__lmnr_wrapped"):
         return
 
-    # Mark transport as wrapped immediately to prevent double wrapping
     transport.__lmnr_wrapped = True
 
-    # Create wrapper callables using the factory pattern
     connect_wrapper = wrap_transport_connect({"is_transport_connect": True})
     close_wrapper = wrap_transport_close({"is_transport_close": True})
 
-    # Get original methods
     original_connect = transport.connect
     original_close = transport.close
 
-    # Replace methods with wrapped versions
     async def wrapped_connect_custom():
         return await connect_wrapper(original_connect, transport, (), {})
 
