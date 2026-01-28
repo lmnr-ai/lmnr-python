@@ -19,6 +19,7 @@ _DEFAULT_PORT = 45667
 _NEXT_PORT = _DEFAULT_PORT
 _ALLOCATED_PORTS: set[int] = set()
 _DEFAULT_MAX_PORTS = 5000
+_DEFAULT_MIN_PORTS = 10
 
 # Maximum port range: can be configured via LMNR_CC_PROXY_MAX_PORTS env var
 # Capped at 65535 - DEFAULT_PORT to stay within valid port range
@@ -30,11 +31,11 @@ def _get_max_ports() -> int:
     try:
         env_val = os.environ.get("LMNR_CC_PROXY_MAX_PORTS")
         if env_val:
-            configured = int(env_val)
-            return min(configured, _MAX_PORTS_ABSOLUTE)
+            configured = abs(int(env_val))
+            return max(min(configured, _MAX_PORTS_ABSOLUTE), _DEFAULT_MIN_PORTS)
     except (ValueError, TypeError):
         pass
-    return min(_DEFAULT_MAX_PORTS, _MAX_PORTS_ABSOLUTE)
+    return max(min(_DEFAULT_MAX_PORTS, _MAX_PORTS_ABSOLUTE), _DEFAULT_MIN_PORTS)
 
 
 def _allocate_port() -> int:
@@ -50,7 +51,7 @@ def _allocate_port() -> int:
             attempts += 1
             if attempts >= max_ports:
                 # All ports in range are allocated, expand beyond if possible
-                _NEXT_PORT = _DEFAULT_PORT + max_ports + attempts
+                _NEXT_PORT = _DEFAULT_PORT + attempts
                 if _NEXT_PORT > 65535:
                     raise RuntimeError(
                         f"All {max_ports} proxy ports are in use. "

@@ -165,14 +165,16 @@ async def _cleanup_async_iter(async_iter, span) -> None:
         # Shield the aclose from cancellation to ensure cleanup completes
         # This is critical because if aclose is interrupted, we get orphaned tasks
         with Laminar.use_span(span):
-            await asyncio.shield(async_iter.aclose())
-    except asyncio.CancelledError:
-        # Even if shielded, CancelledError can still propagate in some cases
-        # Just log and continue - the iterator cleanup was attempted
-        logger.debug("Async iterator cleanup was cancelled")
+            await async_iter.aclose()
     except Exception:  # pylint: disable=broad-except
-        # Common case: ProcessError when subprocess was killed
-        # This is expected when user breaks early and transport.close() runs
+        # Common cases:
+        # - ProcessError when subprocess was killed (SIGTERM/-15/143)
+        #     - this will still occasionally occur, because there are nested generators,
+        #       and the user can break out of the loop at any time, which we don't have control over,
+        #       without moving our instrumentation to the deepest level possible.
+        # - GeneratorExit propagating through
+        # - CancelledError from request cancellation
+        # All are expected when user breaks early or transport.close() runs
         pass
 
 
@@ -314,8 +316,6 @@ async def _cleanup_transport_context(instance) -> None:
         # Restore global env for both custom transports and SubprocessCLITransport
         # (SubprocessCLITransport might have had HTTP_PROXY, HTTPS_PROXY, or FOUNDRY_RESOURCE temporarily removed)
         if context.get("original_env"):
-            from .utils import restore_env
-
             restore_env(
                 context.get("original_env", {}),
                 context.get("env_set_keys", set()),
@@ -344,8 +344,6 @@ def _cleanup_transport_context_sync(instance) -> None:
     try:
         # Restore env vars synchronously (this is fast)
         if context.get("original_env"):
-            from .utils import restore_env
-
             restore_env(
                 context.get("original_env", {}),
                 context.get("env_set_keys", set()),
