@@ -330,6 +330,13 @@ def _cleanup_transport_context(instance) -> None:
         proxy = context.get("proxy")
         if proxy and hasattr(proxy, "_allocated_port"):
             _release_port(proxy._allocated_port)  # type: ignore
+            # Remove the attribute to prevent double-release in stop_proxy
+            # Without this, stop_proxy's finally block would release the port again,
+            # potentially corrupting another request's port ownership
+            try:
+                delattr(proxy, "_allocated_port")
+            except Exception:
+                pass
 
         # Schedule proxy stop as a background task
         # This ensures cleanup happens even if the current task is being cancelled
