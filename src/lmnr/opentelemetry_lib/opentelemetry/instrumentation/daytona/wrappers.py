@@ -208,7 +208,6 @@ def _start_log_streaming(
     # This ensures the streaming runs to completion regardless of the caller's 
     # event loop lifecycle (asyncio.run() cancels pending tasks)
 
-    print("=> starting log streaming")
     def run_in_thread():
         try:
             asyncio.run(
@@ -241,10 +240,8 @@ def _process_command_response(
     if not (cmd_id and session_id):
         return
 
-    print("=> processing command response")
     if logger is None:
         return
-    print("=> logger is not None", logger._name)
 
     is_async_command = request is not None and (
         getattr(request, "run_async", False) or getattr(request, "var_async", False)
