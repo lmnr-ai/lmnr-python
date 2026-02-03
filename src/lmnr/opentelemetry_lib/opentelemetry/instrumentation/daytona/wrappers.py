@@ -198,16 +198,35 @@ def _start_log_streaming(
 ):
     """Start log streaming in the background.
 
-    This function creates an asyncio task to stream logs from the Daytona
-    sandbox. The logs are emitted as OpenTelemetry log records.
+    This function streams logs from the Daytona sandbox and emits them as
+    OpenTelemetry log records.
 
     The context is captured before calling this function so that 
     logs arriving later are correctly associated with the original command span.
-    """
-    # Always use a separate thread for log streaming.
-    # This ensures the streaming runs to completion regardless of the caller's 
-    # event loop lifecycle (asyncio.run() cancels pending tasks)
 
+    For async contexts (when there's a running event loop), we use
+    asyncio.create_task() to avoid cross-event-loop issues with aiohttp.
+    For sync contexts, we spawn a separate thread with its own event loop.
+    """
+
+    async def stream_wrapper():
+        try:
+            await _stream_logs_async(logger, instance, session_id, cmd_id, ctx)
+        except Exception as e:
+            log.debug(f"Log streaming error: {e}")
+
+    # Try to use existing event loop first (for async contexts)
+    # This avoids cross-event-loop issues with aiohttp clients
+    try:
+        loop = asyncio.get_running_loop()
+        # We're in an async context - create a task in the existing loop
+        loop.create_task(stream_wrapper())
+        return
+    except RuntimeError:
+        # No running event loop - fall back to thread approach (for sync contexts)
+        pass
+
+    # Sync context: use thread with its own event loop
     def run_in_thread():
         try:
             asyncio.run(
