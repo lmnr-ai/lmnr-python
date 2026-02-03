@@ -27,6 +27,80 @@ from lmnr.sdk.utils import from_env, get_otel_env_var, parse_otel_headers
 logger = get_default_logger(__name__)
 
 
+def _configure_exporter(
+    base_url: str | None,
+    port: int | None,
+    api_key: str | None,
+    timeout_seconds: int,
+    force_http: bool,
+) -> dict:
+    """Configure common exporter settings for both span and log exporters.
+    
+    Args:
+        base_url: Base URL for the exporter
+        port: Port number for the exporter
+        api_key: API key for authentication
+        timeout_seconds: Timeout in seconds
+        force_http: Whether to force HTTP protocol
+        
+    Returns:
+        Dictionary with endpoint, headers, timeout, and force_http settings
+    """
+    url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
+    url = url.rstrip("/")
+    if match := re.search(r":(\d{1,5})$", url):
+        url = url[: -len(match.group(0))]
+        if port is None:
+            port = int(match.group(1))
+    if port is None:
+        port = 443 if force_http else 8443
+    final_url = f"{url}:{port or 443}"
+    api_key = api_key or from_env("LMNR_PROJECT_API_KEY")
+    endpoint = final_url
+    timeout = timeout_seconds
+    force_http_result = force_http
+    
+    if api_key:
+        headers = (
+            {"Authorization": f"Bearer {api_key}"}
+            if force_http
+            else {"authorization": f"Bearer {api_key}"}
+        )
+    else:
+        if env_headers := get_otel_env_var("HEADERS"):
+            headers = parse_otel_headers(env_headers)
+        else:
+            headers = {}
+        if env_endpoint := get_otel_env_var("ENDPOINT"):
+            if not base_url:
+                endpoint = env_endpoint
+                protocol = get_otel_env_var("PROTOCOL") or "grpc/protobuf"
+                exporter_type = from_env("OTEL_EXPORTER") or "otlp_grpc"
+                force_http_result = (
+                    protocol in ("http/protobuf", "http/json")
+                    or exporter_type == "otlp_http"
+                )
+            else:
+                logger.warning(
+                    "OTEL_ENDPOINT is set, but Laminar base URL is also set. Ignoring OTEL_ENDPOINT."
+                )
+    
+    if not endpoint:
+        raise ValueError(
+            "Laminar base URL is not set and OTEL_ENDPOINT is not set. Please either\n"
+            "- set the LMNR_BASE_URL environment variable\n"
+            "- set the OTEL_ENDPOINT environment variable\n"
+            "- pass the base_url parameter to Laminar.initialize"
+        )
+    
+    return {
+        "endpoint": endpoint,
+        "headers": headers,
+        "timeout": timeout,
+        "force_http": force_http_result,
+    }
+
+
 class LaminarSpanExporter(SpanExporter):
     instance: OTLPSpanExporter | HTTPOTLPSpanExporter
     endpoint: str
@@ -44,50 +118,11 @@ class LaminarSpanExporter(SpanExporter):
         force_http: bool = False,
     ):
         self._instance_lock = threading.RLock()
-        url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
-        url = url.rstrip("/")
-        if match := re.search(r":(\d{1,5})$", url):
-            url = url[: -len(match.group(0))]
-            if port is None:
-                port = int(match.group(1))
-        if port is None:
-            port = 443 if force_http else 8443
-        final_url = f"{url}:{port or 443}"
-        api_key = api_key or from_env("LMNR_PROJECT_API_KEY")
-        self.endpoint = final_url
-        self.timeout = timeout_seconds
-        self.force_http = force_http
-        if api_key:
-            self.headers = (
-                {"Authorization": f"Bearer {api_key}"}
-                if force_http
-                else {"authorization": f"Bearer {api_key}"}
-            )
-        else:
-            if env_headers := get_otel_env_var("HEADERS"):
-                self.headers = parse_otel_headers(env_headers)
-            else:
-                self.headers = {}
-            if env_endpoint := get_otel_env_var("ENDPOINT"):
-                if not base_url:
-                    self.endpoint = env_endpoint
-                    protocol = get_otel_env_var("PROTOCOL") or "grpc/protobuf"
-                    exporter_type = from_env("OTEL_EXPORTER") or "otlp_grpc"
-                    self.force_http = (
-                        protocol in ("http/protobuf", "http/json")
-                        or exporter_type == "otlp_http"
-                    )
-                else:
-                    logger.warning(
-                        "OTEL_ENDPOINT is set, but Laminar base URL is also set. Ignoring OTEL_ENDPOINT."
-                    )
-        if not self.endpoint:
-            raise ValueError(
-                "Laminar base URL is not set and OTEL_ENDPOINT is not set. Please either\n"
-                "- set the LMNR_BASE_URL environment variable\n"
-                "- set the OTEL_ENDPOINT environment variable\n"
-                "- pass the base_url parameter to Laminar.initialize"
-            )
+        config = _configure_exporter(base_url, port, api_key, timeout_seconds, force_http)
+        self.endpoint = config["endpoint"]
+        self.headers = config["headers"]
+        self.timeout = config["timeout"]
+        self.force_http = config["force_http"]
         self._init_instance()
 
     def _normalize_http_endpoint(self, endpoint: str) -> str:
@@ -180,49 +215,11 @@ class LaminarLogExporter(LogRecordExporter):
         force_http: bool = False,
     ):
         self._instance_lock = threading.RLock()
-        url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
-        url = url.rstrip("/")
-        if match := re.search(r":(\d{1,5})$", url):
-            url = url[: -len(match.group(0))]
-            if port is None:
-                port = int(match.group(1))
-        if port is None:
-            port = 443 if force_http else 8443
-        final_url = f"{url}:{port or 443}"
-        api_key = api_key or from_env("LMNR_PROJECT_API_KEY")
-        self.endpoint = final_url
-        if api_key:
-            self.headers = (
-                {"Authorization": f"Bearer {api_key}"}
-                if force_http
-                else {"authorization": f"Bearer {api_key}"}
-            )
-        elif get_otel_env_var("HEADERS"):
-            self.headers = parse_otel_headers(get_otel_env_var("HEADERS"))
-        else:
-            self.headers = {}
-        self.timeout = timeout_seconds
-        self.force_http = force_http
-        if get_otel_env_var("ENDPOINT"):
-            if not base_url:
-                self.endpoint = get_otel_env_var("ENDPOINT")
-            else:
-                logger.warning(
-                    "OTEL_ENDPOINT is set, but Laminar base URL is also set. Ignoring OTEL_ENDPOINT."
-                )
-            protocol = get_otel_env_var("PROTOCOL") or "grpc/protobuf"
-            exporter_type = from_env("OTEL_EXPORTER") or "otlp_grpc"
-            self.force_http = (
-                protocol in ("http/protobuf", "http/json")
-                or exporter_type == "otlp_http"
-            )
-        if not self.endpoint:
-            raise ValueError(
-                "Laminar base URL is not set and OTEL_ENDPOINT is not set. Please either\n"
-                "- set the LMNR_BASE_URL environment variable\n"
-                "- set the OTEL_ENDPOINT environment variable\n"
-                "- pass the base_url parameter to Laminar.initialize"
-            )
+        config = _configure_exporter(base_url, port, api_key, timeout_seconds, force_http)
+        self.endpoint = config["endpoint"]
+        self.headers = config["headers"]
+        self.timeout = config["timeout"]
+        self.force_http = config["force_http"]
         self._init_instance()
 
     def _normalize_http_endpoint(self, endpoint: str) -> str:

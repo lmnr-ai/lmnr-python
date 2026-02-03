@@ -33,6 +33,7 @@ from .wrappers import _wrap, _awrap
 _instruments = ("daytona >= 0.1.0",)
 
 class DaytonaSDKInstrumentor(BaseLaminarInstrumentor):
+    _scope: LaminarInstrumentationScopeAttributes | None = None
 
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
