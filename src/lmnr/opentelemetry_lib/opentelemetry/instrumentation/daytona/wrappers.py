@@ -302,11 +302,11 @@ def _wrap(
     session_id = args[0] if len(args) > 0 else kwargs.get("session_id")
     request = args[1] if len(args) > 1 else kwargs.get("request")
 
-    # Capture updated context with span for logs to be associated with it
-    ctx = get_current_context()
-
     if span.is_recording():
         _set_request_attributes(span, session_id, request)
+
+    # Capture updated context with span for logs to be associated with it
+    ctx = get_current_context()
 
     try:
         response = wrapped(*args, **kwargs)
