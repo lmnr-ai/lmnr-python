@@ -267,7 +267,7 @@ def _process_command_response(
     )
 
     if is_async_command:
-         _start_log_streaming(logger, instance, session_id, cmd_id, ctx)
+        _start_log_streaming(logger, instance, session_id, cmd_id, ctx)
     else:
         _emit_logs_from_response(logger, response, session_id, cmd_id, ctx)
 
@@ -317,12 +317,6 @@ def _wrap(
         # End the span immediately - logs will be emitted separately
         span.end()
 
-        _process_command_response(
-            logger, instance, response, session_id, request, ctx
-        )
-
-        return response
-
     except Exception as e:
         attributes = get_event_attributes_from_context()
         span.set_attribute(ERROR_TYPE, e.__class__.__name__)
@@ -330,6 +324,17 @@ def _wrap(
         span.set_status(Status(StatusCode.ERROR, str(e)))
         span.end()
         raise
+
+    # Process logs outside the try block - don't let logging failures
+    # break the user's code after a successful Daytona command
+    try:
+        _process_command_response(
+            logger, instance, response, session_id, request, ctx
+        )
+    except Exception as log_error:
+        log.debug(f"Failed to process Daytona command response for logging: {log_error}")
+
+    return response
 
 
 async def _awrap(
@@ -377,12 +382,6 @@ async def _awrap(
         # End the span immediately - logs will be emitted separately
         span.end()
 
-        _process_command_response(
-            logger, instance, response, session_id, request, ctx
-        )
-
-        return response
-
     except Exception as e:
         attributes = get_event_attributes_from_context()
         span.set_attribute(ERROR_TYPE, e.__class__.__name__)
@@ -390,3 +389,14 @@ async def _awrap(
         span.set_status(Status(StatusCode.ERROR, str(e)))
         span.end()
         raise
+
+    # Process logs outside the try block - don't let logging failures
+    # break the user's code after a successful Daytona command
+    try:
+        _process_command_response(
+            logger, instance, response, session_id, request, ctx
+        )
+    except Exception as log_error:
+        log.debug(f"Failed to process Daytona command response for logging: {log_error}")
+
+    return response

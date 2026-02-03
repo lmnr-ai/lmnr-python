@@ -67,6 +67,7 @@ class DaytonaSDKInstrumentor(BaseLaminarInstrumentor):
                     is_streaming=False,
                     span_name="daytona.sandbox.process.execute_session_command",
                     span_type="DEFAULT",
+                    instrumentation_scope=self.instrumentation_scope(),
                     wrapper_function=_wrap,
                 ),
                 WrappedFunctionSpec(
@@ -77,6 +78,7 @@ class DaytonaSDKInstrumentor(BaseLaminarInstrumentor):
                     is_streaming=False,
                     span_name="daytona.sandbox.process.execute_session_command",
                     span_type="DEFAULT",
+                    instrumentation_scope=self.instrumentation_scope(),
                     wrapper_function=_awrap,
                 ),
             ]
