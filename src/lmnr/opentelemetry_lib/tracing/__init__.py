@@ -254,20 +254,25 @@ class TracerWrapper(object):
         clear_context()
 
     def shutdown(self):
-        if self._tracer_provider is None:
-            return
-        self._tracer_provider.shutdown()
+        if self._tracer_provider is not None:
+            self._tracer_provider.shutdown()
+        if self._logger_provider is not None:
+            self._logger_provider.shutdown()
 
     def flush(self):
         if not hasattr(self, "_span_processor"):
             self._logger.warning("TracerWrapper not fully initialized, cannot flush")
             return False
-        return self._span_processor.force_flush()
+        return self._span_processor.force_flush() and (
+            self._log_processor.force_flush() if self._log_processor else True
+        )
 
     def force_reinit_processor(self):
         if isinstance(self._span_processor, LaminarSpanProcessor):
             self._span_processor.force_flush()
             self._span_processor.force_reinit()
+            if self._log_processor:
+                self._log_processor.force_flush()
             # Clear the isolated context to prevent subsequent invocations
             # (e.g., in Lambda) from continuing traces from previous invocations
             clear_context()
