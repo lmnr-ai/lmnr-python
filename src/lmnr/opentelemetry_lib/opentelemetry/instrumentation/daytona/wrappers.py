@@ -4,7 +4,7 @@ import threading
 import time
 from enum import Enum
 
-from opentelemetry import context as context_api, trace
+from opentelemetry import context as context_api
 from opentelemetry.context import Context
 from opentelemetry.trace import Status, StatusCode, Span
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
@@ -283,6 +283,11 @@ def _wrap(
 
     Creates a span, executes the command, sets attributes, ends span, then emits logs.
     """
+    if kwargs is None:
+        kwargs = {}
+    if args is None:
+        args = []
+
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
@@ -348,6 +353,11 @@ async def _awrap(
 
     Creates a span, executes the command, sets attributes, ends span, then emits logs.
     """
+    if kwargs is None:
+        kwargs = {}
+    if args is None:
+        args = []
+
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
