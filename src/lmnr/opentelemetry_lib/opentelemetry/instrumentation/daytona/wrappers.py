@@ -86,19 +86,13 @@ def _emit_log(
 
     try:
         event_name = f"daytona.log.{stream.value}"
-        event_body = {
-            "content": content,
-            "stream": stream.value,
-            "session_id": session_id,
-            "cmd_id": cmd_id,
-        }
         event_severity_number = SeverityNumber.INFO if stream == LogStream.STDOUT else SeverityNumber.ERROR
 
         logger.emit(
             LogRecord(
                 timestamp=time.time_ns(),
                 context=ctx,
-                body=event_body,
+                body=content,
                 severity_number=event_severity_number,
                 attributes={
                     **DAYTONA_LOG_ATTRIBUTES,
