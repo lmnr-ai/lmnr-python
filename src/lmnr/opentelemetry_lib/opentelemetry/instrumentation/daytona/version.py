@@ -1,1 +1,1 @@
-from .version import __version__
+from lmnr.version import __version__
