@@ -205,7 +205,6 @@ class LaminarLogExporter(LogRecordExporter):
     headers: dict[str, str]
     timeout: float
     force_http: bool
-    _instance_lock: threading.RLock
 
     def __init__(
         self,
@@ -215,7 +214,6 @@ class LaminarLogExporter(LogRecordExporter):
         timeout_seconds: int = 30,
         force_http: bool = False,
     ):
-        self._instance_lock = threading.RLock()
         config = _configure_exporter(base_url, port, api_key, timeout_seconds, force_http)
         self.endpoint = config["endpoint"]
         self.headers = config["headers"]
@@ -243,25 +241,21 @@ class LaminarLogExporter(LogRecordExporter):
             )
 
         # Atomic swap with proper cleanup
-        with self._instance_lock:
-            old_instance: OTLPLogExporter | HTTPOTLPLogExporter | None = getattr(
-                self, "instance", None
-            )
-            if old_instance is not None:
-                try:
-                    old_instance.shutdown()
-                except Exception as e:
-                    logger.warning(f"Error shutting down old exporter instance: {e}")
-            self.instance = new_instance
+        old_instance: OTLPLogExporter | HTTPOTLPLogExporter | None = getattr(
+            self, "instance", None
+        )
+        if old_instance is not None:
+            try:
+                old_instance.shutdown()
+            except Exception as e:
+                logger.warning(f"Error shutting down old exporter instance: {e}")
+        self.instance = new_instance
 
     def export(self, batch: Sequence[ReadableLogRecord]) -> LogRecordExportResult:
-        with self._instance_lock:
-            return self.instance.export(batch)
+        return self.instance.export(batch)
 
     def shutdown(self) -> None:
-        with self._instance_lock:
-            return self.instance.shutdown()
+        return self.instance.shutdown()
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
-        with self._instance_lock:
-            return self.instance.force_flush(timeout_millis)
+        return self.instance.force_flush(timeout_millis)
