@@ -127,11 +127,8 @@ class TracerWrapper(object):
                 obj._logger_provider = LoggerProvider(resource=obj._resource)
                 obj._logger_provider.add_log_record_processor(obj._log_processor)
 
-                # Set global logger provider
-                global_logger_provider = get_logger_provider()
-                if set_global_tracer_provider and isinstance(
-                    global_logger_provider, NoOpLoggerProvider
-                ):
+                # Set global logger provider (follows same flag as tracer provider)
+                if set_global_tracer_provider:
                     set_logger_provider(obj._logger_provider)
 
                 # Setup threading context inheritance
