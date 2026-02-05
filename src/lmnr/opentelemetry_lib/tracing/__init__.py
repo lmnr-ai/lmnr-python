@@ -30,7 +30,7 @@ from ..opentelemetry.instrumentation.threading import ThreadingInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider, SpanProcessor
 from opentelemetry.sdk.trace.export import SpanExporter
-from opentelemetry._logs import set_logger_provider
+from opentelemetry._logs import get_logger_provider, set_logger_provider, NoOpLoggerProvider
 from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 
@@ -127,8 +127,11 @@ class TracerWrapper(object):
                 obj._logger_provider = LoggerProvider(resource=obj._resource)
                 obj._logger_provider.add_log_record_processor(obj._log_processor)
 
-                # Set global logger provider (follows same flag as tracer provider)
-                if set_global_tracer_provider:
+                # Set global logger provider
+                global_logger_provider = get_logger_provider()
+                if set_global_tracer_provider and isinstance(
+                    global_logger_provider, NoOpLoggerProvider
+                ):
                     set_logger_provider(obj._logger_provider)
 
                 # Setup threading context inheritance
