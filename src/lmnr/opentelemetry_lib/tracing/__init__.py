@@ -3,6 +3,7 @@ import logging
 import threading
 
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
+from lmnr.opentelemetry_lib.tracing.exporter import LaminarLogExporter
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.types import SessionRecordingOptions
 from lmnr.sdk.log import VerboseColorfulFormatter
@@ -29,6 +30,9 @@ from ..opentelemetry.instrumentation.threading import ThreadingInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider, SpanProcessor
 from opentelemetry.sdk.trace.export import SpanExporter
+from opentelemetry._logs import get_logger_provider, set_logger_provider, NoOpLoggerProvider
+from opentelemetry.sdk._logs import LoggerProvider
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 
 TRACER_NAME = "lmnr.tracer"
 
@@ -41,10 +45,12 @@ class TracerWrapper(object):
     session_recording_options: SessionRecordingOptions = {}
     _lock = threading.Lock()
     _tracer_provider: TracerProvider | None = None
+    _logger_provider: LoggerProvider | None = None
     _logger: logging.Logger
     _async_client: AsyncLaminarClient
     _resource: Resource
     _span_processor: SpanProcessor
+    _log_processor: BatchLogRecordProcessor | None = None
     _original_thread_init = None
 
     def __new__(
@@ -109,6 +115,22 @@ class TracerWrapper(object):
 
                 obj._tracer_provider.add_span_processor(obj._span_processor)
 
+                # Setup LoggerProvider for OTel logs
+                log_exporter = LaminarLogExporter(
+                    base_url=base_url,
+                    port=http_port if force_http else port,
+                    api_key=project_api_key,
+                    timeout_seconds=timeout_seconds,
+                    force_http=force_http,
+                )
+                obj._log_processor = BatchLogRecordProcessor(log_exporter)
+                obj._logger_provider = LoggerProvider(resource=obj._resource)
+                obj._logger_provider.add_log_record_processor(obj._log_processor)
+
+                # Set global logger provider (follows same flag as tracer provider)
+                if set_global_tracer_provider:
+                    set_logger_provider(obj._logger_provider)
+
                 # Setup threading context inheritance
                 obj._setup_threading_inheritance()
 
@@ -121,6 +143,7 @@ class TracerWrapper(object):
 
                 init_instrumentations(
                     tracer_provider=obj._tracer_provider,
+                    logger_provider=obj._logger_provider,
                     instruments=instruments,
                     block_instruments=block_instruments,
                     async_client=obj._async_client,
@@ -231,20 +254,25 @@ class TracerWrapper(object):
         clear_context()
 
     def shutdown(self):
-        if self._tracer_provider is None:
-            return
-        self._tracer_provider.shutdown()
+        if self._tracer_provider is not None:
+            self._tracer_provider.shutdown()
+        if self._logger_provider is not None:
+            self._logger_provider.shutdown()
 
     def flush(self):
         if not hasattr(self, "_span_processor"):
             self._logger.warning("TracerWrapper not fully initialized, cannot flush")
             return False
-        return self._span_processor.force_flush()
+        span_result = self._span_processor.force_flush()
+        log_result = self._log_processor.force_flush() if self._log_processor else True
+        return span_result and log_result
 
     def force_reinit_processor(self):
         if isinstance(self._span_processor, LaminarSpanProcessor):
             self._span_processor.force_flush()
             self._span_processor.force_reinit()
+            if self._log_processor:
+                self._log_processor.force_flush()
             # Clear the isolated context to prevent subsequent invocations
             # (e.g., in Lambda) from continuing traces from previous invocations
             clear_context()
