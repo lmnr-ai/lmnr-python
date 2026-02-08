@@ -15,7 +15,7 @@
  */
 (maskInputOptions, stringifyCallbackArgs) => {
     const BATCH_TIMEOUT = 2000; // Send events every 2 seconds
-    const HEARTBEAT_INTERVAL = 2000;
+    const HEARTBEAT_INTERVAL = 1000;
     const CHUNK_SIZE = 256 * 1024; // 256KB chunks for CDP message limits
 
     window.lmnrRrwebEventsBatch = [];
@@ -104,7 +104,7 @@
         window.lmnrRrwebEventsBatch = [];
 
         try {
-            // Compress each event's data field individually (for ClickHouse storage)
+            // Compress each event's data field individually
             const compressedEvents = [];
             for (const event of events) {
                 try {
@@ -116,8 +116,7 @@
                         data: base64Data,
                     });
                 } catch (e) {
-                    // If compression fails for one event, send it uncompressed
-                    compressedEvents.push(event);
+                    console.error('Failed to compress event:', e);
                 }
             }
 

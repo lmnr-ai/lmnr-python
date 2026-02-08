@@ -44,9 +44,13 @@ async def process_wrapped_result(result, instance, client, to_wrap):
         session_id = result.session_id
         if session_id in _initialized_sessions:
             return
+        # Add session to initialized sessions to avoid double initialization because start_recording_events might take a while to complete
+        # and get_or_create_cdp_session might be called in parallel.
+        _initialized_sessions.add(session_id)
+        
         is_recording = await start_recording_events(result, str(uuid.uuid4()), client)
-        if is_recording:
-            _initialized_sessions.add(session_id)
+        if not is_recording:
+            _initialized_sessions.remove(session_id)
 
     if to_wrap.get("action") == "take_full_snapshot":
         target_id = result
