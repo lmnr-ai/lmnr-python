@@ -428,10 +428,14 @@ async def start_recording_events(
             await setup_context(new_context_id)
 
     # Register event handlers FIRST - they must be in place before any navigation
-    cdp_client.register.Runtime.bindingCalled(send_events_callback)
-    await enable_target_discovery(cdp_session)
-    register_on_target_created(cdp_session, lmnr_session_id, client)
-    register_on_frame_navigated(cdp_session, on_navigated)
+    try:
+        cdp_client.register.Runtime.bindingCalled(send_events_callback)
+        await enable_target_discovery(cdp_session)
+        register_on_target_created(cdp_session, lmnr_session_id, client)
+        register_on_frame_navigated(cdp_session, on_navigated)
+    except Exception as e:
+        logger.debug(f"Failed to register CDP event handlers: {e}")
+        return False
 
     # Now try initial injection (may fail on about:blank - that's OK,
     # the frameNavigated handler will re-inject when a real page loads)
