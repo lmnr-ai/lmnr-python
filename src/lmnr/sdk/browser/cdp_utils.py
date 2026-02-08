@@ -253,6 +253,7 @@ async def inject_session_recorder(cdp_session) -> int | None:
         isolated_context_id = await get_isolated_context_id(cdp_session)
         try:
             is_loaded = await is_recorder_present(cdp_session, isolated_context_id)
+            logger.debug(f"Session recorder is loaded: {is_loaded}")
         except Exception as e:
             logger.debug(f"Failed to check if session recorder is loaded: {e}")
             is_loaded = False
@@ -276,6 +277,7 @@ async def inject_session_recorder(cdp_session) -> int | None:
                     ),
                     timeout=CDP_OPERATION_TIMEOUT_SECONDS,
                 )
+                logger.debug(f"Loaded session recorder base for context {isolated_context_id}")
                 return True
             except asyncio.TimeoutError:
                 logger.debug("Timeout error when loading session recorder base")
@@ -303,6 +305,7 @@ async def inject_session_recorder(cdp_session) -> int | None:
                 ),
                 timeout=CDP_OPERATION_TIMEOUT_SECONDS,
             )
+            logger.debug(f"Injected session recorder for context {isolated_context_id}")
             return isolated_context_id
         except asyncio.TimeoutError:
             logger.debug("Timeout error when injecting session recorder")
@@ -326,11 +329,6 @@ async def start_recording_events(
     span = trace.get_current_span(ctx)
     trace_id = format(span.get_span_context().trace_id, "032x")
     span.set_attribute("lmnr.internal.has_browser_session", True)
-
-    isolated_context_id = await inject_session_recorder(cdp_session)
-    if isolated_context_id is None:
-        logger.debug("Failed to inject session recorder, not registering bindings")
-        return
 
     # Get the background loop for async sends (independent of CDP's loop)
     background_loop = get_background_loop()
@@ -391,25 +389,57 @@ async def start_recording_events(
         except Exception as e:
             logger.debug(f"Could not send events: {e}")
 
+    # Track valid context IDs so the callback accepts events after navigation
+    valid_context_ids: set[int] = set()
+
     # cdp_use.cdp.runtime.events.BindingCalledEvent
     async def send_events_callback(event, cdp_session_id: str | None = None):
         if event["name"] != "lmnrSendEvents":
             return
-        if event["executionContextId"] != isolated_context_id:
+        if event["executionContextId"] not in valid_context_ids:
             return
         asyncio.create_task(send_events_from_browser(orjson.loads(event["payload"])))
 
-    await cdp_client.send.Runtime.addBinding(
-        {
-            "name": "lmnrSendEvents",
-            "executionContextId": isolated_context_id,
-        },
-        session_id=cdp_session.session_id,
-    )
-    cdp_client.register.Runtime.bindingCalled(send_events_callback)
+    async def setup_context(context_id: int) -> bool:
+        """Register the binding for a specific context ID."""
+        if context_id in valid_context_ids:
+            return True
+        try:
+            await asyncio.wait_for(
+                cdp_client.send.Runtime.addBinding(
+                    {
+                        "name": "lmnrSendEvents",
+                        "executionContextId": context_id,
+                    },
+                    session_id=cdp_session.session_id,
+                ),
+                timeout=CDP_OPERATION_TIMEOUT_SECONDS,
+            )
+            valid_context_ids.add(context_id)
+            return True
+        except Exception as e:
+            logger.debug(f"Failed to add binding for context {context_id}: {e}")
+            return False
 
+    async def on_navigated():
+        """Re-inject recorder and re-register binding after navigation."""
+        new_context_id = await inject_session_recorder(cdp_session)
+        if new_context_id is not None:
+            await setup_context(new_context_id)
+
+    # Register event handlers FIRST - they must be in place before any navigation
+    cdp_client.register.Runtime.bindingCalled(send_events_callback)
     await enable_target_discovery(cdp_session)
     register_on_target_created(cdp_session, lmnr_session_id, client)
+    register_on_frame_navigated(cdp_session, on_navigated)
+
+    # Now try initial injection (may fail on about:blank - that's OK,
+    # the frameNavigated handler will re-inject when a real page loads)
+    isolated_context_id = await inject_session_recorder(cdp_session)
+    if isolated_context_id is not None:
+        await setup_context(isolated_context_id)
+
+    return True
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
@@ -437,6 +467,40 @@ def register_on_target_created(
         cdp_session.cdp_client.register.Target.targetCreated(on_target_created)
     except Exception as e:
         logger.debug(f"Failed to register on target created: {e}")
+
+
+def register_on_frame_navigated(cdp_session, on_navigated):
+    """Re-inject recorder after page navigation.
+
+    When the main frame navigates, the execution context is destroyed.
+    This handler re-injects the recorder and re-registers the binding
+    for the new context.
+    """
+
+    def on_frame_navigated(event, cdp_session_id: str | None = None):
+        frame = event.get("frame", {})
+        # Only handle main frame navigation (parentId is absent for main frame)
+        if frame.get("parentId"):
+            return
+        url = frame.get("url", "unknown")
+        logger.debug(f"Main frame navigated to {url}, re-injecting recorder")
+
+        # Invalidate cached context IDs for this frame
+        frame_id = frame.get("id")
+        if frame_id:
+            keys_to_remove = [
+                k for k in frame_to_isolated_context_id
+                if k.startswith(f"{frame_id}_")
+            ]
+            for k in keys_to_remove:
+                del frame_to_isolated_context_id[k]
+
+        asyncio.create_task(on_navigated())
+
+    try:
+        cdp_session.cdp_client.register.Page.frameNavigated(on_frame_navigated)
+    except Exception as e:
+        logger.debug(f"Failed to register frame navigated handler: {e}")
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
