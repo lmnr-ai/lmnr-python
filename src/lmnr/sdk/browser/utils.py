@@ -46,7 +46,7 @@ def retry_sync(func, retries=5, delay=0.5, error_message="Operation failed"):
                 return None
         except Exception as e:
             if attempt == retries - 1:  # Last attempt
-                logger.error(f"{error_message}: {e}")
+                logger.debug(f"{error_message}: {e}")
                 return None
         time.sleep(delay)
     return None
@@ -60,11 +60,11 @@ async def retry_async(func, retries=5, delay=0.5, error_message="Operation faile
             if result:  # If function returns truthy value, consider it successful
                 return result
             if attempt == retries - 1:  # Last attempt
-                logger.error(f"{error_message} after all retries")
+                logger.debug(f"{error_message} after all retries")
                 return None
         except Exception as e:
             if attempt == retries - 1:  # Last attempt
-                logger.error(f"{error_message}: {e}")
+                logger.debug(f"{error_message}: {e}")
                 return None
         await asyncio.sleep(delay)
     return None
