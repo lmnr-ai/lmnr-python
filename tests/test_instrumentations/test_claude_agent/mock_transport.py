@@ -89,12 +89,17 @@ class MockClaudeTransport(Transport):
         auto_respond_on_connect: bool = False,
         close_after_responses: bool = False,
     ) -> None:
+
         self._connected = False
         self._ready = False
         self._closed = False
         self._sentinel: object = object()
         self._message_queue: asyncio.Queue[dict[str, Any] | object] = asyncio.Queue()
-        self._conversations = list(conversations) if conversations is not None else _default_conversations()
+        self._conversations = (
+            list(conversations)
+            if conversations is not None
+            else _default_conversations()
+        )
         self._conversation_index = 0
         self._auto_respond_on_connect = auto_respond_on_connect
         self._close_after_responses = close_after_responses
@@ -102,8 +107,6 @@ class MockClaudeTransport(Transport):
     async def connect(self) -> None:
         self._connected = True
         self._ready = True
-        if self._auto_respond_on_connect:
-            self._enqueue_next_conversation(force_close=self._close_after_responses)
 
     async def write(self, data: str) -> None:
         if not data.strip():
@@ -114,6 +117,8 @@ class MockClaudeTransport(Transport):
 
         if message_type == "control_request":
             request_id = payload.get("request_id")
+            request_subtype = payload.get("request", {}).get("subtype")
+
             response = {
                 "type": "control_response",
                 "response": {
@@ -126,6 +131,10 @@ class MockClaudeTransport(Transport):
                 },
             }
             await self._message_queue.put(response)
+
+            # After responding to initialize, enqueue conversation if auto_respond is enabled
+            if request_subtype == "initialize" and self._auto_respond_on_connect:
+                self._enqueue_next_conversation(force_close=self._close_after_responses)
             return
 
         if message_type == "user":

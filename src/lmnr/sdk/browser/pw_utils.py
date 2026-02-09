@@ -198,7 +198,7 @@ def inject_session_recorder_sync(page: SyncPage):
                 logger.debug(f"Failed to inject session recorder: {e}")
 
     except Exception as e:
-        logger.error(f"Error during session recorder injection: {e}")
+        logger.debug(f"Error during session recorder injection: {e}")
 
 
 async def inject_session_recorder_async(page: Page):
@@ -239,7 +239,7 @@ async def inject_session_recorder_async(page: Page):
                 logger.debug(f"Failed to inject session recorder placeholder: {e}")
 
     except Exception as e:
-        logger.error(f"Error during session recorder injection: {e}")
+        logger.debug(f"Error during session recorder injection: {e}")
 
 
 @observe(name="playwright.page", ignore_input=True, ignore_output=True)

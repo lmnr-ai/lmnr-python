@@ -5,7 +5,6 @@ from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.browser.utils import with_tracer_and_client_wrapper
 from lmnr.version import __version__
 from lmnr.sdk.browser.cdp_utils import (
-    is_recorder_present,
     start_recording_events,
     take_full_snapshot,
 )
@@ -18,6 +17,11 @@ from wrapt import wrap_function_wrapper
 
 # Stable versions, e.g. 0.6.0, satisfy this condition too
 _instruments = ("browser-use >= 0.6.0rc1",)
+
+# Track CDP sessions that already have recording initialized.
+# Checked on every get_or_create_cdp_session call (which is very frequent),
+# so this must be a fast O(1) lookup instead of a CDP evaluate call.
+_initialized_sessions: set[str] = set()
 
 WRAPPED_METHODS = [
     {
@@ -37,9 +41,19 @@ WRAPPED_METHODS = [
 
 async def process_wrapped_result(result, instance, client, to_wrap):
     if to_wrap.get("action") == "inject_session_recorder":
-        is_registered = await is_recorder_present(result)
-        if not is_registered:
-            await start_recording_events(result, str(uuid.uuid4()), client)
+        session_id = result.session_id
+        if session_id in _initialized_sessions:
+            return
+        # Add eagerly to prevent parallel calls from double-initializing
+        _initialized_sessions.add(session_id)
+        try:
+            is_recording = await start_recording_events(
+                result, str(uuid.uuid4()), client
+            )
+            if not is_recording:
+                _initialized_sessions.discard(session_id)
+        except Exception:
+            _initialized_sessions.discard(session_id)
 
     if to_wrap.get("action") == "take_full_snapshot":
         target_id = result
