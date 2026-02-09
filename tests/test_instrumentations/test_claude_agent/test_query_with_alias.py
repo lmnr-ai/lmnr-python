@@ -17,9 +17,7 @@ async def test_claude_agent_query(span_exporter: InMemorySpanExporter):
     async for message in claude_query(
         prompt="What is the capital of France?",
         options=options,
-        transport=MockClaudeTransport(
-            auto_respond_on_connect=True, close_after_responses=True
-        ),
+        transport=MockClaudeTransport(close_after_responses=True),
     ):
         pass
 
