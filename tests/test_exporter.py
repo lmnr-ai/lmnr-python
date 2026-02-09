@@ -3,6 +3,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from lmnr.opentelemetry_lib.tracing.exporter import LaminarSpanExporter
+from lmnr.opentelemetry_lib.tracing.exporter import _normalize_http_endpoint
 
 
 class TestHttpEndpointNormalization:
@@ -146,7 +147,7 @@ class TestHttpEndpointNormalization:
             ]
 
             for input_url, expected_url in test_cases:
-                result = exporter._normalize_http_endpoint(input_url)
+                result = _normalize_http_endpoint(input_url, "/v1/traces")
                 assert (
                     result == expected_url
                 ), f"Expected {expected_url}, got {result} for input {input_url}"
