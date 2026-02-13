@@ -169,6 +169,61 @@ class TestAsyncLaminarClientEvaluations:
                 eval_id=eval_id, datapoint_id=datapoint_id, scores=scores
             )
 
+    @pytest.mark.asyncio
+    async def test_update_datapoint_with_trace_id(self, async_client):
+        """Test datapoint update includes trace_id in the request body."""
+        eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
+        datapoint_id = uuid.UUID("87654321-4321-8765-cba9-987654321abc")
+        trace_id = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        scores = {"accuracy": 0.95}
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+
+        with patch.object(
+            async_client.evals._client,
+            "post",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_post:
+            await async_client.evals.update_datapoint(
+                eval_id=eval_id,
+                datapoint_id=datapoint_id,
+                scores=scores,
+                trace_id=trace_id,
+            )
+
+            mock_post.assert_called_once()
+            call_json = mock_post.call_args[1]["json"]
+            assert call_json["traceId"] == "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+            assert call_json["scores"] == scores
+
+    @pytest.mark.asyncio
+    async def test_update_datapoint_without_trace_id(self, async_client):
+        """Test datapoint update sends traceId as None when not provided."""
+        eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
+        datapoint_id = uuid.UUID("87654321-4321-8765-cba9-987654321abc")
+        scores = {"accuracy": 0.95}
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+
+        with patch.object(
+            async_client.evals._client,
+            "post",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_post:
+            await async_client.evals.update_datapoint(
+                eval_id=eval_id,
+                datapoint_id=datapoint_id,
+                scores=scores,
+            )
+
+            mock_post.assert_called_once()
+            call_json = mock_post.call_args[1]["json"]
+            assert call_json["traceId"] is None
+
 
 class TestLaminarClientEvaluations:
     """Test evaluation methods on synchronous LaminarClient."""
@@ -307,6 +362,53 @@ class TestLaminarClientEvaluations:
             mock_update.assert_called_once_with(
                 eval_id=eval_id, datapoint_id=datapoint_id, scores=scores
             )
+
+    def test_update_datapoint_with_trace_id(self, sync_client):
+        """Test datapoint update includes trace_id in the request body."""
+        eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
+        datapoint_id = uuid.UUID("87654321-4321-8765-cba9-987654321abc")
+        trace_id = uuid.UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+        scores = {"accuracy": 0.95}
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+
+        with patch.object(
+            sync_client.evals._client, "post", return_value=mock_response
+        ) as mock_post:
+            sync_client.evals.update_datapoint(
+                eval_id=eval_id,
+                datapoint_id=datapoint_id,
+                scores=scores,
+                trace_id=trace_id,
+            )
+
+            mock_post.assert_called_once()
+            call_json = mock_post.call_args[1]["json"]
+            assert call_json["traceId"] == "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+            assert call_json["scores"] == scores
+
+    def test_update_datapoint_without_trace_id(self, sync_client):
+        """Test datapoint update sends traceId as None when not provided."""
+        eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
+        datapoint_id = uuid.UUID("87654321-4321-8765-cba9-987654321abc")
+        scores = {"accuracy": 0.95}
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+
+        with patch.object(
+            sync_client.evals._client, "post", return_value=mock_response
+        ) as mock_post:
+            sync_client.evals.update_datapoint(
+                eval_id=eval_id,
+                datapoint_id=datapoint_id,
+                scores=scores,
+            )
+
+            mock_post.assert_called_once()
+            call_json = mock_post.call_args[1]["json"]
+            assert call_json["traceId"] is None
 
 
 class TestClientEvaluationIntegration:
