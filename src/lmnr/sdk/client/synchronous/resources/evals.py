@@ -155,14 +155,16 @@ class Evals(BaseResource):
         datapoint_id: uuid.UUID,
         scores: dict[str, float | int],
         executor_output: Any | None = None,
+        trace_id: uuid.UUID | None = None,
     ) -> None:
         """Update a datapoint with evaluation results.
 
         Args:
             eval_id (uuid.UUID): The evaluation ID.
             datapoint_id (uuid.UUID): The datapoint ID.
-            executor_output (Any): The executor output.
-            scores (dict[str, float | int] | None, optional): The scores. Defaults to None.
+            scores (dict[str, float | int]): The scores.
+            executor_output (Any | None, optional): The executor output. Defaults to None.
+            trace_id (uuid.UUID | None, optional): If provided, updates the trace ID associated with the datapoint. Defaults to None.
         """
 
         response = self._client.post(
@@ -176,6 +178,7 @@ class Evals(BaseResource):
                     else None
                 ),
                 "scores": scores,
+                "traceId": str(trace_id) if trace_id is not None else None,
             },
             headers=self._headers(),
         )
