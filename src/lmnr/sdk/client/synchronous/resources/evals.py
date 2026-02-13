@@ -164,7 +164,7 @@ class Evals(BaseResource):
             datapoint_id (uuid.UUID): The datapoint ID.
             scores (dict[str, float | int]): The scores.
             executor_output (Any | None, optional): The executor output. Defaults to None.
-            trace_id (uuid.UUID | None, optional): The trace ID to associate with the datapoint. Defaults to None.
+            trace_id (uuid.UUID | None, optional): If provided, updates the trace ID associated with the datapoint. Defaults to None.
         """
 
         response = self._client.post(
