@@ -199,14 +199,16 @@ class AsyncEvals(BaseAsyncResource):
         datapoint_id: uuid.UUID,
         scores: dict[str, float | int],
         executor_output: Any | None = None,
+        trace_id: uuid.UUID | None = None,
     ) -> None:
         """Update a datapoint with evaluation results.
 
         Args:
             eval_id (uuid.UUID): The evaluation ID.
             datapoint_id (uuid.UUID): The datapoint ID.
-            executor_output (Any): The executor output.
-            scores (dict[str, float | int] | None, optional): The scores. Defaults to None.
+            scores (dict[str, float | int]): The scores.
+            executor_output (Any | None, optional): The executor output. Defaults to None.
+            trace_id (uuid.UUID | None, optional): The trace ID to associate with the datapoint. Defaults to None.
         """
 
         response = await self._client.post(
@@ -220,6 +222,7 @@ class AsyncEvals(BaseAsyncResource):
                     else None
                 ),
                 "scores": scores,
+                "traceId": str(trace_id) if trace_id is not None else None,
             },
             headers=self._headers(),
         )
