@@ -402,7 +402,7 @@ def _set_raw_response_attribute(
         "gen_ai.output.messages",
         json_dumps(
             [
-                candidate.model_dump_json(exclude_unset=True)
+                candidate.model_dump(exclude_unset=True)
                 for candidate in (response.candidates or [])
             ]
         ),
