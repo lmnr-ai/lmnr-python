@@ -174,7 +174,7 @@ def test_google_genai_multiturn(span_exporter: InMemorySpanExporter):
     )
     assert haiku_span_model_content[0]["type"] == "text"
     assert haiku_span_model_content[0]["text"] == adjective_response.text
-    assert haiku_span.attributes["gen_ai.prompt.2.role"] == "model"
+    assert haiku_span.attributes["gen_ai.prompt.2.role"] == "assistant"
     haiku_span_user_content2 = json.loads(
         haiku_span.attributes["gen_ai.prompt.3.content"]
     )
@@ -307,7 +307,7 @@ def test_google_genai_tool_calls_history(span_exporter: InMemorySpanExporter):
 
         assert span.attributes["gen_ai.completion.0.role"] == "model"
 
-    assert span2.attributes["gen_ai.prompt.2.role"] == "model"
+    assert span2.attributes["gen_ai.prompt.2.role"] == "assistant"
     assert json.loads(
         span2.attributes["gen_ai.prompt.2.tool_calls.0.arguments"]
     ) == json.loads(span1.attributes["gen_ai.completion.0.tool_calls.0.arguments"])
@@ -412,7 +412,7 @@ def test_google_genai_tool_calls_history_from_function_response(
 
         assert span.attributes["gen_ai.completion.0.role"] == "model"
 
-    assert span2.attributes["gen_ai.prompt.2.role"] == "model"
+    assert span2.attributes["gen_ai.prompt.2.role"] == "assistant"
     assert json.loads(
         span2.attributes["gen_ai.prompt.2.tool_calls.0.arguments"]
     ) == json.loads(span1.attributes["gen_ai.completion.0.tool_calls.0.arguments"])

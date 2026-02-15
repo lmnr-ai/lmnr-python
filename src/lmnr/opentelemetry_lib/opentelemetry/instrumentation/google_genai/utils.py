@@ -279,10 +279,9 @@ def role_from_content_union(
         role = role_from_content_union(content[0])
     elif isinstance(content, dict):
         role = content.get("role")
-    else:
-        return None
+    if role == "model":
+        return "assistant"
     return role
-    # return "assistant" if role == "model" else role
 
 
 def with_tracer_wrapper(func):
