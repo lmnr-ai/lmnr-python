@@ -1,24 +1,13 @@
 import logging
-import time
-from typing import Optional
 
-from opentelemetry._events import EventLogger
 from .config import Config
-from .event_emitter import (
-    emit_streaming_response_events,
-)
 from .span_utils import (
     set_streaming_response_attributes,
 )
 from .utils import (
-    count_prompt_tokens_from_request,
     dont_throw,
-    error_metrics_attributes,
     set_span_attribute,
-    shared_metrics_attributes,
-    should_emit_events,
 )
-from opentelemetry.metrics import Counter, Histogram
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_RESPONSE_ID,
 )
@@ -81,9 +70,6 @@ def _set_token_usage(
     complete_response,
     prompt_tokens,
     completion_tokens,
-    metric_attributes: dict = {},
-    token_histogram: Histogram = None,
-    choice_counter: Counter = None,
 ):
     cache_read_tokens = (
         complete_response.get("usage", {}).get("cache_read_input_tokens", 0) or 0
@@ -113,44 +99,11 @@ def _set_token_usage(
         cache_creation_tokens,
     )
 
-    if token_histogram and type(input_tokens) is int and input_tokens >= 0:
-        token_histogram.record(
-            input_tokens,
-            attributes={
-                **metric_attributes,
-                SpanAttributes.LLM_TOKEN_TYPE: "input",
-            },
-        )
 
-    if token_histogram and type(completion_tokens) is int and completion_tokens >= 0:
-        token_histogram.record(
-            completion_tokens,
-            attributes={
-                **metric_attributes,
-                SpanAttributes.LLM_TOKEN_TYPE: "output",
-            },
-        )
-
-    if type(complete_response.get("events")) is list and choice_counter:
-        for event in complete_response.get("events"):
-            choice_counter.add(
-                1,
-                attributes={
-                    **metric_attributes,
-                    SpanAttributes.LLM_RESPONSE_FINISH_REASON: event.get(
-                        "finish_reason"
-                    ),
-                },
-            )
-
-
-def _handle_streaming_response(span, event_logger, complete_response):
-    if should_emit_events() and event_logger:
-        emit_streaming_response_events(event_logger, complete_response)
-    else:
-        if not span.is_recording():
-            return
-        set_streaming_response_attributes(span, complete_response.get("events"))
+def _handle_streaming_response(span, complete_response):
+    if not span.is_recording():
+        return
+    set_streaming_response_attributes(span, complete_response.get("events"))
 
 
 @dont_throw
@@ -158,12 +111,6 @@ def build_from_streaming_response(
     span,
     response,
     instance,
-    start_time,
-    token_histogram: Histogram = None,
-    choice_counter: Counter = None,
-    duration_histogram: Histogram = None,
-    exception_counter: Counter = None,
-    event_logger: Optional[EventLogger] = None,
     kwargs: dict = {},
 ):
     complete_response = {
@@ -178,26 +125,15 @@ def build_from_streaming_response(
         try:
             yield item
         except Exception as e:
-            attributes = error_metrics_attributes(e)
-            if exception_counter:
-                exception_counter.add(1, attributes=attributes)
             raise e
         _process_response_item(item, complete_response)
 
-    metric_attributes = shared_metrics_attributes(complete_response)
     set_span_attribute(span, GEN_AI_RESPONSE_ID, complete_response.get("id"))
     set_span_attribute(
         span,
         "anthropic.response.service_tier",
         complete_response.get("service_tier"),
     )
-    if duration_histogram:
-        duration = time.time() - start_time
-        duration_histogram.record(
-            duration,
-            attributes=metric_attributes,
-        )
-
     # calculate token usage
     if Config.enrich_token_usage:
         try:
@@ -206,7 +142,7 @@ def build_from_streaming_response(
             if usage := complete_response.get("usage"):
                 prompt_tokens = usage.get("input_tokens", 0) or 0
             else:
-                prompt_tokens = count_prompt_tokens_from_request(instance, kwargs)
+                prompt_tokens = 0
 
             # completion_usage
             if usage := complete_response.get("usage"):
@@ -227,14 +163,11 @@ def build_from_streaming_response(
                 complete_response,
                 prompt_tokens,
                 completion_tokens,
-                metric_attributes,
-                token_histogram,
-                choice_counter,
             )
         except Exception as e:
             logger.warning("Failed to set token usage, error: %s", e)
 
-    _handle_streaming_response(span, event_logger, complete_response)
+    _handle_streaming_response(span, complete_response)
 
     if span.is_recording():
         span.set_status(Status(StatusCode.OK))
@@ -246,12 +179,6 @@ async def abuild_from_streaming_response(
     span,
     response,
     instance,
-    start_time,
-    token_histogram: Histogram = None,
-    choice_counter: Counter = None,
-    duration_histogram: Histogram = None,
-    exception_counter: Counter = None,
-    event_logger: Optional[EventLogger] = None,
     kwargs: dict = {},
 ):
     complete_response = {
@@ -265,9 +192,6 @@ async def abuild_from_streaming_response(
         try:
             yield item
         except Exception as e:
-            attributes = error_metrics_attributes(e)
-            if exception_counter:
-                exception_counter.add(1, attributes=attributes)
             raise e
         _process_response_item(item, complete_response)
 
@@ -278,15 +202,6 @@ async def abuild_from_streaming_response(
         complete_response.get("service_tier"),
     )
 
-    metric_attributes = shared_metrics_attributes(complete_response)
-
-    if duration_histogram:
-        duration = time.time() - start_time
-        duration_histogram.record(
-            duration,
-            attributes=metric_attributes,
-        )
-
     # calculate token usage
     if Config.enrich_token_usage:
         try:
@@ -294,7 +209,7 @@ async def abuild_from_streaming_response(
             if usage := complete_response.get("usage"):
                 prompt_tokens = usage.get("input_tokens", 0)
             else:
-                prompt_tokens = count_prompt_tokens_from_request(instance, kwargs)
+                prompt_tokens = 0
 
             # completion_usage
             if usage := complete_response.get("usage"):
@@ -315,14 +230,11 @@ async def abuild_from_streaming_response(
                 complete_response,
                 prompt_tokens,
                 completion_tokens,
-                metric_attributes,
-                token_histogram,
-                choice_counter,
             )
         except Exception as e:
             logger.warning("Failed to set token usage, error: %s", str(e))
 
-    _handle_streaming_response(span, event_logger, complete_response)
+    _handle_streaming_response(span, complete_response)
 
     if span.is_recording():
         span.set_status(Status(StatusCode.OK))
@@ -337,23 +249,11 @@ class WrappedMessageStreamManager:
         stream_manager,
         span,
         instance,
-        start_time,
-        token_histogram,
-        choice_counter,
-        duration_histogram,
-        exception_counter,
-        event_logger,
         kwargs,
     ):
         self._stream_manager = stream_manager
         self._span = span
         self._instance = instance
-        self._start_time = start_time
-        self._token_histogram = token_histogram
-        self._choice_counter = choice_counter
-        self._duration_histogram = duration_histogram
-        self._exception_counter = exception_counter
-        self._event_logger = event_logger
         self._kwargs = kwargs
 
     def __enter__(self):
@@ -364,12 +264,6 @@ class WrappedMessageStreamManager:
             self._span,
             stream,
             self._instance,
-            self._start_time,
-            self._token_histogram,
-            self._choice_counter,
-            self._duration_histogram,
-            self._exception_counter,
-            self._event_logger,
             self._kwargs,
         )
 
@@ -385,23 +279,11 @@ class WrappedAsyncMessageStreamManager:
         stream_manager,
         span,
         instance,
-        start_time,
-        token_histogram,
-        choice_counter,
-        duration_histogram,
-        exception_counter,
-        event_logger,
         kwargs,
     ):
         self._stream_manager = stream_manager
         self._span = span
         self._instance = instance
-        self._start_time = start_time
-        self._token_histogram = token_histogram
-        self._choice_counter = choice_counter
-        self._duration_histogram = duration_histogram
-        self._exception_counter = exception_counter
-        self._event_logger = event_logger
         self._kwargs = kwargs
 
     async def __aenter__(self):
@@ -412,12 +294,6 @@ class WrappedAsyncMessageStreamManager:
             self._span,
             stream,
             self._instance,
-            self._start_time,
-            self._token_histogram,
-            self._choice_counter,
-            self._duration_histogram,
-            self._exception_counter,
-            self._event_logger,
             self._kwargs,
         )
 

@@ -187,99 +187,6 @@ async def ashared_metrics_attributes(response):
     }
 
 
-@dont_throw
-def shared_metrics_attributes(response):
-    import inspect
-
-    # If we get a coroutine, we cannot process it in sync context
-    if inspect.iscoroutine(response):
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.warning(
-            f"shared_metrics_attributes received coroutine {response} - using None for model"
-        )
-        response = None
-
-    # If it's already a dict (e.g., from streaming), use it directly
-    if isinstance(response, dict):
-        model = response.get("model")
-    else:
-        # Handle with_raw_response wrapped responses first
-        if response and hasattr(response, "parse") and callable(response.parse):
-            try:
-                response = response.parse()
-            except Exception as e:
-                import logging
-
-                logger = logging.getLogger(__name__)
-                logger.debug(f"Failed to parse with_raw_response: {e}")
-                response = None
-
-        # Safely get model attribute without extracting the whole object
-        model = getattr(response, "model", None) if response else None
-
-    common_attributes = Config.get_common_metrics_attributes()
-
-    return {
-        **common_attributes,
-        GEN_AI_SYSTEM: GEN_AI_SYSTEM_ANTHROPIC,
-        SpanAttributes.LLM_RESPONSE_MODEL: model,
-    }
-
-
-@dont_throw
-def error_metrics_attributes(exception):
-    return {
-        GEN_AI_SYSTEM: GEN_AI_SYSTEM_ANTHROPIC,
-        "error.type": exception.__class__.__name__,
-    }
-
-
-@dont_throw
-def count_prompt_tokens_from_request(anthropic, request):
-    prompt_tokens = 0
-    if hasattr(anthropic, "count_tokens"):
-        if request.get("prompt"):
-            prompt_tokens = anthropic.count_tokens(request.get("prompt"))
-        elif messages := request.get("messages"):
-            prompt_tokens = 0
-            for m in messages:
-                content = m.get("content")
-                if isinstance(content, str):
-                    prompt_tokens += anthropic.count_tokens(content)
-                elif isinstance(content, list):
-                    for item in content:
-                        # TODO: handle image and tool tokens
-                        if isinstance(item, dict) and item.get("type") == "text":
-                            prompt_tokens += anthropic.count_tokens(
-                                item.get("text", "")
-                            )
-    return prompt_tokens
-
-
-@dont_throw
-async def acount_prompt_tokens_from_request(anthropic, request):
-    prompt_tokens = 0
-    if hasattr(anthropic, "count_tokens"):
-        if request.get("prompt"):
-            prompt_tokens = await anthropic.count_tokens(request.get("prompt"))
-        elif messages := request.get("messages"):
-            prompt_tokens = 0
-            for m in messages:
-                content = m.get("content")
-                if isinstance(content, str):
-                    prompt_tokens += await anthropic.count_tokens(content)
-                elif isinstance(content, list):
-                    for item in content:
-                        # TODO: handle image and tool tokens
-                        if isinstance(item, dict) and item.get("type") == "text":
-                            prompt_tokens += await anthropic.count_tokens(
-                                item.get("text", "")
-                            )
-    return prompt_tokens
-
-
 def run_async(method):
     try:
         loop = asyncio.get_running_loop()
@@ -292,14 +199,6 @@ def run_async(method):
         thread.join()
     else:
         asyncio.run(method)
-
-
-def should_emit_events() -> bool:
-    """
-    Checks if the instrumentation isn't using the legacy attributes
-    and if the event logger is not None.
-    """
-    return not Config.use_legacy_attributes
 
 
 class JSONEncoder(json.JSONEncoder):
