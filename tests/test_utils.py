@@ -4,7 +4,7 @@ import pytest
 import uuid
 
 from typing import Any, Dict, List
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from lmnr.sdk.utils import is_otel_attribute_value_type, format_id, json_dumps
 
@@ -32,14 +32,11 @@ class PydanticModelWithCustomMethods(BaseModel):
 
 
 class ComplexPydanticModel(BaseModel):
+    model_config = ConfigDict(validate_by_name=True)
     id: int
     user: SimplePydanticModel
     tags: List[str]
     settings: Dict[str, Any]
-
-    class Config:
-        # Test with pydantic config
-        validate_by_name = True
 
 
 # Test dataclasses
