@@ -1,7 +1,6 @@
 """OpenTelemetry Anthropic instrumentation"""
 
 import logging
-import time
 from typing import Callable, Collection, Optional
 
 from opentelemetry import context as context_api
