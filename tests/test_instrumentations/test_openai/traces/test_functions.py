@@ -26,9 +26,7 @@ def openai_tools():
 
 
 @pytest.mark.vcr
-def test_open_ai_function_calls(
-    instrument_legacy, span_exporter, log_exporter, openai_client
-):
+def test_open_ai_function_calls(instrument_legacy, span_exporter, openai_client):
     openai_client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": "What's the weather like in Boston?"}],
@@ -82,15 +80,10 @@ def test_open_ai_function_calls(
         == "chatcmpl-8wq4AUDD36geK9Za8cccowhObkV9H"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 def test_open_ai_function_calls_tools(
-    instrument_legacy, span_exporter, log_exporter, openai_client, openai_tools
+    instrument_legacy, span_exporter, openai_client, openai_tools
 ):
     openai_client.chat.completions.create(
         model="gpt-4",
@@ -130,16 +123,11 @@ def test_open_ai_function_calls_tools(
         == "chatcmpl-934OqhoorTmk1VnovIRXQCPk8PUTd"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_open_ai_function_calls_tools_streaming(
-    instrument_legacy, span_exporter, log_exporter, async_openai_client, openai_tools
+    instrument_legacy, span_exporter, async_openai_client, openai_tools
 ):
     response = await async_openai_client.chat.completions.create(
         model="gpt-3.5-turbo",
@@ -185,15 +173,10 @@ async def test_open_ai_function_calls_tools_streaming(
         == "chatcmpl-9g4TmLd49mPoD6c0EnGlhNAp8b0on"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 def test_open_ai_function_calls_tools_parallel(
-    instrument_legacy, span_exporter, log_exporter, openai_client, openai_tools
+    instrument_legacy, span_exporter, openai_client, openai_tools
 ):
     response = openai_client.chat.completions.create(
         model="gpt-3.5-turbo",
@@ -259,16 +242,11 @@ def test_open_ai_function_calls_tools_parallel(
         == "chatcmpl-9g4cZhrW9CsqihSvXslk0EUtjASsO"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_open_ai_function_calls_tools_streaming_parallel(
-    instrument_legacy, span_exporter, log_exporter, async_openai_client, openai_tools
+    instrument_legacy, span_exporter, async_openai_client, openai_tools
 ):
     response = await async_openai_client.chat.completions.create(
         model="gpt-3.5-turbo",
@@ -334,8 +312,3 @@ async def test_open_ai_function_calls_tools_streaming_parallel(
         open_ai_span.attributes.get("gen_ai.response.id")
         == "chatcmpl-9g58noIjRkOeNNxfFsFfcNjhXlul7"
     )
-
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"

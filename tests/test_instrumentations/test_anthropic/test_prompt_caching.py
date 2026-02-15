@@ -1,18 +1,11 @@
 from pathlib import Path
 
 import pytest
-from opentelemetry.sdk._logs import ReadableLogRecord
-from opentelemetry.semconv._incubating.attributes import (
-    event_attributes as EventAttributes,
-)
-from opentelemetry.semconv._incubating.attributes import (
-    gen_ai_attributes as GenAIAttributes,
-)
 
 
 @pytest.mark.vcr
 def test_anthropic_prompt_caching_legacy(
-    instrument_legacy, anthropic_client, span_exporter, log_exporter
+    instrument_legacy, anthropic_client, span_exporter
 ):
     with open(Path(__file__).parent.joinpath("data/1024+tokens.txt"), "r") as f:
         # add the unique test name to the prompt to avoid caching leaking to other tests
@@ -109,16 +102,11 @@ def test_anthropic_prompt_caching_legacy(
     assert cache_read_span.attributes["gen_ai.usage.prompt_tokens"] == 1167
     assert cache_read_span.attributes["gen_ai.usage.completion_tokens"] == 202
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_anthropic_prompt_caching_async_legacy(
-    instrument_legacy, async_anthropic_client, span_exporter, log_exporter
+    instrument_legacy, async_anthropic_client, span_exporter
 ):
     with open(Path(__file__).parent.joinpath("data/1024+tokens.txt"), "r") as f:
         # add the unique test name to the prompt to avoid caching leaking to other tests
@@ -215,15 +203,10 @@ async def test_anthropic_prompt_caching_async_legacy(
     assert cache_read_span.attributes["gen_ai.usage.prompt_tokens"] == 1169
     assert cache_read_span.attributes["gen_ai.usage.completion_tokens"] == 224
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 def test_anthropic_prompt_caching_stream_legacy(
-    instrument_legacy, anthropic_client, span_exporter, log_exporter
+    instrument_legacy, anthropic_client, span_exporter
 ):
     with open(Path(__file__).parent.joinpath("data/1024+tokens.txt"), "r") as f:
         # add the unique test name to the prompt to avoid caching leaking to other tests
@@ -324,16 +307,11 @@ def test_anthropic_prompt_caching_stream_legacy(
     assert cache_read_span.attributes["gen_ai.usage.prompt_tokens"] == 1169
     assert cache_read_span.attributes["gen_ai.usage.completion_tokens"] == 222
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_anthropic_prompt_caching_async_stream_legacy(
-    instrument_legacy, async_anthropic_client, span_exporter, log_exporter
+    instrument_legacy, async_anthropic_client, span_exporter
 ):
     with open(Path(__file__).parent.joinpath("data/1024+tokens.txt"), "r") as f:
         # add the unique test name to the prompt to avoid caching leaking to other tests
@@ -433,8 +411,3 @@ async def test_anthropic_prompt_caching_async_stream_legacy(
     assert cache_read_span.attributes["gen_ai.usage.cache_read_input_tokens"] == 1167
     assert cache_read_span.attributes["gen_ai.usage.prompt_tokens"] == 1171
     assert cache_read_span.attributes["gen_ai.usage.completion_tokens"] == 257
-
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"

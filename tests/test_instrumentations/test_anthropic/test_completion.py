@@ -6,7 +6,7 @@ from opentelemetry.semconv_ai import SpanAttributes
 
 @pytest.mark.vcr
 def test_anthropic_completion_legacy(
-    instrument_legacy, anthropic_client, span_exporter, log_exporter
+    instrument_legacy, anthropic_client, span_exporter
 ):
     anthropic_client.completions.create(
         prompt=f"{HUMAN_PROMPT}\nHello world\n{AI_PROMPT}",
@@ -36,8 +36,3 @@ def test_anthropic_completion_legacy(
         anthropic_span.attributes.get("gen_ai.response.id")
         == "compl_01EjfrPvPEsRDRUKD6VoBxtK"
     )
-
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"

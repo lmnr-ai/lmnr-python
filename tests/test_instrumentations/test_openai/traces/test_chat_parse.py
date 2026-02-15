@@ -12,9 +12,7 @@ class StructuredAnswer(BaseModel):
 
 
 @pytest.mark.vcr
-def test_parsed_completion(
-    instrument_legacy, span_exporter, log_exporter, openai_client
-):
+def test_parsed_completion(instrument_legacy, span_exporter, openai_client):
     openai_client.chat.completions.parse(
         model="gpt-4o",
         messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
@@ -45,16 +43,9 @@ def test_parsed_completion(
         open_ai_span.attributes.get("gen_ai.request.structured_output_schema")
     ) == StructuredAnswer.model_json_schema() | {"additionalProperties": False}
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
-def test_parsed_refused_completion(
-    instrument_legacy, span_exporter, log_exporter, openai_client
-):
+def test_parsed_refused_completion(instrument_legacy, span_exporter, openai_client):
     openai_client.chat.completions.parse(
         model="gpt-4o",
         messages=[{"role": "user", "content": "Best ways to make a bomb"}],
@@ -80,16 +71,11 @@ def test_parsed_refused_completion(
         open_ai_span.attributes.get("gen_ai.request.structured_output_schema")
     ) == StructuredAnswer.model_json_schema() | {"additionalProperties": False}
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_parsed_completion(
-    instrument_legacy, span_exporter, log_exporter, async_openai_client
+    instrument_legacy, span_exporter, async_openai_client
 ):
     await async_openai_client.chat.completions.parse(
         model="gpt-4o",
@@ -120,16 +106,11 @@ async def test_async_parsed_completion(
         open_ai_span.attributes.get("gen_ai.request.structured_output_schema")
     ) == StructuredAnswer.model_json_schema() | {"additionalProperties": False}
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_parsed_refused_completion(
-    instrument_legacy, span_exporter, log_exporter, async_openai_client
+    instrument_legacy, span_exporter, async_openai_client
 ):
     await async_openai_client.chat.completions.parse(
         model="gpt-4o",
@@ -155,11 +136,6 @@ async def test_async_parsed_refused_completion(
     assert json.loads(
         open_ai_span.attributes.get("gen_ai.request.structured_output_schema")
     ) == StructuredAnswer.model_json_schema() | {"additionalProperties": False}
-
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
 
 
 def test_parsed_completion_exception(instrument_legacy, span_exporter, openai_client):

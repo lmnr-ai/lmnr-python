@@ -5,7 +5,7 @@ from openai import AsyncOpenAI, OpenAI
 
 
 @pytest.mark.vcr
-def test_openai_prompt_caching(instrument_legacy, span_exporter, log_exporter):
+def test_openai_prompt_caching(instrument_legacy, span_exporter):
     with open(Path(__file__).parent.parent.joinpath("data/1024+tokens.txt"), "r") as f:
         # add the unique test name to the prompt to avoid caching leaking to other tests
         text = (
@@ -68,17 +68,10 @@ def test_openai_prompt_caching(instrument_legacy, span_exporter, log_exporter):
     assert cache_read_span.attributes["gen_ai.usage.completion_tokens"] == 353
     assert cache_read_span.attributes["gen_ai.usage.cache_read_input_tokens"] == 1024
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
-async def test_openai_prompt_caching_async(
-    instrument_legacy, span_exporter, log_exporter
-):
+async def test_openai_prompt_caching_async(instrument_legacy, span_exporter):
     with open(Path(__file__).parent.parent.joinpath("data/1024+tokens.txt"), "r") as f:
         # add the unique test name to the prompt to avoid caching leaking to other tests
         text = (
@@ -139,8 +132,3 @@ async def test_openai_prompt_caching_async(
     assert cache_read_span.attributes["gen_ai.usage.prompt_tokens"] == 1150
     assert cache_read_span.attributes["gen_ai.usage.completion_tokens"] == 307
     assert cache_read_span.attributes["gen_ai.usage.cache_read_input_tokens"] == 1024
-
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"

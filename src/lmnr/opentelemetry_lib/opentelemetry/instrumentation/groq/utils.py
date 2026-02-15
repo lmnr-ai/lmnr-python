@@ -5,7 +5,6 @@ from importlib.metadata import version
 
 from opentelemetry import context as context_api
 from .config import Config
-from opentelemetry.semconv_ai import SpanAttributes
 
 GEN_AI_SYSTEM = "gen_ai.system"
 GEN_AI_SYSTEM_GROQ = "groq"
@@ -51,27 +50,6 @@ def dont_throw(func):
     return wrapper
 
 
-@dont_throw
-def shared_metrics_attributes(response):
-    response_dict = model_as_dict(response)
-
-    common_attributes = Config.get_common_metrics_attributes()
-
-    return {
-        **common_attributes,
-        GEN_AI_SYSTEM: GEN_AI_SYSTEM_GROQ,
-        SpanAttributes.LLM_RESPONSE_MODEL: response_dict.get("model"),
-    }
-
-
-@dont_throw
-def error_metrics_attributes(exception):
-    return {
-        GEN_AI_SYSTEM: GEN_AI_SYSTEM_GROQ,
-        "error.type": exception.__class__.__name__,
-    }
-
-
 def model_as_dict(model):
     if _PYDANTIC_VERSION < "2.0.0":
         return model.dict()
@@ -81,12 +59,3 @@ def model_as_dict(model):
         return model_as_dict(model.parse())
     else:
         return model
-
-
-def should_emit_events() -> bool:
-    """
-    Checks if the instrumentation isn't using the legacy attributes
-    and if the event logger is not None.
-    """
-
-    return not Config.use_legacy_attributes

@@ -10,7 +10,7 @@ from .utils import assert_request_contains_tracecontext, spy_decorator
 
 
 @pytest.mark.vcr
-def test_embeddings(instrument_legacy, span_exporter, log_exporter, openai_client):
+def test_embeddings(instrument_legacy, span_exporter, openai_client):
     openai_client.embeddings.create(
         input="Tell me a joke about opentelemetry",
         model="text-embedding-ada-002",
@@ -35,16 +35,9 @@ def test_embeddings(instrument_legacy, span_exporter, log_exporter, openai_clien
         == "https://api.openai.com/v1/"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
-def test_embeddings_with_raw_response(
-    instrument_legacy, span_exporter, log_exporter, openai_client
-):
+def test_embeddings_with_raw_response(instrument_legacy, span_exporter, openai_client):
     response = openai_client.embeddings.with_raw_response.create(
         input="Tell me a joke about opentelemetry",
         model="text-embedding-ada-002",
@@ -72,14 +65,9 @@ def test_embeddings_with_raw_response(
     parsed_response = response.parse()
     assert parsed_response.data[0]
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
-def test_azure_openai_embeddings(instrument_legacy, span_exporter, log_exporter):
+def test_azure_openai_embeddings(instrument_legacy, span_exporter):
     api_key = "test-api-key"
     azure_resource = "test-resource"
     azure_deployment = "test-deployment"
@@ -115,15 +103,10 @@ def test_azure_openai_embeddings(instrument_legacy, span_exporter, log_exporter)
         == "2023-07-01-preview"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 def test_embeddings_context_propagation(
-    instrument_legacy, span_exporter, log_exporter, vllm_openai_client
+    instrument_legacy, span_exporter, vllm_openai_client
 ):
     send_spy = spy_decorator(httpx.Client.send)
     with patch.object(httpx.Client, "send", send_spy):
@@ -142,16 +125,11 @@ def test_embeddings_context_propagation(
 
     assert_request_contains_tracecontext(request, open_ai_span)
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_embeddings_context_propagation(
-    instrument_legacy, span_exporter, log_exporter, async_vllm_openai_client
+    instrument_legacy, span_exporter, async_vllm_openai_client
 ):
     send_spy = spy_decorator(httpx.AsyncClient.send)
     with patch.object(httpx.AsyncClient, "send", send_spy):
@@ -169,11 +147,6 @@ async def test_async_embeddings_context_propagation(
     request = args[0]
 
     assert_request_contains_tracecontext(request, open_ai_span)
-
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
 
 
 def test_embeddings_exception(instrument_legacy, span_exporter, openai_client):

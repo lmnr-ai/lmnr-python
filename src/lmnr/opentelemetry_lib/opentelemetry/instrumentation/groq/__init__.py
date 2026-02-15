@@ -2,17 +2,10 @@
 
 import logging
 import os
-import time
-from typing import Callable, Collection, Union
+from typing import Collection
 
 from opentelemetry import context as context_api
-from opentelemetry._events import EventLogger, get_event_logger
 from .config import Config
-from .event_emitter import (
-    emit_choice_events,
-    emit_message_events,
-    emit_streaming_response_events,
-)
 from .span_utils import (
     set_input_attributes,
     set_model_input_attributes,
@@ -21,20 +14,13 @@ from .span_utils import (
     set_response_attributes,
     set_streaming_response_attributes,
 )
-from .utils import (
-    error_metrics_attributes,
-    shared_metrics_attributes,
-    should_emit_events,
-)
 from .version import __version__
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
-from opentelemetry.metrics import Counter, Histogram, Meter, get_meter
 from opentelemetry.semconv_ai import (
     SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY,
     LLMRequestTypeValues,
-    Meters,
     SpanAttributes,
 )
 from opentelemetry.trace import SpanKind, Tracer, get_tracer
@@ -75,19 +61,11 @@ def _with_chat_telemetry_wrapper(func):
 
     def _with_chat_telemetry(
         tracer,
-        token_histogram,
-        choice_counter,
-        duration_histogram,
-        event_logger,
         to_wrap,
     ):
         def wrapper(wrapped, instance, args, kwargs):
             return func(
                 tracer,
-                token_histogram,
-                choice_counter,
-                duration_histogram,
-                event_logger,
                 to_wrap,
                 wrapped,
                 instance,
@@ -98,28 +76,6 @@ def _with_chat_telemetry_wrapper(func):
         return wrapper
 
     return _with_chat_telemetry
-
-
-def _create_metrics(meter: Meter):
-    token_histogram = meter.create_histogram(
-        name=Meters.LLM_TOKEN_USAGE,
-        unit="token",
-        description="Measures number of input and output tokens used",
-    )
-
-    choice_counter = meter.create_counter(
-        name=Meters.LLM_GENERATION_CHOICES,
-        unit="choice",
-        description="Number of choices returned by chat completions call",
-    )
-
-    duration_histogram = meter.create_histogram(
-        name=Meters.LLM_OPERATION_DURATION,
-        unit="s",
-        description="GenAI operation duration",
-    )
-
-    return token_histogram, choice_counter, duration_histogram
 
 
 def _process_streaming_chunk(chunk):
@@ -139,19 +95,15 @@ def _process_streaming_chunk(chunk):
     return content, finish_reason, usage
 
 
-def _handle_streaming_response(
-    span, accumulated_content, finish_reason, usage, event_logger
-):
+def _handle_streaming_response(span, accumulated_content, finish_reason, usage):
     set_model_streaming_response_attributes(span, usage)
-    if should_emit_events() and event_logger:
-        emit_streaming_response_events(accumulated_content, finish_reason, event_logger)
-    else:
-        set_streaming_response_attributes(
-            span, accumulated_content, finish_reason, usage
-        )
+    set_streaming_response_attributes(span, accumulated_content, finish_reason, usage)
 
 
-def _create_stream_processor(response, span, event_logger):
+def _create_stream_processor(
+    response,
+    span,
+):
     """Create a generator that processes a stream while collecting telemetry."""
     accumulated_content = ""
     finish_reason = None
@@ -167,9 +119,7 @@ def _create_stream_processor(response, span, event_logger):
             usage = chunk_usage
         yield chunk
 
-    _handle_streaming_response(
-        span, accumulated_content, finish_reason, usage, event_logger
-    )
+    _handle_streaming_response(span, accumulated_content, finish_reason, usage)
 
     if span.is_recording():
         span.set_status(Status(StatusCode.OK))
@@ -177,7 +127,7 @@ def _create_stream_processor(response, span, event_logger):
     span.end()
 
 
-async def _create_async_stream_processor(response, span, event_logger):
+async def _create_async_stream_processor(response, span):
     """Create an async generator that processes a stream while collecting telemetry."""
     accumulated_content = ""
     finish_reason = None
@@ -193,9 +143,7 @@ async def _create_async_stream_processor(response, span, event_logger):
             usage = chunk_usage
         yield chunk
 
-    _handle_streaming_response(
-        span, accumulated_content, finish_reason, usage, event_logger
-    )
+    _handle_streaming_response(span, accumulated_content, finish_reason, usage)
 
     if span.is_recording():
         span.set_status(Status(StatusCode.OK))
@@ -203,29 +151,19 @@ async def _create_async_stream_processor(response, span, event_logger):
     span.end()
 
 
-def _handle_input(span, kwargs, event_logger):
+def _handle_input(span, kwargs):
     set_model_input_attributes(span, kwargs)
-    if should_emit_events() and event_logger:
-        emit_message_events(kwargs, event_logger)
-    else:
-        set_input_attributes(span, kwargs)
+    set_input_attributes(span, kwargs)
 
 
-def _handle_response(span, response, token_histogram, event_logger):
-    set_model_response_attributes(span, response, token_histogram)
-    if should_emit_events() and event_logger:
-        emit_choice_events(response, event_logger)
-    else:
-        set_response_attributes(span, response)
+def _handle_response(span, response):
+    set_model_response_attributes(span, response)
+    set_response_attributes(span, response)
 
 
 @_with_chat_telemetry_wrapper
 def _wrap(
     tracer: Tracer,
-    token_histogram: Histogram,
-    choice_counter: Counter,
-    duration_histogram: Histogram,
-    event_logger: Union[EventLogger, None],
     to_wrap,
     wrapped,
     instance,
@@ -249,26 +187,16 @@ def _wrap(
         context=get_current_context(),
     )
 
-    _handle_input(span, kwargs, event_logger)
+    _handle_input(span, kwargs)
 
-    start_time = time.time()
     try:
         response = wrapped(*args, **kwargs)
     except Exception as e:  # pylint: disable=broad-except
-        end_time = time.time()
-        attributes = error_metrics_attributes(e)
-
-        if duration_histogram:
-            duration = end_time - start_time
-            duration_histogram.record(duration, attributes=attributes)
-
         raise e
-
-    end_time = time.time()
 
     if is_streaming_response(response):
         try:
-            return _create_stream_processor(response, span, event_logger)
+            return _create_stream_processor(response, span)
         except Exception as ex:
             logger.warning(
                 "Failed to process streaming response for groq span, error: %s",
@@ -279,16 +207,7 @@ def _wrap(
             raise
     elif response:
         try:
-            metric_attributes = shared_metrics_attributes(response)
-
-            if duration_histogram:
-                duration = time.time() - start_time
-                duration_histogram.record(
-                    duration,
-                    attributes=metric_attributes,
-                )
-
-            _handle_response(span, response, token_histogram, event_logger)
+            _handle_response(span, response)
 
         except Exception as ex:  # pylint: disable=broad-except
             logger.warning(
@@ -305,10 +224,6 @@ def _wrap(
 @_with_chat_telemetry_wrapper
 async def _awrap(
     tracer,
-    token_histogram: Histogram,
-    choice_counter: Counter,
-    duration_histogram: Histogram,
-    event_logger: Union[EventLogger, None],
     to_wrap,
     wrapped,
     instance,
@@ -332,27 +247,16 @@ async def _awrap(
         context=get_current_context(),
     )
 
-    _handle_input(span, kwargs, event_logger)
-
-    start_time = time.time()
+    _handle_input(span, kwargs)
 
     try:
         response = await wrapped(*args, **kwargs)
     except Exception as e:  # pylint: disable=broad-except
-        end_time = time.time()
-        attributes = error_metrics_attributes(e)
-
-        if duration_histogram:
-            duration = end_time - start_time
-            duration_histogram.record(duration, attributes=attributes)
-
         raise e
-
-    end_time = time.time()
 
     if is_streaming_response(response):
         try:
-            return await _create_async_stream_processor(response, span, event_logger)
+            return await _create_async_stream_processor(response, span)
         except Exception as ex:
             logger.warning(
                 "Failed to process streaming response for groq span, error: %s",
@@ -362,16 +266,7 @@ async def _awrap(
             span.end()
             raise
     elif response:
-        metric_attributes = shared_metrics_attributes(response)
-
-        if duration_histogram:
-            duration = time.time() - start_time
-            duration_histogram.record(
-                duration,
-                attributes=metric_attributes,
-            )
-
-        _handle_response(span, response, token_histogram, event_logger)
+        _handle_response(span, response)
 
         if span.is_recording():
             span.set_status(Status(StatusCode.OK))
@@ -389,14 +284,10 @@ class GroqInstrumentor(BaseInstrumentor):
     def __init__(
         self,
         enrich_token_usage: bool = False,
-        exception_logger=None,
         use_legacy_attributes: bool = True,
-        get_common_metrics_attributes: Callable[[], dict] = lambda: {},
     ):
         super().__init__()
-        Config.exception_logger = exception_logger
         Config.enrich_token_usage = enrich_token_usage
-        Config.get_common_metrics_attributes = get_common_metrics_attributes
         Config.use_legacy_attributes = use_legacy_attributes
 
     def instrumentation_dependencies(self) -> Collection[str]:
@@ -405,30 +296,6 @@ class GroqInstrumentor(BaseInstrumentor):
     def _instrument(self, **kwargs):
         tracer_provider = kwargs.get("tracer_provider")
         tracer = get_tracer(__name__, __version__, tracer_provider)
-
-        # meter and counters are inited here
-        meter_provider = kwargs.get("meter_provider")
-        meter = get_meter(__name__, __version__, meter_provider)
-
-        if is_metrics_enabled():
-            (
-                token_histogram,
-                choice_counter,
-                duration_histogram,
-            ) = _create_metrics(meter)
-        else:
-            (
-                token_histogram,
-                choice_counter,
-                duration_histogram,
-            ) = (None, None, None)
-
-        event_logger = None
-        if not Config.use_legacy_attributes:
-            event_logger_provider = kwargs.get("event_logger_provider")
-            event_logger = get_event_logger(
-                __name__, __version__, event_logger_provider=event_logger_provider
-            )
 
         for wrapped_method in WRAPPED_METHODS:
             wrap_package = wrapped_method.get("package")
@@ -441,10 +308,6 @@ class GroqInstrumentor(BaseInstrumentor):
                     f"{wrap_object}.{wrap_method}",
                     _wrap(
                         tracer,
-                        token_histogram,
-                        choice_counter,
-                        duration_histogram,
-                        event_logger,
                         wrapped_method,
                     ),
                 )
@@ -461,10 +324,6 @@ class GroqInstrumentor(BaseInstrumentor):
                     f"{wrap_object}.{wrap_method}",
                     _awrap(
                         tracer,
-                        token_histogram,
-                        choice_counter,
-                        duration_histogram,
-                        event_logger,
                         wrapped_method,
                     ),
                 )

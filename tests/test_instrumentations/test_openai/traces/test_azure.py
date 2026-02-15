@@ -13,7 +13,7 @@ PROMPT_ERROR = "prompt_error"
 
 
 @pytest.mark.vcr
-def test_chat(instrument_legacy, span_exporter, log_exporter, azure_openai_client):
+def test_chat(instrument_legacy, span_exporter, azure_openai_client):
     azure_openai_client.chat.completions.create(
         model="openllmetry-testing",
         messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
@@ -40,16 +40,9 @@ def test_chat(instrument_legacy, span_exporter, log_exporter, azure_openai_clien
         == "chatcmpl-9HpbZPf84KZFiQG6fdY0KVtIwHyIa"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
-def test_chat_content_filtering(
-    instrument_legacy, span_exporter, log_exporter, azure_openai_client
-):
+def test_chat_content_filtering(instrument_legacy, span_exporter, azure_openai_client):
     azure_openai_client.chat.completions.create(
         model="openllmetry-testing",
         messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
@@ -92,15 +85,10 @@ def test_chat_content_filtering(
     assert content_filter_results["self_harm"]["filtered"] is False
     assert content_filter_results["self_harm"]["severity"] == "safe"
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 def test_prompt_content_filtering(
-    instrument_legacy, span_exporter, log_exporter, azure_openai_client
+    instrument_legacy, span_exporter, azure_openai_client
 ):
     azure_openai_client.chat.completions.create(
         model="openllmetry-testing",
@@ -136,16 +124,9 @@ def test_prompt_content_filtering(
 
     assert error["innererror"]["content_filter_result"]["sexual"]["severity"] == "safe"
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
-def test_chat_streaming(
-    instrument_legacy, span_exporter, log_exporter, azure_openai_client
-):
+def test_chat_streaming(instrument_legacy, span_exporter, azure_openai_client):
     response = azure_openai_client.chat.completions.create(
         model="openllmetry-testing",
         messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
@@ -193,16 +174,11 @@ def test_chat_streaming(
         == "chatcmpl-9HpbaAXyt0cAnlWvI8kUAFpZt5jyQ"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_chat_async_streaming(
-    instrument_legacy, span_exporter, log_exporter, async_azure_openai_client
+    instrument_legacy, span_exporter, async_azure_openai_client
 ):
     response = await async_azure_openai_client.chat.completions.create(
         model="openllmetry-testing",
@@ -239,20 +215,13 @@ async def test_chat_async_streaming(
         == "chatcmpl-9HpbbsSaH8U6amSDAwdA2WzMeDdLB"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 @pytest.mark.skipif(
     not is_reasoning_supported(),
     reason="Reasoning is not supported in older OpenAI library versions",
 )
-def test_chat_reasoning(
-    instrument_legacy, span_exporter, log_exporter, azure_openai_client
-):
+def test_chat_reasoning(instrument_legacy, span_exporter, azure_openai_client):
     azure_openai_client.chat.completions.create(
         model="gpt-5-nano",
         messages=[{"role": "user", "content": "Count r's in strawberry"}],

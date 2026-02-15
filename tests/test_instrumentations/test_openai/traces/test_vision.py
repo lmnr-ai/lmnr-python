@@ -7,7 +7,7 @@ from opentelemetry.semconv_ai import SpanAttributes
 
 
 @pytest.mark.vcr
-def test_vision(instrument_legacy, span_exporter, log_exporter, openai_client):
+def test_vision(instrument_legacy, span_exporter, openai_client):
     response = openai_client.chat.completions.create(
         model="gpt-4-vision-preview",
         messages=[
@@ -54,14 +54,9 @@ def test_vision(instrument_legacy, span_exporter, log_exporter, openai_client):
         == "chatcmpl-8wq4EsSXTQC0JbGzob3SBHg6pS7Tt"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
-def test_vision_base64(instrument_legacy, span_exporter, log_exporter, openai_client):
+def test_vision_base64(instrument_legacy, span_exporter, openai_client):
     # Fetch the image from the URL
     response = requests.get(
         "https://upload.wikimedia.org/wikipedia/commons/"
@@ -117,8 +112,3 @@ def test_vision_base64(instrument_legacy, span_exporter, log_exporter, openai_cl
         open_ai_span.attributes.get("gen_ai.response.id")
         == "chatcmpl-AC7YAG2uy8c4VfbqJp4QkdHc5PDZ4"
     )
-
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"

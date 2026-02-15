@@ -16,9 +16,7 @@ def assistant(openai_client):
 
 
 @pytest.mark.vcr
-def test_new_assistant(
-    instrument_legacy, span_exporter, log_exporter, openai_client, assistant
-):
+def test_new_assistant(instrument_legacy, span_exporter, openai_client, assistant):
     thread = openai_client.beta.threads.create()
     user_message = "I need to solve the equation `3x + 11 = 14`. Can you help me?"
 
@@ -103,15 +101,10 @@ def test_new_assistant(
         )
         completion_index += 1
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 def test_new_assistant_with_polling(
-    instrument_legacy, span_exporter, log_exporter, openai_client, assistant
+    instrument_legacy, span_exporter, openai_client, assistant
 ):
     thread = openai_client.beta.threads.create()
     user_message = "I need to solve the equation `3x + 11 = 14`. Can you help me?"
@@ -183,16 +176,9 @@ def test_new_assistant_with_polling(
         )
         completion_index += 1
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
-def test_existing_assistant(
-    instrument_legacy, span_exporter, log_exporter, openai_client
-):
+def test_existing_assistant(instrument_legacy, span_exporter, openai_client):
     thread = openai_client.beta.threads.create()
     user_message = "I need to solve the equation `3x + 11 = 14`. Can you help me?"
 
@@ -273,16 +259,9 @@ def test_existing_assistant(
         )
         completion_index += 1
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
-def test_streaming_existing_assistant(
-    instrument_legacy, span_exporter, log_exporter, openai_client
-):
+def test_streaming_existing_assistant(instrument_legacy, span_exporter, openai_client):
     thread = openai_client.beta.threads.create()
 
     openai_client.beta.threads.messages.create(
@@ -349,8 +328,3 @@ def test_streaming_existing_assistant(
             == "assistant"
         )
         assert open_ai_span.attributes[f"gen_ai.response.{idx}.id"].startswith("msg_")
-
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"

@@ -17,7 +17,7 @@ from .utils import assert_request_contains_tracecontext, spy_decorator
 
 
 @pytest.mark.vcr
-def test_chat(instrument_legacy, span_exporter, log_exporter, openai_client):
+def test_chat(instrument_legacy, span_exporter, openai_client):
     openai_client.chat.completions.create(
         model="gpt-5-nano",
         messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
@@ -47,14 +47,9 @@ def test_chat(instrument_legacy, span_exporter, log_exporter, openai_client):
     assert open_ai_span.attributes.get("openai.request.service_tier") == "default"
     assert open_ai_span.attributes.get("openai.response.service_tier") == "default"
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
-def test_chat_tool_calls(instrument_legacy, span_exporter, log_exporter, openai_client):
+def test_chat_tool_calls(instrument_legacy, span_exporter, openai_client):
     openai_client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
@@ -109,15 +104,10 @@ def test_chat_tool_calls(instrument_legacy, span_exporter, log_exporter, openai_
         == "chatcmpl-9gKNZbUWSC4s2Uh2QfVV7PYiqWIuH"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 def test_chat_pydantic_based_tool_calls(
-    instrument_legacy, span_exporter, log_exporter, openai_client
+    instrument_legacy, span_exporter, openai_client
 ):
     openai_client.chat.completions.create(
         model="gpt-3.5-turbo",
@@ -174,14 +164,9 @@ def test_chat_pydantic_based_tool_calls(
         == "chatcmpl-9lvGJKrBUPeJjHi3KKSEbGfcfomOP"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
-def test_chat_streaming(instrument_legacy, span_exporter, log_exporter, openai_client):
+def test_chat_streaming(instrument_legacy, span_exporter, openai_client):
     response = openai_client.chat.completions.create(
         model="gpt-5-nano",
         messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
@@ -220,16 +205,11 @@ def test_chat_streaming(instrument_legacy, span_exporter, log_exporter, openai_c
     assert open_ai_span.attributes.get("openai.request.service_tier") == "default"
     assert open_ai_span.attributes.get("openai.response.service_tier") == "default"
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_chat_async_streaming(
-    instrument_legacy, span_exporter, log_exporter, async_openai_client
+    instrument_legacy, span_exporter, async_openai_client
 ):
     response = await async_openai_client.chat.completions.create(
         model="gpt-4.1-nano",
@@ -266,16 +246,9 @@ async def test_chat_async_streaming(
         == "chatcmpl-CdGt5qCx5Rzql1NaxAplDRwFojACg"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
-def test_with_asyncio_run(
-    instrument_legacy, span_exporter, log_exporter, async_openai_client
-):
+def test_with_asyncio_run(instrument_legacy, span_exporter, async_openai_client):
     asyncio.run(
         async_openai_client.chat.completions.create(
             model="gpt-4.1-nano",
@@ -295,16 +268,9 @@ def test_with_asyncio_run(
         == "chatcmpl-CdGt66e4DLUiaHScvU4EpKsSU0sCu"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
-def test_chat_context_propagation(
-    instrument_legacy, span_exporter, log_exporter, vllm_openai_client
-):
+def test_chat_context_propagation(instrument_legacy, span_exporter, vllm_openai_client):
     send_spy = spy_decorator(httpx.Client.send)
     with patch.object(httpx.Client, "send", send_spy):
         vllm_openai_client.chat.completions.create(
@@ -329,16 +295,11 @@ def test_chat_context_propagation(
 
     assert_request_contains_tracecontext(request, open_ai_span)
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_chat_async_context_propagation(
-    instrument_legacy, span_exporter, log_exporter, async_vllm_openai_client
+    instrument_legacy, span_exporter, async_vllm_openai_client
 ):
     send_spy = spy_decorator(httpx.AsyncClient.send)
     with patch.object(httpx.AsyncClient, "send", send_spy):
@@ -363,11 +324,6 @@ async def test_chat_async_context_propagation(
     request = args[0]
 
     assert_request_contains_tracecontext(request, open_ai_span)
-
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
 
 
 @pytest.mark.vcr
@@ -512,7 +468,7 @@ def test_chat_history_message_pydantic(instrument_legacy, span_exporter, openai_
     not is_reasoning_supported(),
     reason="Reasoning is not supported in older OpenAI library versions",
 )
-def test_chat_reasoning(instrument_legacy, span_exporter, log_exporter, openai_client):
+def test_chat_reasoning(instrument_legacy, span_exporter, openai_client):
     openai_client.chat.completions.create(
         model="gpt-5-nano",
         messages=[{"role": "user", "content": "Count r's in strawberry"}],
@@ -611,9 +567,7 @@ async def test_chat_async_exception(
 
 
 @pytest.mark.vcr
-def test_chat_streaming_not_consumed(
-    instrument_legacy, span_exporter, log_exporter, reader, openai_client
-):
+def test_chat_streaming_not_consumed(instrument_legacy, span_exporter, openai_client):
     """Test that streaming responses are properly instrumented even when not consumed"""
 
     # Create streaming response but don't consume it
@@ -657,7 +611,7 @@ def test_chat_streaming_not_consumed(
 
 @pytest.mark.vcr
 def test_chat_streaming_partial_consumption(
-    instrument_legacy, span_exporter, log_exporter, reader, openai_client
+    instrument_legacy, span_exporter, openai_client
 ):
     """Test that streaming responses are properly instrumented when partially consumed"""
 
@@ -698,7 +652,7 @@ def test_chat_streaming_partial_consumption(
 
 @pytest.mark.vcr
 def test_chat_streaming_exception_during_consumption(
-    instrument_legacy, span_exporter, log_exporter, openai_client
+    instrument_legacy, span_exporter, openai_client
 ):
     """Test that streaming responses handle exceptions during consumption properly"""
 
@@ -741,7 +695,7 @@ def test_chat_streaming_exception_during_consumption(
 
 @pytest.mark.vcr
 def test_chat_streaming_memory_leak_prevention(
-    instrument_legacy, span_exporter, log_exporter, openai_client
+    instrument_legacy, span_exporter, openai_client
 ):
     """Test that creating many streams without consuming them doesn't cause memory leaks"""
     import gc

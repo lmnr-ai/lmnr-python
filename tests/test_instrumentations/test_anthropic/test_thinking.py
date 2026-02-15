@@ -1,17 +1,8 @@
 import pytest
-from opentelemetry.sdk._logs import ReadableLogRecord
-from opentelemetry.semconv._incubating.attributes import (
-    event_attributes as EventAttributes,
-)
-from opentelemetry.semconv._incubating.attributes import (
-    gen_ai_attributes as GenAIAttributes,
-)
 
 
 @pytest.mark.vcr
-def test_anthropic_thinking_legacy(
-    instrument_legacy, anthropic_client, span_exporter, log_exporter
-):
+def test_anthropic_thinking_legacy(instrument_legacy, anthropic_client, span_exporter):
     prompt = "How many times does the letter 'r' appear in the word strawberry?"
 
     try:
@@ -60,16 +51,11 @@ def test_anthropic_thinking_legacy(
         == response.content[1].text
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_anthropic_thinking_legacy(
-    instrument_legacy, async_anthropic_client, span_exporter, log_exporter
+    instrument_legacy, async_anthropic_client, span_exporter
 ):
     prompt = "How many times does the letter 'r' appear in the word strawberry?"
 
@@ -119,15 +105,10 @@ async def test_async_anthropic_thinking_legacy(
         == response.content[1].text
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 def test_anthropic_thinking_streaming_legacy(
-    instrument_legacy, anthropic_client, span_exporter, log_exporter
+    instrument_legacy, anthropic_client, span_exporter
 ):
     prompt = "How many times does the letter 'r' appear in the word strawberry?"
 
@@ -183,16 +164,11 @@ def test_anthropic_thinking_streaming_legacy(
     assert anthropic_span.attributes["gen_ai.completion.1.role"] == "assistant"
     assert anthropic_span.attributes["gen_ai.completion.1.content"] == text
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_anthropic_thinking_streaming_legacy(
-    instrument_legacy, async_anthropic_client, span_exporter, log_exporter
+    instrument_legacy, async_anthropic_client, span_exporter
 ):
     prompt = "How many times does the letter 'r' appear in the word strawberry?"
 
@@ -247,8 +223,3 @@ async def test_async_anthropic_thinking_streaming_legacy(
 
     assert anthropic_span.attributes["gen_ai.completion.1.role"] == "assistant"
     assert anthropic_span.attributes["gen_ai.completion.1.content"] == text
-
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"

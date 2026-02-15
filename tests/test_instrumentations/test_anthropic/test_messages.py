@@ -60,7 +60,7 @@ TOOLS = [
 
 @pytest.mark.vcr
 def test_anthropic_message_create_legacy(
-    instrument_legacy, anthropic_client, span_exporter, log_exporter
+    instrument_legacy, anthropic_client, span_exporter
 ):
     response = anthropic_client.messages.create(
         max_tokens=1024,
@@ -115,15 +115,10 @@ def test_anthropic_message_create_legacy(
         anthropic_span.attributes.get("anthropic.response.service_tier") == "standard"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 def test_anthropic_multi_modal_legacy(
-    instrument_legacy, anthropic_client, span_exporter, log_exporter
+    instrument_legacy, anthropic_client, span_exporter
 ):
     response = anthropic_client.messages.create(
         max_tokens=1024,
@@ -175,15 +170,10 @@ def test_anthropic_multi_modal_legacy(
         == "msg_01B37ySLPzYj8KY6uZmiPoxd"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 def test_anthropic_image_with_history(
-    instrument_legacy, anthropic_client, span_exporter, log_exporter
+    instrument_legacy, anthropic_client, span_exporter
 ):
     system_message = "You are a helpful assistant. Be concise and to the point."
     user_message1 = {
@@ -273,16 +263,11 @@ def test_anthropic_image_with_history(
         spans[1].attributes.get("gen_ai.response.id") == "msg_01EtAvxHCWn5jjdUCnG4wEAd"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_anthropic_async_multi_modal_legacy(
-    instrument_legacy, async_anthropic_client, span_exporter, log_exporter
+    instrument_legacy, async_anthropic_client, span_exporter
 ):
     response = await async_anthropic_client.messages.create(
         max_tokens=1024,
@@ -334,15 +319,10 @@ async def test_anthropic_async_multi_modal_legacy(
         == "msg_01DWnmUo9hWk4Fk7V7Ddfa2w"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 def test_anthropic_message_streaming_legacy(
-    instrument_legacy, anthropic_client, span_exporter, log_exporter
+    instrument_legacy, anthropic_client, span_exporter
 ):
     response = anthropic_client.messages.create(
         max_tokens=1024,
@@ -403,16 +383,12 @@ def test_anthropic_message_streaming_legacy(
     assert (
         anthropic_span.attributes.get("anthropic.response.service_tier") == "standard"
     )
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
 
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_anthropic_message_create_legacy(
-    instrument_legacy, async_anthropic_client, span_exporter, log_exporter
+    instrument_legacy, async_anthropic_client, span_exporter
 ):
     response = await async_anthropic_client.messages.create(
         max_tokens=1024,
@@ -467,16 +443,12 @@ async def test_async_anthropic_message_create_legacy(
     assert (
         anthropic_span.attributes.get("anthropic.response.service_tier") == "standard"
     )
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
 
 
 @pytest.mark.vcr(record_mode="once")
 @pytest.mark.asyncio
 async def test_async_anthropic_message_streaming_legacy(
-    instrument_legacy, async_anthropic_client, span_exporter, log_exporter
+    instrument_legacy, async_anthropic_client, span_exporter
 ):
     try:
         await async_anthropic_client.messages.create(
@@ -537,16 +509,10 @@ async def test_async_anthropic_message_streaming_legacy(
     assert (
         anthropic_span.attributes.get("anthropic.response.service_tier") == "standard"
     )
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
 
 
 @pytest.mark.vcr
-def test_anthropic_tools_legacy(
-    instrument_legacy, anthropic_client, span_exporter, log_exporter
-):
+def test_anthropic_tools_legacy(instrument_legacy, anthropic_client, span_exporter):
     response = anthropic_client.messages.create(
         model="claude-3-5-sonnet-20240620",
         max_tokens=1024,
@@ -669,15 +635,10 @@ def test_anthropic_tools_legacy(
         == "msg_01RBkXFe9TmDNNWThMz2HmGt"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 def test_anthropic_tools_history_legacy(
-    instrument_legacy, anthropic_client, span_exporter, log_exporter
+    instrument_legacy, anthropic_client, span_exporter
 ):
     response = anthropic_client.messages.create(
         model="claude-3-5-haiku-20241022",
@@ -819,15 +780,10 @@ def test_anthropic_tools_history_legacy(
         == "msg_01QJDheQSo4hSrxgtLpEJFkA"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 def test_anthropic_tools_streaming_legacy(
-    instrument_legacy, anthropic_client, span_exporter, log_exporter
+    instrument_legacy, anthropic_client, span_exporter
 ):
     response = anthropic_client.messages.create(
         model="claude-3-5-sonnet-20240620",
@@ -932,15 +888,10 @@ def test_anthropic_tools_streaming_legacy(
         == "msg_0138UNF3YbNp49KkqZtUBWqz"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 def test_with_asyncio_run_legacy(
-    instrument_legacy, async_anthropic_client, span_exporter, log_exporter
+    instrument_legacy, async_anthropic_client, span_exporter
 ):
     asyncio.run(
         async_anthropic_client.messages.create(
@@ -966,15 +917,10 @@ def test_with_asyncio_run_legacy(
         "anthropic.chat",
     ]
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr(record_mode="once")
 def test_anthropic_message_stream_manager(
-    instrument_legacy, anthropic_client, span_exporter, log_exporter
+    instrument_legacy, anthropic_client, span_exporter
 ):
     response_content = ""
     with anthropic_client.messages.stream(
@@ -1021,16 +967,12 @@ def test_anthropic_message_stream_manager(
     assert (
         anthropic_span.attributes.get("anthropic.response.service_tier") == "standard"
     )
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
 
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_anthropic_message_stream_manager(
-    instrument_legacy, async_anthropic_client, span_exporter, log_exporter
+    instrument_legacy, async_anthropic_client, span_exporter
 ):
     response_content = ""
     async with async_anthropic_client.messages.stream(
@@ -1077,8 +1019,3 @@ async def test_async_anthropic_message_stream_manager(
     assert (
         anthropic_span.attributes.get("anthropic.response.service_tier") == "standard"
     )
-
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"

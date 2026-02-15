@@ -10,7 +10,7 @@ from .utils import assert_request_contains_tracecontext, spy_decorator
 
 
 @pytest.mark.vcr
-def test_completion(instrument_legacy, span_exporter, log_exporter, openai_client):
+def test_completion(instrument_legacy, span_exporter, openai_client):
     openai_client.completions.create(
         model="davinci-002",
         prompt="Tell me a joke about opentelemetry",
@@ -36,17 +36,10 @@ def test_completion(instrument_legacy, span_exporter, log_exporter, openai_clien
         == "cmpl-8wq42D1Socatcl1rCmgYZOFX7dFZw"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
-async def test_async_completion(
-    instrument_legacy, span_exporter, log_exporter, async_openai_client
-):
+async def test_async_completion(instrument_legacy, span_exporter, async_openai_client):
     await async_openai_client.completions.create(
         model="davinci-002",
         prompt="Tell me a joke about opentelemetry",
@@ -67,16 +60,9 @@ async def test_async_completion(
         == "cmpl-8wq43c8U5ZZCQBX5lrSpsANwcd3OF"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
-def test_completion_langchain_style(
-    instrument_legacy, span_exporter, log_exporter, openai_client
-):
+def test_completion_langchain_style(instrument_legacy, span_exporter, openai_client):
     openai_client.completions.create(
         model="davinci-002",
         prompt=["Tell me a joke about opentelemetry"],
@@ -97,16 +83,9 @@ def test_completion_langchain_style(
         == "cmpl-8wq43QD6R2WqfxXLpYsRvSAIn9LB9"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
-def test_completion_streaming(
-    instrument_legacy, span_exporter, log_exporter, openai_client
-):
+def test_completion_streaming(instrument_legacy, span_exporter, openai_client):
     # set os env for token usage record in stream mode
     original_value = os.environ.get("TRACELOOP_STREAM_TOKEN_USAGE")
     os.environ["TRACELOOP_STREAM_TOKEN_USAGE"] = "true"
@@ -155,10 +134,6 @@ def test_completion_streaming(
             == "cmpl-8wq44ev1DvyhsBfm1hNwxfv6Dltco"
         )
 
-        logs = log_exporter.get_finished_logs()
-        assert (
-            len(logs) == 0
-        ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
     finally:
         # unset env
         if original_value is None:
@@ -170,7 +145,7 @@ def test_completion_streaming(
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_completion_streaming(
-    instrument_legacy, span_exporter, log_exporter, async_openai_client
+    instrument_legacy, span_exporter, async_openai_client
 ):
     response = await async_openai_client.completions.create(
         model="davinci-002",
@@ -200,15 +175,10 @@ async def test_async_completion_streaming(
         == "cmpl-8wq44uFYuGm6kNe44ntRwluggKZFY"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 def test_completion_context_propagation(
-    instrument_legacy, span_exporter, log_exporter, vllm_openai_client
+    instrument_legacy, span_exporter, vllm_openai_client
 ):
     send_spy = spy_decorator(httpx.Client.send)
     with patch.object(httpx.Client, "send", send_spy):
@@ -234,16 +204,11 @@ def test_completion_context_propagation(
         == "cmpl-2996bf68f7f142fa817bdd32af678df9"
     )
 
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
-
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_completion_context_propagation(
-    instrument_legacy, span_exporter, log_exporter, async_vllm_openai_client
+    instrument_legacy, span_exporter, async_vllm_openai_client
 ):
     send_spy = spy_decorator(httpx.AsyncClient.send)
     with patch.object(httpx.AsyncClient, "send", send_spy):
@@ -267,11 +232,6 @@ async def test_async_completion_context_propagation(
         openai_span.attributes.get("gen_ai.response.id")
         == "cmpl-4acc6171f6c34008af07ca8490da3b95"
     )
-
-    logs = log_exporter.get_finished_logs()
-    assert (
-        len(logs) == 0
-    ), "Assert that it doesn't emit logs when use_legacy_attributes is True"
 
 
 def test_completion_exception(instrument_legacy, span_exporter, openai_client):
