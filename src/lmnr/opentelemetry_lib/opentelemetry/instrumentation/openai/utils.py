@@ -67,18 +67,10 @@ def _with_image_gen_metric_wrapper(func):
 def _with_embeddings_telemetry_wrapper(func):
     def _with_embeddings_telemetry(
         tracer,
-        token_counter,
-        vector_size_counter,
-        duration_histogram,
-        exception_counter,
     ):
         def wrapper(wrapped, instance, args, kwargs):
             return func(
                 tracer,
-                token_counter,
-                vector_size_counter,
-                duration_histogram,
-                exception_counter,
                 wrapped,
                 instance,
                 args,
@@ -93,22 +85,10 @@ def _with_embeddings_telemetry_wrapper(func):
 def _with_chat_telemetry_wrapper(func):
     def _with_chat_telemetry(
         tracer,
-        token_counter,
-        choice_counter,
-        duration_histogram,
-        exception_counter,
-        streaming_time_to_first_token,
-        streaming_time_to_generate,
     ):
         def wrapper(wrapped, instance, args, kwargs):
             return func(
                 tracer,
-                token_counter,
-                choice_counter,
-                duration_histogram,
-                exception_counter,
-                streaming_time_to_first_token,
-                streaming_time_to_generate,
                 wrapped,
                 instance,
                 args,

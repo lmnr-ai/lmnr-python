@@ -1,8 +1,5 @@
 from lmnr.opentelemetry_lib.tracing.context import get_event_attributes_from_context
 from ..shared import _set_span_attribute
-from ..shared.event_emitter import emit_event
-from ..shared.event_models import ChoiceEvent
-from ..utils import should_emit_events
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.semconv_ai import SpanAttributes
 from opentelemetry.trace import Status, StatusCode
@@ -95,15 +92,6 @@ class EventHandlerWrapper(AssistantEventHandler):
             f"gen_ai.response.{self._current_text_index}.id",
             message.id,
         )
-        emit_event(
-            ChoiceEvent(
-                index=self._current_text_index,
-                message={
-                    "content": [item.model_dump() for item in message.content],
-                    "role": message.role,
-                },
-            )
-        )
         self._original_handler.on_message_done(message)
         self._current_text_index += 1
 
@@ -118,17 +106,16 @@ class EventHandlerWrapper(AssistantEventHandler):
     @override
     def on_text_done(self, text):
         self._original_handler.on_text_done(text)
-        if not should_emit_events():
-            _set_span_attribute(
-                self._span,
-                f"{SpanAttributes.LLM_COMPLETIONS}.{self._current_text_index}.role",
-                "assistant",
-            )
-            _set_span_attribute(
-                self._span,
-                f"{SpanAttributes.LLM_COMPLETIONS}.{self._current_text_index}.content",
-                text.value,
-            )
+        _set_span_attribute(
+            self._span,
+            f"{SpanAttributes.LLM_COMPLETIONS}.{self._current_text_index}.role",
+            "assistant",
+        )
+        _set_span_attribute(
+            self._span,
+            f"{SpanAttributes.LLM_COMPLETIONS}.{self._current_text_index}.content",
+            text.value,
+        )
 
     @override
     def on_image_file_done(self, image_file):
