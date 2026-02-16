@@ -384,7 +384,10 @@ def content_union_to_dict(
 ) -> dict[str, Any]:
     """Convert a ContentUnion to a Gemini Content dict with 'parts' and 'role'."""
     if isinstance(content, types.Content):
-        return content.model_dump(mode="json", exclude_unset=True)
+        result = content.model_dump(mode="json", exclude_unset=True)
+        if "role" not in result:
+            result["role"] = default_role
+        return result
     elif isinstance(content, str):
         return {"role": default_role, "parts": [{"text": content}]}
     elif isinstance(content, dict):
