@@ -63,8 +63,7 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
 
             if span and span.is_recording():
                 try:
-                    input_messages_raw = span.attributes.get("gen_ai.input.messages")
-                    if input_messages_raw:
+                    if input_messages_raw := span.attributes.get("gen_ai.input.messages"):
                         input_messages = json.loads(input_messages_raw)
                         if input_messages and input_messages[0].get("role") == "system":
                             input_messages[0]["parts"] = [{"text": system_override}]
