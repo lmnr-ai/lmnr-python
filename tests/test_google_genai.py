@@ -63,12 +63,12 @@ def test_google_genai(span_exporter: InMemorySpanExporter):
         spans[0].attributes["gen_ai.response.model"]
         == "models/gemini-2.5-flash-preview-05-20"
     )
-    assert spans[0].attributes["gen_ai.prompt.0.content"] == system_instruction
-    assert spans[0].attributes["gen_ai.prompt.0.role"] == "system"
-    user_content = json.loads(spans[0].attributes["gen_ai.prompt.1.content"])
-    assert user_content[0]["type"] == "text"
-    assert user_content[0]["text"] == "What is the capital of France?"
-    assert spans[0].attributes["gen_ai.prompt.1.role"] == "user"
+    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    assert messages[0] == {"role": "system", "parts": [{"text": system_instruction}]}
+    assert messages[1] == {
+        "role": "user",
+        "parts": [{"text": "What is the capital of France?"}],
+    }
     assert json.loads(spans[0].attributes["gen_ai.completion.0.content"])[0] == {
         "type": "text",
         "text": response.text,
@@ -138,53 +138,47 @@ def test_google_genai_multiturn(span_exporter: InMemorySpanExporter):
             span.attributes["gen_ai.response.model"]
             == "models/gemini-2.5-flash-preview-05-20"
         )
-        assert span.attributes["gen_ai.prompt.0.content"] == system_instruction
-        assert span.attributes["gen_ai.prompt.0.role"] == "system"
+        input_messages = json.loads(span.attributes["gen_ai.input.messages"])
+        assert input_messages[0] == {
+            "role": "system",
+            "parts": [{"text": system_instruction}],
+        }
 
     spans = sorted(spans, key=lambda x: x.start_time)
     adjective_span = spans[0]
     haiku_span = spans[1]
 
-    adjective_span_user_content = json.loads(
-        adjective_span.attributes["gen_ai.prompt.1.content"]
-    )
-    assert adjective_span_user_content[0]["type"] == "text"
-    assert (
-        adjective_span_user_content[0]["text"]
-        == "Come up with an adjective in English. Respond with only the adjective."
-    )
-    assert adjective_span.attributes["gen_ai.prompt.1.role"] == "user"
+    adj_messages = json.loads(adjective_span.attributes["gen_ai.input.messages"])
+    assert adj_messages[1] == {
+        "role": "user",
+        "parts": [
+            {
+                "text": "Come up with an adjective in English. Respond with only the adjective."
+            }
+        ],
+    }
     assert json.loads(adjective_span.attributes["gen_ai.completion.0.content"])[0] == {
         "type": "text",
         "text": adjective_response.text,
     }
     assert adjective_span.attributes["gen_ai.completion.0.role"] == "model"
 
-    haiku_span_user_content = json.loads(
-        haiku_span.attributes["gen_ai.prompt.1.content"]
-    )
-    assert haiku_span_user_content[0]["type"] == "text"
-    assert (
-        haiku_span_user_content[0]["text"]
-        == "Come up with an adjective in English. Respond with only the adjective."
-    )
-    assert haiku_span.attributes["gen_ai.prompt.1.role"] == "user"
-    haiku_span_model_content = json.loads(
-        haiku_span.attributes["gen_ai.prompt.2.content"]
-    )
-    assert haiku_span_model_content[0]["type"] == "text"
-    assert haiku_span_model_content[0]["text"] == adjective_response.text
-    assert haiku_span.attributes["gen_ai.prompt.2.role"] == "assistant"
-    haiku_span_user_content2 = json.loads(
-        haiku_span.attributes["gen_ai.prompt.3.content"]
-    )
-    assert haiku_span_user_content2[0]["type"] == "text"
-    assert (
-        haiku_span_user_content2[0]["text"]
-        == "Now generate a haiku using this adjective."
-    )
+    haiku_messages = json.loads(haiku_span.attributes["gen_ai.input.messages"])
+    assert haiku_messages[1] == {
+        "role": "user",
+        "parts": [
+            {
+                "text": "Come up with an adjective in English. Respond with only the adjective."
+            }
+        ],
+    }
+    assert haiku_messages[2]["role"] == "model"
+    assert haiku_messages[2]["parts"][0]["text"] == adjective_response.text
+    assert haiku_messages[3] == {
+        "role": "user",
+        "parts": [{"text": "Now generate a haiku using this adjective."}],
+    }
 
-    assert haiku_span.attributes["gen_ai.prompt.3.role"] == "user"
     assert json.loads(haiku_span.attributes["gen_ai.completion.0.content"])[0] == {
         "type": "text",
         "text": haiku_response.text,
@@ -219,12 +213,12 @@ def test_google_genai_tool_calls(span_exporter: InMemorySpanExporter):
     assert spans[0].name == "gemini.generate_content"
     assert spans[0].attributes["gen_ai.request.model"] == "gemini-2.5-flash-lite"
     assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.prompt.0.content"] == system_instruction
-    assert spans[0].attributes["gen_ai.prompt.0.role"] == "system"
-    user_content = json.loads(spans[0].attributes["gen_ai.prompt.1.content"])
-    assert user_content[0]["type"] == "text"
-    assert user_content[0]["text"] == "What is the weather in Tokyo?"
-    assert spans[0].attributes["gen_ai.prompt.1.role"] == "user"
+    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    assert messages[0] == {"role": "system", "parts": [{"text": system_instruction}]}
+    assert messages[1] == {
+        "role": "user",
+        "parts": [{"text": "What is the weather in Tokyo?"}],
+    }
     assert spans[0].attributes["gen_ai.completion.0.tool_calls.0.name"] == "get_weather"
     assert json.loads(
         spans[0].attributes["gen_ai.completion.0.tool_calls.0.arguments"]
@@ -298,29 +292,24 @@ def test_google_genai_tool_calls_history(span_exporter: InMemorySpanExporter):
         assert span.name == "gemini.generate_content"
         assert span.attributes["gen_ai.request.model"] == "gemini-2.5-flash-lite"
         assert span.attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-        assert span.attributes["gen_ai.prompt.0.content"] == system_instruction
-        assert span.attributes["gen_ai.prompt.0.role"] == "system"
-        user_content = json.loads(span.attributes["gen_ai.prompt.1.content"])
-        assert user_content[0]["type"] == "text"
-        assert user_content[0]["text"] == "What is the weather in Tokyo?"
-        assert span.attributes["gen_ai.prompt.1.role"] == "user"
+        input_messages = json.loads(span.attributes["gen_ai.input.messages"])
+        assert input_messages[0] == {
+            "role": "system",
+            "parts": [{"text": system_instruction}],
+        }
+        assert input_messages[1] == {
+            "role": "user",
+            "parts": [{"text": "What is the weather in Tokyo?"}],
+        }
 
         assert span.attributes["gen_ai.completion.0.role"] == "model"
 
-    assert span2.attributes["gen_ai.prompt.2.role"] == "assistant"
-    assert json.loads(
-        span2.attributes["gen_ai.prompt.2.tool_calls.0.arguments"]
-    ) == json.loads(span1.attributes["gen_ai.completion.0.tool_calls.0.arguments"])
-    assert (
-        span2.attributes["gen_ai.prompt.2.tool_calls.0.name"]
-        == span1.attributes["gen_ai.completion.0.tool_calls.0.name"]
-    )
-    assert (
-        span2.attributes["gen_ai.prompt.2.tool_calls.0.id"]
-        == span1.attributes["gen_ai.completion.0.tool_calls.0.id"]
-    )
-    assert span2.attributes["gen_ai.prompt.3.role"] == "user"
-    assert json.loads(span2.attributes["gen_ai.prompt.3.content"]) == [
+    messages2 = json.loads(span2.attributes["gen_ai.input.messages"])
+    assert messages2[2]["role"] == "model"
+    assert messages2[2]["parts"][0]["function_call"]["name"] == "get_weather"
+    assert messages2[2]["parts"][0]["function_call"]["args"] == {"location": "Tokyo"}
+    assert messages2[3]["role"] == "user"
+    assert messages2[3]["parts"] == [
         {
             "function_response": {
                 "name": "get_weather",
@@ -403,36 +392,27 @@ def test_google_genai_tool_calls_history_from_function_response(
         assert span.name == "gemini.generate_content"
         assert span.attributes["gen_ai.request.model"] == "gemini-2.5-flash-lite"
         assert span.attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-        assert span.attributes["gen_ai.prompt.0.content"] == system_instruction
-        assert span.attributes["gen_ai.prompt.0.role"] == "system"
-        user_content = json.loads(span.attributes["gen_ai.prompt.1.content"])
-        assert user_content[0]["type"] == "text"
-        assert user_content[0]["text"] == "What is the weather in Tokyo?"
-        assert span.attributes["gen_ai.prompt.1.role"] == "user"
+        input_messages = json.loads(span.attributes["gen_ai.input.messages"])
+        assert input_messages[0] == {
+            "role": "system",
+            "parts": [{"text": system_instruction}],
+        }
+        assert input_messages[1] == {
+            "role": "user",
+            "parts": [{"text": "What is the weather in Tokyo?"}],
+        }
 
         assert span.attributes["gen_ai.completion.0.role"] == "model"
 
-    assert span2.attributes["gen_ai.prompt.2.role"] == "assistant"
-    assert json.loads(
-        span2.attributes["gen_ai.prompt.2.tool_calls.0.arguments"]
-    ) == json.loads(span1.attributes["gen_ai.completion.0.tool_calls.0.arguments"])
-    assert (
-        span2.attributes["gen_ai.prompt.2.tool_calls.0.name"]
-        == span1.attributes["gen_ai.completion.0.tool_calls.0.name"]
-    )
-    assert (
-        span2.attributes["gen_ai.prompt.2.tool_calls.0.id"]
-        == span1.attributes["gen_ai.completion.0.tool_calls.0.id"]
-    )
-    assert span2.attributes["gen_ai.prompt.3.role"] == "user"
-    assert json.loads(span2.attributes["gen_ai.prompt.3.content"]) == [
-        {
-            "function_response": {
-                "name": "get_weather",
-                "response": {"output": "Sunny, 22°C."},
-            }
-        }
-    ]
+    messages2 = json.loads(span2.attributes["gen_ai.input.messages"])
+    assert messages2[2]["role"] == "model"
+    assert messages2[2]["parts"][0]["function_call"]["name"] == "get_weather"
+    assert messages2[2]["parts"][0]["function_call"]["args"] == {"location": "Tokyo"}
+    assert messages2[3]["role"] == "user"
+    assert messages2[3]["parts"][0]["function_response"] == {
+        "name": "get_weather",
+        "response": {"output": "Sunny, 22°C."},
+    }
     assert span2.attributes["gen_ai.completion.0.role"] == "model"
     assert json.loads(span2.attributes["gen_ai.completion.0.content"]) == [
         {
@@ -512,12 +492,12 @@ def test_google_genai_multiple_tool_calls(span_exporter: InMemorySpanExporter):
         spans[0].attributes["gen_ai.response.model"]
         == "models/gemini-2.5-flash-preview-05-20"
     )
-    assert spans[0].attributes["gen_ai.prompt.0.content"] == system_instruction
-    assert spans[0].attributes["gen_ai.prompt.0.role"] == "system"
-    user_content = json.loads(spans[0].attributes["gen_ai.prompt.1.content"])
-    assert user_content[0]["type"] == "text"
-    assert user_content[0]["text"] == "What is the weather in Tokyo and Paris?"
-    assert spans[0].attributes["gen_ai.prompt.1.role"] == "user"
+    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    assert messages[0] == {"role": "system", "parts": [{"text": system_instruction}]}
+    assert messages[1] == {
+        "role": "user",
+        "parts": [{"text": "What is the weather in Tokyo and Paris?"}],
+    }
     assert spans[0].attributes["gen_ai.completion.0.tool_calls.0.name"] == "get_weather"
     assert json.loads(
         spans[0].attributes["gen_ai.completion.0.tool_calls.0.arguments"]
@@ -559,12 +539,9 @@ def test_google_genai_tool_calls_and_text_part(span_exporter: InMemorySpanExport
     assert spans[0].name == "gemini.generate_content"
     assert spans[0].attributes["gen_ai.request.model"] == "gemini-2.5-flash-lite"
     assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.prompt.0.content"] == system_instruction
-    assert spans[0].attributes["gen_ai.prompt.0.role"] == "system"
-    user_content = json.loads(spans[0].attributes["gen_ai.prompt.1.content"])
-    assert user_content[0]["type"] == "text"
-    assert user_content[0]["text"] == user_message
-    assert spans[0].attributes["gen_ai.prompt.1.role"] == "user"
+    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    assert messages[0] == {"role": "system", "parts": [{"text": system_instruction}]}
+    assert messages[1] == {"role": "user", "parts": [{"text": user_message}]}
     assert json.loads(spans[0].attributes["gen_ai.completion.0.content"]) == [
         {
             "type": "text",
@@ -615,19 +592,13 @@ def test_google_genai_image(span_exporter: InMemorySpanExporter):
         spans[0].attributes["gen_ai.response.model"]
         == "models/gemini-2.5-flash-preview-05-20"
     )
-    assert spans[0].attributes["gen_ai.prompt.0.content"] == system_instruction
-    assert spans[0].attributes["gen_ai.prompt.0.role"] == "system"
-
-    user_content = json.loads(spans[0].attributes["gen_ai.prompt.1.content"])
-
-    assert user_content[0]["type"] == "text"
-    assert user_content[0]["text"] == "Describe this image"
-    assert user_content[1]["type"] == "image_url"
-    assert (
-        user_content[1]["image_url"]["url"]
-        == f"data:{image_media_type};base64,{image_data}"
-    )
-    assert spans[0].attributes["gen_ai.prompt.1.role"] == "user"
+    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    assert messages[0] == {"role": "system", "parts": [{"text": system_instruction}]}
+    assert messages[1]["role"] == "user"
+    assert messages[1]["parts"][0] == {"text": "Describe this image"}
+    assert messages[1]["parts"][1] == {
+        "inline_data": {"mime_type": image_media_type, "data": image_data}
+    }
     assert json.loads(spans[0].attributes["gen_ai.completion.0.content"])[0] == {
         "type": "text",
         "text": response.text,
@@ -672,19 +643,13 @@ def test_google_genai_image_raw_bytes(span_exporter: InMemorySpanExporter):
         spans[0].attributes["gen_ai.response.model"]
         == "models/gemini-2.5-flash-preview-05-20"
     )
-    assert spans[0].attributes["gen_ai.prompt.0.content"] == system_instruction
-    assert spans[0].attributes["gen_ai.prompt.0.role"] == "system"
-
-    user_content = json.loads(spans[0].attributes["gen_ai.prompt.1.content"])
-
-    assert user_content[0]["type"] == "text"
-    assert user_content[0]["text"] == "Describe this image"
-    assert user_content[1]["type"] == "image_url"
-    assert (
-        user_content[1]["image_url"]["url"]
-        == f"data:{image_media_type};base64,{image_data}"
-    )
-    assert spans[0].attributes["gen_ai.prompt.1.role"] == "user"
+    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    assert messages[0] == {"role": "system", "parts": [{"text": system_instruction}]}
+    assert messages[1]["role"] == "user"
+    assert messages[1]["parts"][0] == {"text": "Describe this image"}
+    assert messages[1]["parts"][1] == {
+        "inline_data": {"mime_type": image_media_type, "data": image_data_raw_bytes}
+    }
     assert json.loads(spans[0].attributes["gen_ai.completion.0.content"])[0] == {
         "type": "text",
         "text": response.text,
@@ -747,15 +712,9 @@ def test_google_genai_output_schema(span_exporter: InMemorySpanExporter):
         == "gemini-2.5-flash-lite-preview-06-17"
     )
 
-    user_content = json.loads(spans[0].attributes["gen_ai.prompt.0.content"])
-    assert user_content == [
-        {
-            "type": "text",
-            "text": prompt,
-        }
-    ]
+    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    assert messages[0] == {"role": "user", "parts": [{"text": prompt}]}
 
-    assert spans[0].attributes["gen_ai.prompt.0.role"] == "user"
     assert json.loads(spans[0].attributes["gen_ai.completion.0.content"])[0] == {
         "type": "text",
         "text": response.text,
@@ -800,15 +759,9 @@ def test_google_genai_output_json_schema(span_exporter: InMemorySpanExporter):
         == "gemini-2.5-flash-lite-preview-06-17"
     )
 
-    user_content = json.loads(spans[0].attributes["gen_ai.prompt.0.content"])
-    assert user_content == [
-        {
-            "type": "text",
-            "text": prompt,
-        }
-    ]
+    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    assert messages[0] == {"role": "user", "parts": [{"text": prompt}]}
 
-    assert spans[0].attributes["gen_ai.prompt.0.role"] == "user"
     assert json.loads(spans[0].attributes["gen_ai.completion.0.content"])[0] == {
         "type": "text",
         "text": response.text,
@@ -1048,15 +1001,12 @@ def test_google_genai_string_contents(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
-    assert spans[0].attributes["gen_ai.prompt.0.content"] == system_instruction
-    assert spans[0].attributes["gen_ai.prompt.0.role"] == "system"
-    assert json.loads(spans[0].attributes["gen_ai.prompt.1.content"]) == [
-        {
-            "type": "text",
-            "text": "What is the capital of France?",
-        }
-    ]
-    assert spans[0].attributes["gen_ai.prompt.1.role"] == "user"
+    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    assert messages[0] == {"role": "system", "parts": [{"text": system_instruction}]}
+    assert messages[1] == {
+        "role": "user",
+        "parts": [{"text": "What is the capital of France?"}],
+    }
     assert spans[0].attributes["gen_ai.completion.0.role"] == "model"
 
     span_output = json.loads(spans[0].attributes["gen_ai.completion.0.content"])
@@ -1090,12 +1040,12 @@ def test_google_genai_error(span_exporter: InMemorySpanExporter):
     assert (
         spans[0].attributes["gen_ai.request.model"] == "gemini-2.5-flash-preview-05-20"
     )
-    assert spans[0].attributes["gen_ai.prompt.0.content"] == system_instruction
-    assert spans[0].attributes["gen_ai.prompt.0.role"] == "system"
-    user_content = json.loads(spans[0].attributes["gen_ai.prompt.1.content"])
-    assert user_content[0]["type"] == "text"
-    assert user_content[0]["text"] == "What is the capital of France?"
-    assert spans[0].attributes["gen_ai.prompt.1.role"] == "user"
+    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    assert messages[0] == {"role": "system", "parts": [{"text": system_instruction}]}
+    assert messages[1] == {
+        "role": "user",
+        "parts": [{"text": "What is the capital of France?"}],
+    }
     assert spans[0].attributes["error.type"] == "ClientError"
 
     assert spans[0].status.status_code == StatusCode.ERROR
@@ -1149,13 +1099,11 @@ They stretch and yawn, a lazy art,
 And steal away a human heart."""
     )
 
-    assert json.loads(span.attributes["gen_ai.prompt.0.content"]) == [
-        {
-            "text": "Write a short poem about cats",
-            "type": "text",
-        }
-    ]
-    assert span.attributes["gen_ai.prompt.0.role"] == "user"
+    messages = json.loads(span.attributes["gen_ai.input.messages"])
+    assert messages[0] == {
+        "role": "user",
+        "parts": [{"text": "Write a short poem about cats"}],
+    }
     assert json.loads(span.attributes["gen_ai.completion.0.content"]) == [
         {
             "text": final_response,

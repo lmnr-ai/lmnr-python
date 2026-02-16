@@ -269,21 +269,6 @@ def _process_part(
             return None
 
 
-def role_from_content_union(
-    content: types.ContentUnion | types.ContentUnionDict,
-) -> str | None:
-    role = None
-    if isinstance(content, types.Content):
-        role = to_dict(content).get("role")
-    elif isinstance(content, list) and len(content) > 0:
-        role = role_from_content_union(content[0])
-    elif isinstance(content, dict):
-        role = content.get("role")
-    if role == "model":
-        return "assistant"
-    return role
-
-
 def with_tracer_wrapper(func):
     """Helper for providing tracer for wrapper functions."""
 
@@ -380,3 +365,38 @@ def strip_none_values(obj: dict[str, Any]) -> dict[str, Any]:
         for k, v in obj.items()
         if v is not None
     }
+
+
+def part_to_dict(part) -> dict[str, Any]:
+    """Convert a Part-like object to a serializable dict."""
+    if isinstance(part, str):
+        return {"text": part}
+    if isinstance(part, dict):
+        return strip_none_values(part)
+    if hasattr(part, "model_dump"):
+        return strip_none_values(part.model_dump(mode="json", exclude_unset=True))
+    return strip_none_values(to_dict(part))
+
+
+def content_union_to_dict(
+    content: types.ContentUnion | types.ContentUnionDict,
+    default_role: str = "user",
+) -> dict[str, Any]:
+    """Convert a ContentUnion to a Gemini Content dict with 'parts' and 'role'."""
+    if isinstance(content, types.Content):
+        return content.model_dump(mode="json", exclude_unset=True)
+    elif isinstance(content, str):
+        return {"role": default_role, "parts": [{"text": content}]}
+    elif isinstance(content, dict):
+        if "parts" in content:
+            result = dict(content)
+            result["parts"] = [part_to_dict(p) for p in result["parts"]]
+            if "role" not in result:
+                result["role"] = default_role
+            return result
+        else:
+            return {"role": default_role, "parts": [strip_none_values(content)]}
+    elif isinstance(content, list):
+        return {"role": default_role, "parts": [part_to_dict(p) for p in content]}
+    else:
+        return {"role": default_role, "parts": [to_dict(content)]}

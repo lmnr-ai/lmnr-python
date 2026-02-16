@@ -62,11 +62,18 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
             logger.debug(f"Applying system override for {path}")
 
             if span and span.is_recording():
-                if span.attributes.get("gen_ai.prompt.0.role") == "system":
-                    span.set_attribute(
-                        "gen_ai.prompt.0.content",
-                        system_override,
-                    )
+                try:
+                    input_messages_raw = span.attributes.get("gen_ai.input.messages")
+                    if input_messages_raw:
+                        input_messages = json.loads(input_messages_raw)
+                        if input_messages and input_messages[0].get("role") == "system":
+                            input_messages[0]["parts"] = [{"text": system_override}]
+                            span.set_attribute(
+                                "gen_ai.input.messages",
+                                json.dumps(input_messages),
+                            )
+                except Exception:
+                    pass
 
             # Ensure config exists
             if "config" not in modified_kwargs or modified_kwargs["config"] is None:
