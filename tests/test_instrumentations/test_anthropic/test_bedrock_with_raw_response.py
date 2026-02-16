@@ -32,7 +32,6 @@ async def test_async_anthropic_bedrock_with_raw_response(
     instrument_legacy,
     async_anthropic_bedrock_client,
     span_exporter,
-    log_exporter,
 ):
     """Test that AsyncAnthropicBedrock with_raw_response.create generates spans"""
     response = await async_anthropic_bedrock_client.messages.with_raw_response.create(
@@ -86,7 +85,6 @@ async def test_async_anthropic_bedrock_regular_create(
     instrument_legacy,
     async_anthropic_bedrock_client,
     span_exporter,
-    log_exporter,
 ):
     """Test that regular AsyncAnthropicBedrock create works (for comparison)"""
     response = await async_anthropic_bedrock_client.messages.create(
@@ -134,7 +132,6 @@ async def test_async_anthropic_bedrock_beta_with_raw_response(
     instrument_legacy,
     async_anthropic_bedrock_client,
     span_exporter,
-    log_exporter,
 ):
     """Test that AsyncAnthropicBedrock beta.messages.with_raw_response.create generates spans"""
     response = (

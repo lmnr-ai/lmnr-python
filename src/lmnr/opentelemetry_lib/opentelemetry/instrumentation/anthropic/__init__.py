@@ -1,16 +1,10 @@
 """OpenTelemetry Anthropic instrumentation"""
 
 import logging
-import time
 from typing import Callable, Collection, Optional
 
 from opentelemetry import context as context_api
-from opentelemetry._events import EventLogger, get_event_logger
 from .config import Config
-from .event_emitter import (
-    emit_input_events,
-    emit_response_events,
-)
 from .span_utils import (
     aset_input_attributes,
     aset_response_attributes,
@@ -21,15 +15,9 @@ from .streaming import (
     build_from_streaming_response,
 )
 from .utils import (
-    acount_prompt_tokens_from_request,
-    ashared_metrics_attributes,
-    count_prompt_tokens_from_request,
     dont_throw,
-    error_metrics_attributes,
     run_async,
     set_span_attribute,
-    shared_metrics_attributes,
-    should_emit_events,
 )
 from .streaming import (
     WrappedAsyncMessageStreamManager,
@@ -40,11 +28,9 @@ from .version import __version__
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
-from opentelemetry.metrics import Counter, Histogram, Meter, get_meter
 from opentelemetry.semconv_ai import (
     SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY,
     LLMRequestTypeValues,
-    Meters,
     SpanAttributes,
 )
 from opentelemetry.trace import Span, SpanKind, Tracer, get_tracer
@@ -186,9 +172,6 @@ async def _aset_token_usage(
     anthropic,
     request,
     response,
-    metric_attributes: dict = {},
-    token_histogram: Histogram = None,
-    choice_counter: Counter = None,
 ):
     # Handle with_raw_response wrapped responses first
     if response and hasattr(response, "parse") and callable(response.parse):
@@ -205,20 +188,11 @@ async def _aset_token_usage(
         cache_read_tokens = getattr(usage, "cache_read_input_tokens", 0) or 0
         cache_creation_tokens = getattr(usage, "cache_creation_input_tokens", 0) or 0
     else:
-        prompt_tokens = await acount_prompt_tokens_from_request(anthropic, request)
+        prompt_tokens = 0
         cache_read_tokens = 0
         cache_creation_tokens = 0
 
     input_tokens = prompt_tokens + cache_read_tokens + cache_creation_tokens
-
-    if token_histogram and isinstance(input_tokens, int) and input_tokens >= 0:
-        token_histogram.record(
-            input_tokens,
-            attributes={
-                **metric_attributes,
-                SpanAttributes.LLM_TOKEN_TYPE: "input",
-            },
-        )
 
     if usage:
         completion_tokens = getattr(usage, "output_tokens", 0)
@@ -232,39 +206,10 @@ async def _aset_token_usage(
             elif content_attr:
                 completion_tokens = await anthropic.count_tokens(content_attr[0].text)
 
-    if (
-        token_histogram
-        and isinstance(completion_tokens, int)
-        and completion_tokens >= 0
-    ):
-        token_histogram.record(
-            completion_tokens,
-            attributes={
-                **metric_attributes,
-                SpanAttributes.LLM_TOKEN_TYPE: "output",
-            },
-        )
-
     total_tokens = input_tokens + completion_tokens
 
-    choices = 0
     content_attr = getattr(response, "content", None)
     completion_attr = getattr(response, "completion", None)
-    if isinstance(content_attr, list):
-        choices = len(content_attr)
-    elif completion_attr:
-        choices = 1
-
-    if choices > 0 and choice_counter:
-        choice_counter.add(
-            choices,
-            attributes={
-                **metric_attributes,
-                SpanAttributes.LLM_RESPONSE_STOP_REASON: getattr(
-                    response, "stop_reason", None
-                ),
-            },
-        )
 
     set_span_attribute(span, SpanAttributes.LLM_USAGE_PROMPT_TOKENS, input_tokens)
     set_span_attribute(
@@ -288,9 +233,6 @@ def _set_token_usage(
     anthropic,
     request,
     response,
-    metric_attributes: dict = {},
-    token_histogram: Histogram = None,
-    choice_counter: Counter = None,
 ):
     # Handle with_raw_response wrapped responses first
     if response and hasattr(response, "parse") and callable(response.parse):
@@ -307,20 +249,11 @@ def _set_token_usage(
         cache_read_tokens = getattr(usage, "cache_read_input_tokens", 0) or 0
         cache_creation_tokens = getattr(usage, "cache_creation_input_tokens", 0) or 0
     else:
-        prompt_tokens = count_prompt_tokens_from_request(anthropic, request)
+        prompt_tokens = 0
         cache_read_tokens = 0
         cache_creation_tokens = 0
 
     input_tokens = prompt_tokens + cache_read_tokens + cache_creation_tokens
-
-    if token_histogram and isinstance(input_tokens, int) and input_tokens >= 0:
-        token_histogram.record(
-            input_tokens,
-            attributes={
-                **metric_attributes,
-                SpanAttributes.LLM_TOKEN_TYPE: "input",
-            },
-        )
 
     if usage:
         completion_tokens = getattr(usage, "output_tokens", 0)
@@ -334,37 +267,10 @@ def _set_token_usage(
             elif content_attr:
                 completion_tokens = anthropic.count_tokens(content_attr[0].text)
 
-    if (
-        token_histogram
-        and isinstance(completion_tokens, int)
-        and completion_tokens >= 0
-    ):
-        token_histogram.record(
-            completion_tokens,
-            attributes={
-                **metric_attributes,
-                SpanAttributes.LLM_TOKEN_TYPE: "output",
-            },
-        )
     total_tokens = input_tokens + completion_tokens
-    choices = 0
 
     content_attr = getattr(response, "content", None)
     completion_attr = getattr(response, "completion", None)
-    if isinstance(content_attr, list):
-        choices = len(content_attr)
-    elif completion_attr:
-        choices = 1
-    if choices > 0 and choice_counter:
-        choice_counter.add(
-            choices,
-            attributes={
-                **metric_attributes,
-                SpanAttributes.LLM_RESPONSE_STOP_REASON: getattr(
-                    response, "stop_reason", None
-                ),
-            },
-        )
 
     set_span_attribute(span, SpanAttributes.LLM_USAGE_PROMPT_TOKENS, input_tokens)
     set_span_attribute(
@@ -387,21 +293,11 @@ def _with_chat_telemetry_wrapper(func):
 
     def _with_chat_telemetry(
         tracer,
-        token_histogram,
-        choice_counter,
-        duration_histogram,
-        exception_counter,
-        event_logger,
         to_wrap,
     ):
         def wrapper(wrapped, instance, args, kwargs):
             return func(
                 tracer,
-                token_histogram,
-                choice_counter,
-                duration_histogram,
-                exception_counter,
-                event_logger,
                 to_wrap,
                 wrapped,
                 instance,
@@ -414,83 +310,37 @@ def _with_chat_telemetry_wrapper(func):
     return _with_chat_telemetry
 
 
-def _create_metrics(meter: Meter):
-    token_histogram = meter.create_histogram(
-        name=Meters.LLM_TOKEN_USAGE,
-        unit="token",
-        description="Measures number of input and output tokens used",
-    )
-
-    choice_counter = meter.create_counter(
-        name=Meters.LLM_GENERATION_CHOICES,
-        unit="choice",
-        description="Number of choices returned by chat completions call",
-    )
-
-    duration_histogram = meter.create_histogram(
-        name=Meters.LLM_OPERATION_DURATION,
-        unit="s",
-        description="GenAI operation duration",
-    )
-
-    exception_counter = meter.create_counter(
-        name=Meters.LLM_ANTHROPIC_COMPLETION_EXCEPTIONS,
-        unit="time",
-        description="Number of exceptions occurred during chat completions",
-    )
-
-    return token_histogram, choice_counter, duration_histogram, exception_counter
+@dont_throw
+def _handle_input(span: Span, kwargs):
+    if not span.is_recording():
+        return
+    run_async(aset_input_attributes(span, kwargs))
 
 
 @dont_throw
-def _handle_input(span: Span, event_logger: Optional[EventLogger], kwargs):
-    if should_emit_events() and event_logger:
-        emit_input_events(event_logger, kwargs)
-    else:
-        if not span.is_recording():
-            return
-        run_async(aset_input_attributes(span, kwargs))
+async def _ahandle_input(span: Span, kwargs):
+    if not span.is_recording():
+        return
+    await aset_input_attributes(span, kwargs)
 
 
 @dont_throw
-async def _ahandle_input(span: Span, event_logger: Optional[EventLogger], kwargs):
-    if should_emit_events() and event_logger:
-        emit_input_events(event_logger, kwargs)
-    else:
-        if not span.is_recording():
-            return
-        await aset_input_attributes(span, kwargs)
+def _handle_response(span: Span, response):
+    if not span.is_recording():
+        return
+    set_response_attributes(span, response)
 
 
 @dont_throw
-def _handle_response(span: Span, event_logger: Optional[EventLogger], response):
-    if should_emit_events():
-        emit_response_events(event_logger, response)
-    else:
-        if not span.is_recording():
-            return
-        set_response_attributes(span, response)
-
-
-@dont_throw
-async def _ahandle_response(span: Span, event_logger: Optional[EventLogger], response):
-    if should_emit_events():
-        emit_response_events(event_logger, response)
-    else:
-        if not span.is_recording():
-            return
-
-        await aset_response_attributes(span, response)
+async def _ahandle_response(span: Span, response):
+    if not span.is_recording():
+        return
+    await aset_response_attributes(span, response)
 
 
 @_with_chat_telemetry_wrapper
 def _wrap(
     tracer: Tracer,
-    token_histogram: Histogram,
-    choice_counter: Counter,
-    duration_histogram: Histogram,
-    exception_counter: Counter,
-    event_logger: Optional[EventLogger],
     to_wrap,
     wrapped,
     instance,
@@ -514,37 +364,18 @@ def _wrap(
         context=get_current_context(),
     )
 
-    _handle_input(span, event_logger, kwargs)
+    _handle_input(span, kwargs)
 
-    start_time = time.time()
     try:
         response = wrapped(*args, **kwargs)
     except Exception as e:  # pylint: disable=broad-except
-        end_time = time.time()
-        attributes = error_metrics_attributes(e)
-
-        if duration_histogram:
-            duration = end_time - start_time
-            duration_histogram.record(duration, attributes=attributes)
-
-        if exception_counter:
-            exception_counter.add(1, attributes=attributes)
-
         raise e
-
-    end_time = time.time()
 
     if is_streaming_response(response):
         return build_from_streaming_response(
             span,
             response,
             instance._client,
-            start_time,
-            token_histogram,
-            choice_counter,
-            duration_histogram,
-            exception_counter,
-            event_logger,
             kwargs,
         )
     elif is_stream_manager(response):
@@ -553,12 +384,6 @@ def _wrap(
                 response,
                 span,
                 instance._client,
-                start_time,
-                token_histogram,
-                choice_counter,
-                duration_histogram,
-                exception_counter,
-                event_logger,
                 kwargs,
             )
         else:
@@ -566,35 +391,17 @@ def _wrap(
                 response,
                 span,
                 instance._client,
-                start_time,
-                token_histogram,
-                choice_counter,
-                duration_histogram,
-                exception_counter,
-                event_logger,
                 kwargs,
             )
     elif response:
         try:
-            metric_attributes = shared_metrics_attributes(response)
-
-            if duration_histogram:
-                duration = time.time() - start_time
-                duration_histogram.record(
-                    duration,
-                    attributes=metric_attributes,
-                )
-
-            _handle_response(span, event_logger, response)
+            _handle_response(span, response)
             if span.is_recording():
                 _set_token_usage(
                     span,
                     instance._client,
                     kwargs,
                     response,
-                    metric_attributes,
-                    token_histogram,
-                    choice_counter,
                 )
         except Exception as ex:  # pylint: disable=broad-except
             logger.warning(
@@ -611,11 +418,6 @@ def _wrap(
 @_with_chat_telemetry_wrapper
 async def _awrap(
     tracer,
-    token_histogram: Histogram,
-    choice_counter: Counter,
-    duration_histogram: Histogram,
-    exception_counter: Counter,
-    event_logger: Optional[EventLogger],
     to_wrap,
     wrapped,
     instance,
@@ -638,22 +440,11 @@ async def _awrap(
         },
         context=get_current_context(),
     )
-    await _ahandle_input(span, event_logger, kwargs)
+    await _ahandle_input(span, kwargs)
 
-    start_time = time.time()
     try:
         response = await wrapped(*args, **kwargs)
     except Exception as e:  # pylint: disable=broad-except
-        end_time = time.time()
-        attributes = error_metrics_attributes(e)
-
-        if duration_histogram:
-            duration = end_time - start_time
-            duration_histogram.record(duration, attributes=attributes)
-
-        if exception_counter:
-            exception_counter.add(1, attributes=attributes)
-
         raise e
 
     if is_streaming_response(response):
@@ -661,12 +452,6 @@ async def _awrap(
             span,
             response,
             instance._client,
-            start_time,
-            token_histogram,
-            choice_counter,
-            duration_histogram,
-            exception_counter,
-            event_logger,
             kwargs,
         )
     elif is_stream_manager(response):
@@ -675,12 +460,6 @@ async def _awrap(
                 response,
                 span,
                 instance._client,
-                start_time,
-                token_histogram,
-                choice_counter,
-                duration_histogram,
-                exception_counter,
-                event_logger,
                 kwargs,
             )
         else:
@@ -688,25 +467,10 @@ async def _awrap(
                 response,
                 span,
                 instance._client,
-                start_time,
-                token_histogram,
-                choice_counter,
-                duration_histogram,
-                exception_counter,
-                event_logger,
                 kwargs,
             )
     elif response:
-        metric_attributes = await ashared_metrics_attributes(response)
-
-        if duration_histogram:
-            duration = time.time() - start_time
-            duration_histogram.record(
-                duration,
-                attributes=metric_attributes,
-            )
-
-        await _ahandle_response(span, event_logger, response)
+        await _ahandle_response(span, response)
 
         if span.is_recording():
             await _aset_token_usage(
@@ -714,17 +478,10 @@ async def _awrap(
                 instance._client,
                 kwargs,
                 response,
-                metric_attributes,
-                token_histogram,
-                choice_counter,
             )
             span.set_status(Status(StatusCode.OK))
     span.end()
     return response
-
-
-def is_metrics_enabled() -> bool:
-    return False
 
 
 class AnthropicInstrumentor(BaseInstrumentor):
@@ -754,34 +511,6 @@ class AnthropicInstrumentor(BaseInstrumentor):
         tracer_provider = kwargs.get("tracer_provider")
         tracer = get_tracer(__name__, __version__, tracer_provider)
 
-        # meter and counters are inited here
-        meter_provider = kwargs.get("meter_provider")
-        meter = get_meter(__name__, __version__, meter_provider)
-
-        if is_metrics_enabled():
-            (
-                token_histogram,
-                choice_counter,
-                duration_histogram,
-                exception_counter,
-            ) = _create_metrics(meter)
-        else:
-            (
-                token_histogram,
-                choice_counter,
-                duration_histogram,
-                exception_counter,
-            ) = (None, None, None, None)
-
-        # event_logger is inited here
-        event_logger = None
-
-        if not Config.use_legacy_attributes:
-            event_logger_provider = kwargs.get("event_logger_provider")
-            event_logger = get_event_logger(
-                __name__, __version__, event_logger_provider=event_logger_provider
-            )
-
         for wrapped_method in WRAPPED_METHODS:
             wrap_package = wrapped_method.get("package")
             wrap_object = wrapped_method.get("object")
@@ -793,11 +522,6 @@ class AnthropicInstrumentor(BaseInstrumentor):
                     f"{wrap_object}.{wrap_method}",
                     _wrap(
                         tracer,
-                        token_histogram,
-                        choice_counter,
-                        duration_histogram,
-                        exception_counter,
-                        event_logger,
                         wrapped_method,
                     ),
                 )
@@ -821,11 +545,6 @@ class AnthropicInstrumentor(BaseInstrumentor):
                     f"{wrap_object}.{wrap_method}",
                     _awrap(
                         tracer,
-                        token_histogram,
-                        choice_counter,
-                        duration_histogram,
-                        exception_counter,
-                        event_logger,
                         wrapped_method,
                     ),
                 )

@@ -94,7 +94,7 @@ def set_model_streaming_response_attributes(span, usage):
 
 
 @dont_throw
-def set_model_response_attributes(span, response, token_histogram):
+def set_model_response_attributes(span, response):
     if not span.is_recording():
         return
     response = model_as_dict(response)
@@ -112,32 +112,6 @@ def set_model_response_attributes(span, response, token_histogram):
             span, SpanAttributes.LLM_USAGE_COMPLETION_TOKENS, completion_tokens
         )
         set_span_attribute(span, SpanAttributes.LLM_USAGE_PROMPT_TOKENS, prompt_tokens)
-
-    if (
-        isinstance(prompt_tokens, int)
-        and prompt_tokens >= 0
-        and token_histogram is not None
-    ):
-        token_histogram.record(
-            prompt_tokens,
-            attributes={
-                SpanAttributes.LLM_TOKEN_TYPE: "input",
-                SpanAttributes.LLM_RESPONSE_MODEL: response.get("model"),
-            },
-        )
-
-    if (
-        isinstance(completion_tokens, int)
-        and completion_tokens >= 0
-        and token_histogram is not None
-    ):
-        token_histogram.record(
-            completion_tokens,
-            attributes={
-                SpanAttributes.LLM_TOKEN_TYPE: "output",
-                SpanAttributes.LLM_RESPONSE_MODEL: response.get("model"),
-            },
-        )
 
 
 def set_response_attributes(span, response):

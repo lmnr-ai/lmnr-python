@@ -3,41 +3,27 @@ import json
 import logging
 import threading
 import time
-from functools import singledispatch
-from typing import List, Optional, Union
 
 from opentelemetry import context as context_api
 from ..shared import (
-    OPENAI_LLM_USAGE_TOKEN_TYPES,
     _get_openai_base_url,
     _set_client_attributes,
     _set_functions_attributes,
     _set_request_attributes,
     _set_response_attributes,
     _set_span_attribute,
-    _set_span_stream_usage,
-    _token_type,
-    get_token_count_from_string,
     is_streaming_response,
     metric_shared_attributes,
     model_as_dict,
     propagate_trace_context,
     set_tools_attributes,
-    should_record_stream_token_usage,
 )
 from ..shared.config import Config
-from ..shared.event_emitter import emit_event
-from ..shared.event_models import (
-    ChoiceEvent,
-    MessageEvent,
-    ToolCall,
-)
 from ..utils import (
     _with_chat_telemetry_wrapper,
     dont_throw,
     is_openai_v1,
     run_async,
-    should_emit_events,
     should_send_prompts,
 )
 from lmnr.opentelemetry_lib.tracing.context import (
@@ -46,7 +32,6 @@ from lmnr.opentelemetry_lib.tracing.context import (
     is_in_litellm_context,
 )
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
-from opentelemetry.metrics import Counter, Histogram
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.semconv_ai import (
     SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY,
@@ -56,8 +41,6 @@ from opentelemetry.semconv_ai import (
 from opentelemetry.trace import SpanKind, Tracer
 from opentelemetry.trace.status import Status, StatusCode
 from wrapt import ObjectProxy
-
-import pydantic
 
 SPAN_NAME = "openai.chat"
 PROMPT_FILTER_KEY = "prompt_filter_results"
@@ -71,12 +54,6 @@ logger = logging.getLogger(__name__)
 @_with_chat_telemetry_wrapper
 def chat_wrapper(
     tracer: Tracer,
-    token_counter: Counter,
-    choice_counter: Counter,
-    duration_histogram: Histogram,
-    exception_counter: Counter,
-    streaming_time_to_first_token: Histogram,
-    streaming_time_to_generate: Histogram,
     wrapped,
     instance,
     args,
@@ -115,11 +92,6 @@ def chat_wrapper(
             "error.type": e.__class__.__name__,
         }
 
-        if duration > 0 and duration_histogram:
-            duration_histogram.record(duration, attributes=attributes)
-        if exception_counter:
-            exception_counter.add(1, attributes=attributes)
-
         span.set_attribute(ERROR_TYPE, e.__class__.__name__)
         attributes = get_event_attributes_from_context()
         span.record_exception(e, attributes=attributes)
@@ -135,11 +107,6 @@ def chat_wrapper(
                 span,
                 response,
                 instance,
-                token_counter,
-                choice_counter,
-                duration_histogram,
-                streaming_time_to_first_token,
-                streaming_time_to_generate,
                 start_time,
                 kwargs,
             )
@@ -147,14 +114,6 @@ def chat_wrapper(
             return _build_from_streaming_response(
                 span,
                 response,
-                instance,
-                token_counter,
-                choice_counter,
-                duration_histogram,
-                streaming_time_to_first_token,
-                streaming_time_to_generate,
-                start_time,
-                kwargs,
             )
 
     duration = end_time - start_time
@@ -162,11 +121,6 @@ def chat_wrapper(
     _handle_response(
         response,
         span,
-        instance,
-        token_counter,
-        choice_counter,
-        duration_histogram,
-        duration,
     )
 
     span.end()
@@ -177,12 +131,6 @@ def chat_wrapper(
 @_with_chat_telemetry_wrapper
 async def achat_wrapper(
     tracer: Tracer,
-    token_counter: Counter,
-    choice_counter: Counter,
-    duration_histogram: Histogram,
-    exception_counter: Counter,
-    streaming_time_to_first_token: Histogram,
-    streaming_time_to_generate: Histogram,
     wrapped,
     instance,
     args,
@@ -221,11 +169,6 @@ async def achat_wrapper(
             "error.type": e.__class__.__name__,
         }
 
-        if duration > 0 and duration_histogram:
-            duration_histogram.record(duration, attributes=attributes)
-        if exception_counter:
-            exception_counter.add(1, attributes=attributes)
-
         span.set_attribute(ERROR_TYPE, e.__class__.__name__)
         attributes = get_event_attributes_from_context()
         span.record_exception(e, attributes=attributes)
@@ -241,11 +184,6 @@ async def achat_wrapper(
                 span,
                 response,
                 instance,
-                token_counter,
-                choice_counter,
-                duration_histogram,
-                streaming_time_to_first_token,
-                streaming_time_to_generate,
                 start_time,
                 kwargs,
             )
@@ -253,14 +191,6 @@ async def achat_wrapper(
             return _abuild_from_streaming_response(
                 span,
                 response,
-                instance,
-                token_counter,
-                choice_counter,
-                duration_histogram,
-                streaming_time_to_first_token,
-                streaming_time_to_generate,
-                start_time,
-                kwargs,
             )
 
     duration = end_time - start_time
@@ -268,11 +198,6 @@ async def achat_wrapper(
     _handle_response(
         response,
         span,
-        instance,
-        token_counter,
-        choice_counter,
-        duration_histogram,
-        duration,
     )
 
     span.end()
@@ -284,22 +209,12 @@ async def achat_wrapper(
 async def _handle_request(span, kwargs, instance):
     _set_request_attributes(span, kwargs, instance)
     _set_client_attributes(span, instance)
-    if should_emit_events():
-        for message in kwargs.get("messages", []):
-            emit_event(
-                MessageEvent(
-                    content=message.get("content"),
-                    role=message.get("role"),
-                    tool_calls=_parse_tool_calls(message.get("tool_calls", None)),
-                )
-            )
-    else:
-        if should_send_prompts():
-            await _set_prompts(span, kwargs.get("messages"))
-            if kwargs.get("functions"):
-                _set_functions_attributes(span, kwargs.get("functions"))
-            elif kwargs.get("tools"):
-                set_tools_attributes(span, kwargs.get("tools"))
+    if should_send_prompts():
+        await _set_prompts(span, kwargs.get("messages"))
+        if kwargs.get("functions"):
+            _set_functions_attributes(span, kwargs.get("functions"))
+        elif kwargs.get("tools"):
+            set_tools_attributes(span, kwargs.get("tools"))
     if Config.enable_trace_context_propagation:
         propagate_trace_context(span, kwargs)
 
@@ -308,72 +223,19 @@ async def _handle_request(span, kwargs, instance):
 def _handle_response(
     response,
     span,
-    instance=None,
-    token_counter=None,
-    choice_counter=None,
-    duration_histogram=None,
-    duration=None,
-    is_streaming: bool = False,
 ):
     if is_openai_v1():
         response_dict = model_as_dict(response)
     else:
         response_dict = response
 
-    # metrics record
-    _set_chat_metrics(
-        instance,
-        token_counter,
-        choice_counter,
-        duration_histogram,
-        response_dict,
-        duration,
-        is_streaming,
-    )
-
     # span attributes
     _set_response_attributes(span, response_dict)
 
-    if should_emit_events():
-        if response.choices is not None:
-            for choice in response.choices:
-                emit_event(_parse_choice_event(choice))
-    else:
-        if should_send_prompts():
-            _set_completions(span, response_dict.get("choices"))
+    if should_send_prompts():
+        _set_completions(span, response_dict.get("choices"))
 
     return response
-
-
-def _set_chat_metrics(
-    instance,
-    token_counter,
-    choice_counter,
-    duration_histogram,
-    response_dict,
-    duration,
-    is_streaming: bool = False,
-):
-    shared_attributes = metric_shared_attributes(
-        response_model=response_dict.get("model") or None,
-        operation="chat",
-        server_address=_get_openai_base_url(instance),
-        is_streaming=is_streaming,
-    )
-
-    # token metrics
-    usage = response_dict.get("usage")  # type: dict
-    if usage and token_counter:
-        _set_token_counter_metrics(token_counter, usage, shared_attributes)
-
-    # choices metrics
-    choices = response_dict.get("choices")
-    if choices and choice_counter:
-        _set_choice_counter_metrics(choice_counter, choices, shared_attributes)
-
-    # duration metrics
-    if duration and isinstance(duration, (float, int)) and duration_histogram:
-        duration_histogram.record(duration, attributes=shared_attributes)
 
 
 def _set_choice_counter_metrics(choice_counter, choices, shared_attributes):
@@ -385,16 +247,6 @@ def _set_choice_counter_metrics(choice_counter, choices, shared_attributes):
                 choice.get("finish_reason")
             )
         choice_counter.add(1, attributes=attributes_with_reason)
-
-
-def _set_token_counter_metrics(token_counter, usage, shared_attributes):
-    for name, val in usage.items():
-        if name in OPENAI_LLM_USAGE_TOKEN_TYPES:
-            attributes_with_token_type = {
-                **shared_attributes,
-                SpanAttributes.LLM_TOKEN_TYPE: _token_type(name),
-            }
-            token_counter.record(val, attributes=attributes_with_token_type)
 
 
 def _is_base64_image(item):
@@ -541,104 +393,23 @@ def _set_completions(span, choices):
                 )
 
 
-@dont_throw
-def _set_streaming_token_metrics(
-    request_kwargs, complete_response, span, token_counter, shared_attributes
-):
-    if not should_record_stream_token_usage():
-        return
-
-    prompt_usage = -1
-    completion_usage = -1
-
-    # prompt_usage
-    if request_kwargs and request_kwargs.get("messages"):
-        prompt_content = ""
-        # setting the default model_name as gpt-4. As this uses the embedding "cl100k_base" that
-        # is used by most of the other model.
-        model_name = (
-            complete_response.get("model") or request_kwargs.get("model") or "gpt-4"
-        )
-        for msg in request_kwargs.get("messages"):
-            if msg.get("content"):
-                prompt_content += msg.get("content")
-        if model_name:
-            prompt_usage = get_token_count_from_string(prompt_content, model_name)
-
-    # completion_usage
-    if complete_response.get("choices"):
-        completion_content = ""
-        # setting the default model_name as gpt-4. As this uses the embedding "cl100k_base" that
-        # is used by most of the other model.
-        model_name = complete_response.get("model") or "gpt-4"
-
-        for choice in complete_response.get("choices"):
-            if choice.get("message") and choice.get("message").get("content"):
-                completion_content += choice["message"]["content"]
-
-        if model_name:
-            completion_usage = get_token_count_from_string(
-                completion_content, model_name
-            )
-
-    # span record
-    _set_span_stream_usage(span, prompt_usage, completion_usage)
-
-    # metrics record
-    if token_counter:
-        if isinstance(prompt_usage, int) and prompt_usage >= 0:
-            attributes_with_token_type = {
-                **shared_attributes,
-                SpanAttributes.LLM_TOKEN_TYPE: "input",
-            }
-            token_counter.record(prompt_usage, attributes=attributes_with_token_type)
-
-        if isinstance(completion_usage, int) and completion_usage >= 0:
-            attributes_with_token_type = {
-                **shared_attributes,
-                SpanAttributes.LLM_TOKEN_TYPE: "output",
-            }
-            token_counter.record(
-                completion_usage, attributes=attributes_with_token_type
-            )
-
-
 class ChatStream(ObjectProxy):
     _span = None
     _instance = None
-    _token_counter = None
-    _choice_counter = None
-    _duration_histogram = None
-    _streaming_time_to_first_token = None
-    _streaming_time_to_generate = None
-    _start_time = None
-    _request_kwargs = None
 
     def __init__(
         self,
         span,
         response,
         instance=None,
-        token_counter=None,
-        choice_counter=None,
-        duration_histogram=None,
-        streaming_time_to_first_token=None,
-        streaming_time_to_generate=None,
         start_time=None,
-        request_kwargs=None,
+        kwargs=None,
     ):
         super().__init__(response)
 
         self._span = span
         self._instance = instance
-        self._token_counter = token_counter
-        self._choice_counter = choice_counter
-        self._duration_histogram = duration_histogram
-        self._streaming_time_to_first_token = streaming_time_to_first_token
-        self._streaming_time_to_generate = streaming_time_to_generate
         self._start_time = start_time
-        self._request_kwargs = request_kwargs
-
         self._first_token = True
         # will be updated when first token is received
         self._time_of_first_token = self._start_time
@@ -730,14 +501,6 @@ class ChatStream(ObjectProxy):
             item.service_tier if hasattr(item, "service_tier") else ""
         )
 
-        if self._first_token and self._streaming_time_to_first_token:
-            self._time_of_first_token = time.time()
-            self._streaming_time_to_first_token.record(
-                self._time_of_first_token - self._start_time,
-                attributes=self._shared_attributes(),
-            )
-            self._first_token = False
-
         _accumulate_stream_items(item, self._complete_response)
 
     def _shared_attributes(self):
@@ -752,44 +515,10 @@ class ChatStream(ObjectProxy):
 
     @dont_throw
     def _process_complete_response(self):
-        _set_streaming_token_metrics(
-            self._request_kwargs,
-            self._complete_response,
-            self._span,
-            self._token_counter,
-            self._shared_attributes(),
-        )
-
-        # choice metrics
-        if self._choice_counter and self._complete_response.get("choices"):
-            _set_choice_counter_metrics(
-                self._choice_counter,
-                self._complete_response.get("choices"),
-                self._shared_attributes(),
-            )
-
-        # duration metrics
-        if self._start_time and isinstance(self._start_time, (float, int)):
-            duration = time.time() - self._start_time
-        else:
-            duration = None
-        if duration and isinstance(duration, (float, int)) and self._duration_histogram:
-            self._duration_histogram.record(
-                duration, attributes=self._shared_attributes()
-            )
-        if self._streaming_time_to_generate and self._time_of_first_token:
-            self._streaming_time_to_generate.record(
-                time.time() - self._time_of_first_token,
-                attributes=self._shared_attributes(),
-            )
 
         _set_response_attributes(self._span, self._complete_response)
-        if should_emit_events():
-            for choice in self._complete_response.get("choices", []):
-                emit_event(_parse_choice_event(choice))
-        else:
-            if should_send_prompts():
-                _set_completions(self._span, self._complete_response.get("choices"))
+        if should_send_prompts():
+            _set_completions(self._span, self._complete_response.get("choices"))
 
         self._span.set_status(Status(StatusCode.OK))
         self._span.end()
@@ -812,9 +541,6 @@ class ChatStream(ObjectProxy):
                     self._span.end()
                     logger.debug("ChatStream span closed successfully")
 
-                # Calculate partial metrics based on available data
-                self._record_partial_metrics()
-
                 self._cleanup_completed = True
                 logger.debug("ChatStream cleanup completed successfully")
 
@@ -834,42 +560,6 @@ class ChatStream(ObjectProxy):
                     # Final fallback - just mark as completed to prevent infinite loops
                     self._cleanup_completed = True
 
-    @dont_throw
-    def _record_partial_metrics(self):
-        """Record metrics based on available partial data"""
-        # Always record duration if we have start time
-        if (
-            self._start_time
-            and isinstance(self._start_time, (float, int))
-            and self._duration_histogram
-        ):
-            duration = time.time() - self._start_time
-            self._duration_histogram.record(
-                duration, attributes=self._shared_attributes()
-            )
-
-        # Record basic span attributes even without complete response
-        if self._span and self._span.is_recording():
-            _set_response_attributes(self._span, self._complete_response)
-
-        # Record partial token metrics if we have any data
-        if self._complete_response.get("choices") or self._request_kwargs:
-            _set_streaming_token_metrics(
-                self._request_kwargs,
-                self._complete_response,
-                self._span,
-                self._token_counter,
-                self._shared_attributes(),
-            )
-
-        # Record choice metrics if we have any choices processed
-        if self._choice_counter and self._complete_response.get("choices"):
-            _set_choice_counter_metrics(
-                self._choice_counter,
-                self._complete_response.get("choices"),
-                self._shared_attributes(),
-            )
-
 
 # Backward compatibility with OpenAI v0
 
@@ -878,67 +568,21 @@ class ChatStream(ObjectProxy):
 def _build_from_streaming_response(
     span,
     response,
-    instance=None,
-    token_counter=None,
-    choice_counter=None,
-    duration_histogram=None,
-    streaming_time_to_first_token=None,
-    streaming_time_to_generate=None,
-    start_time=None,
-    request_kwargs=None,
 ):
     complete_response = {"choices": [], "model": "", "id": "", "service_tier": None}
-
-    first_token = True
-    time_of_first_token = start_time  # will be updated when first token is received
 
     for item in response:
         span.add_event(name=f"{SpanAttributes.LLM_CONTENT_COMPLETION_CHUNK}")
 
         item_to_yield = item
 
-        if first_token and streaming_time_to_first_token:
-            time_of_first_token = time.time()
-            streaming_time_to_first_token.record(time_of_first_token - start_time)
-            first_token = False
-
         _accumulate_stream_items(item, complete_response)
 
         yield item_to_yield
 
-    shared_attributes = {
-        SpanAttributes.LLM_RESPONSE_MODEL: complete_response.get("model") or None,
-        "server.address": _get_openai_base_url(instance),
-        "stream": True,
-    }
-
-    _set_streaming_token_metrics(
-        request_kwargs, complete_response, span, token_counter, shared_attributes
-    )
-
-    # choice metrics
-    if choice_counter and complete_response.get("choices"):
-        _set_choice_counter_metrics(
-            choice_counter, complete_response.get("choices"), shared_attributes
-        )
-
-    # duration metrics
-    if start_time and isinstance(start_time, (float, int)):
-        duration = time.time() - start_time
-    else:
-        duration = None
-    if duration and isinstance(duration, (float, int)) and duration_histogram:
-        duration_histogram.record(duration, attributes=shared_attributes)
-    if streaming_time_to_generate and time_of_first_token:
-        streaming_time_to_generate.record(time.time() - time_of_first_token)
-
     _set_response_attributes(span, complete_response)
-    if should_emit_events():
-        for choice in complete_response.get("choices", []):
-            emit_event(_parse_choice_event(choice))
-    else:
-        if should_send_prompts():
-            _set_completions(span, complete_response.get("choices"))
+    if should_send_prompts():
+        _set_completions(span, complete_response.get("choices"))
 
     span.set_status(Status(StatusCode.OK))
     span.end()
@@ -948,186 +592,24 @@ def _build_from_streaming_response(
 async def _abuild_from_streaming_response(
     span,
     response,
-    instance=None,
-    token_counter=None,
-    choice_counter=None,
-    duration_histogram=None,
-    streaming_time_to_first_token=None,
-    streaming_time_to_generate=None,
-    start_time=None,
-    request_kwargs=None,
 ):
     complete_response = {"choices": [], "model": "", "id": "", "service_tier": None}
-
-    first_token = True
-    time_of_first_token = start_time  # will be updated when first token is received
 
     async for item in response:
         span.add_event(name=f"{SpanAttributes.LLM_CONTENT_COMPLETION_CHUNK}")
 
         item_to_yield = item
 
-        if first_token and streaming_time_to_first_token:
-            time_of_first_token = time.time()
-            streaming_time_to_first_token.record(time_of_first_token - start_time)
-            first_token = False
-
         _accumulate_stream_items(item, complete_response)
 
         yield item_to_yield
 
-    shared_attributes = {
-        SpanAttributes.LLM_RESPONSE_MODEL: complete_response.get("model") or None,
-        "server.address": _get_openai_base_url(instance),
-        "stream": True,
-    }
-
-    _set_streaming_token_metrics(
-        request_kwargs, complete_response, span, token_counter, shared_attributes
-    )
-
-    # choice metrics
-    if choice_counter and complete_response.get("choices"):
-        _set_choice_counter_metrics(
-            choice_counter, complete_response.get("choices"), shared_attributes
-        )
-
-    # duration metrics
-    if start_time and isinstance(start_time, (float, int)):
-        duration = time.time() - start_time
-    else:
-        duration = None
-    if duration and isinstance(duration, (float, int)) and duration_histogram:
-        duration_histogram.record(duration, attributes=shared_attributes)
-    if streaming_time_to_generate and time_of_first_token:
-        streaming_time_to_generate.record(time.time() - time_of_first_token)
-
     _set_response_attributes(span, complete_response)
-    if should_emit_events():
-        for choice in complete_response.get("choices", []):
-            emit_event(_parse_choice_event(choice))
-    else:
-        if should_send_prompts():
-            _set_completions(span, complete_response.get("choices"))
+    if should_send_prompts():
+        _set_completions(span, complete_response.get("choices"))
 
     span.set_status(Status(StatusCode.OK))
     span.end()
-
-
-def _parse_tool_calls(
-    tool_calls: Optional[List[Union[dict, pydantic.BaseModel]]],
-) -> Union[List[ToolCall], None]:
-    """
-    Util to correctly parse the tool calls data from the OpenAI API to this module's
-    standard `ToolCall`.
-    """
-    if tool_calls is None:
-        return tool_calls
-
-    result = []
-
-    for tool_call in tool_calls:
-        tool_call_data = None
-
-        # Handle dict or ChatCompletionMessageToolCall
-        if isinstance(tool_call, dict):
-            tool_call_data = copy.deepcopy(tool_call)
-        elif _is_tool_call_model(tool_call):
-            tool_call_data = tool_call.model_dump()
-        elif _is_function_call(tool_call):
-            function_call = tool_call.model_dump()
-            tool_call_data = ToolCall(
-                id="",
-                function={
-                    "name": function_call.get("name"),
-                    "arguments": function_call.get("arguments"),
-                },
-                type="function",
-            )
-
-        result.append(tool_call_data)
-    return result
-
-
-def _is_tool_call_model(tool_call):
-    try:
-        from openai.types.chat.chat_completion_message_tool_call import (
-            ChatCompletionMessageFunctionToolCall,
-        )
-
-        return isinstance(tool_call, ChatCompletionMessageFunctionToolCall)
-    except Exception:
-        return False
-
-
-def _is_function_call(model: Union[dict, pydantic.BaseModel]) -> bool:
-    try:
-        from openai.types.chat.chat_completion_message import FunctionCall
-
-        return isinstance(model, FunctionCall)
-    except Exception:
-        return False
-
-
-@singledispatch
-def _parse_choice_event(choice) -> ChoiceEvent:
-    has_message = choice.message is not None
-    has_finish_reason = choice.finish_reason is not None
-    has_tool_calls = has_message and choice.message.tool_calls
-    has_function_call = has_message and choice.message.function_call
-
-    content = choice.message.content if has_message else None
-    role = choice.message.role if has_message else "unknown"
-    finish_reason = choice.finish_reason if has_finish_reason else "unknown"
-
-    if has_tool_calls and has_function_call:
-        tool_calls = choice.message.tool_calls + [choice.message.function_call]
-    elif has_tool_calls:
-        tool_calls = choice.message.tool_calls
-    elif has_function_call:
-        tool_calls = [choice.message.function_call]
-    else:
-        tool_calls = None
-
-    return ChoiceEvent(
-        index=choice.index,
-        message={"content": content, "role": role},
-        finish_reason=finish_reason,
-        tool_calls=_parse_tool_calls(tool_calls),
-    )
-
-
-@_parse_choice_event.register
-def _(choice: dict) -> ChoiceEvent:
-    message = choice.get("message")
-    has_message = message is not None
-    has_finish_reason = choice.get("finish_reason") is not None
-    has_tool_calls = has_message and message.get("tool_calls")
-    has_function_call = has_message and message.get("function_call")
-
-    content = choice.get("message").get("content", "") if has_message else None
-    role = choice.get("message").get("role") if has_message else "unknown"
-    finish_reason = choice.get("finish_reason") if has_finish_reason else "unknown"
-
-    if has_tool_calls and has_function_call:
-        tool_calls = message.get("tool_calls") + [message.get("function_call")]
-    elif has_tool_calls:
-        tool_calls = message.get("tool_calls")
-    elif has_function_call:
-        tool_calls = [message.get("function_call")]
-    else:
-        tool_calls = None
-
-    if tool_calls is not None:
-        for tool_call in tool_calls:
-            tool_call["type"] = "function"
-
-    return ChoiceEvent(
-        index=choice.get("index"),
-        message={"content": content, "role": role},
-        finish_reason=finish_reason,
-        tool_calls=tool_calls,
-    )
 
 
 def _accumulate_stream_items(item, complete_response):
