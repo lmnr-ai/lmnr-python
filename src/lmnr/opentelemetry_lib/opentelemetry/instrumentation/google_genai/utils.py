@@ -402,4 +402,4 @@ def content_union_to_dict(
     elif isinstance(content, list):
         return {"role": default_role, "parts": [part_to_dict(p) for p in content]}
     else:
-        return {"role": default_role, "parts": [to_dict(content)]}
+        return {"role": default_role, "parts": [part_to_dict(content)]}
