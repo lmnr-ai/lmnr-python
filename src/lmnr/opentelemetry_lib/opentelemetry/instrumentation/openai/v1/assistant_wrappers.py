@@ -11,6 +11,7 @@ from ..utils import (
     _with_tracer_wrapper,
     dont_throw,
 )
+from lmnr.sdk.utils import json_dumps
 from lmnr.opentelemetry_lib.tracing.context import (
     get_current_context,
     get_event_attributes_from_context,
@@ -104,7 +105,7 @@ def runs_retrieve_wrapper(tracer, wrapped, instance, args, kwargs):
 
 
 @_with_tracer_wrapper
-def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
+def messages_list_wgrapper(tracer, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
@@ -133,7 +134,9 @@ def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
         span.set_status(Status(StatusCode.ERROR, str(exception)))
         span.end(run.get("end_time"))
 
-    prompt_index = 0
+    input_messages = []
+    output_messages = []
+
     if assistants.get(run["assistant_id"]) is not None or Config.enrich_assistant:
         if Config.enrich_assistant:
             assistant = model_as_dict(
@@ -158,52 +161,29 @@ def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
             SpanAttributes.LLM_RESPONSE_MODEL,
             assistant["model"],
         )
-        _set_span_attribute(
-            span, f"{SpanAttributes.LLM_PROMPTS}.{prompt_index}.role", "system"
+        input_messages.append(
+            {"role": "system", "content": assistant["instructions"]}
         )
-        _set_span_attribute(
-            span,
-            f"{SpanAttributes.LLM_PROMPTS}.{prompt_index}.content",
-            assistant["instructions"],
-        )
-        prompt_index += 1
-    _set_span_attribute(
-        span, f"{SpanAttributes.LLM_PROMPTS}.{prompt_index}.role", "system"
-    )
-    _set_span_attribute(
-        span,
-        f"{SpanAttributes.LLM_PROMPTS}.{prompt_index}.content",
-        run["instructions"],
-    )
-    prompt_index += 1
 
-    completion_index = 0
+    input_messages.append({"role": "system", "content": run["instructions"]})
+
     for msg in messages:
-        prefix = f"{SpanAttributes.LLM_COMPLETIONS}.{completion_index}"
         content = msg.get("content")
-
         message_content = content[0].get("text").get("value")
         message_role = msg.get("role")
         if message_role in ["user", "system"]:
-            _set_span_attribute(
-                span,
-                f"{SpanAttributes.LLM_PROMPTS}.{prompt_index}.role",
-                message_role,
-            )
-            _set_span_attribute(
-                span,
-                f"{SpanAttributes.LLM_PROMPTS}.{prompt_index}.content",
-                message_content,
-            )
-            prompt_index += 1
+            input_messages.append({"role": message_role, "content": message_content})
         else:
-
-            _set_span_attribute(span, f"{prefix}.role", msg.get("role"))
-            _set_span_attribute(span, f"{prefix}.content", message_content)
-            _set_span_attribute(
-                span, f"gen_ai.response.{completion_index}.id", msg.get("id")
+            output_messages.append(
+                {
+                    "role": msg.get("role"),
+                    "content": message_content,
+                    "id": msg.get("id"),
+                }
             )
-            completion_index += 1
+
+    _set_span_attribute(span, "gen_ai.input.messages", json_dumps(input_messages))
+    _set_span_attribute(span, "gen_ai.output.messages", json_dumps(output_messages))
 
     if run.get("usage"):
         usage_dict = model_as_dict(run.get("usage"))
@@ -238,7 +218,7 @@ def runs_create_and_stream_wrapper(tracer, wrapped, instance, args, kwargs):
         context=get_current_context(),
     )
 
-    i = 0
+    input_messages = []
     if assistants.get(assistant_id) is not None or Config.enrich_assistant:
         if Config.enrich_assistant:
             assistant = model_as_dict(
@@ -261,15 +241,12 @@ def runs_create_and_stream_wrapper(tracer, wrapped, instance, args, kwargs):
             SpanAttributes.LLM_RESPONSE_MODEL,
             assistants[assistant_id]["model"],
         )
-        _set_span_attribute(span, f"{SpanAttributes.LLM_PROMPTS}.{i}.role", "system")
-        _set_span_attribute(
-            span,
-            f"{SpanAttributes.LLM_PROMPTS}.{i}.content",
-            assistants[assistant_id]["instructions"],
+        input_messages.append(
+            {"role": "system", "content": assistants[assistant_id]["instructions"]}
         )
-        i += 1
-    _set_span_attribute(span, f"{SpanAttributes.LLM_PROMPTS}.{i}.role", "system")
-    _set_span_attribute(span, f"{SpanAttributes.LLM_PROMPTS}.{i}.content", instructions)
+
+    input_messages.append({"role": "system", "content": instructions})
+    _set_span_attribute(span, "gen_ai.input.messages", json_dumps(input_messages))
 
     from ..v1.event_handler_wrapper import (
         EventHandlerWrapper,
