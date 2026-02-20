@@ -21,6 +21,7 @@ from ..utils import (
     is_openai_v1,
     should_send_prompts,
 )
+from lmnr.sdk.utils import json_dumps
 from lmnr.opentelemetry_lib.tracing.context import (
     get_current_context,
     get_event_attributes_from_context,
@@ -141,11 +142,11 @@ def _set_prompts(span, prompt):
     if not span.is_recording() or not prompt:
         return
 
-    _set_span_attribute(
-        span,
-        f"{SpanAttributes.LLM_PROMPTS}.0.user",
-        prompt[0] if isinstance(prompt, list) else prompt,
-    )
+    if isinstance(prompt, list):
+        messages = [{"role": "user", "content": p} for p in prompt]
+    else:
+        messages = [{"role": "user", "content": prompt}]
+    _set_span_attribute(span, "gen_ai.input.messages", json_dumps(messages))
 
 
 @dont_throw
@@ -153,13 +154,7 @@ def _set_completions(span, choices):
     if not span.is_recording() or not choices:
         return
 
-    for choice in choices:
-        index = choice.get("index")
-        prefix = f"{SpanAttributes.LLM_COMPLETIONS}.{index}"
-        _set_span_attribute(
-            span, f"{prefix}.finish_reason", choice.get("finish_reason")
-        )
-        _set_span_attribute(span, f"{prefix}.content", choice.get("text"))
+    _set_span_attribute(span, "gen_ai.output.messages", json_dumps(choices))
 
 
 @dont_throw

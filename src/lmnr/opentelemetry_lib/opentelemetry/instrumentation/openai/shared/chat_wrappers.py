@@ -1,4 +1,3 @@
-import copy
 import json
 import logging
 import threading
@@ -18,6 +17,7 @@ from ..shared import (
     propagate_trace_context,
     set_tools_attributes,
 )
+from lmnr.sdk.utils import json_dumps
 from ..shared.config import Config
 from ..utils import (
     _with_chat_telemetry_wrapper,
@@ -279,118 +279,39 @@ async def _set_prompts(span, messages):
     if not span.is_recording() or messages is None:
         return
 
+    processed_messages = []
     for i, msg in enumerate(messages):
-        prefix = f"{SpanAttributes.LLM_PROMPTS}.{i}"
         msg = msg if isinstance(msg, dict) else model_as_dict(msg)
+        processed_msg = dict(msg)
 
-        _set_span_attribute(span, f"{prefix}.role", msg.get("role"))
-        if msg.get("content"):
-            content = copy.deepcopy(msg.get("content"))
-            if isinstance(content, list):
-                content = [
-                    (
-                        await _process_image_item(
-                            item, span.context.trace_id, span.context.span_id, i, j
-                        )
-                        if _is_base64_image(item)
-                        else item
+        content = processed_msg.get("content")
+        if content and isinstance(content, list):
+            processed_msg["content"] = [
+                (
+                    await _process_image_item(
+                        item, span.context.trace_id, span.context.span_id, i, j
                     )
-                    for j, item in enumerate(content)
-                ]
+                    if _is_base64_image(item)
+                    else item
+                )
+                for j, item in enumerate(content)
+            ]
 
-                content = json.dumps(content)
-            _set_span_attribute(span, f"{prefix}.content", content)
-        if msg.get("tool_call_id"):
-            _set_span_attribute(span, f"{prefix}.tool_call_id", msg.get("tool_call_id"))
-        tool_calls = msg.get("tool_calls")
-        if tool_calls:
-            for i, tool_call in enumerate(tool_calls):
-                if is_openai_v1():
-                    tool_call = model_as_dict(tool_call)
+        if processed_msg.get("tool_calls"):
+            processed_msg["tool_calls"] = [
+                model_as_dict(tc) for tc in processed_msg["tool_calls"]
+            ]
 
-                function = tool_call.get("function")
-                _set_span_attribute(
-                    span,
-                    f"{prefix}.tool_calls.{i}.id",
-                    tool_call.get("id"),
-                )
-                _set_span_attribute(
-                    span,
-                    f"{prefix}.tool_calls.{i}.name",
-                    function.get("name"),
-                )
-                _set_span_attribute(
-                    span,
-                    f"{prefix}.tool_calls.{i}.arguments",
-                    function.get("arguments"),
-                )
+        processed_messages.append(processed_msg)
+
+    _set_span_attribute(span, "gen_ai.input.messages", json_dumps(processed_messages))
 
 
 def _set_completions(span, choices):
     if choices is None:
         return
 
-    for choice in choices:
-        index = choice.get("index")
-        prefix = f"{SpanAttributes.LLM_COMPLETIONS}.{index}"
-        _set_span_attribute(
-            span, f"{prefix}.finish_reason", choice.get("finish_reason")
-        )
-
-        if choice.get("content_filter_results"):
-            _set_span_attribute(
-                span,
-                f"{prefix}.{CONTENT_FILTER_KEY}",
-                json.dumps(choice.get("content_filter_results")),
-            )
-
-        if choice.get("finish_reason") == "content_filter":
-            _set_span_attribute(span, f"{prefix}.role", "assistant")
-            _set_span_attribute(span, f"{prefix}.content", "FILTERED")
-
-            return
-
-        message = choice.get("message")
-        if not message:
-            return
-
-        _set_span_attribute(span, f"{prefix}.role", message.get("role"))
-
-        if message.get("refusal"):
-            _set_span_attribute(span, f"{prefix}.refusal", message.get("refusal"))
-        else:
-            _set_span_attribute(span, f"{prefix}.content", message.get("content"))
-
-        function_call = message.get("function_call")
-        if function_call:
-            _set_span_attribute(
-                span, f"{prefix}.tool_calls.0.name", function_call.get("name")
-            )
-            _set_span_attribute(
-                span,
-                f"{prefix}.tool_calls.0.arguments",
-                function_call.get("arguments"),
-            )
-
-        tool_calls = message.get("tool_calls")
-        if tool_calls:
-            for i, tool_call in enumerate(tool_calls):
-                function = tool_call.get("function")
-                _set_span_attribute(
-                    span,
-                    f"{prefix}.tool_calls.{i}.id",
-                    tool_call.get("id"),
-                )
-                _set_span_attribute(
-                    span,
-                    f"{prefix}.tool_calls.{i}.name",
-                    function.get("name"),
-                )
-                _set_span_attribute(
-                    span,
-                    f"{prefix}.tool_calls.{i}.arguments",
-                    function.get("arguments"),
-                )
+    _set_span_attribute(span, "gen_ai.output.messages", json_dumps(choices))
 
 
 class ChatStream(ObjectProxy):
