@@ -25,11 +25,10 @@ def test_chat(instrument_legacy, span_exporter, azure_openai_client):
         "openai.chat",
     ]
     open_ai_span = spans[0]
-    assert (
-        open_ai_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"]
-        == "Tell me a joke about opentelemetry"
-    )
-    assert open_ai_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
+    output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+    assert output_messages[0]["message"]["content"]
     assert (
         open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
         == "https://traceloop-stg.openai.azure.com/openai/"
@@ -54,14 +53,15 @@ def test_chat_content_filtering(instrument_legacy, span_exporter, azure_openai_c
         "openai.chat",
     ]
     open_ai_span = spans[0]
-    assert (
-        open_ai_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"]
-        == "Tell me a joke about opentelemetry"
-    )
-    assert (
-        open_ai_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
-        == "FILTERED"
-    )
+    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
+    output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+    assert output_messages[0]["finish_reason"] == "content_filter"
+    content_filter_results = output_messages[0]["content_filter_results"]
+    assert content_filter_results["hate"]["filtered"] is True
+    assert content_filter_results["hate"]["severity"] == "high"
+    assert content_filter_results["self_harm"]["filtered"] is False
+    assert content_filter_results["self_harm"]["severity"] == "safe"
     assert (
         open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
         == "https://traceloop-stg.openai.azure.com/openai/"
@@ -71,19 +71,6 @@ def test_chat_content_filtering(instrument_legacy, span_exporter, azure_openai_c
         open_ai_span.attributes.get("gen_ai.response.id")
         == "chatcmpl-9HpyGSWv1hoKdGaUaiFhfxzTEVlZo"
     )
-
-    content_filter_json = open_ai_span.attributes.get(
-        f"{SpanAttributes.LLM_COMPLETIONS}.0.content_filter_results"
-    )
-
-    assert len(content_filter_json) > 0
-
-    content_filter_results = json.loads(content_filter_json)
-
-    assert content_filter_results["hate"]["filtered"] is True
-    assert content_filter_results["hate"]["severity"] == "high"
-    assert content_filter_results["self_harm"]["filtered"] is False
-    assert content_filter_results["self_harm"]["severity"] == "safe"
 
 
 @pytest.mark.vcr
@@ -143,11 +130,10 @@ def test_chat_streaming(instrument_legacy, span_exporter, azure_openai_client):
         "openai.chat",
     ]
     open_ai_span = spans[0]
-    assert (
-        open_ai_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"]
-        == "Tell me a joke about opentelemetry"
-    )
-    assert open_ai_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
+    output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+    assert output_messages[0]["message"]["content"]
     assert (
         open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
         == "https://traceloop-stg.openai.azure.com/openai/"
@@ -197,11 +183,10 @@ async def test_chat_async_streaming(
     ]
     open_ai_span = spans[0]
 
-    assert (
-        open_ai_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"]
-        == "Tell me a joke about opentelemetry"
-    )
-    assert open_ai_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
+    output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+    assert output_messages[0]["message"]["content"]
     assert (
         open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
         == "https://traceloop-stg.openai.azure.com/openai/"

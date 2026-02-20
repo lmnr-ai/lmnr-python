@@ -1,3 +1,4 @@
+import json
 import os
 from unittest.mock import patch
 
@@ -21,11 +22,10 @@ def test_completion(instrument_legacy, span_exporter, openai_client):
         "openai.completion",
     ]
     open_ai_span = spans[0]
-    assert (
-        open_ai_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.user"]
-        == "Tell me a joke about opentelemetry"
-    )
-    assert open_ai_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
+    output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+    assert output_messages[0]["text"]
     assert (
         open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
         == "https://api.openai.com/v1/"
@@ -50,11 +50,10 @@ async def test_async_completion(instrument_legacy, span_exporter, async_openai_c
         "openai.completion",
     ]
     open_ai_span = spans[0]
-    assert (
-        open_ai_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.user"]
-        == "Tell me a joke about opentelemetry"
-    )
-    assert open_ai_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
+    output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+    assert output_messages[0]["text"]
     assert (
         open_ai_span.attributes.get("gen_ai.response.id")
         == "cmpl-8wq43c8U5ZZCQBX5lrSpsANwcd3OF"
@@ -73,11 +72,10 @@ def test_completion_langchain_style(instrument_legacy, span_exporter, openai_cli
         "openai.completion",
     ]
     open_ai_span = spans[0]
-    assert (
-        open_ai_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.user"]
-        == "Tell me a joke about opentelemetry"
-    )
-    assert open_ai_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
+    output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+    assert output_messages[0]["text"]
     assert (
         open_ai_span.attributes.get("gen_ai.response.id")
         == "cmpl-8wq43QD6R2WqfxXLpYsRvSAIn9LB9"
@@ -105,13 +103,10 @@ def test_completion_streaming(instrument_legacy, span_exporter, openai_client):
             "openai.completion",
         ]
         open_ai_span = spans[0]
-        assert (
-            open_ai_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.user"]
-            == "Tell me a joke about opentelemetry"
-        )
-        assert open_ai_span.attributes.get(
-            f"{SpanAttributes.LLM_COMPLETIONS}.0.content"
-        )
+        input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+        assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
+        output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+        assert output_messages[0]["text"]
         assert (
             open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
             == "https://api.openai.com/v1/"
@@ -161,11 +156,10 @@ async def test_async_completion_streaming(
         "openai.completion",
     ]
     open_ai_span = spans[0]
-    assert (
-        open_ai_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.user"]
-        == "Tell me a joke about opentelemetry"
-    )
-    assert open_ai_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
+    output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+    assert output_messages[0]["text"]
     assert (
         open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
         == "https://api.openai.com/v1/"
@@ -247,10 +241,8 @@ def test_completion_exception(instrument_legacy, span_exporter, openai_client):
         "openai.completion",
     ]
     open_ai_span = spans[0]
-    assert (
-        open_ai_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.user"]
-        == "Tell me a joke about opentelemetry"
-    )
+    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     assert open_ai_span.status.status_code == StatusCode.ERROR
     assert open_ai_span.status.description.startswith("Error code: 401")
     events = open_ai_span.events
@@ -283,10 +275,8 @@ async def test_async_completion_exception(
         "openai.completion",
     ]
     open_ai_span = spans[0]
-    assert (
-        open_ai_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.user"]
-        == "Tell me a joke about opentelemetry"
-    )
+    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     assert open_ai_span.status.status_code == StatusCode.ERROR
     assert open_ai_span.status.description.startswith("Error code: 401")
     events = open_ai_span.events

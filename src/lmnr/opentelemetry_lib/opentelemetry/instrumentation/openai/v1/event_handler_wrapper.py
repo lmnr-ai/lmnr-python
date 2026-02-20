@@ -1,5 +1,4 @@
 from lmnr.opentelemetry_lib.tracing.context import get_event_attributes_from_context
-from lmnr.sdk.utils import json_dumps
 from ..shared import _set_span_attribute
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.semconv_ai import SpanAttributes
@@ -10,6 +9,7 @@ from openai import AssistantEventHandler
 
 
 class EventHandlerWrapper(AssistantEventHandler):
+    _current_text_index = 0
     _prompt_tokens = 0
     _completion_tokens = 0
 
@@ -17,7 +17,6 @@ class EventHandlerWrapper(AssistantEventHandler):
         super().__init__()
         self._original_handler = original_handler
         self._span = span
-        self._output_messages = []
 
     @override
     def on_end(self):
@@ -30,11 +29,6 @@ class EventHandlerWrapper(AssistantEventHandler):
             self._span,
             SpanAttributes.LLM_USAGE_COMPLETION_TOKENS,
             self._completion_tokens,
-        )
-        _set_span_attribute(
-            self._span,
-            "gen_ai.output.messages",
-            json_dumps(self._output_messages),
         )
         self._original_handler.on_end()
         self._span.end()
@@ -93,9 +87,13 @@ class EventHandlerWrapper(AssistantEventHandler):
 
     @override
     def on_message_done(self, message):
-        if self._output_messages:
-            self._output_messages[-1]["id"] = message.id
+        _set_span_attribute(
+            self._span,
+            f"gen_ai.response.{self._current_text_index}.id",
+            message.id,
+        )
         self._original_handler.on_message_done(message)
+        self._current_text_index += 1
 
     @override
     def on_text_created(self, text):
@@ -108,7 +106,16 @@ class EventHandlerWrapper(AssistantEventHandler):
     @override
     def on_text_done(self, text):
         self._original_handler.on_text_done(text)
-        self._output_messages.append({"role": "assistant", "content": text.value})
+        _set_span_attribute(
+            self._span,
+            f"{SpanAttributes.LLM_COMPLETIONS}.{self._current_text_index}.role",
+            "assistant",
+        )
+        _set_span_attribute(
+            self._span,
+            f"{SpanAttributes.LLM_COMPLETIONS}.{self._current_text_index}.content",
+            text.value,
+        )
 
     @override
     def on_image_file_done(self, image_file):

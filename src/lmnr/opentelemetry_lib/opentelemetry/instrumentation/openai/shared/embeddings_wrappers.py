@@ -20,6 +20,7 @@ from ..utils import (
     should_send_prompts,
     start_as_current_span_async,
 )
+from lmnr.sdk.utils import json_dumps
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.semconv_ai import (
@@ -160,11 +161,7 @@ def _set_prompts(span, prompt):
         return
 
     if isinstance(prompt, list):
-        for i, p in enumerate(prompt):
-            _set_span_attribute(span, f"{SpanAttributes.LLM_PROMPTS}.{i}.content", p)
+        messages = [{"content": p} for p in prompt]
     else:
-        _set_span_attribute(
-            span,
-            f"{SpanAttributes.LLM_PROMPTS}.0.content",
-            prompt,
-        )
+        messages = [{"content": prompt}]
+    _set_span_attribute(span, "gen_ai.input.messages", json_dumps(messages))
