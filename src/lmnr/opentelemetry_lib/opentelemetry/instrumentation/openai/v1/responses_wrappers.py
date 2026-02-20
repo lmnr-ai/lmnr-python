@@ -169,29 +169,6 @@ def get_tools_from_kwargs(kwargs: dict) -> list[ToolParam]:
     return tools
 
 
-def process_content_block(
-    block: dict[str, Any],
-) -> dict[str, Any]:
-    # TODO: keep the original type once backend supports it
-    if block.get("type") in ["text", "input_text", "output_text"]:
-        return {"type": "text", "text": block.get("text")}
-    elif block.get("type") in ["image", "input_image", "output_image"]:
-        return {
-            "type": "image",
-            "image_url": block.get("image_url"),
-            "detail": block.get("detail"),
-            "file_id": block.get("file_id"),
-        }
-    elif block.get("type") in ["file", "input_file", "output_file"]:
-        return {
-            "type": "file",
-            "file_id": block.get("file_id"),
-            "filename": block.get("filename"),
-            "file_data": block.get("file_data"),
-        }
-    return block
-
-
 @dont_throw
 def set_data_attributes(traced_response: TracedData, span: Span):
     _set_span_attribute(span, GEN_AI_SYSTEM, "openai")
