@@ -44,8 +44,6 @@ from opentelemetry.trace.status import Status, StatusCode
 from wrapt import ObjectProxy
 
 SPAN_NAME = "openai.chat"
-PROMPT_FILTER_KEY = "prompt_filter_results"
-CONTENT_FILTER_KEY = "content_filter_results"
 
 LLM_REQUEST_TYPE = LLMRequestTypeValues.CHAT
 
@@ -437,7 +435,10 @@ class ChatStream(ObjectProxy):
             cleanup_exception = e
             # Don't re-raise to avoid masking original exception
 
-        result = self.__wrapped__.__exit__(exc_type, exc_val, exc_tb)
+        if hasattr(self.__wrapped__, "__exit__"):
+            result = self.__wrapped__.__exit__(exc_type, exc_val, exc_tb)
+        else:
+            result = None
 
         if cleanup_exception:
             # Log cleanup exception but don't affect context manager behavior
@@ -451,7 +452,8 @@ class ChatStream(ObjectProxy):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.__wrapped__.__aexit__(exc_type, exc_val, exc_tb)
+        if hasattr(self.__wrapped__, "__aexit__"):
+            await self.__wrapped__.__aexit__(exc_type, exc_val, exc_tb)
 
     def __iter__(self):
         return self
