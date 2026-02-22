@@ -81,8 +81,33 @@ def chat_wrapper(
     run_async(_handle_request(span, kwargs, instance))
 
     try:
+        from lmnr.sdk.rollout_control import is_rollout_mode
+        is_rollout = is_rollout_mode()
+    except Exception:
+        is_rollout = False
+
+    try:
         start_time = time.time()
-        response = wrapped(*args, **kwargs)
+        if is_rollout:
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.rollout import (
+                get_openai_rollout_wrapper,
+            )
+
+            rollout_wrapper = get_openai_rollout_wrapper()
+            if rollout_wrapper:
+                response = rollout_wrapper.wrap_chat_completion(
+                    wrapped,
+                    instance,
+                    args,
+                    kwargs,
+                    span=span,
+                    is_streaming=kwargs.get("stream", False),
+                    is_async=False,
+                )
+            else:
+                response = wrapped(*args, **kwargs)
+        else:
+            response = wrapped(*args, **kwargs)
         end_time = time.time()
     except Exception as e:  # pylint: disable=broad-except
         end_time = time.time()
@@ -101,7 +126,6 @@ def chat_wrapper(
         raise
 
     if is_streaming_response(response):
-        # span will be closed after the generator is done
         if is_openai_v1():
             return ChatStream(
                 span,
@@ -109,6 +133,7 @@ def chat_wrapper(
                 instance,
                 start_time,
                 kwargs,
+                record_raw_response=is_rollout,
             )
         else:
             return _build_from_streaming_response(
@@ -116,11 +141,10 @@ def chat_wrapper(
                 response,
             )
 
-    duration = end_time - start_time
-
     _handle_response(
         response,
         span,
+        record_raw_response=is_rollout,
     )
 
     span.end()
@@ -141,8 +165,6 @@ async def achat_wrapper(
     ):
         return await wrapped(*args, **kwargs)
 
-    # LiteLLM calls OpenAI through OpenAI SDK, and to avoid double-instrumentation,
-    # we check if we're in a LiteLLM context and return the result directly if so.
     if is_in_litellm_context():
         return await wrapped(*args, **kwargs)
 
@@ -156,8 +178,41 @@ async def achat_wrapper(
     await _handle_request(span, kwargs, instance)
 
     try:
+        from lmnr.sdk.rollout_control import is_rollout_mode
+        is_rollout = is_rollout_mode()
+    except Exception:
+        is_rollout = False
+
+    try:
         start_time = time.time()
-        response = await wrapped(*args, **kwargs)
+        if is_rollout:
+            import inspect
+
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.rollout import (
+                get_openai_rollout_wrapper,
+            )
+
+            rollout_wrapper = get_openai_rollout_wrapper()
+            if rollout_wrapper:
+                result = rollout_wrapper.wrap_chat_completion(
+                    wrapped,
+                    instance,
+                    args,
+                    kwargs,
+                    span=span,
+                    is_streaming=kwargs.get("stream", False),
+                    is_async=True,
+                )
+                if inspect.iscoroutine(result):
+                    response = await result
+                elif inspect.isasyncgen(result):
+                    response = result
+                else:
+                    response = result
+            else:
+                response = await wrapped(*args, **kwargs)
+        else:
+            response = await wrapped(*args, **kwargs)
         end_time = time.time()
     except Exception as e:  # pylint: disable=broad-except
         end_time = time.time()
@@ -186,6 +241,7 @@ async def achat_wrapper(
                 instance,
                 start_time,
                 kwargs,
+                record_raw_response=is_rollout,
             )
         else:
             return _abuild_from_streaming_response(
@@ -193,11 +249,10 @@ async def achat_wrapper(
                 response,
             )
 
-    duration = end_time - start_time
-
     _handle_response(
         response,
         span,
+        record_raw_response=is_rollout,
     )
 
     span.end()
@@ -223,17 +278,30 @@ async def _handle_request(span, kwargs, instance):
 def _handle_response(
     response,
     span,
+    record_raw_response=False,
 ):
     if is_openai_v1():
         response_dict = model_as_dict(response)
     else:
         response_dict = response
 
-    # span attributes
     _set_response_attributes(span, response_dict)
 
     if should_send_prompts():
         _set_completions(span, response_dict.get("choices"))
+
+    if record_raw_response:
+        try:
+            if hasattr(response, "model_dump_json"):
+                _set_span_attribute(
+                    span, "lmnr.sdk.raw.response", response.model_dump_json()
+                )
+            else:
+                _set_span_attribute(
+                    span, "lmnr.sdk.raw.response", json_dumps(response_dict)
+                )
+        except Exception:
+            pass
 
     return response
 
@@ -325,6 +393,7 @@ class ChatStream(ObjectProxy):
         instance=None,
         start_time=None,
         kwargs=None,
+        record_raw_response=False,
     ):
         super().__init__(response)
 
@@ -334,6 +403,7 @@ class ChatStream(ObjectProxy):
         self._first_token = True
         # will be updated when first token is received
         self._time_of_first_token = self._start_time
+        self._record_raw_response = record_raw_response
         self._complete_response = {
             "choices": [],
             "model": "",
@@ -341,7 +411,6 @@ class ChatStream(ObjectProxy):
             "service_tier": None,
         }
 
-        # Cleanup state tracking to prevent duplicate operations
         self._cleanup_completed = False
         self._cleanup_lock = threading.Lock()
 
@@ -440,6 +509,16 @@ class ChatStream(ObjectProxy):
         _set_response_attributes(self._span, self._complete_response)
         if should_send_prompts():
             _set_completions(self._span, self._complete_response.get("choices"))
+
+        if self._record_raw_response:
+            try:
+                _set_span_attribute(
+                    self._span,
+                    "lmnr.sdk.raw.response",
+                    json_dumps(self._complete_response),
+                )
+            except Exception:
+                pass
 
         self._span.set_status(Status(StatusCode.OK))
         self._span.end()
