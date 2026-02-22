@@ -311,7 +311,14 @@ class OpenAIRolloutWrapper(RolloutInstrumentationWrapper):
 
         choices = []
         for choice in response_dict.get("choices", []):
-            message = choice.get("message", {})
+            message = dict(choice.get("message", {}))
+            # Streaming tool_calls require an `index` field that the message
+            # format doesn't have. Add it before passing to ChoiceDelta.
+            if message.get("tool_calls"):
+                message["tool_calls"] = [
+                    {**tc, "index": i}
+                    for i, tc in enumerate(message["tool_calls"])
+                ]
             choices.append(
                 ChunkChoice(
                     index=choice.get("index", 0),

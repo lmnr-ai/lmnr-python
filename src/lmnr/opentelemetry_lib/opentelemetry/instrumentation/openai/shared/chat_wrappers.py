@@ -1,3 +1,4 @@
+import inspect
 import json
 import logging
 import threading
@@ -125,7 +126,8 @@ def chat_wrapper(
 
         raise
 
-    if is_streaming_response(response):
+    _is_streaming = is_streaming_response(response) or inspect.isgenerator(response)
+    if _is_streaming:
         if is_openai_v1():
             return ChatStream(
                 span,
@@ -186,8 +188,6 @@ async def achat_wrapper(
     try:
         start_time = time.time()
         if is_rollout:
-            import inspect
-
             from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.rollout import (
                 get_openai_rollout_wrapper,
             )
@@ -232,8 +232,8 @@ async def achat_wrapper(
 
         raise
 
-    if is_streaming_response(response):
-        # span will be closed after the generator is done
+    _is_streaming = is_streaming_response(response) or inspect.isgenerator(response) or inspect.isasyncgen(response)
+    if _is_streaming:
         if is_openai_v1():
             return ChatStream(
                 span,
@@ -385,6 +385,13 @@ def _set_completions(span, choices):
 class ChatStream(ObjectProxy):
     _span = None
     _instance = None
+    _start_time = None
+    _first_token = True
+    _time_of_first_token = None
+    _record_raw_response = False
+    _complete_response = None
+    _cleanup_completed = False
+    _cleanup_lock = None
 
     def __init__(
         self,
@@ -619,6 +626,10 @@ def _accumulate_stream_items(item, complete_response):
     complete_response["model"] = item.get("model")
     complete_response["id"] = item.get("id")
     complete_response["service_tier"] = item.get("service_tier")
+    if item.get("created"):
+        complete_response["created"] = item.get("created")
+    if "object" not in complete_response:
+        complete_response["object"] = "chat.completion"
 
     # capture usage information from the last stream chunks
     if item.get("usage"):
@@ -664,7 +675,7 @@ def _accumulate_stream_items(item, complete_response):
                 i = int(tool_call["index"])
                 if len(complete_choice["message"]["tool_calls"]) <= i:
                     complete_choice["message"]["tool_calls"].append(
-                        {"id": "", "function": {"name": "", "arguments": ""}}
+                        {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
                     )
 
                 span_tool_call = complete_choice["message"]["tool_calls"][i]
