@@ -8,11 +8,19 @@ instrumentation during rollout sessions.
 import json
 from typing import Any, AsyncGenerator, Generator
 
-from openai.types.chat import ChatCompletion
-from openai.types.chat import ChatCompletionChunk
+from openai.types.chat import ChatCompletion, ChatCompletionChunk
+from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_chunk import (
     Choice as ChunkChoice,
     ChoiceDelta,
+)
+from openai.types.chat.chat_completion_message import (
+    ChatCompletionMessage,
+    FunctionCall,
+)
+from openai.types.chat.chat_completion_message_function_tool_call import (
+    ChatCompletionMessageFunctionToolCall,
+    Function as ToolCallFunction,
 )
 from opentelemetry.trace import Span
 
@@ -171,17 +179,54 @@ class OpenAIRolloutWrapper(RolloutInstrumentationWrapper):
                 logger.warning(f"Unexpected output format: {type(output)}")
                 return None
 
-            return ChatCompletion.model_validate(
-                {
-                    "id": attributes.get("gen_ai.response.id", "cached"),
-                    "model": attributes.get("gen_ai.response.model", "unknown"),
-                    "choices": output,
-                    "created": int(
-                        cached_span.get("start_time", 0) / 1_000_000_000
-                    ),
-                    "object": "chat.completion",
-                    "usage": None,
-                }
+            choices = []
+            for choice_data in output:
+                msg = choice_data.get("message", {})
+
+                tool_calls = None
+                if raw_tool_calls := msg.get("tool_calls"):
+                    tool_calls = [
+                        ChatCompletionMessageFunctionToolCall(
+                            id=tc.get("id", ""),
+                            type="function",
+                            function=ToolCallFunction(
+                                name=tc.get("function", {}).get("name", ""),
+                                arguments=tc.get("function", {}).get(
+                                    "arguments", ""
+                                ),
+                            ),
+                        )
+                        for tc in raw_tool_calls
+                    ]
+
+                function_call = None
+                if raw_fc := msg.get("function_call"):
+                    function_call = FunctionCall(
+                        name=raw_fc.get("name", ""),
+                        arguments=raw_fc.get("arguments", ""),
+                    )
+
+                choices.append(
+                    Choice(
+                        index=choice_data.get("index", len(choices)),
+                        finish_reason=choice_data.get("finish_reason", "stop"),
+                        message=ChatCompletionMessage(
+                            role=msg.get("role", "assistant"),
+                            content=msg.get("content"),
+                            refusal=msg.get("refusal"),
+                            tool_calls=tool_calls,
+                            function_call=function_call,
+                        ),
+                    )
+                )
+
+            return ChatCompletion(
+                id=attributes.get("gen_ai.response.id", "cached"),
+                model=attributes.get("gen_ai.response.model", "unknown"),
+                choices=choices,
+                created=int(cached_span.get("start_time", 0) / 1_000_000_000),
+                object="chat.completion",
+                usage=None,
             )
 
         except Exception as e:
