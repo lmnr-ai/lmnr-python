@@ -241,8 +241,7 @@ class OpenAIRolloutWrapper(RolloutInstrumentationWrapper):
         try:
             path_list = span.attributes.get("lmnr.span.path")
             if path_list:
-                path = ".".join(path_list)
-                return path if path else None
+                return ".".join(path_list)
         except Exception:
             pass
         return None
