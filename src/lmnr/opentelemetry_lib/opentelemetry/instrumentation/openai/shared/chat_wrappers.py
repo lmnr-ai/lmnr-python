@@ -1,4 +1,3 @@
-import inspect
 import json
 import logging
 import threading
@@ -124,8 +123,7 @@ def chat_wrapper(
 
         raise
 
-    _is_streaming = is_streaming_response(response) or inspect.isgenerator(response)
-    if _is_streaming:
+    if is_streaming_response(response):
         if is_openai_v1():
             return ChatStream(
                 span,
@@ -186,6 +184,8 @@ async def achat_wrapper(
     try:
         start_time = time.time()
         if is_rollout:
+            import inspect
+
             from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.rollout import (
                 get_openai_rollout_wrapper,
             )
@@ -230,8 +230,7 @@ async def achat_wrapper(
 
         raise
 
-    _is_streaming = is_streaming_response(response) or inspect.isgenerator(response) or inspect.isasyncgen(response)
-    if _is_streaming:
+    if is_streaming_response(response):
         if is_openai_v1():
             return ChatStream(
                 span,

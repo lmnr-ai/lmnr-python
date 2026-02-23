@@ -382,8 +382,8 @@ def _extract_model_name_from_provider_format(model_name):
 
 def is_streaming_response(response):
     if is_openai_v1():
-        return isinstance(response, openai.Stream) or isinstance(
-            response, openai.AsyncStream
+        return isinstance(
+            response, (openai.Stream, openai.AsyncStream, types.GeneratorType, types.AsyncGeneratorType)
         )
 
     return isinstance(response, types.GeneratorType) or isinstance(
