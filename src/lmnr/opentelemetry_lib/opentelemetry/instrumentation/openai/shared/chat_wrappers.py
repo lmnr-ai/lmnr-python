@@ -553,7 +553,7 @@ def _accumulate_stream_items(item, complete_response):
     if item.get("prompt_filter_results"):
         complete_response["prompt_filter_results"] = item.get("prompt_filter_results")
 
-    for choice in item.get("choices"):
+    for choice in item.get("choices") or []:
         index = choice.get("index")
         if len(complete_response.get("choices")) <= index:
             complete_response["choices"].append(
