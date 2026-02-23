@@ -1,8 +1,8 @@
 """
-Discover rollout function metadata for the TypeScript CLI.
+Discover entrypoint function metadata for the TypeScript CLI.
 
 This module implements the `lmnr discover` command that extracts function
-signatures and parameter information from Python rollout entrypoints.
+signatures and parameter information from Python debugger entrypoints.
 """
 
 import importlib
@@ -177,7 +177,7 @@ def run_discover(args: Namespace) -> None:
         args: Parsed command line arguments
     """
     try:
-        # Enable rollout mode to trigger entrypoint registration
+        # Enable debugger mode to trigger entrypoint registration
         from lmnr.sdk.rollout_control import (
             ROLLOUT_MODE,
             clear_entrypoints,
@@ -209,7 +209,7 @@ def run_discover(args: Namespace) -> None:
                 print(
                     json.dumps(
                         {
-                            "error": "No rollout entrypoints found. "
+                            "error": "No debugger entrypoints found. "
                             "Add @observe(rollout_entrypoint=True) to a function."
                         }
                     ),

@@ -691,7 +691,7 @@ def get_litellm_rollout_wrapper() -> LiteLLMRolloutWrapper | None:
         try:
             _litellm_rollout_wrapper = LiteLLMRolloutWrapper()
         except Exception as e:
-            logger.error(f"Failed to create LiteLLM rollout wrapper: {e}")
+            logger.error(f"Failed to create LiteLLM debugger wrapper: {e}")
             return None
 
     return _litellm_rollout_wrapper

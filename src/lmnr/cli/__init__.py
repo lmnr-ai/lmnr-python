@@ -54,18 +54,18 @@ def setup_dev_parser(subparsers: _SubParsersAction) -> None:
     """Setup the dev subcommand parser."""
     parser_dev = subparsers.add_parser(
         "dev",
-        description="Start a rollout development session for interactive LLM debugging",
-        help="Start a rollout development session",
+        description="Start a debuger session for interactive LLM debugging",
+        help="Start a debugger session",
     )
     parser_dev.add_argument(
         "file",
-        help="Path to Python file containing rollout entrypoint function(s)",
+        help="Path to Python file containing entrypoint function(s)",
     )
     parser_dev.add_argument(
         "--function",
         "-f",
         help="[Optional] Specific function name to use as entrypoint. "
-        + "If not provided, automatically discovers the rollout entrypoint. "
+        + "If not provided, automatically discovers the entrypoint. "
         + "Required if multiple entrypoints exist in the file.",
         default=None,
     )
@@ -90,15 +90,15 @@ def setup_discover_parser(subparsers: _SubParsersAction) -> None:
     """Setup the discover subcommand parser."""
     parser_discover = subparsers.add_parser(
         "discover",
-        description="Internal command for discovering rollout function metadata",
-        help="Discover rollout function metadata (internal command for CLI)",
+        description="Internal command for discovering entrypoint function metadata",
+        help="Discover entrypoint function metadata (internal command for CLI)",
     )
 
     # Mutually exclusive group for file vs module
     mode_group = parser_discover.add_mutually_exclusive_group(required=True)
     mode_group.add_argument(
         "--file",
-        help="Path to Python file containing rollout function(s)",
+        help="Path to Python file containing entrypoint function(s)",
     )
     mode_group.add_argument(
         "--module",

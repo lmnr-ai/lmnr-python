@@ -8,7 +8,6 @@ import pytest_asyncio
 from unittest.mock import patch, AsyncMock, Mock
 
 from lmnr import LaminarClient, AsyncLaminarClient
-from lmnr.sdk.types import RolloutParam
 
 
 class TestAsyncRolloutResource:
@@ -62,7 +61,7 @@ class TestAsyncRolloutResource:
         with patch.object(async_client.rollout._client, "stream") as mock_stream_method:
             mock_stream_method.return_value = mock_stream
 
-            result = async_client.rollout.connect(
+            async_client.rollout.connect(
                 session_id=session_id,
                 function_name="test_function",
             )

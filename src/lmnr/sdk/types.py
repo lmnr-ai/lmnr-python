@@ -325,9 +325,9 @@ class SessionRecordingOptions(TypedDict):
 
 class RolloutParam(TypedDict, total=False):
     """
-    Parameter metadata for rollout functions.
+    Parameter metadata for debugger entrypoint functions.
 
-    Used to describe function parameters for the rollout UI.
+    Used to describe function parameters for the debugger UI.
 
     Attributes:
         name: The parameter name
@@ -345,7 +345,7 @@ class RolloutParam(TypedDict, total=False):
 
 
 class RolloutToolOverride(TypedDict, total=False):
-    """Tool definition override for rollout."""
+    """Tool definition override for debugger."""
 
     name: str
     description: str
@@ -353,21 +353,21 @@ class RolloutToolOverride(TypedDict, total=False):
 
 
 class RolloutLLMTextBlock(TypedDict, total=False):
-    """LLM text block for rollout."""
+    """LLM text block for debugger."""
 
     type: Literal["text"]
     text: str
 
 
 class RolloutPathOverride(TypedDict, total=False):
-    """Override parameters for a specific path in rollout."""
+    """Override parameters for a specific path in debugger."""
 
     system: str | list[RolloutLLMTextBlock]
     tools: list[RolloutToolOverride]
 
 
 class RolloutRunEventData(TypedDict, total=False):
-    """Data payload for a rollout run event."""
+    """Data payload for a debugger run event."""
 
     trace_id: str
     path_to_count: dict[str, int]
@@ -376,21 +376,21 @@ class RolloutRunEventData(TypedDict, total=False):
 
 
 class RolloutRunEvent(TypedDict):
-    """Rollout run event from SSE stream."""
+    """Debugger run event from SSE stream."""
 
     event_type: str  # Should be "run"
     data: RolloutRunEventData
 
 
 class RolloutHandshakeEventData(TypedDict):
-    """Data payload for a rollout handshake event."""
+    """Data payload for a debugger handshake event."""
 
     project_id: str
     session_id: str
 
 
 class RolloutHandshakeEvent(TypedDict):
-    """Rollout handshake event from SSE stream."""
+    """Debugger handshake event from SSE stream."""
 
     event_type: str  # Should be "handshake"
     data: RolloutHandshakeEventData

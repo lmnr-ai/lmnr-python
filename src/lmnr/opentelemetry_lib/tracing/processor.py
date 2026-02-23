@@ -98,9 +98,9 @@ class LaminarSpanProcessor(SpanProcessor):
                     project_api_key=api_key,
                     port=http_port,
                 )
-                self.logger.debug("Rollout client initialized for span streaming")
+                self.logger.debug("Debugger client initialized for span streaming")
             except Exception as e:
-                self.logger.debug(f"Failed to initialize rollout client: {e}")
+                self.logger.debug(f"Failed to initialize debugger client: {e}")
 
     def on_start(self, span: Span, parent_context: Context | None = None):
         is_disabled = (
