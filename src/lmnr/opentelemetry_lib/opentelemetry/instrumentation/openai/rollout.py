@@ -174,6 +174,8 @@ class OpenAIRolloutWrapper(RolloutInstrumentationWrapper):
                 logger.warning("Cached span has no output")
                 return None
 
+            # NOTE: This is assuming the latest openai instrumentation where we save the output as 
+            # a list of choices. Not compatible with older versions.
             output = json.loads(output_str)
             if not isinstance(output, list):
                 logger.warning(f"Unexpected output format: {type(output)}")
