@@ -38,13 +38,13 @@ def test_chat_legacy(instrument_legacy, groq_client, span_exporter):
     ]
     groq_span = spans[0]
     assert (
-        groq_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"]
+        groq_span.attributes["gen_ai.prompt.0.content"]
         == "Tell me a joke about opentelemetry"
     )
-    assert groq_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+    assert groq_span.attributes.get("gen_ai.completion.0.content")
     assert groq_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is False
-    assert groq_span.attributes.get(SpanAttributes.LLM_USAGE_PROMPT_TOKENS) > 0
-    assert groq_span.attributes.get(SpanAttributes.LLM_USAGE_COMPLETION_TOKENS) > 0
+    assert groq_span.attributes.get("gen_ai.usage.prompt_tokens") > 0
+    assert groq_span.attributes.get("gen_ai.usage.completion_tokens") > 0
     assert groq_span.attributes.get(SpanAttributes.LLM_USAGE_TOTAL_TOKENS) > 0
     assert (
         groq_span.attributes.get("gen_ai.response.id")
@@ -74,22 +74,22 @@ def test_chat_legacy_image(instrument_legacy, groq_client: Groq, span_exporter):
     ]
     groq_span = spans[0]
     assert json.loads(
-        groq_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"]
+        groq_span.attributes["gen_ai.prompt.0.content"]
     ) == [
         {"type": "text", "text": "What is depicted in this image?"},
         image_content_block,
     ]
     assert (
-        groq_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+        groq_span.attributes.get("gen_ai.completion.0.content")
         == response.choices[0].message.content
     )
     assert (
-        groq_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.role")
+        groq_span.attributes.get("gen_ai.completion.0.role")
         == "assistant"
     )
     assert groq_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is False
-    assert groq_span.attributes.get(SpanAttributes.LLM_USAGE_PROMPT_TOKENS) > 0
-    assert groq_span.attributes.get(SpanAttributes.LLM_USAGE_COMPLETION_TOKENS) > 0
+    assert groq_span.attributes.get("gen_ai.usage.prompt_tokens") > 0
+    assert groq_span.attributes.get("gen_ai.usage.completion_tokens") > 0
     assert groq_span.attributes.get(SpanAttributes.LLM_USAGE_TOTAL_TOKENS) > 0
     assert (
         groq_span.attributes.get("gen_ai.response.id")
@@ -112,13 +112,13 @@ async def test_async_chat_legacy(instrument_legacy, async_groq_client, span_expo
     ]
     groq_span = spans[0]
     assert (
-        groq_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"]
+        groq_span.attributes["gen_ai.prompt.0.content"]
         == "Tell me a joke about opentelemetry"
     )
-    assert groq_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+    assert groq_span.attributes.get("gen_ai.completion.0.content")
     assert groq_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is False
-    assert groq_span.attributes.get(SpanAttributes.LLM_USAGE_PROMPT_TOKENS) > 0
-    assert groq_span.attributes.get(SpanAttributes.LLM_USAGE_COMPLETION_TOKENS) > 0
+    assert groq_span.attributes.get("gen_ai.usage.prompt_tokens") > 0
+    assert groq_span.attributes.get("gen_ai.usage.completion_tokens") > 0
     assert groq_span.attributes.get(SpanAttributes.LLM_USAGE_TOTAL_TOKENS) > 0
     assert (
         groq_span.attributes.get("gen_ai.response.id")
@@ -146,14 +146,14 @@ def test_chat_streaming_legacy(instrument_legacy, groq_client, span_exporter):
     ]
     groq_span = spans[0]
     assert (
-        groq_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"]
+        groq_span.attributes["gen_ai.prompt.0.content"]
         == "Tell me a joke about opentelemetry"
     )
     assert (
-        groq_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+        groq_span.attributes.get("gen_ai.completion.0.content")
         == content
     )
     assert groq_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is True
-    assert groq_span.attributes.get(SpanAttributes.LLM_USAGE_PROMPT_TOKENS) == 18
-    assert groq_span.attributes.get(SpanAttributes.LLM_USAGE_COMPLETION_TOKENS) == 73
+    assert groq_span.attributes.get("gen_ai.usage.prompt_tokens") == 18
+    assert groq_span.attributes.get("gen_ai.usage.completion_tokens") == 73
     assert groq_span.attributes.get(SpanAttributes.LLM_USAGE_TOTAL_TOKENS) == 91

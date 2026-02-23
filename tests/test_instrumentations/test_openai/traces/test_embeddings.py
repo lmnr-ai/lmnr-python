@@ -25,10 +25,10 @@ def test_embeddings(instrument_legacy, span_exporter, openai_client):
     input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     assert (
-        open_ai_span.attributes[SpanAttributes.LLM_REQUEST_MODEL]
+        open_ai_span.attributes["gen_ai.request.model"]
         == "text-embedding-ada-002"
     )
-    assert open_ai_span.attributes[SpanAttributes.LLM_USAGE_PROMPT_TOKENS] == 8
+    assert open_ai_span.attributes["gen_ai.usage.prompt_tokens"] == 8
     assert (
         open_ai_span.attributes[SpanAttributes.LLM_OPENAI_API_BASE]
         == "https://api.openai.com/v1/"
@@ -50,10 +50,10 @@ def test_embeddings_with_raw_response(instrument_legacy, span_exporter, openai_c
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
 
     assert (
-        open_ai_span.attributes[SpanAttributes.LLM_REQUEST_MODEL]
+        open_ai_span.attributes["gen_ai.request.model"]
         == "text-embedding-ada-002"
     )
-    assert open_ai_span.attributes[SpanAttributes.LLM_USAGE_PROMPT_TOKENS] == 8
+    assert open_ai_span.attributes["gen_ai.usage.prompt_tokens"] == 8
     assert (
         open_ai_span.attributes[SpanAttributes.LLM_OPENAI_API_BASE]
         == "https://api.openai.com/v1/"
@@ -87,8 +87,8 @@ def test_azure_openai_embeddings(instrument_legacy, span_exporter):
     open_ai_span = spans[0]
     input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
-    assert open_ai_span.attributes[SpanAttributes.LLM_REQUEST_MODEL] == "embedding"
-    assert open_ai_span.attributes[SpanAttributes.LLM_USAGE_PROMPT_TOKENS] == 8
+    assert open_ai_span.attributes["gen_ai.request.model"] == "embedding"
+    assert open_ai_span.attributes["gen_ai.usage.prompt_tokens"] == 8
     assert (
         open_ai_span.attributes[SpanAttributes.LLM_OPENAI_API_BASE]
         == f"https://{azure_resource}.openai.azure.com/openai/deployments/{azure_deployment}/"

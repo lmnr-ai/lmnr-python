@@ -10,6 +10,9 @@ from .utils import (
 )
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_RESPONSE_ID,
+    GEN_AI_RESPONSE_MODEL,
+    GEN_AI_USAGE_COMPLETION_TOKENS,
+    GEN_AI_USAGE_PROMPT_TOKENS,
 )
 from opentelemetry.semconv_ai import SpanAttributes
 from opentelemetry.trace.status import Status, StatusCode
@@ -81,21 +84,21 @@ def _set_token_usage(
     input_tokens = prompt_tokens + cache_read_tokens + cache_creation_tokens
     total_tokens = input_tokens + completion_tokens
 
-    set_span_attribute(span, SpanAttributes.LLM_USAGE_PROMPT_TOKENS, input_tokens)
+    set_span_attribute(span, GEN_AI_USAGE_PROMPT_TOKENS, input_tokens)
     set_span_attribute(
-        span, SpanAttributes.LLM_USAGE_COMPLETION_TOKENS, completion_tokens
+        span, GEN_AI_USAGE_COMPLETION_TOKENS, completion_tokens
     )
     set_span_attribute(span, SpanAttributes.LLM_USAGE_TOTAL_TOKENS, total_tokens)
 
     set_span_attribute(
-        span, SpanAttributes.LLM_RESPONSE_MODEL, complete_response.get("model")
+        span, GEN_AI_RESPONSE_MODEL, complete_response.get("model")
     )
     set_span_attribute(
-        span, SpanAttributes.LLM_USAGE_CACHE_READ_INPUT_TOKENS, cache_read_tokens
+        span, SpanAttributes.GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS, cache_read_tokens
     )
     set_span_attribute(
         span,
-        SpanAttributes.LLM_USAGE_CACHE_CREATION_INPUT_TOKENS,
+        SpanAttributes.GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
         cache_creation_tokens,
     )
 

@@ -547,7 +547,7 @@ def test_chat_streaming_not_consumed(instrument_legacy, span_exporter, openai_cl
     assert open_ai_span.end_time > open_ai_span.start_time
 
     assert (
-        open_ai_span.attributes.get(SpanAttributes.LLM_REQUEST_MODEL) == "gpt-3.5-turbo"
+        open_ai_span.attributes.get("gen_ai.request.model") == "gpt-3.5-turbo"
     )
     assert open_ai_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is True
     assert open_ai_span.attributes.get(SpanAttributes.LLM_REQUEST_TYPE) == "chat"
@@ -589,7 +589,7 @@ def test_chat_streaming_partial_consumption(
     assert open_ai_span.end_time is not None
 
     assert (
-        open_ai_span.attributes.get(SpanAttributes.LLM_REQUEST_MODEL) == "gpt-3.5-turbo"
+        open_ai_span.attributes.get("gen_ai.request.model") == "gpt-3.5-turbo"
     )
     assert open_ai_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is True
 

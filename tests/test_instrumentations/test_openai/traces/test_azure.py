@@ -90,11 +90,11 @@ def test_prompt_content_filtering(
     open_ai_span = spans[0]
 
     assert isinstance(
-        open_ai_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.{PROMPT_ERROR}"], str
+        open_ai_span.attributes[f"gen_ai.prompt.{PROMPT_ERROR}"], str
     )
 
     error = json.loads(
-        open_ai_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.{PROMPT_ERROR}"]
+        open_ai_span.attributes[f"gen_ai.prompt.{PROMPT_ERROR}"]
     )
 
     assert "innererror" in error
@@ -145,7 +145,7 @@ def test_chat_streaming(instrument_legacy, span_exporter, azure_openai_client):
 
     # prompt filter results
     prompt_filter_results = json.loads(
-        open_ai_span.attributes.get(f"{SpanAttributes.LLM_PROMPTS}.{PROMPT_FILTER_KEY}")
+        open_ai_span.attributes.get(f"gen_ai.prompt.{PROMPT_FILTER_KEY}")
     )
     assert prompt_filter_results[0]["prompt_index"] == 0
     assert (

@@ -9,6 +9,9 @@ from importlib.metadata import version
 
 from opentelemetry import context as context_api
 from .config import Config
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_RESPONSE_MODEL,
+)
 from opentelemetry.semconv_ai import SpanAttributes
 
 GEN_AI_SYSTEM = "gen_ai.system"
@@ -183,7 +186,7 @@ async def ashared_metrics_attributes(response):
     return {
         **common_attributes,
         GEN_AI_SYSTEM: GEN_AI_SYSTEM_ANTHROPIC,
-        SpanAttributes.LLM_RESPONSE_MODEL: model,
+        GEN_AI_RESPONSE_MODEL: model,
     }
 
 

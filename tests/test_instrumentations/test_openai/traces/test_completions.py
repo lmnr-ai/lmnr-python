@@ -114,10 +114,10 @@ def test_completion_streaming(instrument_legacy, span_exporter, openai_client):
 
         # check token usage attributes for stream
         completion_tokens = open_ai_span.attributes.get(
-            SpanAttributes.LLM_USAGE_COMPLETION_TOKENS
+            "gen_ai.usage.completion_tokens"
         )
         prompt_tokens = open_ai_span.attributes.get(
-            SpanAttributes.LLM_USAGE_PROMPT_TOKENS
+            "gen_ai.usage.prompt_tokens"
         )
         total_tokens = open_ai_span.attributes.get(
             SpanAttributes.LLM_USAGE_TOTAL_TOKENS
