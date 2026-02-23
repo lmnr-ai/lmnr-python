@@ -3,7 +3,6 @@ import logging
 import types
 from importlib.metadata import version
 
-from ..shared.config import Config
 from ..utils import (
     dont_throw,
     is_openai_v1,
@@ -130,12 +129,8 @@ def _set_request_attributes(span, kwargs, instance=None):
         model = _extract_model_name_from_provider_format(model)
 
     _set_span_attribute(span, GEN_AI_REQUEST_MODEL, model)
-    _set_span_attribute(
-        span, GEN_AI_REQUEST_MAX_TOKENS, kwargs.get("max_tokens")
-    )
-    _set_span_attribute(
-        span, GEN_AI_REQUEST_TEMPERATURE, kwargs.get("temperature")
-    )
+    _set_span_attribute(span, GEN_AI_REQUEST_MAX_TOKENS, kwargs.get("max_tokens"))
+    _set_span_attribute(span, GEN_AI_REQUEST_TEMPERATURE, kwargs.get("temperature"))
     _set_span_attribute(span, GEN_AI_REQUEST_TOP_P, kwargs.get("top_p"))
     _set_span_attribute(
         span, SpanAttributes.LLM_FREQUENCY_PENALTY, kwargs.get("frequency_penalty")
@@ -278,9 +273,7 @@ def _set_response_attributes(span, response):
         GEN_AI_USAGE_COMPLETION_TOKENS,
         usage.get("completion_tokens"),
     )
-    _set_span_attribute(
-        span, GEN_AI_USAGE_PROMPT_TOKENS, usage.get("prompt_tokens")
-    )
+    _set_span_attribute(span, GEN_AI_USAGE_PROMPT_TOKENS, usage.get("prompt_tokens"))
     prompt_tokens_details = dict(usage.get("prompt_tokens_details", {}))
     _set_span_attribute(
         span,
@@ -314,9 +307,7 @@ def _set_span_stream_usage(span, prompt_tokens, completion_tokens):
         return
 
     if isinstance(completion_tokens, int) and completion_tokens >= 0:
-        _set_span_attribute(
-            span, GEN_AI_USAGE_COMPLETION_TOKENS, completion_tokens
-        )
+        _set_span_attribute(span, GEN_AI_USAGE_COMPLETION_TOKENS, completion_tokens)
 
     if isinstance(prompt_tokens, int) and prompt_tokens >= 0:
         _set_span_attribute(span, GEN_AI_USAGE_PROMPT_TOKENS, prompt_tokens)
@@ -392,7 +383,13 @@ def _extract_model_name_from_provider_format(model_name):
 def is_streaming_response(response):
     if is_openai_v1():
         return isinstance(
-            response, (openai.Stream, openai.AsyncStream, types.GeneratorType, types.AsyncGeneratorType)
+            response,
+            (
+                openai.Stream,
+                openai.AsyncStream,
+                types.GeneratorType,
+                types.AsyncGeneratorType,
+            ),
         )
 
     return isinstance(response, types.GeneratorType) or isinstance(
@@ -450,22 +447,6 @@ def _token_type(token_type: str):
         return "output"
 
     return None
-
-
-def metric_shared_attributes(
-    response_model: str, operation: str, server_address: str, is_streaming: bool = False
-):
-    attributes = Config.get_common_metrics_attributes()
-    vendor = _get_vendor_from_url(server_address)
-
-    return {
-        **attributes,
-        GEN_AI_SYSTEM: vendor,
-        GEN_AI_RESPONSE_MODEL: response_model,
-        "gen_ai.operation.name": operation,
-        "server.address": server_address,
-        "stream": is_streaming,
-    }
 
 
 def propagate_trace_context(span, kwargs):

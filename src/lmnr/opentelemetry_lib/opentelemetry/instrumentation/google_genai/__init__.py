@@ -44,7 +44,6 @@ from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, u
 from opentelemetry.semconv_ai import (
     SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY,
     SpanAttributes,
-    LLMRequestTypeValues,
 )
 
 logger = logging.getLogger(__name__)
@@ -474,6 +473,16 @@ async def _abuild_from_streaming_response(
             span.end()
 
 
+@dont_throw
+def _start_span(name: str | None):
+    span = Laminar.start_span(
+        name=name or "gemini.generate_content",
+        span_type="LLM",
+    )
+    span.set_attribute("gen_ai.system", "gemini")
+    return span
+
+
 @with_tracer_wrapper
 def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY) or context_api.get_value(
@@ -481,16 +490,10 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     ):
         return wrapped(*args, **kwargs)
 
-    span = Laminar.start_span(
-        name=to_wrap.get("span_name"),
-        span_type="LLM",
-    )
-    span.set_attributes(
-        {
-            gen_ai_attributes.GEN_AI_SYSTEM: "gemini",
-            SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
-        }
-    )
+    span = _start_span(to_wrap.get("span_name"))
+    if not span:
+        logger.warning("Failed to start span for google genai")
+        return wrapped(*args, **kwargs)
 
     _set_request_attributes(span, args, kwargs)
 
@@ -549,16 +552,11 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     ):
         return await wrapped(*args, **kwargs)
 
-    span = Laminar.start_span(
-        name=to_wrap.get("span_name"),
-        span_type="LLM",
-    )
-    span.set_attributes(
-        {
-            gen_ai_attributes.GEN_AI_SYSTEM: "gemini",
-            SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
-        }
-    )
+    span = _start_span(to_wrap.get("span_name"))
+    if not span:
+        logger.warning("Failed to start span for async google genai")
+        return await wrapped(*args, **kwargs)
+
     _set_request_attributes(span, args, kwargs)
 
     try:
