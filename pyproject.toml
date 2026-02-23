@@ -23,7 +23,7 @@ dependencies = [
   "opentelemetry-exporter-otlp-proto-grpc (>=1.39.0)",
   "opentelemetry-instrumentation (>=0.54b0)",
   "opentelemetry-semantic-conventions (>=0.54b0)",
-  "opentelemetry-semantic-conventions-ai (>=0.4.14)",
+  "opentelemetry-semantic-conventions-ai (==0.4.13)",
   "tqdm (>=4.0)",
   "tenacity (>=8.0)",
   # Since 1.68.0, grpcio writes a warning message
