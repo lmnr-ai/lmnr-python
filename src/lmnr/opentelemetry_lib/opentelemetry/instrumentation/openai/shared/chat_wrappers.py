@@ -23,7 +23,6 @@ from ..utils import (
     _with_chat_telemetry_wrapper,
     dont_throw,
     is_openai_v1,
-    run_async,
     should_send_prompts,
 )
 from lmnr.opentelemetry_lib.tracing.context import (
@@ -76,7 +75,7 @@ def chat_wrapper(
         context=get_current_context(),
     )
 
-    run_async(_handle_request(span, kwargs, instance))
+    _handle_request(span, kwargs, instance)
 
     try:
         from lmnr.sdk.rollout_control import is_rollout_mode
@@ -173,7 +172,7 @@ async def achat_wrapper(
         context=get_current_context(),
     )
 
-    await _handle_request(span, kwargs, instance)
+    _handle_request(span, kwargs, instance)
 
     try:
         from lmnr.sdk.rollout_control import is_rollout_mode
@@ -258,11 +257,11 @@ async def achat_wrapper(
 
 
 @dont_throw
-async def _handle_request(span, kwargs, instance):
+def _handle_request(span, kwargs, instance):
     _set_request_attributes(span, kwargs, instance)
     _set_client_attributes(span, instance)
     if should_send_prompts():
-        await _set_prompts(span, kwargs.get("messages"))
+        _set_prompts(span, kwargs.get("messages"))
         if kwargs.get("functions"):
             _set_functions_attributes(span, kwargs.get("functions"))
         elif kwargs.get("tools"):
@@ -314,53 +313,15 @@ def _set_choice_counter_metrics(choice_counter, choices, shared_attributes):
         choice_counter.add(1, attributes=attributes_with_reason)
 
 
-def _is_base64_image(item):
-    if not isinstance(item, dict):
-        return False
-
-    if not isinstance(item.get("image_url"), dict):
-        return False
-
-    if "data:image/" not in item.get("image_url", {}).get("url", ""):
-        return False
-
-    return True
-
-
-async def _process_image_item(item, trace_id, span_id, message_index, content_index):
-    if not Config.upload_base64_image:
-        return item
-
-    image_format = item["image_url"]["url"].split(";")[0].split("/")[1]
-    image_name = f"message_{message_index}_content_{content_index}.{image_format}"
-    base64_string = item["image_url"]["url"].split(",")[1]
-    url = await Config.upload_base64_image(trace_id, span_id, image_name, base64_string)
-
-    return {"type": "image_url", "image_url": {"url": url}}
-
-
 @dont_throw
-async def _set_prompts(span, messages):
+def _set_prompts(span, messages):
     if not span.is_recording() or messages is None:
         return
 
     processed_messages = []
-    for i, msg in enumerate(messages):
+    for msg in messages:
         msg = msg if isinstance(msg, dict) else model_as_dict(msg)
         processed_msg = dict(msg)
-
-        content = processed_msg.get("content")
-        if content and isinstance(content, list):
-            processed_msg["content"] = [
-                (
-                    await _process_image_item(
-                        item, span.context.trace_id, span.context.span_id, i, j
-                    )
-                    if _is_base64_image(item)
-                    else item
-                )
-                for j, item in enumerate(content)
-            ]
 
         if processed_msg.get("tool_calls"):
             processed_msg["tool_calls"] = [
