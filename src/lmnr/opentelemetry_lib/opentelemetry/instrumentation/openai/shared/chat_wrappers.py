@@ -1,18 +1,15 @@
 import json
 import logging
 import threading
-import time
 
 from opentelemetry import context as context_api
 from ..shared import (
-    _get_openai_base_url,
     _set_client_attributes,
     _set_functions_attributes,
     _set_request_attributes,
     _set_response_attributes,
     _set_span_attribute,
     is_streaming_response,
-    metric_shared_attributes,
     model_as_dict,
     propagate_trace_context,
     set_tools_attributes,
@@ -84,7 +81,6 @@ def chat_wrapper(
         is_rollout = False
 
     try:
-        start_time = time.time()
         if is_rollout:
             from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.rollout import (
                 get_openai_rollout_wrapper,
@@ -105,15 +101,7 @@ def chat_wrapper(
                 response = wrapped(*args, **kwargs)
         else:
             response = wrapped(*args, **kwargs)
-        end_time = time.time()
-    except Exception as e:  # pylint: disable=broad-except
-        end_time = time.time()
-        duration = end_time - start_time if "start_time" in locals() else 0
-
-        attributes = {
-            "error.type": e.__class__.__name__,
-        }
-
+    except Exception as e:
         span.set_attribute(ERROR_TYPE, e.__class__.__name__)
         attributes = get_event_attributes_from_context()
         span.record_exception(e, attributes=attributes)
@@ -127,9 +115,6 @@ def chat_wrapper(
             return ChatStream(
                 span,
                 response,
-                instance,
-                start_time,
-                kwargs,
                 record_raw_response=is_rollout,
             )
         else:
@@ -181,7 +166,6 @@ async def achat_wrapper(
         is_rollout = False
 
     try:
-        start_time = time.time()
         if is_rollout:
             import inspect
 
@@ -210,17 +194,7 @@ async def achat_wrapper(
                 response = await wrapped(*args, **kwargs)
         else:
             response = await wrapped(*args, **kwargs)
-        end_time = time.time()
-    except Exception as e:  # pylint: disable=broad-except
-        end_time = time.time()
-        duration = end_time - start_time if "start_time" in locals() else 0
-
-        common_attributes = Config.get_common_metrics_attributes()
-        attributes = {
-            **common_attributes,
-            "error.type": e.__class__.__name__,
-        }
-
+    except Exception as e:
         span.set_attribute(ERROR_TYPE, e.__class__.__name__)
         attributes = get_event_attributes_from_context()
         span.record_exception(e, attributes=attributes)
@@ -234,9 +208,6 @@ async def achat_wrapper(
             return ChatStream(
                 span,
                 response,
-                instance,
-                start_time,
-                kwargs,
                 record_raw_response=is_rollout,
             )
         else:
@@ -342,10 +313,6 @@ def _set_completions(span, choices):
 
 class ChatStream(ObjectProxy):
     _span = None
-    _instance = None
-    _start_time = None
-    _first_token = True
-    _time_of_first_token = None
     _record_raw_response = False
     _complete_response = None
     _cleanup_completed = False
@@ -355,19 +322,11 @@ class ChatStream(ObjectProxy):
         self,
         span,
         response,
-        instance=None,
-        start_time=None,
-        kwargs=None,
         record_raw_response=False,
     ):
         super().__init__(response)
 
         self._span = span
-        self._instance = instance
-        self._start_time = start_time
-        self._first_token = True
-        # will be updated when first token is received
-        self._time_of_first_token = self._start_time
         self._record_raw_response = record_raw_response
         self._complete_response = {
             "choices": [],
@@ -461,16 +420,6 @@ class ChatStream(ObjectProxy):
         )
 
         _accumulate_stream_items(item, self._complete_response)
-
-    def _shared_attributes(self):
-        return metric_shared_attributes(
-            response_model=self._complete_response.get("model")
-            or self._request_kwargs.get("model")
-            or None,
-            operation="chat",
-            server_address=_get_openai_base_url(self._instance),
-            is_streaming=True,
-        )
 
     @dont_throw
     def _process_complete_response(self):
