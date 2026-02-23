@@ -94,11 +94,11 @@ def _set_token_usage(
         span, GEN_AI_RESPONSE_MODEL, complete_response.get("model")
     )
     set_span_attribute(
-        span, SpanAttributes.GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS, cache_read_tokens
+        span, SpanAttributes.LLM_USAGE_CACHE_READ_INPUT_TOKENS, cache_read_tokens
     )
     set_span_attribute(
         span,
-        SpanAttributes.GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
+        SpanAttributes.LLM_USAGE_CACHE_CREATION_INPUT_TOKENS,
         cache_creation_tokens,
     )
 

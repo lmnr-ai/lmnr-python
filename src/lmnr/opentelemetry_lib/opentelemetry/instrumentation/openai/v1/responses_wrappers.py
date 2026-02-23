@@ -209,7 +209,7 @@ def set_data_attributes(traced_response: TracedData, span: Span):
         if usage.input_tokens_details:
             _set_span_attribute(
                 span,
-                SpanAttributes.GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
+                SpanAttributes.LLM_USAGE_CACHE_READ_INPUT_TOKENS,
                 usage.input_tokens_details.cached_tokens,
             )
 

@@ -258,7 +258,7 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
         )
         set_span_attribute(
             span,
-            SpanAttributes.GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
+            SpanAttributes.LLM_USAGE_CACHE_READ_INPUT_TOKENS,
             usage_dict.get("cached_content_token_count"),
         )
         set_span_attribute(
