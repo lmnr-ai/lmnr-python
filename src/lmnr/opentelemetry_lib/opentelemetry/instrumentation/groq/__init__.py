@@ -118,11 +118,12 @@ def _create_stream_processor(
                 finish_reason = chunk_finish_reason
             if chunk_usage:
                 usage = chunk_usage
-            yield chunk
         except Exception as e:
             logger.warning(
                 "Failed to process streaming chunk for groq span, error: %s", str(e)
             )
+        finally:
+            yield chunk
 
     _handle_streaming_response(span, accumulated_content, finish_reason, usage)
 
@@ -147,11 +148,12 @@ async def _create_async_stream_processor(response, span):
                 finish_reason = chunk_finish_reason
             if chunk_usage:
                 usage = chunk_usage
-            yield chunk
         except Exception as e:
             logger.warning(
                 "Failed to process streaming chunk for groq span, error: %s", str(e)
             )
+        finally:
+            yield chunk
 
     _handle_streaming_response(span, accumulated_content, finish_reason, usage)
 
@@ -173,6 +175,7 @@ def _handle_response(span, response):
     set_response_attributes(span, response)
 
 
+@dont_throw
 def _start_span_in_current_context(tracer: Tracer, name: str | None):
     return tracer.start_span(
         name or "groq.chat",
