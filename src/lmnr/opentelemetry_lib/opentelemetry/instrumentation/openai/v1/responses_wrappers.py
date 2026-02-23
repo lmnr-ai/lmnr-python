@@ -219,19 +219,19 @@ def set_data_attributes(traced_response: TracedData, span: Span):
 
         _set_span_attribute(
             span,
-            SpanAttributes.LLM_USAGE_REASONING_TOKENS,
+            "gen_ai.usage.reasoning_tokens",
             reasoning_tokens or 0,
         )
 
     _set_span_attribute(
         span,
-        f"{SpanAttributes.LLM_REQUEST_REASONING_SUMMARY}",
+        "gen_ai.request.reasoning_summary",
         traced_response.request_reasoning_summary or (),
     )
 
     _set_span_attribute(
         span,
-        f"{SpanAttributes.LLM_REQUEST_REASONING_EFFORT}",
+        "gen_ai.request.reasoning_effort",
         traced_response.request_reasoning_effort or (),
     )
 

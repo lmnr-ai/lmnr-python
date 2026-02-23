@@ -28,6 +28,11 @@ from .version import __version__
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_SYSTEM,
+    GEN_AI_USAGE_COMPLETION_TOKENS,
+    GEN_AI_USAGE_PROMPT_TOKENS,
+)
 from opentelemetry.semconv_ai import (
     SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY,
     LLMRequestTypeValues,
@@ -211,9 +216,9 @@ async def _aset_token_usage(
     content_attr = getattr(response, "content", None)
     completion_attr = getattr(response, "completion", None)
 
-    set_span_attribute(span, SpanAttributes.LLM_USAGE_PROMPT_TOKENS, input_tokens)
+    set_span_attribute(span, GEN_AI_USAGE_PROMPT_TOKENS, input_tokens)
     set_span_attribute(
-        span, SpanAttributes.LLM_USAGE_COMPLETION_TOKENS, completion_tokens
+        span, GEN_AI_USAGE_COMPLETION_TOKENS, completion_tokens
     )
     set_span_attribute(span, SpanAttributes.LLM_USAGE_TOTAL_TOKENS, total_tokens)
 
@@ -272,9 +277,9 @@ def _set_token_usage(
     content_attr = getattr(response, "content", None)
     completion_attr = getattr(response, "completion", None)
 
-    set_span_attribute(span, SpanAttributes.LLM_USAGE_PROMPT_TOKENS, input_tokens)
+    set_span_attribute(span, GEN_AI_USAGE_PROMPT_TOKENS, input_tokens)
     set_span_attribute(
-        span, SpanAttributes.LLM_USAGE_COMPLETION_TOKENS, completion_tokens
+        span, GEN_AI_USAGE_COMPLETION_TOKENS, completion_tokens
     )
     set_span_attribute(span, SpanAttributes.LLM_USAGE_TOTAL_TOKENS, total_tokens)
 
@@ -358,7 +363,7 @@ def _wrap(
         name,
         kind=SpanKind.CLIENT,
         attributes={
-            SpanAttributes.LLM_SYSTEM: "anthropic",
+            GEN_AI_SYSTEM: "anthropic",
             SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
         },
         context=get_current_context(),
@@ -435,7 +440,7 @@ async def _awrap(
         name,
         kind=SpanKind.CLIENT,
         attributes={
-            SpanAttributes.LLM_SYSTEM: "anthropic",
+            GEN_AI_SYSTEM: "anthropic",
             SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
         },
         context=get_current_context(),

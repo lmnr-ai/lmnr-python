@@ -1,8 +1,6 @@
 import pytest
 import time
 from anthropic import AI_PROMPT, HUMAN_PROMPT
-from opentelemetry.semconv_ai import SpanAttributes
-
 
 @pytest.mark.vcr
 def test_anthropic_completion_legacy(
@@ -28,10 +26,10 @@ def test_anthropic_completion_legacy(
 
     anthropic_span = spans[0]
     assert (
-        anthropic_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.user"]
+        anthropic_span.attributes["gen_ai.prompt.0.user"]
         == f"{HUMAN_PROMPT}\nHello world\n{AI_PROMPT}"
     )
-    assert anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+    assert anthropic_span.attributes.get("gen_ai.completion.0.content")
     assert (
         anthropic_span.attributes.get("gen_ai.response.id")
         == "compl_01EjfrPvPEsRDRUKD6VoBxtK"

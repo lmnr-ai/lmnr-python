@@ -86,13 +86,9 @@ def fixture_tracer_provider(span_exporter):
 
 @pytest.fixture(scope="function")
 def instrument_legacy(tracer_provider):
-    async def upload_base64_image(*args):
-        return "/some/url"
-
     instrumentor = OpenAIInstrumentor(
         enrich_assistant=True,
         enrich_token_usage=True,
-        upload_base64_image=upload_base64_image,
     )
     was_already_instrumented = instrumentor.is_instrumented_by_opentelemetry
     if not was_already_instrumented:

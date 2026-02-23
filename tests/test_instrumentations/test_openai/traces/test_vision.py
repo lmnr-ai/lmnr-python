@@ -34,9 +34,8 @@ def test_vision(instrument_legacy, span_exporter, openai_client):
         "openai.chat",
     ]
     open_ai_span = spans[0]
-    assert json.loads(
-        open_ai_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"]
-    ) == [
+    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    assert input_messages[0]["content"] == [
         {"type": "text", "text": "What is in this image?"},
         {
             "type": "image_url",
@@ -44,7 +43,8 @@ def test_vision(instrument_legacy, span_exporter, openai_client):
         },
     ]
 
-    assert open_ai_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+    output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+    assert output_messages[0]["message"]["content"]
     assert (
         open_ai_span.attributes[SpanAttributes.LLM_OPENAI_API_BASE]
         == "https://api.openai.com/v1/"
@@ -93,17 +93,13 @@ def test_vision_base64(instrument_legacy, span_exporter, openai_client):
         "openai.chat",
     ]
     open_ai_span = spans[0]
-    assert json.loads(
-        open_ai_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"]
-    ) == [
-        {"type": "text", "text": "What is in this image?"},
-        {
-            "type": "image_url",
-            "image_url": {"url": "/some/url"},
-        },
-    ]
+    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    assert input_messages[0]["content"][0] == {"type": "text", "text": "What is in this image?"}
+    assert input_messages[0]["content"][1]["type"] == "image_url"
+    assert input_messages[0]["content"][1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
 
-    assert open_ai_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+    output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+    assert output_messages[0]["message"]["content"]
     assert (
         open_ai_span.attributes[SpanAttributes.LLM_OPENAI_API_BASE]
         == "https://api.openai.com/v1/"

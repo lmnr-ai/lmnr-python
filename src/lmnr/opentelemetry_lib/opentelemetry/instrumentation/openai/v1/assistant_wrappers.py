@@ -17,6 +17,15 @@ from lmnr.opentelemetry_lib.tracing.context import (
 )
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_COMPLETION,
+    GEN_AI_PROMPT,
+    GEN_AI_REQUEST_MODEL,
+    GEN_AI_RESPONSE_MODEL,
+    GEN_AI_SYSTEM,
+    GEN_AI_USAGE_COMPLETION_TOKENS,
+    GEN_AI_USAGE_PROMPT_TOKENS,
+)
 from opentelemetry.semconv_ai import LLMRequestTypeValues, SpanAttributes
 from opentelemetry.trace import SpanKind, Status, StatusCode
 
@@ -145,41 +154,41 @@ def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
 
         _set_span_attribute(
             span,
-            SpanAttributes.LLM_SYSTEM,
+            GEN_AI_SYSTEM,
             "openai",
         )
         _set_span_attribute(
             span,
-            SpanAttributes.LLM_REQUEST_MODEL,
+            GEN_AI_REQUEST_MODEL,
             assistant["model"],
         )
         _set_span_attribute(
             span,
-            SpanAttributes.LLM_RESPONSE_MODEL,
+            GEN_AI_RESPONSE_MODEL,
             assistant["model"],
         )
         _set_span_attribute(
-            span, f"{SpanAttributes.LLM_PROMPTS}.{prompt_index}.role", "system"
+            span, f"{GEN_AI_PROMPT}.{prompt_index}.role", "system"
         )
         _set_span_attribute(
             span,
-            f"{SpanAttributes.LLM_PROMPTS}.{prompt_index}.content",
+            f"{GEN_AI_PROMPT}.{prompt_index}.content",
             assistant["instructions"],
         )
         prompt_index += 1
     _set_span_attribute(
-        span, f"{SpanAttributes.LLM_PROMPTS}.{prompt_index}.role", "system"
+        span, f"{GEN_AI_PROMPT}.{prompt_index}.role", "system"
     )
     _set_span_attribute(
         span,
-        f"{SpanAttributes.LLM_PROMPTS}.{prompt_index}.content",
+        f"{GEN_AI_PROMPT}.{prompt_index}.content",
         run["instructions"],
     )
     prompt_index += 1
 
     completion_index = 0
     for msg in messages:
-        prefix = f"{SpanAttributes.LLM_COMPLETIONS}.{completion_index}"
+        prefix = f"{GEN_AI_COMPLETION}.{completion_index}"
         content = msg.get("content")
 
         message_content = content[0].get("text").get("value")
@@ -187,12 +196,12 @@ def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
         if message_role in ["user", "system"]:
             _set_span_attribute(
                 span,
-                f"{SpanAttributes.LLM_PROMPTS}.{prompt_index}.role",
+                f"{GEN_AI_PROMPT}.{prompt_index}.role",
                 message_role,
             )
             _set_span_attribute(
                 span,
-                f"{SpanAttributes.LLM_PROMPTS}.{prompt_index}.content",
+                f"{GEN_AI_PROMPT}.{prompt_index}.content",
                 message_content,
             )
             prompt_index += 1
@@ -209,12 +218,12 @@ def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
         usage_dict = model_as_dict(run.get("usage"))
         _set_span_attribute(
             span,
-            SpanAttributes.LLM_USAGE_COMPLETION_TOKENS,
+            GEN_AI_USAGE_COMPLETION_TOKENS,
             usage_dict.get("completion_tokens"),
         )
         _set_span_attribute(
             span,
-            SpanAttributes.LLM_USAGE_PROMPT_TOKENS,
+            GEN_AI_USAGE_PROMPT_TOKENS,
             usage_dict.get("prompt_tokens"),
         )
 
@@ -249,27 +258,27 @@ def runs_create_and_stream_wrapper(tracer, wrapped, instance, args, kwargs):
             assistant = assistants[assistant_id]
 
         _set_span_attribute(
-            span, SpanAttributes.LLM_REQUEST_MODEL, assistants[assistant_id]["model"]
+            span, GEN_AI_REQUEST_MODEL, assistants[assistant_id]["model"]
         )
         _set_span_attribute(
             span,
-            SpanAttributes.LLM_SYSTEM,
+            GEN_AI_SYSTEM,
             "openai",
         )
         _set_span_attribute(
             span,
-            SpanAttributes.LLM_RESPONSE_MODEL,
+            GEN_AI_RESPONSE_MODEL,
             assistants[assistant_id]["model"],
         )
-        _set_span_attribute(span, f"{SpanAttributes.LLM_PROMPTS}.{i}.role", "system")
+        _set_span_attribute(span, f"{GEN_AI_PROMPT}.{i}.role", "system")
         _set_span_attribute(
             span,
-            f"{SpanAttributes.LLM_PROMPTS}.{i}.content",
+            f"{GEN_AI_PROMPT}.{i}.content",
             assistants[assistant_id]["instructions"],
         )
         i += 1
-    _set_span_attribute(span, f"{SpanAttributes.LLM_PROMPTS}.{i}.role", "system")
-    _set_span_attribute(span, f"{SpanAttributes.LLM_PROMPTS}.{i}.content", instructions)
+    _set_span_attribute(span, f"{GEN_AI_PROMPT}.{i}.role", "system")
+    _set_span_attribute(span, f"{GEN_AI_PROMPT}.{i}.content", instructions)
 
     from ..v1.event_handler_wrapper import (
         EventHandlerWrapper,

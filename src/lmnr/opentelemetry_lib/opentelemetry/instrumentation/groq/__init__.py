@@ -18,6 +18,9 @@ from .version import __version__
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_SYSTEM,
+)
 from opentelemetry.semconv_ai import (
     SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY,
     LLMRequestTypeValues,
@@ -181,7 +184,7 @@ def _wrap(
         name,
         kind=SpanKind.CLIENT,
         attributes={
-            SpanAttributes.LLM_SYSTEM: "Groq",
+            GEN_AI_SYSTEM: "Groq",
             SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
         },
         context=get_current_context(),
@@ -241,7 +244,7 @@ async def _awrap(
         name,
         kind=SpanKind.CLIENT,
         attributes={
-            SpanAttributes.LLM_SYSTEM: "Groq",
+            GEN_AI_SYSTEM: "Groq",
             SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
         },
         context=get_current_context(),

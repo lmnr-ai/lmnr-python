@@ -43,11 +43,12 @@ def test_chat_response_format(
     assert span.attributes.get("gen_ai.response.model") == "gpt-4.1-nano-2025-04-14"
     assert json.loads(span.attributes.get("gen_ai.request.structured_output_schema")) == Joke.model_json_schema()
 
-    # legacy input and output attributes
-    assert span.attributes.get("gen_ai.prompt.0.content") == "Tell me a joke about opentelemetry"
-    assert span.attributes.get("gen_ai.prompt.0.role") == "user"
-    assert span.attributes.get("gen_ai.completion.0.role") == "assistant"
-    assert span.attributes.get("gen_ai.completion.0.content") == response.choices[0].message.content
+    input_messages = json.loads(span.attributes.get("gen_ai.input.messages"))
+    assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
+    assert input_messages[0]["role"] == "user"
+    output_messages = json.loads(span.attributes.get("gen_ai.output.messages"))
+    assert output_messages[0]["message"]["role"] == "assistant"
+    assert output_messages[0]["message"]["content"] == response.choices[0].message.content
 
 
 @pytest.mark.vcr
@@ -82,8 +83,9 @@ async def test_async_chat_response_format(
     assert span.attributes.get("gen_ai.response.model") == "gpt-4.1-nano-2025-04-14"
     assert json.loads(span.attributes.get("gen_ai.request.structured_output_schema")) == Joke.model_json_schema()
 
-    # legacy input and output attributes
-    assert span.attributes.get("gen_ai.prompt.0.content") == "Tell me a joke about opentelemetry"
-    assert span.attributes.get("gen_ai.prompt.0.role") == "user"
-    assert span.attributes.get("gen_ai.completion.0.role") == "assistant"
-    assert span.attributes.get("gen_ai.completion.0.content") == response.choices[0].message.content
+    input_messages = json.loads(span.attributes.get("gen_ai.input.messages"))
+    assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
+    assert input_messages[0]["role"] == "user"
+    output_messages = json.loads(span.attributes.get("gen_ai.output.messages"))
+    assert output_messages[0]["message"]["role"] == "assistant"
+    assert output_messages[0]["message"]["content"] == response.choices[0].message.content

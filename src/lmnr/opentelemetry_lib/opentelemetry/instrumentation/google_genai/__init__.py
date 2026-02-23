@@ -143,7 +143,7 @@ def _set_request_attributes(span, args, kwargs):
         try:
             set_span_attribute(
                 span,
-                SpanAttributes.LLM_REQUEST_STRUCTURED_OUTPUT_SCHEMA,
+                "gen_ai.request.structured_output_schema",
                 json.dumps(process_schema(schema), cls=SchemaJSONEncoder),
             )
         except Exception:
@@ -152,7 +152,7 @@ def _set_request_attributes(span, args, kwargs):
         try:
             set_span_attribute(
                 span,
-                SpanAttributes.LLM_REQUEST_STRUCTURED_OUTPUT_SCHEMA,
+                "gen_ai.request.structured_output_schema",
                 json_dumps(json_schema),
             )
         except Exception:
@@ -263,7 +263,7 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
         )
         set_span_attribute(
             span,
-            SpanAttributes.LLM_USAGE_REASONING_TOKENS,
+            "gen_ai.usage.reasoning_tokens",
             thoughts_token_count,
         )
 
@@ -487,7 +487,7 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     )
     span.set_attributes(
         {
-            SpanAttributes.LLM_SYSTEM: "gemini",
+            gen_ai_attributes.GEN_AI_SYSTEM: "gemini",
             SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
         }
     )
@@ -555,7 +555,7 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     )
     span.set_attributes(
         {
-            SpanAttributes.LLM_SYSTEM: "gemini",
+            gen_ai_attributes.GEN_AI_SYSTEM: "gemini",
             SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
         }
     )

@@ -85,22 +85,22 @@ def test_anthropic_message_create_legacy(
 
     anthropic_span = spans[0]
     assert (
-        anthropic_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"]
+        anthropic_span.attributes["gen_ai.prompt.0.content"]
         == "Tell me a joke about OpenTelemetry"
     )
-    assert (anthropic_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.role"]) == "user"
+    assert (anthropic_span.attributes["gen_ai.prompt.0.role"]) == "user"
     assert (
-        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+        anthropic_span.attributes.get("gen_ai.completion.0.content")
         == response.content[0].text
     )
     assert (
-        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.role")
+        anthropic_span.attributes.get("gen_ai.completion.0.role")
         == "assistant"
     )
-    assert anthropic_span.attributes[SpanAttributes.LLM_USAGE_PROMPT_TOKENS] == 17
+    assert anthropic_span.attributes["gen_ai.usage.prompt_tokens"] == 17
     assert (
-        anthropic_span.attributes[SpanAttributes.LLM_USAGE_COMPLETION_TOKENS]
-        + anthropic_span.attributes[SpanAttributes.LLM_USAGE_PROMPT_TOKENS]
+        anthropic_span.attributes["gen_ai.usage.completion_tokens"]
+        + anthropic_span.attributes["gen_ai.usage.prompt_tokens"]
         == anthropic_span.attributes[SpanAttributes.LLM_USAGE_TOTAL_TOKENS]
     )
     assert (
@@ -143,26 +143,26 @@ def test_anthropic_multi_modal_legacy(
     ]
     anthropic_span = spans[0]
     assert anthropic_span.attributes[
-        f"{SpanAttributes.LLM_PROMPTS}.0.content"
+        "gen_ai.prompt.0.content"
     ] == json.dumps(
         [
             {"type": "text", "text": "What do you see?"},
             {"type": "image_url", "image_url": {"url": "/some/url"}},
         ]
     )
-    assert (anthropic_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.role"]) == "user"
+    assert (anthropic_span.attributes["gen_ai.prompt.0.role"]) == "user"
     assert (
-        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+        anthropic_span.attributes.get("gen_ai.completion.0.content")
         == response.content[0].text
     )
     assert (
-        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.role")
+        anthropic_span.attributes.get("gen_ai.completion.0.role")
         == "assistant"
     )
-    assert anthropic_span.attributes[SpanAttributes.LLM_USAGE_PROMPT_TOKENS] == 1381
+    assert anthropic_span.attributes["gen_ai.usage.prompt_tokens"] == 1381
     assert (
-        anthropic_span.attributes[SpanAttributes.LLM_USAGE_COMPLETION_TOKENS]
-        + anthropic_span.attributes[SpanAttributes.LLM_USAGE_PROMPT_TOKENS]
+        anthropic_span.attributes["gen_ai.usage.completion_tokens"]
+        + anthropic_span.attributes["gen_ai.usage.prompt_tokens"]
         == anthropic_span.attributes[SpanAttributes.LLM_USAGE_TOTAL_TOKENS]
     )
     assert (
@@ -211,53 +211,53 @@ def test_anthropic_image_with_history(
     spans = span_exporter.get_finished_spans()
     assert all(span.name == "anthropic.chat" for span in spans)
     assert (
-        spans[0].attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"] == system_message
+        spans[0].attributes["gen_ai.prompt.0.content"] == system_message
     )
-    assert spans[0].attributes[f"{SpanAttributes.LLM_PROMPTS}.0.role"] == "system"
+    assert spans[0].attributes["gen_ai.prompt.0.role"] == "system"
     assert (
-        spans[0].attributes[f"{SpanAttributes.LLM_PROMPTS}.1.content"]
+        spans[0].attributes["gen_ai.prompt.1.content"]
         == "Are you capable of describing an image?"
     )
-    assert spans[0].attributes[f"{SpanAttributes.LLM_PROMPTS}.1.role"] == "user"
+    assert spans[0].attributes["gen_ai.prompt.1.role"] == "user"
     assert (
-        spans[0].attributes[f"{SpanAttributes.LLM_COMPLETIONS}.0.content"]
+        spans[0].attributes["gen_ai.completion.0.content"]
         == response1.content[0].text
     )
     assert (
-        spans[0].attributes[f"{SpanAttributes.LLM_COMPLETIONS}.0.role"] == "assistant"
+        spans[0].attributes["gen_ai.completion.0.role"] == "assistant"
     )
     assert (
         spans[0].attributes.get("gen_ai.response.id") == "msg_01Ctc62hUPvikvYASXZqTo9q"
     )
 
     assert (
-        spans[1].attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"] == system_message
+        spans[1].attributes["gen_ai.prompt.0.content"] == system_message
     )
-    assert spans[1].attributes[f"{SpanAttributes.LLM_PROMPTS}.0.role"] == "system"
+    assert spans[1].attributes["gen_ai.prompt.0.role"] == "system"
     assert (
-        spans[1].attributes[f"{SpanAttributes.LLM_PROMPTS}.1.content"]
+        spans[1].attributes["gen_ai.prompt.1.content"]
         == "Are you capable of describing an image?"
     )
-    assert spans[1].attributes[f"{SpanAttributes.LLM_PROMPTS}.1.role"] == "user"
+    assert spans[1].attributes["gen_ai.prompt.1.role"] == "user"
     assert (
-        spans[1].attributes[f"{SpanAttributes.LLM_PROMPTS}.2.content"]
+        spans[1].attributes["gen_ai.prompt.2.content"]
         == response1.content[0].text
     )
-    assert spans[1].attributes[f"{SpanAttributes.LLM_PROMPTS}.2.role"] == "assistant"
+    assert spans[1].attributes["gen_ai.prompt.2.role"] == "assistant"
     assert json.loads(
-        spans[1].attributes[f"{SpanAttributes.LLM_PROMPTS}.3.content"]
+        spans[1].attributes["gen_ai.prompt.3.content"]
     ) == [
         {"type": "text", "text": "What do you see?"},
         {"type": "image_url", "image_url": {"url": "/some/url"}},
     ]
-    assert spans[1].attributes[f"{SpanAttributes.LLM_PROMPTS}.3.role"] == "user"
+    assert spans[1].attributes["gen_ai.prompt.3.role"] == "user"
 
     assert (
-        spans[1].attributes[f"{SpanAttributes.LLM_COMPLETIONS}.0.content"]
+        spans[1].attributes["gen_ai.completion.0.content"]
         == response2.content[0].text
     )
     assert (
-        spans[1].attributes[f"{SpanAttributes.LLM_COMPLETIONS}.0.role"] == "assistant"
+        spans[1].attributes["gen_ai.completion.0.role"] == "assistant"
     )
     assert (
         spans[1].attributes.get("gen_ai.response.id") == "msg_01EtAvxHCWn5jjdUCnG4wEAd"
@@ -292,26 +292,26 @@ async def test_anthropic_async_multi_modal_legacy(
     ]
     anthropic_span = spans[0]
     assert anthropic_span.attributes[
-        f"{SpanAttributes.LLM_PROMPTS}.0.content"
+        "gen_ai.prompt.0.content"
     ] == json.dumps(
         [
             {"type": "text", "text": "What do you see?"},
             {"type": "image_url", "image_url": {"url": "/some/url"}},
         ]
     )
-    assert (anthropic_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.role"]) == "user"
+    assert (anthropic_span.attributes["gen_ai.prompt.0.role"]) == "user"
     assert (
-        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+        anthropic_span.attributes.get("gen_ai.completion.0.content")
         == response.content[0].text
     )
     assert (
-        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.role")
+        anthropic_span.attributes.get("gen_ai.completion.0.role")
         == "assistant"
     )
-    assert anthropic_span.attributes[SpanAttributes.LLM_USAGE_PROMPT_TOKENS] == 1311
+    assert anthropic_span.attributes["gen_ai.usage.prompt_tokens"] == 1311
     assert (
-        anthropic_span.attributes[SpanAttributes.LLM_USAGE_COMPLETION_TOKENS]
-        + anthropic_span.attributes[SpanAttributes.LLM_USAGE_PROMPT_TOKENS]
+        anthropic_span.attributes["gen_ai.usage.completion_tokens"]
+        + anthropic_span.attributes["gen_ai.usage.prompt_tokens"]
         == anthropic_span.attributes[SpanAttributes.LLM_USAGE_TOTAL_TOKENS]
     )
     assert (
@@ -354,22 +354,22 @@ def test_anthropic_message_streaming_legacy(
     ]
     anthropic_span = spans[0]
     assert (
-        anthropic_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"]
+        anthropic_span.attributes["gen_ai.prompt.0.content"]
         == "Tell me a joke about OpenTelemetry"
     )
-    assert (anthropic_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.role"]) == "user"
+    assert (anthropic_span.attributes["gen_ai.prompt.0.role"]) == "user"
     assert (
-        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+        anthropic_span.attributes.get("gen_ai.completion.0.content")
         == response_content
     )
     assert (
-        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.role")
+        anthropic_span.attributes.get("gen_ai.completion.0.role")
         == "assistant"
     )
-    assert anthropic_span.attributes[SpanAttributes.LLM_USAGE_PROMPT_TOKENS] == 17
+    assert anthropic_span.attributes["gen_ai.usage.prompt_tokens"] == 17
     assert (
-        anthropic_span.attributes[SpanAttributes.LLM_USAGE_COMPLETION_TOKENS]
-        + anthropic_span.attributes[SpanAttributes.LLM_USAGE_PROMPT_TOKENS]
+        anthropic_span.attributes["gen_ai.usage.completion_tokens"]
+        + anthropic_span.attributes["gen_ai.usage.prompt_tokens"]
         == anthropic_span.attributes[SpanAttributes.LLM_USAGE_TOTAL_TOKENS]
     )
     assert (
@@ -414,22 +414,22 @@ async def test_async_anthropic_message_create_legacy(
     ]
     anthropic_span = spans[0]
     assert (
-        anthropic_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"]
+        anthropic_span.attributes["gen_ai.prompt.0.content"]
         == "Tell me a joke about OpenTelemetry"
     )
-    assert (anthropic_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.role"]) == "user"
+    assert (anthropic_span.attributes["gen_ai.prompt.0.role"]) == "user"
     assert (
-        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+        anthropic_span.attributes.get("gen_ai.completion.0.content")
         == response.content[0].text
     )
     assert (
-        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.role")
+        anthropic_span.attributes.get("gen_ai.completion.0.role")
         == "assistant"
     )
-    assert anthropic_span.attributes[SpanAttributes.LLM_USAGE_PROMPT_TOKENS] == 17
+    assert anthropic_span.attributes["gen_ai.usage.prompt_tokens"] == 17
     assert (
-        anthropic_span.attributes[SpanAttributes.LLM_USAGE_COMPLETION_TOKENS]
-        + anthropic_span.attributes[SpanAttributes.LLM_USAGE_PROMPT_TOKENS]
+        anthropic_span.attributes["gen_ai.usage.completion_tokens"]
+        + anthropic_span.attributes["gen_ai.usage.prompt_tokens"]
         == anthropic_span.attributes[SpanAttributes.LLM_USAGE_TOTAL_TOKENS]
     )
     assert (
@@ -480,22 +480,22 @@ async def test_async_anthropic_message_streaming_legacy(
     ]
     anthropic_span = spans[0]
     assert (
-        anthropic_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"]
+        anthropic_span.attributes["gen_ai.prompt.0.content"]
         == "Tell me a joke about OpenTelemetry"
     )
-    assert (anthropic_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.role"]) == "user"
+    assert (anthropic_span.attributes["gen_ai.prompt.0.role"]) == "user"
     assert (
-        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+        anthropic_span.attributes.get("gen_ai.completion.0.content")
         == response_content
     )
     assert (
-        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.role")
+        anthropic_span.attributes.get("gen_ai.completion.0.role")
         == "assistant"
     )
-    assert anthropic_span.attributes[SpanAttributes.LLM_USAGE_PROMPT_TOKENS] == 17
+    assert anthropic_span.attributes["gen_ai.usage.prompt_tokens"] == 17
     assert (
-        anthropic_span.attributes[SpanAttributes.LLM_USAGE_COMPLETION_TOKENS]
-        + anthropic_span.attributes[SpanAttributes.LLM_USAGE_PROMPT_TOKENS]
+        anthropic_span.attributes["gen_ai.usage.completion_tokens"]
+        + anthropic_span.attributes["gen_ai.usage.prompt_tokens"]
         == anthropic_span.attributes[SpanAttributes.LLM_USAGE_TOTAL_TOKENS]
     )
     assert (
@@ -944,16 +944,16 @@ def test_anthropic_message_stream_manager(
     ]
     anthropic_span = spans[0]
     assert (
-        anthropic_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"]
+        anthropic_span.attributes["gen_ai.prompt.0.content"]
         == "Tell me a joke about OpenTelemetry"
     )
-    assert (anthropic_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.role"]) == "user"
+    assert (anthropic_span.attributes["gen_ai.prompt.0.role"]) == "user"
     assert (
-        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+        anthropic_span.attributes.get("gen_ai.completion.0.content")
         == response_content
     )
     assert (
-        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.role")
+        anthropic_span.attributes.get("gen_ai.completion.0.role")
         == "assistant"
     )
     assert (
@@ -996,16 +996,16 @@ async def test_async_anthropic_message_stream_manager(
     ]
     anthropic_span = spans[0]
     assert (
-        anthropic_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.content"]
+        anthropic_span.attributes["gen_ai.prompt.0.content"]
         == "Tell me a joke about OpenTelemetry"
     )
-    assert (anthropic_span.attributes[f"{SpanAttributes.LLM_PROMPTS}.0.role"]) == "user"
+    assert (anthropic_span.attributes["gen_ai.prompt.0.role"]) == "user"
     assert (
-        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.content")
+        anthropic_span.attributes.get("gen_ai.completion.0.content")
         == response_content
     )
     assert (
-        anthropic_span.attributes.get(f"{SpanAttributes.LLM_COMPLETIONS}.0.role")
+        anthropic_span.attributes.get("gen_ai.completion.0.role")
         == "assistant"
     )
     assert (

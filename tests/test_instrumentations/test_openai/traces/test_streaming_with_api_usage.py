@@ -32,10 +32,10 @@ def test_streaming_with_api_usage_capture(
     assert span.name == "openai.chat"
 
     # Check that token usage is captured from API response
-    assert span.attributes.get(SpanAttributes.LLM_USAGE_PROMPT_TOKENS) > 0
-    assert span.attributes.get(SpanAttributes.LLM_USAGE_COMPLETION_TOKENS) > 0
+    assert span.attributes.get("gen_ai.usage.prompt_tokens") > 0
+    assert span.attributes.get("gen_ai.usage.completion_tokens") > 0
     assert span.attributes.get(SpanAttributes.LLM_USAGE_TOTAL_TOKENS) > 0
 
     # Verify that the response content is meaningful
     assert len(response_content) > 0
-    assert span.attributes.get(SpanAttributes.LLM_RESPONSE_MODEL) == "deepseek-chat"
+    assert span.attributes.get("gen_ai.response.model") == "deepseek-chat"

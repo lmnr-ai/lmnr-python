@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import pytest
 from openai import AsyncOpenAI, OpenAI
@@ -38,15 +39,17 @@ def test_openai_prompt_caching(instrument_legacy, span_exporter):
     cache_creation_span = spans[0]
     cache_read_span = spans[1]
 
-    assert cache_creation_span.attributes["gen_ai.prompt.0.role"] == "system"
-    assert system_message == cache_creation_span.attributes["gen_ai.prompt.0.content"]
-    assert cache_read_span.attributes["gen_ai.prompt.0.role"] == "system"
-    assert system_message == cache_read_span.attributes["gen_ai.prompt.0.content"]
+    creation_input = json.loads(cache_creation_span.attributes["gen_ai.input.messages"])
+    assert creation_input[0]["role"] == "system"
+    assert creation_input[0]["content"] == system_message
+    read_input = json.loads(cache_read_span.attributes["gen_ai.input.messages"])
+    assert read_input[0]["role"] == "system"
+    assert read_input[0]["content"] == system_message
 
-    assert cache_creation_span.attributes["gen_ai.prompt.1.role"] == "user"
-    assert text == cache_creation_span.attributes["gen_ai.prompt.1.content"]
-    assert cache_read_span.attributes["gen_ai.prompt.1.role"] == "user"
-    assert text == cache_read_span.attributes["gen_ai.prompt.1.content"]
+    assert creation_input[1]["role"] == "user"
+    assert creation_input[1]["content"] == text
+    assert read_input[1]["role"] == "user"
+    assert read_input[1]["content"] == text
 
     assert (
         cache_creation_span.attributes.get("gen_ai.response.id")
@@ -57,8 +60,10 @@ def test_openai_prompt_caching(instrument_legacy, span_exporter):
         == "chatcmpl-BNi420iFNtIOHzy8Gq2fVS5utTus7"
     )
 
-    assert cache_creation_span.attributes["gen_ai.completion.0.role"] == "assistant"
-    assert cache_read_span.attributes["gen_ai.completion.0.role"] == "assistant"
+    creation_output = json.loads(cache_creation_span.attributes["gen_ai.output.messages"])
+    assert creation_output[0]["message"]["role"] == "assistant"
+    read_output = json.loads(cache_read_span.attributes["gen_ai.output.messages"])
+    assert read_output[0]["message"]["role"] == "assistant"
 
     assert cache_creation_span.attributes["gen_ai.usage.prompt_tokens"] == 1149
     assert cache_creation_span.attributes["gen_ai.usage.completion_tokens"] == 315
@@ -104,15 +109,17 @@ async def test_openai_prompt_caching_async(instrument_legacy, span_exporter):
     cache_creation_span = spans[0]
     cache_read_span = spans[1]
 
-    assert cache_creation_span.attributes["gen_ai.prompt.0.role"] == "system"
-    assert system_message == cache_creation_span.attributes["gen_ai.prompt.0.content"]
-    assert cache_read_span.attributes["gen_ai.prompt.0.role"] == "system"
-    assert system_message == cache_read_span.attributes["gen_ai.prompt.0.content"]
+    creation_input = json.loads(cache_creation_span.attributes["gen_ai.input.messages"])
+    assert creation_input[0]["role"] == "system"
+    assert creation_input[0]["content"] == system_message
+    read_input = json.loads(cache_read_span.attributes["gen_ai.input.messages"])
+    assert read_input[0]["role"] == "system"
+    assert read_input[0]["content"] == system_message
 
-    assert cache_creation_span.attributes["gen_ai.prompt.1.role"] == "user"
-    assert text == cache_creation_span.attributes["gen_ai.prompt.1.content"]
-    assert cache_read_span.attributes["gen_ai.prompt.1.role"] == "user"
-    assert text == cache_read_span.attributes["gen_ai.prompt.1.content"]
+    assert creation_input[1]["role"] == "user"
+    assert creation_input[1]["content"] == text
+    assert read_input[1]["role"] == "user"
+    assert read_input[1]["content"] == text
     assert (
         cache_creation_span.attributes.get("gen_ai.response.id")
         == "chatcmpl-BNhr79TlegaJvfSOAOH2jsPEpRHMd"
@@ -122,8 +129,10 @@ async def test_openai_prompt_caching_async(instrument_legacy, span_exporter):
         == "chatcmpl-BNhrEFvKSNY08Uphau5iA4InZH6jn"
     )
 
-    assert cache_creation_span.attributes["gen_ai.completion.0.role"] == "assistant"
-    assert cache_read_span.attributes["gen_ai.completion.0.role"] == "assistant"
+    creation_output = json.loads(cache_creation_span.attributes["gen_ai.output.messages"])
+    assert creation_output[0]["message"]["role"] == "assistant"
+    read_output = json.loads(cache_read_span.attributes["gen_ai.output.messages"])
+    assert read_output[0]["message"]["role"] == "assistant"
 
     assert cache_creation_span.attributes["gen_ai.usage.prompt_tokens"] == 1150
     assert cache_creation_span.attributes["gen_ai.usage.completion_tokens"] == 293

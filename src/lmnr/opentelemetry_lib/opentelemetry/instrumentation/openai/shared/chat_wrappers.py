@@ -1,29 +1,25 @@
-import copy
 import json
 import logging
 import threading
-import time
 
 from opentelemetry import context as context_api
 from ..shared import (
-    _get_openai_base_url,
     _set_client_attributes,
     _set_functions_attributes,
     _set_request_attributes,
     _set_response_attributes,
     _set_span_attribute,
     is_streaming_response,
-    metric_shared_attributes,
     model_as_dict,
     propagate_trace_context,
     set_tools_attributes,
 )
+from lmnr.sdk.utils import json_dumps
 from ..shared.config import Config
 from ..utils import (
     _with_chat_telemetry_wrapper,
     dont_throw,
     is_openai_v1,
-    run_async,
     should_send_prompts,
 )
 from lmnr.opentelemetry_lib.tracing.context import (
@@ -43,8 +39,6 @@ from opentelemetry.trace.status import Status, StatusCode
 from wrapt import ObjectProxy
 
 SPAN_NAME = "openai.chat"
-PROMPT_FILTER_KEY = "prompt_filter_results"
-CONTENT_FILTER_KEY = "content_filter_results"
 
 LLM_REQUEST_TYPE = LLMRequestTypeValues.CHAT
 
@@ -78,20 +72,36 @@ def chat_wrapper(
         context=get_current_context(),
     )
 
-    run_async(_handle_request(span, kwargs, instance))
+    _handle_request(span, kwargs, instance)
 
     try:
-        start_time = time.time()
-        response = wrapped(*args, **kwargs)
-        end_time = time.time()
-    except Exception as e:  # pylint: disable=broad-except
-        end_time = time.time()
-        duration = end_time - start_time if "start_time" in locals() else 0
+        from lmnr.sdk.rollout_control import is_rollout_mode
+        is_rollout = is_rollout_mode()
+    except Exception:
+        is_rollout = False
 
-        attributes = {
-            "error.type": e.__class__.__name__,
-        }
+    try:
+        if is_rollout:
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.rollout import (
+                get_openai_rollout_wrapper,
+            )
 
+            rollout_wrapper = get_openai_rollout_wrapper()
+            if rollout_wrapper:
+                response = rollout_wrapper.wrap_chat_completion(
+                    wrapped,
+                    instance,
+                    args,
+                    kwargs,
+                    span=span,
+                    is_streaming=kwargs.get("stream", False),
+                    is_async=False,
+                )
+            else:
+                response = wrapped(*args, **kwargs)
+        else:
+            response = wrapped(*args, **kwargs)
+    except Exception as e:
         span.set_attribute(ERROR_TYPE, e.__class__.__name__)
         attributes = get_event_attributes_from_context()
         span.record_exception(e, attributes=attributes)
@@ -101,14 +111,11 @@ def chat_wrapper(
         raise
 
     if is_streaming_response(response):
-        # span will be closed after the generator is done
         if is_openai_v1():
             return ChatStream(
                 span,
                 response,
-                instance,
-                start_time,
-                kwargs,
+                record_raw_response=is_rollout,
             )
         else:
             return _build_from_streaming_response(
@@ -116,11 +123,10 @@ def chat_wrapper(
                 response,
             )
 
-    duration = end_time - start_time
-
     _handle_response(
         response,
         span,
+        record_raw_response=is_rollout,
     )
 
     span.end()
@@ -141,8 +147,6 @@ async def achat_wrapper(
     ):
         return await wrapped(*args, **kwargs)
 
-    # LiteLLM calls OpenAI through OpenAI SDK, and to avoid double-instrumentation,
-    # we check if we're in a LiteLLM context and return the result directly if so.
     if is_in_litellm_context():
         return await wrapped(*args, **kwargs)
 
@@ -153,22 +157,44 @@ async def achat_wrapper(
         context=get_current_context(),
     )
 
-    await _handle_request(span, kwargs, instance)
+    _handle_request(span, kwargs, instance)
 
     try:
-        start_time = time.time()
-        response = await wrapped(*args, **kwargs)
-        end_time = time.time()
-    except Exception as e:  # pylint: disable=broad-except
-        end_time = time.time()
-        duration = end_time - start_time if "start_time" in locals() else 0
+        from lmnr.sdk.rollout_control import is_rollout_mode
+        is_rollout = is_rollout_mode()
+    except Exception:
+        is_rollout = False
 
-        common_attributes = Config.get_common_metrics_attributes()
-        attributes = {
-            **common_attributes,
-            "error.type": e.__class__.__name__,
-        }
+    try:
+        if is_rollout:
+            import inspect
 
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.rollout import (
+                get_openai_rollout_wrapper,
+            )
+
+            rollout_wrapper = get_openai_rollout_wrapper()
+            if rollout_wrapper:
+                result = rollout_wrapper.wrap_chat_completion(
+                    wrapped,
+                    instance,
+                    args,
+                    kwargs,
+                    span=span,
+                    is_streaming=kwargs.get("stream", False),
+                    is_async=True,
+                )
+                if inspect.iscoroutine(result):
+                    response = await result
+                elif inspect.isasyncgen(result):
+                    response = result
+                else:
+                    response = result
+            else:
+                response = await wrapped(*args, **kwargs)
+        else:
+            response = await wrapped(*args, **kwargs)
+    except Exception as e:
         span.set_attribute(ERROR_TYPE, e.__class__.__name__)
         attributes = get_event_attributes_from_context()
         span.record_exception(e, attributes=attributes)
@@ -178,14 +204,11 @@ async def achat_wrapper(
         raise
 
     if is_streaming_response(response):
-        # span will be closed after the generator is done
         if is_openai_v1():
             return ChatStream(
                 span,
                 response,
-                instance,
-                start_time,
-                kwargs,
+                record_raw_response=is_rollout,
             )
         else:
             return _abuild_from_streaming_response(
@@ -193,11 +216,10 @@ async def achat_wrapper(
                 response,
             )
 
-    duration = end_time - start_time
-
     _handle_response(
         response,
         span,
+        record_raw_response=is_rollout,
     )
 
     span.end()
@@ -206,11 +228,11 @@ async def achat_wrapper(
 
 
 @dont_throw
-async def _handle_request(span, kwargs, instance):
+def _handle_request(span, kwargs, instance):
     _set_request_attributes(span, kwargs, instance)
     _set_client_attributes(span, instance)
     if should_send_prompts():
-        await _set_prompts(span, kwargs.get("messages"))
+        _set_prompts(span, kwargs.get("messages"))
         if kwargs.get("functions"):
             _set_functions_attributes(span, kwargs.get("functions"))
         elif kwargs.get("tools"):
@@ -223,17 +245,30 @@ async def _handle_request(span, kwargs, instance):
 def _handle_response(
     response,
     span,
+    record_raw_response=False,
 ):
     if is_openai_v1():
         response_dict = model_as_dict(response)
     else:
         response_dict = response
 
-    # span attributes
     _set_response_attributes(span, response_dict)
 
     if should_send_prompts():
         _set_completions(span, response_dict.get("choices"))
+
+    if record_raw_response:
+        try:
+            if hasattr(response, "model_dump_json"):
+                _set_span_attribute(
+                    span, "lmnr.sdk.raw.response", response.model_dump_json()
+                )
+            else:
+                _set_span_attribute(
+                    span, "lmnr.sdk.raw.response", json_dumps(response_dict)
+                )
+        except Exception:
+            pass
 
     return response
 
@@ -249,170 +284,50 @@ def _set_choice_counter_metrics(choice_counter, choices, shared_attributes):
         choice_counter.add(1, attributes=attributes_with_reason)
 
 
-def _is_base64_image(item):
-    if not isinstance(item, dict):
-        return False
-
-    if not isinstance(item.get("image_url"), dict):
-        return False
-
-    if "data:image/" not in item.get("image_url", {}).get("url", ""):
-        return False
-
-    return True
-
-
-async def _process_image_item(item, trace_id, span_id, message_index, content_index):
-    if not Config.upload_base64_image:
-        return item
-
-    image_format = item["image_url"]["url"].split(";")[0].split("/")[1]
-    image_name = f"message_{message_index}_content_{content_index}.{image_format}"
-    base64_string = item["image_url"]["url"].split(",")[1]
-    url = await Config.upload_base64_image(trace_id, span_id, image_name, base64_string)
-
-    return {"type": "image_url", "image_url": {"url": url}}
-
-
 @dont_throw
-async def _set_prompts(span, messages):
+def _set_prompts(span, messages):
     if not span.is_recording() or messages is None:
         return
 
-    for i, msg in enumerate(messages):
-        prefix = f"{SpanAttributes.LLM_PROMPTS}.{i}"
+    processed_messages = []
+    for msg in messages:
         msg = msg if isinstance(msg, dict) else model_as_dict(msg)
+        processed_msg = dict(msg)
 
-        _set_span_attribute(span, f"{prefix}.role", msg.get("role"))
-        if msg.get("content"):
-            content = copy.deepcopy(msg.get("content"))
-            if isinstance(content, list):
-                content = [
-                    (
-                        await _process_image_item(
-                            item, span.context.trace_id, span.context.span_id, i, j
-                        )
-                        if _is_base64_image(item)
-                        else item
-                    )
-                    for j, item in enumerate(content)
-                ]
+        if processed_msg.get("tool_calls"):
+            processed_msg["tool_calls"] = [
+                model_as_dict(tc) for tc in processed_msg["tool_calls"]
+            ]
 
-                content = json.dumps(content)
-            _set_span_attribute(span, f"{prefix}.content", content)
-        if msg.get("tool_call_id"):
-            _set_span_attribute(span, f"{prefix}.tool_call_id", msg.get("tool_call_id"))
-        tool_calls = msg.get("tool_calls")
-        if tool_calls:
-            for i, tool_call in enumerate(tool_calls):
-                if is_openai_v1():
-                    tool_call = model_as_dict(tool_call)
+        processed_messages.append(processed_msg)
 
-                function = tool_call.get("function")
-                _set_span_attribute(
-                    span,
-                    f"{prefix}.tool_calls.{i}.id",
-                    tool_call.get("id"),
-                )
-                _set_span_attribute(
-                    span,
-                    f"{prefix}.tool_calls.{i}.name",
-                    function.get("name"),
-                )
-                _set_span_attribute(
-                    span,
-                    f"{prefix}.tool_calls.{i}.arguments",
-                    function.get("arguments"),
-                )
+    _set_span_attribute(span, "gen_ai.input.messages", json_dumps(processed_messages))
 
 
 def _set_completions(span, choices):
     if choices is None:
         return
 
-    for choice in choices:
-        index = choice.get("index")
-        prefix = f"{SpanAttributes.LLM_COMPLETIONS}.{index}"
-        _set_span_attribute(
-            span, f"{prefix}.finish_reason", choice.get("finish_reason")
-        )
-
-        if choice.get("content_filter_results"):
-            _set_span_attribute(
-                span,
-                f"{prefix}.{CONTENT_FILTER_KEY}",
-                json.dumps(choice.get("content_filter_results")),
-            )
-
-        if choice.get("finish_reason") == "content_filter":
-            _set_span_attribute(span, f"{prefix}.role", "assistant")
-            _set_span_attribute(span, f"{prefix}.content", "FILTERED")
-
-            return
-
-        message = choice.get("message")
-        if not message:
-            return
-
-        _set_span_attribute(span, f"{prefix}.role", message.get("role"))
-
-        if message.get("refusal"):
-            _set_span_attribute(span, f"{prefix}.refusal", message.get("refusal"))
-        else:
-            _set_span_attribute(span, f"{prefix}.content", message.get("content"))
-
-        function_call = message.get("function_call")
-        if function_call:
-            _set_span_attribute(
-                span, f"{prefix}.tool_calls.0.name", function_call.get("name")
-            )
-            _set_span_attribute(
-                span,
-                f"{prefix}.tool_calls.0.arguments",
-                function_call.get("arguments"),
-            )
-
-        tool_calls = message.get("tool_calls")
-        if tool_calls:
-            for i, tool_call in enumerate(tool_calls):
-                function = tool_call.get("function")
-                _set_span_attribute(
-                    span,
-                    f"{prefix}.tool_calls.{i}.id",
-                    tool_call.get("id"),
-                )
-                _set_span_attribute(
-                    span,
-                    f"{prefix}.tool_calls.{i}.name",
-                    function.get("name"),
-                )
-                _set_span_attribute(
-                    span,
-                    f"{prefix}.tool_calls.{i}.arguments",
-                    function.get("arguments"),
-                )
+    _set_span_attribute(span, "gen_ai.output.messages", json_dumps(choices))
 
 
 class ChatStream(ObjectProxy):
     _span = None
-    _instance = None
+    _record_raw_response = False
+    _complete_response = None
+    _cleanup_completed = False
+    _cleanup_lock = None
 
     def __init__(
         self,
         span,
         response,
-        instance=None,
-        start_time=None,
-        kwargs=None,
+        record_raw_response=False,
     ):
         super().__init__(response)
 
         self._span = span
-        self._instance = instance
-        self._start_time = start_time
-        self._first_token = True
-        # will be updated when first token is received
-        self._time_of_first_token = self._start_time
+        self._record_raw_response = record_raw_response
         self._complete_response = {
             "choices": [],
             "model": "",
@@ -420,7 +335,6 @@ class ChatStream(ObjectProxy):
             "service_tier": None,
         }
 
-        # Cleanup state tracking to prevent duplicate operations
         self._cleanup_completed = False
         self._cleanup_lock = threading.Lock()
 
@@ -440,7 +354,10 @@ class ChatStream(ObjectProxy):
             cleanup_exception = e
             # Don't re-raise to avoid masking original exception
 
-        result = self.__wrapped__.__exit__(exc_type, exc_val, exc_tb)
+        if hasattr(self.__wrapped__, "__exit__"):
+            result = self.__wrapped__.__exit__(exc_type, exc_val, exc_tb)
+        else:
+            result = None
 
         if cleanup_exception:
             # Log cleanup exception but don't affect context manager behavior
@@ -454,7 +371,8 @@ class ChatStream(ObjectProxy):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.__wrapped__.__aexit__(exc_type, exc_val, exc_tb)
+        if hasattr(self.__wrapped__, "__aexit__"):
+            await self.__wrapped__.__aexit__(exc_type, exc_val, exc_tb)
 
     def __iter__(self):
         return self
@@ -503,22 +421,22 @@ class ChatStream(ObjectProxy):
 
         _accumulate_stream_items(item, self._complete_response)
 
-    def _shared_attributes(self):
-        return metric_shared_attributes(
-            response_model=self._complete_response.get("model")
-            or self._request_kwargs.get("model")
-            or None,
-            operation="chat",
-            server_address=_get_openai_base_url(self._instance),
-            is_streaming=True,
-        )
-
     @dont_throw
     def _process_complete_response(self):
 
         _set_response_attributes(self._span, self._complete_response)
         if should_send_prompts():
             _set_completions(self._span, self._complete_response.get("choices"))
+
+        if self._record_raw_response:
+            try:
+                _set_span_attribute(
+                    self._span,
+                    "lmnr.sdk.raw.response",
+                    json_dumps(self._complete_response),
+                )
+            except Exception:
+                pass
 
         self._span.set_status(Status(StatusCode.OK))
         self._span.end()
@@ -619,6 +537,10 @@ def _accumulate_stream_items(item, complete_response):
     complete_response["model"] = item.get("model")
     complete_response["id"] = item.get("id")
     complete_response["service_tier"] = item.get("service_tier")
+    if item.get("created"):
+        complete_response["created"] = item.get("created")
+    if "object" not in complete_response:
+        complete_response["object"] = "chat.completion"
 
     # capture usage information from the last stream chunks
     if item.get("usage"):
@@ -631,7 +553,7 @@ def _accumulate_stream_items(item, complete_response):
     if item.get("prompt_filter_results"):
         complete_response["prompt_filter_results"] = item.get("prompt_filter_results")
 
-    for choice in item.get("choices"):
+    for choice in item.get("choices") or []:
         index = choice.get("index")
         if len(complete_response.get("choices")) <= index:
             complete_response["choices"].append(
@@ -664,7 +586,7 @@ def _accumulate_stream_items(item, complete_response):
                 i = int(tool_call["index"])
                 if len(complete_choice["message"]["tool_calls"]) <= i:
                     complete_choice["message"]["tool_calls"].append(
-                        {"id": "", "function": {"name": "", "arguments": ""}}
+                        {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
                     )
 
                 span_tool_call = complete_choice["message"]["tool_calls"][i]

@@ -363,12 +363,7 @@ class OpenAIInstrumentorInitializer(InstrumentorInitializer):
 
         from ..opentelemetry.instrumentation.openai import OpenAIInstrumentor
 
-        return OpenAIInstrumentor(
-            # Default in the package provided is an empty function, which
-            # results in dropping the image data if we don't explicitly
-            # set it to None.
-            upload_base64_image=None,
-        )
+        return OpenAIInstrumentor()
 
 
 class OpenHandsAIInstrumentorInitializer(InstrumentorInitializer):
