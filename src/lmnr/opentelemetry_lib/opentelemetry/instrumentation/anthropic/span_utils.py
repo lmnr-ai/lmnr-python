@@ -327,11 +327,6 @@ async def aset_response_attributes(span, response):
         completion_tokens = usage.output_tokens
         set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, prompt_tokens)
         set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, completion_tokens)
-        set_span_attribute(
-            span,
-            "llm.usage.total_tokens",
-            prompt_tokens + completion_tokens,
-        )
 
     await _aset_span_completions(span, response)
 

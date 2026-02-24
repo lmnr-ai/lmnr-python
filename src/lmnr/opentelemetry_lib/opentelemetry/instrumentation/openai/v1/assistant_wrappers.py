@@ -49,6 +49,7 @@ def _safe_start_span(
             context=get_current_context(),
             attributes={
                 "gen_ai.system": "openai",
+                "lmnr.span.type": "LLM",
             },
         )
     except Exception:
@@ -152,7 +153,6 @@ def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
         tracer,
         "openai.assistant.run",
         start_time=run.get("start_time"),
-        span_type="LLM",
     )
     if span is None:
         return response
@@ -254,7 +254,6 @@ def runs_create_and_stream_wrapper(tracer, wrapped, instance, args, kwargs):
     span = _safe_start_span(
         tracer,
         "openai.assistant.run_stream",
-        span_type="LLM",
     )
     if span is None:
         return wrapped(*args, **kwargs)
