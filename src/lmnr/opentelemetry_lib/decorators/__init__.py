@@ -39,6 +39,7 @@ def _setup_span(
     metadata: dict[str, Any] | None = None,
 ) -> Span | None:
     """Set up a span with the given name, type, and association properties."""
+    span = None
     try:
         with get_tracer_with_context() as (tracer, isolated_context):
             # Create span in isolated context
@@ -74,6 +75,9 @@ def _setup_span(
     except Exception:
         logger.warning(f"[observe] failed to setup span: {span_name}", exc_info=True)
         return None
+    finally:
+        if span is not None and not span.is_recording():
+            span.end()
 
 
 def _process_input(
