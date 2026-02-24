@@ -31,20 +31,24 @@ def is_async(func: typing.Callable) -> bool:
     # `__wrapped__` is set automatically by `functools.wraps` and
     # `functools.update_wrapper`
     # so we can use it to get the original function
-    while hasattr(func, "__wrapped__"):
-        func = func.__wrapped__
+    try:
+        while hasattr(func, "__wrapped__"):
+            func = func.__wrapped__
 
-    if not inspect.isfunction(func):
+        if not inspect.isfunction(func):
+            return False
+
+        # Check if the function is asynchronous
+        if inspect.iscoroutinefunction(func):
+            return True
+
+        # Fallback: check if the function's code object contains 'async'.
+        # This is for cases when a decorator (not ours) did not properly use
+        # `functools.wraps` or `functools.update_wrapper`
+        return (func.__code__.co_flags & inspect.CO_COROUTINE) != 0
+    except Exception:
+        logger.debug("Failed to check if function is asynchronous", exc_info=True)
         return False
-
-    # Check if the function is asynchronous
-    if inspect.iscoroutinefunction(func):
-        return True
-
-    # Fallback: check if the function's code object contains 'async'.
-    # This is for cases when a decorator (not ours) did not properly use
-    # `functools.wraps` or `functools.update_wrapper`
-    return (func.__code__.co_flags & inspect.CO_COROUTINE) != 0
 
 
 def is_async_iterator(o: typing.Any) -> bool:

@@ -179,8 +179,13 @@ def observe_base(
             if not TracerWrapper.verify_initialized():
                 return fn(*args, **kwargs)
 
-            span_name = name or fn.__name__
-            wrapper = TracerWrapper()
+            span_name = name or getattr(fn, "__name__", "unknown")
+            wrapper = None
+            try:
+                wrapper = TracerWrapper()
+            except Exception:
+                logger.debug("Failed to create tracer wrapper", exc_info=True)
+                return fn(*args, **kwargs)
 
             span = _setup_span(
                 span_name,
@@ -303,8 +308,13 @@ def async_observe_base(
             if not TracerWrapper.verify_initialized():
                 return await fn(*args, **kwargs)
 
-            span_name = name or fn.__name__
-            wrapper = TracerWrapper()
+            span_name = name or getattr(fn, "__name__", "unknown")
+            wrapper = None
+            try:
+                wrapper = TracerWrapper()
+            except Exception:
+                logger.debug("Failed to create tracer wrapper", exc_info=True)
+                return await fn(*args, **kwargs)
 
             span = _setup_span(
                 span_name,
@@ -361,7 +371,10 @@ def async_observe_base(
                 except Exception:
                     current_task = None
                 if id(current_task) == current_context_id:
-                    context_api.detach(ctx_token)
+                    try:
+                        context_api.detach(ctx_token)
+                    except Exception:
+                        logger.debug("Failed to detach global context", exc_info=True)
                 else:
                     logger.debug(
                         "Not detaching global context, not in the same context"
@@ -400,6 +413,9 @@ def _handle_generator(
         for part in res:
             results.append(part)
             yield part
+    except Exception as e:
+        _process_exception(span, e)
+        raise
     finally:
         _process_output(span, results, ignore_output, output_formatter)
         _cleanup_span(span, wrapper)
@@ -417,14 +433,20 @@ async def _ahandle_generator(
         async for part in res:
             results.append(part)
             yield part
+    except Exception as e:
+        _process_exception(span, e)
+        raise
     finally:
         _process_output(span, results, ignore_output, output_formatter)
         _cleanup_span(span, wrapper)
 
 
 def _process_exception(span: Span, e: Exception):
-    # Note that this `escaped` is sent as a StringValue("True"), not a boolean.
-    span.record_exception(
-        e, attributes=get_event_attributes_from_context(), escaped=True
-    )
-    span.set_status(Status(StatusCode.ERROR, str(e)))
+    try:
+        # Note that this `escaped` is sent as a StringValue("True"), not a boolean.
+        span.record_exception(
+            e, attributes=get_event_attributes_from_context(), escaped=True
+        )
+        span.set_status(Status(StatusCode.ERROR, str(e)))
+    except Exception:
+        logger.debug("Failed to process exception", exc_info=True)

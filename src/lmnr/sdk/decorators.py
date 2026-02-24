@@ -135,6 +135,8 @@ def observe(
         # Get rollout session ID from environment if in rollout mode
         rollout_session_id = os.environ.get("LMNR_ROLLOUT_SESSION_ID")
 
+        func_name = getattr(func, "__name__", "unknown")
+
         association_properties = {}
         if session_id is not None:
             association_properties["session_id"] = session_id
@@ -154,26 +156,30 @@ def observe(
                 association_properties["tags"] = list(set(tags))
         if input_formatter is not None and ignore_input:
             logger.warning(
-                f"observe, function {func.__name__}: Input formatter"
+                f"observe, function {func_name}: Input formatter"
                 " is ignored because `ignore_input` is True. Specify only one of"
                 " `ignore_input` or `input_formatter`."
             )
         if input_formatter is not None and ignore_inputs is not None:
             logger.warning(
-                f"observe, function {func.__name__}: Both input formatter and"
+                f"observe, function {func_name}: Both input formatter and"
                 " `ignore_inputs` are specified. Input formatter"
                 " will pass all arguments to the formatter regardless of"
                 " `ignore_inputs`."
             )
         if output_formatter is not None and ignore_output:
             logger.warning(
-                f"observe, function {func.__name__}: Output formatter"
+                f"observe, function {func_name}: Output formatter"
                 " is ignored because `ignore_output` is True. Specify only one of"
                 " `ignore_output` or `output_formatter`."
             )
 
         # Merge rollout.session_id into metadata if in rollout mode
-        merged_metadata = metadata.copy() if metadata else {}
+        merged_metadata = {}
+        try:
+            merged_metadata = metadata.copy() if metadata else {}
+        except Exception:
+            logger.debug("Failed to copy metadata", exc_info=True)
         if rollout_session_id is not None:
             merged_metadata["rollout.session_id"] = rollout_session_id
 
@@ -210,7 +216,7 @@ def observe(
 
             if is_rollout_mode():
                 # Register the WRAPPED function for rollout execution
-                entrypoint_name = name if name is not None else func.__name__
+                entrypoint_name = name if name is not None else func_name
                 register_entrypoint(entrypoint_name, wrapped_func)
 
         return wrapped_func
