@@ -474,7 +474,8 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
 
     span = safe_start_span(
         name=to_wrap.get("span_name"),
-        attributes={"gen_ai.system": "gemini", "lmnr.span.type": "LLM"},
+        attributes={"gen_ai.system": "gemini"},
+        span_type="LLM",
     )
     if not span:
         logger.warning("Failed to start span for google genai")
@@ -537,7 +538,8 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
 
     span = safe_start_span(
         name=to_wrap.get("span_name"),
-        attributes={"gen_ai.system": "gemini", "lmnr.span.type": "LLM"},
+        attributes={"gen_ai.system": "gemini"},
+        span_type="LLM",
     )
     if not span:
         logger.warning("Failed to start span for async google genai")

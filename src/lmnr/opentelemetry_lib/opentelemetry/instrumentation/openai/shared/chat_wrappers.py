@@ -57,7 +57,9 @@ def chat_wrapper(
     if is_in_litellm_context():
         return wrapped(*args, **kwargs)
 
-    span = safe_start_span(name=SPAN_NAME, attributes={"gen_ai.system": "openai"})
+    span = safe_start_span(
+        name=SPAN_NAME, attributes={"gen_ai.system": "openai"}, span_type="LLM"
+    )
 
     if span is None:
         return wrapped(*args, **kwargs)
@@ -139,7 +141,9 @@ async def achat_wrapper(
     if is_in_litellm_context():
         return await wrapped(*args, **kwargs)
 
-    span = safe_start_span(name=SPAN_NAME, attributes={"gen_ai.system": "openai"})
+    span = safe_start_span(
+        name=SPAN_NAME, attributes={"gen_ai.system": "openai"}, span_type="LLM"
+    )
 
     if span is None:
         return await wrapped(*args, **kwargs)

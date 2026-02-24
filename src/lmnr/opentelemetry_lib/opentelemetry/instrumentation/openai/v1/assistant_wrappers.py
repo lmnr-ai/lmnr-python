@@ -152,6 +152,7 @@ def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
         tracer,
         "openai.assistant.run",
         start_time=run.get("start_time"),
+        span_type="LLM",
     )
     if span is None:
         return response
@@ -253,7 +254,10 @@ def runs_create_and_stream_wrapper(tracer, wrapped, instance, args, kwargs):
     span = _safe_start_span(
         tracer,
         "openai.assistant.run_stream",
+        span_type="LLM",
     )
+    if span is None:
+        return wrapped(*args, **kwargs)
 
     i = 0
     if assistants.get(assistant_id) is not None:

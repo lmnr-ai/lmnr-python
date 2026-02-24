@@ -43,7 +43,11 @@ def completion_wrapper(tracer, wrapped, instance, args, kwargs):
         return wrapped(*args, **kwargs)
 
     # span needs to be opened and closed manually because the response is a generator
-    span = safe_start_span(name=SPAN_NAME, attributes={"gen_ai.system": "openai"})
+    span = safe_start_span(
+        name=SPAN_NAME, attributes={"gen_ai.system": "openai"}, span_type="LLM"
+    )
+    if span is None:
+        return wrapped(*args, **kwargs)
 
     _handle_request(span, kwargs, instance)
 
@@ -72,7 +76,11 @@ async def acompletion_wrapper(tracer, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
-    span = safe_start_span(name=SPAN_NAME, attributes={"gen_ai.system": "openai"})
+    span = safe_start_span(
+        name=SPAN_NAME, attributes={"gen_ai.system": "openai"}, span_type="LLM"
+    )
+    if span is None:
+        return await wrapped(*args, **kwargs)
 
     _handle_request(span, kwargs, instance)
 

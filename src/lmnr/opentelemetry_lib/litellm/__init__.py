@@ -2,7 +2,6 @@
 
 import json
 from datetime import datetime
-from warnings import deprecated
 
 from opentelemetry.trace import SpanKind, Status, StatusCode, Tracer
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
@@ -38,9 +37,6 @@ try:
 
     from litellm.integrations.custom_batch_logger import CustomBatchLogger
 
-    @deprecated(
-        "LaminarLiteLLMCallback is deprecated. Laminar automatically instruments LiteLLM."
-    )
     class LaminarLiteLLMCallback(CustomBatchLogger):
         """Custom LiteLLM logger that sends logs to Laminar via OpenTelemetry spans
 
@@ -699,9 +695,6 @@ except ImportError as e:
     logger.debug(f"LiteLLM callback unavailable: {e}")
 
     # Create a no-op logger when LiteLLM is not available
-    @deprecated(
-        "LaminarLiteLLMCallback is deprecated. Laminar automatically instruments LiteLLM."
-    )
     class LaminarLiteLLMCallback:
         """No-op logger when LiteLLM is not available"""
 

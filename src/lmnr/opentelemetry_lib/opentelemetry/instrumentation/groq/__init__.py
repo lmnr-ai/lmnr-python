@@ -189,7 +189,9 @@ def _wrap(
         return wrapped(*args, **kwargs)
 
     name = to_wrap.get("span_name")
-    span = safe_start_span(name=name, attributes={"gen_ai.system": "groq"})
+    span = safe_start_span(
+        name=name, attributes={"gen_ai.system": "groq"}, span_type="LLM"
+    )
     if not span:
         logger.warning("Failed to start span for groq chat")
         return wrapped(*args, **kwargs)
@@ -242,7 +244,9 @@ async def _awrap(
         return await wrapped(*args, **kwargs)
 
     name = to_wrap.get("span_name")
-    span = safe_start_span(name=name, attributes={"gen_ai.system": "groq"})
+    span = safe_start_span(
+        name=name, attributes={"gen_ai.system": "groq"}, span_type="LLM"
+    )
     if not span:
         logger.warning("Failed to start span for groq chat")
         return await wrapped(*args, **kwargs)

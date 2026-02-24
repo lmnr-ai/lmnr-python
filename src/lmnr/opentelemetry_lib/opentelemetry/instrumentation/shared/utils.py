@@ -65,11 +65,14 @@ def safe_start_span(
     name: str,
     context: Context | None = None,
     attributes: dict[str, AttributeValue] | None = None,
+    span_type: str = "DEFAULT",
 ) -> Span | None:
     if not Laminar.is_initialized():
         return None
     try:
-        return Laminar.start_span(name, context=context, attributes=attributes)
+        return Laminar.start_span(
+            name, context=context, attributes=attributes, span_type=span_type
+        )
     except Exception:
         logger.debug(f"Failed to start span: {name}", exc_info=True)
         return None

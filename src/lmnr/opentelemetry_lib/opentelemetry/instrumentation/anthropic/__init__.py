@@ -346,7 +346,9 @@ def _wrap(
         return wrapped(*args, **kwargs)
 
     span = safe_start_span(
-        name=to_wrap.get("span_name"), attributes={"gen_ai.system": "anthropic"}
+        name=to_wrap.get("span_name"),
+        attributes={"gen_ai.system": "anthropic"},
+        span_type="LLM",
     )
 
     if not span:
@@ -418,7 +420,9 @@ async def _awrap(
         return await wrapped(*args, **kwargs)
 
     span = safe_start_span(
-        name=to_wrap.get("span_name"), attributes={"gen_ai.system": "anthropic"}
+        name=to_wrap.get("span_name"),
+        attributes={"gen_ai.system": "anthropic"},
+        span_type="LLM",
     )
 
     if not span:

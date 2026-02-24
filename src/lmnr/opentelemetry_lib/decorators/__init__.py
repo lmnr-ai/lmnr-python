@@ -209,6 +209,11 @@ def observe_base(
             current_context_id = None
             isolated_ctx_token = None
             try:
+                try:
+                    current_task = asyncio.current_task()
+                except Exception:
+                    current_task = None
+                current_context_id = id(current_task)
                 new_context = wrapper.push_span_context(span)
                 # Some auto-instrumentations are not under our control, so they
                 # don't have access to our isolated context. We attach the context
@@ -216,11 +221,6 @@ def observe_base(
                 # span and trace_id.
                 ctx_token = context_api.attach(new_context)
                 isolated_ctx_token = attach_context(new_context)
-                try:
-                    current_task = asyncio.current_task()
-                except Exception:
-                    current_task = None
-                current_context_id = id(current_task)
             except Exception:
                 logger.debug("Failed to setup span context", exc_info=True)
 
@@ -338,6 +338,11 @@ def async_observe_base(
             current_context_id = None
             isolated_ctx_token = None
             try:
+                try:
+                    current_task = asyncio.current_task()
+                except Exception:
+                    current_task = None
+                current_context_id = id(current_task)
                 new_context = wrapper.push_span_context(span)
                 # Some auto-instrumentations are not under our control, so they
                 # don't have access to our isolated context. We attach the context
@@ -345,11 +350,6 @@ def async_observe_base(
                 # span and trace_id.
                 ctx_token = context_api.attach(new_context)
                 isolated_ctx_token = attach_context(new_context)
-                try:
-                    current_task = asyncio.current_task()
-                except Exception:
-                    current_task = None
-                current_context_id = id(current_task)
             except Exception:
                 logger.debug("Failed to setup span context", exc_info=True)
 
