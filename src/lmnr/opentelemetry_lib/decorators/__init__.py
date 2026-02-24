@@ -151,9 +151,12 @@ def _cleanup_span(span: Span, wrapper: TracerWrapper):
     """Clean up span and context."""
     try:
         span.end()
+    except Exception:
+        logger.debug("Failed to end span in _cleanup_span", exc_info=True)
+    try:
         wrapper.pop_span_context()
     except Exception:
-        logger.debug("Failed to cleanup span", exc_info=True)
+        logger.debug("Failed to pop span context in _cleanup_span", exc_info=True)
 
 
 def observe_base(
