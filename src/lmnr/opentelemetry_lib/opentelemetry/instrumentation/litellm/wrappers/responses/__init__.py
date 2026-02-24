@@ -11,6 +11,10 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     to_dict,
 )
 from ...utils import infer_provider
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
+)
 
 
 @dont_throw
@@ -106,8 +110,8 @@ def process_responses_response(
             "output_tokens", usage_dict.get("completion_tokens", 0)
         )
         total_tokens = usage_dict.get("total_tokens", input_tokens + output_tokens)
-        set_span_attribute(span, "gen_ai.usage.input_tokens", input_tokens)
-        set_span_attribute(span, "gen_ai.usage.output_tokens", output_tokens)
+        set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, input_tokens)
+        set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, output_tokens)
         set_span_attribute(span, "llm.usage.total_tokens", total_tokens)
         if input_details := usage_dict.get("input_tokens_details"):
             details = to_dict(input_details)

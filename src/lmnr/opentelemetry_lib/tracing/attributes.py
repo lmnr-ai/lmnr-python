@@ -7,7 +7,6 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_USAGE_OUTPUT_TOKENS,
     GEN_AI_RESPONSE_ID,
 )
-from opentelemetry.semconv_ai import SpanAttributes
 
 SPAN_INPUT = "lmnr.span.input"
 SPAN_OUTPUT = "lmnr.span.output"
@@ -37,7 +36,7 @@ class Attributes(Enum):
     #
     INPUT_TOKEN_COUNT = GEN_AI_USAGE_INPUT_TOKENS
     OUTPUT_TOKEN_COUNT = GEN_AI_USAGE_OUTPUT_TOKENS
-    TOTAL_TOKEN_COUNT = SpanAttributes.LLM_USAGE_TOTAL_TOKENS
+    TOTAL_TOKEN_COUNT = "llm.usage.total_tokens"
     PROVIDER = GEN_AI_SYSTEM
     REQUEST_MODEL = GEN_AI_REQUEST_MODEL
     RESPONSE_MODEL = GEN_AI_RESPONSE_MODEL

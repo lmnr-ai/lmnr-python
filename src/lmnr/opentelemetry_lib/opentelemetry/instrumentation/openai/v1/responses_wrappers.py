@@ -44,17 +44,13 @@ from lmnr.sdk.utils import json_dumps
 from openai._legacy_response import LegacyAPIResponse
 from opentelemetry import context as context_api
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
-from opentelemetry.semconv_ai import SpanAttributes
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
-    GEN_AI_COMPLETION,
-    GEN_AI_PROMPT,
+    GEN_AI_REQUEST_MODEL,
+    GEN_AI_RESPONSE_ID,
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
-    GEN_AI_RESPONSE_ID,
-    GEN_AI_REQUEST_MODEL,
     GEN_AI_RESPONSE_MODEL,
-    GEN_AI_SYSTEM,
 )
 from opentelemetry.trace import SpanKind, Span, StatusCode, Tracer
 from typing import Any, Optional, Union
@@ -196,20 +192,18 @@ def process_content_block(
 
 @dont_throw
 def set_data_attributes(traced_response: TracedData, span: Span):
-    _set_span_attribute(span, GEN_AI_SYSTEM, "openai")
+    _set_span_attribute(span, "gen_ai.system", "openai")
     _set_span_attribute(span, GEN_AI_REQUEST_MODEL, traced_response.request_model)
     _set_span_attribute(span, GEN_AI_RESPONSE_ID, traced_response.response_id)
     _set_span_attribute(span, GEN_AI_RESPONSE_MODEL, traced_response.response_model)
     if usage := traced_response.usage:
         _set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, usage.input_tokens)
         _set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, usage.output_tokens)
-        _set_span_attribute(
-            span, SpanAttributes.LLM_USAGE_TOTAL_TOKENS, usage.total_tokens
-        )
+        _set_span_attribute(span, "llm.usage.total_tokens", usage.total_tokens)
         if usage.input_tokens_details:
             _set_span_attribute(
                 span,
-                SpanAttributes.LLM_USAGE_CACHE_READ_INPUT_TOKENS,
+                "gen_ai.usage.cache_read_input_tokens",
                 usage.input_tokens_details.cached_tokens,
             )
 
@@ -258,33 +252,33 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                     continue
                 _set_span_attribute(
                     span,
-                    f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.{i}.description",
+                    f"llm.request.functions.{i}.description",
                     description,
                 )
                 _set_span_attribute(
                     span,
-                    f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.{i}.parameters",
+                    f"llm.request.functions.{i}.parameters",
                     json.dumps(parameters),
                 )
                 _set_span_attribute(
                     span,
-                    f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.{i}.name",
+                    f"llm.request.functions.{i}.name",
                     name,
                 )
         if traced_response.instructions:
             _set_span_attribute(
                 span,
-                f"{GEN_AI_PROMPT}.{prompt_index}.content",
+                f"gen_ai.prompt.{prompt_index}.content",
                 traced_response.instructions,
             )
-            _set_span_attribute(span, f"{GEN_AI_PROMPT}.{prompt_index}.role", "system")
+            _set_span_attribute(span, f"gen_ai.prompt.{prompt_index}.role", "system")
             prompt_index += 1
 
         if isinstance(traced_response.input, str):
             _set_span_attribute(
-                span, f"{GEN_AI_PROMPT}.{prompt_index}.content", traced_response.input
+                span, f"gen_ai.prompt.{prompt_index}.content", traced_response.input
             )
-            _set_span_attribute(span, f"{GEN_AI_PROMPT}.{prompt_index}.role", "user")
+            _set_span_attribute(span, f"gen_ai.prompt.{prompt_index}.role", "user")
             prompt_index += 1
         else:
             for block in traced_response.input:
@@ -304,26 +298,26 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                         )
                     _set_span_attribute(
                         span,
-                        f"{GEN_AI_PROMPT}.{prompt_index}.content",
+                        f"gen_ai.prompt.{prompt_index}.content",
                         stringified_content,
                     )
                     _set_span_attribute(
                         span,
-                        f"{GEN_AI_PROMPT}.{prompt_index}.role",
+                        f"gen_ai.prompt.{prompt_index}.role",
                         block_dict.get("role"),
                     )
                     prompt_index += 1
                 elif block_dict.get("type") == "computer_call_output":
                     _set_span_attribute(
                         span,
-                        f"{GEN_AI_PROMPT}.{prompt_index}.role",
+                        f"gen_ai.prompt.{prompt_index}.role",
                         "computer_call_output",
                     )
                     output_image_url = block_dict.get("output", {}).get("image_url")
                     if output_image_url:
                         _set_span_attribute(
                             span,
-                            f"{GEN_AI_PROMPT}.{prompt_index}.content",
+                            f"gen_ai.prompt.{prompt_index}.content",
                             json.dumps(
                                 [
                                     {
@@ -336,7 +330,7 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                     prompt_index += 1
                 elif block_dict.get("type") == "computer_call":
                     _set_span_attribute(
-                        span, f"{GEN_AI_PROMPT}.{prompt_index}.role", "assistant"
+                        span, f"gen_ai.prompt.{prompt_index}.role", "assistant"
                     )
                     call_content = {}
                     if block_dict.get("id"):
@@ -345,17 +339,17 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                         call_content["action"] = block_dict.get("action")
                     _set_span_attribute(
                         span,
-                        f"{GEN_AI_PROMPT}.{prompt_index}.tool_calls.0.arguments",
+                        f"gen_ai.prompt.{prompt_index}.tool_calls.0.arguments",
                         json.dumps(call_content),
                     )
                     _set_span_attribute(
                         span,
-                        f"{GEN_AI_PROMPT}.{prompt_index}.tool_calls.0.id",
+                        f"gen_ai.prompt.{prompt_index}.tool_calls.0.id",
                         block_dict.get("call_id"),
                     )
                     _set_span_attribute(
                         span,
-                        f"{GEN_AI_PROMPT}.{prompt_index}.tool_calls.0.name",
+                        f"gen_ai.prompt.{prompt_index}.tool_calls.0.name",
                         "computer_call",
                     )
                     prompt_index += 1
@@ -370,22 +364,22 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                         ]
                         _set_span_attribute(
                             span,
-                            f"{GEN_AI_PROMPT}.{prompt_index}.reasoning",
+                            f"gen_ai.prompt.{prompt_index}.reasoning",
                             json_dumps(processed_chunks),
                         )
                         _set_span_attribute(
                             span,
-                            f"{GEN_AI_PROMPT}.{prompt_index}.role",
+                            f"gen_ai.prompt.{prompt_index}.role",
                             "assistant",
                         )
                     # reasoning is followed by other content parts in the same messge,
                     # so we don't increment the prompt index
                 # TODO: handle other block types
 
-        _set_span_attribute(span, f"{GEN_AI_COMPLETION}.0.role", "assistant")
+        _set_span_attribute(span, "gen_ai.completion.0.role", "assistant")
         if traced_response.output_text:
             _set_span_attribute(
-                span, f"{GEN_AI_COMPLETION}.0.content", traced_response.output_text
+                span, "gen_ai.completion.0.content", traced_response.output_text
             )
         tool_call_index = 0
         for block in traced_response.output_blocks.values():
@@ -396,58 +390,58 @@ def set_data_attributes(traced_response: TracedData, span: Span):
             if block_dict.get("type") == "function_call":
                 _set_span_attribute(
                     span,
-                    f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.id",
+                    f"gen_ai.completion.0.tool_calls.{tool_call_index}.id",
                     block_dict.get("id"),
                 )
                 _set_span_attribute(
                     span,
-                    f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.name",
+                    f"gen_ai.completion.0.tool_calls.{tool_call_index}.name",
                     block_dict.get("name"),
                 )
                 _set_span_attribute(
                     span,
-                    f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.arguments",
+                    f"gen_ai.completion.0.tool_calls.{tool_call_index}.arguments",
                     block_dict.get("arguments"),
                 )
                 tool_call_index += 1
             elif block_dict.get("type") == "file_search_call":
                 _set_span_attribute(
                     span,
-                    f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.id",
+                    f"gen_ai.completion.0.tool_calls.{tool_call_index}.id",
                     block_dict.get("id"),
                 )
                 _set_span_attribute(
                     span,
-                    f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.name",
+                    f"gen_ai.completion.0.tool_calls.{tool_call_index}.name",
                     "file_search_call",
                 )
                 tool_call_index += 1
             elif block_dict.get("type") == "web_search_call":
                 _set_span_attribute(
                     span,
-                    f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.id",
+                    f"gen_ai.completion.0.tool_calls.{tool_call_index}.id",
                     block_dict.get("id"),
                 )
                 _set_span_attribute(
                     span,
-                    f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.name",
+                    f"gen_ai.completion.0.tool_calls.{tool_call_index}.name",
                     "web_search_call",
                 )
                 tool_call_index += 1
             elif block_dict.get("type") == "computer_call":
                 _set_span_attribute(
                     span,
-                    f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.id",
+                    f"gen_ai.completion.0.tool_calls.{tool_call_index}.id",
                     block_dict.get("call_id"),
                 )
                 _set_span_attribute(
                     span,
-                    f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.name",
+                    f"gen_ai.completion.0.tool_calls.{tool_call_index}.name",
                     "computer_call",
                 )
                 _set_span_attribute(
                     span,
-                    f"{GEN_AI_COMPLETION}.0.tool_calls.{tool_call_index}.arguments",
+                    f"gen_ai.completion.0.tool_calls.{tool_call_index}.arguments",
                     json.dumps(block_dict.get("action")),
                 )
                 tool_call_index += 1

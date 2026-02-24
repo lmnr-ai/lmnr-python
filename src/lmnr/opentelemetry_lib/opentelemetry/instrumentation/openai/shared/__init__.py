@@ -9,18 +9,21 @@ from ..utils import (
     should_record_stream_token_usage,
 )
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
-    GEN_AI_PROMPT,
+    GEN_AI_REQUEST_FREQUENCY_PENALTY,
     GEN_AI_REQUEST_MAX_TOKENS,
     GEN_AI_REQUEST_MODEL,
+    GEN_AI_REQUEST_PRESENCE_PENALTY,
     GEN_AI_REQUEST_TEMPERATURE,
     GEN_AI_REQUEST_TOP_P,
     GEN_AI_RESPONSE_ID,
     GEN_AI_RESPONSE_MODEL,
     GEN_AI_SYSTEM,
-    GEN_AI_USAGE_COMPLETION_TOKENS,
-    GEN_AI_USAGE_PROMPT_TOKENS,
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
 )
-from opentelemetry.semconv_ai import SpanAttributes
+from opentelemetry.semconv._incubating.attributes.openai_attributes import (
+    OPENAI_RESPONSE_SYSTEM_FINGERPRINT,
+)
 from opentelemetry.trace.propagation import set_span_in_context
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 import openai
@@ -57,12 +60,10 @@ def _set_client_attributes(span, instance):
 
     client = instance._client  # pylint: disable=protected-access
     if isinstance(client, (openai.AsyncOpenAI, openai.OpenAI)):
-        _set_span_attribute(
-            span, SpanAttributes.LLM_OPENAI_API_BASE, str(client.base_url)
-        )
+        _set_span_attribute(span, "gen_ai.request.base_url", str(client.base_url))
     if isinstance(client, (openai.AsyncAzureOpenAI, openai.AzureOpenAI)):
         _set_span_attribute(
-            span, SpanAttributes.LLM_OPENAI_API_VERSION, client._api_version
+            span, "gen_ai.openai.api_version", client._api_version
         )  # pylint: disable=protected-access
 
 
@@ -75,9 +76,9 @@ def _set_api_attributes(span):
 
     base_url = openai.base_url if hasattr(openai, "base_url") else openai.api_base
 
-    _set_span_attribute(span, SpanAttributes.LLM_OPENAI_API_BASE, base_url)
-    _set_span_attribute(span, SpanAttributes.LLM_OPENAI_API_TYPE, openai.api_type)
-    _set_span_attribute(span, SpanAttributes.LLM_OPENAI_API_VERSION, openai.api_version)
+    _set_span_attribute(span, "gen_ai.request.base_url", base_url)
+    _set_span_attribute(span, "gen_ai.request.api_type", openai.api_type)
+    _set_span_attribute(span, "gen_ai.request.api_version", openai.api_version)
 
     return
 
@@ -87,7 +88,7 @@ def _set_functions_attributes(span, functions):
         return
 
     for i, function in enumerate(functions):
-        prefix = f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.{i}"
+        prefix = f"llm.request.functions.{i}"
         _set_span_attribute(span, f"{prefix}.name", function.get("name"))
         _set_span_attribute(span, f"{prefix}.description", function.get("description"))
         _set_span_attribute(
@@ -104,7 +105,7 @@ def set_tools_attributes(span, tools):
         if not function:
             continue
 
-        prefix = f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.{i}"
+        prefix = f"llm.request.functions.{i}"
         _set_span_attribute(span, f"{prefix}.name", function.get("name"))
         _set_span_attribute(span, f"{prefix}.description", function.get("description"))
         _set_span_attribute(
@@ -133,21 +134,17 @@ def _set_request_attributes(span, kwargs, instance=None):
     _set_span_attribute(span, GEN_AI_REQUEST_TEMPERATURE, kwargs.get("temperature"))
     _set_span_attribute(span, GEN_AI_REQUEST_TOP_P, kwargs.get("top_p"))
     _set_span_attribute(
-        span, SpanAttributes.LLM_FREQUENCY_PENALTY, kwargs.get("frequency_penalty")
+        span, GEN_AI_REQUEST_FREQUENCY_PENALTY, kwargs.get("frequency_penalty")
     )
     _set_span_attribute(
-        span, SpanAttributes.LLM_PRESENCE_PENALTY, kwargs.get("presence_penalty")
+        span, GEN_AI_REQUEST_PRESENCE_PENALTY, kwargs.get("presence_penalty")
     )
-    _set_span_attribute(span, SpanAttributes.LLM_USER, kwargs.get("user"))
-    _set_span_attribute(span, SpanAttributes.LLM_HEADERS, str(kwargs.get("headers")))
+    _set_span_attribute(span, "llm.user", kwargs.get("user"))
+    _set_span_attribute(span, "llm.headers", str(kwargs.get("headers")))
     # The new OpenAI SDK removed the `headers` and create new field called `extra_headers`
     if kwargs.get("extra_headers") is not None:
-        _set_span_attribute(
-            span, SpanAttributes.LLM_HEADERS, str(kwargs.get("extra_headers"))
-        )
-    _set_span_attribute(
-        span, SpanAttributes.LLM_IS_STREAMING, kwargs.get("stream") or False
-    )
+        _set_span_attribute(span, "llm.headers", str(kwargs.get("extra_headers")))
+    _set_span_attribute(span, "llm.is_streaming", kwargs.get("stream") or False)
     _set_span_attribute(
         span,
         "gen_ai.request.reasoning_effort",
@@ -170,8 +167,6 @@ def _set_request_attributes(span, kwargs, instance=None):
             if schema:
                 _set_span_attribute(
                     span,
-                    # TODO: change to SpanAttributes.LLM_REQUEST_STRUCTURED_OUTPUT_SCHEMA
-                    # when we upgrade to opentelemetry-semantic-conventions-ai>=0.4.10
                     "gen_ai.request.structured_output_schema",
                     json.dumps(schema),
                 )
@@ -187,8 +182,6 @@ def _set_request_attributes(span, kwargs, instance=None):
                     if schema:
                         _set_span_attribute(
                             span,
-                            # TODO: change to SpanAttributes.LLM_REQUEST_STRUCTURED_OUTPUT_SCHEMA
-                            # when we upgrade to opentelemetry-semantic-conventions-ai>=0.4.10
                             "gen_ai.request.structured_output_schema",
                             json.dumps(schema),
                         )
@@ -201,8 +194,6 @@ def _set_request_attributes(span, kwargs, instance=None):
                 ):
                     _set_span_attribute(
                         span,
-                        # TODO: change to SpanAttributes.LLM_REQUEST_STRUCTURED_OUTPUT_SCHEMA
-                        # when we upgrade to opentelemetry-semantic-conventions-ai>=0.4.10
                         "gen_ai.request.structured_output_schema",
                         json.dumps(response_format.model_json_schema()),
                     )
@@ -221,8 +212,6 @@ def _set_request_attributes(span, kwargs, instance=None):
                     if schema:
                         _set_span_attribute(
                             span,
-                            # TODO: change to SpanAttributes.LLM_REQUEST_STRUCTURED_OUTPUT_SCHEMA
-                            # when we upgrade to opentelemetry-semantic-conventions-ai>=0.4.10
                             "gen_ai.request.structured_output_schema",
                             schema,
                         )
@@ -236,7 +225,7 @@ def _set_response_attributes(span, response):
     if "error" in response:
         _set_span_attribute(
             span,
-            f"{GEN_AI_PROMPT}.{PROMPT_ERROR}",
+            f"gen_ai.prompt.{PROMPT_ERROR}",
             json.dumps(response.get("error")),
         )
         return
@@ -249,7 +238,7 @@ def _set_response_attributes(span, response):
 
     _set_span_attribute(
         span,
-        SpanAttributes.LLM_OPENAI_RESPONSE_SYSTEM_FINGERPRINT,
+        OPENAI_RESPONSE_SYSTEM_FINGERPRINT,
         response.get("system_fingerprint"),
     )
     _log_prompt_filter(span, response)
@@ -265,19 +254,17 @@ def _set_response_attributes(span, response):
     if is_openai_v1() and not isinstance(usage, dict):
         usage = usage.__dict__
 
-    _set_span_attribute(
-        span, SpanAttributes.LLM_USAGE_TOTAL_TOKENS, usage.get("total_tokens")
-    )
+    _set_span_attribute(span, "llm.usage.total_tokens", usage.get("total_tokens"))
     _set_span_attribute(
         span,
-        GEN_AI_USAGE_COMPLETION_TOKENS,
+        GEN_AI_USAGE_OUTPUT_TOKENS,
         usage.get("completion_tokens"),
     )
-    _set_span_attribute(span, GEN_AI_USAGE_PROMPT_TOKENS, usage.get("prompt_tokens"))
+    _set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, usage.get("prompt_tokens"))
     prompt_tokens_details = dict(usage.get("prompt_tokens_details", {}))
     _set_span_attribute(
         span,
-        SpanAttributes.LLM_USAGE_CACHE_READ_INPUT_TOKENS,
+        "gen_ai.usage.cache_read_input_tokens",
         prompt_tokens_details.get("cached_tokens", 0),
     )
 
@@ -296,7 +283,7 @@ def _log_prompt_filter(span, response_dict):
     if response_dict.get("prompt_filter_results"):
         _set_span_attribute(
             span,
-            f"{GEN_AI_PROMPT}.{PROMPT_FILTER_KEY}",
+            f"gen_ai.prompt.{PROMPT_FILTER_KEY}",
             json.dumps(response_dict.get("prompt_filter_results")),
         )
 
@@ -307,10 +294,10 @@ def _set_span_stream_usage(span, prompt_tokens, completion_tokens):
         return
 
     if isinstance(completion_tokens, int) and completion_tokens >= 0:
-        _set_span_attribute(span, GEN_AI_USAGE_COMPLETION_TOKENS, completion_tokens)
+        _set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, completion_tokens)
 
     if isinstance(prompt_tokens, int) and prompt_tokens >= 0:
-        _set_span_attribute(span, GEN_AI_USAGE_PROMPT_TOKENS, prompt_tokens)
+        _set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, prompt_tokens)
 
     if (
         isinstance(prompt_tokens, int)
@@ -319,7 +306,7 @@ def _set_span_stream_usage(span, prompt_tokens, completion_tokens):
     ):
         _set_span_attribute(
             span,
-            SpanAttributes.LLM_USAGE_TOTAL_TOKENS,
+            "llm.usage.total_tokens",
             completion_tokens + prompt_tokens,
         )
 
@@ -401,11 +388,23 @@ def model_as_dict(model):
     if isinstance(model, dict):
         return model
     if _PYDANTIC_VERSION < "2.0.0":
-        return model.dict()
+        try:
+            return model.dict()
+        except Exception:
+            logger.warning(f"Failed to convert model to dict: {model}", exc_info=True)
+            return {}
     if hasattr(model, "model_dump"):
-        return model.model_dump()
-    elif hasattr(model, "parse"):  # Raw API response
-        return model_as_dict(model.parse())
+        try:
+            return model.model_dump()
+        except Exception:
+            logger.warning(f"Failed to convert model to dict: {model}", exc_info=True)
+            return {}
+    elif hasattr(model, "parse"):
+        try:
+            return model_as_dict(model.parse())
+        except Exception:
+            logger.warning(f"Failed to convert model to dict: {model}", exc_info=True)
+            return {}
     else:
         return model
 

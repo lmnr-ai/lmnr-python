@@ -7,19 +7,16 @@ from .utils import (
     should_send_prompts,
 )
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
-    GEN_AI_COMPLETION,
-    GEN_AI_PROMPT,
     GEN_AI_REQUEST_MAX_TOKENS,
     GEN_AI_REQUEST_MODEL,
     GEN_AI_REQUEST_TEMPERATURE,
     GEN_AI_REQUEST_TOP_P,
     GEN_AI_RESPONSE_ID,
     GEN_AI_RESPONSE_MODEL,
-    GEN_AI_USAGE_COMPLETION_TOKENS,
-    GEN_AI_USAGE_PROMPT_TOKENS,
-)
-from opentelemetry.semconv_ai import (
-    SpanAttributes,
+    GEN_AI_REQUEST_FREQUENCY_PENALTY,
+    GEN_AI_REQUEST_PRESENCE_PENALTY,
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
 )
 
 CONTENT_FILTER_KEY = "content_filter_results"
@@ -32,20 +29,17 @@ def set_input_attributes(span, kwargs):
 
     if should_send_prompts():
         if kwargs.get("prompt") is not None:
-            set_span_attribute(
-                span, f"{GEN_AI_PROMPT}.0.user", kwargs.get("prompt")
-            )
+            set_span_attribute(span, "gen_ai.prompt.0.role", "user")
+            set_span_attribute(span, "gen_ai.prompt.0.content", kwargs.get("prompt"))
 
         elif kwargs.get("messages") is not None:
             for i, message in enumerate(kwargs.get("messages")):
                 set_span_attribute(
                     span,
-                    f"{GEN_AI_PROMPT}.{i}.content",
+                    f"gen_ai.prompt.{i}.content",
                     _dump_content(message.get("content")),
                 )
-                set_span_attribute(
-                    span, f"{GEN_AI_PROMPT}.{i}.role", message.get("role")
-                )
+                set_span_attribute(span, f"gen_ai.prompt.{i}.role", message.get("role"))
 
 
 @dont_throw
@@ -57,19 +51,15 @@ def set_model_input_attributes(span, kwargs):
     set_span_attribute(
         span, GEN_AI_REQUEST_MAX_TOKENS, kwargs.get("max_tokens_to_sample")
     )
-    set_span_attribute(
-        span, GEN_AI_REQUEST_TEMPERATURE, kwargs.get("temperature")
-    )
+    set_span_attribute(span, GEN_AI_REQUEST_TEMPERATURE, kwargs.get("temperature"))
     set_span_attribute(span, GEN_AI_REQUEST_TOP_P, kwargs.get("top_p"))
     set_span_attribute(
-        span, SpanAttributes.LLM_FREQUENCY_PENALTY, kwargs.get("frequency_penalty")
+        span, GEN_AI_REQUEST_FREQUENCY_PENALTY, kwargs.get("frequency_penalty")
     )
     set_span_attribute(
-        span, SpanAttributes.LLM_PRESENCE_PENALTY, kwargs.get("presence_penalty")
+        span, GEN_AI_REQUEST_PRESENCE_PENALTY, kwargs.get("presence_penalty")
     )
-    set_span_attribute(
-        span, SpanAttributes.LLM_IS_STREAMING, kwargs.get("stream") or False
-    )
+    set_span_attribute(span, "llm.is_streaming", kwargs.get("stream") or False)
 
 
 def set_streaming_response_attributes(
@@ -79,7 +69,7 @@ def set_streaming_response_attributes(
     if not span.is_recording() or not should_send_prompts():
         return
 
-    prefix = f"{GEN_AI_COMPLETION}.0"
+    prefix = "gen_ai.completion.0"
     set_span_attribute(span, f"{prefix}.role", "assistant")
     set_span_attribute(span, f"{prefix}.content", accumulated_content)
     if finish_reason:
@@ -91,15 +81,9 @@ def set_model_streaming_response_attributes(span, usage):
         return
 
     if usage:
-        set_span_attribute(
-            span, GEN_AI_USAGE_COMPLETION_TOKENS, usage.completion_tokens
-        )
-        set_span_attribute(
-            span, GEN_AI_USAGE_PROMPT_TOKENS, usage.prompt_tokens
-        )
-        set_span_attribute(
-            span, SpanAttributes.LLM_USAGE_TOTAL_TOKENS, usage.total_tokens
-        )
+        set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, usage.prompt_tokens)
+        set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, usage.completion_tokens)
+        set_span_attribute(span, "llm.usage.total_tokens", usage.total_tokens)
 
 
 @dont_throw
@@ -114,13 +98,9 @@ def set_model_response_attributes(span, response):
     prompt_tokens = usage.get("prompt_tokens")
     completion_tokens = usage.get("completion_tokens")
     if usage:
-        set_span_attribute(
-            span, SpanAttributes.LLM_USAGE_TOTAL_TOKENS, usage.get("total_tokens")
-        )
-        set_span_attribute(
-            span, GEN_AI_USAGE_COMPLETION_TOKENS, completion_tokens
-        )
-        set_span_attribute(span, GEN_AI_USAGE_PROMPT_TOKENS, prompt_tokens)
+        set_span_attribute(span, "llm.usage.total_tokens", usage.get("total_tokens"))
+        set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, completion_tokens)
+        set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, prompt_tokens)
 
 
 def set_response_attributes(span, response):
@@ -137,7 +117,7 @@ def _set_completions(span, choices):
 
     for choice in choices:
         index = choice.get("index")
-        prefix = f"{GEN_AI_COMPLETION}.{index}"
+        prefix = f"gen_ai.completion.{index}"
         set_span_attribute(span, f"{prefix}.finish_reason", choice.get("finish_reason"))
 
         if choice.get("content_filter_results"):

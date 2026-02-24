@@ -16,16 +16,16 @@ requires-python = ">=3.10,<4"
 license = "Apache-2.0"
 dependencies = [
   "pydantic (>=2.0.3,<3.0.0)",
-  "python-dotenv (>=1.0)",
-  "opentelemetry-api (>=1.39.0)",
-  "opentelemetry-sdk (>=1.39.0)",
-  "opentelemetry-exporter-otlp-proto-http (>=1.39.0)",
-  "opentelemetry-exporter-otlp-proto-grpc (>=1.39.0)",
-  "opentelemetry-instrumentation (>=0.54b0)",
-  "opentelemetry-semantic-conventions (>=0.54b0)",
+  "python-dotenv (>=1.0,<2.0)",
+  "opentelemetry-api (>=1.39.0, <2.0.0)",
+  "opentelemetry-sdk (>=1.39.0, <2.0.0)",
+  "opentelemetry-exporter-otlp-proto-http (>=1.39.0, <2.0.0)",
+  "opentelemetry-exporter-otlp-proto-grpc (>=1.39.0, <2.0.0)",
+  "opentelemetry-instrumentation (>=0.54b0, <1.0.0)",
+  "opentelemetry-semantic-conventions (==0.60b1)",
   "opentelemetry-semantic-conventions-ai (==0.4.13)",
   "tqdm (>=4.0)",
-  "tenacity (>=8.0)",
+  "tenacity (>=8.0,<10.0)",
   # Since 1.68.0, grpcio writes a warning message
   # that looks scary, but is harmless.
   # WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
@@ -36,10 +36,10 @@ dependencies = [
   # https://discuss.ai.google.dev/t/warning-all-log-messages-before-absl-initializelog-is-called-are-written-to-stderr-e0000-001731955515-629532-17124-init-cc-229-grpc-wait-for-shutdown-with-timeout-timed-out/50020
   # https://github.com/grpc/grpc/issues/38490
   "grpcio>=1",
-  "httpx (>=0.24.0)",
-  "orjson (>=3.0.0)",
+  "httpx (>=0.24.0,<1.0.0)",
+  "orjson (>=3.0.0,<4.0.0)",
   "packaging (>=22.0)",
-  "opentelemetry-instrumentation-threading>=0.57b0",
+  "opentelemetry-instrumentation-threading (>=0.54b0, <1.0.0)",
 ]
 # poetry would auto-generate these based on requires-python, but other build
 # systems don't, so we need to specify them manually.

@@ -23,39 +23,27 @@ from ..utils import (
 )
 from lmnr.sdk.utils import json_dumps
 from lmnr.opentelemetry_lib.tracing.context import (
-    get_current_context,
     get_event_attributes_from_context,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    safe_start_span,
 )
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
-from opentelemetry.semconv_ai import (
-    SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY,
-    LLMRequestTypeValues,
-    SpanAttributes,
-)
-from opentelemetry.trace import SpanKind
 from opentelemetry.trace.status import Status, StatusCode
 
 SPAN_NAME = "openai.completion"
-LLM_REQUEST_TYPE = LLMRequestTypeValues.COMPLETION
 
 logger = logging.getLogger(__name__)
 
 
 @_with_tracer_wrapper
 def completion_wrapper(tracer, wrapped, instance, args, kwargs):
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY) or context_api.get_value(
-        SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY
-    ):
+    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
     # span needs to be opened and closed manually because the response is a generator
-    span = tracer.start_span(
-        SPAN_NAME,
-        kind=SpanKind.CLIENT,
-        attributes={SpanAttributes.LLM_REQUEST_TYPE: LLM_REQUEST_TYPE.value},
-        context=get_current_context(),
-    )
+    span = safe_start_span(name=SPAN_NAME, attributes={"gen_ai.system": "openai"})
 
     _handle_request(span, kwargs, instance)
 
@@ -73,7 +61,7 @@ def completion_wrapper(tracer, wrapped, instance, args, kwargs):
         # span will be closed after the generator is done
         return _build_from_streaming_response(span, kwargs, response)
     else:
-        _handle_response(response, span, instance)
+        _handle_response(response, span)
 
     span.end()
     return response
@@ -81,17 +69,10 @@ def completion_wrapper(tracer, wrapped, instance, args, kwargs):
 
 @_with_tracer_wrapper
 async def acompletion_wrapper(tracer, wrapped, instance, args, kwargs):
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY) or context_api.get_value(
-        SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY
-    ):
+    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
-    span = tracer.start_span(
-        name=SPAN_NAME,
-        kind=SpanKind.CLIENT,
-        attributes={SpanAttributes.LLM_REQUEST_TYPE: LLM_REQUEST_TYPE.value},
-        context=get_current_context(),
-    )
+    span = safe_start_span(name=SPAN_NAME, attributes={"gen_ai.system": "openai"})
 
     _handle_request(span, kwargs, instance)
 
@@ -109,7 +90,7 @@ async def acompletion_wrapper(tracer, wrapped, instance, args, kwargs):
         # span will be closed after the generator is done
         return _abuild_from_streaming_response(span, kwargs, response)
     else:
-        _handle_response(response, span, instance)
+        _handle_response(response, span)
 
     span.end()
     return response
@@ -127,7 +108,7 @@ def _handle_request(span, kwargs, instance):
 
 
 @dont_throw
-def _handle_response(response, span, instance=None):
+def _handle_response(response, span):
     if is_openai_v1():
         response_dict = model_as_dict(response)
     else:

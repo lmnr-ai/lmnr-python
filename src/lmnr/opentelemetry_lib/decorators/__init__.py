@@ -37,35 +37,43 @@ def _setup_span(
     association_properties: dict[str, Any] | None,
     preserve_global_context: bool = False,
     metadata: dict[str, Any] | None = None,
-):
+) -> Span | None:
     """Set up a span with the given name, type, and association properties."""
-    with get_tracer_with_context() as (tracer, isolated_context):
-        # Create span in isolated context
-        span = tracer.start_span(
-            span_name,
-            context=isolated_context if not preserve_global_context else None,
-            attributes={SPAN_TYPE: span_type},
-        )
-
-        ctx_metadata = context_api.get_value(CONTEXT_METADATA_KEY, isolated_context)
-        merged_metadata = {
-            **(ctx_metadata or {}),
-            **(metadata or {}),
-        }
-        for key, value in merged_metadata.items():
-            span.set_attribute(
-                f"{ASSOCIATION_PROPERTIES}.{METADATA}.{key}",
-                (value if is_otel_attribute_value_type(value) else json_dumps(value)),
+    try:
+        with get_tracer_with_context() as (tracer, isolated_context):
+            # Create span in isolated context
+            span = tracer.start_span(
+                span_name,
+                context=isolated_context if not preserve_global_context else None,
+                attributes={SPAN_TYPE: span_type},
             )
 
-        if association_properties is not None:
-            for key, value in association_properties.items():
-                span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)
-                if key == "rollout_session_id":
-                    # special case, rollout session id is stored in a separate attribute
-                    span.set_attribute(ROLLOUT_SESSION_ID_ATTR, value)
+            ctx_metadata = context_api.get_value(CONTEXT_METADATA_KEY, isolated_context)
+            merged_metadata = {
+                **(ctx_metadata or {}),
+                **(metadata or {}),
+            }
+            for key, value in merged_metadata.items():
+                span.set_attribute(
+                    f"{ASSOCIATION_PROPERTIES}.{METADATA}.{key}",
+                    (
+                        value
+                        if is_otel_attribute_value_type(value)
+                        else json_dumps(value)
+                    ),
+                )
 
-        return span
+            if association_properties is not None:
+                for key, value in association_properties.items():
+                    span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)
+                    if key == "rollout_session_id":
+                        # special case, rollout session id is stored in a separate attribute
+                        span.set_attribute(ROLLOUT_SESSION_ID_ATTR, value)
+
+            return span
+    except Exception:
+        logger.warning(f"[observe] failed to setup span: {span_name}", exc_info=True)
+        return None
 
 
 def _process_input(
@@ -137,8 +145,11 @@ def _process_output(
 
 def _cleanup_span(span: Span, wrapper: TracerWrapper):
     """Clean up span and context."""
-    span.end()
-    wrapper.pop_span_context()
+    try:
+        span.end()
+        wrapper.pop_span_context()
+    except Exception:
+        logger.debug("Failed to cleanup span", exc_info=True)
 
 
 def observe_base(
@@ -147,7 +158,15 @@ def observe_base(
     ignore_input: bool = False,
     ignore_inputs: list[str] | None = None,
     ignore_output: bool = False,
-    span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
+    span_type: Literal[
+        "DEFAULT",
+        "LLM",
+        "TOOL",
+        "EXECUTOR",
+        "EVALUATOR",
+        "HUMAN_EVALUATOR",
+        "EVALUATION",
+    ] = "DEFAULT",
     metadata: dict[str, Any] | None = None,
     association_properties: dict[str, Any] | None = None,
     input_formatter: Callable[..., str] | None = None,
@@ -171,26 +190,34 @@ def observe_base(
                 metadata,
             )
 
+            if span is None:
+                return fn(*args, **kwargs)
+
             # Set association props in context before push_span_context
             # so child spans inherit them
             assoc_props_token = set_association_props_in_context(span)
             if assoc_props_token and isinstance(span, LaminarSpan):
                 span._lmnr_assoc_props_token = assoc_props_token
 
-            new_context = wrapper.push_span_context(span)
-            # Some auto-instrumentations are not under our control, so they
-            # don't have access to our isolated context. We attach the context
-            # to the OTEL global context, so that spans know their parent
-            # span and trace_id.
-            ctx_token = context_api.attach(new_context)
+            ctx_token = None
             current_task = None
+            current_context_id = None
+            isolated_ctx_token = None
             try:
-                current_task = asyncio.current_task()
+                new_context = wrapper.push_span_context(span)
+                # Some auto-instrumentations are not under our control, so they
+                # don't have access to our isolated context. We attach the context
+                # to the OTEL global context, so that spans know their parent
+                # span and trace_id.
+                ctx_token = context_api.attach(new_context)
+                isolated_ctx_token = attach_context(new_context)
+                try:
+                    current_task = asyncio.current_task()
+                except Exception:
+                    current_task = None
+                current_context_id = id(current_task)
             except Exception:
-                current_task = None
-            current_context_id = id(current_task)
-            # update our isolated context too
-            isolated_ctx_token = attach_context(new_context)
+                logger.debug("Failed to setup span context", exc_info=True)
 
             _process_input(
                 span, fn, args, kwargs, ignore_input, ignore_inputs, input_formatter
@@ -210,7 +237,10 @@ def observe_base(
                     current_task = None
                 # Always restore global context if we are in the same asyncio context
                 if id(current_task) == current_context_id:
-                    context_api.detach(ctx_token)
+                    try:
+                        context_api.detach(ctx_token)
+                    except Exception:
+                        logger.debug("Failed to detach global context", exc_info=True)
                 else:
                     logger.debug(
                         "Not detaching global context, not in the same context"
@@ -252,7 +282,15 @@ def async_observe_base(
     ignore_input: bool = False,
     ignore_inputs: list[str] | None = None,
     ignore_output: bool = False,
-    span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
+    span_type: Literal[
+        "DEFAULT",
+        "LLM",
+        "TOOL",
+        "EXECUTOR",
+        "EVALUATOR",
+        "HUMAN_EVALUATOR",
+        "EVALUATION",
+    ] = "DEFAULT",
     metadata: dict[str, Any] | None = None,
     association_properties: dict[str, Any] | None = None,
     input_formatter: Callable[..., str] | None = None,
@@ -276,26 +314,34 @@ def async_observe_base(
                 metadata,
             )
 
+            if span is None:
+                return await fn(*args, **kwargs)
+
             # Set association props in context before push_span_context
             # so child spans inherit them
             assoc_props_token = set_association_props_in_context(span)
             if assoc_props_token and isinstance(span, LaminarSpan):
                 span._lmnr_assoc_props_token = assoc_props_token
 
-            new_context = wrapper.push_span_context(span)
-            # Some auto-instrumentations are not under our control, so they
-            # don't have access to our isolated context. We attach the context
-            # to the OTEL global context, so that spans know their parent
-            # span and trace_id.
-            ctx_token = context_api.attach(new_context)
+            ctx_token = None
             current_task = None
+            current_context_id = None
+            isolated_ctx_token = None
             try:
-                current_task = asyncio.current_task()
+                new_context = wrapper.push_span_context(span)
+                # Some auto-instrumentations are not under our control, so they
+                # don't have access to our isolated context. We attach the context
+                # to the OTEL global context, so that spans know their parent
+                # span and trace_id.
+                ctx_token = context_api.attach(new_context)
+                isolated_ctx_token = attach_context(new_context)
+                try:
+                    current_task = asyncio.current_task()
+                except Exception:
+                    current_task = None
+                current_context_id = id(current_task)
             except Exception:
-                current_task = None
-            current_context_id = id(current_task)
-            # update our isolated context too
-            isolated_ctx_token = attach_context(new_context)
+                logger.debug("Failed to setup span context", exc_info=True)
 
             _process_input(
                 span, fn, args, kwargs, ignore_input, ignore_inputs, input_formatter

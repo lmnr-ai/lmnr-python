@@ -14,13 +14,13 @@ from .span_utils import (
     set_streaming_response_attributes,
 )
 from .version import __version__
-from lmnr.opentelemetry_lib.tracing.context import get_current_context
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    dont_throw,
+    safe_start_span,
+)
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
-from opentelemetry.semconv_ai import (
-    SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY,
-)
 from opentelemetry.trace import Tracer, get_tracer
 from opentelemetry.trace.status import Status, StatusCode
 from wrapt import wrap_function_wrapper
@@ -175,17 +175,6 @@ def _handle_response(span, response):
     set_response_attributes(span, response)
 
 
-@dont_throw
-def _start_span_in_current_context(tracer: Tracer, name: str | None):
-    return tracer.start_span(
-        name or "groq.chat",
-        attributes={
-            "gen_ai.system": "groq",
-        },
-        context=get_current_context(),
-    )
-
-
 @_with_chat_telemetry_wrapper
 def _wrap(
     tracer: Tracer,
@@ -196,13 +185,11 @@ def _wrap(
     kwargs,
 ):
     """Instruments and calls every function defined in TO_WRAP."""
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY) or context_api.get_value(
-        SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY
-    ):
+    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
     name = to_wrap.get("span_name")
-    span = _start_span_in_current_context(tracer, name)
+    span = safe_start_span(name=name, attributes={"gen_ai.system": "groq"})
     if not span:
         logger.warning("Failed to start span for groq chat")
         return wrapped(*args, **kwargs)
@@ -251,13 +238,11 @@ async def _awrap(
     kwargs,
 ):
     """Instruments and calls every function defined in TO_WRAP."""
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY) or context_api.get_value(
-        SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY
-    ):
+    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
     name = to_wrap.get("span_name")
-    span = _start_span_in_current_context(tracer, name)
+    span = safe_start_span(name=name, attributes={"gen_ai.system": "groq"})
     if not span:
         logger.warning("Failed to start span for groq chat")
         return await wrapped(*args, **kwargs)

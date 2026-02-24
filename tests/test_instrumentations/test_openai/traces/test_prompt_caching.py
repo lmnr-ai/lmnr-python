@@ -60,17 +60,19 @@ def test_openai_prompt_caching(instrument_legacy, span_exporter):
         == "chatcmpl-BNi420iFNtIOHzy8Gq2fVS5utTus7"
     )
 
-    creation_output = json.loads(cache_creation_span.attributes["gen_ai.output.messages"])
+    creation_output = json.loads(
+        cache_creation_span.attributes["gen_ai.output.messages"]
+    )
     assert creation_output[0]["message"]["role"] == "assistant"
     read_output = json.loads(cache_read_span.attributes["gen_ai.output.messages"])
     assert read_output[0]["message"]["role"] == "assistant"
 
-    assert cache_creation_span.attributes["gen_ai.usage.prompt_tokens"] == 1149
-    assert cache_creation_span.attributes["gen_ai.usage.completion_tokens"] == 315
+    assert cache_creation_span.attributes["gen_ai.usage.input_tokens"] == 1149
+    assert cache_creation_span.attributes["gen_ai.usage.output_tokens"] == 315
     assert cache_creation_span.attributes["gen_ai.usage.cache_read_input_tokens"] == 0
 
-    assert cache_read_span.attributes["gen_ai.usage.prompt_tokens"] == 1149
-    assert cache_read_span.attributes["gen_ai.usage.completion_tokens"] == 353
+    assert cache_read_span.attributes["gen_ai.usage.input_tokens"] == 1149
+    assert cache_read_span.attributes["gen_ai.usage.output_tokens"] == 353
     assert cache_read_span.attributes["gen_ai.usage.cache_read_input_tokens"] == 1024
 
 
@@ -129,15 +131,17 @@ async def test_openai_prompt_caching_async(instrument_legacy, span_exporter):
         == "chatcmpl-BNhrEFvKSNY08Uphau5iA4InZH6jn"
     )
 
-    creation_output = json.loads(cache_creation_span.attributes["gen_ai.output.messages"])
+    creation_output = json.loads(
+        cache_creation_span.attributes["gen_ai.output.messages"]
+    )
     assert creation_output[0]["message"]["role"] == "assistant"
     read_output = json.loads(cache_read_span.attributes["gen_ai.output.messages"])
     assert read_output[0]["message"]["role"] == "assistant"
 
-    assert cache_creation_span.attributes["gen_ai.usage.prompt_tokens"] == 1150
-    assert cache_creation_span.attributes["gen_ai.usage.completion_tokens"] == 293
+    assert cache_creation_span.attributes["gen_ai.usage.input_tokens"] == 1150
+    assert cache_creation_span.attributes["gen_ai.usage.output_tokens"] == 293
     assert cache_creation_span.attributes["gen_ai.usage.cache_read_input_tokens"] == 0
 
-    assert cache_read_span.attributes["gen_ai.usage.prompt_tokens"] == 1150
-    assert cache_read_span.attributes["gen_ai.usage.completion_tokens"] == 307
+    assert cache_read_span.attributes["gen_ai.usage.input_tokens"] == 1150
+    assert cache_read_span.attributes["gen_ai.usage.output_tokens"] == 307
     assert cache_read_span.attributes["gen_ai.usage.cache_read_input_tokens"] == 1024

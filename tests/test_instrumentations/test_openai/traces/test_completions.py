@@ -5,7 +5,6 @@ from unittest.mock import patch
 import httpx
 import pytest
 from opentelemetry.trace import StatusCode
-from opentelemetry.semconv_ai import SpanAttributes
 
 from .utils import assert_request_contains_tracecontext, spy_decorator
 
@@ -27,10 +26,10 @@ def test_completion(instrument_legacy, span_exporter, openai_client):
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
     assert output_messages[0]["text"]
     assert (
-        open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
+        open_ai_span.attributes.get("gen_ai.request.base_url")
         == "https://api.openai.com/v1/"
     )
-    assert open_ai_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is False
+    assert open_ai_span.attributes.get("llm.is_streaming") is False
     assert (
         open_ai_span.attributes.get("gen_ai.response.id")
         == "cmpl-8wq42D1Socatcl1rCmgYZOFX7dFZw"
@@ -108,20 +107,14 @@ def test_completion_streaming(instrument_legacy, span_exporter, openai_client):
         output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
         assert output_messages[0]["text"]
         assert (
-            open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
+            open_ai_span.attributes.get("gen_ai.request.base_url")
             == "https://api.openai.com/v1/"
         )
 
         # check token usage attributes for stream
-        completion_tokens = open_ai_span.attributes.get(
-            "gen_ai.usage.completion_tokens"
-        )
-        prompt_tokens = open_ai_span.attributes.get(
-            "gen_ai.usage.prompt_tokens"
-        )
-        total_tokens = open_ai_span.attributes.get(
-            SpanAttributes.LLM_USAGE_TOTAL_TOKENS
-        )
+        completion_tokens = open_ai_span.attributes.get("gen_ai.usage.output_tokens")
+        prompt_tokens = open_ai_span.attributes.get("gen_ai.usage.input_tokens")
+        total_tokens = open_ai_span.attributes.get("llm.usage.total_tokens")
         assert completion_tokens and prompt_tokens and total_tokens
         assert completion_tokens + prompt_tokens == total_tokens
         assert (
@@ -161,7 +154,7 @@ async def test_async_completion_streaming(
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
     assert output_messages[0]["text"]
     assert (
-        open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
+        open_ai_span.attributes.get("gen_ai.request.base_url")
         == "https://api.openai.com/v1/"
     )
     assert (

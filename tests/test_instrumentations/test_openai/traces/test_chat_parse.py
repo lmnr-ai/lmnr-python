@@ -1,6 +1,5 @@
 import json
 import pytest
-from opentelemetry.semconv_ai import SpanAttributes
 from opentelemetry.sdk.trace import Span
 from opentelemetry.trace import StatusCode
 from pydantic import BaseModel
@@ -27,10 +26,10 @@ def test_parsed_completion(instrument_legacy, span_exporter, openai_client):
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
     assert output_messages[0]["message"]["content"]
     assert (
-        open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
+        open_ai_span.attributes.get("gen_ai.request.base_url")
         == "https://api.openai.com/v1/"
     )
-    assert open_ai_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is False
+    assert open_ai_span.attributes.get("llm.is_streaming") is False
     input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     assert (
@@ -58,7 +57,10 @@ def test_parsed_refused_completion(instrument_legacy, span_exporter, openai_clie
     open_ai_span = spans[0]
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
     assert output_messages[0]["message"].get("content") is None
-    assert output_messages[0]["message"]["refusal"] == "I'm very sorry, but I can't assist with that request."
+    assert (
+        output_messages[0]["message"]["refusal"]
+        == "I'm very sorry, but I can't assist with that request."
+    )
     assert (
         open_ai_span.attributes.get("gen_ai.response.id")
         == "chatcmpl-AGky8KFDbg6f5fF4qLtsBredIjZZh"
@@ -87,10 +89,10 @@ async def test_async_parsed_completion(
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
     assert output_messages[0]["message"]["content"]
     assert (
-        open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
+        open_ai_span.attributes.get("gen_ai.request.base_url")
         == "https://api.openai.com/v1/"
     )
-    assert open_ai_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is False
+    assert open_ai_span.attributes.get("llm.is_streaming") is False
     input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     assert (
@@ -120,7 +122,10 @@ async def test_async_parsed_refused_completion(
     open_ai_span = spans[0]
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
     assert output_messages[0]["message"].get("content") is None
-    assert output_messages[0]["message"]["refusal"] == "I'm very sorry, but I can't assist with that request."
+    assert (
+        output_messages[0]["message"]["refusal"]
+        == "I'm very sorry, but I can't assist with that request."
+    )
     assert (
         open_ai_span.attributes.get("gen_ai.response.id")
         == "chatcmpl-AGkyFJGzZPUGAAEDJJuOS3idKvD3G"
@@ -146,10 +151,9 @@ def test_parsed_completion_exception(instrument_legacy, span_exporter, openai_cl
     span: Span = spans[0]
     assert span.name == "openai.chat"
     assert (
-        span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
-        == "https://api.openai.com/v1/"
+        span.attributes.get("gen_ai.request.base_url") == "https://api.openai.com/v1/"
     )
-    assert span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is False
+    assert span.attributes.get("llm.is_streaming") is False
     input_messages = json.loads(span.attributes["gen_ai.input.messages"])
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     assert input_messages[0]["role"] == "user"
@@ -189,10 +193,9 @@ async def test_async_parsed_completion_exception(
     span: Span = spans[0]
     assert span.name == "openai.chat"
     assert (
-        span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
-        == "https://api.openai.com/v1/"
+        span.attributes.get("gen_ai.request.base_url") == "https://api.openai.com/v1/"
     )
-    assert span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is False
+    assert span.attributes.get("llm.is_streaming") is False
     input_messages = json.loads(span.attributes["gen_ai.input.messages"])
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     assert input_messages[0]["role"] == "user"

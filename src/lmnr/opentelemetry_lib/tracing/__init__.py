@@ -24,19 +24,24 @@ from lmnr.opentelemetry_lib.tracing.context import (
 from opentelemetry import trace
 from opentelemetry.context import Context
 
+from lmnr.sdk.log import get_default_logger
+
 # instead of importing from opentelemetry.instrumentation.threading,
 # we import from our modified copy to use Laminar's isolated context.
 from ..opentelemetry.instrumentation.threading import ThreadingInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider, SpanProcessor
 from opentelemetry.sdk.trace.export import SpanExporter
-from opentelemetry._logs import get_logger_provider, set_logger_provider, NoOpLoggerProvider
+from opentelemetry._logs import set_logger_provider
 from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 
 TRACER_NAME = "lmnr.tracer"
 
 MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN = 5000
+
+
+LOG = get_default_logger(__name__)
 
 
 class TracerWrapper(object):

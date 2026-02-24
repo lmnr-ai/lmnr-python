@@ -8,6 +8,9 @@ from typing import AsyncGenerator, Callable, Collection, Generator
 
 from google.genai import types
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    safe_start_span,
+)
 from lmnr.opentelemetry_lib.tracing.context import (
     get_event_attributes_from_context,
 )
@@ -40,11 +43,6 @@ from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
-
-from opentelemetry.semconv_ai import (
-    SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY,
-    SpanAttributes,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -174,12 +172,12 @@ def _set_request_attributes(span, args, kwargs):
         tool_dict = to_dict(tool)
         set_span_attribute(
             span,
-            f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.{tool_num}.name",
+            f"llm.request.functions.{tool_num}.name",
             tool_dict.get("name"),
         )
         set_span_attribute(
             span,
-            f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.{tool_num}.description",
+            f"llm.request.functions.{tool_num}.description",
             tool_dict.get("description"),
         )
         if parameters := tool_dict.get("parameters"):
@@ -190,7 +188,7 @@ def _set_request_attributes(span, args, kwargs):
                 parameters = strip_none_values(parameters)
             set_span_attribute(
                 span,
-                f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.{tool_num}.parameters",
+                f"llm.request.functions.{tool_num}.parameters",
                 json_dumps(parameters),
             )
 
@@ -252,12 +250,12 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
         )
         set_span_attribute(
             span,
-            SpanAttributes.LLM_USAGE_TOTAL_TOKENS,
+            "llm.usage.total_tokens",
             usage_dict.get("total_token_count"),
         )
         set_span_attribute(
             span,
-            SpanAttributes.LLM_USAGE_CACHE_READ_INPUT_TOKENS,
+            "gen_ai.usage.cache_read_input_tokens",
             usage_dict.get("cached_content_token_count"),
         )
         set_span_attribute(
@@ -267,9 +265,7 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
         )
 
     if should_send_prompts():
-        set_span_attribute(
-            span, f"{gen_ai_attributes.GEN_AI_COMPLETION}.0.role", "model"
-        )
+        set_span_attribute(span, "gen_ai.completion.0.role", "model")
         candidates_list = candidates if isinstance(candidates, list) else [candidates]
         i = 0
         for candidate in candidates_list:
@@ -279,14 +275,12 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
             if isinstance(content_payload, dict):
                 content_payload = [content_payload]
 
-            set_span_attribute(
-                span, f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.role", "model"
-            )
+            set_span_attribute(span, f"gen_ai.completion.{i}.role", "model")
             if content_payload:
                 has_content = True
                 set_span_attribute(
                     span,
-                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.content",
+                    f"gen_ai.completion.{i}.content",
                     (
                         content_payload
                         if isinstance(content_payload, str)
@@ -308,12 +302,12 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
                 has_content = True
                 set_span_attribute(
                     span,
-                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.{tool_call_index}.name",
+                    f"gen_ai.completion.{i}.tool_calls.{tool_call_index}.name",
                     function_call.get("name"),
                 )
                 set_span_attribute(
                     span,
-                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.{tool_call_index}.id",
+                    f"gen_ai.completion.{i}.tool_calls.{tool_call_index}.id",
                     (
                         function_call.get("id")
                         if function_call.get("id") is not None
@@ -322,7 +316,7 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
                 )
                 set_span_attribute(
                     span,
-                    f"{gen_ai_attributes.GEN_AI_COMPLETION}.{i}.tool_calls.{tool_call_index}.arguments",
+                    f"gen_ai.completion.{i}.tool_calls.{tool_call_index}.arguments",
                     json_dumps(function_call.get("arguments")),
                 )
                 tool_call_index += 1
@@ -473,24 +467,15 @@ async def _abuild_from_streaming_response(
             span.end()
 
 
-@dont_throw
-def _start_span(name: str | None):
-    span = Laminar.start_span(
-        name=name or "gemini.generate_content",
-        span_type="LLM",
-    )
-    span.set_attribute("gen_ai.system", "gemini")
-    return span
-
-
 @with_tracer_wrapper
 def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY) or context_api.get_value(
-        SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY
-    ):
+    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
-    span = _start_span(to_wrap.get("span_name"))
+    span = safe_start_span(
+        name=to_wrap.get("span_name"),
+        attributes={"gen_ai.system": "gemini", "lmnr.span.type": "LLM"},
+    )
     if not span:
         logger.warning("Failed to start span for google genai")
         return wrapped(*args, **kwargs)
@@ -547,12 +532,13 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
 
 @with_tracer_wrapper
 async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY) or context_api.get_value(
-        SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY
-    ):
+    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
-    span = _start_span(to_wrap.get("span_name"))
+    span = safe_start_span(
+        name=to_wrap.get("span_name"),
+        attributes={"gen_ai.system": "gemini", "lmnr.span.type": "LLM"},
+    )
     if not span:
         logger.warning("Failed to start span for async google genai")
         return await wrapped(*args, **kwargs)

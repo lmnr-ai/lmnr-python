@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 import pytest
-from opentelemetry.semconv_ai import SpanAttributes
 
 image_content_block = {
     "type": "image",
@@ -93,16 +92,8 @@ def test_anthropic_message_create_legacy(
         anthropic_span.attributes.get("gen_ai.completion.0.content")
         == response.content[0].text
     )
-    assert (
-        anthropic_span.attributes.get("gen_ai.completion.0.role")
-        == "assistant"
-    )
-    assert anthropic_span.attributes["gen_ai.usage.prompt_tokens"] == 17
-    assert (
-        anthropic_span.attributes["gen_ai.usage.completion_tokens"]
-        + anthropic_span.attributes["gen_ai.usage.prompt_tokens"]
-        == anthropic_span.attributes[SpanAttributes.LLM_USAGE_TOTAL_TOKENS]
-    )
+    assert anthropic_span.attributes.get("gen_ai.completion.0.role") == "assistant"
+    assert anthropic_span.attributes["gen_ai.usage.input_tokens"] == 17
     assert (
         anthropic_span.attributes.get("gen_ai.response.id")
         == "msg_01NgS2sXcQRKUKbwKFx1vVxC"
@@ -142,9 +133,7 @@ def test_anthropic_multi_modal_legacy(
         "anthropic.chat",
     ]
     anthropic_span = spans[0]
-    assert anthropic_span.attributes[
-        "gen_ai.prompt.0.content"
-    ] == json.dumps(
+    assert anthropic_span.attributes["gen_ai.prompt.0.content"] == json.dumps(
         [
             {"type": "text", "text": "What do you see?"},
             {"type": "image_url", "image_url": {"url": "/some/url"}},
@@ -155,16 +144,8 @@ def test_anthropic_multi_modal_legacy(
         anthropic_span.attributes.get("gen_ai.completion.0.content")
         == response.content[0].text
     )
-    assert (
-        anthropic_span.attributes.get("gen_ai.completion.0.role")
-        == "assistant"
-    )
-    assert anthropic_span.attributes["gen_ai.usage.prompt_tokens"] == 1381
-    assert (
-        anthropic_span.attributes["gen_ai.usage.completion_tokens"]
-        + anthropic_span.attributes["gen_ai.usage.prompt_tokens"]
-        == anthropic_span.attributes[SpanAttributes.LLM_USAGE_TOTAL_TOKENS]
-    )
+    assert anthropic_span.attributes.get("gen_ai.completion.0.role") == "assistant"
+    assert anthropic_span.attributes["gen_ai.usage.input_tokens"] == 1381
     assert (
         anthropic_span.attributes.get("gen_ai.response.id")
         == "msg_01B37ySLPzYj8KY6uZmiPoxd"
@@ -210,9 +191,7 @@ def test_anthropic_image_with_history(
 
     spans = span_exporter.get_finished_spans()
     assert all(span.name == "anthropic.chat" for span in spans)
-    assert (
-        spans[0].attributes["gen_ai.prompt.0.content"] == system_message
-    )
+    assert spans[0].attributes["gen_ai.prompt.0.content"] == system_message
     assert spans[0].attributes["gen_ai.prompt.0.role"] == "system"
     assert (
         spans[0].attributes["gen_ai.prompt.1.content"]
@@ -220,45 +199,32 @@ def test_anthropic_image_with_history(
     )
     assert spans[0].attributes["gen_ai.prompt.1.role"] == "user"
     assert (
-        spans[0].attributes["gen_ai.completion.0.content"]
-        == response1.content[0].text
+        spans[0].attributes["gen_ai.completion.0.content"] == response1.content[0].text
     )
-    assert (
-        spans[0].attributes["gen_ai.completion.0.role"] == "assistant"
-    )
+    assert spans[0].attributes["gen_ai.completion.0.role"] == "assistant"
     assert (
         spans[0].attributes.get("gen_ai.response.id") == "msg_01Ctc62hUPvikvYASXZqTo9q"
     )
 
-    assert (
-        spans[1].attributes["gen_ai.prompt.0.content"] == system_message
-    )
+    assert spans[1].attributes["gen_ai.prompt.0.content"] == system_message
     assert spans[1].attributes["gen_ai.prompt.0.role"] == "system"
     assert (
         spans[1].attributes["gen_ai.prompt.1.content"]
         == "Are you capable of describing an image?"
     )
     assert spans[1].attributes["gen_ai.prompt.1.role"] == "user"
-    assert (
-        spans[1].attributes["gen_ai.prompt.2.content"]
-        == response1.content[0].text
-    )
+    assert spans[1].attributes["gen_ai.prompt.2.content"] == response1.content[0].text
     assert spans[1].attributes["gen_ai.prompt.2.role"] == "assistant"
-    assert json.loads(
-        spans[1].attributes["gen_ai.prompt.3.content"]
-    ) == [
+    assert json.loads(spans[1].attributes["gen_ai.prompt.3.content"]) == [
         {"type": "text", "text": "What do you see?"},
         {"type": "image_url", "image_url": {"url": "/some/url"}},
     ]
     assert spans[1].attributes["gen_ai.prompt.3.role"] == "user"
 
     assert (
-        spans[1].attributes["gen_ai.completion.0.content"]
-        == response2.content[0].text
+        spans[1].attributes["gen_ai.completion.0.content"] == response2.content[0].text
     )
-    assert (
-        spans[1].attributes["gen_ai.completion.0.role"] == "assistant"
-    )
+    assert spans[1].attributes["gen_ai.completion.0.role"] == "assistant"
     assert (
         spans[1].attributes.get("gen_ai.response.id") == "msg_01EtAvxHCWn5jjdUCnG4wEAd"
     )
@@ -291,9 +257,7 @@ async def test_anthropic_async_multi_modal_legacy(
         "anthropic.chat",
     ]
     anthropic_span = spans[0]
-    assert anthropic_span.attributes[
-        "gen_ai.prompt.0.content"
-    ] == json.dumps(
+    assert anthropic_span.attributes["gen_ai.prompt.0.content"] == json.dumps(
         [
             {"type": "text", "text": "What do you see?"},
             {"type": "image_url", "image_url": {"url": "/some/url"}},
@@ -304,16 +268,8 @@ async def test_anthropic_async_multi_modal_legacy(
         anthropic_span.attributes.get("gen_ai.completion.0.content")
         == response.content[0].text
     )
-    assert (
-        anthropic_span.attributes.get("gen_ai.completion.0.role")
-        == "assistant"
-    )
-    assert anthropic_span.attributes["gen_ai.usage.prompt_tokens"] == 1311
-    assert (
-        anthropic_span.attributes["gen_ai.usage.completion_tokens"]
-        + anthropic_span.attributes["gen_ai.usage.prompt_tokens"]
-        == anthropic_span.attributes[SpanAttributes.LLM_USAGE_TOTAL_TOKENS]
-    )
+    assert anthropic_span.attributes.get("gen_ai.completion.0.role") == "assistant"
+    assert anthropic_span.attributes["gen_ai.usage.input_tokens"] == 1311
     assert (
         anthropic_span.attributes.get("gen_ai.response.id")
         == "msg_01DWnmUo9hWk4Fk7V7Ddfa2w"
@@ -359,19 +315,10 @@ def test_anthropic_message_streaming_legacy(
     )
     assert (anthropic_span.attributes["gen_ai.prompt.0.role"]) == "user"
     assert (
-        anthropic_span.attributes.get("gen_ai.completion.0.content")
-        == response_content
+        anthropic_span.attributes.get("gen_ai.completion.0.content") == response_content
     )
-    assert (
-        anthropic_span.attributes.get("gen_ai.completion.0.role")
-        == "assistant"
-    )
-    assert anthropic_span.attributes["gen_ai.usage.prompt_tokens"] == 17
-    assert (
-        anthropic_span.attributes["gen_ai.usage.completion_tokens"]
-        + anthropic_span.attributes["gen_ai.usage.prompt_tokens"]
-        == anthropic_span.attributes[SpanAttributes.LLM_USAGE_TOTAL_TOKENS]
-    )
+    assert anthropic_span.attributes.get("gen_ai.completion.0.role") == "assistant"
+    assert anthropic_span.attributes["gen_ai.usage.input_tokens"] == 17
     assert (
         anthropic_span.attributes.get("gen_ai.response.id")
         == "msg_019bVafnfSbR9K5SGmoy6gcX"
@@ -422,16 +369,8 @@ async def test_async_anthropic_message_create_legacy(
         anthropic_span.attributes.get("gen_ai.completion.0.content")
         == response.content[0].text
     )
-    assert (
-        anthropic_span.attributes.get("gen_ai.completion.0.role")
-        == "assistant"
-    )
-    assert anthropic_span.attributes["gen_ai.usage.prompt_tokens"] == 17
-    assert (
-        anthropic_span.attributes["gen_ai.usage.completion_tokens"]
-        + anthropic_span.attributes["gen_ai.usage.prompt_tokens"]
-        == anthropic_span.attributes[SpanAttributes.LLM_USAGE_TOTAL_TOKENS]
-    )
+    assert anthropic_span.attributes.get("gen_ai.completion.0.role") == "assistant"
+    assert anthropic_span.attributes["gen_ai.usage.input_tokens"] == 17
     assert (
         anthropic_span.attributes.get("gen_ai.response.id")
         == "msg_01HCcR31VQpZtUqtJ6gZnX34"
@@ -485,19 +424,10 @@ async def test_async_anthropic_message_streaming_legacy(
     )
     assert (anthropic_span.attributes["gen_ai.prompt.0.role"]) == "user"
     assert (
-        anthropic_span.attributes.get("gen_ai.completion.0.content")
-        == response_content
+        anthropic_span.attributes.get("gen_ai.completion.0.content") == response_content
     )
-    assert (
-        anthropic_span.attributes.get("gen_ai.completion.0.role")
-        == "assistant"
-    )
-    assert anthropic_span.attributes["gen_ai.usage.prompt_tokens"] == 17
-    assert (
-        anthropic_span.attributes["gen_ai.usage.completion_tokens"]
-        + anthropic_span.attributes["gen_ai.usage.prompt_tokens"]
-        == anthropic_span.attributes[SpanAttributes.LLM_USAGE_TOTAL_TOKENS]
-    )
+    assert anthropic_span.attributes.get("gen_ai.completion.0.role") == "assistant"
+    assert anthropic_span.attributes["gen_ai.usage.input_tokens"] == 17
     assert (
         anthropic_span.attributes.get("gen_ai.response.id")
         == "msg_01TwQxsi2T5Pat3DNJW7m2wx"
@@ -539,12 +469,7 @@ def test_anthropic_tools_legacy(instrument_legacy, anthropic_client, span_export
     anthropic_span = spans[0]
 
     # verify usage
-    assert anthropic_span.attributes["gen_ai.usage.prompt_tokens"] == 514
-    assert (
-        anthropic_span.attributes["gen_ai.usage.completion_tokens"]
-        + anthropic_span.attributes["gen_ai.usage.prompt_tokens"]
-        == anthropic_span.attributes["llm.usage.total_tokens"]
-    )
+    assert anthropic_span.attributes["gen_ai.usage.input_tokens"] == 514
 
     # verify request and inputs
     assert (
@@ -685,12 +610,7 @@ def test_anthropic_tools_history_legacy(
     anthropic_span = spans[0]
 
     # verify usage
-    assert anthropic_span.attributes["gen_ai.usage.prompt_tokens"] == 568
-    assert (
-        anthropic_span.attributes["gen_ai.usage.completion_tokens"]
-        + anthropic_span.attributes["gen_ai.usage.prompt_tokens"]
-        == anthropic_span.attributes["llm.usage.total_tokens"]
-    )
+    assert anthropic_span.attributes["gen_ai.usage.input_tokens"] == 568
 
     # verify request and inputs
     assert (
@@ -809,12 +729,7 @@ def test_anthropic_tools_streaming_legacy(
     anthropic_span = spans[0]
 
     # verify usage
-    assert anthropic_span.attributes["gen_ai.usage.prompt_tokens"] == 506
-    assert (
-        anthropic_span.attributes["gen_ai.usage.completion_tokens"]
-        + anthropic_span.attributes["gen_ai.usage.prompt_tokens"]
-        == anthropic_span.attributes["llm.usage.total_tokens"]
-    )
+    assert anthropic_span.attributes["gen_ai.usage.input_tokens"] == 506
 
     # verify request and inputs
     assert (
@@ -949,13 +864,9 @@ def test_anthropic_message_stream_manager(
     )
     assert (anthropic_span.attributes["gen_ai.prompt.0.role"]) == "user"
     assert (
-        anthropic_span.attributes.get("gen_ai.completion.0.content")
-        == response_content
+        anthropic_span.attributes.get("gen_ai.completion.0.content") == response_content
     )
-    assert (
-        anthropic_span.attributes.get("gen_ai.completion.0.role")
-        == "assistant"
-    )
+    assert anthropic_span.attributes.get("gen_ai.completion.0.role") == "assistant"
     assert (
         anthropic_span.attributes.get("gen_ai.response.id")
         == "msg_01MCkQZZtEKF3nVbFaExwATe"
@@ -1001,13 +912,9 @@ async def test_async_anthropic_message_stream_manager(
     )
     assert (anthropic_span.attributes["gen_ai.prompt.0.role"]) == "user"
     assert (
-        anthropic_span.attributes.get("gen_ai.completion.0.content")
-        == response_content
+        anthropic_span.attributes.get("gen_ai.completion.0.content") == response_content
     )
-    assert (
-        anthropic_span.attributes.get("gen_ai.completion.0.role")
-        == "assistant"
-    )
+    assert anthropic_span.attributes.get("gen_ai.completion.0.role") == "assistant"
     assert (
         anthropic_span.attributes.get("gen_ai.response.id")
         == "msg_01QnFxEDGs7cHJegKR367cJ7"

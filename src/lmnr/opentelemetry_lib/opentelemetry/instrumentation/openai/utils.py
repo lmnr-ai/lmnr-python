@@ -4,7 +4,6 @@ import inspect
 import os
 import threading
 import traceback
-from contextlib import asynccontextmanager
 from importlib.metadata import version
 from packaging.version import parse
 
@@ -91,12 +90,6 @@ def _with_tracer_wrapper(func):
         return wrapper
 
     return _with_tracer
-
-
-@asynccontextmanager
-async def start_as_current_span_async(tracer, *args, **kwargs):
-    with tracer.start_as_current_span(*args, **kwargs) as span:
-        yield span
 
 
 def dont_throw(func):

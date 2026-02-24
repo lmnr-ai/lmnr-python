@@ -2,9 +2,8 @@ from lmnr.opentelemetry_lib.tracing.context import get_event_attributes_from_con
 from ..shared import _set_span_attribute
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
-    GEN_AI_COMPLETION,
-    GEN_AI_USAGE_COMPLETION_TOKENS,
-    GEN_AI_USAGE_PROMPT_TOKENS,
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
 )
 from opentelemetry.trace import Status, StatusCode
 from typing_extensions import override
@@ -26,12 +25,12 @@ class EventHandlerWrapper(AssistantEventHandler):
     def on_end(self):
         _set_span_attribute(
             self._span,
-            GEN_AI_USAGE_PROMPT_TOKENS,
+            GEN_AI_USAGE_INPUT_TOKENS,
             self._prompt_tokens,
         )
         _set_span_attribute(
             self._span,
-            GEN_AI_USAGE_COMPLETION_TOKENS,
+            GEN_AI_USAGE_OUTPUT_TOKENS,
             self._completion_tokens,
         )
         self._original_handler.on_end()
@@ -112,12 +111,12 @@ class EventHandlerWrapper(AssistantEventHandler):
         self._original_handler.on_text_done(text)
         _set_span_attribute(
             self._span,
-            f"{GEN_AI_COMPLETION}.{self._current_text_index}.role",
+            f"gen_ai.completion.{self._current_text_index}.role",
             "assistant",
         )
         _set_span_attribute(
             self._span,
-            f"{GEN_AI_COMPLETION}.{self._current_text_index}.content",
+            f"gen_ai.completion.{self._current_text_index}.content",
             text.value,
         )
 

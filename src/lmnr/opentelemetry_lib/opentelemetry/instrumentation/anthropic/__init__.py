@@ -3,7 +3,6 @@
 import logging
 from typing import Callable, Collection, Optional
 
-from opentelemetry import context as context_api
 from .config import Config
 from .span_utils import (
     aset_input_attributes,
@@ -24,22 +23,22 @@ from .streaming import (
     WrappedMessageStreamManager,
 )
 from .version import __version__
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    safe_start_span,
+)
 
-from lmnr.opentelemetry_lib.tracing.context import get_current_context
+from opentelemetry import context as context_api
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
+)
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
-from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
-    GEN_AI_USAGE_COMPLETION_TOKENS,
-    GEN_AI_USAGE_PROMPT_TOKENS,
-)
-from opentelemetry.semconv_ai import (
-    SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY,
-    SpanAttributes,
-)
-from opentelemetry.trace import Span, SpanKind, Tracer, get_tracer
+from opentelemetry.trace import Span, Tracer, get_tracer
 from opentelemetry.trace.status import Status, StatusCode
 from typing_extensions import Coroutine
 from wrapt import wrap_function_wrapper
+
 
 from anthropic._streaming import AsyncStream, Stream
 
@@ -214,16 +213,14 @@ async def _aset_token_usage(
     content_attr = getattr(response, "content", None)
     completion_attr = getattr(response, "completion", None)
 
-    set_span_attribute(span, GEN_AI_USAGE_PROMPT_TOKENS, input_tokens)
-    set_span_attribute(span, GEN_AI_USAGE_COMPLETION_TOKENS, completion_tokens)
-    set_span_attribute(span, SpanAttributes.LLM_USAGE_TOTAL_TOKENS, total_tokens)
+    set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, input_tokens)
+    set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, completion_tokens)
+    set_span_attribute(span, "llm.usage.total_tokens", total_tokens)
 
-    set_span_attribute(
-        span, SpanAttributes.LLM_USAGE_CACHE_READ_INPUT_TOKENS, cache_read_tokens
-    )
+    set_span_attribute(span, "gen_ai.usage.cache_read_input_tokens", cache_read_tokens)
     set_span_attribute(
         span,
-        SpanAttributes.LLM_USAGE_CACHE_CREATION_INPUT_TOKENS,
+        "gen_ai.usage.cache_creation_input_tokens",
         cache_creation_tokens,
     )
 
@@ -273,16 +270,14 @@ def _set_token_usage(
     content_attr = getattr(response, "content", None)
     completion_attr = getattr(response, "completion", None)
 
-    set_span_attribute(span, GEN_AI_USAGE_PROMPT_TOKENS, input_tokens)
-    set_span_attribute(span, GEN_AI_USAGE_COMPLETION_TOKENS, completion_tokens)
-    set_span_attribute(span, SpanAttributes.LLM_USAGE_TOTAL_TOKENS, total_tokens)
+    set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, input_tokens)
+    set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, completion_tokens)
+    set_span_attribute(span, "llm.usage.total_tokens", total_tokens)
 
-    set_span_attribute(
-        span, SpanAttributes.LLM_USAGE_CACHE_READ_INPUT_TOKENS, cache_read_tokens
-    )
+    set_span_attribute(span, "gen_ai.usage.cache_read_input_tokens", cache_read_tokens)
     set_span_attribute(
         span,
-        SpanAttributes.LLM_USAGE_CACHE_CREATION_INPUT_TOKENS,
+        "gen_ai.usage.cache_creation_input_tokens",
         cache_creation_tokens,
     )
 
@@ -337,18 +332,6 @@ async def _ahandle_response(span: Span, response):
     await aset_response_attributes(span, response)
 
 
-@dont_throw
-def _start_span_in_current_context(tracer: Tracer, name: str | None):
-    return tracer.start_span(
-        name or "anthropic.chat",
-        kind=SpanKind.CLIENT,
-        attributes={
-            "gen_ai.system": "anthropic",
-        },
-        context=get_current_context(),
-    )
-
-
 @_with_chat_telemetry_wrapper
 def _wrap(
     tracer: Tracer,
@@ -359,12 +342,12 @@ def _wrap(
     kwargs,
 ):
     """Instruments and calls every function defined in TO_WRAP."""
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY) or context_api.get_value(
-        SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY
-    ):
+    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
-    span = _start_span_in_current_context(tracer, to_wrap.get("span_name"))
+    span = safe_start_span(
+        name=to_wrap.get("span_name"), attributes={"gen_ai.system": "anthropic"}
+    )
 
     if not span:
         logger.warning("Failed to start span for anthropic chat")
@@ -431,12 +414,12 @@ async def _awrap(
     kwargs,
 ):
     """Instruments and calls every function defined in TO_WRAP."""
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY) or context_api.get_value(
-        SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY
-    ):
+    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
-    span = _start_span_in_current_context(tracer, to_wrap.get("span_name"))
+    span = safe_start_span(
+        name=to_wrap.get("span_name"), attributes={"gen_ai.system": "anthropic"}
+    )
 
     if not span:
         logger.warning("Failed to start span for async anthropic chat")

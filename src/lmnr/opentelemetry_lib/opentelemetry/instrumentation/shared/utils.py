@@ -3,11 +3,13 @@ from typing import Any
 
 import traceback
 
+from opentelemetry.context import Context
 from opentelemetry.trace import Span
 from opentelemetry.util.types import AttributeValue
 from pydantic import BaseModel
 
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.laminar import Laminar
 
 logger = get_default_logger(__name__)
 
@@ -57,3 +59,17 @@ def extract_json_schema(schema: dict | BaseModel) -> dict:
         return schema.model_json_schema()
     else:
         return {}
+
+
+def safe_start_span(
+    name: str,
+    context: Context | None = None,
+    attributes: dict[str, AttributeValue] | None = None,
+) -> Span | None:
+    if not Laminar.is_initialized():
+        return None
+    try:
+        return Laminar.start_span(name, context=context, attributes=attributes)
+    except Exception:
+        logger.debug(f"Failed to start span: {name}", exc_info=True)
+        return None
