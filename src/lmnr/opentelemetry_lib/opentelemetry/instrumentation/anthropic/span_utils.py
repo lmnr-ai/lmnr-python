@@ -182,7 +182,7 @@ async def _aset_span_completions(span, response):
 
     response = await _aextract_response_data(response)
     index = 0
-    prefix = f"{"gen_ai.completion"}.{index}"
+    prefix = f"gen_ai.completion.{index}"
     set_span_attribute(span, f"{prefix}.finish_reason", response.get("stop_reason"))
     if response.get("role"):
         set_span_attribute(span, f"{prefix}.role", response.get("role"))
