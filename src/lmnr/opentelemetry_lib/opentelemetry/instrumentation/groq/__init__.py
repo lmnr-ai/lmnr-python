@@ -76,7 +76,6 @@ def _with_chat_telemetry_wrapper(func):
     return _with_chat_telemetry
 
 
-@dont_throw
 def _process_streaming_chunk(chunk):
     """Extract content, finish_reason and usage from a streaming chunk."""
     if not chunk.choices:

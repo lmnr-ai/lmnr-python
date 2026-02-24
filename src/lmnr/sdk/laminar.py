@@ -1009,6 +1009,7 @@ class Laminar:
             user_id=user_id,
             session_id=session_id,
             metadata=metadata,
+            attributes=attributes,
         )
         if not cls.is_initialized():
             return span
