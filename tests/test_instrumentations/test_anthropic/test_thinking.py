@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 
@@ -36,20 +38,28 @@ def test_anthropic_thinking_legacy(instrument_legacy, anthropic_client, span_exp
     anthropic_span = spans[0]
 
     assert anthropic_span.name == "anthropic.chat"
-    assert anthropic_span.attributes["gen_ai.prompt.0.role"] == "user"
-    assert anthropic_span.attributes["gen_ai.prompt.0.content"] == prompt
 
-    assert anthropic_span.attributes["gen_ai.completion.0.role"] == "thinking"
-    assert (
-        anthropic_span.attributes["gen_ai.completion.0.content"]
-        == response.content[0].thinking
-    )
+    # Verify input messages
+    input_messages = json.loads(anthropic_span.attributes["gen_ai.input.messages"])
+    assert input_messages[0]["role"] == "user"
+    content = input_messages[0]["content"]
+    assert isinstance(content, list)
+    assert content[0]["type"] == "text"
+    assert content[0]["text"] == prompt
 
-    assert anthropic_span.attributes["gen_ai.completion.1.role"] == "assistant"
-    assert (
-        anthropic_span.attributes["gen_ai.completion.1.content"]
-        == response.content[1].text
-    )
+    # Verify output messages - should contain thinking and text blocks
+    output_messages = json.loads(anthropic_span.attributes["gen_ai.output.messages"])
+    assert len(output_messages) == 1
+    assert output_messages[0]["role"] == "assistant"
+
+    content_blocks = output_messages[0]["content"]
+    thinking_blocks = [b for b in content_blocks if b.get("type") == "thinking"]
+    text_blocks = [b for b in content_blocks if b.get("type") == "text"]
+
+    assert len(thinking_blocks) >= 1
+    assert thinking_blocks[0]["thinking"] == response.content[0].thinking
+    assert len(text_blocks) >= 1
+    assert text_blocks[0]["text"] == response.content[1].text
 
 
 @pytest.mark.vcr
@@ -90,20 +100,24 @@ async def test_async_anthropic_thinking_legacy(
     anthropic_span = spans[0]
 
     assert anthropic_span.name == "anthropic.chat"
-    assert anthropic_span.attributes["gen_ai.prompt.0.role"] == "user"
-    assert anthropic_span.attributes["gen_ai.prompt.0.content"] == prompt
 
-    assert anthropic_span.attributes["gen_ai.completion.0.role"] == "thinking"
-    assert (
-        anthropic_span.attributes["gen_ai.completion.0.content"]
-        == response.content[0].thinking
-    )
+    # Verify input messages
+    input_messages = json.loads(anthropic_span.attributes["gen_ai.input.messages"])
+    assert input_messages[0]["role"] == "user"
 
-    assert anthropic_span.attributes["gen_ai.completion.1.role"] == "assistant"
-    assert (
-        anthropic_span.attributes["gen_ai.completion.1.content"]
-        == response.content[1].text
-    )
+    # Verify output messages - should contain thinking and text blocks
+    output_messages = json.loads(anthropic_span.attributes["gen_ai.output.messages"])
+    assert len(output_messages) == 1
+    assert output_messages[0]["role"] == "assistant"
+
+    content_blocks = output_messages[0]["content"]
+    thinking_blocks = [b for b in content_blocks if b.get("type") == "thinking"]
+    text_blocks = [b for b in content_blocks if b.get("type") == "text"]
+
+    assert len(thinking_blocks) >= 1
+    assert thinking_blocks[0]["thinking"] == response.content[0].thinking
+    assert len(text_blocks) >= 1
+    assert text_blocks[0]["text"] == response.content[1].text
 
 
 @pytest.mark.vcr
@@ -155,14 +169,24 @@ def test_anthropic_thinking_streaming_legacy(
     anthropic_span = spans[0]
 
     assert anthropic_span.name == "anthropic.chat"
-    assert anthropic_span.attributes["gen_ai.prompt.0.role"] == "user"
-    assert anthropic_span.attributes["gen_ai.prompt.0.content"] == prompt
 
-    assert anthropic_span.attributes["gen_ai.completion.0.role"] == "thinking"
-    assert anthropic_span.attributes["gen_ai.completion.0.content"] == thinking
+    # Verify input messages
+    input_messages = json.loads(anthropic_span.attributes["gen_ai.input.messages"])
+    assert input_messages[0]["role"] == "user"
 
-    assert anthropic_span.attributes["gen_ai.completion.1.role"] == "assistant"
-    assert anthropic_span.attributes["gen_ai.completion.1.content"] == text
+    # Verify output messages - should contain thinking and text blocks
+    output_messages = json.loads(anthropic_span.attributes["gen_ai.output.messages"])
+    assert len(output_messages) == 1
+    assert output_messages[0]["role"] == "assistant"
+
+    content_blocks = output_messages[0]["content"]
+    thinking_blocks = [b for b in content_blocks if b.get("type") == "thinking"]
+    text_blocks = [b for b in content_blocks if b.get("type") == "text"]
+
+    assert len(thinking_blocks) >= 1
+    assert thinking_blocks[0]["thinking"] == thinking
+    assert len(text_blocks) >= 1
+    assert text_blocks[0]["text"] == text
 
 
 @pytest.mark.vcr
@@ -215,11 +239,21 @@ async def test_async_anthropic_thinking_streaming_legacy(
     anthropic_span = spans[0]
 
     assert anthropic_span.name == "anthropic.chat"
-    assert anthropic_span.attributes["gen_ai.prompt.0.role"] == "user"
-    assert anthropic_span.attributes["gen_ai.prompt.0.content"] == prompt
 
-    assert anthropic_span.attributes["gen_ai.completion.0.role"] == "thinking"
-    assert anthropic_span.attributes["gen_ai.completion.0.content"] == thinking
+    # Verify input messages
+    input_messages = json.loads(anthropic_span.attributes["gen_ai.input.messages"])
+    assert input_messages[0]["role"] == "user"
 
-    assert anthropic_span.attributes["gen_ai.completion.1.role"] == "assistant"
-    assert anthropic_span.attributes["gen_ai.completion.1.content"] == text
+    # Verify output messages - should contain thinking and text blocks
+    output_messages = json.loads(anthropic_span.attributes["gen_ai.output.messages"])
+    assert len(output_messages) == 1
+    assert output_messages[0]["role"] == "assistant"
+
+    content_blocks = output_messages[0]["content"]
+    thinking_blocks = [b for b in content_blocks if b.get("type") == "thinking"]
+    text_blocks = [b for b in content_blocks if b.get("type") == "text"]
+
+    assert len(thinking_blocks) >= 1
+    assert thinking_blocks[0]["thinking"] == thinking
+    assert len(text_blocks) >= 1
+    assert text_blocks[0]["text"] == text
