@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.7.42"
+version = "0.7.43"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -64,59 +64,59 @@ lmnr = "lmnr.cli:cli"
 # `uv add lmnr --extra anthropic --extra groq`
 # `poetry add 'lmnr[anthropic,groq]'`
 
-alephalpha=["opentelemetry-instrumentation-alephalpha>=0.47.1"]
-bedrock=["opentelemetry-instrumentation-bedrock>=0.47.1"]
-chromadb=["opentelemetry-instrumentation-chromadb>=0.47.1"]
-claude-agent-sdk=["lmnr-claude-code-proxy>=0.1.12"]
-cohere=["opentelemetry-instrumentation-cohere>=0.47.1"]
-crewai=["opentelemetry-instrumentation-crewai>=0.47.1"]
-haystack=["opentelemetry-instrumentation-haystack>=0.47.1"]
-lancedb=["opentelemetry-instrumentation-lancedb>=0.47.1"]
-langchain=["opentelemetry-instrumentation-langchain>=0.47.1,<0.48.0"]
-llamaindex=["opentelemetry-instrumentation-llamaindex>=0.47.1"]
-marqo=["opentelemetry-instrumentation-marqo>=0.47.1"]
-mcp=["opentelemetry-instrumentation-mcp>=0.47.1"]
-milvus=["opentelemetry-instrumentation-milvus>=0.47.1"]
-mistralai=["opentelemetry-instrumentation-mistralai>=0.47.1"]
-ollama=["opentelemetry-instrumentation-ollama>=0.47.1"]
-pinecone=["opentelemetry-instrumentation-pinecone>=0.47.1"]
-qdrant=["opentelemetry-instrumentation-qdrant>=0.47.1"]
-replicate=["opentelemetry-instrumentation-replicate>=0.47.1"]
-sagemaker=["opentelemetry-instrumentation-sagemaker>=0.47.1"]
-together=["opentelemetry-instrumentation-together>=0.47.1"]
-transformers=["opentelemetry-instrumentation-transformers>=0.47.1"]
-vertexai=["opentelemetry-instrumentation-vertexai>=0.47.1"]
-watsonx=["opentelemetry-instrumentation-watsonx>=0.47.1"]
-weaviate=["opentelemetry-instrumentation-weaviate>=0.47.1"]
+alephalpha=["opentelemetry-instrumentation-alephalpha==0.52.4"]
+bedrock=["opentelemetry-instrumentation-bedrock==0.52.4"]
+chromadb=["opentelemetry-instrumentation-chromadb==0.52.4"]
+claude-agent-sdk=["lmnr-claude-code-proxy>=0.1.14"]
+cohere=["opentelemetry-instrumentation-cohere==0.52.4"]
+crewai=["opentelemetry-instrumentation-crewai==0.52.4"]
+haystack=["opentelemetry-instrumentation-haystack==0.52.4"]
+lancedb=["opentelemetry-instrumentation-lancedb==0.52.4"]
+langchain=["opentelemetry-instrumentation-langchain==0.52.4"]
+llamaindex=["opentelemetry-instrumentation-llamaindex==0.52.4"]
+marqo=["opentelemetry-instrumentation-marqo==0.52.4"]
+mcp=["opentelemetry-instrumentation-mcp==0.52.4"]
+milvus=["opentelemetry-instrumentation-milvus==0.52.4"]
+mistralai=["opentelemetry-instrumentation-mistralai==0.52.4"]
+ollama=["opentelemetry-instrumentation-ollama==0.52.4"]
+pinecone=["opentelemetry-instrumentation-pinecone==0.52.4"]
+qdrant=["opentelemetry-instrumentation-qdrant==0.52.4"]
+replicate=["opentelemetry-instrumentation-replicate==0.52.4"]
+sagemaker=["opentelemetry-instrumentation-sagemaker==0.52.4"]
+together=["opentelemetry-instrumentation-together==0.52.4"]
+transformers=["opentelemetry-instrumentation-transformers==0.52.4"]
+vertexai=["opentelemetry-instrumentation-vertexai==0.52.4"]
+watsonx=["opentelemetry-instrumentation-watsonx==0.52.4"]
+weaviate=["opentelemetry-instrumentation-weaviate==0.52.4"]
 # `all` is the group added for convenience, if you want to install all
 # the instrumentations.
 # we suggest using package-manager-specific commands instead,
 # like `uv add lmnr --all-extras`
 all = [
-  "lmnr-claude-code-proxy>=0.1.12",
-  "opentelemetry-instrumentation-alephalpha>=0.47.1",
-  "opentelemetry-instrumentation-bedrock>=0.47.1",
-  "opentelemetry-instrumentation-chromadb>=0.47.1",
-  "opentelemetry-instrumentation-cohere>=0.47.1",
-  "opentelemetry-instrumentation-crewai>=0.47.1",
-  "opentelemetry-instrumentation-haystack>=0.47.1",
-  "opentelemetry-instrumentation-lancedb>=0.47.1",
-  "opentelemetry-instrumentation-langchain>=0.47.1,<0.48.0",
-  "opentelemetry-instrumentation-llamaindex>=0.47.1",
-  "opentelemetry-instrumentation-marqo>=0.47.1",
-  "opentelemetry-instrumentation-mcp>=0.47.1",
-  "opentelemetry-instrumentation-milvus>=0.47.1",
-  "opentelemetry-instrumentation-mistralai>=0.47.1",
-  "opentelemetry-instrumentation-ollama>=0.47.1",
-  "opentelemetry-instrumentation-pinecone>=0.47.1",
-  "opentelemetry-instrumentation-qdrant>=0.47.1",
-  "opentelemetry-instrumentation-replicate>=0.47.1",
-  "opentelemetry-instrumentation-sagemaker>=0.47.1",
-  "opentelemetry-instrumentation-together>=0.47.1",
-  "opentelemetry-instrumentation-transformers>=0.47.1",
-  "opentelemetry-instrumentation-vertexai>=0.47.1",
-  "opentelemetry-instrumentation-watsonx>=0.47.1",
-  "opentelemetry-instrumentation-weaviate>=0.47.1"
+  "lmnr-claude-code-proxy>=0.1.14",
+  "opentelemetry-instrumentation-alephalpha==0.52.4",
+  "opentelemetry-instrumentation-bedrock==0.52.4",
+  "opentelemetry-instrumentation-chromadb==0.52.4",
+  "opentelemetry-instrumentation-cohere==0.52.4",
+  "opentelemetry-instrumentation-crewai==0.52.4",
+  "opentelemetry-instrumentation-haystack==0.52.4",
+  "opentelemetry-instrumentation-lancedb==0.52.4",
+  "opentelemetry-instrumentation-langchain==0.52.4",
+  "opentelemetry-instrumentation-llamaindex==0.52.4",
+  "opentelemetry-instrumentation-marqo==0.52.4",
+  "opentelemetry-instrumentation-mcp==0.52.4",
+  "opentelemetry-instrumentation-milvus==0.52.4",
+  "opentelemetry-instrumentation-mistralai==0.52.4",
+  "opentelemetry-instrumentation-ollama==0.52.4",
+  "opentelemetry-instrumentation-pinecone==0.52.4",
+  "opentelemetry-instrumentation-qdrant==0.52.4",
+  "opentelemetry-instrumentation-replicate==0.52.4",
+  "opentelemetry-instrumentation-sagemaker==0.52.4",
+  "opentelemetry-instrumentation-together==0.52.4",
+  "opentelemetry-instrumentation-transformers==0.52.4",
+  "opentelemetry-instrumentation-vertexai==0.52.4",
+  "opentelemetry-instrumentation-watsonx==0.52.4",
+  "opentelemetry-instrumentation-weaviate==0.52.4"
 ]
 
 [dependency-groups]

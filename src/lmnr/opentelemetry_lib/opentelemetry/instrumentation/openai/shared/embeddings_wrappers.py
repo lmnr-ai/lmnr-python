@@ -41,7 +41,11 @@ def embeddings_wrapper(
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
-    span = safe_start_span(name=SPAN_NAME, attributes={"gen_ai.system": "openai"})
+    span = safe_start_span(
+        name=SPAN_NAME,
+        attributes={"gen_ai.system": "openai"},
+        span_type="LLM",
+    )
     if span is None:
         return wrapped(*args, **kwargs)
 
@@ -74,7 +78,11 @@ async def aembeddings_wrapper(
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
-    span = safe_start_span(name=SPAN_NAME, attributes={"gen_ai.system": "openai"})
+    span = safe_start_span(
+        name=SPAN_NAME,
+        attributes={"gen_ai.system": "openai"},
+        span_type="LLM",
+    )
     if span is None:
         return await wrapped(*args, **kwargs)
 
