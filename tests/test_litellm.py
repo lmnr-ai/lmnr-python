@@ -1235,6 +1235,7 @@ def test_litellm_responses_basic(span_exporter: InMemorySpanExporter):
             "role": "assistant",
             "status": "completed",
             "type": "message",
+            "phase": None,
         }
     ]
     assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
@@ -1289,6 +1290,7 @@ def test_litellm_responses_streaming(span_exporter: InMemorySpanExporter):
             "role": "assistant",
             "status": "completed",
             "type": "message",
+            "phase": None,
         }
     ]
     assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
@@ -1385,6 +1387,7 @@ async def test_litellm_responses_basic_async(span_exporter: InMemorySpanExporter
             "role": "assistant",
             "status": "completed",
             "type": "message",
+            "phase": None,
         }
     ]
     assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
@@ -1443,6 +1446,7 @@ async def test_litellm_responses_streaming_async(span_exporter: InMemorySpanExpo
             "role": "assistant",
             "status": "completed",
             "type": "message",
+            "phase": None,
         }
     ]
     assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [

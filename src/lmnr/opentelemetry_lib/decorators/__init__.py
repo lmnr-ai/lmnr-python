@@ -74,13 +74,7 @@ def _setup_span(
             return span
     except Exception:
         logger.warning(f"[observe] failed to setup span: {span_name}", exc_info=True)
-        return None
-    finally:
-        if span is not None and span.is_recording():
-            try:
-                span.end()
-            except Exception:
-                logger.debug("Failed to end span in _setup_span", exc_info=True)
+        return span
 
 
 def _process_input(

@@ -143,7 +143,6 @@ def get_event_attributes_from_context(context: Context | None = None) -> dict[st
             attributes["lmnr.event.user_id"] = user_id
     except Exception:
         logger.debug("Error getting event attributes from context", exc_info=True)
-        pass
     return attributes
 
 
