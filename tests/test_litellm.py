@@ -705,7 +705,6 @@ def test_litellm_completion_streaming_with_tool_call(
             response_id = chunk.id
         if chunk.choices[0].delta.tool_calls:
             tool_call_id = chunk.choices[0].delta.tool_calls[0].id
-        pass
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
@@ -713,6 +712,74 @@ def test_litellm_completion_streaming_with_tool_call(
     assert spans[0].attributes["gen_ai.system"] == "gemini"
     assert spans[0].attributes["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
     assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+    assert spans[0].attributes["gen_ai.response.id"] == response_id
+    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+        {
+            "role": "assistant",
+            "content": None,
+            "finish_reason": "tool_calls",
+            "index": 0,
+            "tool_calls": [
+                {
+                    "id": tool_call_id,
+                    "function": {
+                        "name": "get_weather",
+                        "arguments": '{"location": "Tokyo"}',
+                    },
+                    "index": 0,
+                    "type": "function",
+                }
+            ],
+        }
+    ]
+    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+        {
+            "role": "user",
+            "content": "What is the weather in Tokyo?",
+        }
+    ]
+    assert json.loads(spans[0].attributes["gen_ai.tool.definitions"]) == [tools[0]]
+    assert spans[0].attributes["lmnr.span.path"] == ("litellm.completion",)
+    assert spans[0].attributes["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    )
+    check_span_has_basic_attributes(spans[0])
+
+
+@pytest.mark.vcr(record_mode="once")
+def test_litellm_completion_streaming_with_tool_call_openai(
+    span_exporter: InMemorySpanExporter,
+):
+    if "OPENAI_API_KEY" not in os.environ:
+        os.environ["OPENAI_API_KEY"] = "test-key"
+    response = litellm.completion(
+        model="gpt-4.1-nano",
+        messages=[
+            {
+                "role": "user",
+                "content": "What is the weather in Tokyo?",
+            }
+        ],
+        stream=True,
+        tools=[tools[0]],
+    )
+
+    response_id = None
+    tool_call_id = None
+    for chunk in response:
+        if chunk.id:
+            response_id = chunk.id
+        if chunk.choices[0].delta.tool_calls:
+            for tc in chunk.choices[0].delta.tool_calls:
+                if tc.id:
+                    tool_call_id = tc.id
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "litellm.completion"
+    assert spans[0].attributes["gen_ai.system"] == "openai"
+    assert spans[0].attributes["gen_ai.request.model"] == "gpt-4.1-nano"
+    assert spans[0].attributes["gen_ai.response.model"] == "gpt-4.1-nano"
     assert spans[0].attributes["gen_ai.response.id"] == response_id
     assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
         {

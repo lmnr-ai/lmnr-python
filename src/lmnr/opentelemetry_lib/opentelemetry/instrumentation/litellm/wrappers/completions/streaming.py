@@ -30,7 +30,26 @@ def _accumulate_chunk(accumulated: dict, chunk: dict):
         if delta.get("content"):
             accumulated["choices"][idx]["content"] += delta.get("content")
         if delta.get("tool_calls"):
-            accumulated["choices"][idx]["tool_calls"] = delta.get("tool_calls")
+            tool_calls_acc = accumulated["choices"][idx]["tool_calls"]
+            for tc_chunk in delta.get("tool_calls"):
+                tc_idx = tc_chunk.get("index", 0)
+                if tc_idx not in tool_calls_acc:
+                    tool_calls_acc[tc_idx] = {
+                        "index": tc_idx,
+                        "id": None,
+                        "type": None,
+                        "function": {"name": None, "arguments": ""},
+                    }
+                tc = tool_calls_acc[tc_idx]
+                if tc_chunk.get("id"):
+                    tc["id"] = tc_chunk["id"]
+                if tc_chunk.get("type"):
+                    tc["type"] = tc_chunk["type"]
+                func = tc_chunk.get("function") or {}
+                if func.get("name"):
+                    tc["function"]["name"] = func["name"]
+                if func.get("arguments"):
+                    tc["function"]["arguments"] += func["arguments"]
 
 
 @dont_throw
@@ -54,7 +73,9 @@ def _set_accumulated_attributes(
                         choice["finish_reason"] if choice["finish_reason"] else None
                     ),
                     "tool_calls": (
-                        choice["tool_calls"] if choice["tool_calls"] else None
+                        list(choice["tool_calls"].values())
+                        if choice["tool_calls"]
+                        else None
                     ),
                 }
             )
@@ -84,7 +105,9 @@ def _set_accumulated_attributes(
                                 else None
                             ),
                             "tool_calls": (
-                                choice["tool_calls"] if choice["tool_calls"] else None
+                                list(choice["tool_calls"].values())
+                                if choice["tool_calls"]
+                                else None
                             ),
                         },
                         "finish_reason": (
@@ -110,9 +133,9 @@ def process_completion_streaming_response(
                 "index": None,
                 "content": "",
                 "role": "assistant",
-                "finish_reason": None,
-                "tool_calls": [],
-            }
+                    "finish_reason": None,
+                    "tool_calls": {},
+                }
         ),
     }
     try:
@@ -141,7 +164,7 @@ async def process_completion_async_streaming_response(
                 "content": "",
                 "role": "assistant",
                 "finish_reason": None,
-                "tool_calls": [],
+                "tool_calls": {},
             }
         ),
     }
