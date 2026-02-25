@@ -77,7 +77,10 @@ def _setup_span(
         return None
     finally:
         if span is not None and not span.is_recording():
-            span.end()
+            try:
+                span.end()
+            except Exception:
+                logger.debug("Failed to end span in _setup_span", exc_info=True)
 
 
 def _process_input(
