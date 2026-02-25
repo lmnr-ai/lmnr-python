@@ -144,12 +144,14 @@ def _process_output(
             logger.debug(msg, exc_info=True)
 
 
-def _cleanup_span(span: Span, wrapper: TracerWrapper):
+def _cleanup_span(span: Span, wrapper: TracerWrapper, do_pop_context: bool = True):
     """Clean up span and context."""
     try:
         span.end()
     except Exception:
         logger.debug("Failed to end span in _cleanup_span", exc_info=True)
+    if not do_pop_context:
+        return
     try:
         wrapper.pop_span_context()
     except Exception:
@@ -212,6 +214,7 @@ def observe_base(
             current_task = None
             current_context_id = None
             isolated_ctx_token = None
+            did_push_context = False
             try:
                 try:
                     current_task = asyncio.current_task()
@@ -219,6 +222,7 @@ def observe_base(
                     current_task = None
                 current_context_id = id(current_task)
                 new_context = wrapper.push_span_context(span)
+                did_push_context = True
                 # Some auto-instrumentations are not under our control, so they
                 # don't have access to our isolated context. We attach the context
                 # to the OTEL global context, so that spans know their parent
@@ -236,7 +240,7 @@ def observe_base(
                 res = fn(*args, **kwargs)
             except Exception as e:
                 _process_exception(span, e)
-                _cleanup_span(span, wrapper)
+                _cleanup_span(span, wrapper, did_push_context)
                 raise
             finally:
                 current_task = None
@@ -261,7 +265,12 @@ def observe_base(
             # span will be ended in the generator
             if isinstance(res, types.GeneratorType):
                 return _handle_generator(
-                    span, wrapper, res, ignore_output, output_formatter
+                    span,
+                    wrapper,
+                    res,
+                    ignore_output,
+                    output_formatter,
+                    did_push_context,
                 )
             if isinstance(res, types.AsyncGeneratorType):
                 # async def foo() -> AsyncGenerator[int, None]:
@@ -272,11 +281,16 @@ def observe_base(
                 # https://docs.python.org/3/library/inspect.html#inspect-module-co-flags
                 # See also: https://groups.google.com/g/python-tulip/c/6rWweGXLutU?pli=1
                 return _ahandle_generator(
-                    span, wrapper, res, ignore_output, output_formatter
+                    span,
+                    wrapper,
+                    res,
+                    ignore_output,
+                    output_formatter,
+                    did_push_context,
                 )
 
             _process_output(span, res, ignore_output, output_formatter)
-            _cleanup_span(span, wrapper)
+            _cleanup_span(span, wrapper, did_push_context)
             return res
 
         return wrap
@@ -341,6 +355,7 @@ def async_observe_base(
             current_task = None
             current_context_id = None
             isolated_ctx_token = None
+            did_push_context = False
             try:
                 try:
                     current_task = asyncio.current_task()
@@ -348,6 +363,7 @@ def async_observe_base(
                     current_task = None
                 current_context_id = id(current_task)
                 new_context = wrapper.push_span_context(span)
+                did_push_context = True
                 # Some auto-instrumentations are not under our control, so they
                 # don't have access to our isolated context. We attach the context
                 # to the OTEL global context, so that spans know their parent
@@ -365,7 +381,7 @@ def async_observe_base(
                 res = await fn(*args, **kwargs)
             except Exception as e:
                 _process_exception(span, e)
-                _cleanup_span(span, wrapper)
+                _cleanup_span(span, wrapper, did_push_context)
                 raise e
             finally:
                 # Always restore global context if we are in the same asyncio context
@@ -393,11 +409,16 @@ def async_observe_base(
                 # probably unreachable, read the comment in the similar
                 # part of the sync wrapper.
                 return _ahandle_generator(
-                    span, wrapper, res, ignore_output, output_formatter
+                    span,
+                    wrapper,
+                    res,
+                    ignore_output,
+                    output_formatter,
+                    did_push_context,
                 )
 
             _process_output(span, res, ignore_output, output_formatter)
-            _cleanup_span(span, wrapper)
+            _cleanup_span(span, wrapper, did_push_context)
             return res
 
         return wrap
@@ -411,6 +432,7 @@ def _handle_generator(
     res: Generator,
     ignore_output: bool = False,
     output_formatter: Callable[..., str] | None = None,
+    did_push_context: bool = True,
 ):
     results = []
     try:
@@ -422,7 +444,7 @@ def _handle_generator(
         raise
     finally:
         _process_output(span, results, ignore_output, output_formatter)
-        _cleanup_span(span, wrapper)
+        _cleanup_span(span, wrapper, did_push_context)
 
 
 async def _ahandle_generator(
@@ -431,6 +453,7 @@ async def _ahandle_generator(
     res: AsyncGenerator,
     ignore_output: bool = False,
     output_formatter: Callable[..., str] | None = None,
+    did_push_context: bool = True,
 ):
     results = []
     try:
@@ -442,7 +465,7 @@ async def _ahandle_generator(
         raise
     finally:
         _process_output(span, results, ignore_output, output_formatter)
-        _cleanup_span(span, wrapper)
+        _cleanup_span(span, wrapper, did_push_context)
 
 
 def _process_exception(span: Span, e: Exception):
