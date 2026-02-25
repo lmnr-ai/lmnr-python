@@ -1,7 +1,6 @@
 """OpenTelemetry Groq instrumentation"""
 
 import logging
-import os
 from typing import Collection
 
 from opentelemetry import context as context_api
@@ -15,18 +14,14 @@ from .span_utils import (
     set_streaming_response_attributes,
 )
 from .version import __version__
-from lmnr.opentelemetry_lib.tracing.context import get_current_context
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    dont_throw,
+    safe_start_span,
+)
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
-from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
-    GEN_AI_SYSTEM,
-)
-from opentelemetry.semconv_ai import (
-    SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY,
-    LLMRequestTypeValues,
-    SpanAttributes,
-)
-from opentelemetry.trace import SpanKind, Tracer, get_tracer
+from opentelemetry.trace import Tracer, get_tracer
 from opentelemetry.trace.status import Status, StatusCode
 from wrapt import wrap_function_wrapper
 
@@ -98,6 +93,7 @@ def _process_streaming_chunk(chunk):
     return content, finish_reason, usage
 
 
+@dont_throw
 def _handle_streaming_response(span, accumulated_content, finish_reason, usage):
     set_model_streaming_response_attributes(span, usage)
     set_streaming_response_attributes(span, accumulated_content, finish_reason, usage)
@@ -113,14 +109,20 @@ def _create_stream_processor(
     usage = None
 
     for chunk in response:
-        content, chunk_finish_reason, chunk_usage = _process_streaming_chunk(chunk)
-        if content:
-            accumulated_content += content
-        if chunk_finish_reason:
-            finish_reason = chunk_finish_reason
-        if chunk_usage:
-            usage = chunk_usage
-        yield chunk
+        try:
+            content, chunk_finish_reason, chunk_usage = _process_streaming_chunk(chunk)
+            if content:
+                accumulated_content += content
+            if chunk_finish_reason:
+                finish_reason = chunk_finish_reason
+            if chunk_usage:
+                usage = chunk_usage
+        except Exception as e:
+            logger.warning(
+                "Failed to process streaming chunk for groq span, error: %s", str(e)
+            )
+        finally:
+            yield chunk
 
     _handle_streaming_response(span, accumulated_content, finish_reason, usage)
 
@@ -137,14 +139,20 @@ async def _create_async_stream_processor(response, span):
     usage = None
 
     async for chunk in response:
-        content, chunk_finish_reason, chunk_usage = _process_streaming_chunk(chunk)
-        if content:
-            accumulated_content += content
-        if chunk_finish_reason:
-            finish_reason = chunk_finish_reason
-        if chunk_usage:
-            usage = chunk_usage
-        yield chunk
+        try:
+            content, chunk_finish_reason, chunk_usage = _process_streaming_chunk(chunk)
+            if content:
+                accumulated_content += content
+            if chunk_finish_reason:
+                finish_reason = chunk_finish_reason
+            if chunk_usage:
+                usage = chunk_usage
+        except Exception as e:
+            logger.warning(
+                "Failed to process streaming chunk for groq span, error: %s", str(e)
+            )
+        finally:
+            yield chunk
 
     _handle_streaming_response(span, accumulated_content, finish_reason, usage)
 
@@ -154,11 +162,13 @@ async def _create_async_stream_processor(response, span):
     span.end()
 
 
+@dont_throw
 def _handle_input(span, kwargs):
     set_model_input_attributes(span, kwargs)
     set_input_attributes(span, kwargs)
 
 
+@dont_throw
 def _handle_response(span, response):
     set_model_response_attributes(span, response)
     set_response_attributes(span, response)
@@ -174,21 +184,16 @@ def _wrap(
     kwargs,
 ):
     """Instruments and calls every function defined in TO_WRAP."""
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY) or context_api.get_value(
-        SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY
-    ):
+    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
     name = to_wrap.get("span_name")
-    span = tracer.start_span(
-        name,
-        kind=SpanKind.CLIENT,
-        attributes={
-            GEN_AI_SYSTEM: "Groq",
-            SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
-        },
-        context=get_current_context(),
+    span = safe_start_span(
+        name=name, attributes={"gen_ai.system": "groq"}, span_type="LLM"
     )
+    if not span:
+        logger.warning("Failed to start span for groq chat")
+        return wrapped(*args, **kwargs)
 
     _handle_input(span, kwargs)
 
@@ -234,21 +239,16 @@ async def _awrap(
     kwargs,
 ):
     """Instruments and calls every function defined in TO_WRAP."""
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY) or context_api.get_value(
-        SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY
-    ):
+    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
     name = to_wrap.get("span_name")
-    span = tracer.start_span(
-        name,
-        kind=SpanKind.CLIENT,
-        attributes={
-            GEN_AI_SYSTEM: "Groq",
-            SpanAttributes.LLM_REQUEST_TYPE: LLMRequestTypeValues.COMPLETION.value,
-        },
-        context=get_current_context(),
+    span = safe_start_span(
+        name=name, attributes={"gen_ai.system": "groq"}, span_type="LLM"
     )
+    if not span:
+        logger.warning("Failed to start span for groq chat")
+        return await wrapped(*args, **kwargs)
 
     _handle_input(span, kwargs)
 
@@ -275,10 +275,6 @@ async def _awrap(
             span.set_status(Status(StatusCode.OK))
     span.end()
     return response
-
-
-def is_metrics_enabled() -> bool:
-    return (os.getenv("TRACELOOP_METRICS_ENABLED") or "true").lower() == "true"
 
 
 class GroqInstrumentor(BaseInstrumentor):

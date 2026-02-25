@@ -4,7 +4,6 @@ import json
 import httpx
 import openai
 import pytest
-from opentelemetry.semconv_ai import SpanAttributes
 from opentelemetry.trace import StatusCode
 
 from .utils import assert_request_contains_tracecontext, spy_decorator
@@ -24,13 +23,10 @@ def test_embeddings(instrument_legacy, span_exporter, openai_client):
     open_ai_span = spans[0]
     input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
+    assert open_ai_span.attributes["gen_ai.request.model"] == "text-embedding-ada-002"
+    assert open_ai_span.attributes["gen_ai.usage.input_tokens"] == 8
     assert (
-        open_ai_span.attributes["gen_ai.request.model"]
-        == "text-embedding-ada-002"
-    )
-    assert open_ai_span.attributes["gen_ai.usage.prompt_tokens"] == 8
-    assert (
-        open_ai_span.attributes[SpanAttributes.LLM_OPENAI_API_BASE]
+        open_ai_span.attributes["gen_ai.request.base_url"]
         == "https://api.openai.com/v1/"
     )
 
@@ -49,13 +45,10 @@ def test_embeddings_with_raw_response(instrument_legacy, span_exporter, openai_c
     input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
 
+    assert open_ai_span.attributes["gen_ai.request.model"] == "text-embedding-ada-002"
+    assert open_ai_span.attributes["gen_ai.usage.input_tokens"] == 8
     assert (
-        open_ai_span.attributes["gen_ai.request.model"]
-        == "text-embedding-ada-002"
-    )
-    assert open_ai_span.attributes["gen_ai.usage.prompt_tokens"] == 8
-    assert (
-        open_ai_span.attributes[SpanAttributes.LLM_OPENAI_API_BASE]
+        open_ai_span.attributes["gen_ai.request.base_url"]
         == "https://api.openai.com/v1/"
     )
 
@@ -88,15 +81,12 @@ def test_azure_openai_embeddings(instrument_legacy, span_exporter):
     input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     assert open_ai_span.attributes["gen_ai.request.model"] == "embedding"
-    assert open_ai_span.attributes["gen_ai.usage.prompt_tokens"] == 8
+    assert open_ai_span.attributes["gen_ai.usage.input_tokens"] == 8
     assert (
-        open_ai_span.attributes[SpanAttributes.LLM_OPENAI_API_BASE]
+        open_ai_span.attributes["gen_ai.request.base_url"]
         == f"https://{azure_resource}.openai.azure.com/openai/deployments/{azure_deployment}/"
     )
-    assert (
-        open_ai_span.attributes[SpanAttributes.LLM_OPENAI_API_VERSION]
-        == "2023-07-01-preview"
-    )
+    assert open_ai_span.attributes["gen_ai.openai.api_version"] == "2023-07-01-preview"
 
 
 @pytest.mark.vcr

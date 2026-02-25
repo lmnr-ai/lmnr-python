@@ -1,6 +1,5 @@
 import os
 import pytest
-from opentelemetry.semconv_ai import SpanAttributes
 
 try:
     from anthropic import AsyncAnthropicBedrock
@@ -62,23 +61,13 @@ async def test_async_anthropic_bedrock_with_raw_response(
         else response.content[0].text
     )
     assert (
-        anthropic_span.attributes.get("gen_ai.completion.0.content")
-        == response_content
+        anthropic_span.attributes.get("gen_ai.completion.0.content") == response_content
     )
-    assert (
-        anthropic_span.attributes.get("gen_ai.completion.0.role")
-        == "assistant"
-    )
-    assert anthropic_span.attributes["gen_ai.usage.prompt_tokens"] > 0
-    assert anthropic_span.attributes["gen_ai.usage.completion_tokens"] > 0
-    assert (
-        anthropic_span.attributes["gen_ai.usage.completion_tokens"]
-        + anthropic_span.attributes["gen_ai.usage.prompt_tokens"]
-        == anthropic_span.attributes[SpanAttributes.LLM_USAGE_TOTAL_TOKENS]
-    )
+    assert anthropic_span.attributes.get("gen_ai.completion.0.role") == "assistant"
+    assert anthropic_span.attributes["gen_ai.usage.input_tokens"] > 0
+    assert anthropic_span.attributes["gen_ai.usage.output_tokens"] > 0
 
 
-# @pytest.mark.skip
 @pytest.mark.asyncio
 @pytest.mark.vcr
 async def test_async_anthropic_bedrock_regular_create(
@@ -112,17 +101,9 @@ async def test_async_anthropic_bedrock_regular_create(
         anthropic_span.attributes.get("gen_ai.completion.0.content")
         == response.content[0].text
     )
-    assert (
-        anthropic_span.attributes.get("gen_ai.completion.0.role")
-        == "assistant"
-    )
-    assert anthropic_span.attributes["gen_ai.usage.prompt_tokens"] > 0
-    assert anthropic_span.attributes["gen_ai.usage.completion_tokens"] > 0
-    assert (
-        anthropic_span.attributes["gen_ai.usage.completion_tokens"]
-        + anthropic_span.attributes["gen_ai.usage.prompt_tokens"]
-        == anthropic_span.attributes[SpanAttributes.LLM_USAGE_TOTAL_TOKENS]
-    )
+    assert anthropic_span.attributes.get("gen_ai.completion.0.role") == "assistant"
+    assert anthropic_span.attributes["gen_ai.usage.input_tokens"] > 0
+    assert anthropic_span.attributes["gen_ai.usage.output_tokens"] > 0
 
 
 # @pytest.mark.skip
@@ -164,17 +145,8 @@ async def test_async_anthropic_bedrock_beta_with_raw_response(
         else response.content[0].text
     )
     assert (
-        anthropic_span.attributes.get("gen_ai.completion.0.content")
-        == response_content
+        anthropic_span.attributes.get("gen_ai.completion.0.content") == response_content
     )
-    assert (
-        anthropic_span.attributes.get("gen_ai.completion.0.role")
-        == "assistant"
-    )
-    assert anthropic_span.attributes["gen_ai.usage.prompt_tokens"] > 0
-    assert anthropic_span.attributes["gen_ai.usage.completion_tokens"] > 0
-    assert (
-        anthropic_span.attributes["gen_ai.usage.completion_tokens"]
-        + anthropic_span.attributes["gen_ai.usage.prompt_tokens"]
-        == anthropic_span.attributes[SpanAttributes.LLM_USAGE_TOTAL_TOKENS]
-    )
+    assert anthropic_span.attributes.get("gen_ai.completion.0.role") == "assistant"
+    assert anthropic_span.attributes["gen_ai.usage.input_tokens"] > 0
+    assert anthropic_span.attributes["gen_ai.usage.output_tokens"] > 0

@@ -1,4 +1,3 @@
-import json
 import logging
 import threading
 
@@ -23,24 +22,19 @@ from ..utils import (
     should_send_prompts,
 )
 from lmnr.opentelemetry_lib.tracing.context import (
-    get_current_context,
     get_event_attributes_from_context,
     is_in_litellm_context,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    safe_start_span,
+)
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
-from opentelemetry.semconv_ai import (
-    SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY,
-    LLMRequestTypeValues,
-    SpanAttributes,
-)
-from opentelemetry.trace import SpanKind, Tracer
+from opentelemetry.trace import Tracer
 from opentelemetry.trace.status import Status, StatusCode
 from wrapt import ObjectProxy
 
 SPAN_NAME = "openai.chat"
-
-LLM_REQUEST_TYPE = LLMRequestTypeValues.CHAT
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +47,7 @@ def chat_wrapper(
     args,
     kwargs,
 ):
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY) or context_api.get_value(
-        SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY
-    ):
+    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
     # span needs to be opened and closed manually because the response is a generator
 
@@ -65,17 +57,18 @@ def chat_wrapper(
     if is_in_litellm_context():
         return wrapped(*args, **kwargs)
 
-    span = tracer.start_span(
-        SPAN_NAME,
-        kind=SpanKind.CLIENT,
-        attributes={SpanAttributes.LLM_REQUEST_TYPE: LLM_REQUEST_TYPE.value},
-        context=get_current_context(),
+    span = safe_start_span(
+        name=SPAN_NAME, attributes={"gen_ai.system": "openai"}, span_type="LLM"
     )
+
+    if span is None:
+        return wrapped(*args, **kwargs)
 
     _handle_request(span, kwargs, instance)
 
     try:
         from lmnr.sdk.rollout_control import is_rollout_mode
+
         is_rollout = is_rollout_mode()
     except Exception:
         is_rollout = False
@@ -142,25 +135,24 @@ async def achat_wrapper(
     args,
     kwargs,
 ):
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY) or context_api.get_value(
-        SUPPRESS_LANGUAGE_MODEL_INSTRUMENTATION_KEY
-    ):
+    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
     if is_in_litellm_context():
         return await wrapped(*args, **kwargs)
 
-    span = tracer.start_span(
-        SPAN_NAME,
-        kind=SpanKind.CLIENT,
-        attributes={SpanAttributes.LLM_REQUEST_TYPE: LLM_REQUEST_TYPE.value},
-        context=get_current_context(),
+    span = safe_start_span(
+        name=SPAN_NAME, attributes={"gen_ai.system": "openai"}, span_type="LLM"
     )
+
+    if span is None:
+        return await wrapped(*args, **kwargs)
 
     _handle_request(span, kwargs, instance)
 
     try:
         from lmnr.sdk.rollout_control import is_rollout_mode
+
         is_rollout = is_rollout_mode()
     except Exception:
         is_rollout = False
@@ -278,8 +270,8 @@ def _set_choice_counter_metrics(choice_counter, choices, shared_attributes):
     for choice in choices:
         attributes_with_reason = {**shared_attributes}
         if choice.get("finish_reason"):
-            attributes_with_reason[SpanAttributes.LLM_RESPONSE_FINISH_REASON] = (
-                choice.get("finish_reason")
+            attributes_with_reason["llm.response.finish_reason"] = choice.get(
+                "finish_reason"
             )
         choice_counter.add(1, attributes=attributes_with_reason)
 
@@ -413,7 +405,7 @@ class ChatStream(ObjectProxy):
             return chunk
 
     def _process_item(self, item):
-        self._span.add_event(name=f"{SpanAttributes.LLM_CONTENT_COMPLETION_CHUNK}")
+        self._span.add_event(name="llm.content.completion.chunk")
         self._complete_response["id"] = item.id if hasattr(item, "id") else ""
         self._complete_response["service_tier"] = (
             item.service_tier if hasattr(item, "service_tier") else ""
@@ -490,7 +482,7 @@ def _build_from_streaming_response(
     complete_response = {"choices": [], "model": "", "id": "", "service_tier": None}
 
     for item in response:
-        span.add_event(name=f"{SpanAttributes.LLM_CONTENT_COMPLETION_CHUNK}")
+        span.add_event(name="llm.content.completion.chunk")
 
         item_to_yield = item
 
@@ -514,7 +506,7 @@ async def _abuild_from_streaming_response(
     complete_response = {"choices": [], "model": "", "id": "", "service_tier": None}
 
     async for item in response:
-        span.add_event(name=f"{SpanAttributes.LLM_CONTENT_COMPLETION_CHUNK}")
+        span.add_event(name="llm.content.completion.chunk")
 
         item_to_yield = item
 
@@ -586,7 +578,11 @@ def _accumulate_stream_items(item, complete_response):
                 i = int(tool_call["index"])
                 if len(complete_choice["message"]["tool_calls"]) <= i:
                     complete_choice["message"]["tool_calls"].append(
-                        {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
+                        {
+                            "id": "",
+                            "type": "function",
+                            "function": {"name": "", "arguments": ""},
+                        }
                     )
 
                 span_tool_call = complete_choice["message"]["tool_calls"][i]

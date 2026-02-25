@@ -8,12 +8,14 @@ from opentelemetry.context import Context, Token, create_key, get_value, set_val
 
 from lmnr.opentelemetry_lib.tracing.attributes import (
     METADATA,
-    ROLLOUT_SESSION_ID,
     SESSION_ID,
     TRACE_TYPE,
     USER_ID,
 )
+from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import TraceType
+
+logger = get_default_logger(__name__)
 
 
 class _IsolatedRuntimeContext(ABC):
@@ -132,12 +134,15 @@ CONTEXT_TRACE_TYPE_KEY = create_key(f"lmnr.{TRACE_TYPE}")
 
 def get_event_attributes_from_context(context: Context | None = None) -> dict[str, str]:
     """Get the event attributes from the context."""
-    context = context or get_current_context()
     attributes = {}
-    if session_id := get_value(CONTEXT_SESSION_ID_KEY, context):
-        attributes["lmnr.event.session_id"] = session_id
-    if user_id := get_value(CONTEXT_USER_ID_KEY, context):
-        attributes["lmnr.event.user_id"] = user_id
+    try:
+        context = context or get_current_context()
+        if session_id := get_value(CONTEXT_SESSION_ID_KEY, context):
+            attributes["lmnr.event.session_id"] = session_id
+        if user_id := get_value(CONTEXT_USER_ID_KEY, context):
+            attributes["lmnr.event.user_id"] = user_id
+    except Exception:
+        logger.debug("Error getting event attributes from context", exc_info=True)
     return attributes
 
 

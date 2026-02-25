@@ -7,6 +7,7 @@ import os
 import orjson
 import pydantic
 import queue
+import re
 import typing
 import uuid
 
@@ -30,20 +31,24 @@ def is_async(func: typing.Callable) -> bool:
     # `__wrapped__` is set automatically by `functools.wraps` and
     # `functools.update_wrapper`
     # so we can use it to get the original function
-    while hasattr(func, "__wrapped__"):
-        func = func.__wrapped__
+    try:
+        while hasattr(func, "__wrapped__"):
+            func = func.__wrapped__
 
-    if not inspect.isfunction(func):
+        if not inspect.isfunction(func):
+            return False
+
+        # Check if the function is asynchronous
+        if inspect.iscoroutinefunction(func):
+            return True
+
+        # Fallback: check if the function's code object contains 'async'.
+        # This is for cases when a decorator (not ours) did not properly use
+        # `functools.wraps` or `functools.update_wrapper`
+        return (func.__code__.co_flags & inspect.CO_COROUTINE) != 0
+    except Exception:
+        logger.debug("Failed to check if function is asynchronous", exc_info=True)
         return False
-
-    # Check if the function is asynchronous
-    if inspect.iscoroutinefunction(func):
-        return True
-
-    # Fallback: check if the function's code object contains 'async'.
-    # This is for cases when a decorator (not ours) did not properly use
-    # `functools.wraps` or `functools.update_wrapper`
-    return (func.__code__.co_flags & inspect.CO_COROUTINE) != 0
 
 
 def is_async_iterator(o: typing.Any) -> bool:
@@ -95,28 +100,36 @@ def get_input_from_func_args(
 ) -> dict[str, typing.Any]:
     # Remove implicitly passed "self" or "cls" argument for
     # instance or class methods
-    res = {
-        k: v
-        for k, v in func_kwargs.items()
-        if not (ignore_inputs and k in ignore_inputs)
-    }
-    for i, k in enumerate(inspect.signature(func).parameters.keys()):
-        if is_method and k in ["self", "cls"]:
-            continue
-        if ignore_inputs and k in ignore_inputs:
-            continue
-        # If param has default value, then it's not present in func args
-        if i < len(func_args):
-            res[k] = func_args[i]
-    return res
+    try:
+        res = {
+            k: v
+            for k, v in func_kwargs.items()
+            if not (ignore_inputs and k in ignore_inputs)
+        }
+        for i, k in enumerate(inspect.signature(func).parameters.keys()):
+            if is_method and k in ["self", "cls"]:
+                continue
+            if ignore_inputs and k in ignore_inputs:
+                continue
+            # If param has default value, then it's not present in func args
+            if i < len(func_args):
+                res[k] = func_args[i]
+        return res
+    except Exception:
+        logger.warning("Failed to get input from func args")
+        return {}
 
 
 def from_env(key: str) -> str | None:
     if val := os.getenv(key):
         return val
-    dotenv_path = dotenv.find_dotenv(usecwd=True)
-    # use DotEnv directly so we can set verbose to False
-    return dotenv.main.DotEnv(dotenv_path, verbose=False, encoding="utf-8").get(key)
+    try:
+        dotenv_path = dotenv.find_dotenv(usecwd=True)
+        # use DotEnv directly so we can set verbose to False
+        return dotenv.main.DotEnv(dotenv_path, verbose=False, encoding="utf-8").get(key)
+    except Exception:
+        logger.warning(f"Failed to get environment variable from dotenv. Key: {key}")
+        return None
 
 
 def get_frontend_url(
@@ -137,8 +150,6 @@ def get_frontend_url(
     Returns:
         Frontend URL
     """
-    import re
-
     if not base_url or base_url == "https://api.lmnr.ai":
         base_url = "https://www.laminar.sh"
         return base_url

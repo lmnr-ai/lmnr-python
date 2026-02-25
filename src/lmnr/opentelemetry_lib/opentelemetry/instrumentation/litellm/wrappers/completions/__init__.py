@@ -12,6 +12,11 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
 )
 from ...utils import infer_provider
 
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
+)
+
 
 @dont_throw
 def process_completion_kwargs(
@@ -106,8 +111,8 @@ def process_completion_response(
     input_tokens = usage.get("prompt_tokens", usage.get("input_tokens", 0))
     output_tokens = usage.get("completion_tokens", usage.get("output_tokens", 0))
     total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
-    set_span_attribute(span, "gen_ai.usage.input_tokens", input_tokens)
-    set_span_attribute(span, "gen_ai.usage.output_tokens", output_tokens)
+    set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, input_tokens)
+    set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, output_tokens)
     set_span_attribute(span, "llm.usage.total_tokens", total_tokens)
     if input_details := usage.get("prompt_tokens_details"):
         details = to_dict(input_details)

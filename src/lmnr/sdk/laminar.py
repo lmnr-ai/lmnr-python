@@ -435,6 +435,7 @@ class Laminar:
         user_id: str | None = None,
         session_id: str | None = None,
         metadata: dict[str, AttributeValue] | None = None,
+        attributes: dict[str, AttributeValue] | None = None,
     ) -> Iterator[LaminarSpan]:
         """Start a new span as the current span. Useful for manual
         instrumentation. If `span_type` is set to `"LLM"`, you should report
@@ -476,6 +477,9 @@ class Laminar:
                 Defaults to None.
             metadata (dict[str, AttributeValue] | None, optional): metadata to\
                 set for the trace. Defaults to None.
+            attributes (dict[str, AttributeValue] | None, optional): attributes to\
+                set for the span. This function may override attributes by laminar\
+                internal values, such as tags or metadata. Defaults to None.
         """
 
         if not cls.is_initialized():
@@ -579,6 +583,7 @@ class Laminar:
                     name,
                     context=ctx,
                     attributes={
+                        **(attributes or {}),
                         SPAN_TYPE: span_type,
                         PARENT_SPAN_PATH: parsed["path"],
                         PARENT_SPAN_IDS_PATH: parsed["span_ids_path"],
@@ -612,6 +617,7 @@ class Laminar:
         user_id: str | None = None,
         session_id: str | None = None,
         metadata: dict[str, AttributeValue] | None = None,
+        attributes: dict[str, AttributeValue] | None = None,
     ) -> LaminarSpan | Span:
         """Start a new span. Useful for manual instrumentation.
         If `span_type` is set to `"LLM"`, you should report usage and response
@@ -681,12 +687,22 @@ class Laminar:
                 Defaults to None.
             metadata (dict[str, AttributeValue] | None, optional): metadata to\
                 set for the trace. Defaults to None.
+            attributes (dict[str, AttributeValue] | None, optional): attributes to\
+                set for the span. This function may override attributes by laminar\
+                internal values, such as tags or metadata. Defaults to None.
         """
         if not cls.is_initialized():
+            trace_id = 0
+            span_id = 0
+            try:
+                trace_id = RandomIdGenerator().generate_trace_id()
+                span_id = RandomIdGenerator().generate_span_id()
+            except Exception:
+                pass
             return trace.NonRecordingSpan(
                 trace.SpanContext(
-                    trace_id=RandomIdGenerator().generate_trace_id(),
-                    span_id=RandomIdGenerator().generate_span_id(),
+                    trace_id=trace_id,
+                    span_id=span_id,
                     is_remote=False,
                 )
             )
@@ -737,8 +753,8 @@ class Laminar:
             trace_type = None
             if span_type in ["EVALUATION", "EXECUTOR", "EVALUATOR"]:
                 trace_type = TraceType.EVALUATION
-            elif parsed["trace_type"] is not None:
-                trace_type = parsed["trace_type"]
+            elif parsed.get("trace_type") is not None:
+                trace_type = parsed.get("trace_type")
             else:
                 # Get trace_type from context if not set explicitly or from parent
                 ctx_trace_type = get_value(CONTEXT_TRACE_TYPE_KEY, ctx)
@@ -752,7 +768,7 @@ class Laminar:
             merged_metadata = {
                 **(cls.__global_metadata or {}),
                 **(ctx_metadata or {}),
-                **(parsed["metadata"] or {}),
+                **(parsed.get("metadata") or {}),
                 **(metadata or {}),
             }
 
@@ -786,6 +802,7 @@ class Laminar:
                 name,
                 context=ctx,
                 attributes={
+                    **(attributes or {}),
                     SPAN_TYPE: span_type,
                     PARENT_SPAN_PATH: parsed["path"],
                     PARENT_SPAN_IDS_PATH: parsed["span_ids_path"],
@@ -901,6 +918,7 @@ class Laminar:
         user_id: str | None = None,
         session_id: str | None = None,
         metadata: dict[str, AttributeValue] | None = None,
+        attributes: dict[str, AttributeValue] | None = None,
     ) -> LaminarSpan | Span:
         """Start a span and mark it as active within the current context.
         All spans started after this one will be children of this span.
@@ -977,6 +995,9 @@ class Laminar:
                 Defaults to None.
             metadata (dict[str, AttributeValue] | None, optional): metadata to\
                 set for the trace. Defaults to None.
+            attributes (dict[str, AttributeValue] | None, optional): attributes to\
+                set for the span. This function may override attributes by laminar\
+                internal values, such as tags or metadata. Defaults to None.
         """
         span = cls.start_span(
             name=name,
@@ -988,6 +1009,7 @@ class Laminar:
             user_id=user_id,
             session_id=session_id,
             metadata=metadata,
+            attributes=attributes,
         )
         if not cls.is_initialized():
             return span

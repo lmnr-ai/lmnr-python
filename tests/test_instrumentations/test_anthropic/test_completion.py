@@ -2,6 +2,7 @@ import pytest
 import time
 from anthropic import AI_PROMPT, HUMAN_PROMPT
 
+
 @pytest.mark.vcr
 def test_anthropic_completion_legacy(
     instrument_legacy, anthropic_client, span_exporter
@@ -26,9 +27,10 @@ def test_anthropic_completion_legacy(
 
     anthropic_span = spans[0]
     assert (
-        anthropic_span.attributes["gen_ai.prompt.0.user"]
+        anthropic_span.attributes["gen_ai.prompt.0.content"]
         == f"{HUMAN_PROMPT}\nHello world\n{AI_PROMPT}"
     )
+    assert anthropic_span.attributes["gen_ai.prompt.0.role"] == "user"
     assert anthropic_span.attributes.get("gen_ai.completion.0.content")
     assert (
         anthropic_span.attributes.get("gen_ai.response.id")

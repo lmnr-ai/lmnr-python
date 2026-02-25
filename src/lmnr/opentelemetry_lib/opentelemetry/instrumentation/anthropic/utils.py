@@ -9,13 +9,7 @@ from importlib.metadata import version
 
 from opentelemetry import context as context_api
 from .config import Config
-from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
-    GEN_AI_RESPONSE_MODEL,
-)
-from opentelemetry.semconv_ai import SpanAttributes
 
-GEN_AI_SYSTEM = "gen_ai.system"
-GEN_AI_SYSTEM_ANTHROPIC = "anthropic"
 _PYDANTIC_VERSION = version("pydantic")
 
 LMNR_TRACE_CONTENT = "LMNR_TRACE_CONTENT"
@@ -146,48 +140,6 @@ def _extract_response_data(response):
         return response_dict
 
     return {}
-
-
-@dont_throw
-async def ashared_metrics_attributes(response):
-    import inspect
-
-    # If we get a coroutine, await it
-    if inspect.iscoroutine(response):
-        try:
-            response = await response
-        except Exception as e:
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.debug(f"Failed to await coroutine response: {e}")
-            response = None
-
-    # If it's already a dict (e.g., from streaming), use it directly
-    if isinstance(response, dict):
-        model = response.get("model")
-    else:
-        # Handle with_raw_response wrapped responses first
-        if response and hasattr(response, "parse") and callable(response.parse):
-            try:
-                response = response.parse()
-            except Exception as e:
-                import logging
-
-                logger = logging.getLogger(__name__)
-                logger.debug(f"Failed to parse with_raw_response: {e}")
-                response = None
-
-        # Safely get model attribute without extracting the whole object
-        model = getattr(response, "model", None) if response else None
-
-    common_attributes = Config.get_common_metrics_attributes()
-
-    return {
-        **common_attributes,
-        GEN_AI_SYSTEM: GEN_AI_SYSTEM_ANTHROPIC,
-        GEN_AI_RESPONSE_MODEL: model,
-    }
 
 
 def run_async(method):

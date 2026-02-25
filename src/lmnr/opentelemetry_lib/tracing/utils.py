@@ -17,6 +17,9 @@ from lmnr.opentelemetry_lib.tracing.context import (
     CONTEXT_TRACE_TYPE_KEY,
     CONTEXT_METADATA_KEY,
 )
+from lmnr.sdk.log import get_default_logger
+
+logger = get_default_logger(__name__)
 
 
 def set_association_props_in_context(span: Span):
@@ -27,44 +30,56 @@ def set_association_props_in_context(span: Span):
     if not isinstance(span, LaminarSpan):
         return None
 
-    props = span.laminar_association_properties
-    user_id_key = f"{ASSOCIATION_PROPERTIES}.{USER_ID}"
-    session_id_key = f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}"
-    rollout_session_id_key = f"{ASSOCIATION_PROPERTIES}.{ROLLOUT_SESSION_ID}"
-    trace_type_key = f"{ASSOCIATION_PROPERTIES}.{TRACE_TYPE}"
+    try:
+        props = span.laminar_association_properties
+        user_id_key = f"{ASSOCIATION_PROPERTIES}.{USER_ID}"
+        session_id_key = f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}"
+        rollout_session_id_key = f"{ASSOCIATION_PROPERTIES}.{ROLLOUT_SESSION_ID}"
+        trace_type_key = f"{ASSOCIATION_PROPERTIES}.{TRACE_TYPE}"
 
-    # Extract values from props
-    extracted_user_id = props.get(user_id_key)
-    extracted_session_id = props.get(session_id_key)
-    extracted_rollout_session_id = props.get(rollout_session_id_key)
-    extracted_trace_type = props.get(trace_type_key)
+        # Extract values from props
+        extracted_user_id = props.get(user_id_key)
+        extracted_session_id = props.get(session_id_key)
+        extracted_rollout_session_id = props.get(rollout_session_id_key)
+        extracted_trace_type = props.get(trace_type_key)
 
-    # Extract metadata from props (keys without ASSOCIATION_PROPERTIES prefix)
-    metadata_dict = {}
-    for key, value in props.items():
-        if not key.startswith(f"{ASSOCIATION_PROPERTIES}."):
-            metadata_dict[key] = value
+        # Extract metadata from props (keys without ASSOCIATION_PROPERTIES prefix)
+        metadata_dict = {}
+        for key, value in props.items():
+            if not key.startswith(f"{ASSOCIATION_PROPERTIES}."):
+                metadata_dict[key] = value
 
-    # Set context with association props
-    current_ctx = get_current_context()
-    ctx_with_props = current_ctx
-    if extracted_user_id:
-        ctx_with_props = set_value(
-            CONTEXT_USER_ID_KEY, extracted_user_id, ctx_with_props
-        )
-    if extracted_session_id:
-        ctx_with_props = set_value(
-            CONTEXT_SESSION_ID_KEY, extracted_session_id, ctx_with_props
-        )
-    if extracted_rollout_session_id:
-        ctx_with_props = set_value(
-            CONTEXT_ROLLOUT_SESSION_ID_KEY, extracted_rollout_session_id, ctx_with_props
-        )
-    if extracted_trace_type:
-        ctx_with_props = set_value(
-            CONTEXT_TRACE_TYPE_KEY, extracted_trace_type, ctx_with_props
-        )
-    if metadata_dict:
-        ctx_with_props = set_value(CONTEXT_METADATA_KEY, metadata_dict, ctx_with_props)
+        # Set context with association props
+        current_ctx = get_current_context()
+        ctx_with_props = current_ctx
+        if extracted_user_id:
+            ctx_with_props = set_value(
+                CONTEXT_USER_ID_KEY, extracted_user_id, ctx_with_props
+            )
+        if extracted_session_id:
+            ctx_with_props = set_value(
+                CONTEXT_SESSION_ID_KEY, extracted_session_id, ctx_with_props
+            )
+        if extracted_rollout_session_id:
+            ctx_with_props = set_value(
+                CONTEXT_ROLLOUT_SESSION_ID_KEY,
+                extracted_rollout_session_id,
+                ctx_with_props,
+            )
+        if extracted_trace_type:
+            ctx_with_props = set_value(
+                CONTEXT_TRACE_TYPE_KEY, extracted_trace_type, ctx_with_props
+            )
+        if metadata_dict:
+            ctx_with_props = set_value(
+                CONTEXT_METADATA_KEY, metadata_dict, ctx_with_props
+            )
 
-    return attach_context(ctx_with_props)
+        return attach_context(ctx_with_props)
+
+    except Exception:
+        logger.warning(
+            "[set_association_props_in_context] failed to set association props in context",
+            exc_info=True,
+        )
+        return None

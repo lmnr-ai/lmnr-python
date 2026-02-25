@@ -2,8 +2,6 @@ import json
 
 import pytest
 
-from opentelemetry.semconv_ai import SpanAttributes
-
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
     is_reasoning_supported,
 )
@@ -30,10 +28,10 @@ def test_chat(instrument_legacy, span_exporter, azure_openai_client):
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
     assert output_messages[0]["message"]["content"]
     assert (
-        open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
+        open_ai_span.attributes.get("gen_ai.request.base_url")
         == "https://traceloop-stg.openai.azure.com/openai/"
     )
-    assert open_ai_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is False
+    assert open_ai_span.attributes.get("llm.is_streaming") is False
     assert (
         open_ai_span.attributes.get("gen_ai.response.id")
         == "chatcmpl-9HpbZPf84KZFiQG6fdY0KVtIwHyIa"
@@ -63,10 +61,10 @@ def test_chat_content_filtering(instrument_legacy, span_exporter, azure_openai_c
     assert content_filter_results["self_harm"]["filtered"] is False
     assert content_filter_results["self_harm"]["severity"] == "safe"
     assert (
-        open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
+        open_ai_span.attributes.get("gen_ai.request.base_url")
         == "https://traceloop-stg.openai.azure.com/openai/"
     )
-    assert open_ai_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is False
+    assert open_ai_span.attributes.get("llm.is_streaming") is False
     assert (
         open_ai_span.attributes.get("gen_ai.response.id")
         == "chatcmpl-9HpyGSWv1hoKdGaUaiFhfxzTEVlZo"
@@ -89,13 +87,9 @@ def test_prompt_content_filtering(
     ]
     open_ai_span = spans[0]
 
-    assert isinstance(
-        open_ai_span.attributes[f"gen_ai.prompt.{PROMPT_ERROR}"], str
-    )
+    assert isinstance(open_ai_span.attributes[f"gen_ai.prompt.{PROMPT_ERROR}"], str)
 
-    error = json.loads(
-        open_ai_span.attributes[f"gen_ai.prompt.{PROMPT_ERROR}"]
-    )
+    error = json.loads(open_ai_span.attributes[f"gen_ai.prompt.{PROMPT_ERROR}"])
 
     assert "innererror" in error
 
@@ -135,10 +129,10 @@ def test_chat_streaming(instrument_legacy, span_exporter, azure_openai_client):
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
     assert output_messages[0]["message"]["content"]
     assert (
-        open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
+        open_ai_span.attributes.get("gen_ai.request.base_url")
         == "https://traceloop-stg.openai.azure.com/openai/"
     )
-    assert open_ai_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is True
+    assert open_ai_span.attributes.get("llm.is_streaming") is True
 
     events = open_ai_span.events
     assert len(events) == chunk_count
@@ -188,10 +182,10 @@ async def test_chat_async_streaming(
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
     assert output_messages[0]["message"]["content"]
     assert (
-        open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
+        open_ai_span.attributes.get("gen_ai.request.base_url")
         == "https://traceloop-stg.openai.azure.com/openai/"
     )
-    assert open_ai_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is True
+    assert open_ai_span.attributes.get("llm.is_streaming") is True
 
     events = open_ai_span.events
     assert len(events) == chunk_count

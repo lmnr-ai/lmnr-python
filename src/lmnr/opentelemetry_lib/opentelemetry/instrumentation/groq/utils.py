@@ -6,9 +6,6 @@ from importlib.metadata import version
 from opentelemetry import context as context_api
 from .config import Config
 
-GEN_AI_SYSTEM = "gen_ai.system"
-GEN_AI_SYSTEM_GROQ = "groq"
-
 _PYDANTIC_VERSION = version("pydantic")
 
 LMNR_TRACE_CONTENT = "LMNR_TRACE_CONTENT"

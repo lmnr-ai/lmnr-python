@@ -191,7 +191,6 @@ class DaytonaSDKInstrumentorInitializer(InstrumentorInitializer):
         return DaytonaSDKInstrumentor()
 
 
-
 class GoogleGenAIInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("google-genai"):
@@ -364,15 +363,6 @@ class OpenAIInstrumentorInitializer(InstrumentorInitializer):
         from ..opentelemetry.instrumentation.openai import OpenAIInstrumentor
 
         return OpenAIInstrumentor()
-
-
-class OpenHandsAIInstrumentorInitializer(InstrumentorInitializer):
-    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
-        if not is_package_installed("openhands-ai"):
-            return None
-        from ..opentelemetry.instrumentation.openhands_ai import OpenHandsInstrumentor
-
-        return OpenHandsInstrumentor()
 
 
 class OpenTelemetryInstrumentorInitializer(InstrumentorInitializer):

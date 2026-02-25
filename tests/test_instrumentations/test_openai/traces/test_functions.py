@@ -1,7 +1,6 @@
 import json
 
 import pytest
-from opentelemetry.semconv_ai import SpanAttributes
 
 
 @pytest.fixture
@@ -60,20 +59,18 @@ def test_open_ai_function_calls(instrument_legacy, span_exporter, openai_client)
     input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
     assert input_messages[0]["content"] == "What's the weather like in Boston?"
     assert (
-        open_ai_span.attributes[f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.0.name"]
-        == "get_current_weather"
+        open_ai_span.attributes["llm.request.functions.0.name"] == "get_current_weather"
     )
     assert (
-        open_ai_span.attributes[f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.0.description"]
+        open_ai_span.attributes["llm.request.functions.0.description"]
         == "Get the current weather in a given location"
     )
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
     assert (
-        output_messages[0]["message"]["function_call"]["name"]
-        == "get_current_weather"
+        output_messages[0]["message"]["function_call"]["name"] == "get_current_weather"
     )
     assert (
-        open_ai_span.attributes[SpanAttributes.LLM_OPENAI_API_BASE]
+        open_ai_span.attributes["gen_ai.request.base_url"]
         == "https://api.openai.com/v1/"
     )
     assert (
@@ -98,11 +95,10 @@ def test_open_ai_function_calls_tools(
     input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
     assert input_messages[0]["content"] == "What's the weather like in Boston?"
     assert (
-        open_ai_span.attributes[f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.0.name"]
-        == "get_current_weather"
+        open_ai_span.attributes["llm.request.functions.0.name"] == "get_current_weather"
     )
     assert (
-        open_ai_span.attributes[f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.0.description"]
+        open_ai_span.attributes["llm.request.functions.0.description"]
         == "Get the current weather"
     )
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
@@ -115,7 +111,7 @@ def test_open_ai_function_calls_tools(
         == "get_current_weather"
     )
     assert (
-        open_ai_span.attributes[SpanAttributes.LLM_OPENAI_API_BASE]
+        open_ai_span.attributes["gen_ai.request.base_url"]
         == "https://api.openai.com/v1/"
     )
     assert (
@@ -150,7 +146,7 @@ async def test_open_ai_function_calls_tools_streaming(
         str,
     )
     assert (
-        open_ai_span.attributes.get(f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.0.name")
+        open_ai_span.attributes.get("llm.request.functions.0.name")
         == "get_current_weather"
     )
     assert output_messages[0]["finish_reason"] == "tool_calls"
@@ -190,7 +186,7 @@ def test_open_ai_function_calls_tools_parallel(
     open_ai_span = spans[0]
 
     assert (
-        open_ai_span.attributes.get(f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.0.name")
+        open_ai_span.attributes.get("llm.request.functions.0.name")
         == "get_current_weather"
     )
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
@@ -251,7 +247,7 @@ async def test_open_ai_function_calls_tools_streaming_parallel(
     open_ai_span = spans[0]
 
     assert (
-        open_ai_span.attributes.get(f"{SpanAttributes.LLM_REQUEST_FUNCTIONS}.0.name")
+        open_ai_span.attributes.get("llm.request.functions.0.name")
         == "get_current_weather"
     )
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])

@@ -3,7 +3,6 @@ import json
 
 import pytest
 import requests
-from opentelemetry.semconv_ai import SpanAttributes
 
 
 @pytest.mark.vcr
@@ -46,7 +45,7 @@ def test_vision(instrument_legacy, span_exporter, openai_client):
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
     assert output_messages[0]["message"]["content"]
     assert (
-        open_ai_span.attributes[SpanAttributes.LLM_OPENAI_API_BASE]
+        open_ai_span.attributes["gen_ai.request.base_url"]
         == "https://api.openai.com/v1/"
     )
     assert (
@@ -94,14 +93,19 @@ def test_vision_base64(instrument_legacy, span_exporter, openai_client):
     ]
     open_ai_span = spans[0]
     input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
-    assert input_messages[0]["content"][0] == {"type": "text", "text": "What is in this image?"}
+    assert input_messages[0]["content"][0] == {
+        "type": "text",
+        "text": "What is in this image?",
+    }
     assert input_messages[0]["content"][1]["type"] == "image_url"
-    assert input_messages[0]["content"][1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+    assert input_messages[0]["content"][1]["image_url"]["url"].startswith(
+        "data:image/jpeg;base64,"
+    )
 
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
     assert output_messages[0]["message"]["content"]
     assert (
-        open_ai_span.attributes[SpanAttributes.LLM_OPENAI_API_BASE]
+        open_ai_span.attributes["gen_ai.request.base_url"]
         == "https://api.openai.com/v1/"
     )
     assert (

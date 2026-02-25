@@ -7,7 +7,6 @@ import pytest
 from openai.types.chat.chat_completion_message_tool_call import (
     ChatCompletionMessageFunctionToolCall,
 )
-from opentelemetry.semconv_ai import SpanAttributes
 from opentelemetry.trace import StatusCode
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
@@ -36,10 +35,10 @@ def test_chat(instrument_legacy, span_exporter, openai_client):
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
     assert output_messages[0]["message"]["content"]
     assert (
-        open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
+        open_ai_span.attributes.get("gen_ai.request.base_url")
         == "https://api.openai.com/v1/"
     )
-    assert open_ai_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is False
+    assert open_ai_span.attributes.get("llm.is_streaming") is False
     assert (
         open_ai_span.attributes.get("gen_ai.response.id")
         == "chatcmpl-CdGqqj1iK4R9EgoAo2k2ZvzxgmgGt"
@@ -83,8 +82,7 @@ def test_chat_tool_calls(instrument_legacy, span_exporter, openai_client):
     input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
     assert "content" not in input_messages[0]
     assert (
-        input_messages[0]["tool_calls"][0]["function"]["name"]
-        == "get_current_weather"
+        input_messages[0]["tool_calls"][0]["function"]["name"] == "get_current_weather"
     )
     assert (
         input_messages[0]["tool_calls"][0]["function"]["arguments"]
@@ -140,8 +138,7 @@ def test_chat_pydantic_based_tool_calls(
     input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
     assert "content" not in input_messages[0]
     assert (
-        input_messages[0]["tool_calls"][0]["function"]["name"]
-        == "get_current_weather"
+        input_messages[0]["tool_calls"][0]["function"]["name"] == "get_current_weather"
     )
     assert (
         input_messages[0]["tool_calls"][0]["function"]["arguments"]
@@ -183,10 +180,10 @@ def test_chat_streaming(instrument_legacy, span_exporter, openai_client):
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
     assert output_messages[0]["message"]["content"]
     assert (
-        open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
+        open_ai_span.attributes.get("gen_ai.request.base_url")
         == "https://api.openai.com/v1/"
     )
-    assert open_ai_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is True
+    assert open_ai_span.attributes.get("llm.is_streaming") is True
 
     events = open_ai_span.events
     assert len(events) == chunk_count
@@ -225,10 +222,10 @@ async def test_chat_async_streaming(
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
     assert output_messages[0]["message"]["content"]
     assert (
-        open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
+        open_ai_span.attributes.get("gen_ai.request.base_url")
         == "https://api.openai.com/v1/"
     )
-    assert open_ai_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is True
+    assert open_ai_span.attributes.get("llm.is_streaming") is True
 
     events = open_ai_span.events
     assert len(events) == chunk_count
@@ -354,7 +351,10 @@ def test_chat_history_message_dict(instrument_legacy, span_exporter, openai_clie
     assert first_input[0]["content"] == first_user_message["content"]
     assert first_input[0]["role"] == first_user_message["role"]
     first_output = json.loads(first_span.attributes["gen_ai.output.messages"])
-    assert first_output[0]["message"]["content"] == first_response.choices[0].message.content
+    assert (
+        first_output[0]["message"]["content"]
+        == first_response.choices[0].message.content
+    )
     assert first_output[0]["message"]["role"] == "assistant"
 
     second_span = spans[1]
@@ -362,7 +362,10 @@ def test_chat_history_message_dict(instrument_legacy, span_exporter, openai_clie
     second_input = json.loads(second_span.attributes["gen_ai.input.messages"])
     assert second_input[0]["content"] == first_user_message["content"]
     second_output = json.loads(second_span.attributes["gen_ai.output.messages"])
-    assert second_output[0]["message"]["content"] == second_response.choices[0].message.content
+    assert (
+        second_output[0]["message"]["content"]
+        == second_response.choices[0].message.content
+    )
     assert second_input[1]["content"] == first_response.choices[0].message.content
     assert second_input[1]["role"] == "assistant"
     assert second_input[2]["content"] == second_user_message["content"]
@@ -402,7 +405,10 @@ def test_chat_history_message_pydantic(instrument_legacy, span_exporter, openai_
     assert first_input[0]["content"] == first_user_message["content"]
     assert first_input[0]["role"] == first_user_message["role"]
     first_output = json.loads(first_span.attributes["gen_ai.output.messages"])
-    assert first_output[0]["message"]["content"] == first_response.choices[0].message.content
+    assert (
+        first_output[0]["message"]["content"]
+        == first_response.choices[0].message.content
+    )
     assert first_output[0]["message"]["role"] == "assistant"
 
     second_span = spans[1]
@@ -410,7 +416,10 @@ def test_chat_history_message_pydantic(instrument_legacy, span_exporter, openai_
     second_input = json.loads(second_span.attributes["gen_ai.input.messages"])
     assert second_input[0]["content"] == first_user_message["content"]
     second_output = json.loads(second_span.attributes["gen_ai.output.messages"])
-    assert second_output[0]["message"]["content"] == second_response.choices[0].message.content
+    assert (
+        second_output[0]["message"]["content"]
+        == second_response.choices[0].message.content
+    )
     assert second_input[1]["content"] == first_response.choices[0].message.content
     assert second_input[1]["role"] == "assistant"
     assert second_input[2]["content"] == second_user_message["content"]
@@ -454,10 +463,10 @@ def test_chat_exception(instrument_legacy, span_exporter, openai_client):
     input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     assert (
-        open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
+        open_ai_span.attributes.get("gen_ai.request.base_url")
         == "https://api.openai.com/v1/"
     )
-    assert open_ai_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is False
+    assert open_ai_span.attributes.get("llm.is_streaming") is False
     assert open_ai_span.status.status_code == StatusCode.ERROR
     assert open_ai_span.status.description.startswith("Error code: 401")
     events = open_ai_span.events
@@ -496,10 +505,10 @@ async def test_chat_async_exception(
     input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     assert (
-        open_ai_span.attributes.get(SpanAttributes.LLM_OPENAI_API_BASE)
+        open_ai_span.attributes.get("gen_ai.request.base_url")
         == "https://api.openai.com/v1/"
     )
-    assert open_ai_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is False
+    assert open_ai_span.attributes.get("llm.is_streaming") is False
     assert open_ai_span.status.status_code == StatusCode.ERROR
     assert open_ai_span.status.description.startswith("Error code: 401")
     events = open_ai_span.events
@@ -546,11 +555,8 @@ def test_chat_streaming_not_consumed(instrument_legacy, span_exporter, openai_cl
     assert open_ai_span.end_time is not None
     assert open_ai_span.end_time > open_ai_span.start_time
 
-    assert (
-        open_ai_span.attributes.get("gen_ai.request.model") == "gpt-3.5-turbo"
-    )
-    assert open_ai_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is True
-    assert open_ai_span.attributes.get(SpanAttributes.LLM_REQUEST_TYPE) == "chat"
+    assert open_ai_span.attributes.get("gen_ai.request.model") == "gpt-3.5-turbo"
+    assert open_ai_span.attributes.get("llm.is_streaming") is True
 
     input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
@@ -588,10 +594,8 @@ def test_chat_streaming_partial_consumption(
     assert open_ai_span.status.status_code == StatusCode.OK
     assert open_ai_span.end_time is not None
 
-    assert (
-        open_ai_span.attributes.get("gen_ai.request.model") == "gpt-3.5-turbo"
-    )
-    assert open_ai_span.attributes.get(SpanAttributes.LLM_IS_STREAMING) is True
+    assert open_ai_span.attributes.get("gen_ai.request.model") == "gpt-3.5-turbo"
+    assert open_ai_span.attributes.get("llm.is_streaming") is True
 
     # Should have at least one event from the consumed chunk
     events = open_ai_span.events

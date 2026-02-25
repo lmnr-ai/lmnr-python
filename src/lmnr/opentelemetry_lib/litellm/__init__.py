@@ -3,8 +3,12 @@
 import json
 from datetime import datetime
 
-from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import GEN_AI_PROMPT
 from opentelemetry.trace import SpanKind, Status, StatusCode, Tracer
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
+)
+
 from lmnr.opentelemetry_lib.litellm.utils import (
     get_tool_definition,
     is_validator_iterator,
@@ -297,12 +301,12 @@ try:
                         )
                     set_span_attribute(
                         span,
-                        f"{GEN_AI_PROMPT}.{prompt_index}.content",
+                        f"gen_ai.prompt.{prompt_index}.content",
                         stringified_content,
                     )
                     set_span_attribute(
                         span,
-                        f"{GEN_AI_PROMPT}.{prompt_index}.role",
+                        f"gen_ai.prompt.{prompt_index}.role",
                         block_dict.get("role"),
                     )
                     prompt_index += 1
@@ -310,14 +314,14 @@ try:
                 elif block_dict.get("type") == "computer_call_output":
                     set_span_attribute(
                         span,
-                        f"{GEN_AI_PROMPT}.{prompt_index}.role",
+                        f"gen_ai.prompt.{prompt_index}.role",
                         "computer_call_output",
                     )
                     output_image_url = block_dict.get("output", {}).get("image_url")
                     if output_image_url:
                         set_span_attribute(
                             span,
-                            f"{GEN_AI_PROMPT}.{prompt_index}.content",
+                            f"gen_ai.prompt.{prompt_index}.content",
                             json.dumps(
                                 [
                                     {
@@ -330,7 +334,7 @@ try:
                     prompt_index += 1
                 elif block_dict.get("type") == "computer_call":
                     set_span_attribute(
-                        span, f"{GEN_AI_PROMPT}.{prompt_index}.role", "assistant"
+                        span, f"gen_ai.prompt.{prompt_index}.role", "assistant"
                     )
                     call_content = {}
                     if block_dict.get("id"):
@@ -339,17 +343,17 @@ try:
                         call_content["action"] = block_dict.get("action")
                     set_span_attribute(
                         span,
-                        f"{GEN_AI_PROMPT}.{prompt_index}.tool_calls.0.arguments",
+                        f"gen_ai.prompt.{prompt_index}.tool_calls.0.arguments",
                         json.dumps(call_content),
                     )
                     set_span_attribute(
                         span,
-                        f"{GEN_AI_PROMPT}.{prompt_index}.tool_calls.0.id",
+                        f"gen_ai.prompt.{prompt_index}.tool_calls.0.id",
                         block_dict.get("call_id"),
                     )
                     set_span_attribute(
                         span,
-                        f"{GEN_AI_PROMPT}.{prompt_index}.tool_calls.0.name",
+                        f"gen_ai.prompt.{prompt_index}.tool_calls.0.name",
                         "computer_call",
                     )
                     prompt_index += 1
@@ -364,12 +368,12 @@ try:
                         ]
                         set_span_attribute(
                             span,
-                            f"{GEN_AI_PROMPT}.{prompt_index}.reasoning",
+                            f"gen_ai.prompt.{prompt_index}.reasoning",
                             json_dumps(processed_chunks),
                         )
                         set_span_attribute(
                             span,
-                            f"{GEN_AI_PROMPT}.{prompt_index}.role",
+                            f"gen_ai.prompt.{prompt_index}.role",
                             "assistant",
                         )
                     # reasoning is followed by other content parts in the same messge,
@@ -414,10 +418,10 @@ try:
                 return
 
             set_span_attribute(
-                span, "gen_ai.usage.input_tokens", usage_dict.get("prompt_tokens")
+                span, GEN_AI_USAGE_INPUT_TOKENS, usage_dict.get("prompt_tokens")
             )
             set_span_attribute(
-                span, "gen_ai.usage.output_tokens", usage_dict.get("completion_tokens")
+                span, GEN_AI_USAGE_OUTPUT_TOKENS, usage_dict.get("completion_tokens")
             )
             set_span_attribute(
                 span, "llm.usage.total_tokens", usage_dict.get("total_tokens")
