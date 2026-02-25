@@ -76,7 +76,7 @@ def _setup_span(
         logger.warning(f"[observe] failed to setup span: {span_name}", exc_info=True)
         return None
     finally:
-        if span is not None and not span.is_recording():
+        if span is not None and span.is_recording():
             try:
                 span.end()
             except Exception:
