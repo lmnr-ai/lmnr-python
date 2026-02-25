@@ -63,7 +63,9 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
 
             if span and span.is_recording():
                 try:
-                    if input_messages_raw := span.attributes.get("gen_ai.input.messages"):
+                    if input_messages_raw := span.attributes.get(
+                        "gen_ai.input.messages"
+                    ):
                         input_messages = json.loads(input_messages_raw)
                         if input_messages and input_messages[0].get("role") == "system":
                             input_messages[0]["parts"] = [{"text": system_override}]
@@ -579,7 +581,7 @@ def wrap_google_genai_for_rollout():
 
     wrapper = get_google_genai_rollout_wrapper()
     if not wrapper:
-        logger.warning("Rollout mode active but failed to create wrapper")
+        logger.warning("Debugger mode active but failed to create wrapper")
         return
 
-    logger.info("Google GenAI rollout wrapper initialized")
+    logger.debug("Google GenAI debugger wrapper initialized")

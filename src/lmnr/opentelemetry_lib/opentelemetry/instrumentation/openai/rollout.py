@@ -60,10 +60,7 @@ class OpenAIRolloutWrapper(RolloutInstrumentationWrapper):
                         "gen_ai.input.messages"
                     ):
                         input_messages = json.loads(input_messages_raw)
-                        if (
-                            input_messages
-                            and input_messages[0].get("role") == "system"
-                        ):
+                        if input_messages and input_messages[0].get("role") == "system":
                             input_messages[0]["content"] = system_override
                             span.set_attribute(
                                 "gen_ai.input.messages",
@@ -174,7 +171,7 @@ class OpenAIRolloutWrapper(RolloutInstrumentationWrapper):
                 logger.warning("Cached span has no output")
                 return None
 
-            # NOTE: This is assuming the latest openai instrumentation where we save the output as 
+            # NOTE: This is assuming the latest openai instrumentation where we save the output as
             # a list of choices. Not compatible with older versions.
             output = json.loads(output_str)
             if not isinstance(output, list):
@@ -193,9 +190,7 @@ class OpenAIRolloutWrapper(RolloutInstrumentationWrapper):
                             type="function",
                             function=ToolCallFunction(
                                 name=tc.get("function", {}).get("name", ""),
-                                arguments=tc.get("function", {}).get(
-                                    "arguments", ""
-                                ),
+                                arguments=tc.get("function", {}).get("arguments", ""),
                             ),
                         )
                         for tc in raw_tool_calls
@@ -299,9 +294,7 @@ class OpenAIRolloutWrapper(RolloutInstrumentationWrapper):
                     return response
 
         modified_kwargs = self.apply_openai_overrides(kwargs, span_path, span)
-        logger.debug(
-            f"Executing live OpenAI call for {span_path}:{current_index}"
-        )
+        logger.debug(f"Executing live OpenAI call for {span_path}:{current_index}")
         return wrapped(*args, **modified_kwargs)
 
     def _create_cached_stream(
@@ -317,8 +310,7 @@ class OpenAIRolloutWrapper(RolloutInstrumentationWrapper):
             # format doesn't have. Add it before passing to ChoiceDelta.
             if message.get("tool_calls"):
                 message["tool_calls"] = [
-                    {**tc, "index": i}
-                    for i, tc in enumerate(message["tool_calls"])
+                    {**tc, "index": i} for i, tc in enumerate(message["tool_calls"])
                 ]
             choices.append(
                 ChunkChoice(
@@ -357,7 +349,7 @@ def get_openai_rollout_wrapper() -> OpenAIRolloutWrapper | None:
         try:
             _openai_rollout_wrapper = OpenAIRolloutWrapper()
         except Exception as e:
-            logger.error(f"Failed to create OpenAI rollout wrapper: {e}")
+            logger.error(f"Failed to create OpenAI debugger wrapper: {e}")
             return None
 
     return _openai_rollout_wrapper

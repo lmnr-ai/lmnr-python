@@ -1,10 +1,10 @@
 """
-Worker entry point for rollout execution via external TypeScript CLI.
+Worker entry point for debugger execution via external TypeScript CLI.
 
 This module is invoked by the @lmnr-ai/cli package as:
     python3 -m lmnr.cli.worker
 
-It reads configuration from stdin, executes the rollout function, and
+It reads configuration from stdin, executes the debug function, and
 communicates results back via stdout using a protocol.
 """
 
@@ -62,11 +62,6 @@ def log_error(message: str) -> None:
 def log_warn(message: str) -> None:
     """Send warning log message to parent."""
     send_message({"type": "log", "level": "warn", "message": message})
-
-
-def send_result(data: Any) -> None:
-    """Send successful result to parent."""
-    send_message({"type": "result", "data": data})
 
 
 def send_error(error: str, stack: str | None = None) -> None:
@@ -190,7 +185,7 @@ def load_module_from_path(module_path: str):
     return importlib.import_module(module_path)
 
 
-async def run_worker(config: dict[str, Any]) -> Any:
+async def run_worker(config: dict[str, Any]) -> None:
     """
     Main worker execution function.
 
@@ -198,7 +193,7 @@ async def run_worker(config: dict[str, Any]) -> Any:
         config: WorkerConfig dict with filePath or modulePath, functionName, args, env, etc.
 
     Returns:
-        Result of the rollout function
+        Result of the entrypoint function
     """
     # Set environment variables
     env_vars = config.get("env", {})
@@ -233,7 +228,7 @@ async def run_worker(config: dict[str, Any]) -> Any:
             disable_batch=True,
         )
 
-    # Import the target module with rollout mode enabled
+    # Import the target module with debugger mode enabled
     from lmnr.sdk.rollout_control import (
         ROLLOUT_MODE,
         get_entrypoints,
@@ -243,7 +238,7 @@ async def run_worker(config: dict[str, Any]) -> Any:
     # Clear any previous registrations
     clear_entrypoints()
 
-    # Enable rollout mode before importing to trigger entrypoint registration
+    # Enable debugger mode before importing to trigger entrypoint registration
     token = ROLLOUT_MODE.set(True)
 
     try:
@@ -266,7 +261,7 @@ async def run_worker(config: dict[str, Any]) -> Any:
 
         if not entrypoints:
             raise ValueError(
-                f"No rollout entrypoints found in {source_desc}. "
+                f"No debugger entrypoints found in {source_desc}. "
                 "Add @observe(rollout_entrypoint=True) to a function."
             )
 
@@ -299,17 +294,15 @@ async def run_worker(config: dict[str, Any]) -> Any:
     log_info(f"Calling function {func_name} with args: {json.dumps(args)}")
 
     if is_async(func):
-        result = await func(*func_args, **func_kwargs)
+        await func(*func_args, **func_kwargs)
     else:
-        result = func(*func_args, **func_kwargs)
+        func(*func_args, **func_kwargs)
 
-    log_info("Rollout function completed successfully")
+    log_info("Function completed successfully")
 
     # Flush traces before returning
     log_debug("Flushing traces...")
     Laminar.flush()
-
-    return result
 
 
 def main() -> None:
@@ -328,10 +321,7 @@ def main() -> None:
             sys.exit(1)
 
         # Execute the worker (async context)
-        result = asyncio.run(run_worker(config))
-
-        # Send result back to parent
-        send_result(result)
+        asyncio.run(run_worker(config))
 
         # Exit successfully
         sys.exit(0)
