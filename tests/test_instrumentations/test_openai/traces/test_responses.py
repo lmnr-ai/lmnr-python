@@ -172,22 +172,7 @@ def test_responses_tool_calls(
         span.attributes["gen_ai.completion.0.tool_calls.0.arguments"]
         == '{"location":"London"}'
     )
-    assert span.attributes["llm.request.functions.0.name"] == "get_weather"
-    assert json.loads(span.attributes["llm.request.functions.0.parameters"]) == {
-        "type": "object",
-        "properties": {
-            "location": {
-                "type": "string",
-                "description": "The city and state, e.g. San Francisco, CA",
-            }
-        },
-        "required": ["location"],
-    }
-    assert (
-        span.attributes["llm.request.functions.0.description"]
-        == "Get the current weather for a location"
-    )
-
+    assert json.loads(span.attributes["gen_ai.tool.definitions"]) == tools
     assert (
         span.attributes["gen_ai.completion.0.tool_calls.0.id"]
         == "fc_685ff89422ec819a977b2ea385bc9b6601c537ddeff5c2a2"

@@ -4,7 +4,6 @@ import threading
 from opentelemetry import context as context_api
 from ..shared import (
     _set_client_attributes,
-    _set_functions_attributes,
     _set_request_attributes,
     _set_response_attributes,
     _set_span_attribute,
@@ -226,7 +225,7 @@ def _handle_request(span, kwargs, instance):
     if should_send_prompts():
         _set_prompts(span, kwargs.get("messages"))
         if kwargs.get("functions"):
-            _set_functions_attributes(span, kwargs.get("functions"))
+            set_tools_attributes(span, kwargs.get("functions"))
         elif kwargs.get("tools"):
             set_tools_attributes(span, kwargs.get("tools"))
     if Config.enable_trace_context_propagation:
@@ -415,7 +414,6 @@ class ChatStream(ObjectProxy):
 
     @dont_throw
     def _process_complete_response(self):
-
         _set_response_attributes(self._span, self._complete_response)
         if should_send_prompts():
             _set_completions(self._span, self._complete_response.get("choices"))

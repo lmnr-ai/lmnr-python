@@ -1,12 +1,19 @@
 """OpenTelemetry Google Generative AI API instrumentation"""
 
-from collections import defaultdict
 import json
 import logging
 import os
+from collections import defaultdict
 from typing import AsyncGenerator, Callable, Collection, Generator
 
 from google.genai import types
+from opentelemetry import context as context_api
+from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
+from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
+from opentelemetry.semconv._incubating.attributes import gen_ai_attributes
+from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
+from opentelemetry.trace import Span, Status, StatusCode, Tracer, get_tracer
+from wrapt import wrap_function_wrapper
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     safe_start_span,
@@ -29,20 +36,9 @@ from .utils import (
     process_content_union,
     process_stream_chunk,
     set_span_attribute,
-    strip_none_values,
     to_dict,
     with_tracer_wrapper,
 )
-from opentelemetry.trace import Tracer
-from wrapt import wrap_function_wrapper
-
-from opentelemetry import context as context_api
-from opentelemetry.trace import get_tracer, Span, Status, StatusCode
-from opentelemetry.semconv._incubating.attributes import gen_ai_attributes
-from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
-
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
 
 logger = logging.getLogger(__name__)
 
@@ -167,30 +163,6 @@ def _set_request_attributes(span, args, kwargs):
                 tools.extend(tool.get("function_declarations", []))
             elif isinstance(tool, Callable):
                 tools.append(types.FunctionDeclaration.from_callable(tool))
-
-    for tool_num, tool in enumerate(tools):
-        tool_dict = to_dict(tool)
-        set_span_attribute(
-            span,
-            f"llm.request.functions.{tool_num}.name",
-            tool_dict.get("name"),
-        )
-        set_span_attribute(
-            span,
-            f"llm.request.functions.{tool_num}.description",
-            tool_dict.get("description"),
-        )
-        if parameters := tool_dict.get("parameters"):
-            if isinstance(parameters, dict):
-                # For some reason, pydantic completely ignores configs like `exclude_unset`,
-                # `exclude_defaults`, `exclude_none`, etc.
-                # for this type here, so we need to strip none values manually.
-                parameters = strip_none_values(parameters)
-            set_span_attribute(
-                span,
-                f"llm.request.functions.{tool_num}.parameters",
-                json_dumps(parameters),
-            )
 
     if should_send_prompts():
         messages = []
@@ -556,7 +528,6 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         is_rollout = False
 
     try:
-
         if is_rollout:
             from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.rollout import (
                 get_google_genai_rollout_wrapper,

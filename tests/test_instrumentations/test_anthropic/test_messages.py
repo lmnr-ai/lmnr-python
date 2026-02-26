@@ -523,12 +523,7 @@ def test_anthropic_tools_legacy(instrument_legacy, anthropic_client, span_export
     )
 
     # verify tools are still set as individual attributes
-    assert anthropic_span.attributes["llm.request.functions.0.name"] == "get_weather"
-    assert (
-        anthropic_span.attributes["llm.request.functions.0.description"]
-        == "Get the current weather in a given location"
-    )
-    assert anthropic_span.attributes["llm.request.functions.1.name"] == "get_time"
+    assert json.loads(anthropic_span.attributes["gen_ai.tool.definitions"]) == TOOLS
 
     # verify output messages
     output_messages = json.loads(anthropic_span.attributes["gen_ai.output.messages"])
@@ -637,9 +632,7 @@ def test_anthropic_tools_history_legacy(
     assert output_messages[0]["role"] == "assistant"
     assert output_messages[0].get("stop_reason") == response.stop_reason
 
-    tool_blocks = [
-        b for b in output_messages[0]["content"] if b["type"] == "tool_use"
-    ]
+    tool_blocks = [b for b in output_messages[0]["content"] if b["type"] == "tool_use"]
     assert len(tool_blocks) >= 1
     assert tool_blocks[0]["id"] == response.content[0].id
     assert tool_blocks[0]["name"] == response.content[0].name
