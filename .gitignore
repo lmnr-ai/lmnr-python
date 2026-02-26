@@ -7,3 +7,4 @@ lmnr_engine/
 .venv
 .idea
 .env
+.claude
