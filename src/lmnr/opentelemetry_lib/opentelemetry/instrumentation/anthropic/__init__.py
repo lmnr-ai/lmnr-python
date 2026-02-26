@@ -1,7 +1,7 @@
 """OpenTelemetry Anthropic instrumentation"""
 
 import logging
-from typing import Callable, Collection, Optional
+from typing import Callable, Collection
 
 from .config import Config
 from .span_utils import (
@@ -36,7 +36,6 @@ from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
 from opentelemetry.trace import Span, Tracer, get_tracer
 from opentelemetry.trace.status import Status, StatusCode
-from typing_extensions import Coroutine
 from wrapt import wrap_function_wrapper
 
 
@@ -482,15 +481,11 @@ class AnthropicInstrumentor(BaseInstrumentor):
         exception_logger=None,
         use_legacy_attributes: bool = True,
         get_common_metrics_attributes: Callable[[], dict] = lambda: {},
-        upload_base64_image: Optional[
-            Callable[[str, str, str, str], Coroutine[None, None, str]]
-        ] = None,
     ):
         super().__init__()
         Config.exception_logger = exception_logger
         Config.enrich_token_usage = enrich_token_usage
         Config.get_common_metrics_attributes = get_common_metrics_attributes
-        Config.upload_base64_image = upload_base64_image
         Config.use_legacy_attributes = use_legacy_attributes
 
     def instrumentation_dependencies(self) -> Collection[str]:

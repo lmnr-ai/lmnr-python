@@ -30,12 +30,8 @@ def async_anthropic_client():
 
 @pytest.fixture(scope="function")
 def instrument_legacy(tracer_provider):
-    async def upload_base64_image(*args):
-        return "/some/url"
-
     instrumentor = AnthropicInstrumentor(
         enrich_token_usage=True,
-        upload_base64_image=upload_base64_image,
     )
     instrumentor.instrument(
         tracer_provider=tracer_provider,

@@ -36,9 +36,7 @@ class AnthropicInstrumentorInitializer(InstrumentorInitializer):
 
         from ..opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
 
-        return AnthropicInstrumentor(
-            upload_base64_image=None,
-        )
+        return AnthropicInstrumentor()
 
 
 class BedrockInstrumentorInitializer(InstrumentorInitializer):
