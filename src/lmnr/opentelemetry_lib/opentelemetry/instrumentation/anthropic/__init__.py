@@ -26,6 +26,8 @@ from .version import __version__
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     safe_start_span,
 )
+from lmnr.sdk.laminar import Laminar
+from lmnr.sdk.utils import json_dumps
 
 from opentelemetry import context as context_api
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
@@ -318,17 +320,37 @@ async def _ahandle_input(span: Span, kwargs):
 
 
 @dont_throw
-def _handle_response(span: Span, response):
+def _handle_response(span: Span, response, record_raw_response=False):
     if not span.is_recording():
         return
     set_response_attributes(span, response)
+    if record_raw_response:
+        _record_raw_response(span, response)
 
 
 @dont_throw
-async def _ahandle_response(span: Span, response):
+async def _ahandle_response(span: Span, response, record_raw_response=False):
     if not span.is_recording():
         return
     await aset_response_attributes(span, response)
+    if record_raw_response:
+        _record_raw_response(span, response)
+
+
+@dont_throw
+def _record_raw_response(span: Span, response):
+    """Record the raw LLM response as a span attribute for rollout mode."""
+    try:
+        if hasattr(response, "model_dump_json"):
+            set_span_attribute(
+                span, "lmnr.sdk.raw.response", response.model_dump_json()
+            )
+        elif hasattr(response, "__dict__"):
+            set_span_attribute(
+                span, "lmnr.sdk.raw.response", json_dumps(response.__dict__)
+            )
+    except Exception:
+        pass
 
 
 @_with_chat_telemetry_wrapper
@@ -357,7 +379,34 @@ def _wrap(
     _handle_input(span, kwargs)
 
     try:
-        response = wrapped(*args, **kwargs)
+        from lmnr.sdk.rollout_control import is_rollout_mode
+
+        is_rollout = is_rollout_mode()
+    except Exception:
+        is_rollout = False
+
+    try:
+        if is_rollout:
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.rollout import (
+                get_anthropic_rollout_wrapper,
+            )
+
+            rollout_wrapper = get_anthropic_rollout_wrapper()
+            if rollout_wrapper:
+                with Laminar.use_span(span):
+                    response = rollout_wrapper.wrap_create(
+                        wrapped,
+                        instance,
+                        args,
+                        kwargs,
+                        span=span,
+                        is_streaming=kwargs.get("stream", False),
+                        is_async=False,
+                    )
+            else:
+                response = wrapped(*args, **kwargs)
+        else:
+            response = wrapped(*args, **kwargs)
     except Exception as e:  # pylint: disable=broad-except
         raise e
 
@@ -367,6 +416,7 @@ def _wrap(
             response,
             instance._client,
             kwargs,
+            record_raw_response=is_rollout,
         )
     elif is_stream_manager(response):
         if response.__class__.__name__ == "AsyncMessageStreamManager":
@@ -375,6 +425,7 @@ def _wrap(
                 span,
                 instance._client,
                 kwargs,
+                record_raw_response=is_rollout,
             )
         else:
             return WrappedMessageStreamManager(
@@ -382,10 +433,11 @@ def _wrap(
                 span,
                 instance._client,
                 kwargs,
+                record_raw_response=is_rollout,
             )
     elif response:
         try:
-            _handle_response(span, response)
+            _handle_response(span, response, record_raw_response=is_rollout)
             if span.is_recording():
                 _set_token_usage(
                     span,
@@ -431,7 +483,42 @@ async def _awrap(
     await _ahandle_input(span, kwargs)
 
     try:
-        response = await wrapped(*args, **kwargs)
+        from lmnr.sdk.rollout_control import is_rollout_mode
+
+        is_rollout = is_rollout_mode()
+    except Exception:
+        is_rollout = False
+
+    try:
+        if is_rollout:
+            import inspect
+
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.rollout import (
+                get_anthropic_rollout_wrapper,
+            )
+
+            rollout_wrapper = get_anthropic_rollout_wrapper()
+            if rollout_wrapper:
+                with Laminar.use_span(span):
+                    result = rollout_wrapper.wrap_create(
+                        wrapped,
+                        instance,
+                        args,
+                        kwargs,
+                        span=span,
+                        is_streaming=kwargs.get("stream", False),
+                        is_async=True,
+                    )
+                if inspect.iscoroutine(result):
+                    response = await result
+                elif inspect.isasyncgen(result):
+                    response = result
+                else:
+                    response = result
+            else:
+                response = await wrapped(*args, **kwargs)
+        else:
+            response = await wrapped(*args, **kwargs)
     except Exception as e:  # pylint: disable=broad-except
         raise e
 
@@ -441,6 +528,7 @@ async def _awrap(
             response,
             instance._client,
             kwargs,
+            record_raw_response=is_rollout,
         )
     elif is_stream_manager(response):
         if response.__class__.__name__ == "AsyncMessageStreamManager":
@@ -449,6 +537,7 @@ async def _awrap(
                 span,
                 instance._client,
                 kwargs,
+                record_raw_response=is_rollout,
             )
         else:
             return WrappedMessageStreamManager(
@@ -456,9 +545,10 @@ async def _awrap(
                 span,
                 instance._client,
                 kwargs,
+                record_raw_response=is_rollout,
             )
     elif response:
-        await _ahandle_response(span, response)
+        await _ahandle_response(span, response, record_raw_response=is_rollout)
 
         if span.is_recording():
             await _aset_token_usage(
