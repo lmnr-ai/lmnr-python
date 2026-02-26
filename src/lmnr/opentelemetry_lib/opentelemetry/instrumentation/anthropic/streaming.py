@@ -1,3 +1,4 @@
+import json
 import logging
 
 from .config import Config
@@ -8,6 +9,7 @@ from .utils import (
     dont_throw,
     set_span_attribute,
 )
+from lmnr.sdk.utils import json_dumps
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_RESPONSE_ID,
     GEN_AI_RESPONSE_MODEL,
@@ -100,12 +102,62 @@ def _handle_streaming_response(span, complete_response):
     set_streaming_response_attributes(span, complete_response.get("events"))
 
 
+def _build_raw_response_dict(complete_response):
+    """Build an Anthropic Message-compatible dict from accumulated streaming events."""
+    content = []
+    for event in complete_response.get("events", []):
+        event_type = event.get("type")
+        if event_type == "tool_use":
+            tool_input = event.get("input", "")
+            if isinstance(tool_input, str):
+                try:
+                    tool_input = json.loads(tool_input)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            content.append({
+                "type": "tool_use",
+                "id": event.get("id", ""),
+                "name": event.get("name", ""),
+                "input": tool_input,
+            })
+        elif event_type == "thinking":
+            content.append({
+                "type": "thinking",
+                "thinking": event.get("text", ""),
+            })
+        else:
+            text = event.get("text", "")
+            if text:
+                content.append({
+                    "type": "text",
+                    "text": text,
+                })
+
+    stop_reason = None
+    for event in complete_response.get("events", []):
+        if event.get("finish_reason"):
+            stop_reason = event.get("finish_reason")
+            break
+
+    return {
+        "id": complete_response.get("id", ""),
+        "type": "message",
+        "role": "assistant",
+        "model": complete_response.get("model", ""),
+        "content": content,
+        "stop_reason": stop_reason,
+        "stop_sequence": None,
+        "usage": complete_response.get("usage", {"input_tokens": 0, "output_tokens": 0}),
+    }
+
+
 @dont_throw
 def build_from_streaming_response(
     span,
     response,
     instance,
     kwargs: dict = {},
+    record_raw_response: bool = False,
 ):
     complete_response = {
         "events": [],
@@ -163,6 +215,13 @@ def build_from_streaming_response(
 
     _handle_streaming_response(span, complete_response)
 
+    if record_raw_response and span.is_recording():
+        try:
+            raw_response = _build_raw_response_dict(complete_response)
+            set_span_attribute(span, "lmnr.sdk.raw.response", json_dumps(raw_response))
+        except Exception:
+            pass
+
     if span.is_recording():
         span.set_status(Status(StatusCode.OK))
         span.end()
@@ -174,6 +233,7 @@ async def abuild_from_streaming_response(
     response,
     instance,
     kwargs: dict = {},
+    record_raw_response: bool = False,
 ):
     complete_response = {
         "events": [],
@@ -230,6 +290,13 @@ async def abuild_from_streaming_response(
 
     _handle_streaming_response(span, complete_response)
 
+    if record_raw_response and span.is_recording():
+        try:
+            raw_response = _build_raw_response_dict(complete_response)
+            set_span_attribute(span, "lmnr.sdk.raw.response", json_dumps(raw_response))
+        except Exception:
+            pass
+
     if span.is_recording():
         span.set_status(Status(StatusCode.OK))
         span.end()
@@ -244,11 +311,13 @@ class WrappedMessageStreamManager:
         span,
         instance,
         kwargs,
+        record_raw_response=False,
     ):
         self._stream_manager = stream_manager
         self._span = span
         self._instance = instance
         self._kwargs = kwargs
+        self._record_raw_response = record_raw_response
 
     def __enter__(self):
         # Call the original stream manager's __enter__ to get the actual stream
@@ -259,6 +328,7 @@ class WrappedMessageStreamManager:
             stream,
             self._instance,
             self._kwargs,
+            record_raw_response=self._record_raw_response,
         )
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -274,11 +344,13 @@ class WrappedAsyncMessageStreamManager:
         span,
         instance,
         kwargs,
+        record_raw_response=False,
     ):
         self._stream_manager = stream_manager
         self._span = span
         self._instance = instance
         self._kwargs = kwargs
+        self._record_raw_response = record_raw_response
 
     async def __aenter__(self):
         # Call the original stream manager's __aenter__ to get the actual stream
@@ -289,6 +361,7 @@ class WrappedAsyncMessageStreamManager:
             stream,
             self._instance,
             self._kwargs,
+            record_raw_response=self._record_raw_response,
         )
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
