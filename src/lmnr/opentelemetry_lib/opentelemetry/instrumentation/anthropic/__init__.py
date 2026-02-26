@@ -331,6 +331,19 @@ async def _ahandle_response(span: Span, response):
     await aset_response_attributes(span, response)
 
 
+@dont_throw
+def _set_raw_response(span: Span, response, record_raw_response: bool = False):
+    if not record_raw_response:
+        return
+    try:
+        if hasattr(response, "model_dump_json"):
+            set_span_attribute(
+                span, "lmnr.sdk.raw.response", response.model_dump_json()
+            )
+    except Exception:
+        pass
+
+
 @_with_chat_telemetry_wrapper
 def _wrap(
     tracer: Tracer,
@@ -357,7 +370,34 @@ def _wrap(
     _handle_input(span, kwargs)
 
     try:
-        response = wrapped(*args, **kwargs)
+        from lmnr.sdk.rollout_control import is_rollout_mode
+
+        is_rollout = is_rollout_mode()
+    except Exception:
+        is_rollout = False
+
+    is_chat = to_wrap.get("span_name") == "anthropic.chat"
+    is_stream_method = to_wrap.get("method") == "stream"
+
+    try:
+        if is_rollout and is_chat:
+            from .rollout import get_anthropic_rollout_wrapper
+
+            rollout_wrapper = get_anthropic_rollout_wrapper()
+            if rollout_wrapper:
+                response = rollout_wrapper.wrap_messages_create(
+                    wrapped,
+                    instance,
+                    args,
+                    kwargs,
+                    span=span,
+                    is_streaming=is_stream_method or kwargs.get("stream", False),
+                    is_async=False,
+                )
+            else:
+                response = wrapped(*args, **kwargs)
+        else:
+            response = wrapped(*args, **kwargs)
     except Exception as e:  # pylint: disable=broad-except
         raise e
 
@@ -393,6 +433,7 @@ def _wrap(
                     kwargs,
                     response,
                 )
+                _set_raw_response(span, response, is_rollout)
         except Exception as ex:  # pylint: disable=broad-except
             logger.warning(
                 "Failed to set response attributes for anthropic span, error: %s",
@@ -431,7 +472,42 @@ async def _awrap(
     await _ahandle_input(span, kwargs)
 
     try:
-        response = await wrapped(*args, **kwargs)
+        from lmnr.sdk.rollout_control import is_rollout_mode
+
+        is_rollout = is_rollout_mode()
+    except Exception:
+        is_rollout = False
+
+    is_chat = to_wrap.get("span_name") == "anthropic.chat"
+    is_stream_method = to_wrap.get("method") == "stream"
+
+    try:
+        if is_rollout and is_chat:
+            import inspect
+
+            from .rollout import get_anthropic_rollout_wrapper
+
+            rollout_wrapper = get_anthropic_rollout_wrapper()
+            if rollout_wrapper:
+                result = rollout_wrapper.wrap_messages_create(
+                    wrapped,
+                    instance,
+                    args,
+                    kwargs,
+                    span=span,
+                    is_streaming=is_stream_method or kwargs.get("stream", False),
+                    is_async=True,
+                )
+                if inspect.iscoroutine(result):
+                    response = await result
+                elif inspect.isasyncgen(result):
+                    response = result
+                else:
+                    response = result
+            else:
+                response = await wrapped(*args, **kwargs)
+        else:
+            response = await wrapped(*args, **kwargs)
     except Exception as e:  # pylint: disable=broad-except
         raise e
 
@@ -467,6 +543,7 @@ async def _awrap(
                 kwargs,
                 response,
             )
+            _set_raw_response(span, response, is_rollout)
             span.set_status(Status(StatusCode.OK))
     span.end()
     return response
