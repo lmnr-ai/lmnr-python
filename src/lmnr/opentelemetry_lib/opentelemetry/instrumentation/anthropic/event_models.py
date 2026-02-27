@@ -57,7 +57,7 @@ class MessageEvent:
 
     content: Any
     role: str = "user"
-    tool_calls: NotRequired[list[ToolCall] | None] = None
+    tool_calls: list[ToolCall] | None = None
 
 
 @dataclass
@@ -67,4 +67,4 @@ class ChoiceEvent:
     index: int
     message: CompletionMessage
     finish_reason: str = "unknown"
-    tool_calls: NotRequired[list[ToolCall] | None] = None
+    tool_calls: list[ToolCall] | None = None
