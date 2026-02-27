@@ -243,28 +243,11 @@ def set_data_attributes(traced_response: TracedData, span: Span):
     if should_send_prompts():
         prompt_index = 0
         if traced_response.tools:
-            for i, tool_param in enumerate(traced_response.tools):
-                tool_dict = model_as_dict(tool_param)
-                description = tool_dict.get("description")
-                parameters = tool_dict.get("parameters")
-                name = tool_dict.get("name")
-                if parameters is None:
-                    continue
-                _set_span_attribute(
-                    span,
-                    f"llm.request.functions.{i}.description",
-                    description,
-                )
-                _set_span_attribute(
-                    span,
-                    f"llm.request.functions.{i}.parameters",
-                    json.dumps(parameters),
-                )
-                _set_span_attribute(
-                    span,
-                    f"llm.request.functions.{i}.name",
-                    name,
-                )
+            _set_span_attribute(
+                span,
+                "gen_ai.tool.definitions",
+                json_dumps([model_as_dict(tool) for tool in traced_response.tools]),
+            )
         if traced_response.instructions:
             _set_span_attribute(
                 span,

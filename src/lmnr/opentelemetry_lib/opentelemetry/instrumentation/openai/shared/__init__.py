@@ -3,6 +3,7 @@ import logging
 import types
 from importlib.metadata import version
 
+from lmnr.sdk.utils import json_dumps
 from ..utils import (
     dont_throw,
     is_openai_v1,
@@ -62,9 +63,7 @@ def _set_client_attributes(span, instance):
     if isinstance(client, (openai.AsyncOpenAI, openai.OpenAI)):
         _set_span_attribute(span, "gen_ai.request.base_url", str(client.base_url))
     if isinstance(client, (openai.AsyncAzureOpenAI, openai.AzureOpenAI)):
-        _set_span_attribute(
-            span, "gen_ai.openai.api_version", client._api_version
-        )  # pylint: disable=protected-access
+        _set_span_attribute(span, "gen_ai.openai.api_version", client._api_version)  # pylint: disable=protected-access
 
 
 def _set_api_attributes(span):
@@ -83,34 +82,15 @@ def _set_api_attributes(span):
     return
 
 
-def _set_functions_attributes(span, functions):
-    if not functions:
-        return
-
-    for i, function in enumerate(functions):
-        prefix = f"llm.request.functions.{i}"
-        _set_span_attribute(span, f"{prefix}.name", function.get("name"))
-        _set_span_attribute(span, f"{prefix}.description", function.get("description"))
-        _set_span_attribute(
-            span, f"{prefix}.parameters", json.dumps(function.get("parameters"))
-        )
-
-
 def set_tools_attributes(span, tools):
     if not tools:
         return
 
-    for i, tool in enumerate(tools):
-        function = tool.get("function")
-        if not function:
-            continue
-
-        prefix = f"llm.request.functions.{i}"
-        _set_span_attribute(span, f"{prefix}.name", function.get("name"))
-        _set_span_attribute(span, f"{prefix}.description", function.get("description"))
-        _set_span_attribute(
-            span, f"{prefix}.parameters", json.dumps(function.get("parameters"))
-        )
+    _set_span_attribute(
+        span,
+        "gen_ai.tool.definitions",
+        json_dumps(tools),
+    )
 
 
 def _set_request_attributes(span, kwargs, instance=None):

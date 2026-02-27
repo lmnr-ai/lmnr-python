@@ -1,5 +1,15 @@
 import logging
 
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_RESPONSE_ID,
+    GEN_AI_RESPONSE_MODEL,
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
+)
+from opentelemetry.trace.status import Status, StatusCode
+
+from lmnr.sdk.utils import json_dumps
+
 from .config import Config
 from .span_utils import (
     set_streaming_response_attributes,
@@ -8,13 +18,6 @@ from .utils import (
     dont_throw,
     set_span_attribute,
 )
-from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
-    GEN_AI_RESPONSE_ID,
-    GEN_AI_RESPONSE_MODEL,
-    GEN_AI_USAGE_INPUT_TOKENS,
-    GEN_AI_USAGE_OUTPUT_TOKENS,
-)
-from opentelemetry.trace.status import Status, StatusCode
 
 logger = logging.getLogger(__name__)
 
@@ -94,10 +97,25 @@ def _set_token_usage(
     )
 
 
-def _handle_streaming_response(span, complete_response):
+def _handle_streaming_response(span, complete_response, record_raw_response=False):
     if not span.is_recording():
         return
-    set_streaming_response_attributes(span, complete_response.get("events"))
+    result = set_streaming_response_attributes(span, complete_response.get("events"))
+
+    if record_raw_response and result:
+        try:
+            # Enrich the result with static attributes
+            result["id"] = complete_response.get("id")
+            result["model"] = complete_response.get("model")
+            result["type"] = "message"
+            result["usage"] = complete_response.get("usage") or {
+                "input_tokens": 0,
+                "output_tokens": 0,
+            }
+
+            set_span_attribute(span, "lmnr.sdk.raw.response", json_dumps(result))
+        except Exception:
+            pass
 
 
 @dont_throw
@@ -106,6 +124,7 @@ def build_from_streaming_response(
     response,
     instance,
     kwargs: dict = {},
+    record_raw_response: bool = False,
 ):
     complete_response = {
         "events": [],
@@ -145,7 +164,7 @@ def build_from_streaming_response(
                 completion_content = ""
                 if complete_response.get("events"):
                     model_name = complete_response.get("model") or None
-                    for event in complete_response.get("events"):
+                    for event in complete_response.get("events") or []:
                         if event.get("text"):
                             completion_content += event.get("text")
 
@@ -161,7 +180,7 @@ def build_from_streaming_response(
         except Exception as e:
             logger.warning("Failed to set token usage, error: %s", e)
 
-    _handle_streaming_response(span, complete_response)
+    _handle_streaming_response(span, complete_response, record_raw_response)
 
     if span.is_recording():
         span.set_status(Status(StatusCode.OK))
@@ -174,6 +193,7 @@ async def abuild_from_streaming_response(
     response,
     instance,
     kwargs: dict = {},
+    record_raw_response: bool = False,
 ):
     complete_response = {
         "events": [],
@@ -205,6 +225,7 @@ async def abuild_from_streaming_response(
             else:
                 prompt_tokens = 0
 
+            completion_tokens = 0
             # completion_usage
             if usage := complete_response.get("usage"):
                 completion_tokens = usage.get("output_tokens", 0)
@@ -212,7 +233,7 @@ async def abuild_from_streaming_response(
                 completion_content = ""
                 if complete_response.get("events"):
                     model_name = complete_response.get("model") or None
-                    for event in complete_response.get("events"):
+                    for event in complete_response.get("events") or []:
                         if event.get("text"):
                             completion_content += event.get("text")
 
@@ -228,7 +249,7 @@ async def abuild_from_streaming_response(
         except Exception as e:
             logger.warning("Failed to set token usage, error: %s", str(e))
 
-    _handle_streaming_response(span, complete_response)
+    _handle_streaming_response(span, complete_response, record_raw_response)
 
     if span.is_recording():
         span.set_status(Status(StatusCode.OK))
@@ -244,11 +265,13 @@ class WrappedMessageStreamManager:
         span,
         instance,
         kwargs,
+        record_raw_response: bool = False,
     ):
         self._stream_manager = stream_manager
         self._span = span
         self._instance = instance
         self._kwargs = kwargs
+        self._record_raw_response = record_raw_response
 
     def __enter__(self):
         # Call the original stream manager's __enter__ to get the actual stream
@@ -259,6 +282,7 @@ class WrappedMessageStreamManager:
             stream,
             self._instance,
             self._kwargs,
+            record_raw_response=self._record_raw_response,
         )
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -274,11 +298,13 @@ class WrappedAsyncMessageStreamManager:
         span,
         instance,
         kwargs,
+        record_raw_response: bool = False,
     ):
         self._stream_manager = stream_manager
         self._span = span
         self._instance = instance
         self._kwargs = kwargs
+        self._record_raw_response = record_raw_response
 
     async def __aenter__(self):
         # Call the original stream manager's __aenter__ to get the actual stream
@@ -289,6 +315,7 @@ class WrappedAsyncMessageStreamManager:
             stream,
             self._instance,
             self._kwargs,
+            record_raw_response=self._record_raw_response,
         )
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):

@@ -28,29 +28,30 @@ def openai_tools():
 
 @pytest.mark.vcr
 def test_open_ai_function_calls(instrument_legacy, span_exporter, openai_client):
+    functions = [
+        {
+            "name": "get_current_weather",
+            "description": "Get the current weather in a given location",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "The city and state, e.g. San Francisco, CA",
+                    },
+                    "unit": {
+                        "type": "string",
+                        "enum": ["celsius", "fahrenheit"],
+                    },
+                },
+                "required": ["location"],
+            },
+        }
+    ]
     openai_client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": "What's the weather like in Boston?"}],
-        functions=[
-            {
-                "name": "get_current_weather",
-                "description": "Get the current weather in a given location",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "location": {
-                            "type": "string",
-                            "description": "The city and state, e.g. San Francisco, CA",
-                        },
-                        "unit": {
-                            "type": "string",
-                            "enum": ["celsius", "fahrenheit"],
-                        },
-                    },
-                    "required": ["location"],
-                },
-            }
-        ],
+        functions=functions,
         function_call="auto",
     )
 
@@ -58,13 +59,7 @@ def test_open_ai_function_calls(instrument_legacy, span_exporter, openai_client)
     open_ai_span = spans[0]
     input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
     assert input_messages[0]["content"] == "What's the weather like in Boston?"
-    assert (
-        open_ai_span.attributes["llm.request.functions.0.name"] == "get_current_weather"
-    )
-    assert (
-        open_ai_span.attributes["llm.request.functions.0.description"]
-        == "Get the current weather in a given location"
-    )
+    assert json.loads(open_ai_span.attributes["gen_ai.tool.definitions"]) == functions
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
     assert (
         output_messages[0]["message"]["function_call"]["name"] == "get_current_weather"
@@ -94,13 +89,6 @@ def test_open_ai_function_calls_tools(
     open_ai_span = spans[0]
     input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
     assert input_messages[0]["content"] == "What's the weather like in Boston?"
-    assert (
-        open_ai_span.attributes["llm.request.functions.0.name"] == "get_current_weather"
-    )
-    assert (
-        open_ai_span.attributes["llm.request.functions.0.description"]
-        == "Get the current weather"
-    )
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
     assert isinstance(
         output_messages[0]["message"]["tool_calls"][0]["id"],
@@ -109,6 +97,9 @@ def test_open_ai_function_calls_tools(
     assert (
         output_messages[0]["message"]["tool_calls"][0]["function"]["name"]
         == "get_current_weather"
+    )
+    assert (
+        json.loads(open_ai_span.attributes["gen_ai.tool.definitions"]) == openai_tools
     )
     assert (
         open_ai_span.attributes["gen_ai.request.base_url"]
@@ -146,8 +137,7 @@ async def test_open_ai_function_calls_tools_streaming(
         str,
     )
     assert (
-        open_ai_span.attributes.get("llm.request.functions.0.name")
-        == "get_current_weather"
+        json.loads(open_ai_span.attributes["gen_ai.tool.definitions"]) == openai_tools
     )
     assert output_messages[0]["finish_reason"] == "tool_calls"
     assert (
@@ -184,11 +174,10 @@ def test_open_ai_function_calls_tools_parallel(
 
     spans = span_exporter.get_finished_spans()
     open_ai_span = spans[0]
-
     assert (
-        open_ai_span.attributes.get("llm.request.functions.0.name")
-        == "get_current_weather"
+        json.loads(open_ai_span.attributes["gen_ai.tool.definitions"]) == openai_tools
     )
+
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
     assert output_messages[0]["finish_reason"] == "tool_calls"
 
@@ -247,9 +236,9 @@ async def test_open_ai_function_calls_tools_streaming_parallel(
     open_ai_span = spans[0]
 
     assert (
-        open_ai_span.attributes.get("llm.request.functions.0.name")
-        == "get_current_weather"
+        json.loads(open_ai_span.attributes["gen_ai.tool.definitions"]) == openai_tools
     )
+
     output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
     assert output_messages[0]["finish_reason"] == "tool_calls"
 

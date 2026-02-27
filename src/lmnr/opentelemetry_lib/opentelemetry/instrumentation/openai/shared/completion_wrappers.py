@@ -3,7 +3,7 @@ import logging
 from opentelemetry import context as context_api
 from ..shared import (
     _set_client_attributes,
-    _set_functions_attributes,
+    set_tools_attributes,
     _set_request_attributes,
     _set_response_attributes,
     _set_span_attribute,
@@ -109,7 +109,7 @@ def _handle_request(span, kwargs, instance):
     _set_request_attributes(span, kwargs, instance)
     if should_send_prompts():
         _set_prompts(span, kwargs.get("prompt"))
-        _set_functions_attributes(span, kwargs.get("functions"))
+        set_tools_attributes(span, kwargs.get("functions"))
     _set_client_attributes(span, instance)
     if Config.enable_trace_context_propagation:
         propagate_trace_context(span, kwargs)

@@ -3,13 +3,32 @@
 import logging
 from typing import Callable, Collection
 
+from opentelemetry import context as context_api
+from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
+from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
+)
+from opentelemetry.trace import Span, Tracer, get_tracer
+from opentelemetry.trace.status import Status, StatusCode
+from wrapt import wrap_function_wrapper
+
+from anthropic._streaming import AsyncStream, Stream
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    safe_start_span,
+)
+
 from .config import Config
+from .rollout import get_anthropic_rollout_wrapper
 from .span_utils import (
     aset_input_attributes,
     aset_response_attributes,
     set_response_attributes,
 )
 from .streaming import (
+    WrappedAsyncMessageStreamManager,
+    WrappedMessageStreamManager,
     abuild_from_streaming_response,
     build_from_streaming_response,
 )
@@ -18,28 +37,7 @@ from .utils import (
     run_async,
     set_span_attribute,
 )
-from .streaming import (
-    WrappedAsyncMessageStreamManager,
-    WrappedMessageStreamManager,
-)
 from .version import __version__
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
-    safe_start_span,
-)
-
-from opentelemetry import context as context_api
-from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
-    GEN_AI_USAGE_INPUT_TOKENS,
-    GEN_AI_USAGE_OUTPUT_TOKENS,
-)
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
-from opentelemetry.trace import Span, Tracer, get_tracer
-from opentelemetry.trace.status import Status, StatusCode
-from wrapt import wrap_function_wrapper
-
-
-from anthropic._streaming import AsyncStream, Stream
 
 logger = logging.getLogger(__name__)
 
@@ -147,15 +145,24 @@ WRAPPED_AMETHODS = [
 
 
 def is_streaming_response(response):
-    return isinstance(response, Stream) or isinstance(response, AsyncStream)
+    if isinstance(response, (Stream, AsyncStream)):
+        return True
+
+    # For cached streams, they are generators, not Message objects.
+    # We check for __next__ and __iter__ for sync generators,
+    # and __anext__ and __aiter__ for async generators.
+    # This prevents identifying Pydantic models (like Message) as streams.
+    return (hasattr(response, "__next__") and hasattr(response, "__iter__")) or (
+        hasattr(response, "__anext__") and hasattr(response, "__aiter__")
+    )
 
 
 def is_stream_manager(response):
     """Check if response is a MessageStreamManager or AsyncMessageStreamManager"""
     try:
         from anthropic.lib.streaming._messages import (
-            MessageStreamManager,
             AsyncMessageStreamManager,
+            MessageStreamManager,
         )
 
         return isinstance(response, (MessageStreamManager, AsyncMessageStreamManager))
@@ -318,17 +325,41 @@ async def _ahandle_input(span: Span, kwargs):
 
 
 @dont_throw
-def _handle_response(span: Span, response):
+def _handle_response(span: Span, response, record_raw_response=False):
     if not span.is_recording():
         return
     set_response_attributes(span, response)
 
+    if record_raw_response:
+        try:
+            from lmnr.sdk.utils import json_dumps
+
+            from .utils import _extract_response_data, model_as_dict
+
+            response_data = _extract_response_data(response)
+            response_dict = model_as_dict(response_data)
+            set_span_attribute(span, "lmnr.sdk.raw.response", json_dumps(response_dict))
+        except Exception:
+            pass
+
 
 @dont_throw
-async def _ahandle_response(span: Span, response):
+async def _ahandle_response(span: Span, response, record_raw_response=False):
     if not span.is_recording():
         return
     await aset_response_attributes(span, response)
+
+    if record_raw_response:
+        try:
+            from lmnr.sdk.utils import json_dumps
+
+            from .utils import _aextract_response_data, model_as_dict
+
+            response_data = await _aextract_response_data(response)
+            response_dict = model_as_dict(response_data)
+            set_span_attribute(span, "lmnr.sdk.raw.response", json_dumps(response_dict))
+        except Exception:
+            pass
 
 
 @_with_chat_telemetry_wrapper
@@ -356,17 +387,32 @@ def _wrap(
 
     _handle_input(span, kwargs)
 
+    rollout_wrapper = get_anthropic_rollout_wrapper()
+    is_rollout = rollout_wrapper is not None
+
     try:
-        response = wrapped(*args, **kwargs)
+        if rollout_wrapper:
+            response = rollout_wrapper.wrap_create(
+                wrapped,
+                instance,
+                args,
+                kwargs,
+                span=span,
+                is_streaming=kwargs.get("stream", False),
+                is_async=False,
+            )
+        else:
+            response = wrapped(*args, **kwargs)
     except Exception as e:  # pylint: disable=broad-except
         raise e
 
-    if is_streaming_response(response):
+    if kwargs.get("stream") or is_streaming_response(response):
         return build_from_streaming_response(
             span,
             response,
             instance._client,
             kwargs,
+            record_raw_response=is_rollout,
         )
     elif is_stream_manager(response):
         if response.__class__.__name__ == "AsyncMessageStreamManager":
@@ -375,6 +421,7 @@ def _wrap(
                 span,
                 instance._client,
                 kwargs,
+                record_raw_response=is_rollout,
             )
         else:
             return WrappedMessageStreamManager(
@@ -382,10 +429,11 @@ def _wrap(
                 span,
                 instance._client,
                 kwargs,
+                record_raw_response=is_rollout,
             )
     elif response:
         try:
-            _handle_response(span, response)
+            _handle_response(span, response, record_raw_response=is_rollout)
             if span.is_recording():
                 _set_token_usage(
                     span,
@@ -430,17 +478,32 @@ async def _awrap(
 
     await _ahandle_input(span, kwargs)
 
+    rollout_wrapper = get_anthropic_rollout_wrapper()
+    is_rollout = rollout_wrapper is not None
+
     try:
-        response = await wrapped(*args, **kwargs)
+        if rollout_wrapper:
+            response = await rollout_wrapper.wrap_create(
+                wrapped,
+                instance,
+                args,
+                kwargs,
+                span=span,
+                is_streaming=kwargs.get("stream", False),
+                is_async=True,
+            )
+        else:
+            response = await wrapped(*args, **kwargs)
     except Exception as e:  # pylint: disable=broad-except
         raise e
 
-    if is_streaming_response(response):
+    if kwargs.get("stream") or is_streaming_response(response):
         return abuild_from_streaming_response(
             span,
             response,
             instance._client,
             kwargs,
+            record_raw_response=is_rollout,
         )
     elif is_stream_manager(response):
         if response.__class__.__name__ == "AsyncMessageStreamManager":
@@ -449,6 +512,7 @@ async def _awrap(
                 span,
                 instance._client,
                 kwargs,
+                record_raw_response=is_rollout,
             )
         else:
             return WrappedMessageStreamManager(
@@ -456,9 +520,10 @@ async def _awrap(
                 span,
                 instance._client,
                 kwargs,
+                record_raw_response=is_rollout,
             )
     elif response:
-        await _ahandle_response(span, response)
+        await _ahandle_response(span, response, record_raw_response=is_rollout)
 
         if span.is_recording():
             await _aset_token_usage(
