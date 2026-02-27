@@ -1,4 +1,3 @@
-import json
 import logging
 
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
@@ -101,56 +100,18 @@ def _set_token_usage(
 def _handle_streaming_response(span, complete_response, record_raw_response=False):
     if not span.is_recording():
         return
-    set_streaming_response_attributes(span, complete_response.get("events"))
+    result = set_streaming_response_attributes(span, complete_response.get("events"))
 
-    if record_raw_response:
+    if record_raw_response and result:
         try:
-            # Build a Message-like dict for recording raw response
-            result = {
-                "id": complete_response.get("id"),
-                "model": complete_response.get("model"),
-                "role": "assistant",
-                "content": [],
-                "type": "message",
-                "usage": complete_response.get("usage")
-                or {"input_tokens": 0, "output_tokens": 0},
+            # Enrich the result with static attributes
+            result["id"] = complete_response.get("id")
+            result["model"] = complete_response.get("model")
+            result["type"] = "message"
+            result["usage"] = complete_response.get("usage") or {
+                "input_tokens": 0,
+                "output_tokens": 0,
             }
-
-            stop_reason = None
-            for event in complete_response.get("events"):
-                if event.get("finish_reason"):
-                    stop_reason = event.get("finish_reason")
-
-                event_type = event.get("type")
-                if event_type == "text":
-                    result["content"].append(
-                        {"type": "text", "text": event.get("text", "")}
-                    )
-                elif event_type == "tool_use":
-                    tool_input = event.get("input", "")
-                    if isinstance(tool_input, str):
-                        try:
-                            tool_input = json.loads(tool_input)
-                        except (json.JSONDecodeError, TypeError):
-                            pass
-                    result["content"].append(
-                        {
-                            "type": "tool_use",
-                            "id": event.get("id", ""),
-                            "name": event.get("name", ""),
-                            "input": tool_input,
-                        }
-                    )
-                elif event_type == "thinking":
-                    result["content"].append(
-                        {
-                            "type": "thinking",
-                            "thinking": event.get("text", ""),
-                        }
-                    )
-
-            if stop_reason:
-                result["stop_reason"] = stop_reason
 
             set_span_attribute(span, "lmnr.sdk.raw.response", json_dumps(result))
         except Exception:

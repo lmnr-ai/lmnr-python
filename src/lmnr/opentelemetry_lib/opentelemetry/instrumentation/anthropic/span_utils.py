@@ -16,6 +16,7 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
 
 from lmnr.sdk.utils import json_dumps
 
+from .event_models import AnthropicResponseMessage
 from .utils import (
     _aextract_response_data,
     _extract_response_data,
@@ -183,7 +184,9 @@ def set_response_attributes(span, response):
 
 
 @dont_throw
-def set_streaming_response_attributes(span, complete_response_events):
+def set_streaming_response_attributes(
+    span, complete_response_events
+) -> AnthropicResponseMessage | None:
     if not span or not span.is_recording() or not complete_response_events:
         return None
 
