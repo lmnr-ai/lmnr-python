@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import threading
 from dataclasses import dataclass, field
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 from lmnr import Laminar
 
@@ -14,9 +14,15 @@ from .span_data import _apply_span_data, _apply_span_error
 
 
 @dataclass
+class _SpanEntry:
+    lmnr_span: Any
+    agents_span: Any = None
+
+
+@dataclass
 class _TraceState:
     root_span: Any
-    spans: Dict[str, Any] = field(default_factory=dict)
+    spans: Dict[str, _SpanEntry] = field(default_factory=dict)
 
 
 class LaminarAgentsTraceProcessor:
@@ -41,9 +47,13 @@ class LaminarAgentsTraceProcessor:
             state = self._traces.pop(trace_id, None)
         if not state:
             return
-        for span in list(state.spans.values()):
+        for entry in list(state.spans.values()):
             try:
-                span.end()
+                if entry.agents_span is not None:
+                    span_data = getattr(entry.agents_span, "span_data", None)
+                    _apply_span_data(entry.lmnr_span, span_data)
+                    _apply_span_error(entry.lmnr_span, entry.agents_span)
+                entry.lmnr_span.end()
             except Exception:
                 pass
         try:
@@ -56,16 +66,15 @@ class LaminarAgentsTraceProcessor:
         if not trace_id:
             return
         state = self._get_or_create_trace(span)
-        parent_span = None
+        parent_entry = None
         parent_id = getattr(span, "parent_id", None)
         if parent_id:
-            parent_span = state.spans.get(parent_id)
-        if parent_span is None:
-            parent_span = state.root_span
+            parent_entry = state.spans.get(parent_id)
+        parent_lmnr_span = parent_entry.lmnr_span if parent_entry else state.root_span
 
         parent_ctx = None
-        if parent_span is not None and hasattr(parent_span, "get_laminar_span_context"):
-            parent_ctx = parent_span.get_laminar_span_context()
+        if parent_lmnr_span is not None and hasattr(parent_lmnr_span, "get_laminar_span_context"):
+            parent_ctx = parent_lmnr_span.get_laminar_span_context()
 
         span_data = getattr(span, "span_data", None)
         span_type = _map_span_type(span_data)
@@ -86,7 +95,7 @@ class LaminarAgentsTraceProcessor:
         # Use span_id as key, fall back to span_name
         key = getattr(span, "span_id", None) or name
         with self._lock:
-            state.spans[key] = lmnr_span
+            state.spans[key] = _SpanEntry(lmnr_span=lmnr_span, agents_span=span)
 
     def on_span_end(self, span: Any) -> None:
         trace_id = getattr(span, "trace_id", None)
@@ -101,15 +110,15 @@ class LaminarAgentsTraceProcessor:
 
         with self._lock:
             state = self._traces.get(trace_id)
-            lmnr_span = state.spans.pop(key, None) if state else None
+            entry = state.spans.pop(key, None) if state else None
 
-        if not lmnr_span:
+        if not entry:
             return
 
-        _apply_span_data(lmnr_span, span_data)
-        _apply_span_error(lmnr_span, span)
+        _apply_span_data(entry.lmnr_span, span_data)
+        _apply_span_error(entry.lmnr_span, span)
         try:
-            lmnr_span.end()
+            entry.lmnr_span.end()
         except Exception:
             pass
 
@@ -118,9 +127,13 @@ class LaminarAgentsTraceProcessor:
             states = list(self._traces.values())
             self._traces.clear()
         for state in states:
-            for span in list(state.spans.values()):
+            for entry in list(state.spans.values()):
                 try:
-                    span.end()
+                    if entry.agents_span is not None:
+                        span_data = getattr(entry.agents_span, "span_data", None)
+                        _apply_span_data(entry.lmnr_span, span_data)
+                        _apply_span_error(entry.lmnr_span, entry.agents_span)
+                    entry.lmnr_span.end()
                 except Exception:
                     pass
             try:
