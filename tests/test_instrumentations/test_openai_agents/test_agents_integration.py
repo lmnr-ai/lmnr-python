@@ -673,7 +673,7 @@ class TestInstrumentor:
         )
         instr = OpenAIAgentsInstrumentor()
         deps = instr.instrumentation_dependencies()
-        assert "openai-agents >= 0.0.0" in deps
+        assert "openai-agents >= 0.7.0" in deps
 
     @patch("agents.tracing.add_trace_processor")
     def test_instrument_registers_processor(self, mock_add):
