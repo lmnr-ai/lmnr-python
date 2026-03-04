@@ -387,7 +387,6 @@ def _apply_response_span_data(lmnr_span: Any, span_data: Any) -> None:
 
     # Set gen_ai.output.messages from the response output
     if response is not None:
-        output_items = getattr(response, "output", None)
         _set_gen_ai_output_messages_from_response(lmnr_span, response)
 
         # Set tool definitions from response.tools
