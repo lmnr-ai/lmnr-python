@@ -79,6 +79,7 @@ mcp=["opentelemetry-instrumentation-mcp==0.52.4"]
 milvus=["opentelemetry-instrumentation-milvus==0.52.4"]
 mistralai=["opentelemetry-instrumentation-mistralai==0.52.4"]
 ollama=["opentelemetry-instrumentation-ollama==0.52.4"]
+openai-agents=["openai-agents>=0.7.0"]
 pinecone=["opentelemetry-instrumentation-pinecone==0.52.4"]
 qdrant=["opentelemetry-instrumentation-qdrant==0.52.4"]
 replicate=["opentelemetry-instrumentation-replicate==0.52.4"]
@@ -108,6 +109,7 @@ all = [
   "opentelemetry-instrumentation-milvus==0.52.4",
   "opentelemetry-instrumentation-mistralai==0.52.4",
   "opentelemetry-instrumentation-ollama==0.52.4",
+  "openai-agents>=0.7.0",
   "opentelemetry-instrumentation-pinecone==0.52.4",
   "opentelemetry-instrumentation-qdrant==0.52.4",
   "opentelemetry-instrumentation-replicate==0.52.4",
