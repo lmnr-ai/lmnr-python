@@ -47,7 +47,7 @@ def _apply_span_data(lmnr_span: Any, span_data: Any) -> None:
 
     if kind == "agent":
         _apply_agent_span_data(lmnr_span, span_data)
-    elif kind == "function":
+    elif kind in {"function", "tool"}:
         _apply_function_span_data(lmnr_span, span_data)
     elif kind == "generation":
         _apply_generation_span_data(lmnr_span, span_data)
