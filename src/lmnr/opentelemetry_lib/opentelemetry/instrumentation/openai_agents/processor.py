@@ -108,8 +108,6 @@ class LaminarAgentsTraceProcessor:
         if not trace_id:
             return
 
-        # Use consistent key lookup matching on_span_start
-        span_data = getattr(span, "span_data", None)
         key = getattr(span, "span_id", None) or str(id(span))
 
         with self._lock:
@@ -122,6 +120,7 @@ class LaminarAgentsTraceProcessor:
         if not entry:
             return
 
+        span_data = getattr(span, "span_data", None)
         try:
             try:
                 _apply_span_data(entry.lmnr_span, span_data)
