@@ -112,8 +112,11 @@ class LaminarAgentsTraceProcessor:
         if not entry:
             return
 
-        _apply_span_data(entry.lmnr_span, span_data)
-        _apply_span_error(entry.lmnr_span, span)
+        try:
+            _apply_span_data(entry.lmnr_span, span_data)
+            _apply_span_error(entry.lmnr_span, span)
+        except Exception:
+            pass
         try:
             entry.lmnr_span.end()
         except Exception:
@@ -146,6 +149,9 @@ class LaminarAgentsTraceProcessor:
                     span_data = getattr(entry.agents_span, "span_data", None)
                     _apply_span_data(entry.lmnr_span, span_data)
                     _apply_span_error(entry.lmnr_span, entry.agents_span)
+            except Exception:
+                pass
+            try:
                 entry.lmnr_span.end()
             except Exception:
                 pass
