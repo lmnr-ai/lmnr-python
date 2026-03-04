@@ -1,0 +1,55 @@
+interactions:
+- request:
+    body: '{"model":"gpt-4o-mini","input":[{"role":"system","content":"You are a helpful
+      assistant. Use the get_weather tool to answer weather questions."},{"role":"user","content":"What
+      is the weather in NYC?"}],"tools":[{"type":"function","name":"get_weather","description":"Get
+      the current weather for a city.","parameters":{"type":"object","properties":{"city":{"type":"string","description":"The
+      city name"}},"required":["city"]},"strict":true}],"parallel_tool_calls":false,"stream":false}'
+    headers:
+      accept:
+      - application/json
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      user-agent:
+      - OpenAI/Python
+    method: POST
+    uri: https://api.openai.com/v1/responses
+  response:
+    body:
+      string: '{"id":"resp_test_tool_001","object":"response","created_at":1709000001,"status":"completed","model":"gpt-4o-mini","output":[{"type":"function_call","id":"fc_test001","call_id":"call_test001","name":"get_weather","arguments":"{\"city\":\"NYC\"}","status":"completed"}],"parallel_tool_calls":false,"usage":{"input_tokens":40,"output_tokens":12,"total_tokens":52,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":0}}}'
+    headers:
+      content-type:
+      - application/json
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"model":"gpt-4o-mini","input":[{"role":"system","content":"You are a helpful
+      assistant. Use the get_weather tool to answer weather questions."},{"role":"user","content":"What
+      is the weather in NYC?"},{"type":"function_call","id":"fc_test001","call_id":"call_test001","name":"get_weather","arguments":"{\"city\":\"NYC\"}","status":"completed"},{"type":"function_call_output","call_id":"call_test001","output":"72\u00b0F
+      and sunny"}],"tools":[{"type":"function","name":"get_weather","description":"Get
+      the current weather for a city.","parameters":{"type":"object","properties":{"city":{"type":"string","description":"The
+      city name"}},"required":["city"]},"strict":true}],"parallel_tool_calls":false,"stream":false}'
+    headers:
+      accept:
+      - application/json
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      user-agent:
+      - OpenAI/Python
+    method: POST
+    uri: https://api.openai.com/v1/responses
+  response:
+    body:
+      string: '{"id":"resp_test_tool_002","object":"response","created_at":1709000002,"status":"completed","model":"gpt-4o-mini","output":[{"type":"message","id":"msg_test002","status":"completed","role":"assistant","content":[{"type":"output_text","text":"The weather in NYC is currently 72\u00b0F and sunny!","annotations":[]}]}],"parallel_tool_calls":false,"usage":{"input_tokens":55,"output_tokens":15,"total_tokens":70,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":0}}}'
+    headers:
+      content-type:
+      - application/json
+    status:
+      code: 200
+      message: OK
+version: 1
