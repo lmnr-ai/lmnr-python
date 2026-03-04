@@ -19,9 +19,16 @@ logger = get_default_logger(__name__)
 
 _instruments = ("openai-agents >= 0.0.0",)
 
-SUPPRESS_INPUTS = os.getenv("LMNR_SUPPRESS_INPUTS") == "1"
-SUPPRESS_OUTPUTS = os.getenv("LMNR_SUPPRESS_OUTPUTS") == "1"
-CAPTURE_SPAN_EXPORT = os.getenv("LMNR_OPENAI_AGENTS_CAPTURE_EXPORT") == "1"
+def _suppress_inputs() -> bool:
+    return os.getenv("LMNR_SUPPRESS_INPUTS") == "1"
+
+
+def _suppress_outputs() -> bool:
+    return os.getenv("LMNR_SUPPRESS_OUTPUTS") == "1"
+
+
+def _capture_span_export() -> bool:
+    return os.getenv("LMNR_OPENAI_AGENTS_CAPTURE_EXPORT") == "1"
 
 
 @dataclass
@@ -291,7 +298,7 @@ def _apply_span_data(lmnr_span: Any, span_data: Any) -> None:
     if span_data is None:
         return
 
-    if CAPTURE_SPAN_EXPORT and hasattr(span_data, "export"):
+    if _capture_span_export() and hasattr(span_data, "export"):
         try:
             export = span_data.export()
             if hasattr(lmnr_span, "set_attribute"):
@@ -485,11 +492,11 @@ def _apply_speech_span_data(lmnr_span: Any, span_data: Any) -> None:
         lmnr_span.set_attribute(Attributes.PROVIDER.value, "openai")
 
     input_text = data.get("input") or getattr(span_data, "input", None)
-    if input_text and not SUPPRESS_INPUTS:
+    if input_text and not _suppress_inputs():
         _set_gen_ai_input_messages(lmnr_span, input_text)
 
     output_data = data.get("output")
-    if output_data and not SUPPRESS_OUTPUTS:
+    if output_data and not _suppress_outputs():
         if isinstance(output_data, dict):
             # Speech output is {data: ..., format: ...}
             _set_gen_ai_output_messages(lmnr_span, output_data.get("data"))
@@ -509,14 +516,14 @@ def _apply_transcription_span_data(lmnr_span: Any, span_data: Any) -> None:
         lmnr_span.set_attribute(Attributes.PROVIDER.value, "openai")
 
     input_data = data.get("input")
-    if input_data and not SUPPRESS_INPUTS:
+    if input_data and not _suppress_inputs():
         if isinstance(input_data, dict):
             _set_gen_ai_input_messages(lmnr_span, input_data.get("data"))
         else:
             _set_gen_ai_input_messages(lmnr_span, input_data)
 
     output_text = data.get("output") or getattr(span_data, "output", None)
-    if output_text and not SUPPRESS_OUTPUTS:
+    if output_text and not _suppress_outputs():
         _set_gen_ai_output_messages(lmnr_span, output_text)
 
 
@@ -526,7 +533,7 @@ def _apply_speech_group_span_data(lmnr_span: Any, span_data: Any) -> None:
         return
 
     input_text = data.get("input") or getattr(span_data, "input", None)
-    if input_text and not SUPPRESS_INPUTS:
+    if input_text and not _suppress_inputs():
         _set_gen_ai_input_messages(lmnr_span, input_text)
 
 
@@ -540,15 +547,15 @@ def _set_gen_ai_messages(
     output_data: Any,
 ) -> None:
     """Set gen_ai.input.messages and gen_ai.output.messages on the span."""
-    if input_data is not None and not SUPPRESS_INPUTS:
+    if input_data is not None and not _suppress_inputs():
         _set_gen_ai_input_messages(lmnr_span, input_data)
-    if output_data is not None and not SUPPRESS_OUTPUTS:
+    if output_data is not None and not _suppress_outputs():
         _set_gen_ai_output_messages(lmnr_span, output_data)
 
 
 def _set_gen_ai_input_messages(lmnr_span: Any, input_data: Any) -> None:
     """Set gen_ai.input.messages on the span."""
-    if SUPPRESS_INPUTS or input_data is None:
+    if _suppress_inputs() or input_data is None:
         return
     if not hasattr(lmnr_span, "set_attribute"):
         return
@@ -560,7 +567,7 @@ def _set_gen_ai_input_messages(lmnr_span: Any, input_data: Any) -> None:
 
 def _set_gen_ai_output_messages(lmnr_span: Any, output_data: Any) -> None:
     """Set gen_ai.output.messages on the span."""
-    if SUPPRESS_OUTPUTS or output_data is None:
+    if _suppress_outputs() or output_data is None:
         return
     if not hasattr(lmnr_span, "set_attribute"):
         return
@@ -574,7 +581,7 @@ def _set_gen_ai_output_messages_from_response(
     lmnr_span: Any, response: Any
 ) -> None:
     """Extract and set gen_ai.output.messages from a Response object."""
-    if SUPPRESS_OUTPUTS or response is None:
+    if _suppress_outputs() or response is None:
         return
     if not hasattr(lmnr_span, "set_attribute"):
         return
