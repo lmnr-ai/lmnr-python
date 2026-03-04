@@ -30,10 +30,11 @@ class OpenAIAgentsInstrumentor(BaseInstrumentor):
         processor = LaminarAgentsTraceProcessor()
         try:
             add_trace_processor(processor)
-            self._processor = processor
-            logger.debug("Laminar OpenAI Agents trace processor registered")
         except Exception as exc:
             logger.warning("Failed to register Laminar Agents processor: %s", exc)
+            raise
+        self._processor = processor
+        logger.debug("Laminar OpenAI Agents trace processor registered")
 
     def _uninstrument(self, **kwargs):
         processor = getattr(self, "_processor", None)
