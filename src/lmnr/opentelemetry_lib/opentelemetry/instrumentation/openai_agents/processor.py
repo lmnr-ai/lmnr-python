@@ -24,6 +24,14 @@ class _TraceState:
     root_span: Any = None
     spans: Dict[str, _SpanEntry] = field(default_factory=dict)
     ready: threading.Event = field(default_factory=threading.Event)
+    # Tracks in-flight on_span_end calls so _end_trace_state can wait
+    # for all child spans to finish before ending the root span.
+    pending_ends: int = 0
+    pending_ends_done: threading.Event = field(default_factory=threading.Event)
+
+    def __post_init__(self) -> None:
+        # Initially no pending ends, so mark as done.
+        self.pending_ends_done.set()
 
 
 class LaminarAgentsTraceProcessor:
@@ -108,19 +116,28 @@ class LaminarAgentsTraceProcessor:
         with self._lock:
             state = self._traces.get(trace_id)
             entry = state.spans.pop(key, None) if state else None
+            if entry and state:
+                state.pending_ends += 1
+                state.pending_ends_done.clear()
 
         if not entry:
             return
 
         try:
-            _apply_span_data(entry.lmnr_span, span_data)
-            _apply_span_error(entry.lmnr_span, span)
-        except Exception:
-            pass
-        try:
-            entry.lmnr_span.end()
-        except Exception:
-            pass
+            try:
+                _apply_span_data(entry.lmnr_span, span_data)
+                _apply_span_error(entry.lmnr_span, span)
+            except Exception:
+                pass
+            try:
+                entry.lmnr_span.end()
+            except Exception:
+                pass
+        finally:
+            with self._lock:
+                state.pending_ends -= 1
+                if state.pending_ends == 0:
+                    state.pending_ends_done.set()
 
     def shutdown(self) -> None:
         self._disabled = True
@@ -143,6 +160,9 @@ class LaminarAgentsTraceProcessor:
     def _end_trace_state(self, state: _TraceState) -> None:
         """End all child spans (LIFO) then the root span for a trace."""
         state.ready.wait()
+        # Wait for any in-flight on_span_end calls to finish so that
+        # the root span is not ended before its children.
+        state.pending_ends_done.wait()
         for entry in reversed(list(state.spans.values())):
             try:
                 if entry.agents_span is not None:
