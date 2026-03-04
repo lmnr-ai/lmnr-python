@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from lmnr.sdk.utils import json_dumps
-
 
 def _span_name(span: Any, span_data: Any) -> str:
     name = getattr(span, "name", None)
