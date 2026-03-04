@@ -47,7 +47,7 @@ class LaminarAgentsTraceProcessor:
             state = self._traces.pop(trace_id, None)
         if not state:
             return
-        for entry in list(state.spans.values()):
+        for entry in reversed(list(state.spans.values())):
             try:
                 if entry.agents_span is not None:
                     span_data = getattr(entry.agents_span, "span_data", None)
@@ -126,7 +126,7 @@ class LaminarAgentsTraceProcessor:
             states = list(self._traces.values())
             self._traces.clear()
         for state in states:
-            for entry in list(state.spans.values()):
+            for entry in reversed(list(state.spans.values())):
                 try:
                     if entry.agents_span is not None:
                         span_data = getattr(entry.agents_span, "span_data", None)
