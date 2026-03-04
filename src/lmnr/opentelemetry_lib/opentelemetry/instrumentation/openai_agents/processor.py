@@ -155,8 +155,6 @@ class LaminarAgentsTraceProcessor:
         return state
 
     def _apply_trace_metadata(self, root_span: Any, trace: Any) -> None:
-        if not hasattr(root_span, "set_trace_metadata"):
-            return
         metadata: Dict[str, Any] = {}
         trace_metadata = getattr(trace, "metadata", None)
         if isinstance(trace_metadata, dict):
@@ -170,7 +168,7 @@ class LaminarAgentsTraceProcessor:
         trace_name = getattr(trace, "name", None)
         if trace_name:
             metadata["openai.agents.trace_name"] = trace_name
-        if metadata:
+        if metadata and hasattr(root_span, "set_trace_metadata"):
             try:
                 root_span.set_trace_metadata(metadata)
             except Exception:
