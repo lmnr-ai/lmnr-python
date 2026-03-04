@@ -344,29 +344,15 @@ class TestSetGenAiMessages:
 
     @patch.dict(os.environ, {"LMNR_SUPPRESS_INPUTS": "1"})
     def test_suppress_inputs(self):
-        # Need to reload to pick up env var
-        import importlib
-        import lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents as mod
-        original = mod.SUPPRESS_INPUTS
-        mod.SUPPRESS_INPUTS = True
-        try:
-            span = MagicMock()
-            mod._set_gen_ai_input_messages(span, "Hello")
-            span.set_attribute.assert_not_called()
-        finally:
-            mod.SUPPRESS_INPUTS = original
+        span = MagicMock()
+        _set_gen_ai_input_messages(span, "Hello")
+        span.set_attribute.assert_not_called()
 
     @patch.dict(os.environ, {"LMNR_SUPPRESS_OUTPUTS": "1"})
     def test_suppress_outputs(self):
-        import lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents as mod
-        original = mod.SUPPRESS_OUTPUTS
-        mod.SUPPRESS_OUTPUTS = True
-        try:
-            span = MagicMock()
-            mod._set_gen_ai_output_messages(span, "output")
-            span.set_attribute.assert_not_called()
-        finally:
-            mod.SUPPRESS_OUTPUTS = original
+        span = MagicMock()
+        _set_gen_ai_output_messages(span, "output")
+        span.set_attribute.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
