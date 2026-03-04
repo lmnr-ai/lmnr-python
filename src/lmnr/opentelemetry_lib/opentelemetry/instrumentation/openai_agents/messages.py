@@ -50,7 +50,7 @@ def _set_gen_ai_output_messages(lmnr_span: Any, output_data: Any) -> None:
     if not hasattr(lmnr_span, "set_attribute"):
         return
 
-    messages = _normalize_messages(output_data)
+    messages = _normalize_messages(output_data, role="assistant")
     if messages:
         lmnr_span.set_attribute("gen_ai.output.messages", json_dumps(messages))
 

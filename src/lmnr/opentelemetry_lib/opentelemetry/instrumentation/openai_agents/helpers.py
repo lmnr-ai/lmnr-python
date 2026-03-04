@@ -45,13 +45,13 @@ def _export_span_data(span_data: Any) -> Dict[str, Any]:
     return {}
 
 
-def _normalize_messages(data: Any) -> List[Dict[str, Any]]:
+def _normalize_messages(data: Any, role: str = "user") -> List[Dict[str, Any]]:
     """Normalize various input/output formats into a list of message dicts."""
     if data is None:
         return []
 
     if isinstance(data, str):
-        return [{"role": "user", "content": data}]
+        return [{"role": role, "content": data}]
 
     if isinstance(data, list):
         messages = []
