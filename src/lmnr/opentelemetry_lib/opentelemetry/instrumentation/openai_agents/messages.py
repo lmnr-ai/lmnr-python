@@ -216,20 +216,8 @@ def _apply_usage(lmnr_span: Any, usage: Any) -> None:
 def _response_to_llm_data(response: Any) -> Dict[str, Any]:
     if response is None:
         return {}
-    usage = getattr(response, "usage", None)
-    # Convert usage to dict if it's an object
-    usage_dict = None
-    if usage is not None:
-        if isinstance(usage, dict):
-            usage_dict = usage
-        elif hasattr(usage, "input_tokens"):
-            usage_dict = {
-                "input_tokens": getattr(usage, "input_tokens", None),
-                "output_tokens": getattr(usage, "output_tokens", None),
-                "total_tokens": getattr(usage, "total_tokens", None),
-            }
     return {
         "model": getattr(response, "model", None),
-        "usage": usage_dict,
+        "usage": getattr(response, "usage", None),
         "response_id": getattr(response, "id", None),
     }
