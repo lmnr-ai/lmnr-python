@@ -95,8 +95,9 @@ class LaminarAgentsTraceProcessor:
             if span_id:
                 lmnr_span.set_attribute("openai.agents.span.id", span_id)
 
-        # Use span_id as key, fall back to span_name
-        key = getattr(span, "span_id", None) or name
+        # Use span_id as key, fall back to object id to avoid
+        # collisions when multiple spans share the same name.
+        key = getattr(span, "span_id", None) or id(span)
         with self._lock:
             state.spans[key] = _SpanEntry(lmnr_span=lmnr_span, agents_span=span)
 
@@ -107,11 +108,9 @@ class LaminarAgentsTraceProcessor:
         if not trace_id:
             return
 
-        # Use consistent key lookup: try span_id first, then span_name
-        span_id = getattr(span, "span_id", None)
+        # Use consistent key lookup matching on_span_start
         span_data = getattr(span, "span_data", None)
-        span_name_key = _span_name(span, span_data)
-        key = span_id or span_name_key
+        key = getattr(span, "span_id", None) or id(span)
 
         with self._lock:
             state = self._traces.get(trace_id)
