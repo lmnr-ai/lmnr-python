@@ -156,29 +156,15 @@ class LaminarAgentsTraceProcessor:
             trace_id = "unknown"
         with self._lock:
             state = self._traces.get(trace_id)
-            if state is not None:
-                return state
-
-        # Create root span outside the lock to avoid blocking other callbacks
-        name = getattr(trace_or_span, "name", None) or "agents.trace"
-        root_span = Laminar.start_span(
-            name,
-            tags=["openai-agents"],
-        )
-        new_state = _TraceState(root_span=root_span)
-
-        with self._lock:
-            # Another thread may have created the state while we were unlocked
-            state = self._traces.get(trace_id)
-            if state is not None:
-                # Discard the span we just created
-                try:
-                    root_span.end()
-                except Exception:
-                    pass
-                return state
-            self._traces[trace_id] = new_state
-        return new_state
+            if state is None:
+                name = getattr(trace_or_span, "name", None) or "agents.trace"
+                root_span = Laminar.start_span(
+                    name,
+                    tags=["openai-agents"],
+                )
+                state = _TraceState(root_span=root_span)
+                self._traces[trace_id] = state
+        return state
 
     def _apply_trace_metadata(self, root_span: Any, trace: Any) -> None:
         metadata: Dict[str, Any] = {}
