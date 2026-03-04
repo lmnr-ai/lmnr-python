@@ -21,8 +21,9 @@ class _SpanEntry:
 
 @dataclass
 class _TraceState:
-    root_span: Any
+    root_span: Any = None
     spans: Dict[str, _SpanEntry] = field(default_factory=dict)
+    ready: threading.Event = field(default_factory=threading.Event)
 
 
 class LaminarAgentsTraceProcessor:
@@ -138,6 +139,7 @@ class LaminarAgentsTraceProcessor:
 
     def _end_trace_state(self, state: _TraceState) -> None:
         """End all child spans (LIFO) then the root span for a trace."""
+        state.ready.wait()
         for entry in reversed(list(state.spans.values())):
             try:
                 if entry.agents_span is not None:
@@ -156,16 +158,23 @@ class LaminarAgentsTraceProcessor:
         trace_id = getattr(trace_or_span, "trace_id", None)
         if not trace_id:
             trace_id = "unknown"
+        creator = False
         with self._lock:
             state = self._traces.get(trace_id)
             if state is None:
-                name = getattr(trace_or_span, "name", None) or "agents.trace"
-                root_span = Laminar.start_span(
-                    name,
-                    tags=["openai-agents"],
-                )
-                state = _TraceState(root_span=root_span)
+                state = _TraceState()
                 self._traces[trace_id] = state
+                creator = True
+        if creator:
+            name = getattr(trace_or_span, "name", None) or "agents.trace"
+            root_span = Laminar.start_span(
+                name,
+                tags=["openai-agents"],
+            )
+            state.root_span = root_span
+            state.ready.set()
+        else:
+            state.ready.wait()
         return state
 
     def _apply_trace_metadata(self, root_span: Any, trace: Any) -> None:
