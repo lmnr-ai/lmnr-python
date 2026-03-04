@@ -47,19 +47,7 @@ class LaminarAgentsTraceProcessor:
             state = self._traces.pop(trace_id, None)
         if not state:
             return
-        for entry in reversed(list(state.spans.values())):
-            try:
-                if entry.agents_span is not None:
-                    span_data = getattr(entry.agents_span, "span_data", None)
-                    _apply_span_data(entry.lmnr_span, span_data)
-                    _apply_span_error(entry.lmnr_span, entry.agents_span)
-                entry.lmnr_span.end()
-            except Exception:
-                pass
-        try:
-            state.root_span.end()
-        except Exception:
-            pass
+        self._end_trace_state(state)
 
     def on_span_start(self, span: Any) -> None:
         trace_id = getattr(span, "trace_id", None)
@@ -126,19 +114,7 @@ class LaminarAgentsTraceProcessor:
             states = list(self._traces.values())
             self._traces.clear()
         for state in states:
-            for entry in reversed(list(state.spans.values())):
-                try:
-                    if entry.agents_span is not None:
-                        span_data = getattr(entry.agents_span, "span_data", None)
-                        _apply_span_data(entry.lmnr_span, span_data)
-                        _apply_span_error(entry.lmnr_span, entry.agents_span)
-                    entry.lmnr_span.end()
-                except Exception:
-                    pass
-            try:
-                state.root_span.end()
-            except Exception:
-                pass
+            self._end_trace_state(state)
         try:
             Laminar.flush()
         except Exception:
@@ -149,6 +125,22 @@ class LaminarAgentsTraceProcessor:
             return Laminar.flush()
         except Exception:
             return False
+
+    def _end_trace_state(self, state: _TraceState) -> None:
+        """End all child spans (LIFO) then the root span for a trace."""
+        for entry in reversed(list(state.spans.values())):
+            try:
+                if entry.agents_span is not None:
+                    span_data = getattr(entry.agents_span, "span_data", None)
+                    _apply_span_data(entry.lmnr_span, span_data)
+                    _apply_span_error(entry.lmnr_span, entry.agents_span)
+                entry.lmnr_span.end()
+            except Exception:
+                pass
+        try:
+            state.root_span.end()
+        except Exception:
+            pass
 
     def _get_or_create_trace(self, trace_or_span: Any) -> _TraceState:
         trace_id = getattr(trace_or_span, "trace_id", None)
