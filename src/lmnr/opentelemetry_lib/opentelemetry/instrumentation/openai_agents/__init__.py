@@ -17,7 +17,7 @@ from opentelemetry.trace import Status, StatusCode
 
 logger = get_default_logger(__name__)
 
-_instruments = ("openai-agents >= 0.0.0",)
+_instruments = ("openai-agents >= 0.7.0",)
 
 def _suppress_inputs() -> bool:
     return os.getenv("LMNR_SUPPRESS_INPUTS") == "1"
