@@ -106,8 +106,6 @@ def _set_request_attributes(span, kwargs, instance=None):
     model = kwargs.get("model")
     if vendor == "AWS" and model and "." in model:
         model = _cross_region_check(model)
-    elif vendor == "OpenRouter":
-        model = _extract_model_name_from_provider_format(model)
 
     _set_span_attribute(span, GEN_AI_REQUEST_MODEL, model)
     _set_span_attribute(span, GEN_AI_REQUEST_MAX_TOKENS, kwargs.get("max_tokens"))
@@ -211,8 +209,6 @@ def _set_response_attributes(span, response):
         return
 
     response_model = response.get("model")
-    if response_model:
-        response_model = _extract_model_name_from_provider_format(response_model)
     _set_span_attribute(span, GEN_AI_RESPONSE_MODEL, response_model)
     _set_span_attribute(span, GEN_AI_RESPONSE_ID, response.get("id"))
 
