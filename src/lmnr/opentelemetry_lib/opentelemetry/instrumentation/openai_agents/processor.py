@@ -66,10 +66,9 @@ class LaminarAgentsTraceProcessor:
         if not trace_id:
             return
         state = self._get_or_create_trace(span)
-        parent_entry = None
         parent_id = getattr(span, "parent_id", None)
-        if parent_id:
-            parent_entry = state.spans.get(parent_id)
+        with self._lock:
+            parent_entry = state.spans.get(parent_id) if parent_id else None
         parent_lmnr_span = parent_entry.lmnr_span if parent_entry else state.root_span
 
         parent_ctx = None
