@@ -166,13 +166,15 @@ class LaminarAgentsTraceProcessor:
                 self._traces[trace_id] = state
                 creator = True
         if creator:
-            name = getattr(trace_or_span, "name", None) or "agents.trace"
-            root_span = Laminar.start_span(
-                name,
-                tags=["openai-agents"],
-            )
-            state.root_span = root_span
-            state.ready.set()
+            try:
+                name = getattr(trace_or_span, "name", None) or "agents.trace"
+                root_span = Laminar.start_span(
+                    name,
+                    tags=["openai-agents"],
+                )
+                state.root_span = root_span
+            finally:
+                state.ready.set()
         else:
             state.ready.wait()
         return state
