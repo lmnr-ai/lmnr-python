@@ -31,8 +31,11 @@ class LaminarAgentsTraceProcessor:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._traces: Dict[str, _TraceState] = {}
+        self._disabled = False
 
     def on_trace_start(self, trace: Any) -> None:
+        if self._disabled:
+            return
         trace_id = getattr(trace, "trace_id", None)
         if not trace_id:
             return
@@ -40,6 +43,8 @@ class LaminarAgentsTraceProcessor:
         self._apply_trace_metadata(state.root_span, trace)
 
     def on_trace_end(self, trace: Any) -> None:
+        if self._disabled:
+            return
         trace_id = getattr(trace, "trace_id", None)
         if not trace_id:
             return
@@ -50,6 +55,8 @@ class LaminarAgentsTraceProcessor:
         self._end_trace_state(state)
 
     def on_span_start(self, span: Any) -> None:
+        if self._disabled:
+            return
         trace_id = getattr(span, "trace_id", None)
         if not trace_id:
             return
@@ -85,6 +92,8 @@ class LaminarAgentsTraceProcessor:
             state.spans[key] = _SpanEntry(lmnr_span=lmnr_span, agents_span=span)
 
     def on_span_end(self, span: Any) -> None:
+        if self._disabled:
+            return
         trace_id = getattr(span, "trace_id", None)
         if not trace_id:
             return
@@ -110,6 +119,7 @@ class LaminarAgentsTraceProcessor:
             pass
 
     def shutdown(self) -> None:
+        self._disabled = True
         with self._lock:
             states = list(self._traces.values())
             self._traces.clear()
