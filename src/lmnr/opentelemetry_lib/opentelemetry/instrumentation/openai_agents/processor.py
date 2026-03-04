@@ -49,6 +49,14 @@ class LaminarAgentsTraceProcessor:
         if not trace_id:
             return
         state = self._get_or_create_trace(trace)
+        # If a span arrived first, the root span may have a placeholder
+        # name. Update it to the actual trace name.
+        trace_name = getattr(trace, "name", None)
+        if trace_name and hasattr(state.root_span, "update_name"):
+            try:
+                state.root_span.update_name(trace_name)
+            except Exception:
+                pass
         self._apply_trace_metadata(state.root_span, trace)
 
     def on_trace_end(self, trace: Any) -> None:
@@ -191,9 +199,10 @@ class LaminarAgentsTraceProcessor:
                 creator = True
         if creator:
             try:
-                name = getattr(trace_or_span, "name", None) or "agents.trace"
+                # Use a generic name; on_trace_start will update it
+                # to the actual trace name via update_name.
                 root_span = Laminar.start_span(
-                    name,
+                    "agents.trace",
                     tags=["openai-agents"],
                 )
                 state.root_span = root_span
