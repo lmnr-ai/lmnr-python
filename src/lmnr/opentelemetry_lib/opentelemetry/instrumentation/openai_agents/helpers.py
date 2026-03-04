@@ -1,0 +1,140 @@
+"""Span naming, type mapping, and utility helpers for OpenAI Agents instrumentation."""
+
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
+
+from lmnr.sdk.utils import json_dumps
+
+
+def _span_name(span: Any, span_data: Any) -> str:
+    name = getattr(span, "name", None)
+    if name:
+        return name
+    kind = _span_kind(span_data)
+    if kind:
+        return f"agents.{kind}"
+    return "agents.span"
+
+
+def _span_kind(span_data: Any) -> str:
+    if span_data is None:
+        return ""
+    return getattr(span_data, "type", "")
+
+
+def _map_span_type(span_data: Any) -> str:
+    kind = _span_kind(span_data)
+    if kind in {"generation", "response", "transcription", "speech", "speech_group"}:
+        return "LLM"
+    if kind in {"function", "tool", "mcp_list_tools", "mcp_tools"}:
+        return "TOOL"
+    return "DEFAULT"
+
+
+def _export_span_data(span_data: Any) -> Dict[str, Any]:
+    if span_data is None:
+        return {}
+    if hasattr(span_data, "export"):
+        try:
+            exported = span_data.export()
+            if isinstance(exported, dict):
+                return exported
+        except Exception:
+            return {}
+    return {}
+
+
+def _normalize_messages(data: Any) -> List[Dict[str, Any]]:
+    """Normalize various input/output formats into a list of message dicts."""
+    if data is None:
+        return []
+
+    if isinstance(data, str):
+        return [{"role": "user", "content": data}]
+
+    if isinstance(data, list):
+        messages = []
+        for item in data:
+            if isinstance(item, dict):
+                messages.append(item)
+            elif hasattr(item, "model_dump"):
+                try:
+                    messages.append(item.model_dump())
+                except Exception:
+                    messages.append({"content": str(item)})
+            else:
+                item_dict = _model_as_dict(item)
+                if item_dict:
+                    messages.append(item_dict)
+                else:
+                    messages.append({"content": str(item)})
+        return messages
+
+    if isinstance(data, dict):
+        return [data]
+
+    # If it's a pydantic model or similar
+    as_dict = _model_as_dict(data)
+    if as_dict:
+        return [as_dict]
+
+    return [{"content": str(data)}]
+
+
+def _model_as_dict(obj: Any) -> Optional[Dict[str, Any]]:
+    """Convert a pydantic model or similar object to a dict."""
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return obj
+    if hasattr(obj, "model_dump"):
+        try:
+            return obj.model_dump()
+        except Exception:
+            pass
+    if hasattr(obj, "dict"):
+        try:
+            return obj.dict()
+        except Exception:
+            pass
+    if hasattr(obj, "__dict__"):
+        return {
+            k: v for k, v in obj.__dict__.items()
+            if not k.startswith("_")
+        }
+    return None
+
+
+def _agent_name(agent: Any) -> str:
+    if isinstance(agent, dict):
+        return agent.get("name") or ""
+    if isinstance(agent, str):
+        return agent
+    if hasattr(agent, "name"):
+        return getattr(agent, "name") or ""
+    return ""
+
+
+def _get_first_not_none(d: dict, *keys: str) -> Optional[int]:
+    """Get the first key whose value is not None from a dict.
+
+    Unlike using `or`, this correctly handles 0 as a valid value.
+    """
+    for key in keys:
+        val = d.get(key)
+        if val is not None:
+            return val
+    return None
+
+
+def _get_attr_not_none(obj: Any, *attrs: str) -> Optional[int]:
+    """Get the first attribute whose value is not None from an object.
+
+    Unlike using `or`, this correctly handles 0 as a valid value.
+    """
+    for attr in attrs:
+        val = getattr(obj, attr, None)
+        if val is not None:
+            return val
+    return None
