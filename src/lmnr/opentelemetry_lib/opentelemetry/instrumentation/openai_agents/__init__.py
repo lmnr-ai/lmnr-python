@@ -214,12 +214,29 @@ class OpenAIAgentsInstrumentor(BaseInstrumentor):
         processor = LaminarAgentsTraceProcessor()
         try:
             add_trace_processor(processor)
+            self._processor = processor
             logger.debug("Laminar OpenAI Agents trace processor registered")
         except Exception as exc:
             logger.warning("Failed to register Laminar Agents processor: %s", exc)
 
     def _uninstrument(self, **kwargs):
-        pass
+        processor = getattr(self, "_processor", None)
+        if processor is None:
+            return
+        try:
+            import agents.tracing as _tracing
+            if hasattr(_tracing, "GLOBAL_TRACE_PROVIDER"):
+                provider = _tracing.GLOBAL_TRACE_PROVIDER
+                if hasattr(provider, "_multi_processor"):
+                    mp = provider._multi_processor
+                    if hasattr(mp, "_processors"):
+                        mp._processors = [
+                            p for p in mp._processors if p is not processor
+                        ]
+        except Exception:
+            pass
+        processor.shutdown()
+        self._processor = None
 
 
 # ---------------------------------------------------------------------------
@@ -848,10 +865,10 @@ def _model_as_dict(obj: Any) -> Optional[Dict[str, Any]]:
 
 
 def _agent_name(agent: Any) -> str:
-    if isinstance(agent, dict) and agent.get("name"):
-        return agent.get("name")
+    if isinstance(agent, dict):
+        return agent.get("name") or ""
     if isinstance(agent, str):
         return agent
     if hasattr(agent, "name"):
-        return getattr(agent, "name")
+        return getattr(agent, "name") or ""
     return ""
