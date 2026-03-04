@@ -206,6 +206,11 @@ class LaminarAgentsTraceProcessor:
                     tags=["openai-agents"],
                 )
                 state.root_span = root_span
+            except Exception:
+                # Remove the broken state so future calls can retry.
+                with self._lock:
+                    self._traces.pop(trace_id, None)
+                raise
             finally:
                 state.ready.set()
         else:
