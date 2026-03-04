@@ -145,12 +145,7 @@ def _set_tool_definitions_from_response(lmnr_span: Any, response: Any) -> None:
             if strict is not None:
                 func_def["function"]["strict"] = strict
             tool_defs.append(func_def)
-        elif tool_type in ("web_search", "file_search", "code_interpreter",
-                           "computer_use"):
-            # Built-in tools, record their type
-            tool_defs.append(tool_dict)
         else:
-            # Other tool types (MCP, etc.)
             tool_defs.append(tool_dict)
 
     if tool_defs:
