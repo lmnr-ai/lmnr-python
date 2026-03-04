@@ -391,9 +391,6 @@ def _apply_generation_span_data(lmnr_span: Any, span_data: Any) -> None:
     output_data = data.get("output") or getattr(span_data, "output", None)
     _set_gen_ai_output_messages(lmnr_span, output_data)
 
-    # Set tool definitions if present in input
-    _set_tool_definitions_from_input(lmnr_span, input_data)
-
     # Apply LLM attributes (model, usage, etc.)
     _apply_llm_attributes(lmnr_span, data)
 
@@ -634,18 +631,6 @@ def _set_gen_ai_output_messages_from_response(
 # ---------------------------------------------------------------------------
 # Tool definitions
 # ---------------------------------------------------------------------------
-
-def _set_tool_definitions_from_input(lmnr_span: Any, input_data: Any) -> None:
-    """Extract tool definitions from generation input messages.
-
-    In the Agents SDK, tool definitions are sometimes present as function_call
-    items in the input messages. We don't extract tool definitions from input
-    messages (they're in the response.tools field for response spans).
-    For generation spans, tool definitions are not directly available in the
-    span data, so this is a no-op unless we find them elsewhere.
-    """
-    pass
-
 
 def _set_tool_definitions_from_response(lmnr_span: Any, response: Any) -> None:
     """Extract gen_ai.tool.definitions from a Response object's tools field."""
