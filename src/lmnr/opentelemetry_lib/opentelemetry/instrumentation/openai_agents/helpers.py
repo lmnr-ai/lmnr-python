@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from lmnr.sdk.types import LaminarSpanType
+if TYPE_CHECKING:
+    from lmnr.sdk.types import LaminarSpanType
 
 
 def span_name(span: Any, span_data: Any) -> str:
