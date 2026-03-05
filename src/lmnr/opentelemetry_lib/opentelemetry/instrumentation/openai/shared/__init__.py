@@ -328,21 +328,6 @@ def _cross_region_check(value):
         return model
 
 
-def _extract_model_name_from_provider_format(model_name):
-    """
-    Extract model name from provider/model format.
-    E.g., 'openai/gpt-4o' -> 'gpt-4o', 'anthropic/claude-3-sonnet' -> 'claude-3-sonnet'
-    """
-    if not model_name:
-        return model_name
-
-    if "/" in model_name:
-        parts = model_name.split("/")
-        return parts[-1]  # Return the last part (actual model name)
-
-    return model_name
-
-
 def is_streaming_response(response):
     if is_openai_v1():
         return isinstance(
