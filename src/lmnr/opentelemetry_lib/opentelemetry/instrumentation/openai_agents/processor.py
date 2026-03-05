@@ -53,16 +53,19 @@ class LaminarAgentsTraceProcessor(_Base):
         trace_id = getattr(trace, "trace_id", None)
         if not trace_id:
             return
-        state = self._get_or_create_trace(trace)
-        # If a span arrived first, the root span may have a placeholder
-        # name. Update it to the actual trace name.
-        trace_name = getattr(trace, "name", None)
-        if trace_name and hasattr(state.root_span, "update_name"):
-            try:
-                state.root_span.update_name(trace_name)
-            except Exception:
-                pass
-        self._apply_trace_metadata(state.root_span, trace)
+        try:
+            state = self._get_or_create_trace(trace)
+            # If a span arrived first, the root span may have a placeholder
+            # name. Update it to the actual trace name.
+            trace_name = getattr(trace, "name", None)
+            if trace_name and hasattr(state.root_span, "update_name"):
+                try:
+                    state.root_span.update_name(trace_name)
+                except Exception:
+                    pass
+            self._apply_trace_metadata(state.root_span, trace)
+        except Exception:
+            pass
 
     def on_trace_end(self, trace: Any) -> None:
         if self._disabled:
@@ -82,39 +85,42 @@ class LaminarAgentsTraceProcessor(_Base):
         trace_id = getattr(span, "trace_id", None)
         if not trace_id:
             return
-        state = self._get_or_create_trace(span)
-        parent_id = getattr(span, "parent_id", None)
-        with self._lock:
-            parent_entry = state.spans.get(parent_id) if parent_id else None
-        parent_lmnr_span = parent_entry.lmnr_span if parent_entry else state.root_span
+        try:
+            state = self._get_or_create_trace(span)
+            parent_id = getattr(span, "parent_id", None)
+            with self._lock:
+                parent_entry = state.spans.get(parent_id) if parent_id else None
+            parent_lmnr_span = parent_entry.lmnr_span if parent_entry else state.root_span
 
-        parent_ctx = None
-        if parent_lmnr_span is not None and hasattr(
-            parent_lmnr_span, "get_laminar_span_context"
-        ):
-            parent_ctx = parent_lmnr_span.get_laminar_span_context()
+            parent_ctx = None
+            if parent_lmnr_span is not None and hasattr(
+                parent_lmnr_span, "get_laminar_span_context"
+            ):
+                parent_ctx = parent_lmnr_span.get_laminar_span_context()
 
-        span_data = getattr(span, "span_data", None)
-        span_type = map_span_type(span_data)
-        name = span_name(span, span_data)
+            span_data = getattr(span, "span_data", None)
+            span_type = map_span_type(span_data)
+            name = span_name(span, span_data)
 
-        lmnr_span = Laminar.start_span(
-            name,
-            span_type=span_type,
-            parent_span_context=parent_ctx,
-            tags=["openai-agents"],
-        )
-        if hasattr(lmnr_span, "set_attribute"):
-            lmnr_span.set_attribute("openai.agents.span.type", span_kind(span_data))
-            span_id = getattr(span, "span_id", "")
-            if span_id:
-                lmnr_span.set_attribute("openai.agents.span.id", span_id)
+            lmnr_span = Laminar.start_span(
+                name,
+                span_type=span_type,
+                parent_span_context=parent_ctx,
+                tags=["openai-agents"],
+            )
+            if hasattr(lmnr_span, "set_attribute"):
+                lmnr_span.set_attribute("openai.agents.span.type", span_kind(span_data))
+                span_id = getattr(span, "span_id", "")
+                if span_id:
+                    lmnr_span.set_attribute("openai.agents.span.id", span_id)
 
-        # Use span_id as key so parent_id lookups in on_span_start
-        # match correctly. The SDK always generates a span_id.
-        key = getattr(span, "span_id", None) or str(id(span))
-        with self._lock:
-            state.spans[key] = _SpanEntry(lmnr_span=lmnr_span, agents_span=span)
+            # Use span_id as key so parent_id lookups in on_span_start
+            # match correctly. The SDK always generates a span_id.
+            key = getattr(span, "span_id", None) or str(id(span))
+            with self._lock:
+                state.spans[key] = _SpanEntry(lmnr_span=lmnr_span, agents_span=span)
+        except Exception:
+            pass
 
     def on_span_end(self, span: Any) -> None:
         if self._disabled:
