@@ -278,3 +278,9 @@ def _apply_speech_group_span_data(lmnr_span: Any, span_data: Any) -> None:
         input_text = getattr(span_data, "input", None)
     if input_text:
         _set_gen_ai_input_messages(lmnr_span, input_text)
+
+    output_text = data.get("output")
+    if output_text is None:
+        output_text = getattr(span_data, "output", None)
+    if output_text:
+        _set_gen_ai_output_messages(lmnr_span, output_text)
