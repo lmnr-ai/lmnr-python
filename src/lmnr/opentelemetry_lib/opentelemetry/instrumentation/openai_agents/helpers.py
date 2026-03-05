@@ -113,7 +113,7 @@ def agent_name(agent: Any) -> str:
     return ""
 
 
-def get_first_not_none(d: dict, *keys: str) -> Optional[int]:
+def get_first_not_none(d: dict, *keys: str) -> Optional[Any]:
     """Get the first key whose value is not None from a dict."""
     for key in keys:
         val = d.get(key)
@@ -122,7 +122,7 @@ def get_first_not_none(d: dict, *keys: str) -> Optional[int]:
     return None
 
 
-def get_attr_not_none(obj: Any, *attrs: str) -> Optional[int]:
+def get_attr_not_none(obj: Any, *attrs: str) -> Optional[Any]:
     """Get the first attribute whose value is not None from an object."""
     for attr in attrs:
         val = getattr(obj, attr, None)
