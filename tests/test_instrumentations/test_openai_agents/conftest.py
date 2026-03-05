@@ -10,8 +10,12 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents import (
 
 @pytest.fixture(autouse=True)
 def environment():
-    if not os.getenv("OPENAI_API_KEY"):
+    had_key = "OPENAI_API_KEY" in os.environ
+    if not had_key:
         os.environ["OPENAI_API_KEY"] = "test_api_key"
+    yield
+    if not had_key:
+        os.environ.pop("OPENAI_API_KEY", None)
 
 
 @pytest.fixture(scope="function")
