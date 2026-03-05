@@ -160,7 +160,8 @@ class LaminarAgentsTraceProcessor(_Base):
                 pass
         finally:
             with self._lock:
-                state.pending_ends -= 1
+                if state.pending_ends > 0:
+                    state.pending_ends -= 1
                 if state.pending_ends == 0:
                     state.pending_ends_done.set()
 
