@@ -134,7 +134,7 @@ def _apply_generation_span_data(lmnr_span: Any, span_data: Any) -> None:
         llm_data["model"] = getattr(span_data, "model", None)
     if llm_data.get("usage") is None:
         llm_data["usage"] = getattr(span_data, "usage", None)
-    if not llm_data.get("response_id") and not llm_data.get("id"):
+    if llm_data.get("response_id") is None and llm_data.get("id") is None:
         llm_data["response_id"] = getattr(span_data, "response_id", None)
     _apply_llm_attributes(lmnr_span, llm_data)
 

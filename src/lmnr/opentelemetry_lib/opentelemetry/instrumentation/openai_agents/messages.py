@@ -177,8 +177,10 @@ def _apply_llm_attributes(lmnr_span: Any, data: Optional[Dict[str, Any]]) -> Non
     if usage is not None:
         _apply_usage(lmnr_span, usage)
 
-    response_id = data.get("response_id") or data.get("id")
-    if response_id:
+    response_id = data.get("response_id")
+    if response_id is None:
+        response_id = data.get("id")
+    if response_id is not None:
         lmnr_span.set_attribute(Attributes.RESPONSE_ID.value, response_id)
 
 
