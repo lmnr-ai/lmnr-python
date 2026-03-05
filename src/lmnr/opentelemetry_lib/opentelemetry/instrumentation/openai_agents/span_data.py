@@ -253,6 +253,8 @@ def _apply_transcription_span_data(lmnr_span: Any, span_data: Any) -> None:
         lmnr_span.set_attribute(Attributes.PROVIDER.value, "openai")
 
     input_data = data.get("input")
+    if input_data is None:
+        input_data = getattr(span_data, "input", None)
     if input_data:
         if isinstance(input_data, dict):
             _set_gen_ai_input_messages(lmnr_span, input_data.get("data"))
