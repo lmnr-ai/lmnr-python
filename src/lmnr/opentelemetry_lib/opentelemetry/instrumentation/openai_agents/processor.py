@@ -126,7 +126,10 @@ class LaminarAgentsTraceProcessor(_Base):
 
             # Use span_id as key so parent_id lookups in on_span_start
             # match correctly. The SDK always generates a span_id.
-            key = getattr(span, "span_id", None) or str(id(span))
+            key = getattr(span, "span_id", None)
+            if not key:
+                logger.debug("Span missing span_id, cannot track")
+                return
             with self._lock:
                 state.spans[key] = _SpanEntry(lmnr_span=lmnr_span, agents_span=span)
         except Exception:
@@ -139,7 +142,9 @@ class LaminarAgentsTraceProcessor(_Base):
         if not trace_id:
             return
 
-        key = getattr(span, "span_id", None) or str(id(span))
+        key = getattr(span, "span_id", None)
+        if not key:
+            return
 
         with self._lock:
             state = self._traces.get(trace_id)
