@@ -80,10 +80,14 @@ class LaminarAgentsTraceProcessor(_Base):
         if not trace_id:
             return
         with self._lock:
-            state = self._traces.pop(trace_id, None)
+            state = self._traces.get(trace_id)
         if not state:
             return
         self._end_trace_state(state)
+        # Remove after cleanup so concurrent on_span_end calls can still
+        # find the state and finish their spans.
+        with self._lock:
+            self._traces.pop(trace_id, None)
 
     def on_span_start(self, span: Any) -> None:
         if self._disabled:
