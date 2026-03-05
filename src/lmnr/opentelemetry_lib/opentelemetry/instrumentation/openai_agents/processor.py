@@ -7,9 +7,12 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any, Dict
 
-from agents.tracing import TracingProcessor
-
 from lmnr import Laminar
+
+try:
+    from agents.tracing import TracingProcessor as _Base
+except ImportError:  # openai-agents not installed
+    _Base = object  # type: ignore[assignment,misc]
 
 from .helpers import map_span_type, span_kind, span_name
 from .span_data import _apply_span_data, _apply_span_error
@@ -36,7 +39,7 @@ class _TraceState:
         self.pending_ends_done.set()
 
 
-class LaminarAgentsTraceProcessor(TracingProcessor):
+class LaminarAgentsTraceProcessor(_Base):
     """TracingProcessor implementation that mirrors OpenAI Agents spans into Laminar."""
 
     def __init__(self) -> None:
