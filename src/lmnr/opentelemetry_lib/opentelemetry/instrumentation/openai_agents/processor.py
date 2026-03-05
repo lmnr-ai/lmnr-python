@@ -5,15 +5,14 @@ from __future__ import annotations
 import os
 import threading
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict
+from typing import Any, Dict
+
+from agents.tracing import TracingProcessor
 
 from lmnr import Laminar
 
 from .helpers import map_span_type, span_kind, span_name
 from .span_data import _apply_span_data, _apply_span_error
-
-if TYPE_CHECKING:
-    from agents.tracing import TracingProcessor
 
 
 @dataclass
