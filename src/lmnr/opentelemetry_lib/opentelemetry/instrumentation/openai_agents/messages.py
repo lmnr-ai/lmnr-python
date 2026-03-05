@@ -137,7 +137,9 @@ def _set_tool_definitions_from_response(lmnr_span: Any, response: Any) -> None:
         if tool_type == "function":
             func_def = {}
             func_def["type"] = "function"
-            function_info = tool_dict.get("function") or tool_dict
+            function_info = tool_dict.get("function")
+            if function_info is None:
+                function_info = tool_dict
             func_def["function"] = {
                 "name": function_info.get("name", ""),
             }
