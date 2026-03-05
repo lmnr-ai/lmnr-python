@@ -187,8 +187,7 @@ class LaminarAgentsTraceProcessor(_Base):
 
     def _end_trace_state(self, state: _TraceState) -> None:
         """End all child spans (LIFO) then the root span for a trace."""
-        state.ready.wait(timeout=self._SHUTDOWN_TIMEOUT)
-        if state.failed:
+        if not state.ready.wait(timeout=self._SHUTDOWN_TIMEOUT) or state.failed:
             return
         # Wait for in-flight on_span_end calls, then atomically snapshot
         # remaining spans.  Re-check under the lock to close the window
