@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 from dataclasses import dataclass, field
 from typing import Any, Dict
+
+logger = logging.getLogger(__name__)
 
 from lmnr import Laminar
 
@@ -68,7 +71,7 @@ class LaminarAgentsTraceProcessor(_Base):
                     pass
             self._apply_trace_metadata(state.root_span, trace)
         except Exception:
-            pass
+            logger.debug("Error in on_trace_start", exc_info=True)
 
     def on_trace_end(self, trace: Any) -> None:
         if self._disabled:
@@ -123,7 +126,7 @@ class LaminarAgentsTraceProcessor(_Base):
             with self._lock:
                 state.spans[key] = _SpanEntry(lmnr_span=lmnr_span, agents_span=span)
         except Exception:
-            pass
+            logger.debug("Error in on_span_start", exc_info=True)
 
     def on_span_end(self, span: Any) -> None:
         if self._disabled:
