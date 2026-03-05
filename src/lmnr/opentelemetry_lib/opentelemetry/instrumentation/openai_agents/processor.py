@@ -5,12 +5,15 @@ from __future__ import annotations
 import os
 import threading
 from dataclasses import dataclass, field
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Dict
 
 from lmnr import Laminar
 
-from .helpers import _map_span_type, _span_kind, _span_name
+from .helpers import map_span_type, span_kind, span_name
 from .span_data import _apply_span_data, _apply_span_error
+
+if TYPE_CHECKING:
+    from agents.tracing import TracingProcessor
 
 
 @dataclass
@@ -34,7 +37,7 @@ class _TraceState:
         self.pending_ends_done.set()
 
 
-class LaminarAgentsTraceProcessor:
+class LaminarAgentsTraceProcessor(TracingProcessor):
     """TracingProcessor implementation that mirrors OpenAI Agents spans into Laminar."""
 
     def __init__(self) -> None:
@@ -84,12 +87,14 @@ class LaminarAgentsTraceProcessor:
         parent_lmnr_span = parent_entry.lmnr_span if parent_entry else state.root_span
 
         parent_ctx = None
-        if parent_lmnr_span is not None and hasattr(parent_lmnr_span, "get_laminar_span_context"):
+        if parent_lmnr_span is not None and hasattr(
+            parent_lmnr_span, "get_laminar_span_context"
+        ):
             parent_ctx = parent_lmnr_span.get_laminar_span_context()
 
         span_data = getattr(span, "span_data", None)
-        span_type = _map_span_type(span_data)
-        name = _span_name(span, span_data)
+        span_type = map_span_type(span_data)
+        name = span_name(span, span_data)
 
         lmnr_span = Laminar.start_span(
             name,
@@ -98,7 +103,7 @@ class LaminarAgentsTraceProcessor:
             tags=["openai-agents"],
         )
         if hasattr(lmnr_span, "set_attribute"):
-            lmnr_span.set_attribute("openai.agents.span.type", _span_kind(span_data))
+            lmnr_span.set_attribute("openai.agents.span.type", span_kind(span_data))
             span_id = getattr(span, "span_id", "")
             if span_id:
                 lmnr_span.set_attribute("openai.agents.span.id", span_id)

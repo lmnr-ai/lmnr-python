@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from lmnr.opentelemetry_lib.tracing.attributes import Attributes
-from lmnr.sdk.utils import json_dumps
 from opentelemetry.trace import Status, StatusCode
 
-from .helpers import _agent_name, _export_span_data, _span_kind
+from lmnr.opentelemetry_lib.tracing.attributes import Attributes
+from lmnr.sdk.utils import json_dumps
+
+from .helpers import agent_name, export_span_data, span_kind
 from .messages import (
     _apply_llm_attributes,
     _response_to_llm_data,
@@ -19,10 +20,10 @@ from .messages import (
     _set_tool_definitions_from_response,
 )
 
-
 # ---------------------------------------------------------------------------
 # Error handling
 # ---------------------------------------------------------------------------
+
 
 def _apply_span_error(lmnr_span: Any, span: Any) -> None:
     error = getattr(span, "error", None)
@@ -39,11 +40,12 @@ def _apply_span_error(lmnr_span: Any, span: Any) -> None:
 # Span data extraction
 # ---------------------------------------------------------------------------
 
+
 def _apply_span_data(lmnr_span: Any, span_data: Any) -> None:
     if span_data is None:
         return
 
-    kind = _span_kind(span_data)
+    kind = span_kind(span_data)
 
     if kind == "agent":
         _apply_agent_span_data(lmnr_span, span_data)
@@ -69,12 +71,12 @@ def _apply_span_data(lmnr_span: Any, span_data: Any) -> None:
         _apply_speech_group_span_data(lmnr_span, span_data)
     else:
         # Fallback: try to set generic I/O
-        data = _export_span_data(span_data)
+        data = export_span_data(span_data)
         _set_gen_ai_messages(lmnr_span, data.get("input"), data.get("output"))
 
 
 def _apply_agent_span_data(lmnr_span: Any, span_data: Any) -> None:
-    data = _export_span_data(span_data)
+    data = export_span_data(span_data)
     if not hasattr(lmnr_span, "set_attribute"):
         return
 
@@ -85,21 +87,17 @@ def _apply_agent_span_data(lmnr_span: Any, span_data: Any) -> None:
     # Record handoffs and tools as metadata
     handoffs = data.get("handoffs")
     if handoffs:
-        lmnr_span.set_attribute(
-            "openai.agents.agent.handoffs", json_dumps(handoffs)
-        )
+        lmnr_span.set_attribute("openai.agents.agent.handoffs", json_dumps(handoffs))
     tools = data.get("tools")
     if tools:
-        lmnr_span.set_attribute(
-            "openai.agents.agent.tools", json_dumps(tools)
-        )
+        lmnr_span.set_attribute("openai.agents.agent.tools", json_dumps(tools))
     output_type = data.get("output_type")
     if output_type:
         lmnr_span.set_attribute("openai.agents.agent.output_type", output_type)
 
 
 def _apply_function_span_data(lmnr_span: Any, span_data: Any) -> None:
-    data = _export_span_data(span_data)
+    data = export_span_data(span_data)
     if not hasattr(lmnr_span, "set_attribute"):
         return
 
@@ -116,7 +114,7 @@ def _apply_generation_span_data(lmnr_span: Any, span_data: Any) -> None:
     if not hasattr(lmnr_span, "set_attribute"):
         return
 
-    data = _export_span_data(span_data)
+    data = export_span_data(span_data)
 
     # Set gen_ai.input.messages from the input messages
     input_data = data.get("input") or getattr(span_data, "input", None)
@@ -160,24 +158,20 @@ def _apply_response_span_data(lmnr_span: Any, span_data: Any) -> None:
 
 
 def _apply_handoff_span_data(lmnr_span: Any, span_data: Any) -> None:
-    data = _export_span_data(span_data)
+    data = export_span_data(span_data)
     if not hasattr(lmnr_span, "set_attribute"):
         return
 
     from_agent = data.get("from_agent")
     to_agent = data.get("to_agent")
     if from_agent:
-        lmnr_span.set_attribute(
-            "openai.agents.handoff.from", _agent_name(from_agent)
-        )
+        lmnr_span.set_attribute("openai.agents.handoff.from", agent_name(from_agent))
     if to_agent:
-        lmnr_span.set_attribute(
-            "openai.agents.handoff.to", _agent_name(to_agent)
-        )
+        lmnr_span.set_attribute("openai.agents.handoff.to", agent_name(to_agent))
 
 
 def _apply_guardrail_span_data(lmnr_span: Any, span_data: Any) -> None:
-    data = _export_span_data(span_data)
+    data = export_span_data(span_data)
     if not hasattr(lmnr_span, "set_attribute"):
         return
 
@@ -190,7 +184,7 @@ def _apply_guardrail_span_data(lmnr_span: Any, span_data: Any) -> None:
 
 
 def _apply_custom_span_data(lmnr_span: Any, span_data: Any) -> None:
-    data = _export_span_data(span_data)
+    data = export_span_data(span_data)
     if not hasattr(lmnr_span, "set_attribute"):
         return
 
@@ -199,13 +193,11 @@ def _apply_custom_span_data(lmnr_span: Any, span_data: Any) -> None:
         lmnr_span.set_attribute("openai.agents.custom.name", name)
     custom_data = data.get("data")
     if custom_data is not None:
-        lmnr_span.set_attribute(
-            "openai.agents.custom.data", json_dumps(custom_data)
-        )
+        lmnr_span.set_attribute("openai.agents.custom.data", json_dumps(custom_data))
 
 
 def _apply_mcp_span_data(lmnr_span: Any, span_data: Any) -> None:
-    data = _export_span_data(span_data)
+    data = export_span_data(span_data)
     if not hasattr(lmnr_span, "set_attribute"):
         return
 
@@ -214,13 +206,11 @@ def _apply_mcp_span_data(lmnr_span: Any, span_data: Any) -> None:
         lmnr_span.set_attribute("openai.agents.mcp.server", server)
     result = data.get("result")
     if result is not None:
-        lmnr_span.set_attribute(
-            "openai.agents.mcp.result", json_dumps(result)
-        )
+        lmnr_span.set_attribute("openai.agents.mcp.result", json_dumps(result))
 
 
 def _apply_speech_span_data(lmnr_span: Any, span_data: Any) -> None:
-    data = _export_span_data(span_data)
+    data = export_span_data(span_data)
     if not hasattr(lmnr_span, "set_attribute"):
         return
 
@@ -244,7 +234,7 @@ def _apply_speech_span_data(lmnr_span: Any, span_data: Any) -> None:
 
 
 def _apply_transcription_span_data(lmnr_span: Any, span_data: Any) -> None:
-    data = _export_span_data(span_data)
+    data = export_span_data(span_data)
     if not hasattr(lmnr_span, "set_attribute"):
         return
 
@@ -267,7 +257,7 @@ def _apply_transcription_span_data(lmnr_span: Any, span_data: Any) -> None:
 
 
 def _apply_speech_group_span_data(lmnr_span: Any, span_data: Any) -> None:
-    data = _export_span_data(span_data)
+    data = export_span_data(span_data)
     if not hasattr(lmnr_span, "set_attribute"):
         return
 

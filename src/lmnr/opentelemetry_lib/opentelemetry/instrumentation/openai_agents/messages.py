@@ -8,16 +8,17 @@ from lmnr.opentelemetry_lib.tracing.attributes import Attributes
 from lmnr.sdk.utils import json_dumps
 
 from .helpers import (
-    _get_attr_not_none,
-    _get_first_not_none,
-    _model_as_dict,
-    _normalize_messages,
+    get_attr_not_none,
+    get_first_not_none,
+    model_as_dict,
+    normalize_messages,
 )
 
 
 # ---------------------------------------------------------------------------
 # gen_ai.input.messages / gen_ai.output.messages helpers
 # ---------------------------------------------------------------------------
+
 
 def _set_gen_ai_messages(
     lmnr_span: Any,
@@ -38,7 +39,7 @@ def _set_gen_ai_input_messages(lmnr_span: Any, input_data: Any) -> None:
     if not hasattr(lmnr_span, "set_attribute"):
         return
 
-    messages = _normalize_messages(input_data)
+    messages = normalize_messages(input_data)
     if messages:
         lmnr_span.set_attribute("gen_ai.input.messages", json_dumps(messages))
 
@@ -50,14 +51,12 @@ def _set_gen_ai_output_messages(lmnr_span: Any, output_data: Any) -> None:
     if not hasattr(lmnr_span, "set_attribute"):
         return
 
-    messages = _normalize_messages(output_data, role="assistant")
+    messages = normalize_messages(output_data, role="assistant")
     if messages:
         lmnr_span.set_attribute("gen_ai.output.messages", json_dumps(messages))
 
 
-def _set_gen_ai_output_messages_from_response(
-    lmnr_span: Any, response: Any
-) -> None:
+def _set_gen_ai_output_messages_from_response(lmnr_span: Any, response: Any) -> None:
     """Extract and set gen_ai.output.messages from a Response object."""
     if response is None:
         return
@@ -70,14 +69,14 @@ def _set_gen_ai_output_messages_from_response(
 
     messages: List[Dict[str, Any]] = []
     for item in output_items:
-        item_dict = _model_as_dict(item)
+        item_dict = model_as_dict(item)
         if not item_dict:
             continue
         item_type = item_dict.get("type")
         if item_type == "message":
             content_list = item_dict.get("content", [])
             text_parts = []
-            for content in (content_list if isinstance(content_list, list) else []):
+            for content in content_list if isinstance(content_list, list) else []:
                 if isinstance(content, dict):
                     ct = content.get("type", "")
                     if ct in ("output_text", "text"):
@@ -87,23 +86,29 @@ def _set_gen_ai_output_messages_from_response(
                     if ct in ("output_text", "text"):
                         text_parts.append(getattr(content, "text", ""))
             if text_parts:
-                messages.append({
-                    "role": item_dict.get("role", "assistant"),
-                    "content": "".join(text_parts),
-                })
+                messages.append(
+                    {
+                        "role": item_dict.get("role", "assistant"),
+                        "content": "".join(text_parts),
+                    }
+                )
         elif item_type == "function_call":
-            messages.append({
-                "role": "assistant",
-                "content": None,
-                "tool_calls": [{
-                    "id": item_dict.get("call_id", item_dict.get("id", "")),
-                    "type": "function",
-                    "function": {
-                        "name": item_dict.get("name", ""),
-                        "arguments": item_dict.get("arguments", ""),
-                    },
-                }],
-            })
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": item_dict.get("call_id", item_dict.get("id", "")),
+                            "type": "function",
+                            "function": {
+                                "name": item_dict.get("name", ""),
+                                "arguments": item_dict.get("arguments", ""),
+                            },
+                        }
+                    ],
+                }
+            )
 
     if messages:
         lmnr_span.set_attribute("gen_ai.output.messages", json_dumps(messages))
@@ -112,6 +117,7 @@ def _set_gen_ai_output_messages_from_response(
 # ---------------------------------------------------------------------------
 # Tool definitions
 # ---------------------------------------------------------------------------
+
 
 def _set_tool_definitions_from_response(lmnr_span: Any, response: Any) -> None:
     """Extract gen_ai.tool.definitions from a Response object's tools field."""
@@ -124,7 +130,7 @@ def _set_tool_definitions_from_response(lmnr_span: Any, response: Any) -> None:
 
     tool_defs = []
     for tool in tools:
-        tool_dict = _model_as_dict(tool)
+        tool_dict = model_as_dict(tool)
         if not tool_dict:
             continue
         tool_type = tool_dict.get("type")
@@ -156,6 +162,7 @@ def _set_tool_definitions_from_response(lmnr_span: Any, response: Any) -> None:
 # LLM attributes (model, usage, response_id)
 # ---------------------------------------------------------------------------
 
+
 def _apply_llm_attributes(lmnr_span: Any, data: Optional[Dict[str, Any]]) -> None:
     if not data or not hasattr(lmnr_span, "set_attribute"):
         return
@@ -181,20 +188,18 @@ def _apply_usage(lmnr_span: Any, usage: Any) -> None:
         return
 
     if isinstance(usage, dict):
-        input_tokens = _get_first_not_none(
+        input_tokens = get_first_not_none(
             usage, "input_tokens", "prompt_tokens", "input"
         )
-        output_tokens = _get_first_not_none(
+        output_tokens = get_first_not_none(
             usage, "output_tokens", "completion_tokens", "output"
         )
-        total_tokens = _get_first_not_none(
-            usage, "total_tokens", "total"
-        )
+        total_tokens = get_first_not_none(usage, "total_tokens", "total")
     else:
         # Object with attributes (e.g. ResponseUsage)
-        input_tokens = _get_attr_not_none(usage, "input_tokens", "prompt_tokens")
-        output_tokens = _get_attr_not_none(usage, "output_tokens", "completion_tokens")
-        total_tokens = _get_attr_not_none(usage, "total_tokens")
+        input_tokens = get_attr_not_none(usage, "input_tokens", "prompt_tokens")
+        output_tokens = get_attr_not_none(usage, "output_tokens", "completion_tokens")
+        total_tokens = get_attr_not_none(usage, "total_tokens")
 
     if input_tokens is not None:
         lmnr_span.set_attribute(Attributes.INPUT_TOKEN_COUNT.value, input_tokens)

@@ -4,25 +4,27 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+from lmnr.sdk.types import LaminarSpanType
 
-def _span_name(span: Any, span_data: Any) -> str:
+
+def span_name(span: Any, span_data: Any) -> str:
     name = getattr(span, "name", None)
     if name:
         return name
-    kind = _span_kind(span_data)
+    kind = span_kind(span_data)
     if kind:
         return f"agents.{kind}"
     return "agents.span"
 
 
-def _span_kind(span_data: Any) -> str:
+def span_kind(span_data: Any) -> str:
     if span_data is None:
         return ""
     return getattr(span_data, "type", "")
 
 
-def _map_span_type(span_data: Any) -> str:
-    kind = _span_kind(span_data)
+def map_span_type(span_data: Any) -> LaminarSpanType:
+    kind = span_kind(span_data)
     if kind in {"generation", "response", "transcription", "speech", "speech_group"}:
         return "LLM"
     if kind in {"function", "tool", "mcp_list_tools", "mcp_tools"}:
@@ -30,7 +32,7 @@ def _map_span_type(span_data: Any) -> str:
     return "DEFAULT"
 
 
-def _export_span_data(span_data: Any) -> Dict[str, Any]:
+def export_span_data(span_data: Any) -> Dict[str, Any]:
     if span_data is None:
         return {}
     if hasattr(span_data, "export"):
@@ -43,7 +45,7 @@ def _export_span_data(span_data: Any) -> Dict[str, Any]:
     return {}
 
 
-def _normalize_messages(data: Any, role: str = "user") -> List[Dict[str, Any]]:
+def normalize_messages(data: Any, role: str = "user") -> List[Dict[str, Any]]:
     """Normalize various input/output formats into a list of message dicts."""
     if data is None:
         return []
@@ -62,7 +64,7 @@ def _normalize_messages(data: Any, role: str = "user") -> List[Dict[str, Any]]:
                 except Exception:
                     messages.append({"content": str(item)})
             else:
-                item_dict = _model_as_dict(item)
+                item_dict = model_as_dict(item)
                 if item_dict:
                     messages.append(item_dict)
                 else:
@@ -73,14 +75,14 @@ def _normalize_messages(data: Any, role: str = "user") -> List[Dict[str, Any]]:
         return [data]
 
     # If it's a pydantic model or similar
-    as_dict = _model_as_dict(data)
+    as_dict = model_as_dict(data)
     if as_dict:
         return [as_dict]
 
     return [{"content": str(data)}]
 
 
-def _model_as_dict(obj: Any) -> Optional[Dict[str, Any]]:
+def model_as_dict(obj: Any) -> Optional[Dict[str, Any]]:
     """Convert a pydantic model or similar object to a dict."""
     if obj is None:
         return None
@@ -97,14 +99,11 @@ def _model_as_dict(obj: Any) -> Optional[Dict[str, Any]]:
         except Exception:
             pass
     if hasattr(obj, "__dict__"):
-        return {
-            k: v for k, v in obj.__dict__.items()
-            if not k.startswith("_")
-        }
+        return {k: v for k, v in obj.__dict__.items() if not k.startswith("_")}
     return None
 
 
-def _agent_name(agent: Any) -> str:
+def agent_name(agent: Any) -> str:
     if isinstance(agent, dict):
         return agent.get("name") or ""
     if isinstance(agent, str):
@@ -114,11 +113,8 @@ def _agent_name(agent: Any) -> str:
     return ""
 
 
-def _get_first_not_none(d: dict, *keys: str) -> Optional[int]:
-    """Get the first key whose value is not None from a dict.
-
-    Unlike using `or`, this correctly handles 0 as a valid value.
-    """
+def get_first_not_none(d: dict, *keys: str) -> Optional[int]:
+    """Get the first key whose value is not None from a dict."""
     for key in keys:
         val = d.get(key)
         if val is not None:
@@ -126,11 +122,8 @@ def _get_first_not_none(d: dict, *keys: str) -> Optional[int]:
     return None
 
 
-def _get_attr_not_none(obj: Any, *attrs: str) -> Optional[int]:
-    """Get the first attribute whose value is not None from an object.
-
-    Unlike using `or`, this correctly handles 0 as a valid value.
-    """
+def get_attr_not_none(obj: Any, *attrs: str) -> Optional[int]:
+    """Get the first attribute whose value is not None from an object."""
     for attr in attrs:
         val = getattr(obj, attr, None)
         if val is not None:

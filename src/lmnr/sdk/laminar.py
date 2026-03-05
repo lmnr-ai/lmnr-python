@@ -54,6 +54,7 @@ from .log import VerboseColorfulFormatter
 
 from .types import (
     LaminarSpanContext,
+    LaminarSpanType,
     SessionRecordingOptions,
     TraceType,
 )
@@ -427,7 +428,7 @@ class Laminar:
         cls,
         name: str,
         input: Any = None,
-        span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
+        span_type: LaminarSpanType = "DEFAULT",
         context: Context | None = None,
         labels: list[str] | None = None,
         parent_span_context: LaminarSpanContext | None = None,
@@ -609,7 +610,7 @@ class Laminar:
         cls,
         name: str,
         input: Any = None,
-        span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
+        span_type: LaminarSpanType = "DEFAULT",
         context: Context | None = None,
         parent_span_context: LaminarSpanContext | None = None,
         labels: dict[str, str] | None = None,
