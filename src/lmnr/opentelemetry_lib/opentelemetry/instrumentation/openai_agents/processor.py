@@ -95,6 +95,7 @@ class LaminarAgentsTraceProcessor(_Base):
         trace_id = getattr(span, "trace_id", None)
         if not trace_id:
             return
+        lmnr_span = None
         try:
             state = self._get_or_create_trace(span)
             parent_id = getattr(span, "parent_id", None)
@@ -129,11 +130,20 @@ class LaminarAgentsTraceProcessor(_Base):
             key = getattr(span, "span_id", None)
             if not key:
                 logger.debug("Span missing span_id, cannot track")
+                try:
+                    lmnr_span.end()
+                except Exception:
+                    pass
                 return
             with self._lock:
                 state.spans[key] = _SpanEntry(lmnr_span=lmnr_span, agents_span=span)
         except Exception:
             logger.debug("Error in on_span_start", exc_info=True)
+            if lmnr_span is not None:
+                try:
+                    lmnr_span.end()
+                except Exception:
+                    pass
 
     def on_span_end(self, span: Any) -> None:
         if self._disabled:
