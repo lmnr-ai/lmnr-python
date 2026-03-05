@@ -271,8 +271,7 @@ class LaminarAgentsTraceProcessor(_Base):
             finally:
                 state.ready.set()
         else:
-            state.ready.wait()
-            if state.failed:
+            if not state.ready.wait(timeout=self._SHUTDOWN_TIMEOUT) or state.failed:
                 raise RuntimeError("Root span creation failed for this trace")
         return state
 
