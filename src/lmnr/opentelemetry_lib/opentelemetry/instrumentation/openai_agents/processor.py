@@ -185,7 +185,12 @@ class LaminarAgentsTraceProcessor(_Base):
         # Wait for any in-flight on_span_end calls to finish so that
         # the root span is not ended before its children.
         state.pending_ends_done.wait()
-        for entry in reversed(list(state.spans.values())):
+        # Snapshot and clear spans under the lock so concurrent
+        # on_span_end calls cannot pop the same entries.
+        with self._lock:
+            remaining = list(state.spans.values())
+            state.spans.clear()
+        for entry in reversed(remaining):
             try:
                 if entry.agents_span is not None:
                     span_data = getattr(entry.agents_span, "span_data", None)
