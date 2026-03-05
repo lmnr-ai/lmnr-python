@@ -117,11 +117,15 @@ def _apply_generation_span_data(lmnr_span: Any, span_data: Any) -> None:
     data = export_span_data(span_data)
 
     # Set gen_ai.input.messages from the input messages
-    input_data = data.get("input") or getattr(span_data, "input", None)
+    input_data = data.get("input")
+    if input_data is None:
+        input_data = getattr(span_data, "input", None)
     _set_gen_ai_input_messages(lmnr_span, input_data)
 
     # Set gen_ai.output.messages from the output
-    output_data = data.get("output") or getattr(span_data, "output", None)
+    output_data = data.get("output")
+    if output_data is None:
+        output_data = getattr(span_data, "output", None)
     _set_gen_ai_output_messages(lmnr_span, output_data)
 
     # Apply LLM attributes (model, usage, etc.) with fallback to direct attrs
@@ -220,7 +224,9 @@ def _apply_speech_span_data(lmnr_span: Any, span_data: Any) -> None:
         lmnr_span.set_attribute(Attributes.RESPONSE_MODEL.value, model)
         lmnr_span.set_attribute(Attributes.PROVIDER.value, "openai")
 
-    input_text = data.get("input") or getattr(span_data, "input", None)
+    input_text = data.get("input")
+    if input_text is None:
+        input_text = getattr(span_data, "input", None)
     if input_text:
         _set_gen_ai_input_messages(lmnr_span, input_text)
 
@@ -251,7 +257,9 @@ def _apply_transcription_span_data(lmnr_span: Any, span_data: Any) -> None:
         else:
             _set_gen_ai_input_messages(lmnr_span, input_data)
 
-    output_text = data.get("output") or getattr(span_data, "output", None)
+    output_text = data.get("output")
+    if output_text is None:
+        output_text = getattr(span_data, "output", None)
     if output_text:
         _set_gen_ai_output_messages(lmnr_span, output_text)
 
@@ -261,6 +269,8 @@ def _apply_speech_group_span_data(lmnr_span: Any, span_data: Any) -> None:
     if not hasattr(lmnr_span, "set_attribute"):
         return
 
-    input_text = data.get("input") or getattr(span_data, "input", None)
+    input_text = data.get("input")
+    if input_text is None:
+        input_text = getattr(span_data, "input", None)
     if input_text:
         _set_gen_ai_input_messages(lmnr_span, input_text)
