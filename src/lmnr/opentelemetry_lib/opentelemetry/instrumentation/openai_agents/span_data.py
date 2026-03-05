@@ -231,6 +231,8 @@ def _apply_speech_span_data(lmnr_span: Any, span_data: Any) -> None:
         _set_gen_ai_input_messages(lmnr_span, input_text)
 
     output_data = data.get("output")
+    if output_data is None:
+        output_data = getattr(span_data, "output", None)
     if output_data:
         if isinstance(output_data, dict):
             # Speech output is {data: ..., format: ...}
