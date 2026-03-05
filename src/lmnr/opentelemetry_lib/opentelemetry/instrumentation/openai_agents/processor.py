@@ -33,6 +33,9 @@ class _TraceState:
     # for all child spans to finish before ending the root span.
     pending_ends: int = 0
     pending_ends_done: threading.Event = field(default_factory=threading.Event)
+    # Set to True when root span creation fails, so waiting threads
+    # know the state is unusable rather than proceeding with root_span=None.
+    failed: bool = False
 
     def __post_init__(self) -> None:
         # Initially no pending ends, so mark as done.
@@ -220,6 +223,7 @@ class LaminarAgentsTraceProcessor(_Base):
                 )
                 state.root_span = root_span
             except Exception:
+                state.failed = True
                 # Remove the broken state so future calls can retry.
                 with self._lock:
                     self._traces.pop(trace_id, None)
@@ -228,6 +232,8 @@ class LaminarAgentsTraceProcessor(_Base):
                 state.ready.set()
         else:
             state.ready.wait()
+            if state.failed:
+                raise RuntimeError("Root span creation failed for this trace")
         return state
 
     def _apply_trace_metadata(self, root_span: Any, trace: Any) -> None:
