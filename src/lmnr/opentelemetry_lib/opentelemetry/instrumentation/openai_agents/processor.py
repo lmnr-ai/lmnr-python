@@ -39,6 +39,8 @@ class _TraceState:
     # Set to True when root span creation fails, so waiting threads
     # know the state is unusable rather than proceeding with root_span=None.
     failed: bool = False
+    # Guards against double-ending from concurrent on_trace_end and shutdown.
+    ended: bool = False
 
     def __post_init__(self) -> None:
         # Initially no pending ends, so mark as done.
@@ -81,8 +83,9 @@ class LaminarAgentsTraceProcessor(_Base):
             return
         with self._lock:
             state = self._traces.get(trace_id)
-        if not state:
-            return
+            if not state or state.ended:
+                return
+            state.ended = True
         self._end_trace_state(state)
         # Remove after cleanup so concurrent on_span_end calls can still
         # find the state and finish their spans.
@@ -187,7 +190,9 @@ class LaminarAgentsTraceProcessor(_Base):
     def shutdown(self) -> None:
         self._disabled = True
         with self._lock:
-            states = list(self._traces.values())
+            states = [s for s in self._traces.values() if not s.ended]
+            for s in states:
+                s.ended = True
             self._traces.clear()
         for state in states:
             self._end_trace_state(state)
