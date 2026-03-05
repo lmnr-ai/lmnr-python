@@ -179,17 +179,28 @@ class LaminarAgentsTraceProcessor(_Base):
         except Exception:
             return False
 
+    _SHUTDOWN_TIMEOUT = 10.0  # seconds to wait during shutdown/cleanup
+
     def _end_trace_state(self, state: _TraceState) -> None:
         """End all child spans (LIFO) then the root span for a trace."""
-        state.ready.wait()
-        # Wait for any in-flight on_span_end calls to finish so that
-        # the root span is not ended before its children.
-        state.pending_ends_done.wait()
-        # Snapshot and clear spans under the lock so concurrent
-        # on_span_end calls cannot pop the same entries.
-        with self._lock:
-            remaining = list(state.spans.values())
-            state.spans.clear()
+        state.ready.wait(timeout=self._SHUTDOWN_TIMEOUT)
+        # Wait for in-flight on_span_end calls, then atomically snapshot
+        # remaining spans.  Re-check under the lock to close the window
+        # where a new on_span_end increments pending_ends between the
+        # wait() return and the lock acquisition.
+        for _ in range(3):  # bounded retries
+            state.pending_ends_done.wait(timeout=self._SHUTDOWN_TIMEOUT)
+            with self._lock:
+                if state.pending_ends == 0:
+                    remaining = list(state.spans.values())
+                    state.spans.clear()
+                    break
+            # pending_ends changed while we waited; retry
+        else:
+            # Give up waiting — snapshot whatever is left to avoid hanging.
+            with self._lock:
+                remaining = list(state.spans.values())
+                state.spans.clear()
         for entry in reversed(remaining):
             try:
                 if entry.agents_span is not None:
