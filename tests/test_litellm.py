@@ -2,13 +2,11 @@ import asyncio
 import base64
 import json
 import os
-import pytest
 import uuid
-
-import litellm
-
 from importlib.metadata import version
 
+import litellm
+import pytest
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from pydantic import BaseModel
@@ -1399,6 +1397,7 @@ def test_litellm_responses_with_tool_call(span_exporter: InMemorySpanExporter):
             "arguments": '{"location":"Tokyo"}',
             "call_id": response.output[0].call_id,
             "name": "get_weather",
+            "namespace": None,
             "type": "function_call",
             "id": response.output[0].id,
             "status": "completed",
@@ -1563,6 +1562,7 @@ async def test_litellm_responses_with_tool_call_async(
             "type": "function_call",
             "id": response.output[0].id,
             "status": "completed",
+            "namespace": None,
         }
     ]
     assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
