@@ -106,8 +106,6 @@ def _set_request_attributes(span, kwargs, instance=None):
     model = kwargs.get("model")
     if vendor == "AWS" and model and "." in model:
         model = _cross_region_check(model)
-    elif vendor == "OpenRouter":
-        model = _extract_model_name_from_provider_format(model)
 
     _set_span_attribute(span, GEN_AI_REQUEST_MODEL, model)
     _set_span_attribute(span, GEN_AI_REQUEST_MAX_TOKENS, kwargs.get("max_tokens"))
@@ -211,8 +209,6 @@ def _set_response_attributes(span, response):
         return
 
     response_model = response.get("model")
-    if response_model:
-        response_model = _extract_model_name_from_provider_format(response_model)
     _set_span_attribute(span, GEN_AI_RESPONSE_MODEL, response_model)
     _set_span_attribute(span, GEN_AI_RESPONSE_ID, response.get("id"))
 
@@ -330,21 +326,6 @@ def _cross_region_check(value):
     else:
         vendor, model = value.split(".", 1)
         return model
-
-
-def _extract_model_name_from_provider_format(model_name):
-    """
-    Extract model name from provider/model format.
-    E.g., 'openai/gpt-4o' -> 'gpt-4o', 'anthropic/claude-3-sonnet' -> 'claude-3-sonnet'
-    """
-    if not model_name:
-        return model_name
-
-    if "/" in model_name:
-        parts = model_name.split("/")
-        return parts[-1]  # Return the last part (actual model name)
-
-    return model_name
 
 
 def is_streaming_response(response):
