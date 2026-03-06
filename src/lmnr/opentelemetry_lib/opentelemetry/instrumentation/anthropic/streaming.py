@@ -53,14 +53,10 @@ def _process_response_item(item, complete_response):
         for event in complete_response.get("events", []):
             event["finish_reason"] = item.delta.stop_reason
         if item.usage:
+            # message_delta usage values are cumulative (per Anthropic docs),
+            # so we update/replace rather than add to existing values
             if "usage" in complete_response:
-                item_output_tokens = dict(item.usage).get("output_tokens", 0)
-                existing_output_tokens = complete_response["usage"].get(
-                    "output_tokens", 0
-                )
-                complete_response["usage"]["output_tokens"] = (
-                    item_output_tokens + existing_output_tokens
-                )
+                complete_response["usage"].update(dict(item.usage))
             else:
                 complete_response["usage"] = dict(item.usage)
     elif item.type in ["message_stop", "message_start"]:
@@ -148,37 +144,38 @@ def build_from_streaming_response(
         complete_response.get("service_tier"),
     )
     # calculate token usage
-    if Config.enrich_token_usage:
-        try:
-            completion_tokens = -1
-            # prompt_usage
-            if usage := complete_response.get("usage"):
-                prompt_tokens = usage.get("input_tokens", 0) or 0
-            else:
-                prompt_tokens = 0
+    try:
+        # prompt_usage
+        if usage := complete_response.get("usage"):
+            prompt_tokens = usage.get("input_tokens", 0) or 0
+        else:
+            prompt_tokens = 0
 
-            # completion_usage
-            if usage := complete_response.get("usage"):
-                completion_tokens = usage.get("output_tokens", 0) or 0
-            else:
-                completion_content = ""
-                if complete_response.get("events"):
-                    model_name = complete_response.get("model") or None
-                    for event in complete_response.get("events") or []:
-                        if event.get("text"):
-                            completion_content += event.get("text")
+        # completion_usage
+        if usage := complete_response.get("usage"):
+            completion_tokens = usage.get("output_tokens", 0) or 0
+        elif Config.enrich_token_usage:
+            completion_tokens = 0
+            completion_content = ""
+            if complete_response.get("events"):
+                model_name = complete_response.get("model") or None
+                for event in complete_response.get("events") or []:
+                    if event.get("text"):
+                        completion_content += event.get("text")
 
-                    if model_name and hasattr(instance, "count_tokens"):
-                        completion_tokens = instance.count_tokens(completion_content)
+                if model_name and hasattr(instance, "count_tokens"):
+                    completion_tokens = instance.count_tokens(completion_content)
+        else:
+            completion_tokens = 0
 
-            _set_token_usage(
-                span,
-                complete_response,
-                prompt_tokens,
-                completion_tokens,
-            )
-        except Exception as e:
-            logger.warning("Failed to set token usage, error: %s", e)
+        _set_token_usage(
+            span,
+            complete_response,
+            prompt_tokens,
+            completion_tokens,
+        )
+    except Exception as e:
+        logger.warning("Failed to set token usage, error: %s", e)
 
     _handle_streaming_response(span, complete_response, record_raw_response)
 
@@ -217,37 +214,38 @@ async def abuild_from_streaming_response(
     )
 
     # calculate token usage
-    if Config.enrich_token_usage:
-        try:
-            # prompt_usage
-            if usage := complete_response.get("usage"):
-                prompt_tokens = usage.get("input_tokens", 0)
-            else:
-                prompt_tokens = 0
+    try:
+        # prompt_usage
+        if usage := complete_response.get("usage"):
+            prompt_tokens = usage.get("input_tokens", 0) or 0
+        else:
+            prompt_tokens = 0
 
+        # completion_usage
+        if usage := complete_response.get("usage"):
+            completion_tokens = usage.get("output_tokens", 0) or 0
+        elif Config.enrich_token_usage:
             completion_tokens = 0
-            # completion_usage
-            if usage := complete_response.get("usage"):
-                completion_tokens = usage.get("output_tokens", 0)
-            else:
-                completion_content = ""
-                if complete_response.get("events"):
-                    model_name = complete_response.get("model") or None
-                    for event in complete_response.get("events") or []:
-                        if event.get("text"):
-                            completion_content += event.get("text")
+            completion_content = ""
+            if complete_response.get("events"):
+                model_name = complete_response.get("model") or None
+                for event in complete_response.get("events") or []:
+                    if event.get("text"):
+                        completion_content += event.get("text")
 
-                    if model_name and hasattr(instance, "count_tokens"):
-                        completion_tokens = instance.count_tokens(completion_content)
+                if model_name and hasattr(instance, "count_tokens"):
+                    completion_tokens = instance.count_tokens(completion_content)
+        else:
+            completion_tokens = 0
 
-            _set_token_usage(
-                span,
-                complete_response,
-                prompt_tokens,
-                completion_tokens,
-            )
-        except Exception as e:
-            logger.warning("Failed to set token usage, error: %s", str(e))
+        _set_token_usage(
+            span,
+            complete_response,
+            prompt_tokens,
+            completion_tokens,
+        )
+    except Exception as e:
+        logger.warning("Failed to set token usage, error: %s", str(e))
 
     _handle_streaming_response(span, complete_response, record_raw_response)
 
