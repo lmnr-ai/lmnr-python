@@ -54,11 +54,16 @@ def _process_response_item(item, complete_response):
             event["finish_reason"] = item.delta.stop_reason
         if item.usage:
             # message_delta usage values are cumulative (per Anthropic docs),
-            # so we update/replace rather than add to existing values
+            # so we update/replace rather than add to existing values.
+            # Filter out None values to avoid overwriting message_start data
+            # (e.g. cache_creation_input_tokens) with None from message_delta.
+            usage_update = {
+                k: v for k, v in dict(item.usage).items() if v is not None
+            }
             if "usage" in complete_response:
-                complete_response["usage"].update(dict(item.usage))
+                complete_response["usage"].update(usage_update)
             else:
-                complete_response["usage"] = dict(item.usage)
+                complete_response["usage"] = usage_update
     elif item.type in ["message_stop", "message_start"]:
         # raw stream returns the service_tier in the message_start event
         # messages.stream returns the service_tier in the message_stop event
