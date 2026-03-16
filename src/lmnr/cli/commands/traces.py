@@ -78,9 +78,9 @@ TABLE_COLUMNS = [
 
 async def _traces_list(args: Namespace, formatter: OutputFormatter) -> None:
     """List traces with optional filters."""
-    limit = args.limit or 20
-    trace_type = getattr(args, "type", "DEFAULT") or "DEFAULT"
-    past_hours = args.past_hours or 24
+    limit = args.limit
+    trace_type = getattr(args, "type", None) or "DEFAULT"
+    past_hours = args.past_hours
 
     query = (
         "SELECT id, "

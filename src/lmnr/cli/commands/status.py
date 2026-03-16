@@ -34,7 +34,7 @@ def setup_status_parser(subparsers: _SubParsersAction) -> None:
 
 async def _status_overview(args: Namespace, formatter: OutputFormatter) -> None:
     """Show project status overview."""
-    hours = args.past_hours or 24
+    hours = args.past_hours
 
     traces_summary_query = (
         f"SELECT count() as total, "

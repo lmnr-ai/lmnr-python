@@ -49,7 +49,7 @@ TABLE_COLUMNS = [
 
 async def _evals_list(args: Namespace, formatter: OutputFormatter) -> None:
     """List evaluations with datapoint counts."""
-    limit = args.limit or 20
+    limit = args.limit
 
     query = (
         "SELECT "
