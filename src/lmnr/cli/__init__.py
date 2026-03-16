@@ -147,6 +147,25 @@ def setup_laminar_args(parser: ArgumentParser) -> None:
     )
 
 
+def setup_mcp_parser(subparsers: _SubParsersAction) -> None:
+    """Setup the mcp subcommand parser."""
+    parser_mcp = subparsers.add_parser(
+        "mcp",
+        description="Laminar MCP server for AI agent integration",
+        help="Start the MCP server for AI agent integration",
+    )
+    mcp_subparsers = parser_mcp.add_subparsers(
+        title="command",
+        dest="mcp_command",
+    )
+    parser_serve = mcp_subparsers.add_parser(
+        "serve",
+        description="Start the Laminar MCP server over stdio",
+        help="Start the MCP server over stdio",
+    )
+    setup_laminar_args(parser_serve)
+
+
 def setup_datasets_list_parser(subparsers: _SubParsersAction) -> None:
     """Setup the datasets list subcommand parser."""
     subparsers.add_parser(
@@ -331,6 +350,7 @@ def cli() -> None:
     setup_discover_parser(subparsers)
     setup_add_cursor_rules_parser(subparsers)
     setup_datasets_parser(subparsers)
+    setup_mcp_parser(subparsers)
 
     # Parse arguments and dispatch to appropriate handler
     parsed = parser.parse_args()
@@ -345,5 +365,22 @@ def cli() -> None:
         add_cursor_rules()
     elif parsed.subcommand == "datasets":
         asyncio.run(handle_datasets_command(parsed))
+    elif parsed.subcommand == "mcp":
+        if getattr(parsed, "mcp_command", None) == "serve":
+            try:
+                from lmnr.mcp.server import serve
+            except ImportError:
+                print(
+                    "MCP server dependencies not installed. "
+                    "Install with: pip install 'lmnr[mcp-server]'"
+                )
+                return
+            asyncio.run(serve(
+                project_api_key=parsed.project_api_key,
+                base_url=parsed.base_url,
+                port=parsed.port,
+            ))
+        else:
+            parser.parse_args(["mcp", "--help"])
     else:
         parser.print_help()

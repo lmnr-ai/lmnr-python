@@ -118,6 +118,7 @@ all = [
   "opentelemetry-instrumentation-watsonx==0.52.4",
   "opentelemetry-instrumentation-weaviate==0.52.4"
 ]
+mcp-server = ["mcp>=1.0.0"]
 
 [dependency-groups]
 dev = [
