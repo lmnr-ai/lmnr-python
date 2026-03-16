@@ -114,33 +114,33 @@ def register_eval_tools(server: FastMCP, mcp_client: LaminarMcpClient) -> None:
             )
             total_count = count_rows[0]["total"] if count_rows else len(rows)
 
-            # Compute aggregate scores across ALL datapoints (not just
-            # the paginated subset) by fetching only the scores column.
-            scores_sql = """
-                SELECT scores
+            # Compute aggregate scores server-side across ALL datapoints
+            # by unnesting the scores map in ClickHouse.
+            agg_sql = """
+                SELECT
+                    score_name,
+                    avg(score_value) as mean,
+                    min(score_value) as min_val,
+                    max(score_value) as max_val
                 FROM evaluation_datapoints
+                ARRAY JOIN
+                    mapKeys(scores) AS score_name,
+                    mapValues(scores) AS score_value
                 WHERE evaluation_id = {evaluation_id:UUID}
+                GROUP BY score_name
             """
-            all_score_rows = await client.sql.query(
-                scores_sql, {"evaluation_id": evaluation_id}
+            agg_rows = await client.sql.query(
+                agg_sql, {"evaluation_id": evaluation_id}
             )
-            all_scores: dict[str, list[float]] = {}
-            for score_row in all_score_rows:
-                scores = score_row.get("scores")
-                if isinstance(scores, dict):
-                    for score_name, score_val in scores.items():
-                        if isinstance(score_val, (int, float)):
-                            all_scores.setdefault(score_name, []).append(
-                                score_val
-                            )
 
             score_summary: dict[str, dict[str, float]] = {}
-            for score_name, values in all_scores.items():
-                if values:
-                    score_summary[score_name] = {
-                        "mean": sum(values) / len(values),
-                        "min": min(values),
-                        "max": max(values),
+            for agg_row in agg_rows:
+                name = agg_row.get("score_name")
+                if name:
+                    score_summary[name] = {
+                        "mean": agg_row["mean"],
+                        "min": agg_row["min_val"],
+                        "max": agg_row["max_val"],
                     }
 
             result = {
