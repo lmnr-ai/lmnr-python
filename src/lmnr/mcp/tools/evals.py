@@ -15,7 +15,8 @@ def register_eval_tools(server: FastMCP, mcp_client: LaminarMcpClient) -> None:
         name="list_evaluations",
         description=(
             "List evaluations that have been run in your Laminar project. "
-            "Shows evaluation names, groups, scores, and datapoint counts."
+            "Shows evaluation IDs, groups, and datapoint counts. "
+            "Use get_evaluation for detailed scores."
         ),
     )
     async def list_evaluations(
@@ -42,11 +43,10 @@ def register_eval_tools(server: FastMCP, mcp_client: LaminarMcpClient) -> None:
                     evaluation_id,
                     group_id,
                     min(created_at) as created_at,
-                    count() as datapoint_count,
-                    scores
+                    count() as datapoint_count
                 FROM evaluation_datapoints
                 WHERE {where_clause}
-                GROUP BY evaluation_id, group_id, scores
+                GROUP BY evaluation_id, group_id
                 ORDER BY created_at DESC
                 LIMIT {{limit:Int64}}
             """
