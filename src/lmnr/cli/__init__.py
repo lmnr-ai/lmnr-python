@@ -348,48 +348,62 @@ def _build_formatter(parsed):
     return OutputFormatter(mode=mode, no_color=no_color, jq_filter=jq_filter)
 
 
+def _make_global_flags_parser() -> ArgumentParser:
+    """Create a parser for global output flags (shared across subcommands).
+
+    Returned as a standalone parser with ``add_help=False`` so it can be
+    used both as a ``parents`` entry (for ``--help`` display) and for a
+    pre-parse pass that strips global flags regardless of position.
+    """
+    p = ArgumentParser(add_help=False)
+    p.add_argument(
+        "--json", action="store_true", default=False,
+        help="Force JSON output",
+    )
+    p.add_argument(
+        "--compact", "-c", action="store_true", default=False,
+        help="Token-optimized compact output for AI agents",
+    )
+    p.add_argument(
+        "--jsonl", action="store_true", default=False,
+        help="JSON Lines output (one object per line)",
+    )
+    p.add_argument(
+        "--jq", type=str, default=None,
+        help="JMESPath filter expression applied to output",
+    )
+    p.add_argument(
+        "--no-color", action="store_true", default=False,
+        help="Disable ANSI colored output",
+    )
+    p.add_argument(
+        "--api-key", type=str, default=None,
+        help="Override LMNR_PROJECT_API_KEY for this invocation",
+    )
+    p.add_argument(
+        "--api-url", type=str, default=None,
+        help="Override LMNR_BASE_URL for this invocation",
+    )
+    return p
+
+
 def cli() -> None:
     """Main CLI entry point."""
+    import sys
+
     from lmnr.cli.commands import register_commands
     from lmnr.cli.commands.traces import handle_traces_command as _handle_traces
     from lmnr.cli.commands.evals import handle_evals_command as _handle_evals
     from lmnr.cli.commands.sql import handle_sql_command as _handle_sql
     from lmnr.cli.commands.status import handle_status_command as _handle_status
 
+    global_flags_parser = _make_global_flags_parser()
+
     parser = ArgumentParser(
         prog="lmnr",
         description="CLI for Laminar. "
         + "Call `lmnr [subcommand] --help` for more information on each subcommand.",
-    )
-
-    # Global output flags (smart output)
-    parser.add_argument(
-        "--json", action="store_true", default=False,
-        help="Force JSON output",
-    )
-    parser.add_argument(
-        "--compact", "-c", action="store_true", default=False,
-        help="Token-optimized compact output for AI agents",
-    )
-    parser.add_argument(
-        "--jsonl", action="store_true", default=False,
-        help="JSON Lines output (one object per line)",
-    )
-    parser.add_argument(
-        "--jq", type=str, default=None,
-        help="JMESPath filter expression applied to output",
-    )
-    parser.add_argument(
-        "--no-color", action="store_true", default=False,
-        help="Disable ANSI colored output",
-    )
-    parser.add_argument(
-        "--api-key", type=str, default=None,
-        help="Override LMNR_PROJECT_API_KEY for this invocation",
-    )
-    parser.add_argument(
-        "--api-url", type=str, default=None,
-        help="Override LMNR_BASE_URL for this invocation",
+        parents=[global_flags_parser],
     )
 
     subparsers = parser.add_subparsers(title="subcommands", dest="subcommand")
@@ -404,8 +418,12 @@ def cli() -> None:
     # Smart-output commands (traces, evals, sql, status)
     register_commands(subparsers)
 
-    # Parse arguments and dispatch
-    parsed = parser.parse_args()
+    # Two-pass parse: first extract global flags from any position, then
+    # parse the remaining args through the full parser for subcommand routing.
+    global_ns, remaining = global_flags_parser.parse_known_args(sys.argv[1:])
+    parsed = parser.parse_args(remaining)
+    for key, val in vars(global_ns).items():
+        setattr(parsed, key, val)
 
     if parsed.subcommand == "eval":
         asyncio.run(run_evaluation(parsed))
