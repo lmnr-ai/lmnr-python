@@ -315,24 +315,91 @@ def setup_datasets_parser(subparsers: _SubParsersAction) -> None:
     setup_datasets_create_parser(parser_datasets_subparsers)
 
 
+def _build_formatter(parsed):
+    """Build an OutputFormatter from parsed global flags.
+
+    Resolves the output mode from explicit flags, env vars, or
+    auto-detection. Also injects api_key and api_url into the parsed
+    namespace so command handlers can use them uniformly.
+    """
+    from lmnr.cli.formatter import OutputFormatter, OutputMode
+
+    mode = None
+    if getattr(parsed, "json", False):
+        mode = OutputMode.JSON
+    elif getattr(parsed, "compact", False):
+        mode = OutputMode.COMPACT
+    elif getattr(parsed, "jsonl", False):
+        mode = OutputMode.JSONL
+
+    no_color = getattr(parsed, "no_color", False)
+    jq_filter = getattr(parsed, "jq", None)
+
+    api_key = getattr(parsed, "api_key", None) or from_env("LMNR_PROJECT_API_KEY")
+    api_url = getattr(parsed, "api_url", None) or from_env("LMNR_BASE_URL") or None
+    parsed.api_key = api_key
+    parsed.api_url = api_url
+
+    return OutputFormatter(mode=mode, no_color=no_color, jq_filter=jq_filter)
+
+
 def cli() -> None:
     """Main CLI entry point."""
+    from lmnr.cli.commands import register_commands
+    from lmnr.cli.commands.traces import handle_traces_command as _handle_traces
+    from lmnr.cli.commands.evals import handle_evals_command as _handle_evals
+    from lmnr.cli.commands.sql import handle_sql_command as _handle_sql
+    from lmnr.cli.commands.status import handle_status_command as _handle_status
+
     parser = ArgumentParser(
         prog="lmnr",
         description="CLI for Laminar. "
         + "Call `lmnr [subcommand] --help` for more information on each subcommand.",
     )
 
+    # Global output flags (smart output)
+    parser.add_argument(
+        "--json", action="store_true", default=False,
+        help="Force JSON output",
+    )
+    parser.add_argument(
+        "--compact", "-c", action="store_true", default=False,
+        help="Token-optimized compact output for AI agents",
+    )
+    parser.add_argument(
+        "--jsonl", action="store_true", default=False,
+        help="JSON Lines output (one object per line)",
+    )
+    parser.add_argument(
+        "--jq", type=str, default=None,
+        help="JMESPath filter expression applied to output",
+    )
+    parser.add_argument(
+        "--no-color", action="store_true", default=False,
+        help="Disable ANSI colored output",
+    )
+    parser.add_argument(
+        "--api-key", type=str, default=None,
+        help="Override LMNR_PROJECT_API_KEY for this invocation",
+    )
+    parser.add_argument(
+        "--api-url", type=str, default=None,
+        help="Override LMNR_BASE_URL for this invocation",
+    )
+
     subparsers = parser.add_subparsers(title="subcommands", dest="subcommand")
 
-    # Setup all subcommand parsers
+    # Legacy commands
     setup_eval_parser(subparsers)
     setup_dev_parser(subparsers)
     setup_discover_parser(subparsers)
     setup_add_cursor_rules_parser(subparsers)
     setup_datasets_parser(subparsers)
 
-    # Parse arguments and dispatch to appropriate handler
+    # Smart-output commands (traces, evals, sql, status)
+    register_commands(subparsers)
+
+    # Parse arguments and dispatch
     parsed = parser.parse_args()
 
     if parsed.subcommand == "eval":
@@ -345,5 +412,17 @@ def cli() -> None:
         add_cursor_rules()
     elif parsed.subcommand == "datasets":
         asyncio.run(handle_datasets_command(parsed))
+    elif parsed.subcommand == "traces":
+        formatter = _build_formatter(parsed)
+        _handle_traces(parsed, formatter)
+    elif parsed.subcommand == "evals":
+        formatter = _build_formatter(parsed)
+        _handle_evals(parsed, formatter)
+    elif parsed.subcommand == "sql":
+        formatter = _build_formatter(parsed)
+        _handle_sql(parsed, formatter)
+    elif parsed.subcommand == "status":
+        formatter = _build_formatter(parsed)
+        _handle_status(parsed, formatter)
     else:
         parser.print_help()
