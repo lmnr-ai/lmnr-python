@@ -26,6 +26,7 @@ class OutputMode(Enum):
 
 # Default compact key abbreviations for token optimization
 DEFAULT_COMPACT_KEYS: dict[str, str] = {
+    "id": "tid",
     "trace_id": "tid",
     "span_id": "sid",
     "start_time": "t0",
