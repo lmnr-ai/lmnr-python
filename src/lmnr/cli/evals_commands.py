@@ -190,6 +190,7 @@ WHERE evaluation_id = {eval_id:String}"""
   scores
 FROM evaluation_datapoints
 WHERE evaluation_id = {eval_id:String}
+ORDER BY created_at DESC
 LIMIT {limit:UInt64}"""
 
     try:
