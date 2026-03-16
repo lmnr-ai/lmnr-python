@@ -240,6 +240,7 @@ LIMIT {limit:UInt64}"""
             "first_created": summary.get("first_created"),
             "last_created": summary.get("last_created"),
             "score_averages": score_averages,
+            "score_averages_sample_size": len(datapoints_results),
             "datapoints_sample": datapoints_results,
         })
     else:
@@ -252,7 +253,11 @@ LIMIT {limit:UInt64}"""
         # Compute and display score averages
         score_averages = _compute_score_averages(datapoints_results)
         if score_averages:
-            print("\nScore Averages:")
+            sample_size = len(datapoints_results)
+            if sample_size < total:
+                print(f"\nScore Averages (computed from {sample_size} of {total} datapoints):")
+            else:
+                print("\nScore Averages:")
             for name, avg in sorted(score_averages.items()):
                 print(f"  {name:<16}{avg:.4f}")
 
