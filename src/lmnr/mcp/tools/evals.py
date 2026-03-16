@@ -114,25 +114,28 @@ def register_eval_tools(server: FastMCP, mcp_client: LaminarMcpClient) -> None:
             )
             total_count = count_rows[0]["total"] if count_rows else len(rows)
 
-            # Compute aggregate scores from the returned datapoints
-            aggregate_scores: dict[str, dict[str, Any]] = {}
-            for row in rows:
-                scores = row.get("scores")
+            # Compute aggregate scores across ALL datapoints (not just
+            # the paginated subset) by fetching only the scores column.
+            scores_sql = """
+                SELECT scores
+                FROM evaluation_datapoints
+                WHERE evaluation_id = {evaluation_id:UUID}
+            """
+            all_score_rows = await client.sql.query(
+                scores_sql, {"evaluation_id": evaluation_id}
+            )
+            all_scores: dict[str, list[float]] = {}
+            for score_row in all_score_rows:
+                scores = score_row.get("scores")
                 if isinstance(scores, dict):
                     for score_name, score_val in scores.items():
                         if isinstance(score_val, (int, float)):
-                            if score_name not in aggregate_scores:
-                                aggregate_scores[score_name] = {
-                                    "values": [],
-                                }
-                            aggregate_scores[score_name]["values"].append(
+                            all_scores.setdefault(score_name, []).append(
                                 score_val
                             )
 
-            # Compute mean, min, max for each score
             score_summary: dict[str, dict[str, float]] = {}
-            for score_name, info in aggregate_scores.items():
-                values = info["values"]
+            for score_name, values in all_scores.items():
                 if values:
                     score_summary[score_name] = {
                         "mean": sum(values) / len(values),
