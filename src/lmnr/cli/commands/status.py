@@ -73,10 +73,14 @@ async def _status_overview(args: Namespace, formatter: OutputFormatter) -> None:
         base_url=args.api_url,
         project_api_key=args.api_key,
     ) as client:
-        traces_summary = await client.sql.query(traces_summary_query)
-        spans_summary = await client.sql.query(spans_summary_query)
-        recent_evals = await client.sql.query(recent_evals_query)
-        top_models = await client.sql.query(top_models_query)
+        traces_summary, spans_summary, recent_evals, top_models = (
+            await asyncio.gather(
+                client.sql.query(traces_summary_query),
+                client.sql.query(spans_summary_query),
+                client.sql.query(recent_evals_query),
+                client.sql.query(top_models_query),
+            )
+        )
 
     result: dict[str, Any] = {
         "time_window": f"past {hours}h",

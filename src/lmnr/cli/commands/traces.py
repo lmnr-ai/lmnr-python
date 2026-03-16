@@ -11,13 +11,9 @@ import sys
 from argparse import ArgumentParser, Namespace, _SubParsersAction
 from typing import Any
 
+from lmnr.cli.commands.utils import escape_sql_string as _esc
 from lmnr.cli.formatter import OutputFormatter, OutputMode
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
-
-
-def _esc(value: str) -> str:
-    """Escape a string for safe use in a SQL single-quoted literal."""
-    return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
 # -- Parser setup ------------------------------------------------------------
