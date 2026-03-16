@@ -100,12 +100,12 @@ def _print_status_table(result: dict, formatter: OutputFormatter) -> None:
     evals = result.get("recent_evaluations", [])
     window = result.get("time_window", "past 24h")
 
-    total = traces.get("total", 0)
-    errors = traces.get("errors", 0)
+    total = traces.get("total") or 0
+    errors = traces.get("errors") or 0
     error_pct = (errors / total * 100) if total else 0
-    avg_dur = traces.get("avg_duration", 0)
-    cost = traces.get("total_cost", 0)
-    tokens = traces.get("total_tokens", 0)
+    avg_dur = traces.get("avg_duration") or 0
+    cost = traces.get("total_cost") or 0
+    tokens = traces.get("total_tokens") or 0
 
     lines = [
         formatter._colorize(f"Laminar Project Status ({window})", "bold"),
