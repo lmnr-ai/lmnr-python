@@ -15,6 +15,11 @@ from lmnr.cli.formatter import OutputFormatter, OutputMode
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 
 
+def _esc(value: str) -> str:
+    """Escape a string for safe use in a SQL single-quoted literal."""
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
 # -- Parser setup ------------------------------------------------------------
 
 def setup_traces_parser(subparsers: _SubParsersAction) -> None:
@@ -89,15 +94,15 @@ async def _traces_list(args: Namespace, formatter: OutputFormatter) -> None:
         "input_tokens, output_tokens, session_id, user_id, tags, "
         "trace_type, duration "
         "FROM traces "
-        f"WHERE trace_type = '{trace_type}' "
+        f"WHERE trace_type = '{_esc(trace_type)}' "
     )
 
     if args.status:
-        query += f"AND status = '{args.status}' "
+        query += f"AND status = '{_esc(args.status)}' "
     if past_hours:
         query += f"AND start_time >= now() - interval {past_hours} hour "
     if args.tag:
-        query += f"AND has(tags, '{args.tag}') "
+        query += f"AND has(tags, '{_esc(args.tag)}') "
 
     query += f"ORDER BY start_time DESC LIMIT {limit}"
 
@@ -112,7 +117,7 @@ async def _traces_list(args: Namespace, formatter: OutputFormatter) -> None:
 
 async def _traces_get(args: Namespace, formatter: OutputFormatter) -> None:
     """Get detailed trace with span tree."""
-    trace_id = args.trace_id
+    trace_id = _esc(args.trace_id)
     full = getattr(args, "full", False)
 
     # Fetch trace summary

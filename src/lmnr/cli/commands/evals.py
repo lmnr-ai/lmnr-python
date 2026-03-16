@@ -14,6 +14,11 @@ from lmnr.cli.formatter import OutputFormatter
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 
 
+def _esc(value: str) -> str:
+    """Escape a string for safe use in a SQL single-quoted literal."""
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
 # -- Parser setup ------------------------------------------------------------
 
 def setup_evals_parser(subparsers: _SubParsersAction) -> None:
@@ -61,7 +66,7 @@ async def _evals_list(args: Namespace, formatter: OutputFormatter) -> None:
     )
 
     if args.group:
-        query += f"WHERE group_id = '{args.group}' "
+        query += f"WHERE group_id = '{_esc(args.group)}' "
 
     query += (
         "GROUP BY evaluation_id "

@@ -335,6 +335,11 @@ def _build_formatter(parsed):
     no_color = getattr(parsed, "no_color", False)
     jq_filter = getattr(parsed, "jq", None)
 
+    # --jq implies JSON output since JMESPath can transform data into shapes
+    # that TABLE mode cannot render (e.g. a flat list of strings).
+    if jq_filter and mode is None:
+        mode = OutputMode.JSON
+
     api_key = getattr(parsed, "api_key", None) or from_env("LMNR_PROJECT_API_KEY")
     api_url = getattr(parsed, "api_url", None) or from_env("LMNR_BASE_URL") or None
     parsed.api_key = api_key
