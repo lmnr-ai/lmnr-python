@@ -55,10 +55,12 @@ def _build_span_tree(spans: list[dict[str, Any]]) -> str:
             seen.add(sid)
             _render(root, 0)
 
-    # If no roots found (orphaned spans), render all flat
+    # If no roots found, render from spans whose parent is not in the list
     if not lines:
+        span_ids = {s.get("span_id") for s in spans}
         for span in spans:
-            _render(span, 0)
+            if span.get("parent_span_id") not in span_ids:
+                _render(span, 0)
 
     return "\n".join(lines)
 
