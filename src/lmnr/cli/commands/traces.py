@@ -144,8 +144,10 @@ async def _traces_get(args: Namespace, formatter: OutputFormatter) -> None:
         base_url=args.api_url,
         project_api_key=args.api_key,
     ) as client:
-        trace_rows = await client.sql.query(trace_query)
-        spans = await client.sql.query(spans_query)
+        trace_rows, spans = await asyncio.gather(
+            client.sql.query(trace_query),
+            client.sql.query(spans_query),
+        )
 
     if not trace_rows:
         print(f"Error: Trace {trace_id} not found.", file=sys.stderr)
