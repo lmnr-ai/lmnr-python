@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.7.44"
+version = "0.7.45"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -15,15 +15,20 @@ readme = "README.md"
 requires-python = ">=3.10,<4"
 license = "Apache-2.0"
 dependencies = [
-  "pydantic (>=2.0.3,<3.0.0)",
-  "python-dotenv (>=1.0,<2.0)",
+  "httpx (>=0.24.0,<1.0.0)",
+  "lmnr-claude-code-proxy>=0.1.14",
   "opentelemetry-api (>=1.39.0, <2.0.0)",
   "opentelemetry-sdk (>=1.39.0, <2.0.0)",
   "opentelemetry-exporter-otlp-proto-http (>=1.39.0, <2.0.0)",
   "opentelemetry-exporter-otlp-proto-grpc (>=1.39.0, <2.0.0)",
   "opentelemetry-instrumentation (>=0.54b0, <1.0.0)",
+  "opentelemetry-instrumentation-threading (>=0.54b0, <1.0.0)",
   "opentelemetry-semantic-conventions (==0.60b1)",
   "opentelemetry-semantic-conventions-ai (==0.4.13)",
+  "orjson (>=3.0.0,<4.0.0)",
+  "packaging (>=22.0)",
+  "pydantic (>=2.0.3,<3.0.0)",
+  "python-dotenv (>=1.0,<2.0)",
   "tqdm (>=4.0)",
   "tenacity (>=8.0,<10.0)",
   # Since 1.68.0, grpcio writes a warning message
@@ -36,10 +41,6 @@ dependencies = [
   # https://discuss.ai.google.dev/t/warning-all-log-messages-before-absl-initializelog-is-called-are-written-to-stderr-e0000-001731955515-629532-17124-init-cc-229-grpc-wait-for-shutdown-with-timeout-timed-out/50020
   # https://github.com/grpc/grpc/issues/38490
   "grpcio>=1",
-  "httpx (>=0.24.0,<1.0.0)",
-  "orjson (>=3.0.0,<4.0.0)",
-  "packaging (>=22.0)",
-  "opentelemetry-instrumentation-threading (>=0.54b0, <1.0.0)",
 ]
 # poetry would auto-generate these based on requires-python, but other build
 # systems don't, so we need to specify them manually.
@@ -67,7 +68,6 @@ lmnr = "lmnr.cli:cli"
 alephalpha=["opentelemetry-instrumentation-alephalpha==0.52.4"]
 bedrock=["opentelemetry-instrumentation-bedrock==0.52.4"]
 chromadb=["opentelemetry-instrumentation-chromadb==0.52.4"]
-claude-agent-sdk=["lmnr-claude-code-proxy>=0.1.14"]
 cohere=["opentelemetry-instrumentation-cohere==0.52.4"]
 crewai=["opentelemetry-instrumentation-crewai==0.52.4"]
 haystack=["opentelemetry-instrumentation-haystack==0.52.4"]
@@ -93,7 +93,6 @@ weaviate=["opentelemetry-instrumentation-weaviate==0.52.4"]
 # we suggest using package-manager-specific commands instead,
 # like `uv add lmnr --all-extras`
 all = [
-  "lmnr-claude-code-proxy>=0.1.14",
   "opentelemetry-instrumentation-alephalpha==0.52.4",
   "opentelemetry-instrumentation-bedrock==0.52.4",
   "opentelemetry-instrumentation-chromadb==0.52.4",
@@ -121,27 +120,27 @@ all = [
 
 [dependency-groups]
 dev = [
-  "autopep8>=2.3.2",
-  "flake8>=7.2.0",
-  "pytest>=9.0.2",
-  "pytest-sugar>=1.1.1",
-  "pytest-asyncio>=1.3.0",
-  "playwright>=1.52.0",
-  "vcrpy>=8.1.1",
-  "openai>=1.107.0",
-  "patchright>=1.52.3",
-  "google-genai>=1.31.0",
-  "langgraph>=0.4.8",
-  "langchain-core>=0.3.75",
-  "langchain>=0.3.27",
-  "litellm>=1.80.16",
-  "groq>=0.30.0",
-  "anthropic[bedrock]>=0.60.0",
-  "langchain-openai>=0.3.32",
-  "kernel>=0.18.0",
-  "claude-agent-sdk>=0.1.33",
-  "fastapi>=0.125.0",
-  "pytest-recording>=0.13.4",
+  "anthropic[bedrock]==0.86.0",
+  "autopep8==2.3.2",
+  "claude-agent-sdk==0.1.50",
+  "fastapi==0.135.2",
+  "flake8==7.3.0",
+  "google-genai==1.68.0",
+  "groq==1.1.2",
+  "kernel==0.44.0",
+  "langchain==1.2.13",
+  "langchain-core==1.2.22",
+  "langchain-openai==1.1.12",
+  "langgraph==1.1.3",
+  "litellm==1.81.16",
+  "openai==2.30.0",
+  "patchright==1.58.2",
+  "playwright==1.58.0",
+  "pytest==9.0.2",
+  "pytest-asyncio==1.3.0",
+  "pytest-recording==0.13.4",
+  "pytest-sugar==1.1.1",
+  "vcrpy==8.1.1",
 ]
 
 [build-system]
