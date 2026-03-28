@@ -5,7 +5,10 @@ from lmnr.cli.datasets import handle_datasets_command
 from lmnr.cli.dev import run_dev
 from lmnr.cli.discover import run_discover
 from lmnr.cli.evals import run_evaluation
+from lmnr.cli.evals_commands import handle_evals_command, setup_evals_commands_parser
 from lmnr.cli.rules import add_cursor_rules
+from lmnr.cli.sql_command import handle_sql_command, setup_sql_parser
+from lmnr.cli.traces import handle_traces_command, setup_traces_parser
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import from_env
 
@@ -331,6 +334,9 @@ def cli() -> None:
     setup_discover_parser(subparsers)
     setup_add_cursor_rules_parser(subparsers)
     setup_datasets_parser(subparsers)
+    setup_traces_parser(subparsers)
+    setup_evals_commands_parser(subparsers)
+    setup_sql_parser(subparsers)
 
     # Parse arguments and dispatch to appropriate handler
     parsed = parser.parse_args()
@@ -345,5 +351,11 @@ def cli() -> None:
         add_cursor_rules()
     elif parsed.subcommand == "datasets":
         asyncio.run(handle_datasets_command(parsed))
+    elif parsed.subcommand == "traces":
+        asyncio.run(handle_traces_command(parsed))
+    elif parsed.subcommand == "evals":
+        asyncio.run(handle_evals_command(parsed))
+    elif parsed.subcommand == "sql":
+        asyncio.run(handle_sql_command(parsed))
     else:
         parser.print_help()
