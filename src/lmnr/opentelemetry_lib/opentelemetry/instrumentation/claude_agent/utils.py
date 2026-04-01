@@ -1,8 +1,10 @@
 """Shared utilities for Claude Agent instrumentation."""
 
 import os
+import re
 import socket
 import time
+
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
@@ -11,6 +13,9 @@ DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 FOUNDRY_BASE_URL_ENV = "ANTHROPIC_FOUNDRY_BASE_URL"
 FOUNDRY_RESOURCE_ENV = "ANTHROPIC_FOUNDRY_RESOURCE"
 FOUNDRY_USE_ENV = "CLAUDE_CODE_USE_FOUNDRY"
+BEDROCK_BASE_URL_ENV = "ANTHROPIC_BEDROCK_BASE_URL"
+BEDROCK_USE_ENV = "CLAUDE_CODE_USE_BEDROCK"
+BEDROCK_AWS_REGION_ENV = "AWS_REGION"
 
 
 def is_truthy_env(value: str | None) -> bool:
@@ -90,6 +95,24 @@ def wait_for_port(port: int, timeout: float = 5.0) -> bool:
     return False
 
 
+def _get_region_from_aws_config(profile: str) -> str | None:
+    """Read region for a given profile from ~/.aws/config."""
+    config_path = os.path.expanduser("~/.aws/config")
+    try:
+        with open(config_path, "r") as f:
+            content = f.read()
+    except OSError:
+        return None
+
+    profile_header = "default" if profile == "default" else f"profile {profile}"
+    match = re.search(
+        rf"\[{re.escape(profile_header)}\][^\[]*?region\s*=\s*([^\s\n]+)",
+        content,
+        re.DOTALL,
+    )
+    return match.group(1) if match else None
+
+
 def resolve_target_url_from_env(
     env_dict: dict[str, str], fallback: str = DEFAULT_ANTHROPIC_BASE_URL
 ) -> str | None:
@@ -101,10 +124,14 @@ def resolve_target_url_from_env(
     Resolution order (highest to lowest priority):
     1. HTTPS_PROXY - if set, use as target (our proxy will forward to it)
     2. HTTP_PROXY - if set, use as target (our proxy will forward to it)
-    3. Third-party provider URLs (e.g., Foundry):
+    3. Third-party provider URLs (e.g., Foundry, Bedrock):
        - If CLAUDE_CODE_USE_FOUNDRY is truthy:
          - Use ANTHROPIC_FOUNDRY_BASE_URL, or
          - Construct from ANTHROPIC_FOUNDRY_RESOURCE
+       - If CLAUDE_CODE_USE_BEDROCK is truthy:
+         - Use ANTHROPIC_BEDROCK_BASE_URL, or
+         - Construct from AWS_REGION env var, or
+         - Construct by reading region from ~/.aws/config via AWS_PROFILE
     4. ANTHROPIC_BASE_URL - standard Anthropic API base URL
     5. Fall back to default (https://api.anthropic.com)
 
@@ -152,6 +179,30 @@ def resolve_target_url_from_env(
             FOUNDRY_USE_ENV,
             FOUNDRY_BASE_URL_ENV,
             FOUNDRY_RESOURCE_ENV,
+        )
+        return None
+
+    # 3b. Check for Bedrock
+    bedrock_enabled = is_truthy_env(get_env_value(BEDROCK_USE_ENV))
+    if bedrock_enabled:
+        bedrock_base_url = get_env_value(BEDROCK_BASE_URL_ENV)
+        if bedrock_base_url:
+            return bedrock_base_url.rstrip("/")
+
+        region = get_env_value(BEDROCK_AWS_REGION_ENV)
+        if not region:
+            aws_profile = get_env_value("AWS_PROFILE") or "default"
+            if aws_profile:
+                region = _get_region_from_aws_config(aws_profile)
+
+        if region:
+            return f"https://bedrock-runtime.{region}.amazonaws.com"
+
+        logger.error(
+            "%s is set but could not determine AWS region. "
+            "Set %s or configure a region in ~/.aws/config for the active profile.",
+            BEDROCK_USE_ENV,
+            BEDROCK_AWS_REGION_ENV,
         )
         return None
 
@@ -210,5 +261,11 @@ def setup_proxy_env(proxy_url: str) -> dict[str, str | None]:
 
         os.environ[FOUNDRY_BASE_URL_ENV] = proxy_url
         os.environ.pop(FOUNDRY_RESOURCE_ENV, None)
+
+    # Handle Bedrock-specific env vars
+    if is_truthy_env(os.environ.get(BEDROCK_USE_ENV)):
+        snapshot[BEDROCK_BASE_URL_ENV] = os.environ.get(BEDROCK_BASE_URL_ENV)
+        os.environ.pop(BEDROCK_BASE_URL_ENV, None)
+        os.environ[BEDROCK_BASE_URL_ENV] = proxy_url
 
     return snapshot
