@@ -106,9 +106,9 @@ def _get_region_from_aws_config(profile: str) -> str | None:
 
     profile_header = "default" if profile == "default" else f"profile {profile}"
     match = re.search(
-        rf"\[{re.escape(profile_header)}\][^\[]*?region\s*=\s*([^\s\n]+)",
+        rf"\[{re.escape(profile_header)}\][^\[]*?^\s*region\s*=\s*([^\s\n]+)",
         content,
-        re.DOTALL,
+        re.MULTILINE | re.DOTALL,
     )
     return match.group(1) if match else None
 
