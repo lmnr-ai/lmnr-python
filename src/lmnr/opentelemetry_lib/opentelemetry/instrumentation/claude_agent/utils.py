@@ -264,7 +264,6 @@ def setup_proxy_env(proxy_url: str) -> dict[str, str | None]:
     # Handle Bedrock-specific env vars
     if is_truthy_env(os.environ.get(BEDROCK_USE_ENV)):
         snapshot[BEDROCK_BASE_URL_ENV] = os.environ.get(BEDROCK_BASE_URL_ENV)
-        os.environ.pop(BEDROCK_BASE_URL_ENV, None)
         os.environ[BEDROCK_BASE_URL_ENV] = proxy_url
 
     return snapshot
