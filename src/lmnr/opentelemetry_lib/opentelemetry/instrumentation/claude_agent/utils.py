@@ -192,8 +192,7 @@ def resolve_target_url_from_env(
         region = get_env_value(BEDROCK_AWS_REGION_ENV)
         if not region:
             aws_profile = get_env_value("AWS_PROFILE") or "default"
-            if aws_profile:
-                region = _get_region_from_aws_config(aws_profile)
+            region = _get_region_from_aws_config(aws_profile)
 
         if region:
             return f"https://bedrock-runtime.{region}.amazonaws.com"

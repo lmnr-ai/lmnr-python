@@ -384,6 +384,8 @@ def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> No
     - If Foundry enabled:
         - sets ANTHROPIC_FOUNDRY_BASE_URL to proxy URL
         - Removes ANTHROPIC_FOUNDRY_RESOURCE from options.env (mutually exclusive)
+    - If Bedrock enabled:
+        - sets ANTHROPIC_BEDROCK_BASE_URL to proxy URL
     - ALL OTHER env vars passed intact
 
     Note: For SubprocessCLITransport, HTTP_PROXY, HTTPS_PROXY, and ANTHROPIC_FOUNDRY_RESOURCE
