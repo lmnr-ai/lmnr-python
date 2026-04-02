@@ -275,9 +275,7 @@ def default_json(o):
     return DEFAULT_PLACEHOLDER
 
 
-def json_dumps(data: dict, prevent_double_stringify: bool = False) -> str:
-    if prevent_double_stringify and isinstance(data, str):
-        return data
+def json_dumps(data: dict | list) -> str:
     try:
         return orjson.dumps(
             data,

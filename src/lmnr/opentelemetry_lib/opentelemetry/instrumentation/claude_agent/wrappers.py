@@ -24,6 +24,8 @@ from .utils import (
     FOUNDRY_BASE_URL_ENV,
     FOUNDRY_RESOURCE_ENV,
     FOUNDRY_USE_ENV,
+    BEDROCK_BASE_URL_ENV,
+    BEDROCK_USE_ENV,
 )
 
 logger = get_default_logger(__name__)
@@ -343,6 +345,8 @@ def snapshot_options_env_for_proxy(options) -> dict[str, str | None]:
         FOUNDRY_BASE_URL_ENV,
         FOUNDRY_RESOURCE_ENV,
         FOUNDRY_USE_ENV,
+        BEDROCK_BASE_URL_ENV,
+        BEDROCK_USE_ENV,
     ]
 
     snapshot = {}
@@ -380,6 +384,8 @@ def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> No
     - If Foundry enabled:
         - sets ANTHROPIC_FOUNDRY_BASE_URL to proxy URL
         - Removes ANTHROPIC_FOUNDRY_RESOURCE from options.env (mutually exclusive)
+    - If Bedrock enabled:
+        - sets ANTHROPIC_BEDROCK_BASE_URL to proxy URL
     - ALL OTHER env vars passed intact
 
     Note: For SubprocessCLITransport, HTTP_PROXY, HTTPS_PROXY, and ANTHROPIC_FOUNDRY_RESOURCE
@@ -411,12 +417,17 @@ def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> No
             options.env["CLAUDE_CODE_USE_FOUNDRY"] = "1"
         options.env[FOUNDRY_BASE_URL_ENV] = proxy_url
 
+    bedrock_enabled = is_truthy_env(get_env_value(BEDROCK_USE_ENV))
+    if bedrock_enabled:
+        if BEDROCK_USE_ENV not in options.env:
+            options.env[BEDROCK_USE_ENV] = "1"
+        options.env[BEDROCK_BASE_URL_ENV] = proxy_url
+
 
 def wrap_query(to_wrap: dict[str, Any]):
     """Wrap query() function - handles custom transport wrapping."""
 
     def wrapper(wrapped, instance, args, kwargs):
-
         transport = kwargs.get("transport")
 
         if transport:
