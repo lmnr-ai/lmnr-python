@@ -64,3 +64,15 @@ lmnr datasets pull <id>       # Pull dataset
 LMNR_PROJECT_API_KEY  # API key (can also pass to initialize())
 LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
 ```
+
+## Coding Style Guidelines
+
+### Python
+
+- Do **not** import `List`, `Dict`, `Set`, `Tuple` from `typing` — use the built-in `list`, `dict`, `set`, `tuple` instead (Python 3.10+).
+- Prefer `T | None` over `Optional[T]`.
+- Strongly type wherever possible.
+
+### General
+
+- When adding a new Python dependency, do **not** rely on cached knowledge for version numbers. Query pypi.org directly to get the latest version.
