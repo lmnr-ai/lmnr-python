@@ -266,6 +266,201 @@ def _process_command_response(
         _emit_logs_from_response(logger, response, session_id, cmd_id, ctx)
 
 
+@dont_throw
+def _set_exec_request_attributes(span: Span, command: str, cwd: str | None):
+    """Set span attributes from the exec request."""
+    set_span_attribute(span, "daytona.command", command)
+    if cwd is not None:
+        set_span_attribute(span, "daytona.cwd", cwd)
+
+
+@dont_throw
+def _set_exec_response_attributes(span: Span, response):
+    """Set span attributes from the exec response."""
+    if hasattr(response, "exit_code"):
+        set_span_attribute(span, "daytona.exit_code", response.exit_code)
+
+
+def _emit_exec_log(
+    logger: Logger,
+    stream: LogStream,
+    content: str,
+    command: str,
+    ctx: Context,
+):
+    """Emit a log event for an exec command."""
+    if not content:
+        return
+
+    try:
+        event_name = f"daytona.log.{stream.value}"
+        event_severity_number = (
+            SeverityNumber.INFO if stream == LogStream.STDOUT else SeverityNumber.ERROR
+        )
+
+        logger.emit(
+            LogRecord(
+                timestamp=time.time_ns(),
+                context=ctx,
+                body=content,
+                severity_number=event_severity_number,
+                attributes={
+                    **DAYTONA_LOG_ATTRIBUTES,
+                    "daytona.command": command,
+                    "daytona.log.stream": stream.value,
+                },
+                event_name=event_name,
+            )
+        )
+    except Exception as e:
+        log.debug(f"Failed to emit Daytona exec log event: {e}")
+
+
+def _emit_exec_logs_from_response(
+    logger: Logger,
+    response,
+    command: str,
+    ctx: Context,
+):
+    """Emit logs from an exec response.
+
+    The exec response has `result` (stdout) and `artifacts.stdout`.
+    """
+    stdout = getattr(response, "result", None)
+    if stdout:
+        _emit_exec_log(logger, LogStream.STDOUT, stdout, command, ctx)
+
+
+def _wrap_exec(
+    to_wrap: WrappedFunctionSpec,
+    wrapped,
+    instance,
+    args,
+    kwargs,
+):
+    """Wrapper for sync Process.exec.
+
+    Creates a span, executes the command, sets attributes, ends span, then emits logs.
+    """
+    if kwargs is None:
+        kwargs = {}
+    if args is None:
+        args = []
+
+    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
+        return wrapped(*args, **kwargs)
+
+    logger: Logger | None = get_logger(__name__, __version__)
+
+    span = Laminar.start_active_span(
+        name=to_wrap["span_name"],
+        span_type=to_wrap["span_type"],
+        user_id=(kwargs.get("metadata") or {}).get("user_id"),
+        session_id=(kwargs.get("metadata") or {}).get("session_id"),
+        tags=(kwargs.get("metadata") or {}).get("tags", []),
+        metadata=(kwargs.get("metadata") or {}),
+    )
+
+    # Extract command and cwd from args/kwargs
+    # exec(command, cwd=None, env=None, timeout=None)
+    command = args[0] if len(args) > 0 else kwargs.get("command", "")
+    cwd = args[1] if len(args) > 1 else kwargs.get("cwd")
+
+    if span.is_recording():
+        _set_exec_request_attributes(span, command, cwd)
+
+    ctx = get_current_context()
+
+    try:
+        response = wrapped(*args, **kwargs)
+
+        if span.is_recording():
+            _set_exec_response_attributes(span, response)
+
+        span.end()
+
+    except Exception as e:
+        attributes = get_event_attributes_from_context()
+        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
+        span.record_exception(e, attributes=attributes)
+        span.set_status(Status(StatusCode.ERROR, str(e)))
+        span.end()
+        raise
+
+    try:
+        if logger is not None:
+            _emit_exec_logs_from_response(logger, response, command, ctx)
+    except Exception as log_error:
+        log.debug(f"Failed to process Daytona exec response for logging: {log_error}")
+
+    return response
+
+
+async def _awrap_exec(
+    to_wrap: WrappedFunctionSpec,
+    wrapped,
+    instance,
+    args,
+    kwargs,
+):
+    """Wrapper for async AsyncProcess.exec.
+
+    Creates a span, executes the command, sets attributes, ends span, then emits logs.
+    """
+    if kwargs is None:
+        kwargs = {}
+    if args is None:
+        args = []
+
+    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
+        return await wrapped(*args, **kwargs)
+
+    logger: Logger | None = get_logger(__name__, __version__)
+
+    span = Laminar.start_active_span(
+        name=to_wrap["span_name"],
+        span_type=to_wrap["span_type"],
+        user_id=(kwargs.get("metadata") or {}).get("user_id"),
+        session_id=(kwargs.get("metadata") or {}).get("session_id"),
+        tags=(kwargs.get("metadata") or {}).get("tags", []),
+        metadata=(kwargs.get("metadata") or {}),
+    )
+
+    # Extract command and cwd from args/kwargs
+    # exec(command, cwd=None, env=None, timeout=None)
+    command = args[0] if len(args) > 0 else kwargs.get("command", "")
+    cwd = args[1] if len(args) > 1 else kwargs.get("cwd")
+
+    if span.is_recording():
+        _set_exec_request_attributes(span, command, cwd)
+
+    ctx = get_current_context()
+
+    try:
+        response = await wrapped(*args, **kwargs)
+
+        if span.is_recording():
+            _set_exec_response_attributes(span, response)
+
+        span.end()
+
+    except Exception as e:
+        attributes = get_event_attributes_from_context()
+        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
+        span.record_exception(e, attributes=attributes)
+        span.set_status(Status(StatusCode.ERROR, str(e)))
+        span.end()
+        raise
+
+    try:
+        if logger is not None:
+            _emit_exec_logs_from_response(logger, response, command, ctx)
+    except Exception as log_error:
+        log.debug(f"Failed to process Daytona exec response for logging: {log_error}")
+
+    return response
+
+
 def _wrap(
     to_wrap: WrappedFunctionSpec,
     wrapped,

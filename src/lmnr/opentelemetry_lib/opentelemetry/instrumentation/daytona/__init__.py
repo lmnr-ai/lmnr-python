@@ -1,22 +1,28 @@
 """OpenTelemetry Daytona SDK instrumentation
 
 This module instruments the Daytona SDK to capture traces and logs for
-execute_session_command calls.
+execute_session_command and exec calls.
 
 The instrumentation handles both synchronous and asynchronous commands:
 
-Synchronous commands (run_async/var_async=False):
-1. Create a span when execute_session_command is called
+execute_session_command:
+- Synchronous commands (run_async/var_async=False):
+  1. Create a span when execute_session_command is called
+  2. Execute the command and wait for completion
+  3. End the span after the command returns
+  4. Emit logs immediately from response.stdout/stderr
+- Asynchronous commands (run_async/var_async=True):
+  1. Create a span when execute_session_command is called
+  2. Execute the command (returns immediately with cmd_id)
+  3. End the span after execute_session_command returns
+  4. Start background log streaming to capture stdout/stderr as they arrive
+  5. Emit OpenTelemetry logs for each line using the Logs API
+
+exec:
+1. Create a span when exec is called
 2. Execute the command and wait for completion
 3. End the span after the command returns
-4. Emit logs immediately from response.stdout/stderr
-
-Asynchronous commands (run_async/var_async=True):
-1. Create a span when execute_session_command is called
-2. Execute the command (returns immediately with cmd_id)
-3. End the span after execute_session_command returns
-4. Start background log streaming to capture stdout/stderr as they arrive
-5. Emit OpenTelemetry logs for each line using the Logs API
+4. Emit logs from response.result (stdout)
 
 Note: The module path for the Daytona SDK may need adjustment based on the
 actual package structure. Update WRAPPED_METHODS if the module path differs.
@@ -28,7 +34,7 @@ from importlib.metadata import version
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import BaseLaminarInstrumentor, LaminarInstrumentorConfig
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import WrappedFunctionSpec, LaminarInstrumentationScopeAttributes
 
-from .wrappers import _wrap, _awrap
+from .wrappers import _wrap, _awrap, _wrap_exec, _awrap_exec
 
 _instruments = ("daytona >= 0.1.0",)
 
@@ -80,6 +86,28 @@ class DaytonaSDKInstrumentor(BaseLaminarInstrumentor):
                     span_type="DEFAULT",
                     instrumentation_scope=self.instrumentation_scope(),
                     wrapper_function=_awrap,
+                ),
+                WrappedFunctionSpec(
+                    package_name="daytona._sync.process",
+                    object_name="Process",
+                    method_name="exec",
+                    is_async=False,
+                    is_streaming=False,
+                    span_name="daytona.sandbox.process.exec",
+                    span_type="DEFAULT",
+                    instrumentation_scope=self.instrumentation_scope(),
+                    wrapper_function=_wrap_exec,
+                ),
+                WrappedFunctionSpec(
+                    package_name="daytona._async.process",
+                    object_name="AsyncProcess",
+                    method_name="exec",
+                    is_async=True,
+                    is_streaming=False,
+                    span_name="daytona.sandbox.process.exec",
+                    span_type="DEFAULT",
+                    instrumentation_scope=self.instrumentation_scope(),
+                    wrapper_function=_awrap_exec,
                 ),
             ]
         )
