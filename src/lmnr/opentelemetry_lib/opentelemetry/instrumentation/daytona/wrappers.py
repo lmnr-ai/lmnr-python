@@ -69,9 +69,8 @@ def _emit_log(
     logger: Logger,
     stream: LogStream,
     content: str,
-    session_id: str,
-    cmd_id: str,
     ctx: Context,
+    extra_attributes: dict[str, str] | None = None,
 ):
     """Emit a log event using the OpenTelemetry Logs API.
 
@@ -80,6 +79,8 @@ def _emit_log(
 
     Args:
         ctx: The OpenTelemetry Context containing the span to associate with this log.
+        extra_attributes: Additional attributes to include in the log record
+            (e.g. session_id/cmd_id for session commands, or command for exec).
     """
     if not content:
         return
@@ -88,18 +89,20 @@ def _emit_log(
         event_name = f"daytona.log.{stream.value}"
         event_severity_number = SeverityNumber.INFO if stream == LogStream.STDOUT else SeverityNumber.ERROR
 
+        attributes = {
+            **DAYTONA_LOG_ATTRIBUTES,
+            "daytona.log.stream": stream.value,
+        }
+        if extra_attributes:
+            attributes.update(extra_attributes)
+
         logger.emit(
             LogRecord(
                 timestamp=time.time_ns(),
                 context=ctx,
                 body=content,
                 severity_number=event_severity_number,
-                attributes={
-                    **DAYTONA_LOG_ATTRIBUTES,
-                    "daytona.session_id": session_id,
-                    "daytona.cmd_id": cmd_id,
-                    "daytona.log.stream": stream.value,
-                },
+                attributes=attributes,
                 event_name=event_name,
             )
         )
@@ -119,13 +122,18 @@ def _emit_logs_from_response(
     For synchronous commands, the stdout and stderr are already in the response,
     so we emit them immediately as log events.
     """
+    extra_attributes = {
+        "daytona.session_id": session_id,
+        "daytona.cmd_id": cmd_id,
+    }
+
     # Emit stdout logs
     if hasattr(response, "stdout") and response.stdout:
-        _emit_log(logger, LogStream.STDOUT, response.stdout, session_id, cmd_id, ctx)
+        _emit_log(logger, LogStream.STDOUT, response.stdout, ctx, extra_attributes)
 
     # Emit stderr logs
     if hasattr(response, "stderr") and response.stderr:
-        _emit_log(logger, LogStream.STDERR, response.stderr, session_id, cmd_id, ctx)
+        _emit_log(logger, LogStream.STDERR, response.stderr, ctx, extra_attributes)
 
 
 def _create_log_callbacks(
@@ -143,14 +151,18 @@ def _create_log_callbacks(
     span is active) and closed over, so logs emitted later in background
     threads are still correctly associated with the original command span.
     """
+    extra_attributes = {
+        "daytona.session_id": session_id,
+        "daytona.cmd_id": cmd_id,
+    }
 
     def on_stdout(content: str):
         """Callback for stdout log lines."""
-        _emit_log(logger, LogStream.STDOUT, content, session_id, cmd_id, ctx)
+        _emit_log(logger, LogStream.STDOUT, content, ctx, extra_attributes)
 
     def on_stderr(content: str):
         """Callback for stderr log lines."""
-        _emit_log(logger, LogStream.STDERR, content, session_id, cmd_id, ctx)
+        _emit_log(logger, LogStream.STDERR, content, ctx, extra_attributes)
 
     return on_stdout, on_stderr
 
@@ -281,41 +293,6 @@ def _set_exec_response_attributes(span: Span, response):
         set_span_attribute(span, "daytona.exit_code", response.exit_code)
 
 
-def _emit_exec_log(
-    logger: Logger,
-    stream: LogStream,
-    content: str,
-    command: str,
-    ctx: Context,
-):
-    """Emit a log event for an exec command."""
-    if not content:
-        return
-
-    try:
-        event_name = f"daytona.log.{stream.value}"
-        event_severity_number = (
-            SeverityNumber.INFO if stream == LogStream.STDOUT else SeverityNumber.ERROR
-        )
-
-        logger.emit(
-            LogRecord(
-                timestamp=time.time_ns(),
-                context=ctx,
-                body=content,
-                severity_number=event_severity_number,
-                attributes={
-                    **DAYTONA_LOG_ATTRIBUTES,
-                    "daytona.command": command,
-                    "daytona.log.stream": stream.value,
-                },
-                event_name=event_name,
-            )
-        )
-    except Exception as e:
-        log.debug(f"Failed to emit Daytona exec log event: {e}")
-
-
 def _emit_exec_logs_from_response(
     logger: Logger,
     response,
@@ -328,7 +305,10 @@ def _emit_exec_logs_from_response(
     """
     stdout = getattr(response, "result", None)
     if stdout:
-        _emit_exec_log(logger, LogStream.STDOUT, stdout, command, ctx)
+        _emit_log(
+            logger, LogStream.STDOUT, stdout, ctx,
+            extra_attributes={"daytona.command": command},
+        )
 
 
 def _wrap_exec(
