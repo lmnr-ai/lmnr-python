@@ -81,6 +81,8 @@ class LaminarSpanProcessor(SpanProcessor):
     _path_cache: OrderedDict[int, _PathEntry]
     # trace_id (int) -> set of span_ids (int) belonging to this trace
     _trace_spans: dict[int, set[int]]
+    # span_id (int) -> trace_id (int) reverse mapping for O(1) eviction
+    _span_trace: dict[int, int]
     # trace_id (int) -> last access timestamp (monotonic seconds)
     _trace_last_access: dict[int, float]
 
@@ -103,6 +105,7 @@ class LaminarSpanProcessor(SpanProcessor):
         self._rollout_client = None
         self._path_cache = OrderedDict()
         self._trace_spans = {}
+        self._span_trace = {}
         self._trace_last_access = {}
         self._last_eviction_time: float = 0.0
         port = http_port if force_http else grpc_port
@@ -155,6 +158,7 @@ class LaminarSpanProcessor(SpanProcessor):
         for tid in stale_trace_ids:
             for sid in self._trace_spans.pop(tid, set()):
                 self._path_cache.pop(sid, None)
+                self._span_trace.pop(sid, None)
             self._trace_last_access.pop(tid, None)
 
     def _cache_put(
@@ -170,12 +174,19 @@ class LaminarSpanProcessor(SpanProcessor):
         # Prune oldest entries if at cap
         while len(self._path_cache) >= _MAX_PATH_CACHE_ENTRIES:
             evicted_sid, _ = self._path_cache.popitem(last=False)
-            # Clean up trace->span mapping
-            for sids in self._trace_spans.values():
-                sids.discard(evicted_sid)
+            # O(1) cleanup via reverse mapping
+            evicted_tid = self._span_trace.pop(evicted_sid, None)
+            if evicted_tid is not None:
+                sids = self._trace_spans.get(evicted_tid)
+                if sids is not None:
+                    sids.discard(evicted_sid)
+                    if not sids:
+                        del self._trace_spans[evicted_tid]
+                        self._trace_last_access.pop(evicted_tid, None)
 
         self._path_cache[span_id] = entry
         self._trace_spans.setdefault(trace_id, set()).add(span_id)
+        self._span_trace[span_id] = trace_id
         self._trace_last_access[trace_id] = time.monotonic()
 
     def _cache_get(self, span_id: int) -> _PathEntry | None:
@@ -532,6 +543,7 @@ class LaminarSpanProcessor(SpanProcessor):
         with self._paths_lock:
             self._path_cache.clear()
             self._trace_spans.clear()
+            self._span_trace.clear()
             self._trace_last_access.clear()
             self._last_eviction_time = 0.0
 
