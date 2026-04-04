@@ -59,6 +59,10 @@ _MAX_PATH_CACHE_ENTRIES = 50_000
 # for eviction from the in-memory cache.
 _TRACE_IDLE_TIMEOUT_SECONDS = 1800
 
+# Minimum interval (seconds) between stale-trace eviction scans to avoid
+# O(T) iteration on every span start.
+_EVICTION_INTERVAL_SECONDS = 60
+
 
 class _PathEntry(TypedDict):
     span_path: list[str]
@@ -100,6 +104,7 @@ class LaminarSpanProcessor(SpanProcessor):
         self._path_cache = OrderedDict()
         self._trace_spans = {}
         self._trace_last_access = {}
+        self._last_eviction_time: float = 0.0
         port = http_port if force_http else grpc_port
         self.exporter = exporter or LaminarSpanExporter(
             base_url=base_url,
@@ -132,9 +137,16 @@ class LaminarSpanProcessor(SpanProcessor):
     def _evict_stale_traces(self) -> None:
         """Remove cache entries for traces idle longer than the timeout.
 
-        Must be called while holding ``_paths_lock``.
+        Must be called while holding ``_paths_lock``.  The scan is
+        amortized: it only runs at most once every
+        ``_EVICTION_INTERVAL_SECONDS`` to avoid an O(T) iteration on
+        every span start.
         """
         now = time.monotonic()
+        if now - self._last_eviction_time < _EVICTION_INTERVAL_SECONDS:
+            return
+        self._last_eviction_time = now
+
         stale_trace_ids = [
             tid
             for tid, ts in self._trace_last_access.items()
@@ -152,7 +164,7 @@ class LaminarSpanProcessor(SpanProcessor):
 
         Must be called while holding ``_paths_lock``.
         """
-        # Lazy eviction of stale traces on every write
+        # Lazy eviction of stale traces (amortized, not on every write)
         self._evict_stale_traces()
 
         # Prune oldest entries if at cap
@@ -521,6 +533,7 @@ class LaminarSpanProcessor(SpanProcessor):
             self._path_cache.clear()
             self._trace_spans.clear()
             self._trace_last_access.clear()
+            self._last_eviction_time = 0.0
 
     def set_parent_path_info(
         self,
