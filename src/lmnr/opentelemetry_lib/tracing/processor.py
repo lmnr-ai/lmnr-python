@@ -2,6 +2,7 @@ import logging
 import threading
 import time
 import uuid
+import warnings
 from collections import OrderedDict
 from typing import TYPE_CHECKING
 
@@ -553,7 +554,15 @@ class LaminarSpanProcessor(SpanProcessor):
         span_path: list[str],
         span_ids_path: list[str],
     ):
-        # Deprecated: path info is now propagated via OTel Context values.
-        # Kept for backward compatibility; callers should store path info
-        # in the OTel Context using CONTEXT_SPAN_PATH_KEY / CONTEXT_SPAN_IDS_PATH_KEY.
-        pass
+        """Deprecated: path info is now propagated via OTel Context values.
+
+        Callers should store path info in the OTel Context using
+        ``CONTEXT_SPAN_PATH_KEY`` / ``CONTEXT_SPAN_IDS_PATH_KEY`` instead.
+        """
+        warnings.warn(
+            "set_parent_path_info is deprecated and no longer stores data. "
+            "Use CONTEXT_SPAN_PATH_KEY / CONTEXT_SPAN_IDS_PATH_KEY in the "
+            "OTel Context instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
