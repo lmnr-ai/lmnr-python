@@ -1,8 +1,11 @@
 import logging
 import threading
+import time
 import uuid
+from collections import OrderedDict
 from typing import TYPE_CHECKING
 
+from opentelemetry import trace as trace_api
 from opentelemetry.sdk.trace.export import (
     SpanProcessor,
     SpanExporter,
@@ -35,6 +38,8 @@ from lmnr.opentelemetry_lib.tracing.context import (
     CONTEXT_METADATA_KEY,
     CONTEXT_ROLLOUT_SESSION_ID_KEY,
     CONTEXT_SESSION_ID_KEY,
+    CONTEXT_SPAN_IDS_PATH_KEY,
+    CONTEXT_SPAN_PATH_KEY,
     CONTEXT_TRACE_TYPE_KEY,
     CONTEXT_USER_ID_KEY,
 )
@@ -45,16 +50,35 @@ from lmnr.sdk.rollout_control import is_rollout_mode
 from lmnr.sdk.utils import from_env, is_otel_attribute_value_type, json_dumps
 from lmnr.version import PYTHON_VERSION, __version__
 
+from typing_extensions import TypedDict
+
+# Maximum number of span-path entries kept in the bounded in-memory fallback.
+_MAX_PATH_CACHE_ENTRIES = 50_000
+
+# Traces that have not had any new spans within this many seconds are eligible
+# for eviction from the in-memory cache.
+_TRACE_IDLE_TIMEOUT_SECONDS = 1800
+
+
+class _PathEntry(TypedDict):
+    span_path: list[str]
+    span_ids_path: list[str]
+
 
 class LaminarSpanProcessor(SpanProcessor):
     instance: BatchSpanProcessor | SimpleSpanProcessor
     logger: logging.Logger
-    __span_id_to_path: dict[int, list[str]] = {}
-    __span_id_lists: dict[int, list[str]] = {}
     max_export_batch_size: int
     _instance_lock: threading.RLock
     _paths_lock: threading.RLock
     _rollout_client: "LaminarClient | None"
+
+    # Bounded in-memory fallback: span_id (int) -> _PathEntry
+    _path_cache: OrderedDict[int, _PathEntry]
+    # trace_id (int) -> set of span_ids (int) belonging to this trace
+    _trace_spans: dict[int, set[int]]
+    # trace_id (int) -> last access timestamp (monotonic seconds)
+    _trace_last_access: dict[int, float]
 
     def __init__(
         self,
@@ -73,6 +97,9 @@ class LaminarSpanProcessor(SpanProcessor):
         self.logger = get_default_logger(__name__)
         self.max_export_batch_size = max_export_batch_size
         self._rollout_client = None
+        self._path_cache = OrderedDict()
+        self._trace_spans = {}
+        self._trace_last_access = {}
         port = http_port if force_http else grpc_port
         self.exporter = exporter or LaminarSpanExporter(
             base_url=base_url,
@@ -102,6 +129,116 @@ class LaminarSpanProcessor(SpanProcessor):
             except Exception as e:
                 self.logger.debug(f"Failed to initialize debugger client: {e}")
 
+    def _evict_stale_traces(self) -> None:
+        """Remove cache entries for traces idle longer than the timeout.
+
+        Must be called while holding ``_paths_lock``.
+        """
+        now = time.monotonic()
+        stale_trace_ids = [
+            tid
+            for tid, ts in self._trace_last_access.items()
+            if now - ts > _TRACE_IDLE_TIMEOUT_SECONDS
+        ]
+        for tid in stale_trace_ids:
+            for sid in self._trace_spans.pop(tid, set()):
+                self._path_cache.pop(sid, None)
+            self._trace_last_access.pop(tid, None)
+
+    def _cache_put(
+        self, span_id: int, trace_id: int, entry: _PathEntry
+    ) -> None:
+        """Insert an entry into the bounded path cache.
+
+        Must be called while holding ``_paths_lock``.
+        """
+        # Lazy eviction of stale traces on every write
+        self._evict_stale_traces()
+
+        # Prune oldest entries if at cap
+        while len(self._path_cache) >= _MAX_PATH_CACHE_ENTRIES:
+            evicted_sid, _ = self._path_cache.popitem(last=False)
+            # Clean up trace->span mapping
+            for sids in self._trace_spans.values():
+                sids.discard(evicted_sid)
+
+        self._path_cache[span_id] = entry
+        self._trace_spans.setdefault(trace_id, set()).add(span_id)
+        self._trace_last_access[trace_id] = time.monotonic()
+
+    def _cache_get(self, span_id: int) -> _PathEntry | None:
+        """Look up a path entry from the cache.
+
+        Must be called while holding ``_paths_lock``.
+        """
+        return self._path_cache.get(span_id)
+
+    def _resolve_parent_path(
+        self,
+        span: Span,
+        parent_context: Context | None,
+    ) -> tuple[list[str], list[str]]:
+        """Resolve the parent span path and ids path.
+
+        Priority:
+          1. OTel Context – read SPAN_PATH / SPAN_IDS_PATH from the parent
+             span that lives in the context (works for normal nesting where
+             the parent span is still alive).
+          2. OTel Context values – read CONTEXT_SPAN_PATH_KEY /
+             CONTEXT_SPAN_IDS_PATH_KEY stored directly in the context (covers
+             NonRecordingSpan parents, e.g. LMNR_SPAN_CONTEXT env var).
+          3. Span attributes – read PARENT_SPAN_PATH / PARENT_SPAN_IDS_PATH
+             set by the caller on the *current* span (covers remote / ended
+             span contexts passed via LaminarSpanContext).
+          4. Bounded in-memory cache – look up by parent span_id (covers the
+             edge-case of a raw OTel SpanContext being passed as parent).
+        """
+        parent_span_path: list[str] = []
+        parent_span_ids_path: list[str] = []
+
+        # 1. Try the parent span from OTel context
+        if parent_context is not None:
+            parent_span = trace_api.get_current_span(parent_context)
+            if (
+                parent_span is not None
+                and parent_span is not trace_api.INVALID_SPAN
+                and hasattr(parent_span, "attributes")
+                and parent_span.attributes is not None
+            ):
+                parent_span_path = list(
+                    parent_span.attributes.get(SPAN_PATH, ())
+                )
+                parent_span_ids_path = list(
+                    parent_span.attributes.get(SPAN_IDS_PATH, ())
+                )
+
+        # 2. Try context values (e.g. from LMNR_SPAN_CONTEXT env var)
+        if not parent_span_path and parent_context is not None:
+            ctx_path = get_value(CONTEXT_SPAN_PATH_KEY, parent_context)
+            if ctx_path:
+                parent_span_path = list(ctx_path)
+            ctx_ids = get_value(CONTEXT_SPAN_IDS_PATH_KEY, parent_context)
+            if ctx_ids:
+                parent_span_ids_path = list(ctx_ids)
+
+        # 3. Fall back to span attributes set by the caller
+        if not parent_span_path:
+            parent_span_path = list(
+                span.attributes.get(PARENT_SPAN_PATH, ())
+            )
+            parent_span_ids_path = list(
+                span.attributes.get(PARENT_SPAN_IDS_PATH, ())
+            )
+
+        # 4. Bounded in-memory cache (last resort)
+        if not parent_span_path and span.parent:
+            entry = self._cache_get(span.parent.span_id)
+            if entry is not None:
+                parent_span_path = list(entry["span_path"])
+                parent_span_ids_path = list(entry["span_ids_path"])
+
+        return parent_span_path, parent_span_ids_path
+
     def on_start(self, span: Span, parent_context: Context | None = None):
         is_disabled = (
             from_env("LMNR_DISABLE_TRACING") or "false"
@@ -111,13 +248,8 @@ class LaminarSpanProcessor(SpanProcessor):
             span.set_attribute("lmnr.internal.disabled", True)
 
         with self._paths_lock:
-            parent_span_path = list(span.attributes.get(PARENT_SPAN_PATH, tuple())) or (
-                self.__span_id_to_path.get(span.parent.span_id) if span.parent else None
-            )
-            parent_span_ids_path = list(
-                span.attributes.get(PARENT_SPAN_IDS_PATH, tuple())
-            ) or (
-                self.__span_id_lists.get(span.parent.span_id, []) if span.parent else []
+            parent_span_path, parent_span_ids_path = self._resolve_parent_path(
+                span, parent_context
             )
             span_name_in_path = span.name if not is_disabled else "_"
             span_path = (
@@ -130,8 +262,11 @@ class LaminarSpanProcessor(SpanProcessor):
             ]
             span.set_attribute(SPAN_PATH, span_path)
             span.set_attribute(SPAN_IDS_PATH, span_ids_path)
-            self.__span_id_to_path[span.get_span_context().span_id] = span_path
-            self.__span_id_lists[span.get_span_context().span_id] = span_ids_path
+            self._cache_put(
+                span.get_span_context().span_id,
+                span.get_span_context().trace_id,
+                _PathEntry(span_path=span_path, span_ids_path=span_ids_path),
+            )
 
         if is_disabled:
             return
@@ -383,8 +518,9 @@ class LaminarSpanProcessor(SpanProcessor):
 
     def clear(self):
         with self._paths_lock:
-            self.__span_id_to_path = {}
-            self.__span_id_lists = {}
+            self._path_cache.clear()
+            self._trace_spans.clear()
+            self._trace_last_access.clear()
 
     def set_parent_path_info(
         self,
@@ -392,6 +528,7 @@ class LaminarSpanProcessor(SpanProcessor):
         span_path: list[str],
         span_ids_path: list[str],
     ):
-        with self._paths_lock:
-            self.__span_id_to_path[parent_span_id] = span_path
-            self.__span_id_lists[parent_span_id] = span_ids_path
+        # Deprecated: path info is now propagated via OTel Context values.
+        # Kept for backward compatibility; callers should store path info
+        # in the OTel Context using CONTEXT_SPAN_PATH_KEY / CONTEXT_SPAN_IDS_PATH_KEY.
+        pass

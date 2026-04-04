@@ -132,6 +132,7 @@ dev = [
   "langchain-core==1.2.22",
   "langchain-openai==1.1.12",
   "langgraph==1.1.3",
+  "langgraph-prebuilt==1.0.8",
   "litellm==1.81.16",
   "openai==2.30.0",
   "patchright==1.58.2",

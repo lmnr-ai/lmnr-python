@@ -7,6 +7,8 @@ from lmnr.opentelemetry_lib.tracing import TracerWrapper, get_current_context
 from lmnr.opentelemetry_lib.tracing.context import (
     CONTEXT_METADATA_KEY,
     CONTEXT_SESSION_ID_KEY,
+    CONTEXT_SPAN_IDS_PATH_KEY,
+    CONTEXT_SPAN_PATH_KEY,
     CONTEXT_TRACE_TYPE_KEY,
     CONTEXT_USER_ID_KEY,
     attach_context,
@@ -25,7 +27,6 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
     SPAN_TYPE,
 )
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
-from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.utils import set_association_props_in_context
@@ -347,12 +348,19 @@ class Laminar:
         base_context = trace.set_span_in_context(
             trace.NonRecordingSpan(otel_span_context), get_current_context()
         )
-        processor = TracerWrapper.instance._span_processor
-        if isinstance(processor, LaminarSpanProcessor):
-            processor.set_parent_path_info(
-                otel_span_context.span_id,
-                laminar_context.span_path,
+        # Store path info in the OTel Context so the processor can pick it up
+        # for child spans (NonRecordingSpan has no attributes).
+        from opentelemetry.context import set_value
+
+        if laminar_context.span_path:
+            base_context = set_value(
+                CONTEXT_SPAN_PATH_KEY, laminar_context.span_path, base_context
+            )
+        if laminar_context.span_ids_path:
+            base_context = set_value(
+                CONTEXT_SPAN_IDS_PATH_KEY,
                 laminar_context.span_ids_path,
+                base_context,
             )
         push_span_context(base_context)
         cls.__logger.debug("Initialized Laminar parent context from LMNR_SPAN_CONTEXT.")

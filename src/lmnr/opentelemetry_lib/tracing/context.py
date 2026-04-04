@@ -130,6 +130,8 @@ CONTEXT_SESSION_ID_KEY = create_key(f"lmnr.{SESSION_ID}")
 CONTEXT_ROLLOUT_SESSION_ID_KEY = create_key("lmnr.rollout_session_id")
 CONTEXT_METADATA_KEY = create_key(f"lmnr.{METADATA}")
 CONTEXT_TRACE_TYPE_KEY = create_key(f"lmnr.{TRACE_TYPE}")
+CONTEXT_SPAN_PATH_KEY = create_key("lmnr.span.path")
+CONTEXT_SPAN_IDS_PATH_KEY = create_key("lmnr.span.ids_path")
 
 
 def get_event_attributes_from_context(context: Context | None = None) -> dict[str, str]:
