@@ -20,10 +20,12 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     set_span_attribute,
     dont_throw,
 )
+from lmnr.opentelemetry_lib.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT
 from lmnr.opentelemetry_lib.tracing.context import (
     get_current_context,
     get_event_attributes_from_context,
 )
+from lmnr.sdk.utils import json_dumps
 from .version import __version__
 
 log = logging.getLogger(__name__)
@@ -45,13 +47,15 @@ def _set_request_attributes(span: Span, session_id: str, request):
     """Set span attributes from the execute_session_command request."""
     set_span_attribute(span, "daytona.session_id", session_id)
 
-    # Extract attributes from the request object
+    input_data = {"session_id": session_id}
     if hasattr(request, "command"):
         set_span_attribute(span, "daytona.command", request.command)
+        input_data["command"] = request.command
     if getattr(request, "run_async", False) or getattr(request, "var_async", False):
         set_span_attribute(span, "daytona.async", True)
     else:
         set_span_attribute(span, "daytona.async", False)
+    set_span_attribute(span, SPAN_INPUT, json_dumps(input_data))
 
 
 @dont_throw
@@ -63,6 +67,7 @@ def _set_response_attributes(span: Span, response):
         set_span_attribute(span, "daytona.exit_code", response.exit_code)
     if hasattr(response, "output"):
         set_span_attribute(span, "daytona.output", response.output)
+    set_span_attribute(span, SPAN_OUTPUT, json_dumps(response))
 
 
 def _emit_log(
@@ -282,8 +287,11 @@ def _process_command_response(
 def _set_exec_request_attributes(span: Span, command: str, cwd: str | None):
     """Set span attributes from the exec request."""
     set_span_attribute(span, "daytona.command", command)
+    input_data = {"command": command}
     if cwd is not None:
         set_span_attribute(span, "daytona.cwd", cwd)
+        input_data["cwd"] = cwd
+    set_span_attribute(span, SPAN_INPUT, json_dumps(input_data))
 
 
 @dont_throw
@@ -291,6 +299,7 @@ def _set_exec_response_attributes(span: Span, response):
     """Set span attributes from the exec response."""
     if hasattr(response, "exit_code"):
         set_span_attribute(span, "daytona.exit_code", response.exit_code)
+    set_span_attribute(span, SPAN_OUTPUT, json_dumps(response))
 
 
 def _emit_exec_logs_from_response(
