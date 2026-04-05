@@ -283,6 +283,145 @@ def _process_command_response(
         _emit_logs_from_response(logger, response, session_id, cmd_id, ctx)
 
 
+def _wrap(
+    to_wrap: WrappedFunctionSpec,
+    wrapped,
+    instance,
+    args,
+    kwargs,
+):
+    """Wrapper for sync execute_session_command.
+
+    Creates a span, executes the command, sets attributes, ends span, then emits logs.
+    """
+    if kwargs is None:
+        kwargs = {}
+    if args is None:
+        args = []
+
+    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
+        return wrapped(*args, **kwargs)
+
+    logger: Logger | None = get_logger(__name__, __version__)
+
+    span = Laminar.start_active_span(
+        name=to_wrap["span_name"],
+        span_type=to_wrap["span_type"],
+        user_id=(kwargs.get("metadata") or {}).get("user_id"),
+        session_id=(kwargs.get("metadata") or {}).get("session_id"),
+        tags=(kwargs.get("metadata") or {}).get("tags", []),
+        metadata=(kwargs.get("metadata") or {}),
+    )
+
+    # Extract session_id and request from args/kwargs
+    # execute_session_command(session_id, request)
+    session_id = args[0] if len(args) > 0 else kwargs.get("session_id")
+    request = args[1] if len(args) > 1 else kwargs.get("request")
+
+    if span.is_recording():
+        _set_request_attributes(span, session_id, request)
+
+    # Capture updated context with span for logs to be associated with it
+    ctx = get_current_context()
+
+    try:
+        response = wrapped(*args, **kwargs)
+
+        if span.is_recording():
+            _set_response_attributes(span, response)
+
+        # End the span immediately - logs will be emitted separately
+        span.end()
+
+    except Exception as e:
+        attributes = get_event_attributes_from_context()
+        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
+        span.record_exception(e, attributes=attributes)
+        span.set_status(Status(StatusCode.ERROR, str(e)))
+        span.end()
+        raise
+
+    # Process logs outside the try block - don't let logging failures
+    # break the user's code after a successful Daytona command
+    try:
+        _process_command_response(
+            logger, instance, response, session_id, request, ctx
+        )
+    except Exception as log_error:
+        log.debug(f"Failed to process Daytona command response for logging: {log_error}")
+
+    return response
+
+
+async def _awrap(
+    to_wrap: WrappedFunctionSpec,
+    wrapped,
+    instance,
+    args,
+    kwargs,
+):
+    """Wrapper for async execute_session_command.
+
+    Creates a span, executes the command, sets attributes, ends span, then emits logs.
+    """
+    if kwargs is None:
+        kwargs = {}
+    if args is None:
+        args = []
+
+    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
+        return await wrapped(*args, **kwargs)
+
+    logger: Logger | None = get_logger(__name__, __version__)
+
+    span = Laminar.start_active_span(
+        name=to_wrap["span_name"],
+        span_type=to_wrap["span_type"],
+        user_id=(kwargs.get("metadata") or {}).get("user_id"),
+        session_id=(kwargs.get("metadata") or {}).get("session_id"),
+        tags=(kwargs.get("metadata") or {}).get("tags", []),
+        metadata=(kwargs.get("metadata") or {}),
+    )
+
+    # Extract session_id and request from args/kwargs
+    # execute_session_command(session_id, request)
+    session_id = args[0] if len(args) > 0 else kwargs.get("session_id")
+    request = args[1] if len(args) > 1 else kwargs.get("request")
+
+    if span.is_recording():
+        _set_request_attributes(span, session_id, request)
+
+    # Capture updated context with span for logs to be associated with it
+    ctx = get_current_context()
+
+    try:
+        response = await wrapped(*args, **kwargs)
+
+        if span.is_recording():
+            _set_response_attributes(span, response)
+
+        # End the span immediately - logs will be emitted separately
+        span.end()
+
+    except Exception as e:
+        attributes = get_event_attributes_from_context()
+        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
+        span.record_exception(e, attributes=attributes)
+        span.set_status(Status(StatusCode.ERROR, str(e)))
+        span.end()
+        raise
+
+    # Process logs outside the try block - don't let logging failures
+    # break the user's code after a successful Daytona command
+    try:
+        _process_command_response(
+            logger, instance, response, session_id, request, ctx
+        )
+    except Exception as log_error:
+        log.debug(f"Failed to process Daytona command response for logging: {log_error}")
+
+    return response
+
 @dont_throw
 def _set_exec_request_attributes(span: Span, command: str, cwd: str | None):
     """Set span attributes from the exec request."""
@@ -446,145 +585,5 @@ async def _awrap_exec(
             _emit_exec_logs_from_response(logger, response, command, ctx)
     except Exception as log_error:
         log.debug(f"Failed to process Daytona exec response for logging: {log_error}")
-
-    return response
-
-
-def _wrap(
-    to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance,
-    args,
-    kwargs,
-):
-    """Wrapper for sync execute_session_command.
-
-    Creates a span, executes the command, sets attributes, ends span, then emits logs.
-    """
-    if kwargs is None:
-        kwargs = {}
-    if args is None:
-        args = []
-
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
-        return wrapped(*args, **kwargs)
-
-    logger: Logger | None = get_logger(__name__, __version__)
-
-    span = Laminar.start_active_span(
-        name=to_wrap["span_name"],
-        span_type=to_wrap["span_type"],
-        user_id=(kwargs.get("metadata") or {}).get("user_id"),
-        session_id=(kwargs.get("metadata") or {}).get("session_id"),
-        tags=(kwargs.get("metadata") or {}).get("tags", []),
-        metadata=(kwargs.get("metadata") or {}),
-    )
-
-    # Extract session_id and request from args/kwargs
-    # execute_session_command(session_id, request)
-    session_id = args[0] if len(args) > 0 else kwargs.get("session_id")
-    request = args[1] if len(args) > 1 else kwargs.get("request")
-
-    if span.is_recording():
-        _set_request_attributes(span, session_id, request)
-
-    # Capture updated context with span for logs to be associated with it
-    ctx = get_current_context()
-
-    try:
-        response = wrapped(*args, **kwargs)
-
-        if span.is_recording():
-            _set_response_attributes(span, response)
-
-        # End the span immediately - logs will be emitted separately
-        span.end()
-
-    except Exception as e:
-        attributes = get_event_attributes_from_context()
-        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-        span.record_exception(e, attributes=attributes)
-        span.set_status(Status(StatusCode.ERROR, str(e)))
-        span.end()
-        raise
-
-    # Process logs outside the try block - don't let logging failures
-    # break the user's code after a successful Daytona command
-    try:
-        _process_command_response(
-            logger, instance, response, session_id, request, ctx
-        )
-    except Exception as log_error:
-        log.debug(f"Failed to process Daytona command response for logging: {log_error}")
-
-    return response
-
-
-async def _awrap(
-    to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance,
-    args,
-    kwargs,
-):
-    """Wrapper for async execute_session_command.
-
-    Creates a span, executes the command, sets attributes, ends span, then emits logs.
-    """
-    if kwargs is None:
-        kwargs = {}
-    if args is None:
-        args = []
-
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
-        return await wrapped(*args, **kwargs)
-
-    logger: Logger | None = get_logger(__name__, __version__)
-
-    span = Laminar.start_active_span(
-        name=to_wrap["span_name"],
-        span_type=to_wrap["span_type"],
-        user_id=(kwargs.get("metadata") or {}).get("user_id"),
-        session_id=(kwargs.get("metadata") or {}).get("session_id"),
-        tags=(kwargs.get("metadata") or {}).get("tags", []),
-        metadata=(kwargs.get("metadata") or {}),
-    )
-
-    # Extract session_id and request from args/kwargs
-    # execute_session_command(session_id, request)
-    session_id = args[0] if len(args) > 0 else kwargs.get("session_id")
-    request = args[1] if len(args) > 1 else kwargs.get("request")
-
-    if span.is_recording():
-        _set_request_attributes(span, session_id, request)
-
-    # Capture updated context with span for logs to be associated with it
-    ctx = get_current_context()
-
-    try:
-        response = await wrapped(*args, **kwargs)
-
-        if span.is_recording():
-            _set_response_attributes(span, response)
-
-        # End the span immediately - logs will be emitted separately
-        span.end()
-
-    except Exception as e:
-        attributes = get_event_attributes_from_context()
-        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-        span.record_exception(e, attributes=attributes)
-        span.set_status(Status(StatusCode.ERROR, str(e)))
-        span.end()
-        raise
-
-    # Process logs outside the try block - don't let logging failures
-    # break the user's code after a successful Daytona command
-    try:
-        _process_command_response(
-            logger, instance, response, session_id, request, ctx
-        )
-    except Exception as log_error:
-        log.debug(f"Failed to process Daytona command response for logging: {log_error}")
 
     return response
