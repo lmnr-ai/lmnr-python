@@ -1,16 +1,16 @@
 import logging
 import threading
+import time
 import uuid
 from typing import TYPE_CHECKING
 
+from opentelemetry.context import Context, get_value
+from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor
 from opentelemetry.sdk.trace.export import (
-    SpanProcessor,
-    SpanExporter,
     BatchSpanProcessor,
     SimpleSpanProcessor,
+    SpanExporter,
 )
-from opentelemetry.sdk.trace import Span
-from opentelemetry.context import Context, get_value
 
 if TYPE_CHECKING:
     from lmnr.sdk.client.synchronous.sync_client import LaminarClient
@@ -125,13 +125,16 @@ class LaminarSpanProcessor(SpanProcessor):
                 if parent_span_path
                 else [span_name_in_path]
             )
+            span_context = span.get_span_context()
+            if span_context is None:
+                raise ValueError("Improperly setup span, no span_context")
             span_ids_path = parent_span_ids_path + [
-                str(uuid.UUID(int=span.get_span_context().span_id))
+                str(uuid.UUID(int=span_context.span_id))
             ]
             span.set_attribute(SPAN_PATH, span_path)
             span.set_attribute(SPAN_IDS_PATH, span_ids_path)
-            self.__span_id_to_path[span.get_span_context().span_id] = span_path
-            self.__span_id_lists[span.get_span_context().span_id] = span_ids_path
+            self.__span_id_to_path[span_context.span_id] = span_path
+            self.__span_id_lists[span_context.span_id] = span_ids_path
 
         if is_disabled:
             return
@@ -191,11 +194,23 @@ class LaminarSpanProcessor(SpanProcessor):
         with self._instance_lock:
             self.instance.on_start(span, parent_context)
 
-    def on_end(self, span: Span):
+    def on_end(self, span: ReadableSpan):
+        span_context = span.get_span_context()
+        if span_context is not None:
+            with self._paths_lock:
+                try:
+                    self.__span_id_lists.pop(span_context.span_id)
+                except KeyError:
+                    pass
+                try:
+                    self.__span_id_to_path.pop(span_context.span_id)
+                except KeyError:
+                    pass
         if (from_env("LMNR_DISABLE_TRACING") or "false").lower().strip() == "true" or (
             span.attributes and span.attributes.get("lmnr.internal.disabled")
         ):
             return
+
         with self._instance_lock:
             self.instance.on_end(span)
 
@@ -277,8 +292,9 @@ class LaminarSpanProcessor(SpanProcessor):
             span: The span to stream
         """
         try:
-            from lmnr.sdk.rollout_control import get_rollout_session_id
             import datetime
+
+            from lmnr.sdk.rollout_control import get_rollout_session_id
 
             if not self._rollout_client:
                 return
@@ -292,7 +308,11 @@ class LaminarSpanProcessor(SpanProcessor):
                 return
 
             start_time_ns = span.start_time
-            start_time_seconds = start_time_ns / 1e9
+            if start_time_ns is None:
+                self.logger.warning("Span not started")
+                start_time_seconds = time.time()
+            else:
+                start_time_seconds = start_time_ns / 1e9
             start_time_dt = datetime.datetime.fromtimestamp(
                 start_time_seconds, tz=datetime.timezone.utc
             )
@@ -330,7 +350,10 @@ class LaminarSpanProcessor(SpanProcessor):
 
             def stream_task():
                 try:
-                    self._rollout_client.rollout.update_span_info(session_id, span_data)
+                    if self._rollout_client:
+                        self._rollout_client.rollout.update_span_info(
+                            session_id, span_data
+                        )
                 except Exception as e:
                     self.logger.debug(f"Error in span streaming task: {e}")
 
@@ -376,6 +399,9 @@ class LaminarSpanProcessor(SpanProcessor):
                     self.exporter, max_export_batch_size=self.max_export_batch_size
                 )
             )
+            # Force reinit protocol is a clear state, so clear
+            # any remaining internal state
+            self.clear()
 
     def shutdown(self):
         with self._instance_lock:
