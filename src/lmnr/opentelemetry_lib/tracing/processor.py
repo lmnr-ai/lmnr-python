@@ -195,10 +195,6 @@ class LaminarSpanProcessor(SpanProcessor):
             self.instance.on_start(span, parent_context)
 
     def on_end(self, span: ReadableSpan):
-        if (from_env("LMNR_DISABLE_TRACING") or "false").lower().strip() == "true" or (
-            span.attributes and span.attributes.get("lmnr.internal.disabled")
-        ):
-            return
         span_context = span.get_span_context()
         if span_context is not None:
             with self._paths_lock:
@@ -210,6 +206,10 @@ class LaminarSpanProcessor(SpanProcessor):
                     self.__span_id_to_path.pop(span_context.span_id)
                 except KeyError:
                     pass
+        if (from_env("LMNR_DISABLE_TRACING") or "false").lower().strip() == "true" or (
+            span.attributes and span.attributes.get("lmnr.internal.disabled")
+        ):
+            return
 
         with self._instance_lock:
             self.instance.on_end(span)
