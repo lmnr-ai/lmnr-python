@@ -145,10 +145,10 @@ def _emit_log(
 # --- Stream wrapper for tee-ing output ---
 
 class _TeeStreamIterator:
-    """Wraps a Modal StreamReader to emit OTel logs as the user iterates.
+    """Wraps a Modal StreamReader to emit OTel logs as the user reads output.
 
-    Each line yielded to the user is also emitted as an OTel log record.
-    This avoids consuming the iterator in a background thread.
+    Both iteration (for line in stream) and read() are intercepted to emit
+    OTel log records. Other methods are delegated to the original stream.
     """
 
     def __init__(
@@ -167,6 +167,17 @@ class _TeeStreamIterator:
 
     def __getattr__(self, name):
         return getattr(self._original, name)
+
+    def read(self):
+        content = self._original.read()
+        try:
+            _emit_log(
+                self._logger, self._stream_type, content, self._ctx,
+                self._extra_attributes,
+            )
+        except Exception:
+            pass
+        return content
 
     def __iter__(self):
         return self
