@@ -329,6 +329,16 @@ class MilvusInstrumentorInitializer(InstrumentorInitializer):
         return MilvusInstrumentor()
 
 
+class ModalSDKInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("modal"):
+            return None
+
+        from ..opentelemetry.instrumentation.modal import ModalSDKInstrumentor
+
+        return ModalSDKInstrumentor()
+
+
 class MistralInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("mistralai"):

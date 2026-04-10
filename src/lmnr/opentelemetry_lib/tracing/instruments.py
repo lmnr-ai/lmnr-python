@@ -42,6 +42,7 @@ class Instruments(Enum):
     MCP = "mcp"
     MILVUS = "milvus"
     MISTRAL = "mistral"
+    MODAL = "modal"
     OLLAMA = "ollama"
     OPENAI = "openai"
     # Patch OpenTelemetry to fix DataDog's broken Span context
@@ -92,6 +93,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.MCP: initializers.MCPInstrumentorInitializer(),
     Instruments.MILVUS: initializers.MilvusInstrumentorInitializer(),
     Instruments.MISTRAL: initializers.MistralInstrumentorInitializer(),
+    Instruments.MODAL: initializers.ModalSDKInstrumentorInitializer(),
     Instruments.OLLAMA: initializers.OllamaInstrumentorInitializer(),
     Instruments.OPENAI: initializers.OpenAIInstrumentorInitializer(),
     Instruments.OPENTELEMETRY: initializers.OpenTelemetryInstrumentorInitializer(),

@@ -51,6 +51,16 @@ lmnr datasets pull <id>       # Pull dataset
 - `evals.py` - `lmnr eval` command
 - `dev.py` - `lmnr dev` interactive debugger
 
+## Instrumentation Notes
+
+### Adding new sandbox/tool instrumentors
+- Use the Daytona instrumentor (`opentelemetry/instrumentation/daytona/`) as the reference template for sandbox-style instrumentors. It covers sync/async wrapping, log emission, and background log streaming patterns.
+- Registration requires three changes: add to `Instruments` enum in `tracing/instruments.py`, add an initializer class in `tracing/_instrument_initializers.py`, and add the mapping entry in `INSTRUMENTATION_INITIALIZERS`.
+
+### Modal SDK specifics
+- Modal uses the `synchronicity` library to auto-generate sync/async variants from a single `_Sandbox` class. `wrapt.wrap_function_wrapper` works on the public `modal.sandbox.Sandbox` class despite this indirection — no need to register separate async wrapper specs.
+- `Sandbox.exec()` returns a `ContainerProcess` with lazy `stdout`/`stderr` iterators. To capture logs, wrap the returned process object rather than trying to read output inside the wrapper.
+
 ## Key Patterns
 
 - **Singleton**: `Laminar` and `TracerWrapper` are singletons initialized once at startup
