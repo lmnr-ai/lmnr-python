@@ -41,6 +41,7 @@ class Instruments(Enum):
     MARQO = "marqo"
     MCP = "mcp"
     MILVUS = "milvus"
+    MODAL = "modal"
     MISTRAL = "mistral"
     OLLAMA = "ollama"
     OPENAI = "openai"
@@ -91,6 +92,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.MARQO: initializers.MarqoInstrumentorInitializer(),
     Instruments.MCP: initializers.MCPInstrumentorInitializer(),
     Instruments.MILVUS: initializers.MilvusInstrumentorInitializer(),
+    Instruments.MODAL: initializers.ModalSandboxInstrumentorInitializer(),
     Instruments.MISTRAL: initializers.MistralInstrumentorInitializer(),
     Instruments.OLLAMA: initializers.OllamaInstrumentorInitializer(),
     Instruments.OPENAI: initializers.OpenAIInstrumentorInitializer(),
