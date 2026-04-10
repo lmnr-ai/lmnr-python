@@ -2,7 +2,7 @@ import logging
 import time
 from enum import Enum
 
-from opentelemetry import context as context_api
+from opentelemetry import context as context_api, trace
 from opentelemetry.context import Context
 from opentelemetry.trace import Status, StatusCode, Span
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
@@ -354,7 +354,11 @@ def _wrap_exec(
 
     otel_logger: Logger | None = get_logger(__name__, __version__)
 
-    span = Laminar.start_active_span(
+    # Use start_span (not start_active_span) so the exec span does NOT
+    # become the active context span.  This prevents unrelated spans
+    # created between exec() and wait() from being mis-parented under
+    # the exec span.
+    span = Laminar.start_span(
         name=to_wrap["span_name"],
         span_type=to_wrap["span_type"],
     )
@@ -362,7 +366,9 @@ def _wrap_exec(
     if span.is_recording():
         _set_exec_request_attributes(span, args, kwargs)
 
-    ctx = get_current_context()
+    # Build a context that carries the exec span so that log records
+    # emitted by the stream proxies are associated with this span.
+    ctx = trace.set_span_in_context(span, get_current_context())
 
     try:
         process = wrapped(*args, **kwargs)
@@ -425,7 +431,8 @@ async def _awrap_exec(
 
     otel_logger: Logger | None = get_logger(__name__, __version__)
 
-    span = Laminar.start_active_span(
+    # Use start_span (not start_active_span) — see _wrap_exec for rationale.
+    span = Laminar.start_span(
         name=to_wrap["span_name"],
         span_type=to_wrap["span_type"],
     )
@@ -433,7 +440,7 @@ async def _awrap_exec(
     if span.is_recording():
         _set_exec_request_attributes(span, args, kwargs)
 
-    ctx = get_current_context()
+    ctx = trace.set_span_in_context(span, get_current_context())
 
     try:
         process = await wrapped(*args, **kwargs)

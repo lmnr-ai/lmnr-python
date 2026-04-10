@@ -60,6 +60,7 @@ lmnr datasets pull <id>       # Pull dataset
 ### Modal SDK specifics
 - Modal uses the `synchronicity` library to auto-generate sync/async variants from a single `_Sandbox` class. `wrapt.wrap_function_wrapper` works on the public `modal.sandbox.Sandbox` class despite this indirection — no need to register separate async wrapper specs.
 - `Sandbox.exec()` returns a `ContainerProcess` with lazy `stdout`/`stderr` iterators. To capture logs, wrap the returned process object rather than trying to read output inside the wrapper.
+- When a wrapper defers `span.end()` (e.g. until `wait()` is called), use `Laminar.start_span` instead of `Laminar.start_active_span` to avoid leaking the span as active context. Build a log-association context explicitly with `trace.set_span_in_context(span, ...)`.
 
 ## Key Patterns
 
