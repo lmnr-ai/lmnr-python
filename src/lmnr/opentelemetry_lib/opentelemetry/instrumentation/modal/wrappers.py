@@ -166,6 +166,9 @@ class _TeeStreamIterator:
         self._ctx = ctx
         self._extra_attributes = extra_attributes
 
+    def __getattr__(self, name):
+        return getattr(self._original, name)
+
     def __iter__(self):
         return self
 
