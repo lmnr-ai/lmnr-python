@@ -66,9 +66,6 @@ To add a new provider instrumentation:
 3. Add an initializer class in `tracing/_instrument_initializers.py` (checks `is_package_installed`)
 4. Add the mapping in `INSTRUMENTATION_INITIALIZERS` dict in `instruments.py`
 
-### Synchronicity-based SDKs (e.g. Modal)
-Modal uses the `synchronicity` library which generates separate sync (`Sandbox`) and async (`_Sandbox`) classes that do NOT share function references. Patching `_Sandbox.exec` does NOT affect `Sandbox.exec`. Instrument both the public class (`Sandbox`) and the internal class (`_Sandbox`) separately. `wrapt.wrap_function_wrapper` works on both despite `Sandbox.exec` being a `functools.partial` and `Sandbox.create` being a `FunctionWithAio`.
-
 ## Environment Variables
 
 ```

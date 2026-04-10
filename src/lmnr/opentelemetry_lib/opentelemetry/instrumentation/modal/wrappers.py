@@ -289,52 +289,6 @@ def _wrap_create(
     return response
 
 
-async def _awrap_create(
-    to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance,
-    args,
-    kwargs,
-):
-    if kwargs is None:
-        kwargs = {}
-    if args is None:
-        args = ()
-
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
-        return await wrapped(*args, **kwargs)
-
-    span = Laminar.start_active_span(
-        name=to_wrap["span_name"],
-        span_type=to_wrap["span_type"],
-        user_id=(kwargs.get("metadata") or {}).get("user_id"),
-        session_id=(kwargs.get("metadata") or {}).get("session_id"),
-        tags=(kwargs.get("metadata") or {}).get("tags", []),
-        metadata=(kwargs.get("metadata") or {}),
-    )
-
-    if span.is_recording():
-        _set_create_request_attributes(span, args, kwargs)
-
-    try:
-        response = await wrapped(*args, **kwargs)
-
-        if span.is_recording():
-            _set_create_response_attributes(span, response)
-
-        span.end()
-
-    except Exception as e:
-        attributes = get_event_attributes_from_context()
-        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-        span.record_exception(e, attributes=attributes)
-        span.set_status(Status(StatusCode.ERROR, str(e)))
-        span.end()
-        raise
-
-    return response
-
-
 def _wrap_exec(
     to_wrap: WrappedFunctionSpec,
     wrapped,
@@ -389,55 +343,3 @@ def _wrap_exec(
     return response
 
 
-async def _awrap_exec(
-    to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance,
-    args,
-    kwargs,
-):
-    if kwargs is None:
-        kwargs = {}
-    if args is None:
-        args = ()
-
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
-        return await wrapped(*args, **kwargs)
-
-    logger: Logger | None = get_logger(__name__, __version__)
-
-    span = Laminar.start_active_span(
-        name=to_wrap["span_name"],
-        span_type=to_wrap["span_type"],
-        user_id=(kwargs.get("metadata") or {}).get("user_id"),
-        session_id=(kwargs.get("metadata") or {}).get("session_id"),
-        tags=(kwargs.get("metadata") or {}).get("tags", []),
-        metadata=(kwargs.get("metadata") or {}),
-    )
-
-    command = " ".join(str(a) for a in args) if args else ""
-
-    if span.is_recording():
-        _set_exec_request_attributes(span, command, kwargs)
-
-    ctx = get_current_context()
-
-    try:
-        response = await wrapped(*args, **kwargs)
-        span.end()
-    except Exception as e:
-        attributes = get_event_attributes_from_context()
-        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-        span.record_exception(e, attributes=attributes)
-        span.set_status(Status(StatusCode.ERROR, str(e)))
-        span.end()
-        raise
-
-    # Wrap stdout/stderr iterators to emit logs as user reads them
-    try:
-        if logger is not None:
-            response = _wrap_process_streams(response, logger, command, ctx)
-    except Exception as log_error:
-        log.debug(f"Failed to wrap Modal process streams: {log_error}")
-
-    return response
