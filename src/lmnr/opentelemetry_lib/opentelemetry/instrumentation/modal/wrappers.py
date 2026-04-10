@@ -94,8 +94,7 @@ def _set_create_response_attributes(span: Span, sandbox):
 
 
 @dont_throw
-def _set_exec_request_attributes(span: Span, args: tuple, kwargs: dict):
-    command = " ".join(str(a) for a in args) if args else ""
+def _set_exec_request_attributes(span: Span, command: str, kwargs: dict):
     workdir = kwargs.get("workdir")
 
     set_span_attribute(span, "modal.command", command)
@@ -362,11 +361,12 @@ def _wrap_exec(
         metadata=(kwargs.get("metadata") or {}),
     )
 
+    command = " ".join(str(a) for a in args) if args else ""
+
     if span.is_recording():
-        _set_exec_request_attributes(span, args, kwargs)
+        _set_exec_request_attributes(span, command, kwargs)
 
     ctx = get_current_context()
-    command = " ".join(str(a) for a in args) if args else ""
 
     try:
         response = wrapped(*args, **kwargs)
@@ -415,11 +415,12 @@ async def _awrap_exec(
         metadata=(kwargs.get("metadata") or {}),
     )
 
+    command = " ".join(str(a) for a in args) if args else ""
+
     if span.is_recording():
-        _set_exec_request_attributes(span, args, kwargs)
+        _set_exec_request_attributes(span, command, kwargs)
 
     ctx = get_current_context()
-    command = " ".join(str(a) for a in args) if args else ""
 
     try:
         response = await wrapped(*args, **kwargs)
