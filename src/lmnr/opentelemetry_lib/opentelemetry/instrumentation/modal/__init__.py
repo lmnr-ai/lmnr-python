@@ -28,7 +28,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     LaminarInstrumentationScopeAttributes,
 )
 
-from .wrappers import _wrap_create, _awrap_create, _wrap_exec, _awrap_exec
+from .wrappers import _wrap_create, _wrap_exec
 
 _instruments = ("modal >= 0.50.0",)
 

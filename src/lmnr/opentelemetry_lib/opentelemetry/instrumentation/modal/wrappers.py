@@ -287,49 +287,6 @@ def _wrap_create(
     return response
 
 
-async def _awrap_create(
-    to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance,
-    args,
-    kwargs,
-):
-    """Wrapper for async Sandbox.create()."""
-    if kwargs is None:
-        kwargs = {}
-    if args is None:
-        args = ()
-
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
-        return await wrapped(*args, **kwargs)
-
-    span = Laminar.start_active_span(
-        name=to_wrap["span_name"],
-        span_type=to_wrap["span_type"],
-    )
-
-    if span.is_recording():
-        _set_create_request_attributes(span, args, kwargs)
-
-    try:
-        response = await wrapped(*args, **kwargs)
-
-        if span.is_recording():
-            _set_create_response_attributes(span, response)
-
-        span.end()
-
-    except Exception as e:
-        attributes = get_event_attributes_from_context()
-        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-        span.record_exception(e, attributes=attributes)
-        span.set_status(Status(StatusCode.ERROR, str(e)))
-        span.end()
-        raise
-
-    return response
-
-
 def _wrap_exec(
     to_wrap: WrappedFunctionSpec,
     wrapped,
@@ -389,7 +346,15 @@ def _wrap_exec(
             original_wait = process.wait
 
             def instrumented_wait(*a, **kw):
-                result = original_wait(*a, **kw)
+                try:
+                    result = original_wait(*a, **kw)
+                except Exception as e:
+                    attributes = get_event_attributes_from_context()
+                    span.set_attribute(ERROR_TYPE, e.__class__.__name__)
+                    span.record_exception(e, attributes=attributes)
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                    span.end()
+                    raise
                 try:
                     if span.is_recording():
                         _set_exec_response_attributes(span, process)
@@ -413,72 +378,3 @@ def _wrap_exec(
         raise
 
 
-async def _awrap_exec(
-    to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance,
-    args,
-    kwargs,
-):
-    """Wrapper for async Sandbox.exec()."""
-    if kwargs is None:
-        kwargs = {}
-    if args is None:
-        args = ()
-
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
-        return await wrapped(*args, **kwargs)
-
-    otel_logger: Logger | None = get_logger(__name__, __version__)
-
-    # Use start_span (not start_active_span) — see _wrap_exec for rationale.
-    span = Laminar.start_span(
-        name=to_wrap["span_name"],
-        span_type=to_wrap["span_type"],
-    )
-
-    if span.is_recording():
-        _set_exec_request_attributes(span, args, kwargs)
-
-    ctx = trace.set_span_in_context(span, get_current_context())
-
-    try:
-        process = await wrapped(*args, **kwargs)
-
-        sandbox_id = getattr(instance, "object_id", None)
-        extra_attributes: dict[str, str] = {}
-        if sandbox_id:
-            extra_attributes["modal.sandbox_id"] = sandbox_id
-            set_span_attribute(span, "modal.sandbox_id", sandbox_id)
-        if args:
-            extra_attributes["modal.command"] = " ".join(str(a) for a in args)
-
-        if otel_logger is not None:
-            instrumented = _InstrumentedContainerProcess(
-                process, otel_logger, ctx, extra_attributes,
-            )
-            original_wait = process.wait
-
-            async def instrumented_wait(*a, **kw):
-                result = await original_wait(*a, **kw)
-                try:
-                    if span.is_recording():
-                        _set_exec_response_attributes(span, process)
-                    span.end()
-                except Exception:
-                    pass
-                return result
-
-            instrumented.wait = instrumented_wait
-            return instrumented
-
-        span.end()
-        return process
-
-    except Exception as e:
-        attributes = get_event_attributes_from_context()
-        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-        span.record_exception(e, attributes=attributes)
-        span.set_status(Status(StatusCode.ERROR, str(e)))
-        span.end()
-        raise
