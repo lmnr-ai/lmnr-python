@@ -14,7 +14,13 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.10,<4"
 license = "Apache-2.0"
+license-files = ["LICENSE"]
 dependencies = [
+  # grpcio used to have some issues with improper shutdown.
+  # Fixed in opentelemetry-exporter-otlp-proto-grpc >=1.31.0.
+  # Fixed in grpc >= 1.80.0. Remaining related issue to track
+  # https://github.com/grpc/grpc/issues/41672
+  "grpcio>=1",
   "httpx (>=0.24.0,<1.0.0)",
   "lmnr-claude-code-proxy>=0.1.17",
   "opentelemetry-api (>=1.39.0, <2.0.0)",
@@ -26,26 +32,15 @@ dependencies = [
   "opentelemetry-semantic-conventions (==0.60b1)",
   "opentelemetry-semantic-conventions-ai (==0.4.13)",
   "orjson (>=3.0.0,<4.0.0)",
-  "packaging (>=22.0)",
+  "packaging (>=22.0,<27.0)",
   "pydantic (>=2.0.3,<3.0.0)",
   "python-dotenv (>=1.0,<2.0)",
-  "tqdm (>=4.0)",
+  "tqdm (>=4.0,<5.0)",
   "tenacity (>=8.0,<10.0)",
-  # Since 1.68.0, grpcio writes a warning message
-  # that looks scary, but is harmless.
-  # WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
-  # E0000 00:00:1737439981.199902 9456033 init.cc:229] grpc_wait_for_shutdown_with_timeout() timed out.
-  #
-  # Remove this comment when we make sure that grpcio has resolved this.
-  # Related issue:
-  # https://discuss.ai.google.dev/t/warning-all-log-messages-before-absl-initializelog-is-called-are-written-to-stderr-e0000-001731955515-629532-17124-init-cc-229-grpc-wait-for-shutdown-with-timeout-timed-out/50020
-  # https://github.com/grpc/grpc/issues/38490
-  "grpcio>=1",
 ]
 # poetry would auto-generate these based on requires-python, but other build
 # systems don't, so we need to specify them manually.
 classifiers = [
-  "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
@@ -60,10 +55,10 @@ lmnr = "lmnr.cli:cli"
 [project.optional-dependencies]
 # List of all possible extras. You can specify one or more of these extras
 # when installing the package, using any of the following examples:
-# `pip install 'lmnr[anthropic,groq]'`
-# `uv pip install 'lmnr[anthropic,groq]'`
-# `uv add lmnr --extra anthropic --extra groq`
-# `poetry add 'lmnr[anthropic,groq]'`
+# `pip install 'lmnr[bedrock,langchain]'`
+# `uv pip install 'lmnr[bedrock,langchain]'`
+# `uv add lmnr --extra bedrock --extra langchain`
+# `poetry add 'lmnr[bedrock,langchain]'`
 
 alephalpha=["opentelemetry-instrumentation-alephalpha==0.52.4"]
 bedrock=["opentelemetry-instrumentation-bedrock==0.52.4"]
@@ -131,14 +126,10 @@ dev = [
   "langchain==1.2.13",
   "langchain-core==1.2.22",
   "langchain-openai==1.1.12",
-  "langgraph==1.1.3",
-  # we don't depend on it directly, but version 1.0.9
-  # has a breaking change incompatible with older pinned
-  # version of langgraph.
-  # See https://github.com/langchain-ai/langgraph/issues/7404
-  "langgraph-prebuilt==1.0.8",
+  "langgraph==1.1.6",
   "litellm==1.81.16",
   "openai==2.30.0",
+  "openai-agents==0.14.1",
   "patchright==1.58.2",
   "playwright==1.58.0",
   "pytest==9.0.2",
@@ -149,7 +140,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.11.3,<0.12"]
+requires = ["uv_build>=0.11.7,<0.12"]
 build-backend = "uv_build"
 
 [tool.uv.workspace]

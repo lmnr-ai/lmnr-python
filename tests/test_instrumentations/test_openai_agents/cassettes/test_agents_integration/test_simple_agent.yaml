@@ -1,0 +1,26 @@
+interactions:
+- request:
+    body: '{"model":"gpt-4o-mini","input":[{"role":"system","content":"You are a helpful
+      assistant."},{"role":"user","content":"What is 2+2?"}],"parallel_tool_calls":false,"stream":false}'
+    headers:
+      accept:
+      - application/json
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      user-agent:
+      - OpenAI/Python
+    method: POST
+    uri: https://api.openai.com/v1/responses
+  response:
+    body:
+      string: '{"id":"resp_test_simple_001","object":"response","created_at":1709000000,"status":"completed","model":"gpt-4o-mini","output":[{"type":"message","id":"msg_test001","status":"completed","role":"assistant","content":[{"type":"output_text","text":"2
+        + 2 equals 4.","annotations":[]}]}],"parallel_tool_calls":false,"usage":{"input_tokens":25,"output_tokens":8,"total_tokens":33,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":0}}}'
+    headers:
+      content-type:
+      - application/json
+    status:
+      code: 200
+      message: OK
+version: 1
