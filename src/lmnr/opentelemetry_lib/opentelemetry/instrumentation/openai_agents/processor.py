@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from dataclasses import dataclass, field
 from typing import Any
@@ -15,7 +14,7 @@ try:
 except ImportError:  # openai-agents not installed
     _Base = object
 
-from .helpers import map_span_type, span_name
+from .helpers import agent_name, export_span_data, map_span_type, span_kind, span_name
 from .span_data import apply_span_data, apply_span_error
 
 logger = logging.getLogger(__name__)
@@ -41,6 +40,9 @@ class _TraceState:
     failed: bool = False
     # Guards against double-ending from concurrent on_trace_end and shutdown.
     ended: bool = False
+    # Maps destination agent name -> handoff lmnr span context so that the
+    # subsequent agent span becomes a child of the handoff span.
+    pending_handoff_ctxs: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         # Initially no pending ends, so mark as done.
@@ -118,6 +120,19 @@ class LaminarAgentsTraceProcessor(_Base):
             span_type = map_span_type(span_data)
             name = span_name(span, span_data)
 
+            # If this is an agent span, check if a handoff targeting this agent
+            # is pending. If so, make this span a child of the handoff span so
+            # the subagent is nested under the handoff that triggered it.
+            if span_kind(span_data) == "agent":
+                this_agent = agent_name(
+                    export_span_data(span_data).get("name")
+                    or getattr(span_data, "name", None)
+                )
+                with self._lock:
+                    handoff_ctx = state.pending_handoff_ctxs.pop(this_agent, None)
+                if handoff_ctx is not None:
+                    parent_ctx = handoff_ctx
+
             lmnr_span = Laminar.start_span(
                 name,
                 span_type=span_type,
@@ -172,6 +187,37 @@ class LaminarAgentsTraceProcessor(_Base):
                 apply_span_error(entry.lmnr_span, span)
             except Exception:
                 pass
+
+            # When a handoff span ends, save the *parent* span's context keyed
+            # by the destination agent name. on_span_start consumes this so
+            # the subsequent agent span becomes a sibling of the handoff span
+            # (both children of the handoff's parent).
+            if span_kind(span_data) == "handoff":
+                try:
+                    to_agent = agent_name(
+                        export_span_data(span_data).get("to_agent")
+                        or getattr(span_data, "to_agent", None)
+                    )
+                    if to_agent:
+                        parent_id = getattr(span, "parent_id", None)
+                        with self._lock:
+                            parent_entry = (
+                                state.spans.get(parent_id) if parent_id else None
+                            )
+                        parent_lmnr_span = (
+                            parent_entry.lmnr_span
+                            if parent_entry is not None
+                            else state.root_span
+                        )
+                        if parent_lmnr_span is not None and hasattr(
+                            parent_lmnr_span, "get_laminar_span_context"
+                        ):
+                            handoff_ctx = parent_lmnr_span.get_laminar_span_context()
+                            with self._lock:
+                                state.pending_handoff_ctxs[to_agent] = handoff_ctx
+                except Exception:
+                    pass
+
             try:
                 entry.lmnr_span.end()
             except Exception:

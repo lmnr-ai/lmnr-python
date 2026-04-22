@@ -28,7 +28,7 @@ def map_span_type(span_data: Any) -> LaminarSpanType:
     kind = span_kind(span_data)
     if kind in {"generation", "response", "transcription", "speech", "speech_group"}:
         return "LLM"
-    if kind in {"function", "tool", "mcp_list_tools", "mcp_tools"}:
+    if kind in {"function", "tool", "mcp_list_tools", "mcp_tools", "handoff"}:
         return "TOOL"
     return "DEFAULT"
 
