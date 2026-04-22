@@ -15,8 +15,8 @@ try:
 except ImportError:  # openai-agents not installed
     _Base = object
 
-from .helpers import map_span_type, span_kind, span_name
-from .span_data import _apply_span_data, _apply_span_error
+from .helpers import map_span_type, span_name
+from .span_data import apply_span_data, apply_span_error
 
 logger = logging.getLogger(__name__)
 
@@ -122,13 +122,7 @@ class LaminarAgentsTraceProcessor(_Base):
                 name,
                 span_type=span_type,
                 parent_span_context=parent_ctx,
-                tags=["openai-agents"],
             )
-            if hasattr(lmnr_span, "set_attribute"):
-                lmnr_span.set_attribute("openai.agents.span.type", span_kind(span_data))
-                span_id = getattr(span, "span_id", "")
-                if span_id:
-                    lmnr_span.set_attribute("openai.agents.span.id", span_id)
 
             # Use span_id as key so parent_id lookups in on_span_start
             # match correctly. The SDK always generates a span_id.
@@ -174,8 +168,8 @@ class LaminarAgentsTraceProcessor(_Base):
         span_data = getattr(span, "span_data", None)
         try:
             try:
-                _apply_span_data(entry.lmnr_span, span_data)
-                _apply_span_error(entry.lmnr_span, span)
+                apply_span_data(entry.lmnr_span, span_data)
+                apply_span_error(entry.lmnr_span, span)
             except Exception:
                 pass
             try:
@@ -236,8 +230,8 @@ class LaminarAgentsTraceProcessor(_Base):
             try:
                 if entry.agents_span is not None:
                     span_data = getattr(entry.agents_span, "span_data", None)
-                    _apply_span_data(entry.lmnr_span, span_data)
-                    _apply_span_error(entry.lmnr_span, entry.agents_span)
+                    apply_span_data(entry.lmnr_span, span_data)
+                    apply_span_error(entry.lmnr_span, entry.agents_span)
             except Exception:
                 pass
             try:
@@ -266,7 +260,6 @@ class LaminarAgentsTraceProcessor(_Base):
                 # to the actual trace name via update_name.
                 root_span = Laminar.start_span(
                     "agents.trace",
-                    tags=["openai-agents"],
                 )
                 state.root_span = root_span
             except Exception:
@@ -287,9 +280,6 @@ class LaminarAgentsTraceProcessor(_Base):
         trace_metadata = getattr(trace, "metadata", None)
         if isinstance(trace_metadata, dict):
             metadata.update(trace_metadata)
-        trace_id = getattr(trace, "trace_id", None)
-        if trace_id:
-            metadata["openai.agents.trace_id"] = trace_id
         group_id = getattr(trace, "group_id", None)
         if group_id:
             metadata["openai.agents.group_id"] = group_id
@@ -303,10 +293,6 @@ class LaminarAgentsTraceProcessor(_Base):
                 pass
         session_id = metadata.get("session_id") if metadata else None
         user_id = metadata.get("user_id") if metadata else None
-        if not session_id:
-            session_id = os.getenv("LMNR_SESSION_ID")
-        if not user_id:
-            user_id = os.getenv("LMNR_USER_ID")
         if session_id and hasattr(root_span, "set_trace_session_id"):
             root_span.set_trace_session_id(session_id)
         if user_id and hasattr(root_span, "set_trace_user_id"):

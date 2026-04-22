@@ -43,7 +43,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
 from lmnr.sdk.utils import json_dumps
 from openai._legacy_response import LegacyAPIResponse
 from opentelemetry import context as context_api
-from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
+from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_REQUEST_MODEL,
@@ -512,7 +512,10 @@ def responses_get_or_create_wrapper(tracer: Tracer, wrapped, instance, args, kwa
         raise
     parsed_response = parse_response(response)
 
-    existing_data = responses.get(parsed_response.id)
+    response_id = getattr(parsed_response, "id", None)
+    if not response_id:
+        return response
+    existing_data = responses.get(response_id)
     if existing_data is None:
         existing_data = {}
     else:
@@ -525,7 +528,7 @@ def responses_get_or_create_wrapper(tracer: Tracer, wrapped, instance, args, kwa
     try:
         traced_data = TracedData(
             start_time=existing_data.get("start_time", start_time),
-            response_id=parsed_response.id,
+            response_id=response_id,
             input=process_input(existing_data.get("input", kwargs.get("input"))),
             instructions=existing_data.get("instructions", kwargs.get("instructions")),
             tools=merged_tools if merged_tools else None,
@@ -551,7 +554,7 @@ def responses_get_or_create_wrapper(tracer: Tracer, wrapped, instance, args, kwa
                 parsed_response.service_tier,
             ),
         )
-        responses[parsed_response.id] = traced_data
+        responses[response_id] = traced_data
     except Exception:
         raise
         return response
@@ -634,7 +637,10 @@ async def async_responses_get_or_create_wrapper(
         raise
     parsed_response = parse_response(response)
 
-    existing_data = responses.get(parsed_response.id)
+    response_id = getattr(responses, "id", None)
+    if not response_id:
+        return response
+    existing_data = responses.get(response_id)
     if existing_data is None:
         existing_data = {}
     else:
@@ -647,7 +653,7 @@ async def async_responses_get_or_create_wrapper(
     try:
         traced_data = TracedData(
             start_time=existing_data.get("start_time", start_time),
-            response_id=parsed_response.id,
+            response_id=response_id,
             input=process_input(existing_data.get("input", kwargs.get("input"))),
             instructions=existing_data.get("instructions", kwargs.get("instructions")),
             tools=merged_tools if merged_tools else None,
@@ -673,7 +679,7 @@ async def async_responses_get_or_create_wrapper(
                 parsed_response.service_tier,
             ),
         )
-        responses[parsed_response.id] = traced_data
+        responses[response_id] = traced_data
     except Exception:
         return response
 
@@ -700,12 +706,15 @@ def responses_cancel_wrapper(tracer: Tracer, wrapped, instance, args, kwargs):
     if isinstance(response, Stream):
         return response
     parsed_response = parse_response(response)
-    existing_data = responses.pop(parsed_response.id, None)
+    response_id = getattr(parsed_response, "id", None)
+    if not response_id:
+        return response
+    existing_data = responses.pop(response_id, None)
     if existing_data is not None:
         span = tracer.start_span(
             SPAN_NAME,
             kind=SpanKind.CLIENT,
-            start_time=existing_data.start_time,
+            start_time=int(existing_data.start_time),
             record_exception=True,
             context=get_current_context(),
         )
@@ -735,7 +744,7 @@ async def async_responses_cancel_wrapper(
         span = tracer.start_span(
             SPAN_NAME,
             kind=SpanKind.CLIENT,
-            start_time=existing_data.start_time,
+            start_time=int(existing_data.start_time),
             record_exception=True,
             context=get_current_context(),
         )

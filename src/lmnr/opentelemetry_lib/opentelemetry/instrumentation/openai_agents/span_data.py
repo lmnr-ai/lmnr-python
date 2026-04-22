@@ -11,13 +11,14 @@ from lmnr.sdk.utils import json_dumps
 
 from .helpers import agent_name, export_span_data, span_kind
 from .messages import (
-    _apply_llm_attributes,
-    _response_to_llm_data,
-    _set_gen_ai_input_messages,
-    _set_gen_ai_messages,
-    _set_gen_ai_output_messages,
-    _set_gen_ai_output_messages_from_response,
-    _set_tool_definitions_from_response,
+    apply_llm_attributes,
+    response_to_llm_data,
+    set_gen_ai_input_messages,
+    set_gen_ai_messages,
+    set_gen_ai_output_messages,
+    set_gen_ai_output_messages_from_response,
+    set_lmnr_span_io,
+    set_tool_definitions_from_response,
 )
 
 # ---------------------------------------------------------------------------
@@ -25,7 +26,7 @@ from .messages import (
 # ---------------------------------------------------------------------------
 
 
-def _apply_span_error(lmnr_span: Any, span: Any) -> None:
+def apply_span_error(lmnr_span: Any, span: Any) -> None:
     error = getattr(span, "error", None)
     if not error or not hasattr(lmnr_span, "set_status"):
         return
@@ -41,7 +42,7 @@ def _apply_span_error(lmnr_span: Any, span: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _apply_span_data(lmnr_span: Any, span_data: Any) -> None:
+def apply_span_data(lmnr_span: Any, span_data: Any) -> None:
     if span_data is None:
         return
 
@@ -72,7 +73,7 @@ def _apply_span_data(lmnr_span: Any, span_data: Any) -> None:
     else:
         # Fallback: try to set generic I/O
         data = export_span_data(span_data)
-        _set_gen_ai_messages(lmnr_span, data.get("input"), data.get("output"))
+        set_gen_ai_messages(lmnr_span, data.get("input"), data.get("output"))
 
 
 def _apply_agent_span_data(lmnr_span: Any, span_data: Any) -> None:
@@ -101,12 +102,8 @@ def _apply_function_span_data(lmnr_span: Any, span_data: Any) -> None:
     if not hasattr(lmnr_span, "set_attribute"):
         return
 
-    name = data.get("name") or getattr(span_data, "name", None)
-    if name:
-        lmnr_span.set_attribute("openai.agents.tool.name", name)
-
     # Use gen_ai messages for input/output
-    _set_gen_ai_messages(lmnr_span, data.get("input"), data.get("output"))
+    set_lmnr_span_io(lmnr_span, data.get("input"), data.get("output"))
 
 
 def _apply_generation_span_data(lmnr_span: Any, span_data: Any) -> None:
@@ -120,13 +117,13 @@ def _apply_generation_span_data(lmnr_span: Any, span_data: Any) -> None:
     input_data = data.get("input")
     if input_data is None:
         input_data = getattr(span_data, "input", None)
-    _set_gen_ai_input_messages(lmnr_span, input_data)
+    set_gen_ai_input_messages(lmnr_span, input_data)
 
     # Set gen_ai.output.messages from the output
     output_data = data.get("output")
     if output_data is None:
         output_data = getattr(span_data, "output", None)
-    _set_gen_ai_output_messages(lmnr_span, output_data)
+    set_gen_ai_output_messages(lmnr_span, output_data)
 
     # Apply LLM attributes (model, usage, etc.) with fallback to direct attrs
     llm_data = dict(data)
@@ -136,7 +133,7 @@ def _apply_generation_span_data(lmnr_span: Any, span_data: Any) -> None:
         llm_data["usage"] = getattr(span_data, "usage", None)
     if llm_data.get("response_id") is None and llm_data.get("id") is None:
         llm_data["response_id"] = getattr(span_data, "response_id", None)
-    _apply_llm_attributes(lmnr_span, llm_data)
+    apply_llm_attributes(lmnr_span, llm_data)
 
 
 def _apply_response_span_data(lmnr_span: Any, span_data: Any) -> None:
@@ -148,17 +145,17 @@ def _apply_response_span_data(lmnr_span: Any, span_data: Any) -> None:
     response_input = getattr(span_data, "input", None)
 
     # Set gen_ai.input.messages
-    _set_gen_ai_input_messages(lmnr_span, response_input)
+    set_gen_ai_input_messages(lmnr_span, response_input)
 
     # Set gen_ai.output.messages from the response output
     if response is not None:
-        _set_gen_ai_output_messages_from_response(lmnr_span, response)
+        set_gen_ai_output_messages_from_response(lmnr_span, response)
 
         # Set tool definitions from response.tools
-        _set_tool_definitions_from_response(lmnr_span, response)
+        set_tool_definitions_from_response(lmnr_span, response)
 
         # Apply LLM attributes from response
-        _apply_llm_attributes(lmnr_span, _response_to_llm_data(response))
+        apply_llm_attributes(lmnr_span, response_to_llm_data(response))
 
 
 def _apply_handoff_span_data(lmnr_span: Any, span_data: Any) -> None:
@@ -228,7 +225,7 @@ def _apply_speech_span_data(lmnr_span: Any, span_data: Any) -> None:
     if input_text is None:
         input_text = getattr(span_data, "input", None)
     if input_text:
-        _set_gen_ai_input_messages(lmnr_span, input_text)
+        set_gen_ai_input_messages(lmnr_span, input_text)
 
     output_data = data.get("output")
     if output_data is None:
@@ -236,9 +233,9 @@ def _apply_speech_span_data(lmnr_span: Any, span_data: Any) -> None:
     if output_data:
         if isinstance(output_data, dict):
             # Speech output is {data: ..., format: ...}
-            _set_gen_ai_output_messages(lmnr_span, output_data.get("data"))
+            set_gen_ai_output_messages(lmnr_span, output_data.get("data"))
         else:
-            _set_gen_ai_output_messages(lmnr_span, output_data)
+            set_gen_ai_output_messages(lmnr_span, output_data)
 
 
 def _apply_transcription_span_data(lmnr_span: Any, span_data: Any) -> None:
@@ -257,15 +254,15 @@ def _apply_transcription_span_data(lmnr_span: Any, span_data: Any) -> None:
         input_data = getattr(span_data, "input", None)
     if input_data:
         if isinstance(input_data, dict):
-            _set_gen_ai_input_messages(lmnr_span, input_data.get("data"))
+            set_gen_ai_input_messages(lmnr_span, input_data.get("data"))
         else:
-            _set_gen_ai_input_messages(lmnr_span, input_data)
+            set_gen_ai_input_messages(lmnr_span, input_data)
 
     output_text = data.get("output")
     if output_text is None:
         output_text = getattr(span_data, "output", None)
     if output_text:
-        _set_gen_ai_output_messages(lmnr_span, output_text)
+        set_gen_ai_output_messages(lmnr_span, output_text)
 
 
 def _apply_speech_group_span_data(lmnr_span: Any, span_data: Any) -> None:
@@ -277,10 +274,10 @@ def _apply_speech_group_span_data(lmnr_span: Any, span_data: Any) -> None:
     if input_text is None:
         input_text = getattr(span_data, "input", None)
     if input_text:
-        _set_gen_ai_input_messages(lmnr_span, input_text)
+        set_gen_ai_input_messages(lmnr_span, input_text)
 
     output_text = data.get("output")
     if output_text is None:
         output_text = getattr(span_data, "output", None)
     if output_text:
-        _set_gen_ai_output_messages(lmnr_span, output_text)
+        set_gen_ai_output_messages(lmnr_span, output_text)
