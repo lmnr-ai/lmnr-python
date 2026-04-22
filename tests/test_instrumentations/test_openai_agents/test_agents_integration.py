@@ -22,18 +22,12 @@ def _get_spans(span_exporter):
 
 def _attrs(spans):
     """Build a list of {name, attributes} dicts from spans for easy inspection."""
-    return [
-        {"name": s.name, "attributes": dict(s.attributes or {})}
-        for s in spans
-    ]
+    return [{"name": s.name, "attributes": dict(s.attributes or {})} for s in spans]
 
 
 def _find_spans_with_model(span_data):
     """Find spans that have the model attribute set (response/generation spans)."""
-    return [
-        s for s in span_data
-        if s["attributes"].get(Attributes.REQUEST_MODEL.value)
-    ]
+    return [s for s in span_data if s["attributes"].get(Attributes.REQUEST_MODEL.value)]
 
 
 def _find_spans_by_attr(span_data, key, value=None):
@@ -97,7 +91,7 @@ def test_agent_with_tool(instrument_openai_agents, span_exporter):
     agent = Agent(
         name="WeatherBot",
         instructions="You are a helpful assistant. Use the get_weather tool to answer weather questions.",
-        model="gpt-4o-mini",
+        model="gpt-4.1-nano",
         tools=[get_weather],
     )
 
@@ -122,9 +116,7 @@ def test_agent_with_tool(instrument_openai_agents, span_exporter):
     assert any("72" in str(m) for m in all_output)
 
     # Should have a function/tool span for get_weather
-    tool_spans = _find_spans_by_attr(
-        span_data, "openai.agents.span.type", "function"
-    )
+    tool_spans = _find_spans_by_attr(span_data, "lmnr.span.type", "TOOL")
     assert len(tool_spans) >= 1
 
     # Verify token usage on at least one model span

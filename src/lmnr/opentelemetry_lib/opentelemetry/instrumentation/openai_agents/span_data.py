@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from opentelemetry.trace import Status, StatusCode
+
+if TYPE_CHECKING:
+    from agents.tracing import Span as AgentsSpan
+    from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 
 from lmnr.opentelemetry_lib.tracing.attributes import Attributes
 from lmnr.sdk.utils import json_dumps
@@ -26,9 +30,9 @@ from .messages import (
 # ---------------------------------------------------------------------------
 
 
-def apply_span_error(lmnr_span: Any, span: Any) -> None:
+def apply_span_error(lmnr_span: LaminarSpan, span: AgentsSpan[Any]) -> None:
     error = getattr(span, "error", None)
-    if not error or not hasattr(lmnr_span, "set_status"):
+    if not error:
         return
     try:
         message = getattr(error, "message", None) or str(error)
@@ -42,7 +46,7 @@ def apply_span_error(lmnr_span: Any, span: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
-def apply_span_data(lmnr_span: Any, span_data: Any) -> None:
+def apply_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     if span_data is None:
         return
 
@@ -76,11 +80,8 @@ def apply_span_data(lmnr_span: Any, span_data: Any) -> None:
         set_gen_ai_messages(lmnr_span, data.get("input"), data.get("output"))
 
 
-def _apply_agent_span_data(lmnr_span: Any, span_data: Any) -> None:
+def _apply_agent_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     data = export_span_data(span_data)
-    if not hasattr(lmnr_span, "set_attribute"):
-        return
-
     name = data.get("name") or getattr(span_data, "name", None)
     if name:
         lmnr_span.set_attribute("openai.agents.agent.name", name)
@@ -97,20 +98,14 @@ def _apply_agent_span_data(lmnr_span: Any, span_data: Any) -> None:
         lmnr_span.set_attribute("openai.agents.agent.output_type", output_type)
 
 
-def _apply_function_span_data(lmnr_span: Any, span_data: Any) -> None:
+def _apply_function_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     data = export_span_data(span_data)
-    if not hasattr(lmnr_span, "set_attribute"):
-        return
-
     # Use gen_ai messages for input/output
     set_lmnr_span_io(lmnr_span, data.get("input"), data.get("output"))
 
 
-def _apply_generation_span_data(lmnr_span: Any, span_data: Any) -> None:
+def _apply_generation_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     """Handle 'generation' spans - these are LLM calls with input/output/usage."""
-    if not hasattr(lmnr_span, "set_attribute"):
-        return
-
     data = export_span_data(span_data)
 
     # Set gen_ai.input.messages from the input messages
@@ -136,11 +131,8 @@ def _apply_generation_span_data(lmnr_span: Any, span_data: Any) -> None:
     apply_llm_attributes(lmnr_span, llm_data)
 
 
-def _apply_response_span_data(lmnr_span: Any, span_data: Any) -> None:
+def _apply_response_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     """Handle 'response' spans - these wrap the actual OpenAI API Response."""
-    if not hasattr(lmnr_span, "set_attribute"):
-        return
-
     response = getattr(span_data, "response", None)
     response_input = getattr(span_data, "input", None)
 
@@ -158,11 +150,8 @@ def _apply_response_span_data(lmnr_span: Any, span_data: Any) -> None:
         apply_llm_attributes(lmnr_span, response_to_llm_data(response))
 
 
-def _apply_handoff_span_data(lmnr_span: Any, span_data: Any) -> None:
+def _apply_handoff_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     data = export_span_data(span_data)
-    if not hasattr(lmnr_span, "set_attribute"):
-        return
-
     from_agent = data.get("from_agent")
     to_agent = data.get("to_agent")
     if from_agent:
@@ -171,11 +160,8 @@ def _apply_handoff_span_data(lmnr_span: Any, span_data: Any) -> None:
         lmnr_span.set_attribute("openai.agents.handoff.to", agent_name(to_agent))
 
 
-def _apply_guardrail_span_data(lmnr_span: Any, span_data: Any) -> None:
+def _apply_guardrail_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     data = export_span_data(span_data)
-    if not hasattr(lmnr_span, "set_attribute"):
-        return
-
     name = data.get("name")
     if name:
         lmnr_span.set_attribute("openai.agents.guardrail.name", name)
@@ -184,11 +170,8 @@ def _apply_guardrail_span_data(lmnr_span: Any, span_data: Any) -> None:
         lmnr_span.set_attribute("openai.agents.guardrail.triggered", triggered)
 
 
-def _apply_custom_span_data(lmnr_span: Any, span_data: Any) -> None:
+def _apply_custom_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     data = export_span_data(span_data)
-    if not hasattr(lmnr_span, "set_attribute"):
-        return
-
     name = data.get("name")
     if name:
         lmnr_span.set_attribute("openai.agents.custom.name", name)
@@ -197,11 +180,8 @@ def _apply_custom_span_data(lmnr_span: Any, span_data: Any) -> None:
         lmnr_span.set_attribute("openai.agents.custom.data", json_dumps(custom_data))
 
 
-def _apply_mcp_span_data(lmnr_span: Any, span_data: Any) -> None:
+def _apply_mcp_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     data = export_span_data(span_data)
-    if not hasattr(lmnr_span, "set_attribute"):
-        return
-
     server = data.get("server")
     if server:
         lmnr_span.set_attribute("openai.agents.mcp.server", server)
@@ -210,11 +190,8 @@ def _apply_mcp_span_data(lmnr_span: Any, span_data: Any) -> None:
         lmnr_span.set_attribute("openai.agents.mcp.result", json_dumps(result))
 
 
-def _apply_speech_span_data(lmnr_span: Any, span_data: Any) -> None:
+def _apply_speech_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     data = export_span_data(span_data)
-    if not hasattr(lmnr_span, "set_attribute"):
-        return
-
     model = data.get("model") or getattr(span_data, "model", None)
     if model:
         lmnr_span.set_attribute(Attributes.REQUEST_MODEL.value, model)
@@ -238,11 +215,8 @@ def _apply_speech_span_data(lmnr_span: Any, span_data: Any) -> None:
             set_gen_ai_output_messages(lmnr_span, output_data)
 
 
-def _apply_transcription_span_data(lmnr_span: Any, span_data: Any) -> None:
+def _apply_transcription_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     data = export_span_data(span_data)
-    if not hasattr(lmnr_span, "set_attribute"):
-        return
-
     model = data.get("model") or getattr(span_data, "model", None)
     if model:
         lmnr_span.set_attribute(Attributes.REQUEST_MODEL.value, model)
@@ -265,11 +239,8 @@ def _apply_transcription_span_data(lmnr_span: Any, span_data: Any) -> None:
         set_gen_ai_output_messages(lmnr_span, output_text)
 
 
-def _apply_speech_group_span_data(lmnr_span: Any, span_data: Any) -> None:
+def _apply_speech_group_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     data = export_span_data(span_data)
-    if not hasattr(lmnr_span, "set_attribute"):
-        return
-
     input_text = data.get("input")
     if input_text is None:
         input_text = getattr(span_data, "input", None)

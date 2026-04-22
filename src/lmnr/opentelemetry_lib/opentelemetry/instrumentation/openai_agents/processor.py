@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from lmnr import Laminar
 
@@ -13,6 +13,11 @@ try:
     from agents.tracing import TracingProcessor as _Base
 except ImportError:  # openai-agents not installed
     _Base = object
+
+if TYPE_CHECKING:
+    from agents.tracing import Span as AgentsSpan, Trace
+    from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
+    from lmnr.sdk.types import LaminarSpanContext
 
 from .helpers import agent_name, export_span_data, map_span_type, span_kind, span_name
 from .span_data import apply_span_data, apply_span_error
@@ -22,13 +27,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class _SpanEntry:
-    lmnr_span: Any
-    agents_span: Any = None
+    lmnr_span: LaminarSpan
+    agents_span: AgentsSpan[Any] | None = None
 
 
 @dataclass
 class _TraceState:
-    root_span: Any = None
+    root_span: LaminarSpan | None = None
     spans: dict[str, _SpanEntry] = field(default_factory=dict)
     ready: threading.Event = field(default_factory=threading.Event)
     # Tracks in-flight on_span_end calls so _end_trace_state can wait
@@ -42,7 +47,7 @@ class _TraceState:
     ended: bool = False
     # Maps destination agent name -> handoff lmnr span context so that the
     # subsequent agent span becomes a child of the handoff span.
-    pending_handoff_ctxs: dict[str, Any] = field(default_factory=dict)
+    pending_handoff_ctxs: dict[str, LaminarSpanContext] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         # Initially no pending ends, so mark as done.
@@ -57,18 +62,18 @@ class LaminarAgentsTraceProcessor(_Base):
         self._traces: dict[str, _TraceState] = {}
         self._disabled = False
 
-    def on_trace_start(self, trace: Any) -> None:
+    def on_trace_start(self, trace: Trace) -> None:
         if self._disabled:
             return
-        trace_id = getattr(trace, "trace_id", None)
+        trace_id = trace.trace_id
         if not trace_id:
             return
         try:
             state = self._get_or_create_trace(trace)
             # If a span arrived first, the root span may have a placeholder
             # name. Update it to the actual trace name.
-            trace_name = getattr(trace, "name", None)
-            if trace_name and hasattr(state.root_span, "update_name"):
+            trace_name = trace.name
+            if trace_name and state.root_span is not None:
                 try:
                     state.root_span.update_name(trace_name)
                 except Exception:
@@ -77,10 +82,10 @@ class LaminarAgentsTraceProcessor(_Base):
         except Exception:
             logger.debug("Error in on_trace_start", exc_info=True)
 
-    def on_trace_end(self, trace: Any) -> None:
+    def on_trace_end(self, trace: Trace) -> None:
         if self._disabled:
             return
-        trace_id = getattr(trace, "trace_id", None)
+        trace_id = trace.trace_id
         if not trace_id:
             return
         with self._lock:
@@ -94,10 +99,10 @@ class LaminarAgentsTraceProcessor(_Base):
         with self._lock:
             self._traces.pop(trace_id, None)
 
-    def on_span_start(self, span: Any) -> None:
+    def on_span_start(self, span: AgentsSpan[Any]) -> None:
         if self._disabled:
             return
-        trace_id = getattr(span, "trace_id", None)
+        trace_id = span.trace_id
         if not trace_id:
             return
         lmnr_span = None
@@ -110,13 +115,11 @@ class LaminarAgentsTraceProcessor(_Base):
                 parent_entry.lmnr_span if parent_entry else state.root_span
             )
 
-            parent_ctx = None
-            if parent_lmnr_span is not None and hasattr(
-                parent_lmnr_span, "get_laminar_span_context"
-            ):
+            parent_ctx: LaminarSpanContext | None = None
+            if parent_lmnr_span is not None:
                 parent_ctx = parent_lmnr_span.get_laminar_span_context()
 
-            span_data = getattr(span, "span_data", None)
+            span_data = span.span_data
             span_type = map_span_type(span_data)
             name = span_name(span, span_data)
 
@@ -141,7 +144,7 @@ class LaminarAgentsTraceProcessor(_Base):
 
             # Use span_id as key so parent_id lookups in on_span_start
             # match correctly. The SDK always generates a span_id.
-            key = getattr(span, "span_id", None)
+            key = span.span_id
             if not key:
                 logger.debug("Span missing span_id, cannot track")
                 try:
@@ -159,14 +162,14 @@ class LaminarAgentsTraceProcessor(_Base):
                 except Exception:
                     pass
 
-    def on_span_end(self, span: Any) -> None:
+    def on_span_end(self, span: AgentsSpan[Any]) -> None:
         if self._disabled:
             return
-        trace_id = getattr(span, "trace_id", None)
+        trace_id = span.trace_id
         if not trace_id:
             return
 
-        key = getattr(span, "span_id", None)
+        key = span.span_id
         if not key:
             return
 
@@ -180,7 +183,7 @@ class LaminarAgentsTraceProcessor(_Base):
         if not entry or not state:
             return
 
-        span_data = getattr(span, "span_data", None)
+        span_data = span.span_data
         try:
             try:
                 apply_span_data(entry.lmnr_span, span_data)
@@ -209,9 +212,7 @@ class LaminarAgentsTraceProcessor(_Base):
                             if parent_entry is not None
                             else state.root_span
                         )
-                        if parent_lmnr_span is not None and hasattr(
-                            parent_lmnr_span, "get_laminar_span_context"
-                        ):
+                        if parent_lmnr_span is not None:
                             handoff_ctx = parent_lmnr_span.get_laminar_span_context()
                             with self._lock:
                                 state.pending_handoff_ctxs[to_agent] = handoff_ctx
@@ -289,7 +290,7 @@ class LaminarAgentsTraceProcessor(_Base):
         except Exception:
             pass
 
-    def _get_or_create_trace(self, trace_or_span: Any) -> _TraceState:
+    def _get_or_create_trace(self, trace_or_span: Trace | AgentsSpan[Any]) -> _TraceState:
         trace_id = getattr(trace_or_span, "trace_id", None)
         if not trace_id:
             trace_id = "unknown"
@@ -321,7 +322,9 @@ class LaminarAgentsTraceProcessor(_Base):
                 raise RuntimeError("Root span creation failed for this trace")
         return state
 
-    def _apply_trace_metadata(self, root_span: Any, trace: Any) -> None:
+    def _apply_trace_metadata(self, root_span: LaminarSpan | None, trace: Trace) -> None:
+        if root_span is None:
+            return
         metadata: dict[str, Any] = {}
         trace_metadata = getattr(trace, "metadata", None)
         if isinstance(trace_metadata, dict):
@@ -329,17 +332,16 @@ class LaminarAgentsTraceProcessor(_Base):
         group_id = getattr(trace, "group_id", None)
         if group_id:
             metadata["openai.agents.group_id"] = group_id
-        trace_name = getattr(trace, "name", None)
-        if trace_name:
-            metadata["openai.agents.trace_name"] = trace_name
-        if metadata and hasattr(root_span, "set_trace_metadata"):
+        if trace.name:
+            metadata["openai.agents.trace_name"] = trace.name
+        if metadata:
             try:
                 root_span.set_trace_metadata(metadata)
             except Exception:
                 pass
-        session_id = metadata.get("session_id") if metadata else None
-        user_id = metadata.get("user_id") if metadata else None
-        if session_id and hasattr(root_span, "set_trace_session_id"):
+        session_id = metadata.get("session_id")
+        user_id = metadata.get("user_id")
+        if session_id:
             root_span.set_trace_session_id(session_id)
-        if user_id and hasattr(root_span, "set_trace_user_id"):
+        if user_id:
             root_span.set_trace_user_id(user_id)

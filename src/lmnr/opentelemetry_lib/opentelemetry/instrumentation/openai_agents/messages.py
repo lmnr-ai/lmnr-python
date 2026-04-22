@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 
 from lmnr.opentelemetry_lib.tracing.attributes import Attributes
 from lmnr.sdk.utils import json_dumps
@@ -20,7 +23,7 @@ from .helpers import (
 
 
 def set_gen_ai_messages(
-    lmnr_span: Any,
+    lmnr_span: LaminarSpan,
     input_data: Any,
     output_data: Any,
 ) -> None:
@@ -32,48 +35,38 @@ def set_gen_ai_messages(
 
 
 def set_lmnr_span_io(
-    lmnr_span: Any,
+    lmnr_span: LaminarSpan,
     input_data: Any,
     output_data: Any,
 ) -> None:
     """Set gen_ai.input.messages and gen_ai.output.messages on the span."""
-    if not hasattr(lmnr_span, "set_attribute"):
-        return
     if input_data is not None:
         lmnr_span.set_attribute("lmnr.span.input", json_dumps(input_data))
     if output_data is not None:
         lmnr_span.set_attribute("lmnr.span.output", json_dumps(output_data))
 
 
-def set_gen_ai_input_messages(lmnr_span: Any, input_data: Any) -> None:
+def set_gen_ai_input_messages(lmnr_span: LaminarSpan, input_data: Any) -> None:
     """Set gen_ai.input.messages on the span."""
     if input_data is None:
         return
-    if not hasattr(lmnr_span, "set_attribute"):
-        return
-
     messages = normalize_messages(input_data)
     if messages:
         lmnr_span.set_attribute("gen_ai.input.messages", json_dumps(messages))
 
 
-def set_gen_ai_output_messages(lmnr_span: Any, output_data: Any) -> None:
+def set_gen_ai_output_messages(lmnr_span: LaminarSpan, output_data: Any) -> None:
     """Set gen_ai.output.messages on the span."""
     if output_data is None:
         return
-    if not hasattr(lmnr_span, "set_attribute"):
-        return
-
     messages = normalize_messages(output_data, role="assistant")
     if messages:
         lmnr_span.set_attribute("gen_ai.output.messages", json_dumps(messages))
 
 
-def set_gen_ai_output_messages_from_response(lmnr_span: Any, response: Any) -> None:
+def set_gen_ai_output_messages_from_response(lmnr_span: LaminarSpan, response: Any) -> None:
     """Extract and set gen_ai.output.messages from a Response object."""
     if response is None:
-        return
-    if not hasattr(lmnr_span, "set_attribute"):
         return
 
     output_items = getattr(response, "output", None)
@@ -132,11 +125,8 @@ def set_gen_ai_output_messages_from_response(lmnr_span: Any, response: Any) -> N
 # ---------------------------------------------------------------------------
 
 
-def set_tool_definitions_from_response(lmnr_span: Any, response: Any) -> None:
+def set_tool_definitions_from_response(lmnr_span: LaminarSpan, response: Any) -> None:
     """Extract gen_ai.tool.definitions from a Response object's tools field."""
-    if not hasattr(lmnr_span, "set_attribute"):
-        return
-
     tools = getattr(response, "tools", None)
     if not tools:
         return
@@ -178,8 +168,8 @@ def set_tool_definitions_from_response(lmnr_span: Any, response: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
-def apply_llm_attributes(lmnr_span: Any, data: dict[str, Any]) -> None:
-    if not data or not hasattr(lmnr_span, "set_attribute"):
+def apply_llm_attributes(lmnr_span: LaminarSpan, data: dict[str, Any]) -> None:
+    if not data:
         return
 
     model = data.get("model")
@@ -199,7 +189,7 @@ def apply_llm_attributes(lmnr_span: Any, data: dict[str, Any]) -> None:
         lmnr_span.set_attribute(Attributes.RESPONSE_ID.value, response_id)
 
 
-def _apply_usage(lmnr_span: Any, usage: Any) -> None:
+def _apply_usage(lmnr_span: LaminarSpan, usage: Any) -> None:
     """Extract token usage from a usage object or dict, handling zero correctly."""
     if usage is None:
         return

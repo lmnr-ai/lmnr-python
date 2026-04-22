@@ -637,7 +637,7 @@ async def async_responses_get_or_create_wrapper(
         raise
     parsed_response = parse_response(response)
 
-    response_id = getattr(responses, "id", None)
+    response_id = getattr(parsed_response, "id", None)
     if not response_id:
         return response
     existing_data = responses.get(response_id)
