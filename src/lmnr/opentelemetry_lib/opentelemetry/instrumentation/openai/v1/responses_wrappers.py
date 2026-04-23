@@ -296,7 +296,11 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                         f"gen_ai.prompt.{prompt_index}.role",
                         "computer_call_output",
                     )
-                    output_image_url = block_dict.get("output", {}).get("image_url")
+                    output_image_url = None
+                    try:
+                        output_image_url = block_dict.get("output", {}).get("image_url")
+                    except Exception:
+                        pass
                     if output_image_url:
                         _set_span_attribute(
                             span,
@@ -457,119 +461,9 @@ def responses_get_or_create_wrapper(tracer: Tracer, wrapped, instance, args, kwa
         if isinstance(response, Stream):
             return response
     except Exception as e:
-        response_id = kwargs.get("response_id")
-        existing_data = {}
-        if response_id and response_id in responses:
-            existing_data = responses[response_id].model_dump()
-        try:
-            traced_data = TracedData(
-                start_time=existing_data.get("start_time", start_time),
-                response_id=response_id or "",
-                input=process_input(
-                    kwargs.get("input", existing_data.get("input", []))
-                ),
-                instructions=kwargs.get(
-                    "instructions", existing_data.get("instructions")
-                ),
-                tools=get_tools_from_kwargs(kwargs) or existing_data.get("tools", []),
-                output_blocks=existing_data.get("output_blocks", {}),
-                usage=existing_data.get("usage"),
-                output_text=kwargs.get(
-                    "output_text", existing_data.get("output_text", "")
-                ),
-                request_model=kwargs.get(
-                    "model", existing_data.get("request_model", "")
-                ),
-                response_model=existing_data.get("response_model", ""),
-                request_reasoning_summary=kwargs.get("reasoning", {}).get(
-                    "summary", existing_data.get("request_reasoning_summary")
-                ),
-                request_reasoning_effort=kwargs.get("reasoning", {}).get(
-                    "effort", existing_data.get("request_reasoning_effort")
-                ),
-                request_service_tier=kwargs.get(
-                    "service_tier", existing_data.get("request_service_tier")
-                ),
-                # response_service_tier=existing_data.get("response_service_tier"),
-            )
-        except Exception:
-            traced_data = None
-
-        span = tracer.start_span(
-            SPAN_NAME,
-            kind=SpanKind.CLIENT,
-            start_time=(
-                start_time if traced_data is None else int(traced_data.start_time)
-            ),
-            context=get_current_context(),
-        )
-        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-        span.record_exception(e, attributes=get_event_attributes_from_context())
-        span.set_status(StatusCode.ERROR, str(e))
-        if traced_data:
-            set_data_attributes(traced_data, span)
-        span.end()
+        _process_exception(tracer, start_time, kwargs, e)
         raise
-    parsed_response = parse_response(response)
-
-    response_id = getattr(parsed_response, "id", None)
-    if not response_id:
-        return response
-    existing_data = responses.get(response_id)
-    if existing_data is None:
-        existing_data = {}
-    else:
-        existing_data = existing_data.model_dump()
-
-    request_tools = get_tools_from_kwargs(kwargs)
-
-    merged_tools = existing_data.get("tools", []) + request_tools
-
-    try:
-        traced_data = TracedData(
-            start_time=existing_data.get("start_time", start_time),
-            response_id=response_id,
-            input=process_input(existing_data.get("input", kwargs.get("input"))),
-            instructions=existing_data.get("instructions", kwargs.get("instructions")),
-            tools=merged_tools if merged_tools else None,
-            output_blocks={block.id: block for block in parsed_response.output}
-            | existing_data.get("output_blocks", {}),
-            usage=existing_data.get("usage", parsed_response.usage),
-            output_text=existing_data.get(
-                "output_text", _get_output_text(parsed_response)
-            ),
-            request_model=existing_data.get("request_model", kwargs.get("model")),
-            response_model=existing_data.get("response_model", parsed_response.model),
-            request_reasoning_summary=existing_data.get(
-                "request_reasoning_summary", kwargs.get("reasoning", {}).get("summary")
-            ),
-            request_reasoning_effort=existing_data.get(
-                "request_reasoning_effort", kwargs.get("reasoning", {}).get("effort")
-            ),
-            request_service_tier=existing_data.get(
-                "request_service_tier", kwargs.get("service_tier")
-            ),
-            response_service_tier=existing_data.get(
-                "response_service_tier",
-                parsed_response.service_tier,
-            ),
-        )
-        responses[response_id] = traced_data
-    except Exception:
-        raise
-        return response
-
-    if parsed_response.status == "completed":
-        span = tracer.start_span(
-            SPAN_NAME,
-            kind=SpanKind.CLIENT,
-            start_time=int(traced_data.start_time),
-            context=get_current_context(),
-        )
-        set_data_attributes(traced_data, span)
-        span.end()
-
-    return response
+    return _process_response(tracer, start_time, response, kwargs)
 
 
 @dont_throw
@@ -586,55 +480,68 @@ async def async_responses_get_or_create_wrapper(
         if isinstance(response, (Stream, AsyncStream)):
             return response
     except Exception as e:
-        response_id = kwargs.get("response_id")
-        existing_data = {}
-        if response_id and response_id in responses:
-            existing_data = responses[response_id].model_dump()
-        try:
-            traced_data = TracedData(
-                start_time=existing_data.get("start_time", start_time),
-                response_id=response_id or "",
-                input=process_input(
-                    kwargs.get("input", existing_data.get("input", []))
-                ),
-                instructions=kwargs.get(
-                    "instructions", existing_data.get("instructions", "")
-                ),
-                tools=get_tools_from_kwargs(kwargs) or existing_data.get("tools", []),
-                output_blocks=existing_data.get("output_blocks", {}),
-                usage=existing_data.get("usage"),
-                output_text=kwargs.get("output_text", existing_data.get("output_text")),
-                request_model=kwargs.get("model", existing_data.get("request_model")),
-                response_model=existing_data.get("response_model"),
-                request_reasoning_summary=kwargs.get("reasoning", {}).get(
-                    "summary", existing_data.get("request_reasoning_summary")
-                ),
-                request_reasoning_effort=kwargs.get("reasoning", {}).get(
-                    "effort", existing_data.get("request_reasoning_effort")
-                ),
-                request_service_tier=kwargs.get(
-                    "service_tier", existing_data.get("request_service_tier")
-                ),
-                # response_service_tier=existing_data.get("response_service_tier"),
-            )
-        except Exception:
-            traced_data = None
-
-        span = tracer.start_span(
-            SPAN_NAME,
-            kind=SpanKind.CLIENT,
-            start_time=(
-                start_time if traced_data is None else int(traced_data.start_time)
-            ),
-            context=get_current_context(),
-        )
-        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
-        span.record_exception(e, attributes=get_event_attributes_from_context())
-        span.set_status(StatusCode.ERROR, str(e))
-        if traced_data:
-            set_data_attributes(traced_data, span)
-        span.end()
+        _process_exception(tracer, start_time, kwargs, e)
         raise
+    return _process_response(tracer, start_time, response, kwargs)
+
+
+@dont_throw
+def _process_exception(tracer: Tracer, start_time, kwargs, e):
+    response_id = kwargs.get("response_id")
+    existing_data = {}
+    if response_id and response_id in responses:
+        existing_data = responses[response_id].model_dump()
+    try:
+        request_reasoning_summary = None
+        request_reasoning_effort = None
+        request_reasoning = kwargs.get("reasoning", {})
+        try:
+            request_reasoning_summary = request_reasoning.get("summary")
+        except Exception:
+            pass
+        try:
+            request_reasoning_effort = request_reasoning.get("effort")
+        except Exception:
+            pass
+        traced_data = TracedData(
+            start_time=existing_data.get("start_time", start_time),
+            response_id=response_id or "",
+            input=process_input(kwargs.get("input", existing_data.get("input", []))),
+            instructions=kwargs.get("instructions", existing_data.get("instructions")),
+            tools=get_tools_from_kwargs(kwargs) or existing_data.get("tools", []),
+            output_blocks=existing_data.get("output_blocks", {}),
+            usage=existing_data.get("usage"),
+            output_text=kwargs.get("output_text", existing_data.get("output_text", "")),
+            request_model=kwargs.get("model", existing_data.get("request_model", "")),
+            response_model=existing_data.get("response_model", ""),
+            request_reasoning_summary=request_reasoning_summary
+            or existing_data.get("request_reasoning_summary"),
+            request_reasoning_effort=request_reasoning_effort
+            or existing_data.get("request_reasoning_effort"),
+            request_service_tier=kwargs.get(
+                "service_tier", existing_data.get("request_service_tier")
+            ),
+            # response_service_tier=existing_data.get("response_service_tier"),
+        )
+    except Exception:
+        traced_data = None
+
+    span = tracer.start_span(
+        SPAN_NAME,
+        kind=SpanKind.CLIENT,
+        start_time=(start_time if traced_data is None else int(traced_data.start_time)),
+        context=get_current_context(),
+    )
+    span.set_attribute(ERROR_TYPE, e.__class__.__name__)
+    span.record_exception(e, attributes=get_event_attributes_from_context())
+    span.set_status(StatusCode.ERROR, str(e))
+    if traced_data:
+        set_data_attributes(traced_data, span)
+    span.end()
+
+
+@dont_throw
+def _process_response(tracer: Tracer, start_time, response, kwargs):
     parsed_response = parse_response(response)
 
     response_id = getattr(parsed_response, "id", None)
@@ -651,6 +558,17 @@ async def async_responses_get_or_create_wrapper(
     merged_tools = existing_data.get("tools", []) + request_tools
 
     try:
+        request_reasoning_summary = None
+        request_reasoning_effort = None
+        request_reasoning = kwargs.get("reasoning", {})
+        try:
+            request_reasoning_summary = request_reasoning.get("summary")
+        except Exception:
+            pass
+        try:
+            request_reasoning_effort = request_reasoning.get("effort")
+        except Exception:
+            pass
         traced_data = TracedData(
             start_time=existing_data.get("start_time", start_time),
             response_id=response_id,
@@ -665,12 +583,10 @@ async def async_responses_get_or_create_wrapper(
             ),
             request_model=existing_data.get("request_model", kwargs.get("model")),
             response_model=existing_data.get("response_model", parsed_response.model),
-            request_reasoning_summary=existing_data.get(
-                "request_reasoning_summary", kwargs.get("reasoning", {}).get("summary")
-            ),
-            request_reasoning_effort=existing_data.get(
-                "request_reasoning_effort", kwargs.get("reasoning", {}).get("effort")
-            ),
+            request_reasoning_summary=request_reasoning_summary
+            or existing_data.get("request_reasoning_summary"),
+            request_reasoning_effort=request_reasoning_effort
+            or existing_data.get("request_reasoning_effort"),
             request_service_tier=existing_data.get(
                 "request_service_tier", kwargs.get("service_tier")
             ),
@@ -681,6 +597,7 @@ async def async_responses_get_or_create_wrapper(
         )
         responses[response_id] = traced_data
     except Exception:
+        raise
         return response
 
     if parsed_response.status == "completed":

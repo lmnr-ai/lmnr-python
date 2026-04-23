@@ -15,7 +15,9 @@ except ImportError:  # openai-agents not installed
     _Base = object
 
 if TYPE_CHECKING:
-    from agents.tracing import Span as AgentsSpan, Trace
+    from agents.tracing import Span as AgentsSpan
+    from agents.tracing import Trace
+
     from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
     from lmnr.sdk.types import LaminarSpanContext
 
@@ -286,11 +288,14 @@ class LaminarAgentsTraceProcessor(_Base):
             except Exception:
                 pass
         try:
-            state.root_span.end()
+            if state.root_span:
+                state.root_span.end()
         except Exception:
             pass
 
-    def _get_or_create_trace(self, trace_or_span: Trace | AgentsSpan[Any]) -> _TraceState:
+    def _get_or_create_trace(
+        self, trace_or_span: Trace | AgentsSpan[Any]
+    ) -> _TraceState:
         trace_id = getattr(trace_or_span, "trace_id", None)
         if not trace_id:
             trace_id = "unknown"
@@ -322,7 +327,9 @@ class LaminarAgentsTraceProcessor(_Base):
                 raise RuntimeError("Root span creation failed for this trace")
         return state
 
-    def _apply_trace_metadata(self, root_span: LaminarSpan | None, trace: Trace) -> None:
+    def _apply_trace_metadata(
+        self, root_span: LaminarSpan | None, trace: Trace
+    ) -> None:
         if root_span is None:
             return
         metadata: dict[str, Any] = {}
