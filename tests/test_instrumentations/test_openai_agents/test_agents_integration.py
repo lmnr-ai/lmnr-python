@@ -75,6 +75,13 @@ def test_simple_agent(instrument_openai_agents, span_exporter):
     input_messages = json.loads(resp["attributes"]["gen_ai.input.messages"])
     assert any("2+2" in str(m) or "2 + 2" in str(m) for m in input_messages)
 
+    # The system instructions from the agent must be prepended as the first
+    # message so the full prompt is visible in the trace.
+    assert input_messages[0] == {
+        "role": "system",
+        "content": [{"type": "text", "text": "You are a helpful assistant."}],
+    }
+
     # Verify response ID was recorded
     assert resp["attributes"].get(Attributes.RESPONSE_ID.value)
 
@@ -124,3 +131,23 @@ def test_agent_with_tool(instrument_openai_agents, span_exporter):
         s["attributes"].get(Attributes.INPUT_TOKEN_COUNT.value) is not None
         for s in model_spans
     )
+
+    # Every span that records input messages should carry the agent's system
+    # instructions as the first entry.
+    expected_system = {
+        "role": "system",
+        "content": [
+            {
+                "type": "text",
+                "text": (
+                    "You are a helpful assistant. Use the get_weather tool "
+                    "to answer weather questions."
+                ),
+            }
+        ],
+    }
+    input_spans = [s for s in span_data if "gen_ai.input.messages" in s["attributes"]]
+    assert input_spans, "expected at least one span with gen_ai.input.messages"
+    for s in input_spans:
+        msgs = json.loads(s["attributes"]["gen_ai.input.messages"])
+        assert msgs[0] == expected_system

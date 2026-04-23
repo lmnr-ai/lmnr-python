@@ -14,7 +14,12 @@ if TYPE_CHECKING:
 from lmnr.opentelemetry_lib.tracing.attributes import Attributes
 from lmnr.sdk.utils import json_dumps
 
-from .helpers import agent_name, export_span_data, span_kind
+from .helpers import (
+    agent_name,
+    export_span_data,
+    get_current_system_instructions,
+    span_kind,
+)
 from .messages import (
     apply_llm_attributes,
     response_to_llm_data,
@@ -115,7 +120,9 @@ def _apply_generation_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     input_data = data.get("input")
     if input_data is None:
         input_data = getattr(span_data, "input", None)
-    set_gen_ai_input_messages(lmnr_span, input_data)
+    set_gen_ai_input_messages(
+        lmnr_span, input_data, system_instructions=get_current_system_instructions()
+    )
 
     # Set gen_ai.output.messages from the output
     output_data = data.get("output")
@@ -139,8 +146,13 @@ def _apply_response_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     response = getattr(span_data, "response", None)
     response_input = getattr(span_data, "input", None)
 
-    # Set gen_ai.input.messages
-    set_gen_ai_input_messages(lmnr_span, response_input)
+    # Set gen_ai.input.messages, prepending the agent's system instructions
+    # captured during the model call.
+    set_gen_ai_input_messages(
+        lmnr_span,
+        response_input,
+        system_instructions=get_current_system_instructions(),
+    )
 
     # Set gen_ai.output.messages from the response output
     if response is not None:

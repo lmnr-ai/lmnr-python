@@ -47,11 +47,27 @@ def set_lmnr_span_io(
         lmnr_span.set_attribute("lmnr.span.output", json_dumps(output_data))
 
 
-def set_gen_ai_input_messages(lmnr_span: LaminarSpan, input_data: Any) -> None:
-    """Set gen_ai.input.messages on the span."""
-    if input_data is None:
+def set_gen_ai_input_messages(
+    lmnr_span: LaminarSpan,
+    input_data: Any,
+    system_instructions: str | None = None,
+) -> None:
+    """Set gen_ai.input.messages on the span.
+
+    If system_instructions is provided, prepend a system message so the span
+    reflects the full prompt actually sent to the model.
+    """
+    if input_data is None and not system_instructions:
         return
-    messages = normalize_messages(input_data)
+    messages = normalize_messages(input_data) if input_data is not None else []
+    if system_instructions:
+        messages.insert(
+            0,
+            {
+                "role": "system",
+                "content": [{"type": "text", "text": system_instructions}],
+            },
+        )
     if messages:
         lmnr_span.set_attribute("gen_ai.input.messages", json_dumps(messages))
 

@@ -1,5 +1,6 @@
 """Span naming, type mapping, and utility helpers for OpenAI Agents instrumentation."""
 
+import contextvars
 from typing import Any
 
 from lmnr.sdk.types import LaminarSpanType
@@ -17,6 +18,33 @@ DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY_RAW = (
 DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY = create_key(
     DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY_RAW
 )
+
+
+# Task-local system instructions for the currently-executing model call.
+# Set by the wrapped get_response / stream_response methods in instrumentor.py
+# and read by the response/generation span_data handlers so the system prompt
+# can be prepended to gen_ai.input.messages.
+_current_system_instructions: contextvars.ContextVar[str | None] = (
+    contextvars.ContextVar(
+        "lmnr_openai_agents_system_instructions", default=None
+    )
+)
+
+
+def get_current_system_instructions() -> str | None:
+    return _current_system_instructions.get()
+
+
+def set_current_system_instructions(
+    value: str | None,
+) -> "contextvars.Token[str | None]":
+    return _current_system_instructions.set(value)
+
+
+def reset_current_system_instructions(
+    token: "contextvars.Token[str | None]",
+) -> None:
+    _current_system_instructions.reset(token)
 
 
 def span_name(span: Any, span_data: Any) -> str:
