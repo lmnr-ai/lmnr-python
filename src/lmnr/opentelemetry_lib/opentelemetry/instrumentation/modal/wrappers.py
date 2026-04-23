@@ -124,6 +124,56 @@ def _set_exec_request_attributes(span: Span, command: str, kwargs: dict):
     set_span_attribute(span, SPAN_INPUT, json_dumps(input_data))
 
 
+def _extract_process_id(process) -> str | None:
+    """Extract a Modal ContainerProcess's process_id.
+
+    Modal wraps the public ``ContainerProcess`` with ``synchronicity``, whose
+    proxy class only exposes explicitly-translated public methods (``stdout``,
+    ``stderr``, ``wait``, ``poll``, ``returncode``, ``attach``). The actual
+    ``_impl`` / ``_process_id`` live on the underlying async object, which is
+    stashed in the wrapper's ``__dict__`` under a synthesized name like
+    ``_sync_original_<id>`` and reachable via the ``_sync_synchronizer``
+    attribute.
+
+    We try, in order:
+    1. A direct ``process_id`` attribute (forward-compat if Modal exposes it).
+    2. Walking through the synchronicity proxy to ``_impl._process_id``.
+    """
+    pid = getattr(process, "process_id", None)
+    if pid:
+        return pid
+
+    try:
+        synchronizer = getattr(process, "_sync_synchronizer", None)
+        if synchronizer is not None:
+            original_attr = getattr(synchronizer, "_original_attr", None)
+            if original_attr:
+                original = process.__dict__.get(original_attr)
+                if original is not None:
+                    impl = getattr(original, "_impl", None) or original
+                    pid = getattr(impl, "_process_id", None) or getattr(
+                        impl, "process_id", None
+                    )
+                    if pid:
+                        return pid
+    except Exception:
+        pass
+
+    return None
+
+
+@dont_throw
+def _set_exec_response_attributes(span: Span, process):
+    process_id = _extract_process_id(process)
+
+    output_data: dict = {}
+    if process_id:
+        set_span_attribute(span, "modal.process.id", process_id)
+        output_data["process_id"] = process_id
+
+    set_span_attribute(span, SPAN_OUTPUT, json_dumps(output_data))
+
+
 # --- Span helpers ---
 
 
@@ -416,6 +466,8 @@ def _wrap_exec(wrapped, instance, args, kwargs):
 
     try:
         response = wrapped(*args, **kwargs)
+        if span.is_recording():
+            _set_exec_response_attributes(span, response)
         span.end()
     except Exception as e:
         _record_exception(span, e)
@@ -455,6 +507,8 @@ async def _wrap_exec_async(wrapped, instance, args, kwargs):
 
     try:
         response = await wrapped(*args, **kwargs)
+        if span.is_recording():
+            _set_exec_response_attributes(span, response)
         span.end()
     except Exception as e:
         _record_exception(span, e)
