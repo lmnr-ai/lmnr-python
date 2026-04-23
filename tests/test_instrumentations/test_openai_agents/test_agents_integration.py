@@ -69,7 +69,7 @@ def test_simple_agent(instrument_openai_agents, span_exporter):
 
     # Verify gen_ai.output.messages contains the response text
     output_messages = json.loads(resp["attributes"]["gen_ai.output.messages"])
-    assert any("4" in str(m) for m in output_messages)
+    assert any("4" in str(m) for m in output_messages["output"])
 
     # Verify gen_ai.input.messages contains the user message
     input_messages = json.loads(resp["attributes"]["gen_ai.input.messages"])
@@ -79,7 +79,7 @@ def test_simple_agent(instrument_openai_agents, span_exporter):
     # message so the full prompt is visible in the trace.
     assert input_messages[0] == {
         "role": "system",
-        "content": [{"type": "text", "text": "You are a helpful assistant."}],
+        "content": [{"type": "input_text", "text": "You are a helpful assistant."}],
     }
 
     # Verify response ID was recorded
@@ -119,7 +119,7 @@ def test_agent_with_tool(instrument_openai_agents, span_exporter):
     for s in span_data:
         if "gen_ai.output.messages" in s["attributes"]:
             msgs = json.loads(s["attributes"]["gen_ai.output.messages"])
-            all_output.extend(msgs)
+            all_output.extend(msgs["output"])
     assert any("72" in str(m) for m in all_output)
 
     # Should have a function/tool span for get_weather
@@ -138,7 +138,7 @@ def test_agent_with_tool(instrument_openai_agents, span_exporter):
         "role": "system",
         "content": [
             {
-                "type": "text",
+                "type": "input_text",
                 "text": (
                     "You are a helpful assistant. Use the get_weather tool "
                     "to answer weather questions."

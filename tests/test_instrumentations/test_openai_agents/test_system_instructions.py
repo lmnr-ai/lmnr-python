@@ -47,7 +47,7 @@ def test_set_gen_ai_input_messages_prepends_system_instructions():
     assert messages == [
         {
             "role": "system",
-            "content": [{"type": "text", "text": "You are a calculator."}],
+            "content": [{"type": "input_text", "text": "You are a calculator."}],
         },
         {"role": "user", "content": "What is 2+2?"},
     ]
@@ -64,7 +64,7 @@ def test_set_gen_ai_input_messages_system_only_still_emits():
     assert messages == [
         {
             "role": "system",
-            "content": [{"type": "text", "text": "Always respond in French."}],
+            "content": [{"type": "input_text", "text": "Always respond in French."}],
         }
     ]
 
