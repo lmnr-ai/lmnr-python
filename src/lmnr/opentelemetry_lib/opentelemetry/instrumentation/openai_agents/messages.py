@@ -202,8 +202,8 @@ def _apply_usage(lmnr_span: LaminarSpan, usage: Any) -> None:
         return
     cached_input_tokens = 0
     reasoning_output_tokens = 0
-    input_token_details = None
-    output_token_details = None
+    input_tokens_details = None
+    output_tokens_details = None
 
     if isinstance(usage, dict):
         input_tokens = get_first_not_none(
@@ -213,28 +213,28 @@ def _apply_usage(lmnr_span: LaminarSpan, usage: Any) -> None:
             usage, "output_tokens", "completion_tokens", "output"
         )
         total_tokens = get_first_not_none(usage, "total_tokens", "total")
-        input_token_details = get_first_not_none(
-            usage, "input_token_details", "prompt_token_details"
+        input_tokens_details = get_first_not_none(
+            usage, "input_tokens_details", "prompt_tokens_details"
         )
-        output_token_details = get_first_not_none(
-            usage, "output_token_details", "completion_token_details"
+        output_tokens_details = get_first_not_none(
+            usage, "output_tokens_details", "completion_tokens_details"
         )
     else:
         # Object with attributes (e.g. ResponseUsage)
         input_tokens = get_attr_not_none(usage, "input_tokens", "prompt_tokens")
         output_tokens = get_attr_not_none(usage, "output_tokens", "completion_tokens")
         total_tokens = get_attr_not_none(usage, "total_tokens")
-        input_token_details = get_attr_not_none(
-            usage, "input_token_details", "prompt_token_details"
+        input_tokens_details = get_attr_not_none(
+            usage, "input_tokens_details", "prompt_tokens_details"
         )
-        output_token_details = get_attr_not_none(
-            usage, "output_token_details", "completion_token_details"
+        output_tokens_details = get_attr_not_none(
+            usage, "output_tokens_details", "completion_tokens_details"
         )
 
-    if input_token_details:
-        cached_input_tokens = to_dict(input_token_details).get("cached_tokens", 0)
-    if output_token_details:
-        reasoning_output_tokens = to_dict(output_token_details).get("reasoning_tokens")
+    if input_tokens_details:
+        cached_input_tokens = to_dict(input_tokens_details).get("cached_tokens", 0)
+    if output_tokens_details:
+        reasoning_output_tokens = to_dict(output_tokens_details).get("reasoning_tokens")
     if input_tokens is not None:
         lmnr_span.set_attribute(Attributes.INPUT_TOKEN_COUNT.value, input_tokens)
     if cached_input_tokens:
