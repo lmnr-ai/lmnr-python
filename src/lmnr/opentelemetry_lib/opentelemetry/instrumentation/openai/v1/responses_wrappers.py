@@ -608,7 +608,6 @@ def _process_response(tracer: Tracer, start_time, response, kwargs):
         )
         responses[response_id] = traced_data
     except Exception:
-        raise
         return response
 
     if parsed_response.status == "completed":
@@ -677,7 +676,10 @@ async def async_responses_cancel_wrapper(
     if isinstance(response, (Stream, AsyncStream)):
         return response
     parsed_response = parse_response(response)
-    existing_data = responses.pop(parsed_response.id, None)
+    response_id = getattr(parsed_response, "id", None)
+    if not response_id:
+        return response
+    existing_data = responses.pop(response_id, None)
     if existing_data is not None:
         span = tracer.start_span(
             SPAN_NAME,
