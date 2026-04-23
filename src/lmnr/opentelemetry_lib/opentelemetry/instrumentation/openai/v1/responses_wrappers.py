@@ -572,12 +572,17 @@ def _process_response(tracer: Tracer, start_time, response, kwargs):
         request_reasoning_summary = None
         request_reasoning_effort = None
         request_reasoning = kwargs.get("reasoning", {})
+        response_service_tier = None
         try:
             request_reasoning_summary = request_reasoning.get("summary")
         except Exception:
             pass
         try:
             request_reasoning_effort = request_reasoning.get("effort")
+        except Exception:
+            pass
+        try:
+            response_service_tier = parsed_response.service_tier
         except Exception:
             pass
         traced_data = TracedData(
@@ -594,16 +599,16 @@ def _process_response(tracer: Tracer, start_time, response, kwargs):
             ),
             request_model=existing_data.get("request_model", kwargs.get("model")),
             response_model=existing_data.get("response_model", parsed_response.model),
-            request_reasoning_summary=request_reasoning_summary
-            or existing_data.get("request_reasoning_summary"),
-            request_reasoning_effort=request_reasoning_effort
-            or existing_data.get("request_reasoning_effort"),
+            request_reasoning_summary=existing_data.get("request_reasoning_summary")
+            or request_reasoning_summary,
+            request_reasoning_effort=existing_data.get("request_reasoning_effort")
+            or request_reasoning_effort,
             request_service_tier=existing_data.get(
                 "request_service_tier", kwargs.get("service_tier")
             ),
             response_service_tier=existing_data.get(
                 "response_service_tier",
-                parsed_response.service_tier,
+                response_service_tier,
             ),
         )
         responses[response_id] = traced_data

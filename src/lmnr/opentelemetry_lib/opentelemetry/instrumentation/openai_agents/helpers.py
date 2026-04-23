@@ -25,9 +25,7 @@ DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY = create_key(
 # and read by the response/generation span_data handlers so the system prompt
 # can be prepended to gen_ai.input.messages.
 _current_system_instructions: contextvars.ContextVar[str | None] = (
-    contextvars.ContextVar(
-        "lmnr_openai_agents_system_instructions", default=None
-    )
+    contextvars.ContextVar("lmnr_openai_agents_system_instructions", default=None)
 )
 
 
@@ -172,11 +170,11 @@ def get_attr_not_none(obj: Any, *attrs: str) -> Any:
 
 
 def to_dict(
-    obj: BaseModel | dict, pydantic_kwargs: dict[str, Any] = {}
+    obj: BaseModel | dict, pydantic_kwargs: dict[str, Any] | None = None
 ) -> dict[str, Any]:
     try:
         if isinstance(obj, BaseModel):
-            return obj.model_dump(**pydantic_kwargs)
+            return obj.model_dump(**(pydantic_kwargs or {}))
         elif isinstance(obj, dict):
             return obj
         elif obj is None:

@@ -23,18 +23,6 @@ from .helpers import (
 # ---------------------------------------------------------------------------
 
 
-def set_gen_ai_messages(
-    lmnr_span: LaminarSpan,
-    input_data: Any,
-    output_data: Any,
-) -> None:
-    """Set gen_ai.input.messages and gen_ai.output.messages on the span."""
-    if input_data is not None:
-        set_gen_ai_input_messages(lmnr_span, input_data)
-    if output_data is not None:
-        set_gen_ai_output_messages(lmnr_span, output_data)
-
-
 def set_lmnr_span_io(
     lmnr_span: LaminarSpan,
     input_data: Any,
