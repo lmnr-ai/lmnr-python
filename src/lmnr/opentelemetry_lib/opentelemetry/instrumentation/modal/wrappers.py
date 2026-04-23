@@ -28,18 +28,20 @@ data.
 """
 
 import logging
-import time
-from enum import Enum
+from functools import partial
 
 from opentelemetry import context as context_api
 from opentelemetry.context import Context
 from opentelemetry.trace import Status, StatusCode, Span
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
-from opentelemetry._logs import LogRecord, Logger, get_logger
-from opentelemetry._logs.severity import SeverityNumber
+from opentelemetry._logs import Logger, get_logger
 
 from lmnr import Laminar
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.log_emission import (
+    LogStream,
+    emit_log,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     set_span_attribute,
     dont_throw,
@@ -55,17 +57,10 @@ from .version import __version__
 log = logging.getLogger(__name__)
 
 
-MODAL_LOG_ATTRIBUTES = {
-    "modal.system": "modal",
-}
-
 SPAN_NAME_CREATE = "modal.sandbox.create"
 SPAN_NAME_EXEC = "modal.sandbox.exec"
 
-
-class LogStream(Enum):
-    STDOUT = "stdout"
-    STDERR = "stderr"
+_emit_log = partial(emit_log, "modal")
 
 
 # --- Attribute setters ---
@@ -195,43 +190,6 @@ def _record_exception(span: Span, exc: Exception):
     span.set_attribute(ERROR_TYPE, exc.__class__.__name__)
     span.record_exception(exc, attributes=attributes)
     span.set_status(Status(StatusCode.ERROR, str(exc)))
-
-
-# --- Log emission ---
-
-def _emit_log(
-    logger: Logger,
-    stream: LogStream,
-    content: str,
-    ctx: Context,
-    extra_attributes: dict[str, str] | None = None,
-):
-    if not content:
-        return
-
-    try:
-        event_name = f"modal.log.{stream.value}"
-        severity = SeverityNumber.INFO if stream == LogStream.STDOUT else SeverityNumber.ERROR
-
-        attributes = {
-            **MODAL_LOG_ATTRIBUTES,
-            "modal.log.stream": stream.value,
-        }
-        if extra_attributes:
-            attributes.update(extra_attributes)
-
-        logger.emit(
-            LogRecord(
-                timestamp=time.time_ns(),
-                context=ctx,
-                body=content,
-                severity_number=severity,
-                attributes=attributes,
-                event_name=event_name,
-            )
-        )
-    except Exception as e:
-        log.debug(f"Failed to emit Modal log event: {e}")
 
 
 # --- Stream wrapper for tee-ing output ---

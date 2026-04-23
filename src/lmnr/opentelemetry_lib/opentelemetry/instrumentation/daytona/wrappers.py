@@ -1,18 +1,20 @@
 import asyncio
 import logging
 import threading
-import time
-from enum import Enum
+from functools import partial
 
 from opentelemetry import context as context_api
 from opentelemetry.context import Context
 from opentelemetry.trace import Status, StatusCode, Span
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
-from opentelemetry._logs import LogRecord, Logger, get_logger
-from opentelemetry._logs.severity import SeverityNumber
+from opentelemetry._logs import Logger, get_logger
 
 from lmnr import Laminar
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.log_emission import (
+    LogStream,
+    emit_log,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
@@ -31,15 +33,7 @@ from .version import __version__
 log = logging.getLogger(__name__)
 
 
-DAYTONA_LOG_ATTRIBUTES = {
-    "daytona.system": "daytona",
-}
-
-
-class LogStream(Enum):
-    """Enum for Daytona log stream types."""
-    STDOUT = "stdout"
-    STDERR = "stderr"
+_emit_log = partial(emit_log, "daytona")
 
 
 @dont_throw
@@ -68,51 +62,6 @@ def _set_response_attributes(span: Span, response):
     if hasattr(response, "output"):
         set_span_attribute(span, "daytona.output", response.output)
     set_span_attribute(span, SPAN_OUTPUT, json_dumps(response))
-
-
-def _emit_log(
-    logger: Logger,
-    stream: LogStream,
-    content: str,
-    ctx: Context,
-    extra_attributes: dict[str, str] | None = None,
-):
-    """Emit a log event using the OpenTelemetry Logs API.
-
-    This emits a proper OTel log record that is independent of any span,
-    allowing logs to be captured even after the command span has ended.
-
-    Args:
-        ctx: The OpenTelemetry Context containing the span to associate with this log.
-        extra_attributes: Additional attributes to include in the log record
-            (e.g. session_id/cmd_id for session commands, or command for exec).
-    """
-    if not content:
-        return
-
-    try:
-        event_name = f"daytona.log.{stream.value}"
-        event_severity_number = SeverityNumber.INFO if stream == LogStream.STDOUT else SeverityNumber.ERROR
-
-        attributes = {
-            **DAYTONA_LOG_ATTRIBUTES,
-            "daytona.log.stream": stream.value,
-        }
-        if extra_attributes:
-            attributes.update(extra_attributes)
-
-        logger.emit(
-            LogRecord(
-                timestamp=time.time_ns(),
-                context=ctx,
-                body=content,
-                severity_number=event_severity_number,
-                attributes=attributes,
-                event_name=event_name,
-            )
-        )
-    except Exception as e:
-        log.debug(f"Failed to emit Daytona log event: {e}")
 
 
 def _emit_logs_from_response(
