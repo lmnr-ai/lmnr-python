@@ -52,7 +52,7 @@ def span_name(span: Any, span_data: Any) -> str:
     kind = span_kind(span_data)
     if kind:
         if kind in ["agent", "custom", "function", "tool"]:
-            return name_from_span_data(span_data)
+            return name_from_span_data(span_data) or f"agents.{kind}"
         return f"agents.{kind}"
     return "agents.span"
 
