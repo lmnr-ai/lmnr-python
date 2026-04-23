@@ -64,3 +64,10 @@ lmnr datasets pull <id>       # Pull dataset
 LMNR_PROJECT_API_KEY  # API key (can also pass to initialize())
 LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
 ```
+
+## pydantic_ai instrument
+
+- `Instruments.PYDANTIC_AI` is opt-in only — it is NOT added to the default instrumentation set. Users must pass it explicitly in `instruments={Instruments.PYDANTIC_AI}`.
+- When `PYDANTIC_AI` is requested and the user did not explicitly opt into the underlying provider SDKs (OpenAI, Anthropic, Google GenAI, Bedrock, Groq, Mistral, Cohere, OpenAI Agents, Together, Replicate, Transformers), those provider instrumentors are auto-skipped to prevent double-instrumentation. pydantic_ai emits its own OTel GenAI spans via `InstrumentationSettings(version=5)`, so the raw HTTP-level instrumentors would create duplicates.
+- Installation: `pip install lmnr pydantic-ai-slim>=1.0` — there is no `[pydantic-ai]` extra in `pyproject.toml`.
+- The instrumentor calls `Agent.instrument_all(settings)`, which sets a module-level default on pydantic_ai's `Agent` class. Subsequent `Agent()` instances pick it up automatically.

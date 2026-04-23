@@ -414,6 +414,21 @@ class PlaywrightInstrumentorInitializer(InstrumentorInitializer):
         return PlaywrightInstrumentor(async_client)
 
 
+class PydanticAIInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not (
+            is_package_installed("pydantic-ai-slim")
+            or is_package_installed("pydantic-ai")
+        ):
+            return None
+
+        from ..opentelemetry.instrumentation.pydantic_ai import (
+            PydanticAIInstrumentor,
+        )
+
+        return PydanticAIInstrumentor()
+
+
 class QdrantInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("qdrant_client"):
