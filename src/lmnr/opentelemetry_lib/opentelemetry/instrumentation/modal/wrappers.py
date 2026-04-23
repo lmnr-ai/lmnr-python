@@ -254,6 +254,8 @@ class _TeeStreamIterator:
         self._stream_type = stream_type
         self._ctx = ctx
         self._extra_attributes = extra_attributes
+        self._sync_iter = None
+        self._async_iter = None
 
     def __getattr__(self, name):
         return getattr(self._original, name)
@@ -275,18 +277,24 @@ class _TeeStreamIterator:
         return _ReadProxy(self._original.read, self)
 
     def __iter__(self):
+        self._sync_iter = iter(self._original)
         return self
 
     def __next__(self):
-        line = next(self._original)
+        if self._sync_iter is None:
+            self._sync_iter = iter(self._original)
+        line = next(self._sync_iter)
         self._emit(line)
         return line
 
     def __aiter__(self):
+        self._async_iter = self._original.__aiter__()
         return self
 
     async def __anext__(self):
-        line = await self._original.__anext__()
+        if self._async_iter is None:
+            self._async_iter = self._original.__aiter__()
+        line = await self._async_iter.__anext__()
         self._emit(line)
         return line
 
