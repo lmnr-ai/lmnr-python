@@ -1,8 +1,8 @@
-"""Tests for the PYDANTIC_AI opt-in and conflicting-instrumentor auto-block logic.
+"""Tests for the PYDANTIC_AI opt-in behaviour in `init_instrumentations`.
 
 We don't actually import pydantic_ai here - we just verify that
-`init_instrumentations` routes `Instruments.PYDANTIC_AI` correctly and blocks
-the overlapping provider instrumentors unless they are explicitly opted in.
+`init_instrumentations` never enables `Instruments.PYDANTIC_AI` by default
+and only enables it when explicitly requested via the `instruments` argument.
 """
 
 from unittest.mock import MagicMock
@@ -11,7 +11,6 @@ import pytest
 
 from lmnr.opentelemetry_lib.tracing import instruments as instruments_mod
 from lmnr.opentelemetry_lib.tracing.instruments import (
-    _PYDANTIC_AI_CONFLICTING_INSTRUMENTS,
     INSTRUMENTATION_INITIALIZERS,
     Instruments,
     init_instrumentations,
@@ -50,8 +49,17 @@ def test_pydantic_ai_not_in_defaults(track_initializers):
     assert Instruments.PYDANTIC_AI not in track_initializers
 
 
+def test_pydantic_ai_explicit_opt_in_enables_it(track_initializers):
+    """Passing PYDANTIC_AI in `instruments` enables its initializer."""
+    init_instrumentations(
+        tracer_provider=MagicMock(),
+        instruments={Instruments.PYDANTIC_AI},
+    )
+    assert Instruments.PYDANTIC_AI in track_initializers
+
+
 def test_pydantic_ai_with_explicit_provider_keeps_both(track_initializers):
-    """Opting in to PYDANTIC_AI alongside OPENAI/ANTHROPIC respects explicit opt-in."""
+    """Opting in to PYDANTIC_AI alongside OPENAI/ANTHROPIC enables all."""
     init_instrumentations(
         tracer_provider=MagicMock(),
         instruments={
@@ -63,18 +71,6 @@ def test_pydantic_ai_with_explicit_provider_keeps_both(track_initializers):
     assert Instruments.PYDANTIC_AI in track_initializers
     assert Instruments.OPENAI in track_initializers
     assert Instruments.ANTHROPIC in track_initializers
-
-
-def test_pydantic_ai_alone_blocks_all_conflicting(track_initializers):
-    """Opting in to only PYDANTIC_AI auto-blocks all conflicting providers."""
-    init_instrumentations(
-        tracer_provider=MagicMock(), instruments={Instruments.PYDANTIC_AI}
-    )
-    assert Instruments.PYDANTIC_AI in track_initializers
-    for conflicting in _PYDANTIC_AI_CONFLICTING_INSTRUMENTS:
-        assert (
-            conflicting not in track_initializers
-        ), f"{conflicting} should have been auto-blocked"
 
 
 def test_no_pydantic_ai_leaves_defaults_alone(track_initializers):

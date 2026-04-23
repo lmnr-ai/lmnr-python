@@ -116,28 +116,6 @@ INSTRUMENTATION_INITIALIZERS: dict[
 }
 
 
-# When pydantic_ai is explicitly opted in, these underlying provider
-# instrumentors are auto-blocked to avoid double spans — pydantic_ai already
-# emits OTel GenAI spans for every LLM call it makes. If a user explicitly
-# opts in to any of these alongside pydantic_ai, their explicit choice wins
-# and no auto-block is applied for that instrument.
-_PYDANTIC_AI_CONFLICTING_INSTRUMENTS: frozenset[Instruments] = frozenset(
-    {
-        Instruments.ANTHROPIC,
-        Instruments.BEDROCK,
-        Instruments.COHERE,
-        Instruments.GOOGLE_GENAI,
-        Instruments.GROQ,
-        Instruments.LITELLM,
-        Instruments.MISTRAL,
-        Instruments.OLLAMA,
-        Instruments.OPENAI,
-        Instruments.TOGETHER,
-        Instruments.VERTEXAI,
-    }
-)
-
-
 def init_instrumentations(
     tracer_provider: TracerProvider,
     logger_provider: "LoggerProvider | None" = None,
@@ -145,24 +123,17 @@ def init_instrumentations(
     block_instruments: set[Instruments] | None = None,
     async_client: AsyncLaminarClient | None = None,
 ):
-    block_instruments = set(block_instruments or set())
-    explicit_instruments = (
-        set(instruments) if instruments is not None else None
-    )
+    block_instruments = block_instruments or set()
     if instruments is None:
         # PYDANTIC_AI is opt-in only: never enable it by default. Users must
         # explicitly pass Instruments.PYDANTIC_AI to `Laminar.initialize`.
+        # pydantic_ai emits its own OTel GenAI spans, so running the underlying
+        # provider instrumentors alongside it would produce duplicate spans —
+        # users opting in to PYDANTIC_AI should pass the explicit `instruments`
+        # set they want (typically just `{Instruments.PYDANTIC_AI}`).
         instruments = set(Instruments) - {Instruments.PYDANTIC_AI}
     if not isinstance(instruments, set):
         instruments = set(instruments)
-
-    # When pydantic_ai is enabled and the user did NOT also opt in to a given
-    # provider instrumentor, block that provider to avoid emitting duplicate
-    # spans for the same underlying API calls.
-    if Instruments.PYDANTIC_AI in instruments:
-        for conflicting in _PYDANTIC_AI_CONFLICTING_INSTRUMENTS:
-            if explicit_instruments is None or conflicting not in explicit_instruments:
-                block_instruments.add(conflicting)
 
     # Remove any instruments that were explicitly blocked
     instruments = instruments - block_instruments
