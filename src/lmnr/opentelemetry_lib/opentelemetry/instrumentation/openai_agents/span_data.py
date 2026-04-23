@@ -8,6 +8,7 @@ from opentelemetry.trace import Status, StatusCode
 
 if TYPE_CHECKING:
     from agents.tracing import Span as AgentsSpan
+
     from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 
 from lmnr.opentelemetry_lib.tracing.attributes import Attributes
@@ -77,7 +78,7 @@ def apply_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     else:
         # Fallback: try to set generic I/O
         data = export_span_data(span_data)
-        set_gen_ai_messages(lmnr_span, data.get("input"), data.get("output"))
+        set_lmnr_span_io(lmnr_span, data.get("input"), data.get("output"))
 
 
 def _apply_agent_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:

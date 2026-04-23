@@ -2,39 +2,41 @@ import atexit
 import logging
 import threading
 
-from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
+from opentelemetry import trace
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.context import Context
+from opentelemetry.sdk._logs import LoggerProvider
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
+from opentelemetry.sdk.trace.export import SpanExporter
+
+from lmnr.opentelemetry_lib.tracing.context import (
+    attach_context,
+    clear_context,
+    get_current_context,
+    get_token_stack,
+    set_token_stack,
+)
+from lmnr.opentelemetry_lib.tracing.context import (
+    pop_span_context as ctx_pop_span_context,
+)
+from lmnr.opentelemetry_lib.tracing.context import (
+    push_span_context as ctx_push_span_context,
+)
 from lmnr.opentelemetry_lib.tracing.exporter import LaminarLogExporter
-from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
-from lmnr.sdk.types import SessionRecordingOptions
-from lmnr.sdk.log import VerboseColorfulFormatter
 from lmnr.opentelemetry_lib.tracing.instruments import (
     Instruments,
     init_instrumentations,
 )
-from lmnr.opentelemetry_lib.tracing.context import (
-    attach_context,
-    clear_context,
-    pop_span_context as ctx_pop_span_context,
-    get_current_context,
-    get_token_stack,
-    push_span_context as ctx_push_span_context,
-    set_token_stack,
-)
-
-from opentelemetry import trace
-from opentelemetry.context import Context
-
-from lmnr.sdk.log import get_default_logger
+from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
+from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
+from lmnr.sdk.log import VerboseColorfulFormatter, get_default_logger
+from lmnr.sdk.types import SessionRecordingOptions
 
 # instead of importing from opentelemetry.instrumentation.threading,
 # we import from our modified copy to use Laminar's isolated context.
 from ..opentelemetry.instrumentation.threading import ThreadingInstrumentor
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider, SpanProcessor
-from opentelemetry.sdk.trace.export import SpanExporter
-from opentelemetry._logs import set_logger_provider
-from opentelemetry.sdk._logs import LoggerProvider
-from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 
 TRACER_NAME = "lmnr.tracer"
 
@@ -213,9 +215,11 @@ class TracerWrapper(object):
         """Get the current isolated context."""
         return get_current_context()
 
-    def push_span_context(self, span: trace.Span) -> Context:
+    def push_span_context(
+        self, span: trace.Span, from_ctx: Context | None = None
+    ) -> Context:
         """Push a new context with the given span onto the stack."""
-        current_ctx = get_current_context()
+        current_ctx = from_ctx or get_current_context()
         new_context = trace.set_span_in_context(span, current_ctx)
         ctx_push_span_context(new_context)
         return new_context

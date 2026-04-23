@@ -1,11 +1,22 @@
 """Span naming, type mapping, and utility helpers for OpenAI Agents instrumentation."""
 
-from __future__ import annotations
+from typing import Any
 
-from typing import TYPE_CHECKING, Any
+from lmnr.sdk.types import LaminarSpanType
+from lmnr.sdk.log import get_default_logger
 
-if TYPE_CHECKING:
-    from lmnr.sdk.types import LaminarSpanType
+from opentelemetry.context import create_key
+from pydantic import BaseModel
+
+logger = get_default_logger(__name__)
+
+
+DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY_RAW = (
+    "LMNR_DISABLE_OPENAI_RESPONSES_INSTRUMENTATION"
+)
+DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY = create_key(
+    DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY_RAW
+)
 
 
 def span_name(span: Any, span_data: Any) -> str:
@@ -130,3 +141,20 @@ def get_attr_not_none(obj: Any, *attrs: str) -> Any:
         if val is not None:
             return val
     return None
+
+
+def to_dict(
+    obj: BaseModel | dict, pydantic_kwargs: dict[str, Any] = {}
+) -> dict[str, Any]:
+    try:
+        if isinstance(obj, BaseModel):
+            return obj.model_dump(**pydantic_kwargs)
+        elif isinstance(obj, dict):
+            return obj
+        elif obj is None:
+            return {}
+        else:
+            return dict(obj)
+    except Exception as e:
+        logger.debug(f"Error converting to dict: {obj}, error: {e}")
+        return dict(obj)

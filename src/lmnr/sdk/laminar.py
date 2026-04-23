@@ -1,9 +1,33 @@
 import asyncio
-from contextlib import contextmanager
-from contextvars import Context
+import datetime
+import logging
+import os
+import re
+import uuid
 import warnings
+from contextlib import contextmanager
+from typing import Any, Generator, Literal
+
+from opentelemetry import context as context_api
+from opentelemetry import trace
+from opentelemetry.context import Context, get_value
+from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
+from opentelemetry.trace import INVALID_TRACE_ID, Span, Status, StatusCode, use_span
+from opentelemetry.util.types import AttributeValue
+from typing_extensions import TypedDict
+
 from lmnr.opentelemetry_lib import TracerManager
-from lmnr.opentelemetry_lib.tracing import TracerWrapper, get_current_context
+from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.tracing.attributes import (
+    ASSOCIATION_PROPERTIES,
+    PARENT_SPAN_IDS_PATH,
+    PARENT_SPAN_PATH,
+    SESSION_ID,
+    SPAN_TYPE,
+    TRACE_TYPE,
+    USER_ID,
+    Attributes,
+)
 from lmnr.opentelemetry_lib.tracing.context import (
     CONTEXT_METADATA_KEY,
     CONTEXT_SESSION_ID_KEY,
@@ -11,47 +35,24 @@ from lmnr.opentelemetry_lib.tracing.context import (
     CONTEXT_USER_ID_KEY,
     attach_context,
     detach_context,
+    get_current_context,
     get_event_attributes_from_context,
     push_span_context,
     set_association_prop_context,
-)
-from opentelemetry.context import get_value
-from lmnr.opentelemetry_lib.tracing.attributes import (
-    ASSOCIATION_PROPERTIES,
-    PARENT_SPAN_IDS_PATH,
-    PARENT_SPAN_PATH,
-    USER_ID,
-    Attributes,
-    SPAN_TYPE,
 )
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.utils import set_association_props_in_context
-from lmnr.sdk.utils import get_otel_env_var
-
-from opentelemetry import trace
-from opentelemetry import context as context_api
-from opentelemetry.trace import INVALID_TRACE_ID, Span, Status, StatusCode, use_span
-from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
-from opentelemetry.util.types import AttributeValue
-
-from typing import Any, Iterator, Literal
-from typing_extensions import TypedDict
-
-import datetime
-import logging
-import os
-import re
-import uuid
-
-from lmnr.opentelemetry_lib.tracing.attributes import SESSION_ID, TRACE_TYPE
-
-from lmnr.sdk.utils import from_env, is_otel_attribute_value_type, json_dumps
+from lmnr.sdk.utils import (
+    from_env,
+    get_otel_env_var,
+    is_otel_attribute_value_type,
+    json_dumps,
+)
 
 from .log import VerboseColorfulFormatter
-
 from .types import (
     LaminarSpanContext,
     LaminarSpanType,
@@ -437,7 +438,7 @@ class Laminar:
         session_id: str | None = None,
         metadata: dict[str, AttributeValue] | None = None,
         attributes: dict[str, AttributeValue] | None = None,
-    ) -> Iterator[LaminarSpan]:
+    ) -> Generator[LaminarSpan]:
         """Start a new span as the current span. Useful for manual
         instrumentation. If `span_type` is set to `"LLM"`, you should report
         usage and response attributes manually. See `Laminar.set_span_attributes`
@@ -826,7 +827,7 @@ class Laminar:
         end_on_exit: bool = False,
         record_exception: bool = True,
         set_status_on_exception: bool = True,
-    ) -> Iterator[LaminarSpan | Span]:
+    ) -> Generator[LaminarSpan | Span]:
         """Use a span as the current span. Useful for manual instrumentation.
 
         Fully copies the implementation of `use_span` from opentelemetry.trace
@@ -1022,7 +1023,7 @@ class Laminar:
         if assoc_props_token and isinstance(span, LaminarSpan):
             span._lmnr_assoc_props_token = assoc_props_token
 
-        context = wrapper.push_span_context(span)
+        context = wrapper.push_span_context(span, from_ctx=context)
         context_token = context_api.attach(context)
         isolated_context_token = attach_context(context)
         span._lmnr_ctx_token = context_token

@@ -1,4 +1,7 @@
 import json
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.helpers import (
+    DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY,
+)
 import pydantic
 import re
 import time
@@ -454,6 +457,10 @@ def set_data_attributes(traced_response: TracedData, span: Span):
 def responses_get_or_create_wrapper(tracer: Tracer, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
+    if context_api.get_value(
+        DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY, get_current_context()
+    ):
+        return wrapped(*args, **kwargs)
     start_time = time.time_ns()
 
     try:
@@ -472,6 +479,10 @@ async def async_responses_get_or_create_wrapper(
     tracer: Tracer, wrapped, instance, args, kwargs
 ):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
+        return await wrapped(*args, **kwargs)
+    if context_api.get_value(
+        DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY, get_current_context()
+    ):
         return await wrapped(*args, **kwargs)
     start_time = time.time_ns()
 
@@ -619,6 +630,11 @@ def responses_cancel_wrapper(tracer: Tracer, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
+    if context_api.get_value(
+        DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY, get_current_context()
+    ):
+        return wrapped(*args, **kwargs)
+
     response = wrapped(*args, **kwargs)
     if isinstance(response, Stream):
         return response
@@ -650,6 +666,11 @@ async def async_responses_cancel_wrapper(
     tracer: Tracer, wrapped, instance, args, kwargs
 ):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
+        return await wrapped(*args, **kwargs)
+
+    if context_api.get_value(
+        DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY, get_current_context()
+    ):
         return await wrapped(*args, **kwargs)
 
     response = await wrapped(*args, **kwargs)

@@ -15,6 +15,7 @@ from .helpers import (
     get_first_not_none,
     model_as_dict,
     normalize_messages,
+    to_dict,
 )
 
 # ---------------------------------------------------------------------------
@@ -64,7 +65,9 @@ def set_gen_ai_output_messages(lmnr_span: LaminarSpan, output_data: Any) -> None
         lmnr_span.set_attribute("gen_ai.output.messages", json_dumps(messages))
 
 
-def set_gen_ai_output_messages_from_response(lmnr_span: LaminarSpan, response: Any) -> None:
+def set_gen_ai_output_messages_from_response(
+    lmnr_span: LaminarSpan, response: Any
+) -> None:
     """Extract and set gen_ai.output.messages from a Response object."""
     if response is None:
         return
@@ -193,6 +196,10 @@ def _apply_usage(lmnr_span: LaminarSpan, usage: Any) -> None:
     """Extract token usage from a usage object or dict, handling zero correctly."""
     if usage is None:
         return
+    cached_input_tokens = 0
+    reasoning_output_tokens = 0
+    input_token_details = None
+    output_token_details = None
 
     if isinstance(usage, dict):
         input_tokens = get_first_not_none(
@@ -202,16 +209,40 @@ def _apply_usage(lmnr_span: LaminarSpan, usage: Any) -> None:
             usage, "output_tokens", "completion_tokens", "output"
         )
         total_tokens = get_first_not_none(usage, "total_tokens", "total")
+        input_token_details = get_first_not_none(
+            usage, "input_token_details", "prompt_token_details"
+        )
+        output_token_details = get_first_not_none(
+            usage, "output_token_details", "completion_token_details"
+        )
     else:
         # Object with attributes (e.g. ResponseUsage)
         input_tokens = get_attr_not_none(usage, "input_tokens", "prompt_tokens")
         output_tokens = get_attr_not_none(usage, "output_tokens", "completion_tokens")
         total_tokens = get_attr_not_none(usage, "total_tokens")
+        input_token_details = get_attr_not_none(
+            usage, "input_token_details", "prompt_token_details"
+        )
+        output_token_details = get_attr_not_none(
+            usage, "output_token_details", "completion_token_details"
+        )
 
+    if input_token_details:
+        cached_input_tokens = to_dict(input_token_details).get("cached_tokens", 0)
+    if output_token_details:
+        reasoning_output_tokens = to_dict(output_token_details).get("reasoning_tokens")
     if input_tokens is not None:
         lmnr_span.set_attribute(Attributes.INPUT_TOKEN_COUNT.value, input_tokens)
+    if cached_input_tokens:
+        lmnr_span.set_attribute(
+            "gen_ai.usage.cache_read_input_tokens", cached_input_tokens
+        )
     if output_tokens is not None:
         lmnr_span.set_attribute(Attributes.OUTPUT_TOKEN_COUNT.value, output_tokens)
+    if reasoning_output_tokens:
+        lmnr_span.set_attribute(
+            "gen_ai.usage.reasoning_output_tokens", reasoning_output_tokens
+        )
     if total_tokens is not None:
         lmnr_span.set_attribute(Attributes.TOTAL_TOKEN_COUNT.value, total_tokens)
     elif input_tokens is not None and output_tokens is not None:
