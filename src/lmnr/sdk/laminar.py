@@ -438,7 +438,7 @@ class Laminar:
         session_id: str | None = None,
         metadata: dict[str, AttributeValue] | None = None,
         attributes: dict[str, AttributeValue] | None = None,
-    ) -> Generator[LaminarSpan]:
+    ) -> Generator[LaminarSpan, None, None]:
         """Start a new span as the current span. Useful for manual
         instrumentation. If `span_type` is set to `"LLM"`, you should report
         usage and response attributes manually. See `Laminar.set_span_attributes`
@@ -827,7 +827,7 @@ class Laminar:
         end_on_exit: bool = False,
         record_exception: bool = True,
         set_status_on_exception: bool = True,
-    ) -> Generator[LaminarSpan | Span]:
+    ) -> Generator[LaminarSpan | Span, None, None]:
         """Use a span as the current span. Useful for manual instrumentation.
 
         Fully copies the implementation of `use_span` from opentelemetry.trace
