@@ -19,7 +19,6 @@ from .messages import (
     apply_llm_attributes,
     response_to_llm_data,
     set_gen_ai_input_messages,
-    set_gen_ai_messages,
     set_gen_ai_output_messages,
     set_gen_ai_output_messages_from_response,
     set_lmnr_span_io,
@@ -83,20 +82,23 @@ def apply_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
 
 def _apply_agent_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     data = export_span_data(span_data)
+    res_dict = {}
     name = data.get("name") or getattr(span_data, "name", None)
     if name:
-        lmnr_span.set_attribute("openai.agents.agent.name", name)
+        res_dict["name"] = name
 
     # Record handoffs and tools as metadata
     handoffs = data.get("handoffs")
     if handoffs:
-        lmnr_span.set_attribute("openai.agents.agent.handoffs", json_dumps(handoffs))
+        res_dict["handoffs"] = handoffs
     tools = data.get("tools")
     if tools:
-        lmnr_span.set_attribute("openai.agents.agent.tools", json_dumps(tools))
+        res_dict["tools"] = tools
     output_type = data.get("output_type")
     if output_type:
-        lmnr_span.set_attribute("openai.agents.agent.output_type", output_type)
+        res_dict["output_type"] = output_type
+
+    set_lmnr_span_io(lmnr_span, res_dict, None)
 
 
 def _apply_function_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
