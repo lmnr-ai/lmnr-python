@@ -189,6 +189,7 @@ def _start_span(name: str, kwargs: dict):
     )
 
 
+@dont_throw
 def _record_exception(span: Span, exc: Exception):
     attributes = get_event_attributes_from_context()
     span.set_attribute(ERROR_TYPE, exc.__class__.__name__)
