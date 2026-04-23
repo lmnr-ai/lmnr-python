@@ -22,6 +22,11 @@ NumericTypes = (int, float)  # for use with isinstance
 EvaluationDatapointData = Any  # non-null, must be JSON-serializable
 EvaluationDatapointTarget = Any | None  # must be JSON-serializable
 EvaluationDatapointMetadata = Any | None  # must be JSON-serializable
+LaminarSpanType = Literal[
+    "DEFAULT",
+    "LLM",
+    "TOOL",
+]
 
 
 # EvaluationDatapoint is a single data point in the evaluation
