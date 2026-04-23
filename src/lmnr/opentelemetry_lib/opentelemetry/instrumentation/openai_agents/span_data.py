@@ -15,9 +15,9 @@ from lmnr.opentelemetry_lib.tracing.attributes import Attributes
 from lmnr.sdk.utils import json_dumps
 
 from .helpers import (
-    agent_name,
     export_span_data,
     get_current_system_instructions,
+    name_from_span_data,
     span_kind,
 )
 from .messages import (
@@ -170,9 +170,13 @@ def _apply_handoff_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     from_agent = data.get("from_agent")
     to_agent = data.get("to_agent")
     if from_agent:
-        lmnr_span.set_attribute("openai.agents.handoff.from", agent_name(from_agent))
+        lmnr_span.set_attribute(
+            "openai.agents.handoff.from", name_from_span_data(from_agent)
+        )
     if to_agent:
-        lmnr_span.set_attribute("openai.agents.handoff.to", agent_name(to_agent))
+        lmnr_span.set_attribute(
+            "openai.agents.handoff.to", name_from_span_data(to_agent)
+        )
 
 
 def _apply_guardrail_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:

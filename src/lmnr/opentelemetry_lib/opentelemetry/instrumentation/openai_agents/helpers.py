@@ -51,6 +51,8 @@ def span_name(span: Any, span_data: Any) -> str:
         return name
     kind = span_kind(span_data)
     if kind:
+        if kind in ["agent", "custom", "function", "tool"]:
+            return name_from_span_data(span_data)
         return f"agents.{kind}"
     return "agents.span"
 
@@ -141,7 +143,7 @@ def model_as_dict(obj: Any) -> dict[str, Any] | None:
     return None
 
 
-def agent_name(agent: Any) -> str:
+def name_from_span_data(agent: Any) -> str:
     if isinstance(agent, dict):
         return agent.get("name") or ""
     if isinstance(agent, str):

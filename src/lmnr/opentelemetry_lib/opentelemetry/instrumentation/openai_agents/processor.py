@@ -26,7 +26,7 @@ from lmnr.opentelemetry_lib.tracing.context import get_current_context
 
 from .helpers import (
     DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY,
-    agent_name,
+    name_from_span_data,
     export_span_data,
     map_span_type,
     span_kind,
@@ -130,9 +130,8 @@ class LaminarAgentsTraceProcessor(_Base):
             # If this is an agent span, check if a handoff targeting this agent
             # is pending. If so, make this span a child of the handoff span so
             # the subagent is nested under the handoff that triggered it.
-            this_agent = None
             if span_kind(span_data) == "agent":
-                this_agent = agent_name(
+                this_agent = name_from_span_data(
                     export_span_data(span_data).get("name")
                     or getattr(span_data, "name", None)
                 )
@@ -147,7 +146,7 @@ class LaminarAgentsTraceProcessor(_Base):
             )
 
             lmnr_span = Laminar.start_active_span(
-                name=this_agent or name,
+                name=name,
                 span_type=span_type,
                 parent_span_context=parent_ctx,
                 context=ctx,
@@ -207,7 +206,7 @@ class LaminarAgentsTraceProcessor(_Base):
             # (both children of the handoff's parent).
             if span_kind(span_data) == "handoff":
                 try:
-                    to_agent = agent_name(
+                    to_agent = name_from_span_data(
                         export_span_data(span_data).get("to_agent")
                         or getattr(span_data, "to_agent", None)
                     )
@@ -267,7 +266,7 @@ class LaminarAgentsTraceProcessor(_Base):
         if not state.ready.wait(timeout=self._SHUTDOWN_TIMEOUT) or state.failed:
             return
         # Wait for in-flight on_span_end calls, then atomically snapshot
-        # remaining spans.  Re-check under the lock to close the window
+        # remaining spans. Re-check under the lock to close the window
         # where a new on_span_end increments pending_ends between the
         # wait() return and the lock acquisition.
         for _ in range(3):  # bounded retries
