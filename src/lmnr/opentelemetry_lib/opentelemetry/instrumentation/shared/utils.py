@@ -4,10 +4,11 @@ from typing import Any
 import traceback
 
 from opentelemetry.context import Context
-from opentelemetry.trace import Span
+from opentelemetry.trace import NonRecordingSpan, Span, SpanContext
 from opentelemetry.util.types import AttributeValue
 from pydantic import BaseModel
 
+from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.laminar import Laminar
 
@@ -76,3 +77,53 @@ def safe_start_span(
     except Exception:
         logger.debug(f"Failed to start span: {name}", exc_info=True)
         return None
+
+
+def _non_recording_span() -> Span:
+    """Return a no-op span. All Span methods (set_attribute, end, ...) are
+    safe no-ops; ``is_recording()`` returns False."""
+    return NonRecordingSpan(
+        SpanContext(trace_id=0, span_id=0, is_remote=False)
+    )
+
+
+def safe_start_active_span(name: str, **kwargs: Any) -> Span:
+    """Like ``Laminar.start_active_span`` but never raises.
+
+    On any failure (Laminar not initialised, internal error, etc.) returns a
+    ``NonRecordingSpan`` so callers can always treat the result as a valid
+    Span without null-checks. ``is_recording()`` will be False, which lets the
+    standard ``if span.is_recording(): set_attrs(...)`` pattern naturally
+    skip work for the no-op span.
+    """
+    try:
+        return Laminar.start_active_span(name=name, **kwargs)
+    except Exception:
+        logger.debug(f"Failed to start active span: {name}", exc_info=True)
+        return _non_recording_span()
+
+
+def safe_end_span(span: Span) -> None:
+    """End a span, swallowing any exception so caller code can't break."""
+    try:
+        span.end()
+    except Exception:
+        logger.debug("Failed to end span", exc_info=True)
+
+
+def safe_is_recording(span: Span) -> bool:
+    """Return ``span.is_recording()``, defaulting to False on any error."""
+    try:
+        return span.is_recording()
+    except Exception:
+        return False
+
+
+def safe_get_current_context() -> Context:
+    """Return Laminar's current isolated context, or an empty ``Context`` on
+    any error."""
+    try:
+        return get_current_context()
+    except Exception:
+        logger.debug("Failed to get current context", exc_info=True)
+        return Context()

@@ -37,18 +37,20 @@ from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry._logs import Logger, get_logger
 
-from lmnr import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.log_emission import (
     LogStream,
     emit_log,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
-    set_span_attribute,
     dont_throw,
+    safe_end_span,
+    safe_get_current_context,
+    safe_is_recording,
+    safe_start_active_span,
+    set_span_attribute,
 )
 from lmnr.opentelemetry_lib.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT
 from lmnr.opentelemetry_lib.tracing.context import (
-    get_current_context,
     get_event_attributes_from_context,
 )
 from lmnr.sdk.utils import json_dumps
@@ -172,9 +174,15 @@ def _set_exec_response_attributes(span: Span, process):
 # --- Span helpers ---
 
 
-def _start_span(name: str, kwargs: dict):
-    metadata = kwargs.get("metadata") or {}
-    return Laminar.start_active_span(
+def _start_span(name: str, kwargs: dict) -> Span:
+    """Start an active Modal span. Always returns a valid Span.
+
+    On any failure (Laminar uninitialised, internal error) returns a
+    NonRecordingSpan so the rest of the wrapper has nothing to null-check.
+    """
+    metadata = kwargs.get("metadata") if isinstance(kwargs, dict) else None
+    metadata = metadata or {}
+    return safe_start_active_span(
         name=name,
         span_type="DEFAULT",
         user_id=metadata.get("user_id"),
@@ -190,6 +198,23 @@ def _record_exception(span: Span, exc: Exception):
     span.set_attribute(ERROR_TYPE, exc.__class__.__name__)
     span.record_exception(exc, attributes=attributes)
     span.set_status(Status(StatusCode.ERROR, str(exc)))
+
+
+def _format_command(cmd_tokens: tuple) -> str:
+    """Stringify exec command tokens, swallowing any token-level errors."""
+    try:
+        return " ".join(str(a) for a in cmd_tokens)
+    except Exception:
+        log.debug("Failed to format Modal command", exc_info=True)
+        return ""
+
+
+def _safe_get_logger() -> Logger | None:
+    try:
+        return get_logger(__name__, __version__)
+    except Exception:
+        log.debug("Failed to get OTel logger for Modal", exc_info=True)
+        return None
 
 
 # --- Stream wrapper for tee-ing output ---
@@ -258,7 +283,16 @@ class _TeeStreamIterator:
         self._async_iter = None
 
     def __getattr__(self, name):
-        return getattr(self._original, name)
+        # Guard against infinite recursion if ``_original`` is missing
+        # (e.g. partially-constructed instance). ``__getattr__`` is only
+        # called when normal lookup fails, so an unset ``_original`` would
+        # otherwise re-enter here forever.
+        if name == "_original":
+            raise AttributeError(name)
+        original = self.__dict__.get("_original")
+        if original is None:
+            raise AttributeError(name)
+        return getattr(original, name)
 
     def _emit(self, content: str):
         try:
@@ -352,19 +386,19 @@ def _wrap_create(wrapped, instance, args, kwargs):
 
     span = _start_span(SPAN_NAME_CREATE, kwargs)
 
-    if span.is_recording():
+    if safe_is_recording(span):
         _set_create_request_attributes(span, args, kwargs)
 
     try:
         response = wrapped(*args, **kwargs)
-        if span.is_recording():
-            _set_create_response_attributes(span, response)
-        span.end()
     except Exception as e:
         _record_exception(span, e)
-        span.end()
+        safe_end_span(span)
         raise
 
+    if safe_is_recording(span):
+        _set_create_response_attributes(span, response)
+    safe_end_span(span)
     return response
 
 
@@ -380,19 +414,19 @@ async def _wrap_create_async(wrapped, instance, args, kwargs):
 
     span = _start_span(SPAN_NAME_CREATE, kwargs)
 
-    if span.is_recording():
+    if safe_is_recording(span):
         _set_create_request_attributes(span, args, kwargs)
 
     try:
         response = await wrapped(*args, **kwargs)
-        if span.is_recording():
-            _set_create_response_attributes(span, response)
-        span.end()
     except Exception as e:
         _record_exception(span, e)
-        span.end()
+        safe_end_span(span)
         raise
 
+    if safe_is_recording(span):
+        _set_create_response_attributes(span, response)
+    safe_end_span(span)
     return response
 
 
@@ -419,27 +453,27 @@ def _wrap_exec(wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
-    logger: Logger | None = get_logger(__name__, __version__)
-
+    logger: Logger | None = _safe_get_logger()
     span = _start_span(SPAN_NAME_EXEC, kwargs)
 
     _, cmd_tokens = _split_exec_args(args)
-    command = " ".join(str(a) for a in cmd_tokens)
+    command = _format_command(cmd_tokens)
 
-    if span.is_recording():
+    if safe_is_recording(span):
         _set_exec_request_attributes(span, command, kwargs)
 
-    ctx = get_current_context()
+    ctx = safe_get_current_context()
 
     try:
         response = wrapped(*args, **kwargs)
-        if span.is_recording():
-            _set_exec_response_attributes(span, response)
-        span.end()
     except Exception as e:
         _record_exception(span, e)
-        span.end()
+        safe_end_span(span)
         raise
+
+    if safe_is_recording(span):
+        _set_exec_response_attributes(span, response)
+    safe_end_span(span)
 
     try:
         if logger is not None:
@@ -460,27 +494,27 @@ async def _wrap_exec_async(wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
-    logger: Logger | None = get_logger(__name__, __version__)
-
+    logger: Logger | None = _safe_get_logger()
     span = _start_span(SPAN_NAME_EXEC, kwargs)
 
     _, cmd_tokens = _split_exec_args(args)
-    command = " ".join(str(a) for a in cmd_tokens)
+    command = _format_command(cmd_tokens)
 
-    if span.is_recording():
+    if safe_is_recording(span):
         _set_exec_request_attributes(span, command, kwargs)
 
-    ctx = get_current_context()
+    ctx = safe_get_current_context()
 
     try:
         response = await wrapped(*args, **kwargs)
-        if span.is_recording():
-            _set_exec_response_attributes(span, response)
-        span.end()
     except Exception as e:
         _record_exception(span, e)
-        span.end()
+        safe_end_span(span)
         raise
+
+    if safe_is_recording(span):
+        _set_exec_response_attributes(span, response)
+    safe_end_span(span)
 
     try:
         if logger is not None:
