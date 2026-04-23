@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 
 from lmnr.opentelemetry_lib.tracing.attributes import Attributes
+from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import json_dumps
 
 from .helpers import (
@@ -17,6 +18,8 @@ from .helpers import (
     normalize_messages,
     to_dict,
 )
+
+logger = get_default_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # gen_ai.input.messages / gen_ai.output.messages helpers
@@ -53,7 +56,7 @@ def set_gen_ai_input_messages(
             0,
             {
                 "role": "system",
-                "content": [{"type": "text", "text": system_instructions}],
+                "content": [{"type": "input_text", "text": system_instructions}],
             },
         )
     if messages:
@@ -80,51 +83,21 @@ def set_gen_ai_output_messages_from_response(
     if not output_items:
         return
 
-    messages: list[dict[str, Any]] = []
-    for item in output_items:
-        item_dict = model_as_dict(item)
-        if not item_dict:
-            continue
-        item_type = item_dict.get("type")
-        if item_type == "message":
-            content_list = item_dict.get("content", [])
-            text_parts = []
-            for content in content_list if isinstance(content_list, list) else []:
-                if isinstance(content, dict):
-                    ct = content.get("type", "")
-                    if ct in ("output_text", "text"):
-                        text_parts.append(content.get("text", ""))
-                else:
-                    ct = getattr(content, "type", "")
-                    if ct in ("output_text", "text"):
-                        text_parts.append(getattr(content, "text", ""))
-            if text_parts:
-                messages.append(
-                    {
-                        "role": item_dict.get("role", "assistant"),
-                        "content": "".join(text_parts),
-                    }
-                )
-        elif item_type == "function_call":
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": None,
-                    "tool_calls": [
-                        {
-                            "id": item_dict.get("call_id", item_dict.get("id", "")),
-                            "type": "function",
-                            "function": {
-                                "name": item_dict.get("name", ""),
-                                "arguments": item_dict.get("arguments", ""),
-                            },
-                        }
-                    ],
-                }
-            )
+    id = getattr(response, "id", None)
 
-    if messages:
-        lmnr_span.set_attribute("gen_ai.output.messages", json_dumps(messages))
+    if not isinstance(output_items, list):
+        logger.debug(
+            "Laminar OpenAI agents instrumentation, failed to parse output items. Expected array"
+        )
+        output_items = []
+
+    result = {
+        "id": id,
+        "object": "response",
+        "output": output_items,
+    }
+
+    lmnr_span.set_attribute("gen_ai.output.messages", json_dumps(result))
 
 
 # ---------------------------------------------------------------------------

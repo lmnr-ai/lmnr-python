@@ -122,15 +122,14 @@ class OpenAIAgentsInstrumentor(BaseInstrumentor):
             return
         try:
             from agents.tracing import get_trace_provider
+
             provider = get_trace_provider()
             # The SDK has no remove_trace_processor API, so read the
             # internal list and write back via the public set_processors.
             mp = getattr(provider, "_multi_processor", None)
             if mp is not None:
                 current = getattr(mp, "_processors", ())
-                provider.set_processors(
-                    [p for p in current if p is not processor]
-                )
+                provider.set_processors([p for p in current if p is not processor])
         except Exception:
             pass
         processor.shutdown()
