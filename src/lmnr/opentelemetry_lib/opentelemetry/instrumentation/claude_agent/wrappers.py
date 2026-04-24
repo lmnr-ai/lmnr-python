@@ -26,6 +26,8 @@ from .utils import (
     FOUNDRY_USE_ENV,
     BEDROCK_BASE_URL_ENV,
     BEDROCK_USE_ENV,
+    VERTEX_BASE_URL_ENV,
+    VERTEX_USE_ENV,
 )
 
 logger = get_default_logger(__name__)
@@ -347,6 +349,8 @@ def snapshot_options_env_for_proxy(options) -> dict[str, str | None]:
         FOUNDRY_USE_ENV,
         BEDROCK_BASE_URL_ENV,
         BEDROCK_USE_ENV,
+        VERTEX_BASE_URL_ENV,
+        VERTEX_USE_ENV,
     ]
 
     snapshot = {}
@@ -422,6 +426,12 @@ def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> No
         if BEDROCK_USE_ENV not in options.env:
             options.env[BEDROCK_USE_ENV] = "1"
         options.env[BEDROCK_BASE_URL_ENV] = proxy_url
+
+    vertex_enabled = is_truthy_env(get_env_value(VERTEX_USE_ENV))
+    if vertex_enabled:
+        if VERTEX_USE_ENV not in options.env:
+            options.env[VERTEX_USE_ENV] = "1"
+        options.env[VERTEX_BASE_URL_ENV] = proxy_url
 
 
 def wrap_query(to_wrap: dict[str, Any]):
