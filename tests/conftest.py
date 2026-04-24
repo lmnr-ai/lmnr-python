@@ -4,6 +4,7 @@ from unittest.mock import patch
 from lmnr import Laminar
 from lmnr.opentelemetry_lib import TracerManager
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.export import SpanExporter
 from opentelemetry import context as context_api
@@ -30,9 +31,16 @@ def span_exporter() -> SpanExporter:
         "lmnr.opentelemetry_lib.TracerManager.init",
         side_effect=mock_tracermanager_init,
     ):
+        # Block PYDANTIC_AI so the raw-provider instrumentor tests still
+        # receive the SDK-level spans they expect. Without this, having
+        # `pydantic-ai-slim` installed in the test environment would cause
+        # `init_instrumentations` to auto-remove OPENAI/ANTHROPIC/... from
+        # the default set in favor of pydantic_ai's own GenAI spans.
+        # Tests that target the PYDANTIC_AI instrumentor install it directly.
         Laminar.initialize(
             project_api_key="test_key",
             disable_batch=True,
+            disabled_instruments={Instruments.PYDANTIC_AI},
         )
 
     return exporter

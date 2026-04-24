@@ -5,22 +5,31 @@ Laminar tracer provider. pydantic_ai already emits `chat {model}`,
 `execute_tool {name}`, and `invoke_agent {name}` spans following the OTel
 GenAI semantic conventions, so all we need is to route them through the
 tracer provider Laminar already set up and pin the conventions version.
+
+We also patch `InstrumentationSettings.__init__` so that every code path that
+builds one — `Agent.instrument_all(True)`, `Agent(instrument=True)`, or
+a user directly constructing `InstrumentationSettings(...)` — ends up with
+`version=5` and our tracer provider. Without this, a user calling
+`Agent.instrument_all()` after Laminar initialization would silently downgrade
+the semconv version to pydantic_ai's current default and swap the tracer
+provider back to the global one.
 """
 
 from importlib.metadata import PackageNotFoundError, version
-from typing import Collection
+from typing import Any, Callable, Collection
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 
 
 class PydanticAIInstrumentor(BaseInstrumentor):
     _previous_instrument_default: object = None
+    _previous_settings_init: Callable[..., None] | None = None
     _enabled: bool = False
 
     def instrumentation_dependencies(self) -> Collection[str]:
         return ("pydantic-ai-slim >= 1.0.0",)
 
-    def _instrument(self, **kwargs):
+    def _instrument(self, **kwargs: Any):
         try:
             pkg_version = version("pydantic-ai-slim")
         except PackageNotFoundError:
@@ -41,21 +50,49 @@ class PydanticAIInstrumentor(BaseInstrumentor):
         from pydantic_ai.models.instrumented import InstrumentationSettings
 
         tracer_provider = kwargs.get("tracer_provider")
-        settings = InstrumentationSettings(
+
+        # Patch InstrumentationSettings.__init__ so that *every* construction
+        # path ends up with version=5 and our tracer provider — regardless of
+        # whether it's Laminar, user code, or pydantic_ai itself doing the
+        # construction (e.g. `instrument_model` does
+        # `InstrumentationSettings()` when given `instrument=True`).
+        original_settings_init = InstrumentationSettings.__init__
+
+        def patched_settings_init(
+            self,
+            *,
             tracer_provider=tracer_provider,
             version=5,
-        )
+            **kw,
+        ):
+            original_settings_init(
+                self,
+                tracer_provider=tracer_provider,
+                version=5,
+                **kw,
+            )
+
+        InstrumentationSettings.__init__ = patched_settings_init
+        self._previous_settings_init = original_settings_init
+
+        settings = InstrumentationSettings()
 
         self._previous_instrument_default = Agent._instrument_default
         Agent.instrument_all(settings)
         self._enabled = True
 
-    def _uninstrument(self, **kwargs):
+    def _uninstrument(self, **kwargs: Any):
         if not self._enabled:
             return
 
         from pydantic_ai import Agent
+        from pydantic_ai.models.instrumented import InstrumentationSettings
 
         Agent._instrument_default = self._previous_instrument_default
         self._previous_instrument_default = None
+
+        if self._previous_settings_init is not None:
+            InstrumentationSettings.__init__ = self._previous_settings_init
+            self._previous_settings_init = None
+
         self._enabled = False

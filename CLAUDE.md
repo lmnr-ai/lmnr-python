@@ -67,7 +67,10 @@ LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
 
 ## pydantic_ai instrument
 
-- `Instruments.PYDANTIC_AI` is opt-in only — it is NOT added to the default instrumentation set. Users must pass it explicitly in `instruments={Instruments.PYDANTIC_AI}`.
-- pydantic_ai emits its own OTel GenAI spans via `InstrumentationSettings(version=5)`. If users enable `PYDANTIC_AI` alongside the default instrument set, the underlying provider instrumentors (OpenAI, Anthropic, Google GenAI, etc.) will produce duplicate HTTP-level spans. To avoid this, users opting in to `PYDANTIC_AI` should pass an explicit `instruments` set — typically `{Instruments.PYDANTIC_AI}` — or add the conflicting providers to `block_instruments`. There is no auto-block: the default path (`instruments=None`) still runs every provider instrumentor except `PYDANTIC_AI`.
+- `Instruments.PYDANTIC_AI` is **auto-enabled by default** when `pydantic-ai-slim` (or `pydantic-ai`) is installed. When auto-enabled, the overlapping raw-provider instrumentors — OPENAI, ANTHROPIC, GOOGLE_GENAI, GROQ, MISTRAL, COHERE, BEDROCK — are auto-removed from the default set so the same model call isn't traced twice (pydantic_ai emits its own GenAI spans at the model abstraction layer). The exact set lives in `_PYDANTIC_AI_PROVIDER_CONFLICTS` in `src/lmnr/opentelemetry_lib/tracing/instruments.py`.
+- To opt out of the auto-enable, pass `disabled_instruments={Instruments.PYDANTIC_AI}` to `Laminar.initialize`. To keep both pydantic_ai and the raw SDK instrumentors active (accepting duplicate spans), pass an explicit `instruments` set that includes both.
 - Installation: `pip install lmnr pydantic-ai-slim>=1.0` — there is no `[pydantic-ai]` extra in `pyproject.toml`.
-- The instrumentor calls `Agent.instrument_all(settings)`, which sets a module-level default on pydantic_ai's `Agent` class. Subsequent `Agent()` instances pick it up automatically.
+- The instrumentor does two things:
+  1. Calls `Agent.instrument_all(InstrumentationSettings(...))`, which sets a module-level default on pydantic_ai's `Agent` class so subsequent `Agent()` instances pick it up automatically.
+  2. Monkey-patches `pydantic_ai.models.instrumented.InstrumentationSettings.__init__` so that *every* construction of `InstrumentationSettings` — including ones triggered by user code calling `Agent.instrument_all(True)` or `Agent(instrument=True)` — always forces `version=5` (so our semconv assumptions hold) and defaults to our tracer provider. User-supplied `tracer_provider=` is respected; `version=` is always forced to 5.
+- The test suite runs with `disabled_instruments={Instruments.PYDANTIC_AI}` in `tests/conftest.py` so the raw-provider instrumentor tests still operate on the SDK-level spans they assert on.
