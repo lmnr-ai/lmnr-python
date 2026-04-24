@@ -17,6 +17,10 @@ BEDROCK_BASE_URL_ENV = "ANTHROPIC_BEDROCK_BASE_URL"
 BEDROCK_USE_ENV = "CLAUDE_CODE_USE_BEDROCK"
 BEDROCK_AWS_REGION_ENV = "AWS_REGION"
 
+# Vertex AI configuration constants
+VERTEX_BASE_URL_ENV = "ANTHROPIC_VERTEX_BASE_URL"
+VERTEX_USE_ENV = "CLAUDE_CODE_USE_VERTEX"
+
 
 def is_truthy_env(value: str | None) -> bool:
     """Check if environment variable value is truthy (equals '1')."""
@@ -124,7 +128,7 @@ def resolve_target_url_from_env(
     Resolution order (highest to lowest priority):
     1. HTTPS_PROXY - if set, use as target (our proxy will forward to it)
     2. HTTP_PROXY - if set, use as target (our proxy will forward to it)
-    3. Third-party provider URLs (e.g., Foundry, Bedrock):
+    3. Third-party provider URLs (e.g., Foundry, Bedrock, Vertex):
        - If CLAUDE_CODE_USE_FOUNDRY is truthy:
          - Use ANTHROPIC_FOUNDRY_BASE_URL, or
          - Construct from ANTHROPIC_FOUNDRY_RESOURCE
@@ -132,6 +136,9 @@ def resolve_target_url_from_env(
          - Use ANTHROPIC_BEDROCK_BASE_URL, or
          - Construct from AWS_REGION env var, or
          - Construct by reading region from ~/.aws/config via AWS_PROFILE
+       - If CLAUDE_CODE_USE_VERTEX is truthy:
+         - Use ANTHROPIC_VERTEX_BASE_URL, or
+         - Fall back to https://aiplatform.googleapis.com/v1
     4. ANTHROPIC_BASE_URL - standard Anthropic API base URL
     5. Fall back to default (https://api.anthropic.com)
 
@@ -205,6 +212,16 @@ def resolve_target_url_from_env(
         )
         return None
 
+    # 3c. Check for Vertex AI
+    vertex_enabled = is_truthy_env(get_env_value(VERTEX_USE_ENV))
+    if vertex_enabled:
+        # Unlike Foundry or Bedrock, we don't parse project or region config because
+        # they affect the URL path, not the base URL, so CC handles this internally
+        vertex_base_url = get_env_value(VERTEX_BASE_URL_ENV)
+        if vertex_base_url:
+            return vertex_base_url.rstrip("/")
+        return "https://aiplatform.googleapis.com/v1"
+
     # 4. Check for ANTHROPIC_BASE_URL
     anthropic_base_url = get_env_value("ANTHROPIC_BASE_URL")
     if anthropic_base_url:
@@ -265,5 +282,10 @@ def setup_proxy_env(proxy_url: str) -> dict[str, str | None]:
     if is_truthy_env(os.environ.get(BEDROCK_USE_ENV)):
         snapshot[BEDROCK_BASE_URL_ENV] = os.environ.get(BEDROCK_BASE_URL_ENV)
         os.environ[BEDROCK_BASE_URL_ENV] = proxy_url
+
+    # Handle Vertex AI-specific env vars
+    if is_truthy_env(os.environ.get(VERTEX_USE_ENV)):
+        snapshot[VERTEX_BASE_URL_ENV] = os.environ.get(VERTEX_BASE_URL_ENV)
+        os.environ[VERTEX_BASE_URL_ENV] = proxy_url
 
     return snapshot
