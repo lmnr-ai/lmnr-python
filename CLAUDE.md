@@ -58,6 +58,14 @@ lmnr datasets pull <id>       # Pull dataset
 - **Tests use VCR.py** to record/replay HTTP responses in `tests/cassettes/`
 - **Tests use InMemorySpanExporter** configured in `tests/conftest.py` for span assertions
 
+## Adding a New Instrumentation
+
+To add a new provider instrumentation:
+1. Create a directory under `opentelemetry/instrumentation/<name>/` with `__init__.py`, `wrappers.py`, and `version.py`
+2. Add an enum entry in `tracing/instruments.py` (alphabetical order)
+3. Add an initializer class in `tracing/_instrument_initializers.py` (checks `is_package_installed`)
+4. Add the mapping in `INSTRUMENTATION_INITIALIZERS` dict in `instruments.py`
+
 ## Environment Variables
 
 ```

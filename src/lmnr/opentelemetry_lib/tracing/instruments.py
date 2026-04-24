@@ -42,6 +42,7 @@ class Instruments(Enum):
     MCP = "mcp"
     MILVUS = "milvus"
     MISTRAL = "mistral"
+    MODAL = "modal"
     OLLAMA = "ollama"
     OPENAI = "openai"
     OPENAI_AGENTS = "openai_agents"
@@ -93,6 +94,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.MCP: initializers.MCPInstrumentorInitializer(),
     Instruments.MILVUS: initializers.MilvusInstrumentorInitializer(),
     Instruments.MISTRAL: initializers.MistralInstrumentorInitializer(),
+    Instruments.MODAL: initializers.ModalSandboxInstrumentorInitializer(),
     Instruments.OLLAMA: initializers.OllamaInstrumentorInitializer(),
     Instruments.OPENAI: initializers.OpenAIInstrumentorInitializer(),
     Instruments.OPENAI_AGENTS: initializers.OpenAIAgentsInstrumentorInitializer(),
