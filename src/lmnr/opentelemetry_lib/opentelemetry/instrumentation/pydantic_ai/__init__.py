@@ -15,10 +15,14 @@ the semconv version to pydantic_ai's current default and swap the tracer
 provider back to the global one.
 """
 
+import warnings
+
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Callable, Collection
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
+
+_FORCED_SEMCONV_VERSION = 5
 
 
 class PydanticAIInstrumentor(BaseInstrumentor):
@@ -60,18 +64,37 @@ class PydanticAIInstrumentor(BaseInstrumentor):
         # construction (e.g. `instrument_model` does
         # `InstrumentationSettings()` when given `instrument=True`).
         original_settings_init = InstrumentationSettings.__init__
+        default_tracer_provider = tracer_provider
 
         def patched_settings_init(
             self,
             *,
-            tracer_provider=tracer_provider,
-            version=5,
+            tracer_provider=default_tracer_provider,
             **kw,
         ):
+            # The semconv version is intentionally forced: Laminar's span
+            # parsing assumes v5. If a caller passes `version=`, warn loudly
+            # and drop it rather than silently honoring a version we don't
+            # support.
+            user_version = kw.pop("version", None)
+            if (
+                user_version is not None
+                and user_version != _FORCED_SEMCONV_VERSION
+            ):
+                warnings.warn(
+                    (
+                        "Laminar's pydantic_ai instrumentor forces "
+                        f"InstrumentationSettings(version={_FORCED_SEMCONV_VERSION}); "
+                        f"ignoring caller-supplied version={user_version}. "
+                        "Uninstrument Laminar's pydantic_ai integration if "
+                        "you need a different semconv version."
+                    ),
+                    stacklevel=2,
+                )
             original_settings_init(
                 self,
                 tracer_provider=tracer_provider,
-                version=5,
+                version=_FORCED_SEMCONV_VERSION,
                 **kw,
             )
 

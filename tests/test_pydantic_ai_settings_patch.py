@@ -10,6 +10,7 @@ These tests exercise the patch directly; they're skipped when pydantic_ai
 isn't installed in the test environment.
 """
 
+import warnings
 from unittest.mock import MagicMock
 
 import pytest
@@ -54,8 +55,17 @@ def test_default_construction_uses_laminar_settings(instrumented):
 
 
 def test_explicit_version_is_overridden_to_5(instrumented):
-    """Passing `version=3` is forced to `version=5`."""
-    settings = InstrumentationSettings(version=3)
+    """Passing `version=3` is forced to `version=5` and emits a warning."""
+    with pytest.warns(UserWarning, match="forces InstrumentationSettings"):
+        settings = InstrumentationSettings(version=3)
+    assert settings.version == 5
+
+
+def test_explicit_version_5_does_not_warn(instrumented):
+    """Passing the already-forced version=5 should not emit a warning."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        settings = InstrumentationSettings(version=5)
     assert settings.version == 5
 
 
