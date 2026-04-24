@@ -44,7 +44,10 @@ class PydanticAIInstrumentor(BaseInstrumentor):
             if parse(pkg_version) < parse("1.0.0"):
                 return
         except InvalidVersion:
-            pass
+            # Bail out rather than patch against an unknown version: the
+            # monkey-patch assumes the `>=1.0.0` API shape, and an unparseable
+            # version string means we can't confirm that assumption.
+            return
 
         from pydantic_ai import Agent
         from pydantic_ai.models.instrumented import InstrumentationSettings
