@@ -4,13 +4,14 @@
 The instrumentor monkey-patches pydantic_ai's `InstrumentationSettings.__init__`
 so that every construction path — `Agent.instrument_all(True)`,
 `Agent(instrument=True)`, or user code calling the constructor directly — ends
-up with `version=5` and the Laminar tracer provider.
+up on the Laminar tracer provider. The semconv version defaults to 5 when the
+caller did not specify one (or passed the legacy `version=1`); any explicit
+`version >= 2` is passed through unchanged.
 
 These tests exercise the patch directly; they're skipped when pydantic_ai
 isn't installed in the test environment.
 """
 
-import warnings
 from unittest.mock import MagicMock
 
 import pytest
@@ -54,18 +55,16 @@ def test_default_construction_uses_laminar_settings(instrumented):
     tracer_provider.get_tracer.assert_called()
 
 
-def test_explicit_version_is_overridden_to_5(instrumented):
-    """Passing `version=3` is forced to `version=5` and emits a warning."""
-    with pytest.warns(UserWarning, match="forces InstrumentationSettings"):
-        settings = InstrumentationSettings(version=3)
-    assert settings.version == 5
+@pytest.mark.parametrize("explicit_version", [2, 3, 4, 5])
+def test_explicit_supported_version_is_respected(instrumented, explicit_version):
+    """Any caller-supplied `version >= 2` is passed through unchanged."""
+    settings = InstrumentationSettings(version=explicit_version)
+    assert settings.version == explicit_version
 
 
-def test_explicit_version_5_does_not_warn(instrumented):
-    """Passing the already-forced version=5 should not emit a warning."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        settings = InstrumentationSettings(version=5)
+def test_legacy_version_1_is_upgraded_to_default(instrumented):
+    """`version=1` is treated as the legacy default and upgraded to v5."""
+    settings = InstrumentationSettings(version=1)
     assert settings.version == 5
 
 

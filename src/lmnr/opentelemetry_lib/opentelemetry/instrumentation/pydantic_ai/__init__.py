@@ -4,25 +4,23 @@ Wires pydantic_ai's built-in OpenTelemetry GenAI semconv instrumentation to the
 Laminar tracer provider. pydantic_ai already emits `chat {model}`,
 `execute_tool {name}`, and `invoke_agent {name}` spans following the OTel
 GenAI semantic conventions, so all we need is to route them through the
-tracer provider Laminar already set up and pin the conventions version.
+tracer provider Laminar already set up and pick a reasonable default for the
+conventions version.
 
 We also patch `InstrumentationSettings.__init__` so that every code path that
 builds one — `Agent.instrument_all(True)`, `Agent(instrument=True)`, or
-a user directly constructing `InstrumentationSettings(...)` — ends up with
-`version=5` and our tracer provider. Without this, a user calling
-`Agent.instrument_all()` after Laminar initialization would silently downgrade
-the semconv version to pydantic_ai's current default and swap the tracer
-provider back to the global one.
+a user directly constructing `InstrumentationSettings(...)` — ends up on our
+tracer provider, and defaults to semconv `version=5` when the caller did not
+pick a version explicitly (or picked the now-legacy `version=1`). Callers that
+pass any `version >= 2` keep whatever they asked for.
 """
-
-import warnings
 
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Callable, Collection
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 
-_FORCED_SEMCONV_VERSION = 5
+_DEFAULT_SEMCONV_VERSION = 5
 
 
 class PydanticAIInstrumentor(BaseInstrumentor):
@@ -59,10 +57,16 @@ class PydanticAIInstrumentor(BaseInstrumentor):
         tracer_provider = kwargs.get("tracer_provider")
 
         # Patch InstrumentationSettings.__init__ so that *every* construction
-        # path ends up with version=5 and our tracer provider — regardless of
-        # whether it's Laminar, user code, or pydantic_ai itself doing the
-        # construction (e.g. `instrument_model` does
-        # `InstrumentationSettings()` when given `instrument=True`).
+        # path ends up on our tracer provider, and picks a reasonable default
+        # semconv version — regardless of whether it's Laminar, user code, or
+        # pydantic_ai itself doing the construction (e.g. `instrument_model`
+        # does `InstrumentationSettings()` when given `instrument=True`).
+        #
+        # Version policy: semconv versions >= 2 are broadly compatible with
+        # Laminar's parsing, so callers who pick one explicitly get exactly
+        # that. If the caller did not pass a version (or passed the
+        # legacy `version=1`, which pydantic_ai's own default maps to),
+        # upgrade them to v5 so we don't ship v1 spans by accident.
         original_settings_init = InstrumentationSettings.__init__
         default_tracer_provider = tracer_provider
 
@@ -72,29 +76,15 @@ class PydanticAIInstrumentor(BaseInstrumentor):
             tracer_provider=default_tracer_provider,
             **kw,
         ):
-            # The semconv version is intentionally forced: Laminar's span
-            # parsing assumes v5. If a caller passes `version=`, warn loudly
-            # and drop it rather than silently honoring a version we don't
-            # support.
             user_version = kw.pop("version", None)
-            if (
-                user_version is not None
-                and user_version != _FORCED_SEMCONV_VERSION
-            ):
-                warnings.warn(
-                    (
-                        "Laminar's pydantic_ai instrumentor forces "
-                        f"InstrumentationSettings(version={_FORCED_SEMCONV_VERSION}); "
-                        f"ignoring caller-supplied version={user_version}. "
-                        "Uninstrument Laminar's pydantic_ai integration if "
-                        "you need a different semconv version."
-                    ),
-                    stacklevel=2,
-                )
+            if user_version is None or user_version == 1:
+                effective_version = _DEFAULT_SEMCONV_VERSION
+            else:
+                effective_version = user_version
             original_settings_init(
                 self,
                 tracer_provider=tracer_provider,
-                version=_FORCED_SEMCONV_VERSION,
+                version=effective_version,
                 **kw,
             )
 
