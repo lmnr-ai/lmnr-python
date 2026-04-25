@@ -15,7 +15,6 @@ pick a version explicitly (or picked the now-legacy `version=1`). Callers that
 pass any `version >= 2` keep whatever they asked for.
 """
 
-from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Callable, Collection
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
@@ -32,25 +31,6 @@ class PydanticAIInstrumentor(BaseInstrumentor):
         return ("pydantic-ai-slim >= 1.0.0",)
 
     def _instrument(self, **kwargs: Any):
-        try:
-            pkg_version = version("pydantic-ai-slim")
-        except PackageNotFoundError:
-            try:
-                pkg_version = version("pydantic-ai")
-            except PackageNotFoundError:
-                pkg_version = "0.0.0"
-
-        from packaging.version import InvalidVersion, parse
-
-        try:
-            if parse(pkg_version) < parse("1.0.0"):
-                return
-        except InvalidVersion:
-            # Bail out rather than patch against an unknown version: the
-            # monkey-patch assumes the `>=1.0.0` API shape, and an unparseable
-            # version string means we can't confirm that assumption.
-            return
-
         from pydantic_ai import Agent
         from pydantic_ai.models.instrumented import InstrumentationSettings
 
