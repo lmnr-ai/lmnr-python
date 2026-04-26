@@ -35,8 +35,11 @@ class PydanticAIInstrumentor(BaseInstrumentor):
         # We only list `pydantic-ai-slim` (the core package shared by both the
         # `pydantic-ai-slim` and `pydantic-ai` distributions) — the "full"
         # `pydantic-ai` package re-exports from it, so this single constraint
-        # covers both install flavors.
-        return ("pydantic-ai-slim >= 1.0.0",)
+        # covers both install flavors. The upper bound guards against silent
+        # breakage from a 2.x release that could change `InstrumentationSettings`
+        # (which we instantiate eagerly during `_instrument`); when 2.x ships,
+        # validate compatibility and bump the cap.
+        return ("pydantic-ai-slim >= 1.0.0, < 2.0.0",)
 
     def _instrument(self, **kwargs: Any):
         from pydantic_ai import Agent
