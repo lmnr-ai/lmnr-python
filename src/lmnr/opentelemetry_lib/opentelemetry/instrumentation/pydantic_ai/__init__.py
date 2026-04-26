@@ -31,6 +31,11 @@ class PydanticAIInstrumentor(BaseInstrumentor):
     _enabled: bool = False
 
     def instrumentation_dependencies(self) -> Collection[str]:
+        # Declared for `BaseInstrumentor.instrument()`'s dependency check.
+        # We only list `pydantic-ai-slim` (the core package shared by both the
+        # `pydantic-ai-slim` and `pydantic-ai` distributions) — the "full"
+        # `pydantic-ai` package re-exports from it, so this single constraint
+        # covers both install flavors.
         return ("pydantic-ai-slim >= 1.0.0",)
 
     def _instrument(self, **kwargs: Any):
