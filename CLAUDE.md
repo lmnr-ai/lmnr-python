@@ -58,6 +58,10 @@ lmnr datasets pull <id>       # Pull dataset
 - **Tests use VCR.py** to record/replay HTTP responses in `tests/cassettes/`
 - **Tests use InMemorySpanExporter** configured in `tests/conftest.py` for span assertions
 
+## Dev dependencies
+
+- All entries in the `[dependency-groups].dev` section of `pyproject.toml` MUST be pinned to a specific version with `==X.Y.Z`. Do NOT use unbounded specifiers (`>=`, `^`, `~`, `<`, ranges, or bare package names). Pinning keeps the test matrix deterministic across developers and CI. When adding a new dev dep, look up the current release on https://pypi.org and pin to that exact version; bumps then go through a normal PR.
+
 ## Environment Variables
 
 ```
