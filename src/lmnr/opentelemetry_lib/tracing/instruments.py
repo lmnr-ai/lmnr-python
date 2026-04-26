@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from opentelemetry.trace import TracerProvider
 import lmnr.opentelemetry_lib.tracing._instrument_initializers as initializers
+from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 
 if TYPE_CHECKING:
@@ -53,6 +54,14 @@ class Instruments(Enum):
     PATCHRIGHT = "patchright"
     PINECONE = "pinecone"
     PLAYWRIGHT = "playwright"
+    # Auto-enabled by default when `pydantic-ai-slim`/`pydantic-ai` is installed.
+    # pydantic_ai emits its own OTel GenAI spans at the model abstraction layer,
+    # so when it is auto-enabled we also auto-remove the overlapping raw provider
+    # instrumentors (OpenAI, Anthropic, etc. — see _PYDANTIC_AI_PROVIDER_CONFLICTS)
+    # from the default set to avoid duplicate spans. Users who need the raw
+    # providers alongside pydantic_ai should pass an explicit `instruments`
+    # set to `Laminar.initialize`.
+    PYDANTIC_AI = "pydantic_ai"
     QDRANT = "qdrant"
     REPLICATE = "replicate"
     SAGEMAKER = "sagemaker"
@@ -100,6 +109,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.PATCHRIGHT: initializers.PatchrightInstrumentorInitializer(),
     Instruments.PINECONE: initializers.PineconeInstrumentorInitializer(),
     Instruments.PLAYWRIGHT: initializers.PlaywrightInstrumentorInitializer(),
+    Instruments.PYDANTIC_AI: initializers.PydanticAIInstrumentorInitializer(),
     Instruments.QDRANT: initializers.QdrantInstrumentorInitializer(),
     Instruments.REPLICATE: initializers.ReplicateInstrumentorInitializer(),
     Instruments.SAGEMAKER: initializers.SageMakerInstrumentorInitializer(),
@@ -112,6 +122,27 @@ INSTRUMENTATION_INITIALIZERS: dict[
 }
 
 
+#: Provider instrumentors that would produce spans overlapping with pydantic_ai's
+#: own GenAI spans. When PYDANTIC_AI is auto-enabled (pydantic_ai is installed
+#: and the caller didn't pass an explicit `instruments` set), these are removed
+#: from the default set so the same model call isn't traced twice.
+_PYDANTIC_AI_PROVIDER_CONFLICTS: set[Instruments] = {
+    Instruments.ANTHROPIC,
+    Instruments.BEDROCK,
+    Instruments.COHERE,
+    Instruments.GOOGLE_GENAI,
+    Instruments.GROQ,
+    Instruments.MISTRAL,
+    Instruments.OPENAI,
+}
+
+
+def _pydantic_ai_installed() -> bool:
+    return is_package_installed("pydantic-ai-slim") or is_package_installed(
+        "pydantic-ai"
+    )
+
+
 def init_instrumentations(
     tracer_provider: TracerProvider,
     logger_provider: "LoggerProvider | None" = None,
@@ -122,6 +153,14 @@ def init_instrumentations(
     block_instruments = block_instruments or set()
     if instruments is None:
         instruments = set(Instruments)
+        # Only auto-enable PYDANTIC_AI if the package is actually installed,
+        # and only auto-remove overlapping provider instrumentors in that case.
+        # If pydantic_ai isn't installed, PYDANTIC_AI stays in the set but its
+        # initializer will short-circuit to None (see PydanticAIInstrumentorInitializer).
+        if _pydantic_ai_installed() and Instruments.PYDANTIC_AI not in block_instruments:
+            instruments = instruments - _PYDANTIC_AI_PROVIDER_CONFLICTS
+        else:
+            instruments = instruments - {Instruments.PYDANTIC_AI}
     if not isinstance(instruments, set):
         instruments = set(instruments)
 
