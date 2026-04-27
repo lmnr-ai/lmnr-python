@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 _init_lock = threading.Lock()
 _initialized = False
+_init_failed = False
 
 # (session_id, tool_call_id) -> active tool span.  Entries are inserted in
 # pre_tool_call and popped in post_tool_call.  Same-thread access within a
@@ -48,13 +49,22 @@ _turn_lock = threading.Lock()
 
 
 def _ensure_initialized() -> bool:
-    """Initialize Laminar once. Returns True if tracing is active."""
-    global _initialized
+    """Initialize Laminar once. Returns True if tracing is active.
+
+    A failed initialization (missing key or exception) is cached in
+    ``_init_failed`` so subsequent hook invocations short-circuit without
+    re-acquiring the lock or re-running expensive setup.
+    """
+    global _initialized, _init_failed
     if _initialized:
         return True
+    if _init_failed:
+        return False
     with _init_lock:
         if _initialized:
             return True
+        if _init_failed:
+            return False
         if Laminar.is_initialized():
             _initialized = True
             return True
@@ -63,11 +73,13 @@ def _ensure_initialized() -> bool:
             logger.info(
                 "lmnr-hermes: LMNR_PROJECT_API_KEY not set; tracing disabled."
             )
+            _init_failed = True
             return False
         try:
             Laminar.initialize()
         except Exception as exc:
             logger.warning("lmnr-hermes: Laminar.initialize() failed: %s", exc)
+            _init_failed = True
             return False
         _initialized = True
         return True
