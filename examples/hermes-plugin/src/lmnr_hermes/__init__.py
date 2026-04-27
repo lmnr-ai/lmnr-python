@@ -309,7 +309,16 @@ def _on_post_api_request(
             if reported_total is not None:
                 total = int(reported_total)
             else:
-                total = input_tokens + output_tokens + cache_read + cache_write
+                # CanonicalUsage lists reasoning_tokens as a separate additive
+                # field, so include it in the fallback sum to avoid under-
+                # reporting when the provider omits total_tokens.
+                total = (
+                    input_tokens
+                    + output_tokens
+                    + cache_read
+                    + cache_write
+                    + reasoning
+                )
             span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
             span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
             if cache_read:
