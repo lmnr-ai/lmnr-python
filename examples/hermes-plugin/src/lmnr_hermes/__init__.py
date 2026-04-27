@@ -295,10 +295,13 @@ def _on_post_api_request(
             cache_read = int(usage.get("cache_read_tokens") or 0)
             cache_write = int(usage.get("cache_write_tokens") or 0)
             reasoning = int(usage.get("reasoning_tokens") or 0)
-            total = int(
-                usage.get("total_tokens")
-                or (input_tokens + output_tokens + cache_read + cache_write)
-            )
+            # Preserve an explicit provider-reported total (including 0);
+            # only fall back to the computed sum when the key is absent.
+            reported_total = usage.get("total_tokens")
+            if reported_total is not None:
+                total = int(reported_total)
+            else:
+                total = input_tokens + output_tokens + cache_read + cache_write
             span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
             span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
             if cache_read:
@@ -309,8 +312,7 @@ def _on_post_api_request(
                 )
             if reasoning:
                 span.set_attribute("gen_ai.usage.reasoning_tokens", reasoning)
-            if total:
-                span.set_attribute("llm.usage.total_tokens", total)
+            span.set_attribute("llm.usage.total_tokens", total)
 
         attrs: dict[str, Any] = {
             "hermes.finish_reason": finish_reason or "",
