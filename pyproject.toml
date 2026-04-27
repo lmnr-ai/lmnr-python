@@ -144,7 +144,7 @@ requires = ["uv_build>=0.11.7,<0.12"]
 build-backend = "uv_build"
 
 [tool.uv.workspace]
-members = ["examples/fastapi-app"]
+members = ["examples/fastapi-app", "examples/hermes-plugin"]
 
 [tool.ruff]
 target-version = "py310"

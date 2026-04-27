@@ -1,0 +1,17 @@
+name: lmnr-hermes
+version: 0.1.0
+description: "Laminar tracing plugin for Hermes Agent — emits nested spans for every turn, tool call, and subagent."
+author: "lmnr.ai"
+kind: standalone
+requires_env:
+  - name: LMNR_PROJECT_API_KEY
+    description: "Laminar project API key (get one at https://www.lmnr.ai)."
+provides_hooks:
+  - on_session_start
+  - pre_llm_call
+  - post_api_request
+  - pre_tool_call
+  - post_tool_call
+  - post_llm_call
+  - on_session_end
+  - subagent_stop
