@@ -38,8 +38,9 @@ _initialized = False
 _init_failed = False
 
 # (session_id, tool_call_id) -> active tool span.  Entries are inserted in
-# pre_tool_call and popped in post_tool_call.  Same-thread access within a
-# single tool dispatch, so no extra locking needed.
+# pre_tool_call and popped in post_tool_call.  Accessed from Hermes's tool
+# ThreadPoolExecutor workers and the turn thread, so all reads/writes go
+# through ``_spans_lock``.
 _tool_spans: dict[tuple[str, str], Any] = {}
 
 # (session_id, api_call_count) -> active LLM span.  Opened in pre_api_request
@@ -47,6 +48,11 @@ _tool_spans: dict[tuple[str, str], Any] = {}
 # raw anthropic/openai instrumentors never see these calls — we have to emit
 # LLM spans ourselves to get token usage and cost into the Laminar UI.
 _api_spans: dict[tuple[str, int], Any] = {}
+
+# Protects ``_tool_spans`` and ``_api_spans`` against concurrent mutation
+# from multiple sessions / ThreadPoolExecutor workers. Separate from
+# ``_turn_lock`` so turn-span reads don't contend with per-tool-call pops.
+_spans_lock = threading.Lock()
 
 # session_id -> {"span": LaminarSpan, "ctx_token": OTel context token,
 #                "lmnr_ctx": LaminarSpanContext serialized for cross-thread reuse}
@@ -261,7 +267,8 @@ def _on_pre_api_request(
         logger.debug("lmnr-hermes: start llm span failed: %s", exc)
         return
 
-    _api_spans[(session_id, int(api_call_count or 0))] = span
+    with _spans_lock:
+        _api_spans[(session_id, int(api_call_count or 0))] = span
 
 
 def _on_post_api_request(
@@ -283,7 +290,8 @@ def _on_post_api_request(
     """Close the LLM span opened in pre_api_request with usage and output."""
     if not _ensure_initialized():
         return
-    span = _api_spans.pop((session_id, int(api_call_count or 0)), None)
+    with _spans_lock:
+        span = _api_spans.pop((session_id, int(api_call_count or 0)), None)
     if span is None:
         return
 
@@ -384,7 +392,8 @@ def _on_pre_tool_call(
         logger.debug("lmnr-hermes: start tool span failed: %s", exc)
         return
 
-    _tool_spans[(session_id, tool_call_id)] = span
+    with _spans_lock:
+        _tool_spans[(session_id, tool_call_id)] = span
 
 
 def _on_post_tool_call(
@@ -399,7 +408,8 @@ def _on_post_tool_call(
 ) -> None:
     if not _ensure_initialized():
         return
-    span = _tool_spans.pop((session_id, tool_call_id), None)
+    with _spans_lock:
+        span = _tool_spans.pop((session_id, tool_call_id), None)
     if span is None:
         return
     try:
@@ -418,11 +428,15 @@ def _cleanup_api_spans(session_id: str) -> None:
 
     A provider call that raises before ``post_api_request`` fires would leave
     the span dangling; sweep it when the turn ends so the trace is never
-    missing its closing event.
+    missing its closing event. Snapshots + pops under ``_spans_lock`` so
+    concurrent ``post_api_request`` / ``post_tool_call`` calls from other
+    sessions can't mutate the dict mid-iteration.
     """
-    leaked = [k for k in _api_spans if k[0] == session_id]
-    for k in leaked:
-        span = _api_spans.pop(k, None)
+    with _spans_lock:
+        leaked_spans = [
+            _api_spans.pop(k) for k in list(_api_spans) if k[0] == session_id
+        ]
+    for span in leaked_spans:
         if span is None:
             continue
         try:
@@ -440,11 +454,14 @@ def _cleanup_tool_spans(session_id: str) -> None:
 
     Hermes runs concurrent tool calls on a ThreadPoolExecutor; an exception
     in one worker will not fire ``post_tool_call`` for that call, leaking
-    its span in ``_tool_spans``. Sweep by session when the turn ends.
+    its span in ``_tool_spans``. Sweep by session when the turn ends, under
+    ``_spans_lock`` so concurrent workers can't mutate the dict mid-iteration.
     """
-    leaked = [k for k in _tool_spans if k[0] == session_id]
-    for k in leaked:
-        span = _tool_spans.pop(k, None)
+    with _spans_lock:
+        leaked_spans = [
+            _tool_spans.pop(k) for k in list(_tool_spans) if k[0] == session_id
+        ]
+    for span in leaked_spans:
         if span is None:
             continue
         try:
