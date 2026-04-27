@@ -13,7 +13,10 @@ dependencies = [
 ]
 
 [project.entry-points."hermes_agent.plugins"]
-lmnr-hermes = "lmnr_hermes:register"
+# Hermes's entry-point loader calls `ep.load()` then looks for a `register`
+# attribute on the result, so the entry must resolve to the *module*, not the
+# register function itself.
+lmnr-hermes = "lmnr_hermes"
 
 [build-system]
 requires = ["hatchling"]

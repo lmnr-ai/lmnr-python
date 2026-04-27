@@ -42,6 +42,12 @@ _init_failed = False
 # single tool dispatch, so no extra locking needed.
 _tool_spans: dict[tuple[str, str], Any] = {}
 
+# (session_id, api_call_count) -> active LLM span.  Opened in pre_api_request
+# and closed in post_api_request.  Hermes drives its own HTTP client so the
+# raw anthropic/openai instrumentors never see these calls — we have to emit
+# LLM spans ourselves to get token usage and cost into the Laminar UI.
+_api_spans: dict[tuple[str, int], Any] = {}
+
 # session_id -> {"span": LaminarSpan, "ctx_token": OTel context token,
 #                "lmnr_ctx": LaminarSpanContext serialized for cross-thread reuse}
 _turn_state: dict[str, dict[str, Any]] = {}
@@ -75,8 +81,15 @@ def _ensure_initialized() -> bool:
             )
             _init_failed = True
             return False
+        init_kwargs: dict[str, Any] = {}
+        http_port = os.environ.get("LMNR_HTTP_PORT")
+        grpc_port = os.environ.get("LMNR_GRPC_PORT")
+        if http_port:
+            init_kwargs["http_port"] = int(http_port)
+        if grpc_port:
+            init_kwargs["grpc_port"] = int(grpc_port)
         try:
-            Laminar.initialize()
+            Laminar.initialize(**init_kwargs)
         except Exception as exc:
             logger.warning("lmnr-hermes: Laminar.initialize() failed: %s", exc)
             _init_failed = True
@@ -179,6 +192,78 @@ def _on_pre_llm_call(
         }
 
 
+def _on_pre_api_request(
+    task_id: str = "",
+    session_id: str = "",
+    platform: str = "",
+    model: str = "",
+    provider: str = "",
+    base_url: str = "",
+    api_mode: str = "",
+    api_call_count: int = 0,
+    message_count: int = 0,
+    tool_count: int = 0,
+    approx_input_tokens: int = 0,
+    request_char_count: int = 0,
+    max_tokens: int | None = None,
+    **_: Any,
+) -> None:
+    """Open an LLM span for each provider API call.
+
+    Hermes drives its own HTTP client (not the ``anthropic`` / ``openai``
+    Python SDKs) so the raw-SDK instrumentors Laminar auto-enables never see
+    these calls.  We emit the span ourselves and close it in
+    ``post_api_request`` where the response usage dict is available.
+    """
+    if not _ensure_initialized():
+        return
+    if not session_id:
+        return
+
+    with _turn_lock:
+        state = _turn_state.get(session_id)
+    parent_ctx = state.get("lmnr_ctx") if state else None
+
+    # Short human-readable model slug for the span name
+    span_name = f"llm.{provider}" if provider else "llm"
+    if model:
+        span_name = f"{span_name}.{model}"
+
+    try:
+        span = Laminar.start_span(
+            name=span_name,
+            span_type="LLM",
+            parent_span_context=parent_ctx,
+            session_id=session_id or None,
+            attributes={
+                "gen_ai.system": provider or "",
+                "gen_ai.request.model": model or "",
+                "hermes.api_mode": api_mode or "",
+                "hermes.api_call_count": int(api_call_count or 0),
+                "hermes.task_id": task_id or "",
+                "hermes.message_count": int(message_count or 0),
+                "hermes.tool_count": int(tool_count or 0),
+                "hermes.approx_input_tokens": int(approx_input_tokens or 0),
+                "hermes.request_char_count": int(request_char_count or 0),
+            },
+        )
+        if base_url:
+            try:
+                span.set_attribute("gen_ai.request.server_address", base_url)
+            except Exception:
+                pass
+        if max_tokens is not None:
+            try:
+                span.set_attribute("gen_ai.request.max_tokens", int(max_tokens))
+            except Exception:
+                pass
+    except Exception as exc:
+        logger.debug("lmnr-hermes: start llm span failed: %s", exc)
+        return
+
+    _api_spans[(session_id, int(api_call_count or 0))] = span
+
+
 def _on_post_api_request(
     task_id: str = "",
     session_id: str = "",
@@ -195,35 +280,72 @@ def _on_post_api_request(
     assistant_tool_call_count: int = 0,
     **_: Any,
 ) -> None:
-    """Attach per-API-call attributes to the turn span so the UI shows token
-    usage and finish reason even when provider instrumentors are disabled."""
+    """Close the LLM span opened in pre_api_request with usage and output."""
     if not _ensure_initialized():
         return
-    with _turn_lock:
-        state = _turn_state.get(session_id)
-    if not state:
+    span = _api_spans.pop((session_id, int(api_call_count or 0)), None)
+    if span is None:
         return
-    span = state["span"]
+
     try:
+        if isinstance(usage, dict):
+            # Laminar derives cost from these exact attribute keys (+ model).
+            input_tokens = int(usage.get("input_tokens") or 0)
+            output_tokens = int(usage.get("output_tokens") or 0)
+            cache_read = int(usage.get("cache_read_tokens") or 0)
+            cache_write = int(usage.get("cache_write_tokens") or 0)
+            reasoning = int(usage.get("reasoning_tokens") or 0)
+            total = int(
+                usage.get("total_tokens")
+                or (input_tokens + output_tokens + cache_read + cache_write)
+            )
+            span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
+            span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
+            if cache_read:
+                span.set_attribute("gen_ai.usage.cache_read_input_tokens", cache_read)
+            if cache_write:
+                span.set_attribute(
+                    "gen_ai.usage.cache_creation_input_tokens", cache_write
+                )
+            if reasoning:
+                span.set_attribute("gen_ai.usage.reasoning_tokens", reasoning)
+            if total:
+                span.set_attribute("llm.usage.total_tokens", total)
+
         attrs: dict[str, Any] = {
-            "hermes.provider": provider or "",
-            "hermes.api_mode": api_mode or "",
-            "hermes.api_call_count": int(api_call_count or 0),
             "hermes.finish_reason": finish_reason or "",
+            "hermes.assistant_content_chars": int(assistant_content_chars or 0),
             "hermes.assistant_tool_call_count": int(assistant_tool_call_count or 0),
         }
         if api_duration is not None:
             attrs["hermes.api_duration_ms"] = int(float(api_duration) * 1000)
         if response_model:
+            attrs["gen_ai.response.model"] = response_model
             attrs["hermes.response_model"] = response_model
-        if isinstance(usage, dict):
-            for k, v in usage.items():
-                if isinstance(v, (int, float, str, bool)):
-                    attrs[f"hermes.usage.{k}"] = v
         for k, v in attrs.items():
             span.set_attribute(k, v)
     except Exception as exc:
-        logger.debug("lmnr-hermes: set post_api_request attrs failed: %s", exc)
+        logger.debug("lmnr-hermes: set llm span attrs failed: %s", exc)
+
+    try:
+        # A brief summary is more useful than a raw JSON dump of the whole
+        # response body — we don't receive the body in the hook payload
+        # anyway.  Surface finish reason + tool-call count as the "output".
+        output = {
+            "finish_reason": finish_reason or "",
+            "assistant_content_chars": int(assistant_content_chars or 0),
+            "assistant_tool_call_count": int(assistant_tool_call_count or 0),
+        }
+        if response_model:
+            output["response_model"] = response_model
+        span.set_output(output)
+    except Exception:
+        pass
+
+    try:
+        span.end()
+    except Exception:
+        pass
 
 
 def _on_pre_tool_call(
@@ -289,6 +411,28 @@ def _on_post_tool_call(
         pass
 
 
+def _cleanup_api_spans(session_id: str) -> None:
+    """Close any LLM spans opened in ``pre_api_request`` but never closed.
+
+    A provider call that raises before ``post_api_request`` fires would leave
+    the span dangling; sweep it when the turn ends so the trace is never
+    missing its closing event.
+    """
+    leaked = [k for k in _api_spans if k[0] == session_id]
+    for k in leaked:
+        span = _api_spans.pop(k, None)
+        if span is None:
+            continue
+        try:
+            span.set_attribute("hermes.llm_end_reason", "turn_closed")
+        except Exception:
+            pass
+        try:
+            span.end()
+        except Exception:
+            pass
+
+
 def _finish_turn_state(
     state: dict[str, Any] | None, *, reason: str
 ) -> None:
@@ -322,6 +466,7 @@ def _finish_turn_state(
 def _close_turn(session_id: str, *, reason: str = "session_end") -> None:
     with _turn_lock:
         state = _turn_state.pop(session_id, None)
+    _cleanup_api_spans(session_id)
     _finish_turn_state(state, reason=reason)
 
 
@@ -369,6 +514,7 @@ def _on_session_end(
                 span.set_attribute("hermes.interrupted", bool(interrupted))
         except Exception:
             pass
+    _cleanup_api_spans(session_id)
     _finish_turn_state(
         state,
         reason="interrupted" if interrupted else ("completed" if completed else "ended"),
@@ -426,6 +572,7 @@ def register(ctx) -> None:
     _ensure_initialized()
     ctx.register_hook("on_session_start", _on_session_start)
     ctx.register_hook("pre_llm_call", _on_pre_llm_call)
+    ctx.register_hook("pre_api_request", _on_pre_api_request)
     ctx.register_hook("post_api_request", _on_post_api_request)
     ctx.register_hook("pre_tool_call", _on_pre_tool_call)
     ctx.register_hook("post_tool_call", _on_post_tool_call)
