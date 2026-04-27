@@ -433,6 +433,28 @@ def _cleanup_api_spans(session_id: str) -> None:
             pass
 
 
+def _cleanup_tool_spans(session_id: str) -> None:
+    """Close any TOOL spans opened in ``pre_tool_call`` but never closed.
+
+    Hermes runs concurrent tool calls on a ThreadPoolExecutor; an exception
+    in one worker will not fire ``post_tool_call`` for that call, leaking
+    its span in ``_tool_spans``. Sweep by session when the turn ends.
+    """
+    leaked = [k for k in _tool_spans if k[0] == session_id]
+    for k in leaked:
+        span = _tool_spans.pop(k, None)
+        if span is None:
+            continue
+        try:
+            span.set_attribute("hermes.tool_end_reason", "turn_closed")
+        except Exception:
+            pass
+        try:
+            span.end()
+        except Exception:
+            pass
+
+
 def _finish_turn_state(
     state: dict[str, Any] | None, *, reason: str
 ) -> None:
@@ -467,6 +489,7 @@ def _close_turn(session_id: str, *, reason: str = "session_end") -> None:
     with _turn_lock:
         state = _turn_state.pop(session_id, None)
     _cleanup_api_spans(session_id)
+    _cleanup_tool_spans(session_id)
     _finish_turn_state(state, reason=reason)
 
 
@@ -515,6 +538,7 @@ def _on_session_end(
         except Exception:
             pass
     _cleanup_api_spans(session_id)
+    _cleanup_tool_spans(session_id)
     _finish_turn_state(
         state,
         reason="interrupted" if interrupted else ("completed" if completed else "ended"),
