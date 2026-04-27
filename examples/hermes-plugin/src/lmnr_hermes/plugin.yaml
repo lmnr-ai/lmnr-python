@@ -9,6 +9,7 @@ requires_env:
 provides_hooks:
   - on_session_start
   - pre_llm_call
+  - pre_api_request
   - post_api_request
   - pre_tool_call
   - post_tool_call
