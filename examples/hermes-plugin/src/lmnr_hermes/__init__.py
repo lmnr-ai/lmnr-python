@@ -289,9 +289,15 @@ def _on_post_tool_call(
         pass
 
 
-def _close_turn(session_id: str, *, reason: str = "session_end") -> None:
-    with _turn_lock:
-        state = _turn_state.pop(session_id, None)
+def _finish_turn_state(
+    state: dict[str, Any] | None, *, reason: str
+) -> None:
+    """End a turn span from an already-popped state entry.
+
+    Split out so callers that need to atomically pop-and-mutate the state
+    (e.g. ``_on_session_end``) can do so under a single lock acquisition
+    instead of a get-then-pop that another thread could interleave.
+    """
     if not state:
         return
     span = state.get("span")
@@ -311,6 +317,12 @@ def _close_turn(session_id: str, *, reason: str = "session_end") -> None:
         span.end()
     except Exception:
         pass
+
+
+def _close_turn(session_id: str, *, reason: str = "session_end") -> None:
+    with _turn_lock:
+        state = _turn_state.pop(session_id, None)
+    _finish_turn_state(state, reason=reason)
 
 
 def _on_post_llm_call(
@@ -345,8 +357,10 @@ def _on_session_end(
 ) -> None:
     if not _ensure_initialized():
         return
+    # Atomically pop the state so a concurrent pre_llm_call that installs a
+    # new turn for this session_id can't have its state ended here by mistake.
     with _turn_lock:
-        state = _turn_state.get(session_id)
+        state = _turn_state.pop(session_id, None)
     if state is not None:
         span = state.get("span")
         try:
@@ -355,8 +369,8 @@ def _on_session_end(
                 span.set_attribute("hermes.interrupted", bool(interrupted))
         except Exception:
             pass
-    _close_turn(
-        session_id,
+    _finish_turn_state(
+        state,
         reason="interrupted" if interrupted else ("completed" if completed else "ended"),
     )
 
