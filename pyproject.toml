@@ -129,6 +129,7 @@ dev = [
   "litellm==1.83.7",
   "openai==2.30.0",
   "openai-agents==0.14.1",
+  "opencode-ai==0.1.0a36",
   "patchright==1.58.2",
   "playwright==1.58.0",
   "pydantic-ai-slim==1.87.0",

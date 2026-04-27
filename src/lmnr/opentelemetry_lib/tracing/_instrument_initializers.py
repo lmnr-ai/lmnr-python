@@ -375,6 +375,16 @@ class OpenAIAgentsInstrumentorInitializer(InstrumentorInitializer):
         return OpenAIAgentsInstrumentor()
 
 
+class OpencodeInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("opencode-ai"):
+            return None
+
+        from ..opentelemetry.instrumentation.opencode import OpencodeInstrumentor
+
+        return OpencodeInstrumentor()
+
+
 class OpenTelemetryInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         from ..opentelemetry.instrumentation.opentelemetry import (
