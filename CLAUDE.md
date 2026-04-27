@@ -62,6 +62,13 @@ lmnr datasets pull <id>       # Pull dataset
 
 - All entries in the `[dependency-groups].dev` section of `pyproject.toml` MUST be pinned to a specific version with `==X.Y.Z`. Do NOT use unbounded specifiers (`>=`, `^`, `~`, `<`, ranges, or bare package names). Pinning keeps the test matrix deterministic across developers and CI. When adding a new dev dep, look up the current release on https://pypi.org and pin to that exact version; bumps then go through a normal PR.
 
+## examples/hermes-plugin
+
+- Standalone pip package that bridges [Hermes Agent](https://github.com/nousresearch/hermes-agent) plugin hooks to Laminar spans. Ships via the `hermes_agent.plugins` entry-point group (`lmnr-hermes = "lmnr_hermes:register"`), so `pip install -e examples/hermes-plugin` plus `hermes plugins enable lmnr-hermes` is enough — no pip publish needed.
+- The `examples/hermes-plugin` directory is a uv workspace member; adding a new example dir with `tool.uv.sources.lmnr = { workspace = true }` requires updating `[tool.uv.workspace].members` in the root `pyproject.toml` or uv errors with "not a workspace member".
+- Hermes calls hooks on different threads (ThreadPoolExecutor for concurrent tool calls; delegate/subagent workers). The plugin keeps a `session_id → turn span` map and parents tool spans via `parent_span_context=Laminar.get_laminar_span_context_dict(turn_span)` rather than relying on the OTel current context, which is thread-local.
+- Laminar writes session_id as the attribute `lmnr.association.properties.session_id` (prefix = `ASSOCIATION_PROPERTIES` constant). Tests asserting session scoping must check this exact key, not `session_id` or `SESSION_ID`.
+
 ## Environment Variables
 
 ```
