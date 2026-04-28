@@ -60,6 +60,12 @@ WRAPPED_METHODS = [
     {
         "package": "anthropic.resources.messages",
         "object": "Messages",
+        "method": "parse",
+        "span_name": "anthropic.chat",
+    },
+    {
+        "package": "anthropic.resources.messages",
+        "object": "Messages",
         "method": "stream",
         "span_name": "anthropic.chat",
     },
@@ -77,6 +83,12 @@ WRAPPED_METHODS = [
         "package": "anthropic.resources.beta.messages.messages",
         "object": "Messages",
         "method": "create",
+        "span_name": "anthropic.chat",
+    },
+    {
+        "package": "anthropic.resources.beta.messages.messages",
+        "object": "Messages",
+        "method": "parse",
         "span_name": "anthropic.chat",
     },
     {
@@ -127,11 +139,23 @@ WRAPPED_AMETHODS = [
         "method": "create",
         "span_name": "anthropic.chat",
     },
+    {
+        "package": "anthropic.resources.messages",
+        "object": "AsyncMessages",
+        "method": "parse",
+        "span_name": "anthropic.chat",
+    },
     # Beta API async methods (regular Anthropic SDK)
     {
         "package": "anthropic.resources.beta.messages.messages",
         "object": "AsyncMessages",
         "method": "create",
+        "span_name": "anthropic.chat",
+    },
+    {
+        "package": "anthropic.resources.beta.messages.messages",
+        "object": "AsyncMessages",
+        "method": "parse",
         "span_name": "anthropic.chat",
     },
     # Beta API async methods (Bedrock SDK)
