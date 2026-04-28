@@ -28,6 +28,7 @@ TRACE_TYPE = "trace_type"
 TRACING_LEVEL = "tracing_level"
 ROLLOUT_SESSION_ID = "rollout_session_id"
 ROLLOUT_SESSION_ID_ATTR = "lmnr.rollout.session_id"
+EVALUATION_ID = "evaluation_id"
 
 
 # exposed to the user, configurable

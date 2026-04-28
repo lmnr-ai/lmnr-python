@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
+    EVALUATION_ID,
     PARENT_SPAN_IDS_PATH,
     PARENT_SPAN_PATH,
     ROLLOUT_SESSION_ID,
@@ -32,6 +33,7 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
     USER_ID,
 )
 from lmnr.opentelemetry_lib.tracing.context import (
+    CONTEXT_EVALUATION_ID_KEY,
     CONTEXT_METADATA_KEY,
     CONTEXT_ROLLOUT_SESSION_ID_KEY,
     CONTEXT_SESSION_ID_KEY,
@@ -161,6 +163,11 @@ class LaminarSpanProcessor(SpanProcessor):
                 span.set_attribute(ROLLOUT_SESSION_ID_ATTR, rollout_session_id)
                 span.set_attribute(
                     f"{ASSOCIATION_PROPERTIES}.{ROLLOUT_SESSION_ID}", rollout_session_id
+                )
+            evaluation_id = get_value(CONTEXT_EVALUATION_ID_KEY, parent_context)
+            if evaluation_id:
+                span.set_attribute(
+                    f"{ASSOCIATION_PROPERTIES}.{EVALUATION_ID}", evaluation_id
                 )
             ctx_metadata = get_value(CONTEXT_METADATA_KEY, parent_context)
             if ctx_metadata and isinstance(ctx_metadata, dict):

@@ -9,6 +9,11 @@ from tqdm import tqdm
 
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.opentelemetry_lib.tracing.attributes import HUMAN_EVALUATOR_OPTIONS, SPAN_TYPE
+from lmnr.opentelemetry_lib.tracing.context import (
+    attach_context,
+    detach_context,
+    set_association_prop_context,
+)
 
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
@@ -383,94 +388,114 @@ class Evaluation:
         self, eval_id: uuid.UUID, datapoint: Datapoint, index: int
     ) -> EvaluationResultDatapoint:
         evaluation_id = uuid.uuid4()
-        with L.start_as_current_span("evaluation") as evaluation_span:
-            L._set_trace_type(trace_type=TraceType.EVALUATION)
-            evaluation_span.set_attribute(SPAN_TYPE, SpanType.EVALUATION.value)
-            with L.start_as_current_span(
-                "executor", input={"data": datapoint.data}
-            ) as executor_span:
-                executor_span_id = uuid.UUID(
-                    int=executor_span.get_span_context().span_id
-                )
-                trace_id = uuid.UUID(int=executor_span.get_span_context().trace_id)
 
-                partial_datapoint = PartialEvaluationDatapoint(
-                    id=evaluation_id,
-                    data=datapoint.data,
-                    target=datapoint.target,
-                    index=index,
-                    trace_id=trace_id,
-                    executor_span_id=executor_span_id,
-                    metadata=datapoint.metadata,
-                )
-                if isinstance(self.data, LaminarDataset):
-                    partial_datapoint.dataset_link = EvaluationDatapointDatasetLink(
-                        dataset_id=self.data.id,
-                        datapoint_id=datapoint.id,
-                        created_at=datapoint.created_at,
+        eval_id_ctx = set_association_prop_context(
+            evaluation_id=str(eval_id),
+            attach=False,
+        )
+        eval_id_token = attach_context(eval_id_ctx)
+
+        try:
+            with L.start_as_current_span("evaluation") as evaluation_span:
+                L._set_trace_type(trace_type=TraceType.EVALUATION)
+                evaluation_span.set_attribute(SPAN_TYPE, SpanType.EVALUATION.value)
+                with L.start_as_current_span(
+                    "executor", input={"data": datapoint.data}
+                ) as executor_span:
+                    executor_span_id = uuid.UUID(
+                        int=executor_span.get_span_context().span_id
                     )
-                # First, create datapoint with trace_id so that we can show the dp in the UI
-                await self.client.evals.save_datapoints(
-                    eval_id, [partial_datapoint], self.group_name
-                )
-                executor_span.set_attribute(SPAN_TYPE, SpanType.EXECUTOR.value)
-                # Run synchronous executors in a thread pool to avoid blocking
-                if not is_async(self.executor):
-                    loop = asyncio.get_event_loop()
-                    output = await loop.run_in_executor(
-                        None, self.executor, datapoint.data
+                    trace_id = uuid.UUID(
+                        int=executor_span.get_span_context().trace_id
                     )
-                else:
-                    output = await self.executor(datapoint.data)
 
-                L.set_span_output(output)
-            target = datapoint.target
-
-            # Iterate over evaluators
-            scores: dict[str, Numeric] = {}
-            for evaluator_name, evaluator in self.evaluators.items():
-                # Check if evaluator is a HumanEvaluator instance
-                if isinstance(evaluator, HumanEvaluator):
-                    # Create an empty span for human evaluators
-                    with L.start_as_current_span(
-                        evaluator_name, input={"output": output, "target": target}
-                    ) as human_evaluator_span:
-                        human_evaluator_span.set_attribute(
-                            SPAN_TYPE, SpanType.HUMAN_EVALUATOR.value
-                        )
-                        if evaluator.options:
-                            human_evaluator_span.set_attribute(
-                                HUMAN_EVALUATOR_OPTIONS, json_dumps(evaluator.options)
+                    partial_datapoint = PartialEvaluationDatapoint(
+                        id=evaluation_id,
+                        data=datapoint.data,
+                        target=datapoint.target,
+                        index=index,
+                        trace_id=trace_id,
+                        executor_span_id=executor_span_id,
+                        metadata=datapoint.metadata,
+                    )
+                    if isinstance(self.data, LaminarDataset):
+                        partial_datapoint.dataset_link = (
+                            EvaluationDatapointDatasetLink(
+                                dataset_id=self.data.id,
+                                datapoint_id=datapoint.id,
+                                created_at=datapoint.created_at,
                             )
-                        # Human evaluators don't execute automatically, just create the span
-                        L.set_span_output(None)
-
-                    # We don't want to save the score for human evaluators
-                    scores[evaluator_name] = None
-                else:
-                    # Regular evaluator function
-                    with L.start_as_current_span(
-                        evaluator_name, input={"output": output, "target": target}
-                    ) as evaluator_span:
-                        evaluator_span.set_attribute(
-                            SPAN_TYPE, SpanType.EVALUATOR.value
                         )
-                        if is_async(evaluator):
-                            value = await evaluator(output, target)
-                        else:
-                            loop = asyncio.get_event_loop()
-                            value = await loop.run_in_executor(
-                                None, evaluator, output, target
-                            )
-                        L.set_span_output(value)
-
-                    # If evaluator returns a single number, use evaluator name as key
-                    if isinstance(value, NumericTypes):
-                        scores[evaluator_name] = value
+                    # First, create datapoint with trace_id so that we can show the dp in the UI
+                    await self.client.evals.save_datapoints(
+                        eval_id, [partial_datapoint], self.group_name
+                    )
+                    executor_span.set_attribute(SPAN_TYPE, SpanType.EXECUTOR.value)
+                    # Run synchronous executors in a thread pool to avoid blocking
+                    if not is_async(self.executor):
+                        loop = asyncio.get_event_loop()
+                        output = await loop.run_in_executor(
+                            None, self.executor, datapoint.data
+                        )
                     else:
-                        scores.update(value)
+                        output = await self.executor(datapoint.data)
 
-            trace_id = uuid.UUID(int=evaluation_span.get_span_context().trace_id)
+                    L.set_span_output(output)
+                target = datapoint.target
+
+                # Iterate over evaluators
+                scores: dict[str, Numeric] = {}
+                for evaluator_name, evaluator in self.evaluators.items():
+                    # Check if evaluator is a HumanEvaluator instance
+                    if isinstance(evaluator, HumanEvaluator):
+                        # Create an empty span for human evaluators
+                        with L.start_as_current_span(
+                            evaluator_name,
+                            input={"output": output, "target": target},
+                        ) as human_evaluator_span:
+                            human_evaluator_span.set_attribute(
+                                SPAN_TYPE, SpanType.HUMAN_EVALUATOR.value
+                            )
+                            if evaluator.options:
+                                human_evaluator_span.set_attribute(
+                                    HUMAN_EVALUATOR_OPTIONS,
+                                    json_dumps(evaluator.options),
+                                )
+                            # Human evaluators don't execute automatically, just create the span
+                            L.set_span_output(None)
+
+                        # We don't want to save the score for human evaluators
+                        scores[evaluator_name] = None
+                    else:
+                        # Regular evaluator function
+                        with L.start_as_current_span(
+                            evaluator_name,
+                            input={"output": output, "target": target},
+                        ) as evaluator_span:
+                            evaluator_span.set_attribute(
+                                SPAN_TYPE, SpanType.EVALUATOR.value
+                            )
+                            if is_async(evaluator):
+                                value = await evaluator(output, target)
+                            else:
+                                loop = asyncio.get_event_loop()
+                                value = await loop.run_in_executor(
+                                    None, evaluator, output, target
+                                )
+                            L.set_span_output(value)
+
+                        # If evaluator returns a single number, use evaluator name as key
+                        if isinstance(value, NumericTypes):
+                            scores[evaluator_name] = value
+                        else:
+                            scores.update(value)
+
+                trace_id = uuid.UUID(int=evaluation_span.get_span_context().trace_id)
+        finally:
+            try:
+                detach_context(eval_id_token)
+            except Exception:
+                pass
 
         eval_datapoint = EvaluationResultDatapoint(
             id=evaluation_id,
