@@ -537,8 +537,8 @@ async def test_evaluate_propagates_evaluation_id_to_all_spans(
 ):
     """Every span produced inside an evaluate() trace — including child spans
     created inside the user's executor — should carry
-    `lmnr.association.properties.evaluation_id` equal to the eval id returned
-    by `evals.init`."""
+    `lmnr.association.properties.metadata.evaluation_id` equal to the eval id
+    returned by `evals.init`."""
     mock_init.return_value = mock_eval_response
     mock_datapoints.return_value = mock_datapoints_response
     mock_dataset_push.return_value = mock_dataset_push_response
@@ -569,7 +569,7 @@ async def test_evaluate_propagates_evaluation_id_to_all_spans(
     expected_eval_id = mock_eval_response.id
     for span in spans:
         actual = span.attributes.get(
-            "lmnr.association.properties.evaluation_id"
+            "lmnr.association.properties.metadata.evaluation_id"
         )
         assert actual == expected_eval_id, (
             f"span {span.name} missing/incorrect evaluation_id: "

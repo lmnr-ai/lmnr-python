@@ -390,7 +390,7 @@ class Evaluation:
         evaluation_id = uuid.uuid4()
 
         eval_id_ctx = set_association_prop_context(
-            evaluation_id=str(eval_id),
+            metadata={"evaluation_id": str(eval_id)},
             attach=False,
         )
         eval_id_token = attach_context(eval_id_ctx)
