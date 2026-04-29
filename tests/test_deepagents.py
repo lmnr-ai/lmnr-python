@@ -461,8 +461,54 @@ def test_wrap_graph_stream_emits_span_when_iterated(
     spans = _span_by_name(span_exporter, "deep_agent")
     assert len(spans) == 1
     assert spans[0].attributes["lmnr.span.type"] == "DEFAULT"
-    # `_root_active` must be reset after iteration ends.
+    # `_root_active` must not have leaked out of the generator body — no
+    # matter what happened inside, callers must see the default `False`.
     assert _root_active.get() is False
+
+
+def test_interleaved_sync_streams_both_get_root_spans(
+    span_exporter: InMemorySpanExporter,
+):
+    # Regression guard: if the generator body sets `_root_active=True`
+    # before yielding, the mutation leaks to the caller's context on
+    # `yield` (documented Python sync-generator behaviour). A second
+    # concurrent `graph.stream()` would then see the sentinel on its
+    # eager check and skip instrumentation. Interleaving two streams
+    # must still emit one root span per stream.
+    def wrapped_a(payload):
+        yield {"stream": "a", "step": 1}
+        yield {"stream": "a", "step": 2}
+
+    def wrapped_b(payload):
+        yield {"stream": "b", "step": 1}
+        yield {"stream": "b", "step": 2}
+
+    gen_a = _wrap_graph_stream(
+        wrapped_a, instance=None, args=({"messages": []},), kwargs={}
+    )
+    # Pull the first chunk from A (this starts the generator body and,
+    # before the fix, would flip `_root_active` on in the caller).
+    first_a = next(gen_a)
+    assert first_a == {"stream": "a", "step": 1}
+
+    # B must still be instrumented.
+    gen_b = _wrap_graph_stream(
+        wrapped_b, instance=None, args=({"messages": []},), kwargs={}
+    )
+    chunks_b = list(gen_b)
+    assert chunks_b == [{"stream": "b", "step": 1}, {"stream": "b", "step": 2}]
+
+    # Finish A.
+    chunks_a = [first_a] + list(gen_a)
+    assert chunks_a == [
+        {"stream": "a", "step": 1},
+        {"stream": "a", "step": 2},
+    ]
+
+    # Two streams → two root spans.
+    spans = _span_by_name(span_exporter, "deep_agent")
+    assert len(spans) == 2
+    assert all(s.attributes["lmnr.span.type"] == "DEFAULT" for s in spans)
 
 
 def test_wrap_graph_stream_does_not_mark_error_on_generator_exit(

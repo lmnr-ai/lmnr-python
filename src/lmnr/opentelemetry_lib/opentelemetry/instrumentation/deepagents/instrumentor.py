@@ -110,6 +110,14 @@ async def _awrap_graph_invoke(wrapped, instance, args, kwargs):
 
 
 def _wrap_graph_stream(wrapped, instance, args, kwargs):
+    # The `_root_active` sentinel is set only by `_wrap_graph_invoke`, and
+    # only within its own (non-generator) function frame. That's enough to
+    # collapse the invoke→stream path: when Pregel.invoke internally calls
+    # self.stream, this eager check sees True and returns the raw stream.
+    # We deliberately do NOT set `_root_active` inside the generator body
+    # below — sync generators leak ContextVar mutations to the caller's
+    # context on `yield`, which would cause a second concurrent
+    # `graph.stream()` call on the same task to short-circuit here.
     if _root_active.get():
         return wrapped(*args, **kwargs)
     input_payload = args[0] if args else kwargs.get("input")
@@ -119,23 +127,21 @@ def _wrap_graph_stream(wrapped, instance, args, kwargs):
             messages = _extract_messages(input_payload)
             if messages is not None:
                 handle.set_input({"messages": _summarize_messages(messages)})
-            token = _root_active.set(True)
             try:
-                try:
-                    for chunk in wrapped(*args, **kwargs):
-                        yield chunk
-                except GeneratorExit:
-                    raise
-                except BaseException as exc:
-                    handle.record_exception(exc)
-                    raise
-            finally:
-                _root_active.reset(token)
+                for chunk in wrapped(*args, **kwargs):
+                    yield chunk
+            except GeneratorExit:
+                raise
+            except BaseException as exc:
+                handle.record_exception(exc)
+                raise
 
     return _gen()
 
 
 def _awrap_graph_stream(wrapped, instance, args, kwargs):
+    # See `_wrap_graph_stream` — the sentinel is intentionally not set
+    # inside the generator body to avoid cross-stream leakage.
     if _root_active.get():
         return wrapped(*args, **kwargs)
     input_payload = args[0] if args else kwargs.get("input")
@@ -145,18 +151,14 @@ def _awrap_graph_stream(wrapped, instance, args, kwargs):
             messages = _extract_messages(input_payload)
             if messages is not None:
                 handle.set_input({"messages": _summarize_messages(messages)})
-            token = _root_active.set(True)
             try:
-                try:
-                    async for chunk in wrapped(*args, **kwargs):
-                        yield chunk
-                except GeneratorExit:
-                    raise
-                except BaseException as exc:
-                    handle.record_exception(exc)
-                    raise
-            finally:
-                _root_active.reset(token)
+                async for chunk in wrapped(*args, **kwargs):
+                    yield chunk
+            except GeneratorExit:
+                raise
+            except BaseException as exc:
+                handle.record_exception(exc)
+                raise
 
     return _gen()
 
