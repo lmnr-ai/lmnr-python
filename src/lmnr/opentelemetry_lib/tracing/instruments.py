@@ -30,6 +30,7 @@ class Instruments(Enum):
     CUA_AGENT = "cua_agent"
     CUA_COMPUTER = "cua_computer"
     DAYTONA_SDK = "daytona_sdk"
+    DEEPAGENTS = "deepagents"
     GOOGLE_GENAI = "google_genai"
     GROQ = "groq"
     HAYSTACK = "haystack"
@@ -89,6 +90,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.CUA_AGENT: initializers.CuaAgentInstrumentorInitializer(),
     Instruments.CUA_COMPUTER: initializers.CuaComputerInstrumentorInitializer(),
     Instruments.DAYTONA_SDK: initializers.DaytonaSDKInstrumentorInitializer(),
+    Instruments.DEEPAGENTS: initializers.DeepagentsInstrumentorInitializer(),
     Instruments.GOOGLE_GENAI: initializers.GoogleGenAIInstrumentorInitializer(),
     Instruments.GROQ: initializers.GroqInstrumentorInitializer(),
     Instruments.HAYSTACK: initializers.HaystackInstrumentorInitializer(),
@@ -137,10 +139,28 @@ _PYDANTIC_AI_PROVIDER_CONFLICTS: set[Instruments] = {
 }
 
 
+#: When deepagents is installed, the Laminar `DeepagentsInstrumentor` (via
+#: `LaminarMiddleware`) already emits the spans users actually care about —
+#: one DEFAULT root span per agent invocation and one TOOL span per tool
+#: call. The LangChain / LangGraph auto-instrumentors would otherwise add a
+#: large number of langsmith-style internal-node spans on top of that, which
+#: clutters the transcript without adding signal. Auto-remove them from the
+#: default set; callers who want the raw spans can pass an explicit
+#: `instruments` set.
+_DEEPAGENTS_NOISE_CONFLICTS: set[Instruments] = {
+    Instruments.LANGCHAIN,
+    Instruments.LANGGRAPH,
+}
+
+
 def _pydantic_ai_installed() -> bool:
     return is_package_installed("pydantic-ai-slim") or is_package_installed(
         "pydantic-ai"
     )
+
+
+def _deepagents_installed() -> bool:
+    return is_package_installed("deepagents")
 
 
 def init_instrumentations(
@@ -161,6 +181,12 @@ def init_instrumentations(
             instruments = instruments - _PYDANTIC_AI_PROVIDER_CONFLICTS
         else:
             instruments = instruments - {Instruments.PYDANTIC_AI}
+        # Auto-remove LangChain/LangGraph noise when deepagents is present;
+        # LaminarMiddleware emits the relevant spans at the agent boundary.
+        if _deepagents_installed() and Instruments.DEEPAGENTS not in block_instruments:
+            instruments = instruments - _DEEPAGENTS_NOISE_CONFLICTS
+        else:
+            instruments = instruments - {Instruments.DEEPAGENTS}
     if not isinstance(instruments, set):
         instruments = set(instruments)
 

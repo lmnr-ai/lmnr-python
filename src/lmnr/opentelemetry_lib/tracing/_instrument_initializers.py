@@ -189,6 +189,20 @@ class DaytonaSDKInstrumentorInitializer(InstrumentorInitializer):
         return DaytonaSDKInstrumentor()
 
 
+class DeepagentsInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("deepagents"):
+            return None
+        # deepagents ships its own `AgentMiddleware` API (via langchain.agents);
+        # LaminarMiddleware relies on it at import time.
+        if not is_package_installed("langchain"):
+            return None
+
+        from ..opentelemetry.instrumentation.deepagents import DeepagentsInstrumentor
+
+        return DeepagentsInstrumentor()
+
+
 class GoogleGenAIInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("google-genai"):
