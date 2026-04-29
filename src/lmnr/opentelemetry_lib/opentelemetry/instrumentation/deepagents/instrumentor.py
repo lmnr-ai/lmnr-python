@@ -113,24 +113,22 @@ def _wrap_graph_stream(wrapped, instance, args, kwargs):
     if _root_active.get():
         return wrapped(*args, **kwargs)
     input_payload = args[0] if args else kwargs.get("input")
-    handle = _SpanHandle(_ROOT_SPAN_NAME, "DEFAULT").__enter__()
-    messages = _extract_messages(input_payload)
-    if messages is not None:
-        handle.set_input({"messages": _summarize_messages(messages)})
-    token = _root_active.set(True)
 
     def _gen():
-        try:
+        with _SpanHandle(_ROOT_SPAN_NAME, "DEFAULT") as handle:
+            messages = _extract_messages(input_payload)
+            if messages is not None:
+                handle.set_input({"messages": _summarize_messages(messages)})
+            token = _root_active.set(True)
             try:
-                for chunk in wrapped(*args, **kwargs):
-                    yield chunk
-            except BaseException as exc:
-                handle.record_exception(exc)
-                handle.__exit__(type(exc), exc, exc.__traceback__)
-                raise
-            handle.__exit__(None, None, None)
-        finally:
-            _root_active.reset(token)
+                try:
+                    for chunk in wrapped(*args, **kwargs):
+                        yield chunk
+                except BaseException as exc:
+                    handle.record_exception(exc)
+                    raise
+            finally:
+                _root_active.reset(token)
 
     return _gen()
 
@@ -139,24 +137,22 @@ def _awrap_graph_stream(wrapped, instance, args, kwargs):
     if _root_active.get():
         return wrapped(*args, **kwargs)
     input_payload = args[0] if args else kwargs.get("input")
-    handle = _SpanHandle(_ROOT_SPAN_NAME, "DEFAULT").__enter__()
-    messages = _extract_messages(input_payload)
-    if messages is not None:
-        handle.set_input({"messages": _summarize_messages(messages)})
-    token = _root_active.set(True)
 
     async def _gen():
-        try:
+        with _SpanHandle(_ROOT_SPAN_NAME, "DEFAULT") as handle:
+            messages = _extract_messages(input_payload)
+            if messages is not None:
+                handle.set_input({"messages": _summarize_messages(messages)})
+            token = _root_active.set(True)
             try:
-                async for chunk in wrapped(*args, **kwargs):
-                    yield chunk
-            except BaseException as exc:
-                handle.record_exception(exc)
-                handle.__exit__(type(exc), exc, exc.__traceback__)
-                raise
-            handle.__exit__(None, None, None)
-        finally:
-            _root_active.reset(token)
+                try:
+                    async for chunk in wrapped(*args, **kwargs):
+                        yield chunk
+                except BaseException as exc:
+                    handle.record_exception(exc)
+                    raise
+            finally:
+                _root_active.reset(token)
 
     return _gen()
 

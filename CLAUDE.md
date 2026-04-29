@@ -89,6 +89,7 @@ LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
 - Subagent cards in the frontend transcript are derived from `lmnr.span.prompt_hash` fingerprinting (see `computeSubagentBoundaries` in `frontend/components/traces/trace-view/store/utils.ts`) — no dedicated subagent span type is needed. A TOOL span named `task` nesting the subagent's LLM/tool spans is enough; the frontend groups them automatically.
 - `deepagents` depends on `langchain>=1.0`. `DeepagentsInstrumentorInitializer` returns `None` unless both `deepagents` and `langchain` are installed, so the instrumentor is a silent no-op in environments where only one is present.
 - Association props lifecycle: when calling `set_association_props_in_context(span)`, store the returned token on the span as `span._lmnr_assoc_props_token` (see `decorators/__init__.py`, `sdk/laminar.py`). `LaminarSpan.end()` detaches it automatically. Stashing the token on an ad-hoc handle without detaching it leaks an isolated-context attachment per span.
+- Stream wrappers (`_wrap_graph_stream` / `_awrap_graph_stream`) must open the span AND set the `_root_active` sentinel INSIDE the returned generator, not before returning it. If setup happens eagerly and the caller never iterates (or never starts) the generator, the span never ends and the `_root_active` ContextVar stays `True`, silently disabling the root span for every subsequent `invoke`/`stream` call on the same task.
 
 ## pydantic_ai instrument
 
