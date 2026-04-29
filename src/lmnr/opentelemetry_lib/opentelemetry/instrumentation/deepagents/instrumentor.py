@@ -124,6 +124,8 @@ def _wrap_graph_stream(wrapped, instance, args, kwargs):
                 try:
                     for chunk in wrapped(*args, **kwargs):
                         yield chunk
+                except GeneratorExit:
+                    raise
                 except BaseException as exc:
                     handle.record_exception(exc)
                     raise
@@ -148,6 +150,8 @@ def _awrap_graph_stream(wrapped, instance, args, kwargs):
                 try:
                     async for chunk in wrapped(*args, **kwargs):
                         yield chunk
+                except GeneratorExit:
+                    raise
                 except BaseException as exc:
                     handle.record_exception(exc)
                     raise
