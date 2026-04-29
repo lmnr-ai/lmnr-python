@@ -61,7 +61,6 @@ class _SpanHandle:
         self._wrapper: TracerWrapper | None = None
         self._ctx_token = None
         self._iso_token = None
-        self._assoc_token = None
         self._did_push = False
 
     def __enter__(self) -> "_SpanHandle":
@@ -80,7 +79,9 @@ class _SpanHandle:
                     attributes={SPAN_TYPE: self.span_type},
                 )
             self.span = raw if isinstance(raw, LaminarSpan) else LaminarSpan(raw)
-            self._assoc_token = set_association_props_in_context(self.span)
+            assoc_token = set_association_props_in_context(self.span)
+            if assoc_token is not None:
+                self.span._lmnr_assoc_props_token = assoc_token
             new_ctx = self._wrapper.push_span_context(self.span)
             self._did_push = True
             self._ctx_token = context_api.attach(new_ctx)

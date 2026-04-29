@@ -88,6 +88,7 @@ LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
 - `Pregel.invoke` internally calls `self.stream`, so wrapping both without a guard produces two root spans per top-level call. A `contextvars.ContextVar` sentinel (`_root_active` in `deepagents/instrumentor.py`) collapses that to one.
 - Subagent cards in the frontend transcript are derived from `lmnr.span.prompt_hash` fingerprinting (see `computeSubagentBoundaries` in `frontend/components/traces/trace-view/store/utils.ts`) — no dedicated subagent span type is needed. A TOOL span named `task` nesting the subagent's LLM/tool spans is enough; the frontend groups them automatically.
 - `deepagents` depends on `langchain>=1.0`. `DeepagentsInstrumentorInitializer` returns `None` unless both `deepagents` and `langchain` are installed, so the instrumentor is a silent no-op in environments where only one is present.
+- Association props lifecycle: when calling `set_association_props_in_context(span)`, store the returned token on the span as `span._lmnr_assoc_props_token` (see `decorators/__init__.py`, `sdk/laminar.py`). `LaminarSpan.end()` detaches it automatically. Stashing the token on an ad-hoc handle without detaching it leaks an isolated-context attachment per span.
 
 ## pydantic_ai instrument
 
