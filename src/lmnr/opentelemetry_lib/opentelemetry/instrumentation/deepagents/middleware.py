@@ -60,7 +60,7 @@ class _SpanHandle:
         self.span: LaminarSpan | None = None
         self._wrapper: TracerWrapper | None = None
         self._ctx_token = None
-        self._iso_token = None
+        self._isolated_context_token = None
         self._did_push = False
 
     def __enter__(self) -> "_SpanHandle":
@@ -85,7 +85,7 @@ class _SpanHandle:
             new_ctx = self._wrapper.push_span_context(self.span)
             self._did_push = True
             self._ctx_token = context_api.attach(new_ctx)
-            self._iso_token = attach_context(new_ctx)
+            self._isolated_context_token = attach_context(new_ctx)
         except Exception:
             logger.debug("Failed to open Laminar span", exc_info=True)
             self.span = None
@@ -140,8 +140,8 @@ class _SpanHandle:
         except Exception:
             logger.debug("Failed to detach global context", exc_info=True)
         try:
-            if self._iso_token is not None:
-                detach_context(self._iso_token)
+            if self._isolated_context_token is not None:
+                detach_context(self._isolated_context_token)
         except Exception:
             logger.debug("Failed to detach isolated context", exc_info=True)
         if self._did_push and self._wrapper is not None:
