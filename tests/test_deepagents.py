@@ -104,6 +104,8 @@ def test_tool_result_to_json_with_content():
 
 
 def test_tool_result_to_json_with_update():
+    # langgraph `Command` objects expose `.update` as a data attribute
+    # (not a callable). The helper must wrap it in {"update": ...}.
     class Command:
         update = {"messages": []}
 
@@ -111,11 +113,17 @@ def test_tool_result_to_json_with_update():
 
 
 def test_tool_result_to_json_passthrough():
-    # Plain scalars have no `content` / `update` attribute and fall through
-    # unchanged. (dicts expose a built-in `update` method so they hit the
-    # Command branch — intentionally not asserted here.)
     assert _tool_result_to_json(42) == 42
     assert _tool_result_to_json("plain") == "plain"
+
+
+def test_tool_result_to_json_plain_dict_not_misidentified_as_command():
+    # Regression guard: `dict.update` is a callable method on every Python
+    # dict, but a langgraph `Command`'s `.update` is a data attribute. The
+    # helper must NOT wrap plain dicts in {"update": <bound method>} —
+    # that produces meaningless garbage in the tool-span output.
+    assert _tool_result_to_json({"raw": 1}) == {"raw": 1}
+    assert _tool_result_to_json({}) == {}
 
 
 def test_extract_messages_returns_list_when_present():

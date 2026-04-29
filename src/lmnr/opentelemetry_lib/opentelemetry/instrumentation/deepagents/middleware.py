@@ -43,9 +43,13 @@ def _tool_result_to_json(result: Any) -> Any:
     """Return a JSON-friendly view of a ToolMessage / Command."""
     if hasattr(result, "content"):
         return getattr(result, "content", None)
-    if hasattr(result, "update"):
+    # A langgraph `Command` exposes `.update` as a data attribute, but
+    # `dict` (and other mapping types) expose it as a callable method —
+    # skip those to avoid serializing the bound method as the tool output.
+    update_attr = getattr(result, "update", None)
+    if update_attr is not None and not callable(update_attr):
         try:
-            return {"update": getattr(result, "update", None)}
+            return {"update": update_attr}
         except Exception:
             return repr(result)
     return result
