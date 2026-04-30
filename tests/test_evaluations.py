@@ -517,3 +517,64 @@ def test_get_average_scores_with_human_evaluators():
     # Verify correct averages
     assert abs(average_scores["accuracy"] - (0.8 + 0.6 + 1.0) / 3) < 1e-10  # ~0.8
     assert abs(average_scores["precision"] - (0.9 + 0.7 + 0.8) / 3) < 1e-10  # ~0.8
+
+
+@pytest.mark.asyncio
+@patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
+@patch("lmnr.sdk.client.asynchronous.resources.datasets.AsyncDatasets.push")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+async def test_evaluate_propagates_evaluation_id_to_all_spans(
+    mock_init,
+    mock_datapoints,
+    mock_dataset_push,
+    mock_dataset_pull,
+    mock_eval_response,
+    mock_datapoints_response,
+    mock_dataset_push_response,
+    mock_dataset_pull_response,
+    span_exporter: InMemorySpanExporter,
+):
+    """Every span produced inside an evaluate() trace — including child spans
+    created inside the user's executor — should carry
+    `lmnr.association.properties.metadata.evaluation_id` equal to the eval id
+    returned by `evals.init`."""
+    mock_init.return_value = mock_eval_response
+    mock_datapoints.return_value = mock_datapoints_response
+    mock_dataset_push.return_value = mock_dataset_push_response
+    mock_dataset_pull.return_value = mock_dataset_pull_response
+
+    def executor(data):
+        with Laminar.start_as_current_span("inner_user_span"):
+            return data
+
+    await evaluate(
+        data=[
+            {"data": "a", "target": "a"},
+            {"data": "b", "target": "b"},
+        ],
+        executor=executor,
+        evaluators={
+            "exact": lambda output, target: 1 if output == target else 0,
+        },
+        project_api_key="test",
+    )
+
+    Laminar.flush()
+
+    spans = span_exporter.get_finished_spans()
+    # 2 datapoints * (evaluation + executor + inner_user_span + 1 evaluator) = 8
+    assert len(spans) == 8
+
+    expected_eval_id = mock_eval_response.id
+    for span in spans:
+        actual = span.attributes.get(
+            "lmnr.association.properties.metadata.evaluation_id"
+        )
+        assert actual == expected_eval_id, (
+            f"span {span.name} missing/incorrect evaluation_id: "
+            f"got {actual!r}, expected {expected_eval_id!r}"
+        )
+
+    trace_ids = {span.context.trace_id for span in spans}
+    assert len(trace_ids) == 2
