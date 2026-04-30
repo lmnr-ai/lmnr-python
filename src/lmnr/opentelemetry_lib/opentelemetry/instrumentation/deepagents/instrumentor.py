@@ -32,9 +32,10 @@ from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
 from wrapt import wrap_function_wrapper
 
+from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
 
-from .middleware import LaminarMiddleware, _SpanHandle, _summarize_messages
+from .middleware import LaminarMiddleware, _summarize_messages
 
 logger = get_default_logger(__name__)
 
@@ -56,7 +57,14 @@ def _extract_messages(input_payload: Any) -> Any:
     return None
 
 
-def _set_output_from_result(handle: _SpanHandle, result: Any) -> None:
+def _span_input(input_payload: Any) -> Any:
+    messages = _extract_messages(input_payload)
+    if messages is None:
+        return None
+    return {"messages": _summarize_messages(messages)}
+
+
+def _set_output_from_result(span, result: Any) -> None:
     out_messages = _extract_messages(result)
     if not out_messages:
         return
@@ -64,49 +72,43 @@ def _set_output_from_result(handle: _SpanHandle, result: Any) -> None:
     content = getattr(last, "content", None) if last is not None else None
     if content is None and isinstance(last, dict):
         content = last.get("content")
-    handle.set_output(content if content is not None else _summarize_messages(out_messages))
+    span.set_output(content if content is not None else _summarize_messages(out_messages))
 
 
 def _wrap_graph_invoke(wrapped, instance, args, kwargs):
     if _root_active.get():
         return wrapped(*args, **kwargs)
     input_payload = args[0] if args else kwargs.get("input")
-    with _SpanHandle(_ROOT_SPAN_NAME, "DEFAULT") as handle:
-        messages = _extract_messages(input_payload)
-        if messages is not None:
-            handle.set_input({"messages": _summarize_messages(messages)})
-        token = _root_active.set(True)
-        try:
-            try:
-                result = wrapped(*args, **kwargs)
-            except BaseException as exc:
-                handle.record_exception(exc)
-                raise
-            _set_output_from_result(handle, result)
+    token = _root_active.set(True)
+    try:
+        with Laminar.start_as_current_span(
+            name=_ROOT_SPAN_NAME,
+            input=_span_input(input_payload),
+            span_type="DEFAULT",
+        ) as span:
+            result = wrapped(*args, **kwargs)
+            _set_output_from_result(span, result)
             return result
-        finally:
-            _root_active.reset(token)
+    finally:
+        _root_active.reset(token)
 
 
 async def _awrap_graph_invoke(wrapped, instance, args, kwargs):
     if _root_active.get():
         return await wrapped(*args, **kwargs)
     input_payload = args[0] if args else kwargs.get("input")
-    with _SpanHandle(_ROOT_SPAN_NAME, "DEFAULT") as handle:
-        messages = _extract_messages(input_payload)
-        if messages is not None:
-            handle.set_input({"messages": _summarize_messages(messages)})
-        token = _root_active.set(True)
-        try:
-            try:
-                result = await wrapped(*args, **kwargs)
-            except BaseException as exc:
-                handle.record_exception(exc)
-                raise
-            _set_output_from_result(handle, result)
+    token = _root_active.set(True)
+    try:
+        with Laminar.start_as_current_span(
+            name=_ROOT_SPAN_NAME,
+            input=_span_input(input_payload),
+            span_type="DEFAULT",
+        ) as span:
+            result = await wrapped(*args, **kwargs)
+            _set_output_from_result(span, result)
             return result
-        finally:
-            _root_active.reset(token)
+    finally:
+        _root_active.reset(token)
 
 
 def _wrap_graph_stream(wrapped, instance, args, kwargs):
@@ -122,19 +124,27 @@ def _wrap_graph_stream(wrapped, instance, args, kwargs):
         return wrapped(*args, **kwargs)
     input_payload = args[0] if args else kwargs.get("input")
 
+    # Span is opened *inside* the generator body so that if the caller
+    # discards the generator without iterating, no span is opened.
+    # `Laminar.start_span` + `Laminar.use_span(..., end_on_exit=True)` is
+    # the canonical way to bind a span's lifetime to a generator: unlike
+    # `start_as_current_span` as a context manager, the span survives the
+    # wrapper function return, and `use_span(end_on_exit=True)` attaches /
+    # detaches the OTel + Laminar-isolated contexts around each iteration
+    # and ends the span on generator close (including on GeneratorExit).
     def _gen():
-        with _SpanHandle(_ROOT_SPAN_NAME, "DEFAULT") as handle:
-            messages = _extract_messages(input_payload)
-            if messages is not None:
-                handle.set_input({"messages": _summarize_messages(messages)})
-            try:
-                for chunk in wrapped(*args, **kwargs):
-                    yield chunk
-            except GeneratorExit:
-                raise
-            except BaseException as exc:
-                handle.record_exception(exc)
-                raise
+        span = Laminar.start_span(
+            name=_ROOT_SPAN_NAME,
+            input=_span_input(input_payload),
+            span_type="DEFAULT",
+        )
+        last_chunk: Any = None
+        with Laminar.use_span(span, end_on_exit=True):
+            for chunk in wrapped(*args, **kwargs):
+                last_chunk = chunk
+                yield chunk
+            if last_chunk is not None:
+                _set_output_from_result(span, last_chunk)
 
     return _gen()
 
@@ -147,18 +157,18 @@ def _awrap_graph_stream(wrapped, instance, args, kwargs):
     input_payload = args[0] if args else kwargs.get("input")
 
     async def _gen():
-        with _SpanHandle(_ROOT_SPAN_NAME, "DEFAULT") as handle:
-            messages = _extract_messages(input_payload)
-            if messages is not None:
-                handle.set_input({"messages": _summarize_messages(messages)})
-            try:
-                async for chunk in wrapped(*args, **kwargs):
-                    yield chunk
-            except GeneratorExit:
-                raise
-            except BaseException as exc:
-                handle.record_exception(exc)
-                raise
+        span = Laminar.start_span(
+            name=_ROOT_SPAN_NAME,
+            input=_span_input(input_payload),
+            span_type="DEFAULT",
+        )
+        last_chunk: Any = None
+        with Laminar.use_span(span, end_on_exit=True):
+            async for chunk in wrapped(*args, **kwargs):
+                last_chunk = chunk
+                yield chunk
+            if last_chunk is not None:
+                _set_output_from_result(span, last_chunk)
 
     return _gen()
 

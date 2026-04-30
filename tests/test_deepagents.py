@@ -2,9 +2,8 @@
 
 These tests cover the pure helpers (`_summarize_messages`, `_tool_result_to_json`,
 `_extract_messages`, `_set_output_from_result`), the middleware span helpers
-(`LaminarMiddleware._tool_span_name`, `LaminarMiddleware._tool_span_input`,
-`LaminarMiddleware.wrap_tool_call`, `awrap_tool_call`), the `_SpanHandle`
-context manager, and the graph wrappers (`_wrap_graph_invoke`,
+(`_tool_span_name`, `_tool_span_input`, `LaminarMiddleware.wrap_tool_call`,
+`awrap_tool_call`), and the graph wrappers (`_wrap_graph_invoke`,
 `_awrap_graph_invoke`, `_wrap_graph_stream`, `_awrap_graph_stream`,
 `_inject_middleware`).
 
@@ -42,9 +41,10 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.deepagents.instrumento
     _wrap_graph_stream,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.deepagents.middleware import (
-    _SpanHandle,
     _summarize_messages,
     _tool_result_to_json,
+    _tool_span_input,
+    _tool_span_name,
 )
 
 
@@ -139,51 +139,45 @@ def test_extract_messages_returns_none_for_non_dict():
     assert _extract_messages(None) is None
 
 
+class _FakeSpan:
+    def __init__(self):
+        self.output = None
+
+    def set_output(self, value):
+        self.output = value
+
+
 def test_set_output_from_result_prefers_last_message_content():
-    class _H:
-        def __init__(self):
-            self.output = None
-
-        def set_output(self, value):
-            self.output = value
-
-    handle = _H()
-    _set_output_from_result(handle, {"messages": [_FakeMessage(type_="ai", content="final")]})
-    assert handle.output == "final"
+    span = _FakeSpan()
+    _set_output_from_result(span, {"messages": [_FakeMessage(type_="ai", content="final")]})
+    assert span.output == "final"
 
 
 def test_set_output_from_result_falls_back_to_summary_for_non_content_messages():
-    class _H:
-        def __init__(self):
-            self.output = None
-
-        def set_output(self, value):
-            self.output = value
-
-    handle = _H()
+    span = _FakeSpan()
     # A last message with neither content nor dict-content still yields the
     # whole summary so the span isn't completely empty.
-    _set_output_from_result(handle, {"messages": [{"foo": "bar"}]})
+    _set_output_from_result(span, {"messages": [{"foo": "bar"}]})
     # The last dict has no content key, so content stays None and we fall
     # back to `_summarize_messages`, which returns the dict list unchanged
     # because role/type are absent.
-    assert handle.output == [{"foo": "bar"}]
+    assert span.output == [{"foo": "bar"}]
 
 
 def test_set_output_from_result_noop_when_no_messages():
     calls = []
 
-    class _H:
+    class _Span:
         def set_output(self, value):
             calls.append(value)
 
-    _set_output_from_result(_H(), {})
-    _set_output_from_result(_H(), "string")
+    _set_output_from_result(_Span(), {})
+    _set_output_from_result(_Span(), "string")
     assert calls == []
 
 
 # --------------------------------------------------------------------- #
-# LaminarMiddleware helpers                                              #
+# Tool span helpers                                                      #
 # --------------------------------------------------------------------- #
 
 
@@ -196,65 +190,36 @@ class _FakeToolCallRequest:
 
 def test_tool_span_name_prefers_tool_call_name():
     req = _FakeToolCallRequest(name="read_file", args={"path": "/tmp/x"})
-    assert LaminarMiddleware._tool_span_name(req) == "read_file"
+    assert _tool_span_name(req) == "read_file"
 
 
 def test_tool_span_name_falls_back_to_request_tool_name():
     req = types.SimpleNamespace(tool_call=None, tool=types.SimpleNamespace(name="fallback"))
-    assert LaminarMiddleware._tool_span_name(req) == "fallback"
+    assert _tool_span_name(req) == "fallback"
 
 
 def test_tool_span_name_defaults_to_generic_tool():
     req = types.SimpleNamespace(tool_call=None, tool=None)
-    assert LaminarMiddleware._tool_span_name(req) == "tool"
+    assert _tool_span_name(req) == "tool"
 
 
 def test_tool_span_input_pulls_from_tool_call_args():
     req = _FakeToolCallRequest(name="x", args={"q": 1})
-    assert LaminarMiddleware._tool_span_input(req) == {"q": 1}
+    assert _tool_span_input(req) == {"q": 1}
 
 
 def test_tool_span_input_returns_none_without_tool_call():
     req = types.SimpleNamespace(tool_call=None)
-    assert LaminarMiddleware._tool_span_input(req) is None
+    assert _tool_span_input(req) is None
 
 
 # --------------------------------------------------------------------- #
-# _SpanHandle / wrap_tool_call with TracerWrapper initialized            #
+# LaminarMiddleware.wrap_tool_call with TracerWrapper initialized        #
 # --------------------------------------------------------------------- #
 
 
 def _span_by_name(exporter, name):
     return [s for s in exporter.get_finished_spans() if s.name == name]
-
-
-def test_span_handle_emits_span_with_type_and_ends_on_exit(
-    span_exporter: InMemorySpanExporter,
-):
-    with _SpanHandle("unit-test", "TOOL") as handle:
-        assert handle.span is not None
-        handle.set_input({"foo": "bar"})
-        handle.set_output("done")
-
-    spans = _span_by_name(span_exporter, "unit-test")
-    assert len(spans) == 1
-    s = spans[0]
-    assert s.attributes["lmnr.span.type"] == "TOOL"
-    # set_input / set_output serialize to JSON
-    assert s.attributes["lmnr.span.input"] == '{"foo":"bar"}'
-    assert s.attributes["lmnr.span.output"] == '"done"'
-
-
-def test_span_handle_records_exception(span_exporter: InMemorySpanExporter):
-    exc = RuntimeError("boom")
-    with _SpanHandle("err-span", "TOOL") as handle:
-        handle.record_exception(exc)
-
-    spans = _span_by_name(span_exporter, "err-span")
-    assert len(spans) == 1
-    s = spans[0]
-    assert s.status.status_code.name == "ERROR"
-    assert s.status.description == "boom"
 
 
 def test_wrap_tool_call_emits_tool_span_with_name_and_args(
@@ -431,8 +396,8 @@ def test_wrap_graph_stream_does_not_open_span_if_never_iterated(
     span_exporter: InMemorySpanExporter,
 ):
     # If the caller discards the returned generator without iterating it,
-    # _SpanHandle must NOT have been entered and `_root_active` must still
-    # be False for the next invoke/stream call on the same task.
+    # no span must have been opened and `_root_active` must still be False
+    # for the next invoke/stream call on the same task.
     def wrapped(payload):
         yield {"messages": []}
 
