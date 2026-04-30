@@ -173,17 +173,34 @@ def init_instrumentations(
     block_instruments = block_instruments or set()
     if instruments is None:
         instruments = set(Instruments)
+        deepagents_active = (
+            _deepagents_installed()
+            and Instruments.DEEPAGENTS not in block_instruments
+        )
         # Only auto-enable PYDANTIC_AI if the package is actually installed,
         # and only auto-remove overlapping provider instrumentors in that case.
         # If pydantic_ai isn't installed, PYDANTIC_AI stays in the set but its
         # initializer will short-circuit to None (see PydanticAIInstrumentorInitializer).
-        if _pydantic_ai_installed() and Instruments.PYDANTIC_AI not in block_instruments:
-            instruments = instruments - _PYDANTIC_AI_PROVIDER_CONFLICTS
+        if (
+            _pydantic_ai_installed()
+            and Instruments.PYDANTIC_AI not in block_instruments
+        ):
+            # Deepagents wins over pydantic_ai when both are installed: the
+            # deepagents instrumentation relies on the raw-provider
+            # instrumentors (Anthropic / OpenAI / …) to emit LLM spans
+            # underneath each tool call, so stripping them would leave the
+            # `deep_agent` trace with only root + tool spans and no LLM
+            # children. If the same app also uses pydantic_ai Agents,
+            # provider calls on that path will be traced twice; callers who
+            # want pydantic_ai's de-duplication can pass an explicit
+            # `instruments` set to `Laminar.initialize`.
+            if not deepagents_active:
+                instruments = instruments - _PYDANTIC_AI_PROVIDER_CONFLICTS
         else:
             instruments = instruments - {Instruments.PYDANTIC_AI}
         # Auto-remove LangChain/LangGraph noise when deepagents is present;
         # LaminarMiddleware emits the relevant spans at the agent boundary.
-        if _deepagents_installed() and Instruments.DEEPAGENTS not in block_instruments:
+        if deepagents_active:
             instruments = instruments - _DEEPAGENTS_NOISE_CONFLICTS
         else:
             instruments = instruments - {Instruments.DEEPAGENTS}
