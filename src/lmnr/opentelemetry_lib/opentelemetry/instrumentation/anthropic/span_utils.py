@@ -1,6 +1,7 @@
 import json
 import logging
 
+import pydantic
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_REQUEST_FREQUENCY_PENALTY,
     GEN_AI_REQUEST_MAX_TOKENS,
@@ -27,6 +28,48 @@ from .utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_structured_output_schema(kwargs) -> str | None:
+    """Extract the JSON schema from Anthropic `output_format` / `output_config` kwargs.
+
+    `messages.parse` accepts `output_format` as either a Pydantic model, another
+    type supported by `pydantic.TypeAdapter`, or a raw JSON schema dict.
+    `messages.create` accepts `output_config={"format": {"type": "json_schema",
+    "schema": {...}}}`. Returns the serialized JSON schema, or None if none is
+    present or cannot be serialized.
+    """
+    output_format = kwargs.get("output_format")
+    if output_format is not None:
+        if isinstance(output_format, dict):
+            # Raw JSON schema dict (either bare schema or JSONOutputFormatParam)
+            schema = output_format.get("schema", output_format)
+            try:
+                return json.dumps(schema)
+            except Exception:
+                return None
+        if isinstance(output_format, type) and issubclass(
+            output_format, pydantic.BaseModel
+        ):
+            try:
+                return json.dumps(output_format.model_json_schema())
+            except Exception:
+                pass
+        try:
+            return json.dumps(pydantic.TypeAdapter(output_format).json_schema())
+        except Exception:
+            return None
+
+    output_config = kwargs.get("output_config")
+    if isinstance(output_config, dict):
+        fmt = output_config.get("format")
+        if isinstance(fmt, dict) and fmt.get("schema") is not None:
+            try:
+                return json.dumps(fmt.get("schema"))
+            except Exception:
+                return None
+
+    return None
 
 
 def _process_content_for_message(content):
@@ -92,6 +135,14 @@ async def aset_input_attributes(span, kwargs):
                 "gen_ai.tool.definitions",
                 json_dumps(kwargs.get("tools")),
             )
+
+    schema_json = _extract_structured_output_schema(kwargs)
+    if schema_json is not None:
+        set_span_attribute(
+            span,
+            "gen_ai.request.structured_output_schema",
+            schema_json,
+        )
 
 
 def _build_output_from_response(response):
