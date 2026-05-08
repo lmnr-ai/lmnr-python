@@ -1195,8 +1195,13 @@ class Laminar:
             (e.g. Laminar not initialized, ``langfuse < 3.0`` or not
             importable).
         """
+        # `cls.__logger` is only set by `_initialize_logger()` during
+        # `initialize()`, so we cannot rely on it here — this method is
+        # reachable before initialization. Fall back to a module-level
+        # logger instead.
+        logger = logging.getLogger(__name__)
         if not cls.is_initialized():
-            cls.__logger.warning(
+            logger.warning(
                 "Laminar is not initialized. Call Laminar.initialize() first."
             )
             return False
@@ -1210,7 +1215,7 @@ class Laminar:
         # translator, flip `_installed=True`, and permanently block a later
         # valid install.
         if not _langfuse_installed():
-            cls.__logger.warning(
+            logger.warning(
                 "`langfuse >= 3.0` is required for the Laminar/Langfuse "
                 "bridge. Install it with `pip install 'langfuse>=3.0'`."
             )
