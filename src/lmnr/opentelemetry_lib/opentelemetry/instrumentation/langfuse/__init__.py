@@ -508,7 +508,12 @@ class LangfuseInstrumentor:
             from langfuse._client.resource_manager import (  # type: ignore[import-not-found]
                 LangfuseResourceManager,
             )
-        except ImportError:
+        except Exception:
+            # ImportError if not installed. Other exceptions (e.g. pydantic
+            # v1 ConfigError on Python 3.14 due to langfuse's own pydantic
+            # compat bug) mean the SDK is unusable in this interpreter —
+            # treat the same as absent and leave the bridge installed but
+            # inert for the resource-manager path.
             return
 
         instances = getattr(LangfuseResourceManager, "_instances", {}) or {}
@@ -563,7 +568,9 @@ class LangfuseInstrumentor:
             from langfuse._client.resource_manager import (  # type: ignore[import-not-found]
                 LangfuseResourceManager,
             )
-        except ImportError:
+        except Exception:
+            # See `_attach_to_existing_langfuse_providers` — any import-time
+            # failure means Langfuse isn't usable in this interpreter.
             return
 
         cls = type(self)
@@ -594,7 +601,7 @@ class LangfuseInstrumentor:
             from langfuse._client.resource_manager import (  # type: ignore[import-not-found]
                 LangfuseResourceManager,
             )
-        except ImportError:
+        except Exception:
             return
         LangfuseResourceManager._initialize_instance = cls._original_initialize_instance
         cls._original_initialize_instance = None
