@@ -441,6 +441,27 @@ def test_connect_to_langfuse_is_idempotent(span_exporter, langfuse_client):
     assert len(spans) == 1, f"expected exactly one span, got {len(spans)}"
 
 
+def test_connect_to_langfuse_returns_false_without_langfuse(monkeypatch):
+    """If `langfuse` isn't importable, the helper must return False and must
+    NOT install the bridge (i.e. no translator added, no monkey-patch)."""
+    from lmnr.opentelemetry_lib.utils import package_check
+
+    original = package_check.is_package_installed
+    monkeypatch.setattr(
+        package_check,
+        "is_package_installed",
+        lambda name: False if name == "langfuse" else original(name),
+    )
+
+    LangfuseInstrumentor._installed = False
+    LangfuseInstrumentor._translator = None
+    LangfuseInstrumentor._original_initialize_instance = None
+
+    assert Laminar.connect_to_langfuse() is False
+    assert LangfuseInstrumentor._installed is False
+    assert LangfuseInstrumentor._translator is None
+
+
 def test_late_attach_patches_future_langfuse_clients(span_exporter):
     """The resource-manager patch means Langfuse clients created AFTER the
     bridge is installed still get dual-attached."""
