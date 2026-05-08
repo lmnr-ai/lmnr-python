@@ -1220,7 +1220,7 @@ class Laminar:
             lmnr_tracer_provider=wrapper._tracer_provider,
             lmnr_span_processor=wrapper._span_processor,
         )
-        return True
+        return LangfuseInstrumentor._installed
 
     @classmethod
     def flush(cls) -> bool:
