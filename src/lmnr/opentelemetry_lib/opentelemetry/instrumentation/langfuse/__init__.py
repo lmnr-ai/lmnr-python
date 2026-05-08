@@ -137,11 +137,13 @@ class LangfuseAttributeTranslator(SpanProcessor):
     Laminar's `LaminarSpanProcessor` (also attached to the same provider) then
     sees the translated shape when it exports to Laminar's OTLP endpoint.
 
-    Mutation-in-place is safe because `Span` (the recording class) exposes a
-    live `_attributes` dict that is shared with the `ReadableSpan` surface the
-    exporter eventually sees. `BoundedAttributes` supports `__setitem__` via the
-    `set_attribute` hook, so we use `span.set_attribute` where possible and fall
-    back to dict mutation for keys we want to remove.
+    Mutation-in-place is safe because the `ReadableSpan` handed to `on_end`
+    shares its `_attributes` dict with the underlying recording `Span`, which
+    is the same object the exporter eventually serializes. We cannot call
+    `span.set_attribute(...)` here: `on_end` receives a `ReadableSpan` (no
+    `set_attribute` method), and even if it were the recording `Span`, the
+    span is already ended at this point and `set_attribute` would be a no-op.
+    We write to `span._attributes` directly instead.
     """
 
     def on_start(self, span: Span, parent_context: Context |
@@ -276,17 +278,17 @@ class LangfuseAttributeTranslator(SpanProcessor):
 
         if not new_attrs:
             return
+        # `on_end` receives a `ReadableSpan` (no `set_attribute` method), and
+        # the underlying span is already ended so `set_attribute` would be a
+        # silent no-op anyway. Write to the shared `_attributes` dict directly.
+        target = getattr(span, "_attributes", None)
+        if target is None:
+            return
         for k, v in new_attrs.items():
             try:
-                span.set_attribute(k, v)  # type: ignore[attr-defined]
-            except Exception:
-                # ReadableSpan without set_attribute (should not happen in
-                # practice — on_end is called with the recording Span) — mutate
-                # the attributes dict directly.
-                try:
-                    span._attributes[k] = v  # type: ignore[attr-defined]
-                except Exception:
-                    pass
+                target[k] = v
+            except Exception:  # pylint: disable=broad-exception-caught
+                pass
 
 
 class LangfuseInstrumentor:
