@@ -1179,6 +1179,45 @@ class Laminar:
             return LaminarSpan(span)
 
     @classmethod
+    def connect_to_langfuse(cls) -> bool:
+        """Bridge the Langfuse Python SDK into Laminar so spans emitted by
+        ``@observe``, ``langfuse.openai``, ``langfuse.langchain``, etc. are
+        dual-exported to Laminar in addition to Langfuse.
+
+        Calling this is only required when ``Laminar.initialize`` was invoked
+        with an explicit ``instruments={...}`` set that omits
+        ``Instruments.LANGFUSE``. When ``instruments`` is left at the default,
+        the Langfuse bridge is auto-installed during initialization whenever
+        ``langfuse >= 3`` is importable.
+
+        Returns:
+            bool: True if the bridge was installed, False otherwise
+            (e.g. Laminar not initialized, ``langfuse`` not importable).
+        """
+        if not cls.is_initialized():
+            cls.__logger.warning(
+                "Laminar is not initialized. Call Laminar.initialize() first."
+            )
+            return False
+        try:
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
+                LangfuseInstrumentor,
+            )
+        except ImportError:
+            cls.__logger.warning(
+                "Could not import LangfuseInstrumentor — is `langfuse` installed?"
+            )
+            return False
+        wrapper = TracerWrapper.instance
+        if wrapper._tracer_provider is None:
+            return False
+        LangfuseInstrumentor().instrument(
+            lmnr_tracer_provider=wrapper._tracer_provider,
+            lmnr_span_processor=wrapper._span_processor,
+        )
+        return True
+
+    @classmethod
     def flush(cls) -> bool:
         """Flush the internal tracer.
 

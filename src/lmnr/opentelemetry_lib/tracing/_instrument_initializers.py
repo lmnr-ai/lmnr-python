@@ -271,6 +271,31 @@ class LangchainInstrumentorInitializer(InstrumentorInitializer):
         return LangchainInstrumentor()
 
 
+class LangfuseInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs):
+        if not is_package_installed("langfuse"):
+            return None
+
+        # langfuse 3.x is what the bridge targets. 4.x+ is also OTel-native
+        # but ships a public `langfuse.opentelemetry.LangfuseSpanProcessor`;
+        # callers on 4.x can still use this bridge but may prefer to attach
+        # processors directly to their own TracerProvider.
+        from packaging.version import parse
+
+        version = get_package_version("langfuse")
+        if version and parse(version) < parse("3.0.0"):
+            logger.warning(
+                "Langfuse SDK >= 3.0 is required for the Laminar/Langfuse "
+                "bridge (found %s). Upgrade with `pip install -U langfuse`.",
+                version,
+            )
+            return None
+
+        from ..opentelemetry.instrumentation.langfuse import LangfuseInstrumentor
+
+        return LangfuseInstrumentor()
+
+
 class LanggraphInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("langgraph"):
@@ -296,10 +321,12 @@ class LitellmInstrumentorInitializer(InstrumentorInitializer):
 class LlamaIndexInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not (
-            is_package_installed("llama-index") or is_package_installed("llama_index")
+            is_package_installed(
+                "llama-index") or is_package_installed("llama_index")
         ):
             return None
-        if not is_package_installed("opentelemetry-instrumentation-llamaindex"):
+        if not is_package_installed(
+                "opentelemetry-instrumentation-llamaindex"):
             return None
 
         from opentelemetry.instrumentation.llamaindex import LlamaIndexInstrumentor
@@ -517,7 +544,8 @@ class TransformersInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("transformers"):
             return None
-        if not is_package_installed("opentelemetry-instrumentation-transformers"):
+        if not is_package_installed(
+                "opentelemetry-instrumentation-transformers"):
             return None
 
         from opentelemetry.instrumentation.transformers import TransformersInstrumentor
