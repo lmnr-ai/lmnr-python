@@ -234,7 +234,8 @@ def init_instrumentations(
         # Only auto-enable PYDANTIC_AI if the package is actually installed,
         # and only auto-remove overlapping provider instrumentors in that case.
         # If pydantic_ai isn't installed, PYDANTIC_AI stays in the set but its
-        # initializer will short-circuit to None (see PydanticAIInstrumentorInitializer).
+        # initializer will short-circuit to None (see
+        # PydanticAIInstrumentorInitializer).
         if (
             _pydantic_ai_installed()
             and Instruments.PYDANTIC_AI not in block_instruments
@@ -261,10 +262,16 @@ def init_instrumentations(
         # Auto-remove raw-provider instrumentors when Langfuse is present —
         # Langfuse wraps OpenAI, LangChain, etc. itself. Deepagents wins over
         # Langfuse too (same reasoning as pydantic_ai): deepagents needs the
-        # raw providers to emit LLM children.
+        # raw providers to emit LLM children. Langfuse wins over pydantic_ai:
+        # if the user installed Langfuse they chose it as their trace surface,
+        # and running pydantic_ai's model-layer GenAI spans alongside
+        # `langfuse.openai` / `@observe` wrapper spans double-covers the same
+        # call. Callers who want pydantic_ai alongside Langfuse can pass an
+        # explicit `instruments` set.
         if langfuse_active:
             if not deepagents_active:
                 instruments = instruments - _LANGFUSE_PROVIDER_CONFLICTS
+                instruments = instruments - {Instruments.PYDANTIC_AI}
         else:
             instruments = instruments - {Instruments.LANGFUSE}
     if not isinstance(instruments, set):
