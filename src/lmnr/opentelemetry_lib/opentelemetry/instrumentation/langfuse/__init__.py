@@ -436,16 +436,30 @@ class LangfuseInstrumentor:
         # short-circuit is independent of TracerWrapper lifecycle.
         cls._handled_providers.add(id(lmnr_tracer_provider))
 
-        # 2. For every already-initialized Langfuse client, attach our span
-        #    processor and our translator to its `TracerProvider`. If Langfuse
-        #    reused Laminar's provider, both are already attached — the
-        #    `_handled_providers` guard makes this a no-op.
-        self._attach_to_existing_langfuse_providers()
-
-        # 3. Patch future Langfuse-client construction.
-        self._patch_resource_manager()
-
+        # 2 & 3. Attach to already-initialized Langfuse clients and patch
+        # future-client construction. If either raises an uncaught exception
+        # before we flip `_installed=True`, the translator we just prepended
+        # to Laminar's provider would be left orphaned — a subsequent
+        # `instrument()` (e.g. via `Laminar.connect_to_langfuse()`) would pass
+        # the `_installed` guard and prepend a SECOND translator, causing
+        # every Langfuse span to be translated twice. Roll back by walking
+        # the half-applied state through `uninstrument()`.
         cls._installed = True
+        try:
+            # For every already-initialized Langfuse client, attach our span
+            # processor and our translator to its `TracerProvider`. If
+            # Langfuse reused Laminar's provider, both are already attached —
+            # the `_handled_providers` guard makes this a no-op.
+            self._attach_to_existing_langfuse_providers()
+            # Patch future Langfuse-client construction.
+            self._patch_resource_manager()
+        except Exception:  # pylint: disable=broad-exception-caught
+            # Best-effort cleanup: detach whatever we've attached so far and
+            # clear class-level state. `uninstrument()` is idempotent and
+            # tolerant of partial state (it only touches providers we
+            # recorded in `_attached_providers`).
+            self.uninstrument()
+            raise
 
     def uninstrument(self) -> None:
         """Reverse `instrument`: detach the translator and Laminar span

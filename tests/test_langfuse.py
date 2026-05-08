@@ -650,6 +650,78 @@ def test_instrumentor_skips_laminar_own_provider(span_exporter):
     )
 
 
+def test_instrument_rolls_back_translator_if_attach_phase_raises(span_exporter):
+    """Regression: if `_attach_to_existing_langfuse_providers` or
+    `_patch_resource_manager` raises, the translator that was already
+    prepended to Laminar's provider in step 1 must be removed and all
+    class-level state cleared. Otherwise, a subsequent `instrument()` (e.g.
+    via `Laminar.connect_to_langfuse()`) would pass the `_installed` guard
+    and prepend a SECOND translator, double-translating every Langfuse span.
+    """
+    from opentelemetry.sdk.trace import TracerProvider
+
+    # Clean state.
+    LangfuseInstrumentor._installed = False
+    LangfuseInstrumentor._handled_providers = set()
+    LangfuseInstrumentor._attached_providers = {}
+    LangfuseInstrumentor._translator = None
+    LangfuseInstrumentor._lmnr_span_processor = None
+    LangfuseInstrumentor._lmnr_tracer_provider = None
+
+    provider = TracerProvider()
+
+    def count_translators() -> int:
+        return sum(
+            1
+            for p in provider._active_span_processor._span_processors
+            if isinstance(p, LangfuseAttributeTranslator)
+        )
+
+    baseline = count_translators()
+
+    instrumentor = LangfuseInstrumentor()
+
+    # Force `_attach_to_existing_langfuse_providers` to blow up on first
+    # install.
+    def exploding_attach(self):  # noqa: ARG001
+        raise RuntimeError("simulated attach failure")
+
+    original_attach = (
+        LangfuseInstrumentor._attach_to_existing_langfuse_providers
+    )
+    LangfuseInstrumentor._attach_to_existing_langfuse_providers = (
+        exploding_attach
+    )
+    try:
+        with pytest.raises(RuntimeError, match="simulated attach failure"):
+            instrumentor.instrument(
+                lmnr_tracer_provider=provider,
+                lmnr_span_processor=MagicMock(),
+            )
+    finally:
+        LangfuseInstrumentor._attach_to_existing_langfuse_providers = (
+            original_attach
+        )
+
+    # Translator must have been rolled back.
+    assert count_translators() == baseline, (
+        "translator must be removed on partial install failure"
+    )
+    assert LangfuseInstrumentor._installed is False
+    assert LangfuseInstrumentor._translator is None
+
+    # A subsequent successful install must attach exactly ONE translator —
+    # not two, which is what would happen if the failed-install translator
+    # were still around.
+    instrumentor2 = LangfuseInstrumentor()
+    instrumentor2.instrument(
+        lmnr_tracer_provider=provider,
+        lmnr_span_processor=MagicMock(),
+    )
+    assert count_translators() == baseline + 1
+    instrumentor2.uninstrument()
+
+
 def test_instrument_skips_shared_laminar_provider_without_tracerwrapper(span_exporter):
     """Regression: during auto-install via `init_instrumentations`,
     `TracerWrapper.instance` is assigned AFTER `init_instrumentations`
