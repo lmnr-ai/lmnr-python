@@ -630,3 +630,147 @@ def test_instrumentor_skips_laminar_own_provider(span_exporter):
     assert after_count == initial_count, (
         "attached to Laminar's own provider — would cause duplicate exports"
     )
+
+
+def test_uninstrument_removes_translator_and_clears_state(span_exporter):
+    """Regression: `uninstrument` must detach the translator from Laminar's
+    provider and clear class-level state (`_handled_providers`, `_translator`,
+    `_lmnr_span_processor`, `_attached_providers`, `_lmnr_tracer_provider`).
+    Otherwise a subsequent `instrument()` call would prepend a SECOND
+    translator onto Laminar's provider (the first was never removed), and
+    `_handled_providers` would still hold ids from the previous session,
+    making `_attach_to_existing_langfuse_providers` skip providers it saw
+    last time around.
+    """
+    from langfuse._client.resource_manager import LangfuseResourceManager
+
+    LangfuseResourceManager._instances.clear()
+    wrapper = TracerWrapper.instance
+    lmnr_provider = wrapper._tracer_provider
+
+    def count_translators() -> int:
+        return sum(
+            1
+            for p in lmnr_provider._active_span_processor._span_processors
+            if isinstance(p, LangfuseAttributeTranslator)
+        )
+
+    # Start from a clean slate in case an earlier test left state behind.
+    LangfuseInstrumentor._installed = False
+    LangfuseInstrumentor._handled_providers = set()
+    LangfuseInstrumentor._attached_providers = {}
+    LangfuseInstrumentor._translator = None
+    LangfuseInstrumentor._lmnr_span_processor = None
+    LangfuseInstrumentor._lmnr_tracer_provider = None
+
+    baseline_translators = count_translators()
+
+    instrumentor = LangfuseInstrumentor()
+    instrumentor.instrument(
+        lmnr_tracer_provider=lmnr_provider,
+        lmnr_span_processor=wrapper._span_processor,
+    )
+    assert LangfuseInstrumentor._installed is True
+    assert count_translators() == baseline_translators + 1
+
+    instrumentor.uninstrument()
+
+    # Translator must have been removed from Laminar's provider.
+    assert count_translators() == baseline_translators
+    # All class-level state must be cleared so a fresh install starts clean.
+    assert LangfuseInstrumentor._installed is False
+    assert LangfuseInstrumentor._translator is None
+    assert LangfuseInstrumentor._lmnr_span_processor is None
+    assert LangfuseInstrumentor._lmnr_tracer_provider is None
+    assert LangfuseInstrumentor._handled_providers == set()
+    assert LangfuseInstrumentor._attached_providers == {}
+
+    # Re-install: the translator count should increase by exactly one again —
+    # NOT two, which is what would happen if the previous translator was
+    # still attached.
+    instrumentor2 = LangfuseInstrumentor()
+    instrumentor2.instrument(
+        lmnr_tracer_provider=lmnr_provider,
+        lmnr_span_processor=wrapper._span_processor,
+    )
+    assert count_translators() == baseline_translators + 1
+    instrumentor2.uninstrument()
+    assert count_translators() == baseline_translators
+
+
+def test_uninstrument_detaches_processors_from_langfuse_providers(span_exporter):
+    """Regression: after `uninstrument`, every provider we previously attached
+    the translator / Laminar span processor to must lose those processors.
+    Re-install must also succeed (stale `_handled_providers` must not
+    short-circuit re-attachment).
+
+    We simulate a Langfuse-owned TracerProvider with a plain
+    `sdk.trace.TracerProvider`, directed at `_attach_to_provider`: the bridge
+    treats any non-Laminar provider the same way, so this exercises the
+    install/uninstall/reinstall flow deterministically without depending on
+    whether the real Langfuse SDK reuses the global provider.
+    """
+    from opentelemetry.sdk.trace import TracerProvider
+
+    wrapper = TracerWrapper.instance
+    lmnr_provider = wrapper._tracer_provider
+    lmnr_processor = wrapper._span_processor
+
+    # Start from a known-clean state.
+    LangfuseInstrumentor._installed = False
+    LangfuseInstrumentor._handled_providers = set()
+    LangfuseInstrumentor._attached_providers = {}
+    LangfuseInstrumentor._translator = None
+    LangfuseInstrumentor._lmnr_span_processor = None
+    LangfuseInstrumentor._lmnr_tracer_provider = None
+
+    fake_lf_provider = TracerProvider()
+    baseline = list(fake_lf_provider._active_span_processor._span_processors)
+
+    instrumentor = LangfuseInstrumentor()
+    instrumentor.instrument(
+        lmnr_tracer_provider=lmnr_provider,
+        lmnr_span_processor=lmnr_processor,
+    )
+    # Manually attach to our fake Langfuse-owned provider the same way the
+    # monkey-patched `_initialize_instance` would in production.
+    instrumentor._attach_to_provider(fake_lf_provider)
+
+    after_install = list(
+        fake_lf_provider._active_span_processor._span_processors
+    )
+    assert any(
+        isinstance(p, LangfuseAttributeTranslator) for p in after_install
+    )
+    assert lmnr_processor in after_install
+    assert id(fake_lf_provider) in LangfuseInstrumentor._attached_providers
+
+    instrumentor.uninstrument()
+
+    after_uninstall = list(
+        fake_lf_provider._active_span_processor._span_processors
+    )
+    assert not any(
+        isinstance(p, LangfuseAttributeTranslator) for p in after_uninstall
+    ), "translator should be removed from the Langfuse-owned provider"
+    assert lmnr_processor not in after_uninstall, (
+        "Laminar span processor should be removed from the Langfuse-owned provider"
+    )
+    # Ordering of unrelated processors should be preserved.
+    assert after_uninstall == baseline
+
+    # Re-install must work — stale `_handled_providers` was cleared so the
+    # existing provider is seen again.
+    instrumentor.instrument(
+        lmnr_tracer_provider=lmnr_provider,
+        lmnr_span_processor=lmnr_processor,
+    )
+    instrumentor._attach_to_provider(fake_lf_provider)
+    reinstalled = list(
+        fake_lf_provider._active_span_processor._span_processors
+    )
+    assert any(
+        isinstance(p, LangfuseAttributeTranslator) for p in reinstalled
+    )
+    assert lmnr_processor in reinstalled
+    instrumentor.uninstrument()
