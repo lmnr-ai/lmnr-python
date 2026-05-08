@@ -650,6 +650,79 @@ def test_instrumentor_skips_laminar_own_provider(span_exporter):
     )
 
 
+def test_instrument_skips_shared_laminar_provider_without_tracerwrapper(span_exporter):
+    """Regression: during auto-install via `init_instrumentations`,
+    `TracerWrapper.instance` is assigned AFTER `init_instrumentations`
+    returns. If a pre-existing Langfuse client happens to share Laminar's
+    newly-created `TracerProvider`, `_attach_to_provider`'s
+    `TracerWrapper.verify_initialized()` fallback guard returns False
+    (the wrapper isn't set yet) and the translator + Laminar span processor
+    would be double-attached.
+
+    `instrument()` must pre-register `id(lmnr_tracer_provider)` in
+    `_handled_providers` so the short-circuit works independently of the
+    TracerWrapper lifecycle.
+    """
+    from opentelemetry.sdk.trace import TracerProvider
+
+    # Start from a clean slate.
+    LangfuseInstrumentor._installed = False
+    LangfuseInstrumentor._handled_providers = set()
+    LangfuseInstrumentor._attached_providers = {}
+    LangfuseInstrumentor._translator = None
+    LangfuseInstrumentor._lmnr_span_processor = None
+    LangfuseInstrumentor._lmnr_tracer_provider = None
+
+    # A fresh provider standing in for Laminar's. We deliberately do NOT
+    # reassign `TracerWrapper.instance` to point at this provider — that's
+    # exactly the case the guard has to cover during auto-install.
+    shared_provider = TracerProvider()
+
+    mock_processor = MagicMock()
+    instrumentor = LangfuseInstrumentor()
+    instrumentor.instrument(
+        lmnr_tracer_provider=shared_provider,
+        lmnr_span_processor=mock_processor,
+    )
+
+    # One translator from `_prepend_span_processor` in `instrument()` —
+    # baseline.
+    processors_after_install = list(
+        shared_provider._active_span_processor._span_processors
+    )
+    translator_count = sum(
+        1 for p in processors_after_install
+        if isinstance(p, LangfuseAttributeTranslator)
+    )
+    assert translator_count == 1
+    assert mock_processor not in processors_after_install, (
+        "Laminar span processor should NOT be attached to Laminar's own "
+        "provider — the translator is enough there"
+    )
+
+    # Now simulate Langfuse's resource manager calling `_attach_to_provider`
+    # with the same provider. The pre-registered id must prevent a
+    # double-attach.
+    instrumentor._attach_to_provider(shared_provider)
+
+    processors_after_simulated_langfuse = list(
+        shared_provider._active_span_processor._span_processors
+    )
+    translator_count_after = sum(
+        1 for p in processors_after_simulated_langfuse
+        if isinstance(p, LangfuseAttributeTranslator)
+    )
+    assert translator_count_after == 1, (
+        "translator should not be attached twice to Laminar's provider"
+    )
+    assert mock_processor not in processors_after_simulated_langfuse, (
+        "Laminar span processor should not be appended to Laminar's own "
+        "provider via the Langfuse attach path"
+    )
+
+    instrumentor.uninstrument()
+
+
 def test_uninstrument_removes_translator_and_clears_state(span_exporter):
     """Regression: `uninstrument` must detach the translator from Laminar's
     provider and clear class-level state (`_handled_providers`, `_translator`,
