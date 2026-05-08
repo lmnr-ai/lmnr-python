@@ -535,15 +535,37 @@ def test_connect_to_langfuse_returns_false_on_install_failure(monkeypatch):
 
 
 def test_connect_to_langfuse_returns_false_without_langfuse(monkeypatch):
-    """If `langfuse` isn't importable, the helper must return False and must
-    NOT install the bridge (i.e. no translator added, no monkey-patch)."""
-    from lmnr.opentelemetry_lib.utils import package_check
-
-    original = package_check.is_package_installed
+    """If `langfuse` isn't importable (or is too old), the helper must return
+    False and must NOT install the bridge (i.e. no translator added, no
+    monkey-patch). The version-aware `_langfuse_installed` check is what
+    guards this — see the companion 2.x-specific test below."""
     monkeypatch.setattr(
-        package_check,
+        instruments_mod, "_langfuse_installed", lambda: False,
+    )
+
+    LangfuseInstrumentor._installed = False
+    LangfuseInstrumentor._translator = None
+    LangfuseInstrumentor._original_initialize_instance = None
+
+    assert Laminar.connect_to_langfuse() is False
+    assert LangfuseInstrumentor._installed is False
+    assert LangfuseInstrumentor._translator is None
+
+
+def test_connect_to_langfuse_rejects_langfuse_v2(monkeypatch):
+    """Regression: `connect_to_langfuse()` must also version-gate on
+    langfuse >= 3.0. With 2.x installed, the bridge initializer returns
+    None, so installing it would attach a useless translator and
+    permanently flip `_installed=True` (blocking a later valid install)."""
+    monkeypatch.setattr(
+        instruments_mod,
         "is_package_installed",
-        lambda name: False if name == "langfuse" else original(name),
+        lambda name: True if name == "langfuse" else False,
+    )
+    monkeypatch.setattr(
+        instruments_mod,
+        "get_package_version",
+        lambda name: "2.60.0" if name == "langfuse" else None,
     )
 
     LangfuseInstrumentor._installed = False
