@@ -425,6 +425,17 @@ class LangfuseInstrumentor:
         cls._lmnr_span_processor = lmnr_span_processor
         cls._lmnr_tracer_provider = lmnr_tracer_provider
 
+        # Pre-register Laminar's provider id so `_attach_to_provider` short-
+        # circuits if Langfuse happens to share it. The `TracerWrapper.instance`
+        # fallback check is racy during auto-install — `init_instrumentations`
+        # runs BEFORE `TracerWrapper.instance` is assigned, so
+        # `verify_initialized()` returns False, and a Langfuse client that
+        # had already been constructed against a pre-existing global provider
+        # identical to Laminar's would otherwise get the translator +
+        # laminar span processor attached a second time. id()-based
+        # short-circuit is independent of TracerWrapper lifecycle.
+        cls._handled_providers.add(id(lmnr_tracer_provider))
+
         # 2. For every already-initialized Langfuse client, attach our span
         #    processor and our translator to its `TracerProvider`. If Langfuse
         #    reused Laminar's provider, both are already attached — the
