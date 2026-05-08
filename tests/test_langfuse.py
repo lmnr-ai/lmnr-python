@@ -515,6 +515,25 @@ def test_translator_mutates_before_synchronous_exporter():
     ), f"translator must run before exporter, got {exported[0]}"
 
 
+def test_connect_to_langfuse_returns_false_on_install_failure(monkeypatch):
+    """If `instrument()` bails out before setting `_installed=True` (e.g.
+    translator install raises), the public helper must surface the failure
+    as `False` — not claim success."""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation import langfuse as lf
+
+    LangfuseInstrumentor._installed = False
+    LangfuseInstrumentor._translator = None
+    LangfuseInstrumentor._original_initialize_instance = None
+
+    def failing_prepend(provider, processor):  # noqa: ARG001
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(lf, "_prepend_span_processor", failing_prepend)
+
+    assert Laminar.connect_to_langfuse() is False
+    assert LangfuseInstrumentor._installed is False
+
+
 def test_connect_to_langfuse_returns_false_without_langfuse(monkeypatch):
     """If `langfuse` isn't importable, the helper must return False and must
     NOT install the bridge (i.e. no translator added, no monkey-patch)."""
