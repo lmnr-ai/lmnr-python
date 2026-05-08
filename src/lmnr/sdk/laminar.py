@@ -1199,15 +1199,20 @@ class Laminar:
                 "Laminar is not initialized. Call Laminar.initialize() first."
             )
             return False
-        try:
-            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
-                LangfuseInstrumentor,
-            )
-        except ImportError:
+        from lmnr.opentelemetry_lib.utils.package_check import (
+            is_package_installed,
+        )
+
+        if not is_package_installed("langfuse"):
             cls.__logger.warning(
-                "Could not import LangfuseInstrumentor — is `langfuse` installed?"
+                "`langfuse` is not installed. "
+                "Install it with `pip install langfuse>=3.0` to use the bridge."
             )
             return False
+        from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
+            LangfuseInstrumentor,
+        )
+
         wrapper = TracerWrapper.instance
         if wrapper._tracer_provider is None:
             return False
