@@ -1227,10 +1227,23 @@ class Laminar:
         wrapper = TracerWrapper.instance
         if wrapper._tracer_provider is None:
             return False
-        LangfuseInstrumentor().instrument(
-            lmnr_tracer_provider=wrapper._tracer_provider,
-            lmnr_span_processor=wrapper._span_processor,
-        )
+        # `LangfuseInstrumentor.instrument()` re-raises after rollback if the
+        # attach-to-existing / resource-manager-patch phase fails (e.g.
+        # `RuntimeError` from concurrent modification of
+        # `LangfuseResourceManager._instances`). This public helper is
+        # documented to return `bool`, so swallow the exception and surface
+        # the failure as False — `uninstrument()` has already cleaned up
+        # partial state by the time we get here.
+        try:
+            LangfuseInstrumentor().instrument(
+                lmnr_tracer_provider=wrapper._tracer_provider,
+                lmnr_span_processor=wrapper._span_processor,
+            )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning(
+                "Failed to install Laminar/Langfuse bridge: %s", exc
+            )
+            return False
         return LangfuseInstrumentor._installed
 
     @classmethod
