@@ -319,7 +319,8 @@ class LangfuseInstrumentor:
         lmnr_tracer_provider: SdkTracerProvider,
         lmnr_span_processor: SpanProcessor,
     ) -> None:
-        if self._installed:
+        cls = type(self)
+        if cls._installed:
             return
 
         # 1. Translator lives on Laminar's own provider so it sees every
@@ -333,8 +334,8 @@ class LangfuseInstrumentor:
             logger.warning(
                 "Failed to install Langfuse attribute translator: %s", exc)
             return
-        self._translator = translator
-        self._lmnr_span_processor = lmnr_span_processor
+        cls._translator = translator
+        cls._lmnr_span_processor = lmnr_span_processor
 
         # 2. For every already-initialized Langfuse client, attach our span
         #    processor and our translator to its `TracerProvider`. If Langfuse
@@ -345,13 +346,14 @@ class LangfuseInstrumentor:
         # 3. Patch future Langfuse-client construction.
         self._patch_resource_manager()
 
-        self._installed = True
+        cls._installed = True
 
     def uninstrument(self) -> None:
-        if not self._installed:
+        cls = type(self)
+        if not cls._installed:
             return
         self._unpatch_resource_manager()
-        self._installed = False
+        cls._installed = False
 
     # --- internals ---
 
@@ -408,11 +410,12 @@ class LangfuseInstrumentor:
         except ImportError:
             return
 
-        if self._original_initialize_instance is not None:
+        cls = type(self)
+        if cls._original_initialize_instance is not None:
             return
 
         original = LangfuseResourceManager._initialize_instance
-        self._original_initialize_instance = original
+        cls._original_initialize_instance = original
         instrumentor = self
 
         def patched(self_rm, *args, **kwargs):  # type: ignore[no-untyped-def]
@@ -428,7 +431,8 @@ class LangfuseInstrumentor:
         LangfuseResourceManager._initialize_instance = patched
 
     def _unpatch_resource_manager(self) -> None:
-        if self._original_initialize_instance is None:
+        cls = type(self)
+        if cls._original_initialize_instance is None:
             return
         try:
             from langfuse._client.resource_manager import (  # type: ignore[import-not-found]
@@ -436,5 +440,5 @@ class LangfuseInstrumentor:
             )
         except ImportError:
             return
-        LangfuseResourceManager._initialize_instance = self._original_initialize_instance
-        self._original_initialize_instance = None
+        LangfuseResourceManager._initialize_instance = cls._original_initialize_instance
+        cls._original_initialize_instance = None
