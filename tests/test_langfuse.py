@@ -52,6 +52,30 @@ from lmnr.opentelemetry_lib.tracing.instruments import (  # noqa: E402
 )
 
 
+def _langfuse_sdk_importable() -> bool:
+    """Probe whether the real `langfuse` SDK can be imported on this
+    interpreter. Langfuse pins pydantic v1, which fails to build some of
+    langfuse's own generated API models on Python 3.14
+    (`pydantic.v1.errors.ConfigError: unable to infer type`). The bridge
+    itself still loads (it only uses OTel), so the translator/attach-path
+    unit tests stay green — the SDK-backed integration tests skip instead.
+    """
+    try:
+        import langfuse  # noqa: F401
+        import langfuse._client.resource_manager  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
+_LANGFUSE_IMPORTABLE = _langfuse_sdk_importable()
+_langfuse_sdk_required = pytest.mark.skipif(
+    not _LANGFUSE_IMPORTABLE,
+    reason="langfuse SDK cannot be imported on this interpreter "
+    "(known pydantic v1 incompatibility on Python 3.14)",
+)
+
+
 # ---------------------------------------------------------------------------
 # init_instrumentations auto-enable tests (no real langfuse interaction)
 # ---------------------------------------------------------------------------
@@ -198,27 +222,36 @@ def test_langfuse_v2_reports_not_installed(monkeypatch):
     assert instruments_mod._langfuse_installed() is True
 
 
-def test_langfuse_installed_auto_enables_and_strips_providers(
+def test_langfuse_installed_auto_enables_and_disables_all_other_instruments(
     track_initializers, langfuse_installed, pydantic_ai_not_installed, deepagents_not_installed
 ):
-    """When langfuse is installed, LANGFUSE auto-enables and conflicting
-    raw-provider / langchain instrumentors are auto-removed."""
+    """When langfuse is installed and the caller didn't pass an explicit
+    `instruments` set, only LANGFUSE (plus the OPENTELEMETRY Datadog-context
+    patch, which emits no spans) is auto-enabled. Every other Laminar
+    auto-instrumentor is disabled so the Langfuse bridge is the single
+    source of spans and no raw-provider / framework / agent instrumentor
+    double-covers what Langfuse already traces through `langfuse.openai`,
+    `@observe`, etc."""
     init_instrumentations(
         tracer_provider=MagicMock(),
         instruments=None,
         lmnr_span_processor=MagicMock(),
     )
-    assert Instruments.LANGFUSE in track_initializers
-    for instrument in _LANGFUSE_PROVIDER_CONFLICTS:
-        assert instrument not in track_initializers, (
-            f"{instrument} should be auto-removed to avoid duplicate spans"
-        )
+    assert track_initializers == {
+        Instruments.LANGFUSE,
+        Instruments.OPENTELEMETRY,
+    }, (
+        "langfuse auto-enable must reduce the active set to just LANGFUSE + "
+        "OPENTELEMETRY (DataDog-context patch); every other Laminar "
+        "instrumentor must be off to avoid double-covering Langfuse traces"
+    )
 
 
 def test_block_langfuse_disables_auto_logic(
     track_initializers, langfuse_installed, pydantic_ai_not_installed, deepagents_not_installed
 ):
-    """Blocking LANGFUSE suppresses both the auto-enable and the auto-removal."""
+    """Blocking LANGFUSE suppresses the auto-enable AND restores the normal
+    default set — every raw-provider instrumentor comes back on."""
     init_instrumentations(
         tracer_provider=MagicMock(),
         instruments=None,
@@ -229,52 +262,54 @@ def test_block_langfuse_disables_auto_logic(
         assert instrument in track_initializers
 
 
-def test_langfuse_wins_over_pydantic_ai(
+def test_langfuse_auto_enable_disables_pydantic_ai(
     track_initializers, langfuse_installed, pydantic_ai_installed, deepagents_not_installed
 ):
-    """Regression: when both langfuse and pydantic_ai are installed (no
-    deepagents), PYDANTIC_AI used to stay in the active set alongside
-    LANGFUSE — producing duplicate spans (pydantic_ai's model-layer GenAI
-    spans AND langfuse's `@observe`/`langfuse.openai` wrapper spans for the
-    same call). Langfuse wins: the user deliberately configured Langfuse as
-    their trace surface, so PYDANTIC_AI is auto-removed."""
+    """Regression: pydantic_ai used to stay active alongside LANGFUSE,
+    producing duplicate spans. Under the "langfuse wins, bridge is the
+    single source" policy, PYDANTIC_AI is now off whenever LANGFUSE
+    auto-enables."""
     init_instrumentations(
         tracer_provider=MagicMock(),
         instruments=None,
         lmnr_span_processor=MagicMock(),
     )
     assert Instruments.LANGFUSE in track_initializers
-    assert Instruments.PYDANTIC_AI not in track_initializers, (
-        "PYDANTIC_AI must be auto-removed when LANGFUSE auto-enables; "
-        "running both produces duplicate spans for the same model call"
+    assert Instruments.PYDANTIC_AI not in track_initializers
+
+
+def test_langfuse_auto_enable_disables_deepagents(
+    track_initializers, langfuse_installed, deepagents_installed, pydantic_ai_not_installed
+):
+    """When both langfuse and deepagents are installed, langfuse wins and
+    deepagents is also disabled — the Langfuse bridge is the single source
+    of spans. Deepagents' DEFAULT + TOOL spans would otherwise layer on top
+    of Langfuse's `@observe` spans for the same agent invocation."""
+    init_instrumentations(
+        tracer_provider=MagicMock(),
+        instruments=None,
+        lmnr_span_processor=MagicMock(),
     )
-    # And raw providers must still be stripped (langfuse handles them).
+    assert Instruments.LANGFUSE in track_initializers
+    assert Instruments.DEEPAGENTS not in track_initializers
     for instrument in _LANGFUSE_PROVIDER_CONFLICTS:
         assert instrument not in track_initializers
 
 
-def test_langfuse_wins_over_deepagents(
-    track_initializers, langfuse_installed, deepagents_installed, pydantic_ai_not_installed
+def test_explicit_instruments_bypass_langfuse_auto_logic(
+    track_initializers, langfuse_installed, deepagents_installed, pydantic_ai_installed
 ):
-    """Langfuse wins over deepagents: when both are installed, Langfuse's
-    own auto-patchers (`langfuse.openai`, `@observe`, `langfuse.langchain`)
-    emit the LLM / tool spans and dual-export to Laminar through the bridge.
-    Running Laminar's raw-provider instrumentors alongside would double-cover
-    the same call. Deepagents' DEFAULT + TOOL spans still come from
-    `DeepagentsInstrumentor` (Langfuse doesn't emit those)."""
+    """Explicit `instruments=` always wins over the langfuse auto-reset.
+    Callers who want specific Laminar instrumentors alongside Langfuse can
+    opt back in by passing them explicitly."""
     init_instrumentations(
         tracer_provider=MagicMock(),
-        instruments=None,
+        instruments={Instruments.OPENAI, Instruments.ANTHROPIC},
         lmnr_span_processor=MagicMock(),
     )
-    assert Instruments.DEEPAGENTS in track_initializers
-    assert Instruments.LANGFUSE in track_initializers
-    # Langfuse strips raw-provider instrumentors regardless of deepagents.
-    for instrument in _LANGFUSE_PROVIDER_CONFLICTS:
-        assert instrument not in track_initializers, (
-            f"{instrument} must be auto-removed when LANGFUSE auto-enables; "
-            "the Langfuse bridge dual-exports via Langfuse's own auto-patchers"
-        )
+    assert Instruments.OPENAI in track_initializers
+    assert Instruments.ANTHROPIC in track_initializers
+    assert Instruments.LANGFUSE not in track_initializers
 
 
 # ---------------------------------------------------------------------------
@@ -399,6 +434,11 @@ def langfuse_client():
     TracerProvider (otherwise earlier tests' bridges stack up and confuse the
     assertions).
     """
+    if not _LANGFUSE_IMPORTABLE:
+        pytest.skip(
+            "langfuse SDK not importable on this interpreter "
+            "(known pydantic v1 incompatibility on Python 3.14)"
+        )
     # Delay import so tests that don't need langfuse can still be collected.
     from langfuse._client.resource_manager import LangfuseResourceManager
 
@@ -703,6 +743,7 @@ def test_connect_to_langfuse_rejects_langfuse_v2(monkeypatch):
     assert LangfuseInstrumentor._translator is None
 
 
+@_langfuse_sdk_required
 def test_late_attach_patches_future_langfuse_clients(span_exporter):
     """The resource-manager patch means Langfuse clients created AFTER the
     bridge is installed still get dual-attached."""
@@ -905,6 +946,7 @@ def test_instrument_skips_shared_laminar_provider_without_tracerwrapper(
     instrumentor.uninstrument()
 
 
+@_langfuse_sdk_required
 def test_uninstrument_removes_translator_and_clears_state(span_exporter):
     """Regression: `uninstrument` must detach the translator from Laminar's
     provider and clear class-level state (`_handled_providers`, `_translator`,
