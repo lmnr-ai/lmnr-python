@@ -253,12 +253,15 @@ def test_langfuse_wins_over_pydantic_ai(
         assert instrument not in track_initializers
 
 
-def test_deepagents_wins_over_langfuse(
+def test_langfuse_wins_over_deepagents(
     track_initializers, langfuse_installed, deepagents_installed, pydantic_ai_not_installed
 ):
-    """Deepagents wins over Langfuse (same reasoning as pydantic_ai): the
-    deepagents instrumentation relies on raw-provider instrumentors to emit
-    LLM spans inside each tool call."""
+    """Langfuse wins over deepagents: when both are installed, Langfuse's
+    own auto-patchers (`langfuse.openai`, `@observe`, `langfuse.langchain`)
+    emit the LLM / tool spans and dual-export to Laminar through the bridge.
+    Running Laminar's raw-provider instrumentors alongside would double-cover
+    the same call. Deepagents' DEFAULT + TOOL spans still come from
+    `DeepagentsInstrumentor` (Langfuse doesn't emit those)."""
     init_instrumentations(
         tracer_provider=MagicMock(),
         instruments=None,
@@ -266,14 +269,11 @@ def test_deepagents_wins_over_langfuse(
     )
     assert Instruments.DEEPAGENTS in track_initializers
     assert Instruments.LANGFUSE in track_initializers
-    # Raw provider instrumentors overlap between Langfuse and deepagents-needed
-    # ones. Deepagents wins: these must stay enabled.
-    provider_only_conflicts = _LANGFUSE_PROVIDER_CONFLICTS - {
-        Instruments.LANGCHAIN  # LANGCHAIN is deepagents noise, always removed
-    }
-    for instrument in provider_only_conflicts:
-        assert instrument in track_initializers, (
-            f"{instrument} must stay on when deepagents is present"
+    # Langfuse strips raw-provider instrumentors regardless of deepagents.
+    for instrument in _LANGFUSE_PROVIDER_CONFLICTS:
+        assert instrument not in track_initializers, (
+            f"{instrument} must be auto-removed when LANGFUSE auto-enables; "
+            "the Langfuse bridge dual-exports via Langfuse's own auto-patchers"
         )
 
 

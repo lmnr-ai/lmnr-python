@@ -268,18 +268,23 @@ def init_instrumentations(
         else:
             instruments = instruments - {Instruments.DEEPAGENTS}
         # Auto-remove raw-provider instrumentors when Langfuse is present —
-        # Langfuse wraps OpenAI, LangChain, etc. itself. Deepagents wins over
-        # Langfuse too (same reasoning as pydantic_ai): deepagents needs the
-        # raw providers to emit LLM children. Langfuse wins over pydantic_ai:
-        # if the user installed Langfuse they chose it as their trace surface,
-        # and running pydantic_ai's model-layer GenAI spans alongside
-        # `langfuse.openai` / `@observe` wrapper spans double-covers the same
-        # call. Callers who want pydantic_ai alongside Langfuse can pass an
-        # explicit `instruments` set.
+        # Langfuse wraps OpenAI, LangChain, etc. itself, and the bridge
+        # dual-attaches Laminar's SpanProcessor to every Langfuse
+        # TracerProvider so those langfuse-emitted spans also reach Laminar.
+        # Langfuse wins over both deepagents and pydantic_ai: if the user
+        # installed Langfuse they chose it as their trace surface, and the
+        # goal of the bridge is to route spans to both Langfuse *and* Laminar
+        # through Langfuse's own auto-patchers. Running Laminar's raw-provider
+        # instrumentors alongside `langfuse.openai` / `@observe` / pydantic_ai
+        # would double-cover the same call. Deepagents' DEFAULT + TOOL spans
+        # still come from `DeepagentsInstrumentor` (Langfuse doesn't emit
+        # those), and their LLM children come from Langfuse's auto-patchers
+        # riding through the bridge. Callers who want the raw-provider
+        # instrumentors alongside Langfuse can pass an explicit `instruments`
+        # set to `Laminar.initialize`.
         if langfuse_active:
-            if not deepagents_active:
-                instruments = instruments - _LANGFUSE_PROVIDER_CONFLICTS
-                instruments = instruments - {Instruments.PYDANTIC_AI}
+            instruments = instruments - _LANGFUSE_PROVIDER_CONFLICTS
+            instruments = instruments - {Instruments.PYDANTIC_AI}
         else:
             instruments = instruments - {Instruments.LANGFUSE}
     if not isinstance(instruments, set):
