@@ -110,6 +110,14 @@ def pydantic_ai_not_installed(monkeypatch):
         lambda: False)
 
 
+@pytest.fixture
+def pydantic_ai_installed(monkeypatch):
+    monkeypatch.setattr(
+        instruments_mod,
+        "_pydantic_ai_installed",
+        lambda: True)
+
+
 def test_langfuse_not_installed_defaults_exclude_it(
     track_initializers, langfuse_not_installed, pydantic_ai_not_installed
 ):
@@ -219,6 +227,30 @@ def test_block_langfuse_disables_auto_logic(
     assert Instruments.LANGFUSE not in track_initializers
     for instrument in _LANGFUSE_PROVIDER_CONFLICTS:
         assert instrument in track_initializers
+
+
+def test_langfuse_wins_over_pydantic_ai(
+    track_initializers, langfuse_installed, pydantic_ai_installed, deepagents_not_installed
+):
+    """Regression: when both langfuse and pydantic_ai are installed (no
+    deepagents), PYDANTIC_AI used to stay in the active set alongside
+    LANGFUSE — producing duplicate spans (pydantic_ai's model-layer GenAI
+    spans AND langfuse's `@observe`/`langfuse.openai` wrapper spans for the
+    same call). Langfuse wins: the user deliberately configured Langfuse as
+    their trace surface, so PYDANTIC_AI is auto-removed."""
+    init_instrumentations(
+        tracer_provider=MagicMock(),
+        instruments=None,
+        lmnr_span_processor=MagicMock(),
+    )
+    assert Instruments.LANGFUSE in track_initializers
+    assert Instruments.PYDANTIC_AI not in track_initializers, (
+        "PYDANTIC_AI must be auto-removed when LANGFUSE auto-enables; "
+        "running both produces duplicate spans for the same model call"
+    )
+    # And raw providers must still be stripped (langfuse handles them).
+    for instrument in _LANGFUSE_PROVIDER_CONFLICTS:
+        assert instrument not in track_initializers
 
 
 def test_deepagents_wins_over_langfuse(
@@ -726,7 +758,8 @@ def test_instrumentor_skips_laminar_own_provider(span_exporter):
     )
 
 
-def test_instrument_rolls_back_translator_if_attach_phase_raises(span_exporter):
+def test_instrument_rolls_back_translator_if_attach_phase_raises(
+        span_exporter):
     """Regression: if `_attach_to_existing_langfuse_providers` or
     `_patch_resource_manager` raises, the translator that was already
     prepended to Laminar's provider in step 1 must be removed and all
@@ -798,7 +831,8 @@ def test_instrument_rolls_back_translator_if_attach_phase_raises(span_exporter):
     instrumentor2.uninstrument()
 
 
-def test_instrument_skips_shared_laminar_provider_without_tracerwrapper(span_exporter):
+def test_instrument_skips_shared_laminar_provider_without_tracerwrapper(
+        span_exporter):
     """Regression: during auto-install via `init_instrumentations`,
     `TracerWrapper.instance` is assigned AFTER `init_instrumentations`
     returns. If a pre-existing Langfuse client happens to share Laminar's
@@ -937,7 +971,8 @@ def test_uninstrument_removes_translator_and_clears_state(span_exporter):
     assert count_translators() == baseline_translators
 
 
-def test_uninstrument_detaches_processors_from_langfuse_providers(span_exporter):
+def test_uninstrument_detaches_processors_from_langfuse_providers(
+        span_exporter):
     """Regression: after `uninstrument`, every provider we previously attached
     the translator / Laminar span processor to must lose those processors.
     Re-install must also succeed (stale `_handled_providers` must not
