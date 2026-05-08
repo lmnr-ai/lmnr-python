@@ -123,6 +123,49 @@ def test_langfuse_not_installed_defaults_exclude_it(
         )
 
 
+def test_langfuse_initializer_skips_on_unreadable_or_invalid_version(
+        monkeypatch):
+    """Regression: the initializer used to pass version guards when
+    `get_package_version` returned `None` (the check
+    `if version and parse(version) < parse("3.0.0")` short-circuits on None),
+    silently installing the bridge. For an explicit
+    `instruments={Instruments.LANGFUSE}` call this would flip `_installed=True`
+    and block any later valid install. Same story for an unparseable version
+    string. Both must return `None` from the initializer."""
+    from lmnr.opentelemetry_lib.tracing import _instrument_initializers
+
+    monkeypatch.setattr(
+        _instrument_initializers,
+        "is_package_installed",
+        lambda name: True if name == "langfuse" else False,
+    )
+
+    # Unreadable version.
+    monkeypatch.setattr(
+        _instrument_initializers,
+        "get_package_version",
+        lambda name: None,
+    )
+    initializer = _instrument_initializers.LangfuseInstrumentorInitializer()
+    assert initializer.init_instrumentor() is None
+
+    # Unparseable version string.
+    monkeypatch.setattr(
+        _instrument_initializers,
+        "get_package_version",
+        lambda name: "not-a-version",
+    )
+    assert initializer.init_instrumentor() is None
+
+    # Happy path — parseable, >= 3.0 → instrumentor returned.
+    monkeypatch.setattr(
+        _instrument_initializers,
+        "get_package_version",
+        lambda name: "3.14.6",
+    )
+    assert initializer.init_instrumentor() is not None
+
+
 def test_langfuse_v2_reports_not_installed(monkeypatch):
     """langfuse 2.x is not OTel-native, so the bridge initializer returns None.
     `_langfuse_installed()` must report False in that case; otherwise the

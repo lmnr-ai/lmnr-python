@@ -280,10 +280,30 @@ class LangfuseInstrumentorInitializer(InstrumentorInitializer):
         # but ships a public `langfuse.opentelemetry.LangfuseSpanProcessor`;
         # callers on 4.x can still use this bridge but may prefer to attach
         # processors directly to their own TracerProvider.
-        from packaging.version import parse
+        from packaging.version import InvalidVersion, parse
 
         version = get_package_version("langfuse")
-        if version and parse(version) < parse("3.0.0"):
+        # Treat unreadable version metadata as "not OTel-native". A caller
+        # passing an explicit `instruments={Instruments.LANGFUSE}` with
+        # metadata we can't parse would otherwise silently install the
+        # bridge, flip `_installed=True`, and permanently block a later
+        # valid install.
+        if version is None:
+            logger.warning(
+                "Could not read installed `langfuse` version; skipping "
+                "Laminar/Langfuse bridge. Bridge requires langfuse >= 3.0."
+            )
+            return None
+        try:
+            parsed = parse(version)
+        except InvalidVersion:
+            logger.warning(
+                "Installed `langfuse` version %r is not a valid PEP 440 "
+                "version; skipping Laminar/Langfuse bridge.",
+                version,
+            )
+            return None
+        if parsed < parse("3.0.0"):
             logger.warning(
                 "Langfuse SDK >= 3.0 is required for the Laminar/Langfuse "
                 "bridge (found %s). Upgrade with `pip install -U langfuse`.",
