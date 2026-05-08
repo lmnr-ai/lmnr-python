@@ -5,7 +5,10 @@ from typing import TYPE_CHECKING
 
 from opentelemetry.trace import TracerProvider
 import lmnr.opentelemetry_lib.tracing._instrument_initializers as initializers
-from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
+from lmnr.opentelemetry_lib.utils.package_check import (
+    get_package_version,
+    is_package_installed,
+)
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 
 if TYPE_CHECKING:
@@ -193,7 +196,23 @@ def _deepagents_installed() -> bool:
 
 
 def _langfuse_installed() -> bool:
-    return is_package_installed("langfuse")
+    """The bridge targets langfuse >= 3.0 (OTel-native). For langfuse 2.x we
+    must report False so `_LANGFUSE_PROVIDER_CONFLICTS` does NOT strip the
+    raw-provider instrumentors — the bridge initializer would then return None
+    for 2.x and leave those providers silently uninstrumented."""
+    if not is_package_installed("langfuse"):
+        return False
+    from packaging.version import InvalidVersion, parse
+
+    version = get_package_version("langfuse")
+    if version is None:
+        # Present but unreadable version metadata — err on the side of not
+        # stripping providers.
+        return False
+    try:
+        return parse(version) >= parse("3.0.0")
+    except InvalidVersion:
+        return False
 
 
 def init_instrumentations(
