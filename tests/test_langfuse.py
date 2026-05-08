@@ -123,6 +123,30 @@ def test_langfuse_not_installed_defaults_exclude_it(
         )
 
 
+def test_langfuse_v2_reports_not_installed(monkeypatch):
+    """langfuse 2.x is not OTel-native, so the bridge initializer returns None.
+    `_langfuse_installed()` must report False in that case; otherwise the
+    provider-conflict set strips OPENAI/ANTHROPIC/... with no replacement."""
+    monkeypatch.setattr(
+        instruments_mod,
+        "is_package_installed",
+        lambda name: True if name == "langfuse" else False,
+    )
+    monkeypatch.setattr(
+        instruments_mod,
+        "get_package_version",
+        lambda name: "2.60.0" if name == "langfuse" else None,
+    )
+    assert instruments_mod._langfuse_installed() is False
+
+    monkeypatch.setattr(
+        instruments_mod,
+        "get_package_version",
+        lambda name: "3.0.0" if name == "langfuse" else None,
+    )
+    assert instruments_mod._langfuse_installed() is True
+
+
 def test_langfuse_installed_auto_enables_and_strips_providers(
     track_initializers, langfuse_installed, pydantic_ai_not_installed, deepagents_not_installed
 ):
