@@ -515,6 +515,24 @@ def test_translator_mutates_before_synchronous_exporter():
     ), f"translator must run before exporter, got {exported[0]}"
 
 
+def test_connect_to_langfuse_before_initialize_does_not_crash(monkeypatch):
+    """Regression: `connect_to_langfuse()` must return `False` (not raise)
+    when called before `Laminar.initialize()`. The not-initialized branch
+    previously accessed the private name-mangled `cls.__logger`, which is
+    only set by `_initialize_logger()` during `initialize()`. Any caller
+    that probed for Langfuse support before initializing Laminar would hit
+    an `AttributeError` instead of the documented False return."""
+    # Force the "not initialized" state: both the `__initialized` flag and
+    # (crucially) the `__logger` attribute absent — the latter is what the
+    # original bug stumbled on.
+    monkeypatch.setattr(Laminar, "_Laminar__initialized", False)
+    if hasattr(Laminar, "_Laminar__logger"):
+        monkeypatch.delattr(Laminar, "_Laminar__logger")
+
+    # Must not raise.
+    assert Laminar.connect_to_langfuse() is False
+
+
 def test_connect_to_langfuse_returns_false_on_install_failure(monkeypatch):
     """If `instrument()` bails out before setting `_installed=True` (e.g.
     translator install raises), the public helper must surface the failure
