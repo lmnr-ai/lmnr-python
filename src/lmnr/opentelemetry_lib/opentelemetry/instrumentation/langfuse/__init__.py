@@ -161,6 +161,38 @@ def _prepend_span_processor(provider: Any, processor: SpanProcessor) -> bool:
     return True
 
 
+def _remove_span_processor(provider: Any, processor: SpanProcessor) -> bool:
+    """Remove `processor` from `provider`'s active span processor, if present.
+
+    Mirror of `_prepend_span_processor` for the uninstall path: touches the
+    private `_span_processors` tuple on `SynchronousMultiSpanProcessor` /
+    `ConcurrentMultiSpanProcessor` under its lock. Returns True if the
+    processor was removed, False otherwise.
+    """
+    active = getattr(provider, "_active_span_processor", None)
+    if active is None:
+        return False
+    lock = getattr(active, "_lock", None)
+    current = getattr(active, "_span_processors", None)
+    if current is None:
+        return False
+    try:
+        filtered = tuple(p for p in current if p is not processor)
+        if len(filtered) == len(current):
+            return False
+        if lock is not None:
+            with lock:
+                active._span_processors = filtered
+        else:
+            active._span_processors = filtered
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        logger.debug(
+            "Could not remove span processor from %r (%s)", provider, exc,
+        )
+        return False
+    return True
+
+
 def _is_langfuse_span(span: ReadableSpan) -> bool:
     scope = getattr(span, "instrumentation_scope", None)
     if scope is None:
@@ -350,6 +382,12 @@ class LangfuseInstrumentor:
     # processors or re-wrap `LangfuseResourceManager._initialize_instance`.
     _installed: bool = False
     _handled_providers: set[int] = set()
+    #: Providers we attached the translator / span processor to, keyed by id().
+    #: `uninstrument` walks this map to detach what we added. The reference is
+    #: only held for the duration of `instrument(...)`; `uninstrument` clears
+    #: it immediately so the instrumentor never pins a provider long-term.
+    _attached_providers: "dict[int, Any]" = {}
+    _lmnr_tracer_provider: Any = None
     _original_initialize_instance: Callable[..., Any] | None = None
     _translator: LangfuseAttributeTranslator | None = None
     _lmnr_span_processor: SpanProcessor | None = None
@@ -385,6 +423,7 @@ class LangfuseInstrumentor:
             return
         cls._translator = translator
         cls._lmnr_span_processor = lmnr_span_processor
+        cls._lmnr_tracer_provider = lmnr_tracer_provider
 
         # 2. For every already-initialized Langfuse client, attach our span
         #    processor and our translator to its `TracerProvider`. If Langfuse
@@ -398,10 +437,43 @@ class LangfuseInstrumentor:
         cls._installed = True
 
     def uninstrument(self) -> None:
+        """Reverse `instrument`: detach the translator and Laminar span
+        processor from every provider we attached them to, restore the
+        resource-manager patch, and clear class-level state so a subsequent
+        `instrument()` starts from a clean slate.
+
+        Without the full reset, a re-install would prepend a second
+        translator onto Laminar's provider (the first was never removed) and
+        `_handled_providers` would still contain stale ids from the previous
+        session so `_attach_to_existing_langfuse_providers` would skip
+        already-seen Langfuse providers instead of re-attaching.
+        """
         cls = type(self)
         if not cls._installed:
             return
         self._unpatch_resource_manager()
+
+        translator = cls._translator
+        lmnr_processor = cls._lmnr_span_processor
+        lmnr_provider = cls._lmnr_tracer_provider
+
+        # Detach translator from Laminar's provider.
+        if lmnr_provider is not None and translator is not None:
+            _remove_span_processor(lmnr_provider, translator)
+
+        # Detach translator + laminar span processor from every Langfuse
+        # provider we attached them to.
+        for provider in list(cls._attached_providers.values()):
+            if translator is not None:
+                _remove_span_processor(provider, translator)
+            if lmnr_processor is not None:
+                _remove_span_processor(provider, lmnr_processor)
+
+        cls._attached_providers = {}
+        cls._handled_providers = set()
+        cls._translator = None
+        cls._lmnr_span_processor = None
+        cls._lmnr_tracer_provider = None
         cls._installed = False
 
     # --- internals ---
@@ -443,12 +515,18 @@ class LangfuseInstrumentor:
             # Laminar processor, plain append is fine — it's the exporter; as
             # long as the translator runs first, export order among exporters
             # doesn't matter.
+            attached = False
             if self._translator is not None:
                 _prepend_span_processor(provider, self._translator)
+                attached = True
             if self._lmnr_span_processor is not None:
                 add = getattr(provider, "add_span_processor", None)
                 if callable(add):
                     add(self._lmnr_span_processor)
+                    attached = True
+            if attached:
+                # Track so `uninstrument` can walk back and detach.
+                type(self)._attached_providers[pid] = provider
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning(
                 "Failed to attach Laminar processor to Langfuse TracerProvider: %s",
