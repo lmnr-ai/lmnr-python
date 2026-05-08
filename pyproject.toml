@@ -134,6 +134,7 @@ dev = [
   "langchain==1.2.15",
   "langchain-core==1.3.3",
   "langchain-openai==1.1.14",
+  "langfuse==3.14.6",
   "langgraph==1.1.6",
   "litellm==1.85.2",
   "openai==2.30.0",
