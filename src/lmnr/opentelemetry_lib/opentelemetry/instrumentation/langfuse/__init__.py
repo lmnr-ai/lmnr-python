@@ -56,7 +56,6 @@ LANGFUSE_TRACER_NAME = "langfuse-sdk"
 
 # Langfuse attribute names (mirrors langfuse._client.attributes.LangfuseOtelSpanAttributes)
 # Duplicated here so this module has no hard import dependency on langfuse.
-_TRACE_NAME = "langfuse.trace.name"
 _TRACE_INPUT = "langfuse.trace.input"
 _TRACE_OUTPUT = "langfuse.trace.output"
 _TRACE_TAGS = "langfuse.trace.tags"
