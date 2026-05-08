@@ -558,6 +558,39 @@ def test_translator_mutates_before_synchronous_exporter():
     ), f"translator must run before exporter, got {exported[0]}"
 
 
+def test_connect_to_langfuse_swallows_install_exceptions(monkeypatch):
+    """Regression: `LangfuseInstrumentor.instrument()` re-raises on
+    attach-phase failures (e.g. `RuntimeError` from concurrent modification
+    of `LangfuseResourceManager._instances`). `Laminar.connect_to_langfuse()`
+    documents a `bool` return and callers should not have to wrap it in a
+    try/except — so the helper must swallow the exception and return
+    `False` on failure."""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation import langfuse as lf
+
+    LangfuseInstrumentor._installed = False
+    LangfuseInstrumentor._handled_providers = set()
+    LangfuseInstrumentor._attached_providers = {}
+    LangfuseInstrumentor._translator = None
+    LangfuseInstrumentor._lmnr_span_processor = None
+    LangfuseInstrumentor._lmnr_tracer_provider = None
+    LangfuseInstrumentor._original_initialize_instance = None
+
+    def exploding_attach(self):  # noqa: ARG001
+        raise RuntimeError("simulated attach failure")
+
+    monkeypatch.setattr(
+        lf.LangfuseInstrumentor,
+        "_attach_to_existing_langfuse_providers",
+        exploding_attach,
+    )
+
+    # Must not raise.
+    assert Laminar.connect_to_langfuse() is False
+    # `instrument()`'s rollback path must have cleaned up, leaving
+    # `_installed=False`.
+    assert LangfuseInstrumentor._installed is False
+
+
 def test_connect_to_langfuse_before_initialize_does_not_crash(monkeypatch):
     """Regression: `connect_to_langfuse()` must return `False` (not raise)
     when called before `Laminar.initialize()`. The not-initialized branch
