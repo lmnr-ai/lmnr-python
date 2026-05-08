@@ -116,6 +116,51 @@ def _cost_field(cost: Any, *keys: str) -> float | None:
     return None
 
 
+def _prepend_span_processor(provider: Any, processor: SpanProcessor) -> bool:
+    """Add `processor` to `provider` so that it runs BEFORE any processors
+    already registered on the provider.
+
+    Ordering matters: the translator must mutate `langfuse.*` attributes
+    before the exporter (`LaminarSpanProcessor` wrapping `SimpleSpanProcessor`
+    when `disable_batch=True`) consumes the span in `on_end` — otherwise the
+    exporter ships the pre-translation shape. `TracerProvider.add_span_processor`
+    appends to the end, so we call it, then reorder the underlying tuple.
+
+    The reorder touches `SynchronousMultiSpanProcessor._span_processors` /
+    `ConcurrentMultiSpanProcessor._span_processors` — both expose the same
+    private layout and lock. If the attribute shape changes upstream we fall
+    back to a plain `add_span_processor` and log.
+    """
+    add = getattr(provider, "add_span_processor", None)
+    if not callable(add):
+        return False
+    add(processor)
+    active = getattr(provider, "_active_span_processor", None)
+    if active is None:
+        return True
+    lock = getattr(active, "_lock", None)
+    current = getattr(active, "_span_processors", None)
+    if current is None:
+        return True
+    try:
+        new_order = (processor,) + tuple(
+            p for p in current if p is not processor
+        )
+        if lock is not None:
+            with lock:
+                active._span_processors = new_order
+        else:
+            active._span_processors = new_order
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        logger.debug(
+            "Could not reorder span processors on %r; translator will run "
+            "after the exporter (%s)",
+            provider,
+            exc,
+        )
+    return True
+
+
 def _is_langfuse_span(span: ReadableSpan) -> bool:
     scope = getattr(span, "instrumentation_scope", None)
     if scope is None:
@@ -327,10 +372,13 @@ class LangfuseInstrumentor:
         # 1. Translator lives on Laminar's own provider so it sees every
         #    Langfuse span that reaches the Laminar exporter (including spans
         #    that arrived via Laminar's own provider being shared with
-        #    Langfuse).
+        #    Langfuse). Prepend it so it mutates `langfuse.*` attrs before
+        #    `LaminarSpanProcessor` exports them — critical for the
+        #    `disable_batch=True` / SimpleSpanProcessor path, where export
+        #    happens synchronously inside `on_end`.
         translator = LangfuseAttributeTranslator()
         try:
-            lmnr_tracer_provider.add_span_processor(translator)
+            _prepend_span_processor(lmnr_tracer_provider, translator)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning(
                 "Failed to install Langfuse attribute translator: %s", exc)
@@ -389,14 +437,18 @@ class LangfuseInstrumentor:
         ):
             return
 
-        add = getattr(provider, "add_span_processor", None)
-        if not callable(add):
-            return
         try:
+            # Prepend the translator so it runs before any existing exporter
+            # attached by Langfuse (its own OTLP BatchSpanProcessor). For the
+            # Laminar processor, plain append is fine — it's the exporter; as
+            # long as the translator runs first, export order among exporters
+            # doesn't matter.
             if self._translator is not None:
-                add(self._translator)
+                _prepend_span_processor(provider, self._translator)
             if self._lmnr_span_processor is not None:
-                add(self._lmnr_span_processor)
+                add = getattr(provider, "add_span_processor", None)
+                if callable(add):
+                    add(self._lmnr_span_processor)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning(
                 "Failed to attach Laminar processor to Langfuse TracerProvider: %s",
