@@ -441,6 +441,56 @@ def test_connect_to_langfuse_is_idempotent(span_exporter, langfuse_client):
     assert len(spans) == 1, f"expected exactly one span, got {len(spans)}"
 
 
+def test_translator_mutates_before_synchronous_exporter():
+    """Regression: under `disable_batch=True` the Laminar exporter uses
+    `SimpleSpanProcessor` and exports inside `on_end`. The translator MUST run
+    first, otherwise the exporter ships the pre-translation `langfuse.*`
+    shape. We verify this by installing a fake SimpleSpanProcessor-backed
+    exporter on the same provider and confirming it sees translated attrs.
+    """
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import (
+        SimpleSpanProcessor,
+        SpanExporter,
+        SpanExportResult,
+    )
+
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
+        _prepend_span_processor,
+    )
+
+    exported: list[dict] = []
+
+    class CaptureExporter(SpanExporter):
+        def export(self, spans):
+            for s in spans:
+                exported.append(dict(s.attributes or {}))
+            return SpanExportResult.SUCCESS
+
+        def shutdown(self):
+            pass
+
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(CaptureExporter()))
+
+    # Install the translator AFTER the exporter (the real-world order) but
+    # via `_prepend_span_processor`, which reorders it to the front.
+    translator = LangfuseAttributeTranslator()
+    assert _prepend_span_processor(provider, translator) is True
+
+    tracer = provider.get_tracer("langfuse-sdk")
+    span = tracer.start_span(
+        "llm-call",
+        attributes={"langfuse.observation.model.name": "gpt-4o"},
+    )
+    span.end()
+
+    assert len(exported) == 1
+    assert (
+        exported[0].get("gen_ai.request.model") == "gpt-4o"
+    ), f"translator must run before exporter, got {exported[0]}"
+
+
 def test_connect_to_langfuse_returns_false_without_langfuse(monkeypatch):
     """If `langfuse` isn't importable, the helper must return False and must
     NOT install the bridge (i.e. no translator added, no monkey-patch)."""
