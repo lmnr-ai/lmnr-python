@@ -99,7 +99,16 @@ class PydanticAIInstrumentor(BaseInstrumentor):
                 return attrs
             return _strip_duplicate_message_attrs(attrs)
 
-        wrap_function_wrapper(_AGENT_MODULE, _RUN_SPAN_END_ATTRS, _wrap_run_span_end_attrs)
+        try:
+            wrap_function_wrapper(
+                _AGENT_MODULE, _RUN_SPAN_END_ATTRS, _wrap_run_span_end_attrs
+            )
+        except Exception:
+            wrap_function_wrapper(
+                "pydantic_ai.capabilities",
+                "Instrumentation._run_span_end_attributes",
+                _wrap_run_span_end_attrs,
+            )
 
         settings = InstrumentationSettings()
 
@@ -119,5 +128,11 @@ class PydanticAIInstrumentor(BaseInstrumentor):
 
         unwrap(InstrumentationSettings, "__init__")
         unwrap(Agent, "_run_span_end_attributes")
+        try:
+            from pydantic_ai.capabilities import Instrumentation
+
+            unwrap(Instrumentation, "_run_span_end_attributes")
+        except Exception:
+            pass
 
         self._enabled = False
