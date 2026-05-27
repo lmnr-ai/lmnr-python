@@ -5,6 +5,7 @@ from lmnr.sdk.client.asynchronous.resources.tags import AsyncTags
 from lmnr.sdk.client.asynchronous.resources.evaluators import AsyncEvaluators
 from lmnr.sdk.client.asynchronous.resources.rollout import AsyncRollout
 from lmnr.sdk.client.asynchronous.resources.sql import AsyncSql
+from lmnr.sdk.client.asynchronous.resources.traces import AsyncTraces
 
 __all__ = [
     "AsyncEvals",
@@ -14,4 +15,5 @@ __all__ = [
     "AsyncRollout",
     "AsyncSql",
     "AsyncDatasets",
+    "AsyncTraces",
 ]

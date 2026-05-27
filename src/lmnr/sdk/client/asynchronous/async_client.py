@@ -15,6 +15,7 @@ from lmnr.sdk.client.asynchronous.resources import (
     AsyncRollout,
     AsyncTags,
     AsyncSql,
+    AsyncTraces,
 )
 from lmnr.sdk.utils import from_env
 
@@ -108,6 +109,9 @@ class AsyncLaminarClient:
             self.__client, self.__base_url, self.__project_api_key
         )
         self.__sql = AsyncSql(self.__client, self.__base_url, self.__project_api_key)
+        self.__traces = AsyncTraces(
+            self.__client, self.__base_url, self.__project_api_key
+        )
 
     @property
     def evals(self) -> AsyncEvals:
@@ -171,6 +175,15 @@ class AsyncLaminarClient:
             AsyncSql: The SQL resource instance.
         """
         return self.__sql
+
+    @property
+    def traces(self) -> AsyncTraces:
+        """Get the Traces resource.
+
+        Returns:
+            AsyncTraces: The Traces resource instance.
+        """
+        return self.__traces
 
     @property
     def is_closed(self) -> bool:
