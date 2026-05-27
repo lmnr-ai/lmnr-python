@@ -5,5 +5,15 @@ from lmnr.sdk.client.synchronous.resources.evaluators import Evaluators
 from lmnr.sdk.client.synchronous.resources.rollout import Rollout
 from lmnr.sdk.client.synchronous.resources.sql import Sql
 from lmnr.sdk.client.synchronous.resources.tags import Tags
+from lmnr.sdk.client.synchronous.resources.traces import Traces
 
-__all__ = ["Evals", "Evaluators", "BrowserEvents", "Tags", "Rollout", "Sql", "Datasets"]
+__all__ = [
+    "Evals",
+    "Evaluators",
+    "BrowserEvents",
+    "Tags",
+    "Rollout",
+    "Sql",
+    "Datasets",
+    "Traces",
+]
