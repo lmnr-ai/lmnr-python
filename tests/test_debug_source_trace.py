@@ -1,4 +1,6 @@
-from lmnr.sdk.debug.source_trace import fetch_spine_metadata
+import datetime
+
+from lmnr.sdk.debug.source_trace import _to_epoch, fetch_spine_metadata
 from lmnr.sdk.debug.spine import has_overlap
 
 
@@ -43,3 +45,24 @@ def test_present_end_time_unaffected():
 
     assert records[0].end_time == 1.0
     assert has_overlap(records, 2) is False
+
+
+def test_to_epoch_parses_nanosecond_iso():
+    # ClickHouse returns DateTime64(9) (nanosecond) strings. datetime.fromisoformat
+    # rejects >6 fractional digits before Python 3.11, so the >6-digit fractional
+    # part must be truncated to microseconds rather than falling to the fallback.
+    expected = datetime.datetime.fromisoformat(
+        "2024-01-15T10:30:45.123456+00:00"
+    ).timestamp()
+    assert _to_epoch("2024-01-15T10:30:45.123456789Z") == expected
+
+
+def test_to_epoch_lexical_fallback_preserves_order():
+    # Unparseable-but-ISO-ordered strings must map monotonically: a later
+    # timestamp can never score lower than an earlier one (a flat ordinal sum
+    # ignores position and reversed them). Append a non-numeric tail to force
+    # the fallback while keeping the resolvable leading chars distinct.
+    a = "2024-01-15T10:30:45!"
+    b = "2024-02-15T10:30:45!"
+    assert a < b
+    assert _to_epoch(a) < _to_epoch(b)

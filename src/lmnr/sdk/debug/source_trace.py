@@ -5,7 +5,9 @@ fields (path/type/times), then a second pass pulls response payloads only for
 the chosen spine path. This keeps memory bounded since v1 only caches the spine.
 """
 
+import datetime
 import json
+import re
 from typing import Any
 
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
@@ -27,11 +29,11 @@ def _row_start(row: dict[str, Any]) -> float:
 def _to_epoch(value: Any, missing_default: float = 0.0) -> float:
     """Best-effort conversion of a ClickHouse timestamp to a float epoch.
 
-    The SQL endpoint returns ISO-8601 strings; fall back to lexical ordering so
-    detection still works even if parsing fails. `missing_default` is returned
-    for a null / omitted value — callers pass `inf` for `end_time` so the §F
-    overlap guard treats an unknown end as overlapping (fail loud, run live)
-    rather than silently passing as 0.0.
+    The SQL endpoint returns ISO-8601 strings; fall back to a chronological
+    lexical encoding so detection still orders correctly even if parsing fails.
+    `missing_default` is returned for a null / omitted value — callers pass `inf`
+    for `end_time` so the §F overlap guard treats an unknown end as overlapping
+    (fail loud, run live) rather than silently passing as 0.0.
     """
     if value is None:
         return missing_default
@@ -39,12 +41,28 @@ def _to_epoch(value: Any, missing_default: float = 0.0) -> float:
         return float(value)
     s = str(value)
     try:
-        import datetime
-
-        return datetime.datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
+        # ClickHouse returns DateTime64(9) (nanosecond) strings, but
+        # datetime.fromisoformat rejects >6 fractional digits before Python 3.11,
+        # so truncate the fractional part to microseconds first.
+        normalized = re.sub(
+            r"(\.\d{6})\d+", r"\1", s.replace("Z", "+00:00")
+        )
+        return datetime.datetime.fromisoformat(normalized).timestamp()
     except Exception:
-        # Lexical fallback: ISO strings sort chronologically.
-        return float(sum(ord(c) for c in s[:32]))
+        # Lexical fallback: ISO-8601 strings sort chronologically, so map the
+        # string to a fraction in [0, 1) whose digits are the (byte-clamped)
+        # character codes, earliest character weighted most. This is monotonic
+        # in lexical order, so a later timestamp never scores lower. (A flat sum
+        # of ordinals — the previous approach — ignores position and silently
+        # reorders the spine.) Float64 only resolves the first ~6-7 characters;
+        # closer strings tie rather than reverse, and the SQL `ORDER BY
+        # start_time` + stable sort preserve their original order on a tie.
+        score = 0.0
+        weight = 1.0
+        for c in s[:32]:
+            weight /= 256.0
+            score += min(ord(c), 255) * weight
+        return score
 
 
 def fetch_spine_metadata(
