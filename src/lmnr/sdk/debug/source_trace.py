@@ -24,14 +24,17 @@ def _row_start(row: dict[str, Any]) -> float:
     return _to_epoch(row.get("start_time"))
 
 
-def _to_epoch(value: Any) -> float:
+def _to_epoch(value: Any, missing_default: float = 0.0) -> float:
     """Best-effort conversion of a ClickHouse timestamp to a float epoch.
 
     The SQL endpoint returns ISO-8601 strings; fall back to lexical ordering so
-    detection still works even if parsing fails.
+    detection still works even if parsing fails. `missing_default` is returned
+    for a null / omitted value — callers pass `inf` for `end_time` so the §F
+    overlap guard treats an unknown end as overlapping (fail loud, run live)
+    rather than silently passing as 0.0.
     """
     if value is None:
-        return 0.0
+        return missing_default
     if isinstance(value, (int, float)):
         return float(value)
     s = str(value)
@@ -69,7 +72,9 @@ def fetch_spine_metadata(
                     span_path=row.get("path") or "",
                     span_type=str(row.get("span_type") or ""),
                     start_time=_to_epoch(row.get("start_time")),
-                    end_time=_to_epoch(row.get("end_time")),
+                    end_time=_to_epoch(
+                        row.get("end_time"), missing_default=float("inf")
+                    ),
                 )
             )
         if len(rows) < _PAGE_SIZE:
