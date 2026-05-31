@@ -32,15 +32,23 @@ def build_pointer(
     replay_trace_id: str | None,
     cache_until: int,
     debugger_url: str | None,
+    started_at: str | None = None,
 ) -> dict[str, Any]:
-    """Build the pointer payload. Key order matches the TS SDK."""
+    """Build the pointer payload. Key order matches the TS SDK.
+
+    `started_at` is the run's start time, captured by `DebugRuntime` at SDK init
+    so the pointer reflects when tracing began rather than when it was emitted
+    (shutdown). Defaults to now for standalone callers.
+    """
     return {
         "trace_id": trace_id,
         "session_id": session_id,
         "replay_trace_id": replay_trace_id,
         "cache_until": cache_until,
         "debugger_url": debugger_url,
-        "started_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "started_at": (
+            started_at or datetime.datetime.now(datetime.timezone.utc).isoformat()
+        ),
     }
 
 

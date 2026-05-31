@@ -119,6 +119,29 @@ def test_record_debug_trace_id_from_env_noop_without_runtime(monkeypatch):
     Laminar._record_debug_trace_id_from_env(span_context)
 
 
+def test_emit_pointer_uses_construction_time_started_at(tmp_path, monkeypatch, capsys):
+    # started_at must reflect when the run began (runtime construction at SDK
+    # init), not when the pointer is emitted (shutdown). Sleep between the two so
+    # an emit-time timestamp would differ from the captured one.
+    import json
+    import time
+
+    monkeypatch.chdir(tmp_path)
+    runtime = DebugRuntime(_config(), cache=None, debugger_url=None)
+    captured = runtime._started_at
+    time.sleep(0.01)
+    runtime.record_trace_id("trace-a")
+    runtime.emit_pointer()
+
+    line = next(
+        line
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith("LMNR_DEBUG_RUN ")
+    )
+    payload = json.loads(line[len("LMNR_DEBUG_RUN "):])
+    assert payload["started_at"] == captured
+
+
 def test_emit_pointer_only_once(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     runtime = DebugRuntime(_config(), cache=None, debugger_url=None)

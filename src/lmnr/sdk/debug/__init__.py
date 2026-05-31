@@ -16,6 +16,7 @@ stamps `rollout.session_id` on the trace metadata. When debug mode is off,
 `get_runtime()` returns None and everything is inert (§8).
 """
 
+import datetime
 import threading
 from typing import Any
 
@@ -49,6 +50,9 @@ class DebugRuntime:
         self._emitted = False
         self._lock = threading.Lock()
         self._counters: dict[str, int] = {}
+        # Captured at construction (SDK init) so the pointer's `started_at`
+        # reflects when the run began, not when the pointer is emitted (shutdown).
+        self._started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     @property
     def session_id(self) -> str:
@@ -92,6 +96,7 @@ class DebugRuntime:
             replay_trace_id=self._config.replay_trace_id,
             cache_until=self._config.cache_until,
             debugger_url=self._debugger_url,
+            started_at=self._started_at,
         )
         emit_pointer(pointer)
 
