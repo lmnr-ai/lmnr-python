@@ -1250,13 +1250,17 @@ class Laminar:
             # that shut down without terminating the process still get
             # LMNR_DEBUG_RUN + .lmnr/last-run.json. Idempotent — the atexit hook
             # is a fallback.
-            from lmnr.sdk.debug import get_runtime
+            from lmnr.sdk.debug import get_runtime, reset_debug_runtime
 
             runtime = get_runtime()
             if runtime is not None:
                 runtime.emit_pointer()
             TracerManager.shutdown()
             cls.__initialized = False
+            # Clear the one-shot debug-runtime state so a subsequent
+            # initialize() re-reads LMNR_DEBUG* instead of resurrecting the
+            # previous run.
+            reset_debug_runtime()
 
     @classmethod
     def set_span_tags(cls, tags: list[str]):

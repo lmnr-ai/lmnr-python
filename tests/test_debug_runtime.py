@@ -1,12 +1,15 @@
-import lmnr.sdk.debug as debug
-from lmnr.sdk.debug import DebugRuntime, get_runtime, init_debug_runtime
+from lmnr.sdk.debug import (
+    DebugRuntime,
+    get_runtime,
+    init_debug_runtime,
+    reset_debug_runtime,
+)
 from lmnr.sdk.debug.config import DebugConfig
 from lmnr.sdk.debug.replay_cache import ReplayCache
 
 
 def _reset_runtime():
-    debug._runtime = None
-    debug._initialized = False
+    reset_debug_runtime()
 
 
 def _config(**kwargs) -> DebugConfig:
@@ -104,6 +107,23 @@ def test_init_is_idempotent(monkeypatch):
     first = init_debug_runtime(client=object())
     second = init_debug_runtime(client=object())
     assert first is second is get_runtime()
+    _reset_runtime()
+
+
+def test_reset_allows_reinit_to_reread_env(monkeypatch):
+    # A shutdown/initialize cycle must re-read LMNR_DEBUG*: reset clears the
+    # one-shot flag so a previously-off run can turn debug on (and vice versa).
+    _reset_runtime()
+    monkeypatch.delenv("LMNR_DEBUG", raising=False)
+    assert init_debug_runtime(client=object()) is None
+
+    reset_debug_runtime()
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.delenv("LMNR_DEBUG_REPLAY_TRACE_ID", raising=False)
+    monkeypatch.delenv("LMNR_DEBUG_CACHE_UNTIL", raising=False)
+    runtime = init_debug_runtime(client=object())
+    assert runtime is not None
+    assert get_runtime() is runtime
     _reset_runtime()
 
 

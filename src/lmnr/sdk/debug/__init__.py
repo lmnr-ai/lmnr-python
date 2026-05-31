@@ -105,6 +105,20 @@ def get_runtime() -> DebugRuntime | None:
     return _runtime
 
 
+def reset_debug_runtime() -> None:
+    """Reset module state so a later `init_debug_runtime` re-reads `LMNR_DEBUG*`.
+
+    Called by `Laminar.shutdown()` (which supports a subsequent `initialize()`)
+    and by tests. Without this, the one-shot `_initialized` flag would pin the
+    first run's runtime — stale replay cache, session metadata, and a spent
+    pointer — across a shutdown/initialize cycle. Mirrors the TS
+    `resetDebugRuntime`.
+    """
+    global _runtime, _initialized
+    _runtime = None
+    _initialized = False
+
+
 def init_debug_runtime(
     client: Any,
     debugger_url: str | None = None,
