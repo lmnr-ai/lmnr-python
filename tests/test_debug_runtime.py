@@ -158,6 +158,84 @@ def test_processor_records_trace_id_when_tracing_disabled(monkeypatch):
     _reset_runtime()
 
 
+def test_processor_keeps_real_span_path_for_replay_when_disabled(monkeypatch):
+    # With replay active, LMNR_DISABLE_TRACING=true must NOT mask span names to
+    # "_" in lmnr.span.path: the replay wrapper reads that in-process path to
+    # match the cache (keyed on the source trace's real dotted paths). Masking
+    # would never match, so replay would silently run live.
+    import uuid as _uuid
+
+    from opentelemetry import trace as _trace
+
+    from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
+
+    _reset_runtime()
+    # replay_trace_id + cache_until>0 => replay_enabled() is True.
+    runtime = DebugRuntime(_config(), cache=None, debugger_url=None)
+    monkeypatch.setattr("lmnr.sdk.debug._runtime", runtime)
+    monkeypatch.setenv("LMNR_DISABLE_TRACING", "true")
+
+    class _FakeSpan:
+        def __init__(self):
+            self.parent = None
+            self.name = "openai.chat"
+            self.attributes = {}
+            self._ctx = _trace.SpanContext(
+                trace_id=_uuid.UUID(int=1).int,
+                span_id=0x0123456789ABCDEF,
+                is_remote=False,
+            )
+
+        def get_span_context(self):
+            return self._ctx
+
+        def set_attribute(self, key, value):
+            self.attributes[key] = value
+
+    span = _FakeSpan()
+    processor = LaminarSpanProcessor(exporter=_NoopExporter(), disable_batch=True)
+    processor.on_start(span)
+
+    assert span.attributes["lmnr.span.path"] == ["openai.chat"]
+    _reset_runtime()
+
+
+def test_processor_masks_span_path_when_disabled_without_replay(monkeypatch):
+    # No debug runtime: disabled tracing still masks span names to "_" (privacy).
+    import uuid as _uuid
+
+    from opentelemetry import trace as _trace
+
+    from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
+
+    _reset_runtime()
+    monkeypatch.setenv("LMNR_DISABLE_TRACING", "true")
+
+    class _FakeSpan:
+        def __init__(self):
+            self.parent = None
+            self.name = "openai.chat"
+            self.attributes = {}
+            self._ctx = _trace.SpanContext(
+                trace_id=_uuid.UUID(int=2).int,
+                span_id=0x0123456789ABCDEF,
+                is_remote=False,
+            )
+
+        def get_span_context(self):
+            return self._ctx
+
+        def set_attribute(self, key, value):
+            self.attributes[key] = value
+
+    span = _FakeSpan()
+    processor = LaminarSpanProcessor(exporter=_NoopExporter(), disable_batch=True)
+    processor.on_start(span)
+
+    assert span.attributes["lmnr.span.path"] == ["_"]
+    _reset_runtime()
+
+
 def test_record_debug_trace_id_from_env_noop_without_runtime(monkeypatch):
     from opentelemetry import trace as _trace
 

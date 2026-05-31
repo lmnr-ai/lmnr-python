@@ -35,6 +35,20 @@ from lmnr.sdk.utils import from_env, is_otel_attribute_value_type, json_dumps
 from lmnr.version import PYTHON_VERSION, __version__
 
 
+def _replay_active() -> bool:
+    """True when a debug replay run is active (cache lookups will be attempted).
+
+    Imported lazily to avoid an import cycle with the debug runtime. Best-effort:
+    any failure degrades to "not replaying" so path masking falls back to "_".
+    """
+    try:
+        from lmnr.sdk.debug.replay import replay_enabled
+
+        return replay_enabled()
+    except Exception:
+        return False
+
+
 class LaminarSpanProcessor(SpanProcessor):
     instance: BatchSpanProcessor | SimpleSpanProcessor
     logger: logging.Logger
@@ -93,7 +107,17 @@ class LaminarSpanProcessor(SpanProcessor):
             ) or (
                 self.__span_id_lists.get(span.parent.span_id, []) if span.parent else []
             )
-            span_name_in_path = span.name if not is_disabled else "_"
+            # Disabled tracing masks span names in the path for privacy (the
+            # span is never exported). But a debug replay run reads this
+            # in-process path to match the replay cache, which keys on the
+            # source trace's real dotted paths — masking to "_" would never
+            # match, so replay would silently run live while occurrence counters
+            # still advance. Keep the real name when replay is active; the span
+            # still isn't exported. (TS never masks span names, so this is a
+            # Python-only divergence — see CLAUDE.md.)
+            span_name_in_path = span.name
+            if is_disabled and not _replay_active():
+                span_name_in_path = "_"
             span_path = (
                 parent_span_path + [span_name_in_path]
                 if parent_span_path
