@@ -362,6 +362,30 @@ class Laminar:
         push_span_context(base_context)
         cls.__logger.debug("Initialized Laminar parent context from LMNR_SPAN_CONTEXT.")
 
+        # On a debug run attached via LMNR_SPAN_CONTEXT, no span has a null parent
+        # (everything descends from the injected context), so the processor's
+        # root-span hook never fires. Record the inherited trace id here so the
+        # run pointer (§5) isn't emitted with an empty trace_id.
+        cls._record_debug_trace_id_from_env(otel_span_context)
+
+    @classmethod
+    def _record_debug_trace_id_from_env(
+        cls, otel_span_context: trace.SpanContext
+    ) -> None:
+        """Record the trace id inherited from LMNR_SPAN_CONTEXT on the debug runtime.
+
+        No-op when debug mode is off. Best-effort: never break initialization.
+        """
+        try:
+            from lmnr.sdk.debug import get_runtime
+
+            runtime = get_runtime()
+            if runtime is None:
+                return
+            runtime.record_trace_id(str(uuid.UUID(int=otel_span_context.trace_id)))
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            cls.__logger.debug("Failed to record debug trace id from env: %s", exc)
+
     @classmethod
     def _init_debug_runtime(
         cls, base_url: str | None, http_port: int | None

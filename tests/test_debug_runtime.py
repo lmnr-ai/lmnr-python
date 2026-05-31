@@ -78,6 +78,47 @@ def test_record_trace_id_first_wins():
     assert runtime._trace_id == "trace-a"
 
 
+def test_record_debug_trace_id_from_env_populates_pointer(monkeypatch):
+    # A run attached via LMNR_SPAN_CONTEXT never opens a root span, so the
+    # pointer would emit an empty trace_id unless the inherited trace id is
+    # recorded at env-attach time.
+    import uuid as _uuid
+
+    from opentelemetry import trace as _trace
+
+    from lmnr.sdk.laminar import Laminar
+
+    _reset_runtime()
+    runtime = DebugRuntime(_config(), cache=None, debugger_url=None)
+    monkeypatch.setattr("lmnr.sdk.debug._runtime", runtime)
+
+    trace_id = _uuid.UUID("01234567-89ab-cdef-0123-456789abcdef")
+    span_context = _trace.SpanContext(
+        trace_id=trace_id.int,
+        span_id=0x0123456789ABCDEF,
+        is_remote=True,
+    )
+    Laminar._record_debug_trace_id_from_env(span_context)
+
+    assert runtime._trace_id == str(trace_id)
+    _reset_runtime()
+
+
+def test_record_debug_trace_id_from_env_noop_without_runtime(monkeypatch):
+    from opentelemetry import trace as _trace
+
+    from lmnr.sdk.laminar import Laminar
+
+    _reset_runtime()
+    span_context = _trace.SpanContext(
+        trace_id=0x0123456789ABCDEF0123456789ABCDEF,
+        span_id=0x0123456789ABCDEF,
+        is_remote=True,
+    )
+    # No runtime registered -> silent no-op, never raises.
+    Laminar._record_debug_trace_id_from_env(span_context)
+
+
 def test_emit_pointer_only_once(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     runtime = DebugRuntime(_config(), cache=None, debugger_url=None)
