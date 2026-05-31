@@ -127,7 +127,6 @@ def detach_context(token: Token[Context]) -> None:
 
 CONTEXT_USER_ID_KEY = create_key(f"lmnr.{USER_ID}")
 CONTEXT_SESSION_ID_KEY = create_key(f"lmnr.{SESSION_ID}")
-CONTEXT_ROLLOUT_SESSION_ID_KEY = create_key("lmnr.rollout_session_id")
 CONTEXT_METADATA_KEY = create_key(f"lmnr.{METADATA}")
 CONTEXT_TRACE_TYPE_KEY = create_key(f"lmnr.{TRACE_TYPE}")
 

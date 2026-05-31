@@ -1,12 +1,14 @@
 """
-Rollout wrapper for Anthropic chat completions instrumentation.
+Debug replay wrapper for Anthropic chat completions instrumentation.
 
-This module adds caching and override capabilities to Anthropic chat completions
-instrumentation during rollout sessions.
+On a debug run with replay enabled, this serves the first N spine LLM calls from
+the in-process `ReplayCache` (reconstructing an Anthropic `Message` from cached
+attributes) and runs the rest live. Override application and the old HTTP cache
+server are gone (§2 non-goals, §H).
 """
 
 import json
-from typing import Any, AsyncGenerator, Generator, Optional
+from typing import Any, AsyncGenerator, Generator
 
 from opentelemetry.trace import Span
 
@@ -27,66 +29,19 @@ from anthropic.types import (
 )
 
 from anthropic.types.raw_message_delta_event import Delta
+from lmnr.sdk.debug.replay import (
+    cached_payload_for,
+    mark_span_cached,
+    replay_enabled,
+    span_path_from_span,
+)
 from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.rollout.instrumentation import RolloutInstrumentationWrapper
-from lmnr.sdk.rollout_control import is_rollout_mode
 
 logger = get_default_logger(__name__)
 
 
-class AnthropicRolloutWrapper(RolloutInstrumentationWrapper):
-    """
-    Rollout wrapper specific to Anthropic chat completions instrumentation.
-
-    Handles:
-    - Converting cached responses to Anthropic Message format
-    - Applying overrides to system prompts and tool definitions
-    - Setting rollout-specific span attributes
-    """
-
-    def apply_anthropic_overrides(
-        self, kwargs: dict[str, Any], path: str, span: Span | None = None
-    ) -> dict[str, Any]:
-        overrides = self.get_overrides(path)
-        if not overrides:
-            return kwargs
-
-        modified_kwargs = kwargs.copy()
-
-        if "system" in overrides:
-            system_override = overrides["system"]
-            logger.debug(f"Applying system override for {path}")
-
-            if span and span.is_recording():
-                try:
-                    # For Anthropic, we store system prompt separately in gen_ai.input.messages if present
-                    # or it might be passed as a 'system' parameter in kwargs.
-                    # We update the span attribute to reflect the override.
-                    if input_messages_raw := span.attributes.get(
-                        "gen_ai.input.messages"
-                    ):
-                        input_messages = json.loads(input_messages_raw)
-                        if input_messages and input_messages[0].get("role") == "system":
-                            input_messages[0]["content"] = system_override
-                        else:
-                            input_messages.insert(
-                                0, {"role": "system", "content": system_override}
-                            )
-
-                        span.set_attribute(
-                            "gen_ai.input.messages",
-                            json.dumps(input_messages),
-                        )
-                except Exception:
-                    pass
-
-            modified_kwargs["system"] = system_override
-
-        if "tools" in overrides:
-            # Anthropic tools are passed as a list of dicts
-            modified_kwargs["tools"] = overrides["tools"]
-
-        return modified_kwargs
+class AnthropicRolloutWrapper:
+    """Serves cached Anthropic responses on a debug run; runs live otherwise."""
 
     def cached_response_to_anthropic(
         self, cached_span: dict[str, Any]
@@ -155,51 +110,24 @@ class AnthropicRolloutWrapper(RolloutInstrumentationWrapper):
         is_streaming: bool = False,
         is_async: bool = False,
     ) -> Any:
-        if not self.should_use_rollout():
-            return wrapped(*args, **kwargs)
-
-        span_path = self._get_span_path_from_span(span) if span else None
-        if not span_path:
-            return wrapped(*args, **kwargs)
-
-        current_index = self.get_current_index_for_path(span_path)
-        logger.debug(f"Anthropic create call at {span_path}:{current_index}")
-
-        if self.should_use_cache(span_path, current_index):
-            cached_span = self.get_cached_response(span_path, current_index)
-            if cached_span:
-                logger.debug(
-                    f"Using cached response for Anthropic at {span_path}:{current_index}"
-                )
-                response = self.cached_response_to_anthropic(cached_span)
-                if response:
-                    try:
-                        if span and span.is_recording():
-                            span.set_attributes(
-                                {
-                                    "lmnr.span.type": "CACHED",
-                                    "lmnr.rollout.cache_index": current_index,
-                                    "lmnr.span.original_type": "LLM",
-                                }
-                            )
-                    except Exception:
-                        pass
-
-                    if is_streaming:
-                        if is_async:
-                            return self._as_coroutine(
-                                self._create_async_cached_stream(response)
-                            )
-                        else:
-                            return self._create_cached_stream(response)
-
+        span_path = span_path_from_span(span)
+        cached = cached_payload_for(span_path)
+        if cached is not None:
+            response = self.cached_response_to_anthropic(cached)
+            if response is not None:
+                logger.debug("Replaying cached Anthropic response at %s", span_path)
+                mark_span_cached(span)
+                if is_streaming:
                     if is_async:
-                        return self._as_coroutine(response)
-                    return response
+                        return self._as_coroutine(
+                            self._create_async_cached_stream(response)
+                        )
+                    return self._create_cached_stream(response)
+                if is_async:
+                    return self._as_coroutine(response)
+                return response
 
-        modified_kwargs = self.apply_anthropic_overrides(kwargs, span_path, span)
-        logger.debug(f"Executing live Anthropic call for {span_path}:{current_index}")
-        return wrapped(*args, **modified_kwargs)
+        return wrapped(*args, **kwargs)
 
     def _create_cached_stream(
         self, response: Message
@@ -284,16 +212,6 @@ class AnthropicRolloutWrapper(RolloutInstrumentationWrapper):
         """Return a response as a coroutine."""
         return response
 
-    def _get_span_path_from_span(self, span: Span) -> Optional[str]:
-        """Get the span path from the span's attributes."""
-        try:
-            path_list = span.attributes.get("lmnr.span.path")
-            if path_list:
-                return ".".join(path_list)
-        except Exception:
-            pass
-        return None
-
 
 _anthropic_rollout_wrapper: AnthropicRolloutWrapper | None = None
 
@@ -301,14 +219,14 @@ _anthropic_rollout_wrapper: AnthropicRolloutWrapper | None = None
 def get_anthropic_rollout_wrapper() -> AnthropicRolloutWrapper | None:
     global _anthropic_rollout_wrapper
 
-    if not is_rollout_mode():
+    if not replay_enabled():
         return None
 
     if _anthropic_rollout_wrapper is None:
         try:
             _anthropic_rollout_wrapper = AnthropicRolloutWrapper()
         except Exception as e:
-            logger.error(f"Failed to create Anthropic rollout wrapper: {e}")
+            logger.error(f"Failed to create Anthropic replay wrapper: {e}")
             return None
 
     return _anthropic_rollout_wrapper

@@ -1,4 +1,5 @@
 import asyncio
+import atexit
 import datetime
 import logging
 import os
@@ -291,6 +292,8 @@ class Laminar:
         cls.__base_http_url = f"{http_url}:{http_port or 443}"
         cls.__global_metadata = metadata or {}
 
+        cls._init_debug_runtime(base_url=url, http_port=http_port)
+
         if not os.getenv("OTEL_ATTRIBUTE_COUNT_LIMIT"):
             # each message is at least 2 attributes: role and content,
             # but the default attribute limit is 128, so raise it
@@ -358,6 +361,40 @@ class Laminar:
             )
         push_span_context(base_context)
         cls.__logger.debug("Initialized Laminar parent context from LMNR_SPAN_CONTEXT.")
+
+    @classmethod
+    def _init_debug_runtime(
+        cls, base_url: str | None, http_port: int | None
+    ) -> None:
+        """Build the in-process debug runtime (§4, §5) when LMNR_DEBUG is set.
+
+        On a debug run the session id from the config is stamped into the global
+        trace metadata as `rollout.session_id`, and a process-exit hook emits the
+        run pointer once the root trace id is known. When debug mode is off this
+        is a no-op and the SDK behaves exactly as before.
+        """
+        try:
+            from lmnr.sdk.client.synchronous.sync_client import LaminarClient
+            from lmnr.sdk.debug import init_debug_runtime
+            from lmnr.sdk.utils import get_frontend_url
+
+            client = LaminarClient(
+                base_url=base_url,
+                project_api_key=cls.__project_api_key,
+                port=http_port,
+            )
+            debugger_url = os.getenv("LMNR_FRONTEND_URL") or get_frontend_url(base_url)
+            runtime = init_debug_runtime(client, debugger_url=debugger_url)
+            if runtime is None:
+                return
+
+            cls.__global_metadata = {
+                **cls.__global_metadata,
+                "rollout.session_id": runtime.session_id,
+            }
+            atexit.register(runtime.emit_pointer)
+        except Exception as exc:  # never let debug setup crash initialization
+            cls.__logger.warning("Failed to initialize debug runtime: %s", exc)
 
     @classmethod
     def is_initialized(cls):

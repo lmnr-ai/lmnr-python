@@ -66,9 +66,9 @@ def chat_wrapper(
     _handle_request(span, kwargs, instance)
 
     try:
-        from lmnr.sdk.rollout_control import is_rollout_mode
+        from lmnr.sdk.debug.replay import replay_enabled
 
-        is_rollout = is_rollout_mode()
+        is_rollout = replay_enabled()
     except Exception:
         is_rollout = False
 
@@ -150,9 +150,9 @@ async def achat_wrapper(
     _handle_request(span, kwargs, instance)
 
     try:
-        from lmnr.sdk.rollout_control import is_rollout_mode
+        from lmnr.sdk.debug.replay import replay_enabled
 
-        is_rollout = is_rollout_mode()
+        is_rollout = replay_enabled()
     except Exception:
         is_rollout = False
 

@@ -1,17 +1,23 @@
 """
-Rollout wrapper for LiteLLM instrumentation.
+Debug replay wrapper for LiteLLM instrumentation.
 
-This module adds caching and override capabilities to LiteLLM instrumentation
-during rollout sessions.
+On a debug run with replay enabled, serves the first N spine LLM calls from the
+in-process `ReplayCache` (reconstructing a LiteLLM `ModelResponse` /
+`ResponsesAPIResponse` from cached attributes) and runs the rest live. Overrides
++ HTTP cache server are gone (§H).
 """
 
 import json
 from typing import Any, AsyncGenerator, Generator
 
+from lmnr.sdk.debug.replay import (
+    cached_payload_for,
+    mark_span_cached,
+    replay_enabled,
+    span_path_from_span,
+)
 from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.rollout.instrumentation import RolloutInstrumentationWrapper
-from lmnr.sdk.rollout_control import is_rollout_mode
 
 logger = get_default_logger(__name__)
 
@@ -151,15 +157,8 @@ def _import_litellm_types():
     return types
 
 
-class LiteLLMRolloutWrapper(RolloutInstrumentationWrapper):
-    """
-    Rollout wrapper specific to LiteLLM instrumentation.
-
-    Handles:
-    - Converting cached responses to LiteLLM format (both completion and responses)
-    - Applying overrides to system prompts and tool definitions
-    - Setting rollout-specific span attributes
-    """
+class LiteLLMRolloutWrapper:
+    """Serves cached LiteLLM responses on a debug run; runs live otherwise."""
 
     def cached_response_to_completion(self, cached_span: dict[str, Any]) -> Any:
         """
@@ -533,70 +532,20 @@ class LiteLLMRolloutWrapper(RolloutInstrumentationWrapper):
         kwargs,
         is_streaming: bool = False,
     ) -> Any:
-        """
-        Wrap completion with rollout logic.
-
-        Args:
-            wrapped: Original function
-            instance: Instance object
-            args: Positional arguments
-            kwargs: Keyword arguments
-            is_streaming: Whether this is a streaming call
-            is_async: Whether this is an async call
-
-        Returns:
-            Response (cached or live), or Generator/AsyncGenerator
-        """
-        # Check if rollout mode is active
-        if not self.should_use_rollout():
-            return wrapped(*args, **kwargs)
-
-        # Get span path
-        span_path = self.get_span_path()
-        if not span_path:
-            return wrapped(*args, **kwargs)
-
-        # Get current call index
-        current_index = self.get_current_index_for_path(span_path)
-
-        logger.debug(f"LiteLLM completion call at {span_path}:{current_index}")
+        """Serve a cached completion response if available, else run live."""
         span = Laminar.get_current_span()
+        span_path = span_path_from_span(span)
+        cached = cached_payload_for(span_path)
+        if cached is not None:
+            response = self.cached_response_to_completion(cached)
+            if response:
+                logger.debug("Replaying cached LiteLLM completion at %s", span_path)
+                mark_span_cached(span)
+                if is_streaming:
+                    sync_gen = self._create_cached_completion_stream(response)
+                    return DualIteratorWrapper(sync_gen, cached_response=response)
+                return response
 
-        # Check cache
-        if self.should_use_cache(span_path, current_index):
-            cached_span = self.get_cached_response(span_path, current_index)
-            if cached_span:
-                logger.debug(
-                    f"Using cached response for LiteLLM completion at {span_path}:{current_index}"
-                )
-
-                # Convert cached data to completion response
-                response = self.cached_response_to_completion(cached_span)
-                if response:
-                    # Mark span as cached
-                    try:
-                        if span and span.is_recording():
-                            span.set_attributes(
-                                {
-                                    "lmnr.span.type": "CACHED",
-                                    "lmnr.rollout.cache_index": current_index,
-                                    "lmnr.span.original_type": "LLM",
-                                }
-                            )
-                    except Exception:
-                        pass
-
-                    # For streaming, return a dual iterator that works in both sync and async contexts
-                    if is_streaming:
-                        sync_gen = self._create_cached_completion_stream(response)
-                        return DualIteratorWrapper(sync_gen, cached_response=response)
-
-                    return response
-
-        # Cache miss or conversion failed - execute live
-        logger.debug(
-            f"Executing live LiteLLM completion call for {span_path}:{current_index}"
-        )
         return wrapped(*args, **kwargs)
 
     def wrap_responses(
@@ -606,68 +555,20 @@ class LiteLLMRolloutWrapper(RolloutInstrumentationWrapper):
         kwargs,
         is_streaming: bool = False,
     ) -> Any:
-        """
-        Wrap responses with rollout logic.
-
-        Args:
-            wrapped: Original function
-            args: Positional arguments
-            kwargs: Keyword arguments
-            is_streaming: Whether this is a streaming call
-
-        Returns:
-            Response (cached or live), or Generator/AsyncGenerator
-        """
-        # Check if rollout mode is active
-        if not self.should_use_rollout():
-            return wrapped(*args, **kwargs)
-
-        # Get span path
-        span_path = self.get_span_path()
-        if not span_path:
-            return wrapped(*args, **kwargs)
-
-        # Get current call index
-        current_index = self.get_current_index_for_path(span_path)
-
-        logger.debug(f"LiteLLM responses call at {span_path}:{current_index}")
+        """Serve a cached responses-API response if available, else run live."""
         span = Laminar.get_current_span()
+        span_path = span_path_from_span(span)
+        cached = cached_payload_for(span_path)
+        if cached is not None:
+            response = self.cached_response_to_responses(cached)
+            if response:
+                logger.debug("Replaying cached LiteLLM responses at %s", span_path)
+                mark_span_cached(span)
+                if is_streaming:
+                    sync_gen = self._create_cached_responses_stream(response)
+                    return DualIteratorWrapper(sync_gen, cached_response=response)
+                return response
 
-        # Check cache
-        if self.should_use_cache(span_path, current_index):
-            cached_span = self.get_cached_response(span_path, current_index)
-            if cached_span:
-                logger.debug(
-                    f"Using cached response for LiteLLM responses at {span_path}:{current_index}"
-                )
-
-                # Convert cached data to responses response
-                response = self.cached_response_to_responses(cached_span)
-                if response:
-                    # Mark span as cached
-                    try:
-                        if span and span.is_recording():
-                            span.set_attributes(
-                                {
-                                    "lmnr.span.type": "CACHED",
-                                    "lmnr.rollout.cache_index": current_index,
-                                    "lmnr.span.original_type": "LLM",
-                                }
-                            )
-                    except Exception:
-                        pass
-
-                    # For streaming, return a dual iterator that works in both sync and async contexts
-                    if is_streaming:
-                        sync_gen = self._create_cached_responses_stream(response)
-                        return DualIteratorWrapper(sync_gen, cached_response=response)
-
-                    return response
-
-        # Cache miss or conversion failed - execute live
-        logger.debug(
-            f"Executing live LiteLLM responses call for {span_path}:{current_index}"
-        )
         return wrapped(*args, **kwargs)
 
 
@@ -684,7 +585,7 @@ def get_litellm_rollout_wrapper() -> LiteLLMRolloutWrapper | None:
     """
     global _litellm_rollout_wrapper
 
-    if not is_rollout_mode():
+    if not replay_enabled():
         return None
 
     if _litellm_rollout_wrapper is None:

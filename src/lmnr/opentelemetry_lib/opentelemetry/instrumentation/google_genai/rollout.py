@@ -1,203 +1,34 @@
 """
-Rollout wrapper for Google GenAI instrumentation.
+Debug replay wrapper for Google GenAI instrumentation.
 
-This module adds caching and override capabilities to Google GenAI instrumentation
-during rollout sessions.
+On a debug run with replay enabled, serves the first N spine LLM calls from the
+in-process `ReplayCache` (reconstructing a `GenerateContentResponse` from cached
+attributes) and runs the rest live. Overrides + HTTP cache server are gone (§H).
 """
 
 import json
 from typing import Any, AsyncGenerator, Generator
 
 from google.genai import types
-from opentelemetry.trace import Span
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
     is_model_valid,
     to_dict,
 )
+from lmnr.sdk.debug.replay import (
+    cached_payload_for,
+    mark_span_cached,
+    replay_enabled,
+    span_path_from_span,
+)
 from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.rollout.instrumentation import RolloutInstrumentationWrapper
-from lmnr.sdk.rollout_control import is_rollout_mode
 
 logger = get_default_logger(__name__)
 
 
-class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
-    """
-    Rollout wrapper specific to Google GenAI instrumentation.
-
-    Handles:
-    - Converting cached responses to Google GenAI format
-    - Applying overrides to system prompts and tool definitions
-    - Setting rollout-specific span attributes
-    """
-
-    def apply_google_genai_overrides(
-        self, kwargs: dict[str, Any], path: str, span: Span | None = None
-    ) -> dict[str, Any]:
-        """
-        Apply overrides to Google GenAI specific parameters.
-
-        Override mapping:
-        - system -> config.system_instruction
-        - tools -> config.tools or kwargs.tools
-
-        Args:
-            kwargs: Original kwargs for generate_content
-            path: Current span path for getting path-specific overrides
-
-        Returns:
-            dict[str, Any]: Modified kwargs
-        """
-        overrides = self.get_overrides(path)
-        if not overrides:
-            return kwargs
-
-        modified_kwargs = kwargs.copy()
-
-        # Apply system instruction override
-        if "system" in overrides:
-            system_override = overrides["system"]
-            logger.debug(f"Applying system override for {path}")
-
-            if span and span.is_recording():
-                try:
-                    if input_messages_raw := span.attributes.get(
-                        "gen_ai.input.messages"
-                    ):
-                        input_messages = json.loads(input_messages_raw)
-                        if input_messages and input_messages[0].get("role") == "system":
-                            input_messages[0]["parts"] = [{"text": system_override}]
-                            span.set_attribute(
-                                "gen_ai.input.messages",
-                                json.dumps(input_messages),
-                            )
-                except Exception:
-                    pass
-
-            # Ensure config exists
-            if "config" not in modified_kwargs or modified_kwargs["config"] is None:
-                modified_kwargs["config"] = {}
-
-            # Handle config as dict or types.GenerateContentConfig
-            if isinstance(modified_kwargs["config"], dict):
-                modified_kwargs["config"]["system_instruction"] = system_override
-            else:
-                # It's a GenerateContentConfig object - convert to dict, modify, and back
-                config_dict = (
-                    modified_kwargs["config"].__dict__.copy()
-                    if hasattr(modified_kwargs["config"], "__dict__")
-                    else {}
-                )
-                config_dict["system_instruction"] = system_override
-                modified_kwargs["config"] = config_dict
-
-        # Apply tool overrides
-        if "tools" in overrides:
-            tool_overrides = overrides["tools"]
-            logger.debug(
-                f"Applying tool overrides for {path}: {len(tool_overrides)} tools"
-            )
-
-            # Get existing tools from config or kwargs
-            existing_tools = None
-            if "config" in modified_kwargs and modified_kwargs["config"] is not None:
-                if isinstance(modified_kwargs["config"], dict):
-                    existing_tools = modified_kwargs["config"].get("tools")
-                else:
-                    existing_tools = getattr(modified_kwargs["config"], "tools", None)
-
-            if existing_tools is None:
-                existing_tools = modified_kwargs.get("tools")
-
-            # Apply overrides to tools
-            updated_tools = self._apply_tool_overrides(existing_tools, tool_overrides)
-
-            # Set updated tools back
-            if updated_tools is not None:
-                # Prefer setting in config
-                if "config" not in modified_kwargs or modified_kwargs["config"] is None:
-                    modified_kwargs["config"] = {}
-
-                if isinstance(modified_kwargs["config"], dict):
-                    modified_kwargs["config"]["tools"] = updated_tools
-                else:
-                    config_dict = (
-                        modified_kwargs["config"].__dict__.copy()
-                        if hasattr(modified_kwargs["config"], "__dict__")
-                        else {}
-                    )
-                    config_dict["tools"] = updated_tools
-                    modified_kwargs["config"] = config_dict
-
-        return modified_kwargs
-
-    def _apply_tool_overrides(
-        self,
-        existing_tools: list[Any] | None,
-        tool_overrides: list[dict[str, Any]],
-    ) -> list[types.Tool] | None:
-        """
-        Apply tool overrides to existing tools.
-
-        Args:
-            existing_tools: Existing tools (list of types.Tool or dicts)
-            tool_overrides: Override definitions with name, description, parameters
-
-        Returns:
-            Optional[List[types.Tool]]: Updated tools list
-        """
-        if not tool_overrides:
-            return existing_tools
-
-        # Convert existing tools to a workable format
-        tools_by_name: dict[str, types.FunctionDeclaration] = {}
-
-        if existing_tools:
-            for tool in existing_tools:
-                if isinstance(tool, types.Tool):
-                    for func_decl in tool.function_declarations or []:
-                        tools_by_name[func_decl.name] = func_decl
-                elif isinstance(tool, dict) and "function_declarations" in tool:
-                    for func_decl in tool["function_declarations"]:
-                        if isinstance(func_decl, types.FunctionDeclaration):
-                            tools_by_name[func_decl.name] = func_decl
-                        elif isinstance(func_decl, dict):
-                            tools_by_name[func_decl["name"]] = (
-                                types.FunctionDeclaration(**func_decl)
-                            )
-
-        # Apply overrides
-        for override in tool_overrides:
-            name = override.get("name")
-            if not name:
-                continue
-
-            if name in tools_by_name:
-                # Update existing tool
-                existing_decl = tools_by_name[name]
-                updated_decl = types.FunctionDeclaration(
-                    name=name,
-                    description=override.get("description", existing_decl.description),
-                    parameters=override.get("parameters", existing_decl.parameters),
-                )
-                tools_by_name[name] = updated_decl
-            else:
-                # Add new tool if it has parameters
-                if "parameters" in override:
-                    new_decl = types.FunctionDeclaration(
-                        name=name,
-                        description=override.get("description"),
-                        parameters=override["parameters"],
-                    )
-                    tools_by_name[name] = new_decl
-
-        # Convert back to list of Tool objects
-        if tools_by_name:
-            return [types.Tool(function_declarations=list(tools_by_name.values()))]
-
-        return None
+class GoogleGenAIRolloutWrapper:
+    """Serves cached Google GenAI responses on a debug run; runs live otherwise."""
 
     def _parse_output_json(self, output_str: str) -> Any:
         """
@@ -448,71 +279,22 @@ class GoogleGenAIRolloutWrapper(RolloutInstrumentationWrapper):
         Returns:
             GenerateContentResponse (cached or live), or Generator/AsyncGenerator
         """
-        # Check if rollout mode is active
-        if not self.should_use_rollout():
-            if is_async:
-                return wrapped(*args, **kwargs)
-            else:
-                return wrapped(*args, **kwargs)
-
-        # Get span path
-        span_path = self.get_span_path()
-        if not span_path:
-            if is_async:
-                return wrapped(*args, **kwargs)
-            else:
-                return wrapped(*args, **kwargs)
-
-        # Get current call index
-        current_index = self.get_current_index_for_path(span_path)
-
-        logger.debug(f"Google GenAI call at {span_path}:{current_index}")
         span = Laminar.get_current_span()
+        span_path = span_path_from_span(span)
+        cached = cached_payload_for(span_path)
+        if cached is not None:
+            config = kwargs.get("config")
+            response = self.cached_response_to_google_genai(cached, config)
+            if response is not None:
+                logger.debug("Replaying cached Google GenAI response at %s", span_path)
+                mark_span_cached(span)
+                if is_streaming:
+                    if is_async:
+                        return self._create_async_cached_stream(response)
+                    return self._create_cached_stream(response)
+                return response
 
-        # Check cache
-        if self.should_use_cache(span_path, current_index):
-            cached_span = self.get_cached_response(span_path, current_index)
-            if cached_span:
-                logger.debug(
-                    f"Using cached response for Google GenAI at {span_path}:{current_index}"
-                )
-
-                # Get config for structured output handling
-                config = kwargs.get("config")
-
-                # Convert cached data to Google GenAI response
-                response = self.cached_response_to_google_genai(cached_span, config)
-                if response:
-                    # Mark span as cached (if span is available)
-                    try:
-
-                        if span and span.is_recording():
-                            span.set_attributes(
-                                {
-                                    "lmnr.span.type": "CACHED",
-                                    "lmnr.rollout.cache_index": current_index,
-                                    "lmnr.span.original_type": "LLM",
-                                }
-                            )
-                    except Exception:
-                        pass
-
-                    # For streaming methods, wrap response in a generator
-                    if is_streaming:
-                        if is_async:
-                            return self._create_async_cached_stream(response)
-                        else:
-                            return self._create_cached_stream(response)
-
-                    return response
-
-        # Cache miss or conversion failed - apply overrides and execute
-        modified_kwargs = self.apply_google_genai_overrides(kwargs, span_path, span)
-
-        logger.debug(
-            f"Executing live Google GenAI call for {span_path}:{current_index}"
-        )
-        return wrapped(*args, **modified_kwargs)
+        return wrapped(*args, **kwargs)
 
     def _create_cached_stream(
         self, response: types.GenerateContentResponse
@@ -556,14 +338,14 @@ def get_google_genai_rollout_wrapper() -> GoogleGenAIRolloutWrapper | None:
     """
     global _google_genai_rollout_wrapper
 
-    if not is_rollout_mode():
+    if not replay_enabled():
         return None
 
     if _google_genai_rollout_wrapper is None:
         try:
             _google_genai_rollout_wrapper = GoogleGenAIRolloutWrapper()
         except Exception as e:
-            logger.error(f"Failed to create Google GenAI rollout wrapper: {e}")
+            logger.error(f"Failed to create Google GenAI replay wrapper: {e}")
             return None
 
     return _google_genai_rollout_wrapper
@@ -571,17 +353,17 @@ def get_google_genai_rollout_wrapper() -> GoogleGenAIRolloutWrapper | None:
 
 def wrap_google_genai_for_rollout():
     """
-    Apply rollout wrapper to Google GenAI instrumentation.
+    Apply the replay wrapper to Google GenAI instrumentation.
 
     This should be called at the end of the instrumentation process
-    if rollout mode is active.
+    if a debug replay run is active.
     """
-    if not is_rollout_mode():
+    if not replay_enabled():
         return
 
     wrapper = get_google_genai_rollout_wrapper()
     if not wrapper:
-        logger.warning("Debugger mode active but failed to create wrapper")
+        logger.warning("Debug replay active but failed to create wrapper")
         return
 
-    logger.debug("Google GenAI debugger wrapper initialized")
+    logger.debug("Google GenAI replay wrapper initialized")

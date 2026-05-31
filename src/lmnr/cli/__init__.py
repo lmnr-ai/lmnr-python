@@ -3,7 +3,6 @@ import asyncio
 
 from lmnr.cli.datasets import handle_datasets_command
 from lmnr.cli.dev import run_dev
-from lmnr.cli.discover import run_discover
 from lmnr.cli.evals import run_evaluation
 from lmnr.cli.rules import add_cursor_rules
 from lmnr.sdk.log import get_default_logger
@@ -84,34 +83,6 @@ def setup_dev_parser(subparsers: _SubParsersAction) -> None:
         default=None,
     )
     setup_laminar_args(parser_dev)
-
-
-def setup_discover_parser(subparsers: _SubParsersAction) -> None:
-    """Setup the discover subcommand parser."""
-    parser_discover = subparsers.add_parser(
-        "discover",
-        description="Internal command for discovering entrypoint function metadata",
-        help="Discover entrypoint function metadata (internal command for CLI)",
-    )
-
-    # Mutually exclusive group for file vs module
-    mode_group = parser_discover.add_mutually_exclusive_group(required=True)
-    mode_group.add_argument(
-        "--file",
-        help="Path to Python file containing entrypoint function(s)",
-    )
-    mode_group.add_argument(
-        "--module",
-        "-m",
-        help="Python module path (e.g., src.myfile)",
-    )
-
-    parser_discover.add_argument(
-        "--function",
-        "-f",
-        help="Specific function name to discover. If not provided, discovers all entrypoints.",
-        default=None,
-    )
 
 
 def setup_add_cursor_rules_parser(subparsers: _SubParsersAction) -> None:
@@ -328,7 +299,6 @@ def cli() -> None:
     # Setup all subcommand parsers
     setup_eval_parser(subparsers)
     setup_dev_parser(subparsers)
-    setup_discover_parser(subparsers)
     setup_add_cursor_rules_parser(subparsers)
     setup_datasets_parser(subparsers)
 
@@ -339,8 +309,6 @@ def cli() -> None:
         asyncio.run(run_evaluation(parsed))
     elif parsed.subcommand == "dev":
         asyncio.run(run_dev(parsed))
-    elif parsed.subcommand == "discover":
-        run_discover(parsed)
     elif parsed.subcommand == "add-cursor-rules":
         add_cursor_rules()
     elif parsed.subcommand == "datasets":

@@ -456,10 +456,10 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     _set_request_attributes(span, args, kwargs)
 
     try:
-        # Check for rollout mode and apply caching/overrides
-        from lmnr.sdk.rollout_control import is_rollout_mode
+        # Check for debug replay mode and serve cached responses if available
+        from lmnr.sdk.debug.replay import replay_enabled
 
-        is_rollout = is_rollout_mode()
+        is_rollout = replay_enabled()
     except Exception:
         is_rollout = False
 
@@ -520,10 +520,10 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     _set_request_attributes(span, args, kwargs)
 
     try:
-        # Check for rollout mode and apply caching/overrides
-        from lmnr.sdk.rollout_control import is_rollout_mode
+        # Check for debug replay mode and serve cached responses if available
+        from lmnr.sdk.debug.replay import replay_enabled
 
-        is_rollout = is_rollout_mode()
+        is_rollout = replay_enabled()
     except Exception:
         is_rollout = False
 

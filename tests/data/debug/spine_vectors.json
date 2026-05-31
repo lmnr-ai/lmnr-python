@@ -1,0 +1,76 @@
+{
+  "description": "Cross-language parity vectors for spine detection (detect_spine / detectSpine). Each span has span_path, span_type, start_time, end_time. 'expect.spine_path' is null when there are no LLM spans. 'expect.spine_starts' lists the chosen spine calls' start_time values in execution order.",
+  "cases": [
+    {
+      "name": "no-llm-spans",
+      "spans": [
+        { "span_path": "agent", "span_type": "DEFAULT", "start_time": 0.0, "end_time": 1.0 },
+        { "span_path": "agent.tool", "span_type": "TOOL", "start_time": 0.1, "end_time": 0.9 }
+      ],
+      "expect": { "spine_path": null, "spine_starts": [] }
+    },
+    {
+      "name": "single-llm-call-fallback",
+      "spans": [
+        { "span_path": "agent.llm", "span_type": "LLM", "start_time": 0.2, "end_time": 0.8 }
+      ],
+      "expect": { "spine_path": "agent.llm", "spine_starts": [0.2] }
+    },
+    {
+      "name": "looping-path-preferred-over-single",
+      "spans": [
+        { "span_path": "agent.deep.llm", "span_type": "LLM", "start_time": 0.0, "end_time": 0.5 },
+        { "span_path": "agent.loop.llm", "span_type": "LLM", "start_time": 1.0, "end_time": 1.5 },
+        { "span_path": "agent.loop.llm", "span_type": "LLM", "start_time": 2.0, "end_time": 2.5 },
+        { "span_path": "agent.loop.llm", "span_type": "LLM", "start_time": 3.0, "end_time": 3.5 }
+      ],
+      "expect": { "spine_path": "agent.loop.llm", "spine_starts": [1.0, 2.0, 3.0] }
+    },
+    {
+      "name": "shallowest-looping-path-wins",
+      "spans": [
+        { "span_path": "a.b.c.llm", "span_type": "LLM", "start_time": 0.0, "end_time": 0.5 },
+        { "span_path": "a.b.c.llm", "span_type": "LLM", "start_time": 1.0, "end_time": 1.5 },
+        { "span_path": "a.llm", "span_type": "LLM", "start_time": 2.0, "end_time": 2.5 },
+        { "span_path": "a.llm", "span_type": "LLM", "start_time": 3.0, "end_time": 3.5 }
+      ],
+      "expect": { "spine_path": "a.llm", "spine_starts": [2.0, 3.0] }
+    },
+    {
+      "name": "tie-break-earliest-start-among-same-depth-loops",
+      "spans": [
+        { "span_path": "x.late", "span_type": "LLM", "start_time": 5.0, "end_time": 5.5 },
+        { "span_path": "x.late", "span_type": "LLM", "start_time": 6.0, "end_time": 6.5 },
+        { "span_path": "x.early", "span_type": "LLM", "start_time": 1.0, "end_time": 1.5 },
+        { "span_path": "x.early", "span_type": "LLM", "start_time": 2.0, "end_time": 2.5 }
+      ],
+      "expect": { "spine_path": "x.early", "spine_starts": [1.0, 2.0] }
+    },
+    {
+      "name": "calls-sorted-by-start-time",
+      "spans": [
+        { "span_path": "loop.llm", "span_type": "LLM", "start_time": 3.0, "end_time": 3.5 },
+        { "span_path": "loop.llm", "span_type": "LLM", "start_time": 1.0, "end_time": 1.5 },
+        { "span_path": "loop.llm", "span_type": "LLM", "start_time": 2.0, "end_time": 2.5 }
+      ],
+      "expect": { "spine_path": "loop.llm", "spine_starts": [1.0, 2.0, 3.0] }
+    },
+    {
+      "name": "fallback-shallowest-single-call",
+      "spans": [
+        { "span_path": "a.b.llm", "span_type": "LLM", "start_time": 1.0, "end_time": 1.5 },
+        { "span_path": "a.llm", "span_type": "LLM", "start_time": 2.0, "end_time": 2.5 }
+      ],
+      "expect": { "spine_path": "a.llm", "spine_starts": [2.0] }
+    },
+    {
+      "name": "non-llm-spans-ignored",
+      "spans": [
+        { "span_path": "agent.tool", "span_type": "TOOL", "start_time": 0.0, "end_time": 0.5 },
+        { "span_path": "agent.loop.llm", "span_type": "LLM", "start_time": 1.0, "end_time": 1.5 },
+        { "span_path": "agent.loop.llm", "span_type": "LLM", "start_time": 2.0, "end_time": 2.5 }
+      ],
+      "expect": { "spine_path": "agent.loop.llm", "spine_starts": [1.0, 2.0] }
+    }
+  ]
+}

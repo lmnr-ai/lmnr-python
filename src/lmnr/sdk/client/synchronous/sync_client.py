@@ -13,7 +13,6 @@ from lmnr.sdk.client.synchronous.resources import (
     Evals,
     Evaluators,
     Tags,
-    Rollout,
     Sql,
     Traces,
 )
@@ -30,7 +29,6 @@ class LaminarClient:
     __evals: Evals | None = None
     __tags: Tags | None = None
     __evaluators: Evaluators | None = None
-    __rollout: Rollout | None = None
 
     def __init__(
         self,
@@ -107,7 +105,6 @@ class LaminarClient:
         self.__datasets = Datasets(
             self.__client, self.__base_url, self.__project_api_key
         )
-        self.__rollout = Rollout(self.__client, self.__base_url, self.__project_api_key)
         self.__sql = Sql(self.__client, self.__base_url, self.__project_api_key)
         self.__traces = Traces(self.__client, self.__base_url, self.__project_api_key)
 
@@ -155,15 +152,6 @@ class LaminarClient:
             Datasets: The Datasets resource instance.
         """
         return self.__datasets
-
-    @property
-    def rollout(self) -> Rollout:
-        """Get the Rollout resource.
-
-        Returns:
-            Rollout: The Rollout resource instance.
-        """
-        return self.__rollout
 
     @property
     def sql(self) -> Sql:

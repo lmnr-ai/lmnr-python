@@ -3,7 +3,6 @@ from lmnr.sdk.client.asynchronous.resources.datasets import AsyncDatasets
 from lmnr.sdk.client.asynchronous.resources.evals import AsyncEvals
 from lmnr.sdk.client.asynchronous.resources.tags import AsyncTags
 from lmnr.sdk.client.asynchronous.resources.evaluators import AsyncEvaluators
-from lmnr.sdk.client.asynchronous.resources.rollout import AsyncRollout
 from lmnr.sdk.client.asynchronous.resources.sql import AsyncSql
 from lmnr.sdk.client.asynchronous.resources.traces import AsyncTraces
 
@@ -12,7 +11,6 @@ __all__ = [
     "AsyncBrowserEvents",
     "AsyncTags",
     "AsyncEvaluators",
-    "AsyncRollout",
     "AsyncSql",
     "AsyncDatasets",
     "AsyncTraces",

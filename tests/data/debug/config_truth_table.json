@@ -1,0 +1,139 @@
+{
+  "description": "Cross-language parity vectors for DebugConfig (build_debug_config / buildDebugConfig). 'env' is the process environment subset; 'expect' is null when debug mode is off, otherwise the expected config fields. 'replay_enabled' asserts the derived property.",
+  "cases": [
+    {
+      "name": "debug-off-absent",
+      "env": {},
+      "expect": null
+    },
+    {
+      "name": "debug-off-false",
+      "env": { "LMNR_DEBUG": "false" },
+      "expect": null
+    },
+    {
+      "name": "debug-off-zero",
+      "env": { "LMNR_DEBUG": "0" },
+      "expect": null
+    },
+    {
+      "name": "debug-off-garbage",
+      "env": { "LMNR_DEBUG": "maybe" },
+      "expect": null
+    },
+    {
+      "name": "debug-on-true",
+      "env": { "LMNR_DEBUG": "true", "LMNR_DEBUG_SESSION_ID": "sess-1" },
+      "expect": {
+        "session_id": "sess-1",
+        "replay_trace_id": null,
+        "cache_until": 0,
+        "replay_enabled": false
+      }
+    },
+    {
+      "name": "debug-on-mixed-case",
+      "env": { "LMNR_DEBUG": "TRUE", "LMNR_DEBUG_SESSION_ID": "sess-2" },
+      "expect": {
+        "session_id": "sess-2",
+        "replay_trace_id": null,
+        "cache_until": 0,
+        "replay_enabled": false
+      }
+    },
+    {
+      "name": "debug-on-yes",
+      "env": { "LMNR_DEBUG": "yes", "LMNR_DEBUG_SESSION_ID": "sess-3" },
+      "expect": {
+        "session_id": "sess-3",
+        "replay_trace_id": null,
+        "cache_until": 0,
+        "replay_enabled": false
+      }
+    },
+    {
+      "name": "debug-on-on",
+      "env": { "LMNR_DEBUG": "on", "LMNR_DEBUG_SESSION_ID": "sess-4" },
+      "expect": {
+        "session_id": "sess-4",
+        "replay_trace_id": null,
+        "cache_until": 0,
+        "replay_enabled": false
+      }
+    },
+    {
+      "name": "replay-enabled",
+      "env": {
+        "LMNR_DEBUG": "1",
+        "LMNR_DEBUG_SESSION_ID": "sess-5",
+        "LMNR_DEBUG_REPLAY_TRACE_ID": "11111111-1111-1111-1111-111111111111",
+        "LMNR_DEBUG_CACHE_UNTIL": "3"
+      },
+      "expect": {
+        "session_id": "sess-5",
+        "replay_trace_id": "11111111-1111-1111-1111-111111111111",
+        "cache_until": 3,
+        "replay_enabled": true
+      }
+    },
+    {
+      "name": "replay-trace-set-but-cache-zero",
+      "env": {
+        "LMNR_DEBUG": "1",
+        "LMNR_DEBUG_SESSION_ID": "sess-6",
+        "LMNR_DEBUG_REPLAY_TRACE_ID": "22222222-2222-2222-2222-222222222222",
+        "LMNR_DEBUG_CACHE_UNTIL": "0"
+      },
+      "expect": {
+        "session_id": "sess-6",
+        "replay_trace_id": "22222222-2222-2222-2222-222222222222",
+        "cache_until": 0,
+        "replay_enabled": false
+      }
+    },
+    {
+      "name": "cache-set-but-no-replay-trace",
+      "env": {
+        "LMNR_DEBUG": "1",
+        "LMNR_DEBUG_SESSION_ID": "sess-7",
+        "LMNR_DEBUG_CACHE_UNTIL": "5"
+      },
+      "expect": {
+        "session_id": "sess-7",
+        "replay_trace_id": null,
+        "cache_until": 5,
+        "replay_enabled": false
+      }
+    },
+    {
+      "name": "cache-negative-clamped",
+      "env": {
+        "LMNR_DEBUG": "1",
+        "LMNR_DEBUG_SESSION_ID": "sess-8",
+        "LMNR_DEBUG_REPLAY_TRACE_ID": "33333333-3333-3333-3333-333333333333",
+        "LMNR_DEBUG_CACHE_UNTIL": "-4"
+      },
+      "expect": {
+        "session_id": "sess-8",
+        "replay_trace_id": "33333333-3333-3333-3333-333333333333",
+        "cache_until": 0,
+        "replay_enabled": false
+      }
+    },
+    {
+      "name": "cache-non-numeric-clamped",
+      "env": {
+        "LMNR_DEBUG": "1",
+        "LMNR_DEBUG_SESSION_ID": "sess-9",
+        "LMNR_DEBUG_REPLAY_TRACE_ID": "44444444-4444-4444-4444-444444444444",
+        "LMNR_DEBUG_CACHE_UNTIL": "lots"
+      },
+      "expect": {
+        "session_id": "sess-9",
+        "replay_trace_id": "44444444-4444-4444-4444-444444444444",
+        "cache_until": 0,
+        "replay_enabled": false
+      }
+    }
+  ]
+}
