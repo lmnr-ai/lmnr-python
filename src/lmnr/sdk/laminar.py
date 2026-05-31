@@ -1246,6 +1246,15 @@ class Laminar:
     @classmethod
     def shutdown(cls):
         if cls.is_initialized():
+            # Emit the debug run pointer before shutting down tracing so flows
+            # that shut down without terminating the process still get
+            # LMNR_DEBUG_RUN + .lmnr/last-run.json. Idempotent — the atexit hook
+            # is a fallback.
+            from lmnr.sdk.debug import get_runtime
+
+            runtime = get_runtime()
+            if runtime is not None:
+                runtime.emit_pointer()
             TracerManager.shutdown()
             cls.__initialized = False
 
