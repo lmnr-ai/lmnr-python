@@ -110,6 +110,13 @@ class LaminarSpanProcessor(SpanProcessor):
             self.__span_id_to_path[span_context.span_id] = span_path
             self.__span_id_lists[span_context.span_id] = span_ids_path
 
+        # On a debug run, remember the root trace id so the run pointer (§5) can
+        # be emitted at shutdown. Done before the is_disabled return: a debug run
+        # may keep replaying with tracing disabled, and the pointer still needs a
+        # trace id.
+        if span.parent is None:
+            self._record_debug_trace_id(span)
+
         if is_disabled:
             return
 
@@ -151,11 +158,6 @@ class LaminarSpanProcessor(SpanProcessor):
             graph_context = get_value("lmnr.langgraph.graph") or {}
             for key, value in graph_context.items():
                 span.set_attribute(f"lmnr.association.properties.{key}", value)
-
-        # On a debug run, remember the root trace id so the run pointer (§5) can
-        # be emitted at shutdown.
-        if span.parent is None:
-            self._record_debug_trace_id(span)
 
         with self._instance_lock:
             self.instance.on_start(span, parent_context)

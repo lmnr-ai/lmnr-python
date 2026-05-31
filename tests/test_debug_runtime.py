@@ -12,6 +12,19 @@ def _reset_runtime():
     reset_debug_runtime()
 
 
+class _NoopExporter:
+    def export(self, spans):
+        from opentelemetry.sdk.trace.export import SpanExportResult
+
+        return SpanExportResult.SUCCESS
+
+    def shutdown(self):
+        pass
+
+    def force_flush(self, timeout_millis=30000):
+        return True
+
+
 def _config(**kwargs) -> DebugConfig:
     base = {"session_id": "s", "replay_trace_id": "r", "cache_until": 2}
     base.update(kwargs)
@@ -99,6 +112,47 @@ def test_record_debug_trace_id_from_env_populates_pointer(monkeypatch):
         is_remote=True,
     )
     Laminar._record_debug_trace_id_from_env(span_context)
+
+    assert runtime._trace_id == str(trace_id)
+    _reset_runtime()
+
+
+def test_processor_records_trace_id_when_tracing_disabled(monkeypatch):
+    # Even with LMNR_DISABLE_TRACING=true the processor must record the root
+    # trace id, otherwise the shutdown pointer emits an empty trace_id while
+    # replay (gated only on get_runtime() is not None) may still be active.
+    import uuid as _uuid
+
+    from opentelemetry import trace as _trace
+
+    from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
+
+    _reset_runtime()
+    runtime = DebugRuntime(_config(), cache=None, debugger_url=None)
+    monkeypatch.setattr("lmnr.sdk.debug._runtime", runtime)
+    monkeypatch.setenv("LMNR_DISABLE_TRACING", "true")
+
+    trace_id = _uuid.UUID("01234567-89ab-cdef-0123-456789abcdef")
+
+    class _FakeSpan:
+        def __init__(self):
+            self.parent = None
+            self.name = "root"
+            self.attributes = {}
+            self._ctx = _trace.SpanContext(
+                trace_id=trace_id.int,
+                span_id=0x0123456789ABCDEF,
+                is_remote=False,
+            )
+
+        def get_span_context(self):
+            return self._ctx
+
+        def set_attribute(self, key, value):
+            self.attributes[key] = value
+
+    processor = LaminarSpanProcessor(exporter=_NoopExporter(), disable_batch=True)
+    processor.on_start(_FakeSpan())
 
     assert runtime._trace_id == str(trace_id)
     _reset_runtime()
