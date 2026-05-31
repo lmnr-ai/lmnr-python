@@ -20,8 +20,19 @@ SPAN_PATH_ATTRIBUTE = "lmnr.span.path"
 
 
 def replay_enabled() -> bool:
-    """True when this process is a debug run with a replay cache."""
-    return get_runtime() is not None
+    """True when this process is a debug run with replay configured.
+
+    Replay configured means a source trace + a non-zero cache window. A
+    debug-no-replay run (`LMNR_DEBUG` set but no `LMNR_DEBUG_REPLAY_TRACE_ID` /
+    `LMNR_DEBUG_CACHE_UNTIL`) returns False — the provider wrappers then skip the
+    cache lookup entirely instead of advancing a per-path occurrence counter
+    against a cache that will never be built. (Python builds the cache
+    synchronously, so unlike TS there is no `_cache is None` window where replay
+    is configured but the cache is still loading; the getter mirrors TS anyway
+    for line-parity.)
+    """
+    runtime = get_runtime()
+    return runtime is not None and runtime.replay_configured
 
 
 def span_path_from_span(span: Span | None) -> str | None:

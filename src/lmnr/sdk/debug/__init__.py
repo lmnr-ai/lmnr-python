@@ -62,6 +62,11 @@ class DebugRuntime:
     def replay_trace_id(self) -> str | None:
         return self._config.replay_trace_id
 
+    @property
+    def replay_configured(self) -> bool:
+        """True when replay is configured (source trace + cache window)."""
+        return self._config.replay_enabled
+
     def record_trace_id(self, trace_id: str) -> None:
         """Remember the root trace id of this run (first root span wins)."""
         with self._lock:

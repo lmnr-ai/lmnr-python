@@ -38,6 +38,18 @@ def test_replay_enabled_reflects_runtime():
     _reset_runtime()
 
 
+def test_replay_enabled_false_for_debug_no_replay_runtime():
+    # A debug runtime with no source trace / cache window (debug-no-replay) must
+    # NOT enable replay — otherwise the provider wrappers advance a per-path
+    # occurrence counter against a cache that will never be built.
+    _reset_runtime()
+    debug._runtime = DebugRuntime(
+        DebugConfig("s", None, 0), cache=None, debugger_url=None
+    )
+    assert replay_enabled() is False
+    _reset_runtime()
+
+
 def test_span_path_from_span_joins_with_dot():
     span = _FakeSpan({"lmnr.span.path": ["agent", "loop", "llm"]})
     assert span_path_from_span(span) == "agent.loop.llm"
