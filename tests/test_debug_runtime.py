@@ -53,6 +53,21 @@ def test_runtime_get_cached_no_cache_returns_none():
     assert runtime.get_cached("loop.llm") is None
 
 
+def test_runtime_get_cached_advances_while_cache_loading():
+    # Mirrors the TS async-fill window: calls before set_cache must still
+    # advance the counter so post-load calls resume at the right slot.
+    runtime = DebugRuntime(_config(), cache=None, debugger_url=None)
+    assert runtime.get_cached("loop.llm") is None
+
+    runtime._cache = ReplayCache(
+        "loop.llm", cache_until=2, payloads=[{"o": 0}, {"o": 1}]
+    )
+
+    # First live call consumed occurrence 0; the cache resumes at 1.
+    assert runtime.get_cached("loop.llm") == {"o": 1}
+    assert runtime.get_cached("loop.llm") is None
+
+
 def test_record_trace_id_first_wins():
     runtime = DebugRuntime(_config(), cache=None, debugger_url=None)
     runtime.record_trace_id("trace-a")

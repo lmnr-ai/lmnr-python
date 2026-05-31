@@ -5,7 +5,6 @@ populated, only for the first N occurrences. Replaces the old dev-server
 `_path_to_index` + HTTP `POST /cached` machinery.
 """
 
-import threading
 from typing import Any
 
 from lmnr.sdk.log import get_default_logger
@@ -14,7 +13,7 @@ logger = get_default_logger(__name__)
 
 
 class ReplayCache:
-    """Holds cached spine responses and tracks per-path occurrence counters."""
+    """Holds cached spine responses, indexed by occurrence on the spine path."""
 
     def __init__(
         self,
@@ -26,8 +25,6 @@ class ReplayCache:
         self._spine_path = spine_path
         self._cache_until = cache_until
         self._payloads = payloads[:cache_until]
-        self._counters: dict[str, int] = {}
-        self._lock = threading.Lock()
 
     @property
     def spine_path(self) -> str:
@@ -36,13 +33,6 @@ class ReplayCache:
     @property
     def cache_until(self) -> int:
         return self._cache_until
-
-    def next_occurrence(self, span_path: str) -> int:
-        """Return the current occurrence index for a path and increment it."""
-        with self._lock:
-            occ = self._counters.get(span_path, 0)
-            self._counters[span_path] = occ + 1
-            return occ
 
     def get_cached(self, span_path: str, occurrence: int) -> dict[str, Any] | None:
         """Return the cached payload to replay, or None to run live (§8)."""

@@ -48,6 +48,7 @@ class DebugRuntime:
         self._trace_id: str | None = None
         self._emitted = False
         self._lock = threading.Lock()
+        self._counters: dict[str, int] = {}
 
     @property
     def session_id(self) -> str:
@@ -67,11 +68,16 @@ class DebugRuntime:
         """Return the cached payload to replay for the next occurrence, or None.
 
         Increments the per-path occurrence counter as a side effect, mirroring a
-        live call consuming one slot of the cache window.
+        live call consuming one slot of the cache window. The counter is owned by
+        the runtime (not the cache) so it advances even while the cache is still
+        loading (`_cache is None`); this keeps record-vs-replay alignment for
+        parity with the TS SDK, whose cache fills in asynchronously.
         """
+        with self._lock:
+            occurrence = self._counters.get(span_path, 0)
+            self._counters[span_path] = occurrence + 1
         if self._cache is None:
             return None
-        occurrence = self._cache.next_occurrence(span_path)
         return self._cache.get_cached(span_path, occurrence)
 
     def emit_pointer(self) -> None:
