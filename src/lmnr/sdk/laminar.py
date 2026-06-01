@@ -292,8 +292,6 @@ class Laminar:
         cls.__base_http_url = f"{http_url}:{http_port or 443}"
         cls.__global_metadata = metadata or {}
 
-        cls._init_debug_runtime(base_url=url, http_port=http_port)
-
         if not os.getenv("OTEL_ATTRIBUTE_COUNT_LIMIT"):
             # each message is at least 2 attributes: role and content,
             # but the default attribute limit is 128, so raise it
@@ -316,6 +314,18 @@ class Laminar:
             session_recording_options=session_recording_options,
             force_http=force_http,
         )
+
+        # Build the debug runtime only after tracing is up. It has no dependency
+        # on TracerManager.init (which never reads the runtime or global
+        # metadata), so running it here means a tracer-init failure aborts before
+        # any debug side effects — backend session registration, the
+        # `rollout.session_id` stamp, the atexit pointer hook — instead of
+        # leaving them live on a process whose tracing never came up. It must
+        # still precede the metadata-context attach below so `rollout.session_id`
+        # lands on the OTEL context, and `_initialize_context_from_env` so the
+        # runtime is registered before the inherited trace id is recorded.
+        cls._init_debug_runtime(base_url=url, http_port=http_port)
+
         with get_tracer_with_context() as (tracer, isolated_context):
             new_ctx = context_api.set_value(
                 CONTEXT_METADATA_KEY, cls.__global_metadata, isolated_context

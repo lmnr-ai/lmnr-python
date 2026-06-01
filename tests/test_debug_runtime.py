@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from lmnr.sdk.debug import (
     DebugRuntime,
     get_runtime,
@@ -495,3 +497,41 @@ def test_init_survives_registration_failure(monkeypatch):
     assert runtime is not None  # init still completed
     assert len(spy.rollout_sessions.registered) == 1
     _reset_runtime()
+
+
+def test_init_does_not_build_debug_runtime_when_tracing_fails(monkeypatch):
+    # If TracerManager.init() raises, initialize() must abort BEFORE any debug
+    # side effects: no backend session registration and no debug runtime left
+    # live on a process whose tracing never came up.
+    import os
+
+    from lmnr.sdk.laminar import Laminar
+
+    _reset_runtime()
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.delenv("LMNR_DEBUG_REPLAY_TRACE_ID", raising=False)
+    monkeypatch.delenv("LMNR_DEBUG_CACHE_UNTIL", raising=False)
+
+    spy = _SpyDebugClient()
+    monkeypatch.setattr(
+        "lmnr.sdk.client.synchronous.sync_client.LaminarClient",
+        lambda *a, **k: spy,
+    )
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("tracer down")
+
+    monkeypatch.setattr("lmnr.opentelemetry_lib.TracerManager.init", _boom)
+    monkeypatch.setattr(Laminar, "_Laminar__initialized", False, raising=False)
+
+    with patch.dict(os.environ, {"LMNR_PROJECT_API_KEY": "k"}):
+        try:
+            Laminar.initialize(project_api_key="k")
+        except RuntimeError:
+            pass
+
+    # Tracer init failed before _init_debug_runtime ran: no runtime, no session.
+    assert get_runtime() is None
+    assert spy.rollout_sessions.registered == []
+    _reset_runtime()
+    monkeypatch.setattr(Laminar, "_Laminar__initialized", False, raising=False)
