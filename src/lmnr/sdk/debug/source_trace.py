@@ -147,4 +147,8 @@ def _row_to_cached_span(row: dict[str, Any]) -> dict[str, Any]:
         "input": row.get("input") or "",
         "output": row.get("output") or "",
         "attributes": attributes or {},
+        # Epoch nanoseconds: the provider wrappers divide by 1e9 to populate the
+        # replayed response's `created` field (e.g. cached_response_to_openai).
+        # `_to_epoch` yields epoch seconds, so scale to ns here.
+        "start_time": int(_to_epoch(row.get("start_time")) * 1_000_000_000),
     }

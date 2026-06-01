@@ -1,6 +1,10 @@
 import datetime
 
-from lmnr.sdk.debug.source_trace import _to_epoch, fetch_spine_metadata
+from lmnr.sdk.debug.source_trace import (
+    _to_epoch,
+    fetch_spine_metadata,
+    fetch_spine_payloads,
+)
 from lmnr.sdk.debug.spine import has_overlap
 
 
@@ -66,3 +70,19 @@ def test_to_epoch_lexical_fallback_preserves_order():
     b = "2024-02-15T10:30:45!"
     assert a < b
     assert _to_epoch(a) < _to_epoch(b)
+
+
+def test_payload_carries_start_time_in_nanoseconds():
+    # The provider wrappers (e.g. cached_response_to_openai) divide start_time
+    # by 1e9 to populate the replayed response's `created` field, so the payload
+    # must carry epoch NANOSECONDS — not the raw ISO string or epoch seconds.
+    ts = "2024-01-15T10:30:45.123456Z"
+    expected_ns = int(_to_epoch(ts) * 1_000_000_000)
+    client = _FakeClient(
+        [{"name": "openai.chat", "input": "", "output": "", "start_time": ts}]
+    )
+
+    payloads = fetch_spine_payloads(client, "trace-1", "loop.llm")
+
+    assert payloads[0]["start_time"] == expected_ns
+    assert int(payloads[0]["start_time"] / 1_000_000_000) == int(_to_epoch(ts))
