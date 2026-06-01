@@ -538,7 +538,7 @@ class LiteLLMRolloutWrapper:
         cached = cached_payload_for(span_path)
         if cached is not None:
             response = self.cached_response_to_completion(cached)
-            if response:
+            if response is not None:
                 logger.debug("Replaying cached LiteLLM completion at %s", span_path)
                 mark_span_cached(span)
                 if is_streaming:
@@ -561,7 +561,7 @@ class LiteLLMRolloutWrapper:
         cached = cached_payload_for(span_path)
         if cached is not None:
             response = self.cached_response_to_responses(cached)
-            if response:
+            if response is not None:
                 logger.debug("Replaying cached LiteLLM responses at %s", span_path)
                 mark_span_cached(span)
                 if is_streaming:
