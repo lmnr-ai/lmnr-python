@@ -11,6 +11,7 @@ _DEBUG_ENV_KEYS = (
     "LMNR_DEBUG_SESSION_ID",
     "LMNR_DEBUG_REPLAY_TRACE_ID",
     "LMNR_DEBUG_CACHE_UNTIL",
+    "LMNR_DEBUG_FROM_LAST_RUN",
 )
 
 _VECTORS = json.loads(
@@ -55,3 +56,70 @@ def test_session_id_defaults_to_uuid(monkeypatch):
 def test_disabled_when_env_absent():
     assert os.environ.get("LMNR_DEBUG") is None
     assert build_debug_config() is None
+
+
+def _write_last_run(tmp_path: Path, payload: dict) -> None:
+    pointer_dir = tmp_path / ".lmnr"
+    pointer_dir.mkdir(parents=True, exist_ok=True)
+    (pointer_dir / "last-run.json").write_text(json.dumps(payload))
+
+
+def test_from_last_run_seeds_replay_from_pointer(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_last_run(
+        tmp_path,
+        {
+            "trace_id": "trace-abc",
+            "session_id": "session-xyz",
+            "cache_until": 5,
+        },
+    )
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.setenv("LMNR_DEBUG_FROM_LAST_RUN", "true")
+
+    config = build_debug_config()
+    assert config is not None
+    assert config.replay_trace_id == "trace-abc"
+    assert config.session_id == "session-xyz"
+    assert config.cache_until == 5
+    assert config.replay_enabled is True
+
+
+def test_from_last_run_env_overrides_per_field(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_last_run(
+        tmp_path,
+        {"trace_id": "trace-abc", "session_id": "session-xyz", "cache_until": 5},
+    )
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.setenv("LMNR_DEBUG_FROM_LAST_RUN", "true")
+    monkeypatch.setenv("LMNR_DEBUG_REPLAY_TRACE_ID", "trace-override")
+    monkeypatch.setenv("LMNR_DEBUG_CACHE_UNTIL", "9")
+
+    config = build_debug_config()
+    assert config is not None
+    assert config.replay_trace_id == "trace-override"
+    assert config.session_id == "session-xyz"
+    assert config.cache_until == 9
+
+
+def test_from_last_run_ignored_when_flag_falsey(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_last_run(tmp_path, {"trace_id": "trace-abc", "session_id": "session-xyz"})
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+
+    config = build_debug_config()
+    assert config is not None
+    assert config.replay_trace_id is None
+    assert config.session_id != "session-xyz"
+
+
+def test_from_last_run_missing_file_falls_back_to_env(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.setenv("LMNR_DEBUG_FROM_LAST_RUN", "true")
+
+    config = build_debug_config()
+    assert config is not None
+    assert config.replay_trace_id is None
+    assert len(config.session_id) == 36

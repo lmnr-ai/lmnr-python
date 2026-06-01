@@ -434,20 +434,24 @@ def test_init_degrades_to_live_on_fetch_failure(monkeypatch):
 
 
 class _SpyRolloutSessions:
-    def __init__(self, raises=False):
+    def __init__(self, raises=False, project_id=None):
         self.registered = []
         self._raises = raises
+        self._project_id = project_id
 
     def register(self, session_id, name=None):
         self.registered.append((session_id, name))
         if self._raises:
             raise RuntimeError("backend down")
+        return self._project_id
 
 
 class _SpyDebugClient:
-    def __init__(self, *args, raises=False, **kwargs):
+    def __init__(self, *args, raises=False, project_id=None, **kwargs):
         self.sql = _FakeSql([], [])
-        self.rollout_sessions = _SpyRolloutSessions(raises=raises)
+        self.rollout_sessions = _SpyRolloutSessions(
+            raises=raises, project_id=project_id
+        )
 
 
 def test_init_registers_session_with_backend(monkeypatch):
@@ -472,6 +476,39 @@ def test_init_registers_session_with_backend(monkeypatch):
     runtime = get_runtime()
     assert runtime is not None
     assert spy.rollout_sessions.registered == [(runtime.session_id, None)]
+    _reset_runtime()
+
+
+def test_init_logs_debugger_url_when_project_id_returned(monkeypatch, caplog):
+    # When the backend returns a project id, init must log the human-facing
+    # debugger session URL at INFO, respecting LMNR_FRONTEND_URL.
+    import logging
+
+    from lmnr.sdk.laminar import Laminar
+
+    _reset_runtime()
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.setenv("LMNR_FRONTEND_URL", "https://app.example.com")
+    monkeypatch.delenv("LMNR_DEBUG_REPLAY_TRACE_ID", raising=False)
+    monkeypatch.delenv("LMNR_DEBUG_CACHE_UNTIL", raising=False)
+
+    spy = _SpyDebugClient(project_id="proj-123")
+    monkeypatch.setattr(
+        "lmnr.sdk.client.synchronous.sync_client.LaminarClient",
+        lambda *a, **k: spy,
+    )
+    monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
+
+    with caplog.at_level(logging.INFO, logger="lmnr.sdk.laminar"):
+        Laminar._init_debug_runtime(base_url="http://localhost", http_port=8000)
+
+    runtime = get_runtime()
+    assert runtime is not None
+    expected = (
+        f"https://app.example.com/project/proj-123"
+        f"/debugger-sessions/{runtime.session_id}"
+    )
+    assert any(expected in record.getMessage() for record in caplog.records)
     _reset_runtime()
 
 

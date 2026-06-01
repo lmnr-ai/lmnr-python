@@ -17,10 +17,15 @@ class RolloutSessions(BaseResource):
     backend never learns the session id the SDK minted.
     """
 
-    def register(self, session_id: uuid.UUID | str, name: str | None = None) -> None:
+    def register(
+        self, session_id: uuid.UUID | str, name: str | None = None
+    ) -> str | None:
         """Idempotently register (upsert) a debug session.
 
         A null/omitted `name` never clobbers a name set elsewhere (e.g. the UI).
+
+        Returns the backend-resolved `projectId` (derived from the API key) so
+        the caller can build the debugger URL; None if the body can't be parsed.
 
         Raises:
             httpx.HTTPStatusError: If the request fails.
@@ -31,6 +36,10 @@ class RolloutSessions(BaseResource):
             json={"name": name},
         )
         response.raise_for_status()
+        try:
+            return response.json().get("projectId")
+        except Exception:
+            return None
 
     def delete(self, session_id: uuid.UUID | str) -> None:
         """Delete a debug session.

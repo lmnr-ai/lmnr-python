@@ -53,7 +53,7 @@ from lmnr.sdk.utils import (
     json_dumps,
 )
 
-from .log import VerboseColorfulFormatter
+from .log import VerboseColorfulFormatter, get_level_from_env
 from .types import (
     LaminarSpanContext,
     LaminarSpanType,
@@ -435,9 +435,16 @@ class Laminar:
             # shows up in the UI. This idempotent upsert is what makes a bare
             # `LMNR_DEBUG=true` run (no replay) useful. Best-effort: a failure
             # here must never crash initialization, so it stays inside the
-            # surrounding try/except.
+            # surrounding try/except. The backend returns the project id (derived
+            # from the API key) so we can print the human-facing session URL.
             try:
-                client.rollout_sessions.register(runtime.session_id)
+                project_id = client.rollout_sessions.register(runtime.session_id)
+                if project_id:
+                    session_url = (
+                        f"{debugger_url}/project/{project_id}"
+                        f"/debugger-sessions/{runtime.session_id}"
+                    )
+                    cls.__logger.info("Laminar debugger session: %s", session_url)
             except Exception as exc:
                 cls.__logger.warning("Failed to register debug session: %s", exc)
 
@@ -462,6 +469,7 @@ class Laminar:
     @classmethod
     def _initialize_logger(cls):
         cls.__logger = logging.getLogger(__name__)
+        cls.__logger.setLevel(get_level_from_env())
         console_log_handler = logging.StreamHandler()
         console_log_handler.setFormatter(VerboseColorfulFormatter())
         cls.__logger.addHandler(console_log_handler)
