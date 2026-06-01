@@ -12,6 +12,7 @@ from lmnr.sdk.client.synchronous.resources import (
     Datasets,
     Evals,
     Evaluators,
+    RolloutSessions,
     Tags,
     Sql,
     Traces,
@@ -107,6 +108,9 @@ class LaminarClient:
         )
         self.__sql = Sql(self.__client, self.__base_url, self.__project_api_key)
         self.__traces = Traces(self.__client, self.__base_url, self.__project_api_key)
+        self.__rollout_sessions = RolloutSessions(
+            self.__client, self.__base_url, self.__project_api_key
+        )
 
     @property
     def evals(self) -> Evals:
@@ -170,6 +174,15 @@ class LaminarClient:
             Traces: The Traces resource instance.
         """
         return self.__traces
+
+    @property
+    def rollout_sessions(self) -> RolloutSessions:
+        """Get the RolloutSessions resource.
+
+        Returns:
+            RolloutSessions: The RolloutSessions resource instance.
+        """
+        return self.__rollout_sessions
 
     def shutdown(self):
         """Shutdown the client by closing underlying connections."""

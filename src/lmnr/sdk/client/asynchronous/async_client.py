@@ -12,6 +12,7 @@ from lmnr.sdk.client.asynchronous.resources import (
     AsyncDatasets,
     AsyncEvals,
     AsyncEvaluators,
+    AsyncRolloutSessions,
     AsyncTags,
     AsyncSql,
     AsyncTraces,
@@ -108,6 +109,9 @@ class AsyncLaminarClient:
         self.__traces = AsyncTraces(
             self.__client, self.__base_url, self.__project_api_key
         )
+        self.__rollout_sessions = AsyncRolloutSessions(
+            self.__client, self.__base_url, self.__project_api_key
+        )
 
     @property
     def evals(self) -> AsyncEvals:
@@ -171,6 +175,15 @@ class AsyncLaminarClient:
             AsyncTraces: The Traces resource instance.
         """
         return self.__traces
+
+    @property
+    def rollout_sessions(self) -> AsyncRolloutSessions:
+        """Get the RolloutSessions resource.
+
+        Returns:
+            AsyncRolloutSessions: The RolloutSessions resource instance.
+        """
+        return self.__rollout_sessions
 
     @property
     def is_closed(self) -> bool:

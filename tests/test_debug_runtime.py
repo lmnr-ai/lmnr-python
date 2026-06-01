@@ -412,3 +412,69 @@ def test_init_degrades_to_live_on_fetch_failure(monkeypatch):
     assert runtime is not None  # never crashes
     assert runtime.get_cached("loop.llm") is None
     _reset_runtime()
+
+
+class _SpyRolloutSessions:
+    def __init__(self, raises=False):
+        self.registered = []
+        self._raises = raises
+
+    def register(self, session_id, name=None):
+        self.registered.append((session_id, name))
+        if self._raises:
+            raise RuntimeError("backend down")
+
+
+class _SpyDebugClient:
+    def __init__(self, *args, raises=False, **kwargs):
+        self.sql = _FakeSql([], [])
+        self.rollout_sessions = _SpyRolloutSessions(raises=raises)
+
+
+def test_init_registers_session_with_backend(monkeypatch):
+    # A bare LMNR_DEBUG=true run must POST its SDK-minted session id to the
+    # backend so the session shows up in the UI.
+    from lmnr.sdk.laminar import Laminar
+
+    _reset_runtime()
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.delenv("LMNR_DEBUG_REPLAY_TRACE_ID", raising=False)
+    monkeypatch.delenv("LMNR_DEBUG_CACHE_UNTIL", raising=False)
+
+    spy = _SpyDebugClient()
+    monkeypatch.setattr(
+        "lmnr.sdk.client.synchronous.sync_client.LaminarClient",
+        lambda *a, **k: spy,
+    )
+    monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
+
+    Laminar._init_debug_runtime(base_url="http://localhost", http_port=8000)
+
+    runtime = get_runtime()
+    assert runtime is not None
+    assert spy.rollout_sessions.registered == [(runtime.session_id, None)]
+    _reset_runtime()
+
+
+def test_init_survives_registration_failure(monkeypatch):
+    # Registration is best-effort: a backend error must never crash init.
+    from lmnr.sdk.laminar import Laminar
+
+    _reset_runtime()
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.delenv("LMNR_DEBUG_REPLAY_TRACE_ID", raising=False)
+    monkeypatch.delenv("LMNR_DEBUG_CACHE_UNTIL", raising=False)
+
+    spy = _SpyDebugClient(raises=True)
+    monkeypatch.setattr(
+        "lmnr.sdk.client.synchronous.sync_client.LaminarClient",
+        lambda *a, **k: spy,
+    )
+    monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
+
+    Laminar._init_debug_runtime(base_url="http://localhost", http_port=8000)
+
+    runtime = get_runtime()
+    assert runtime is not None  # init still completed
+    assert len(spy.rollout_sessions.registered) == 1
+    _reset_runtime()

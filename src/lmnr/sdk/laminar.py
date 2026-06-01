@@ -421,6 +421,16 @@ class Laminar:
             if runtime is None:
                 return
 
+            # Register the SDK-minted session id with the backend so the run
+            # shows up in the UI. This idempotent upsert is what makes a bare
+            # `LMNR_DEBUG=true` run (no replay) useful. Best-effort: a failure
+            # here must never crash initialization, so it stays inside the
+            # surrounding try/except.
+            try:
+                client.rollout_sessions.register(runtime.session_id)
+            except Exception as exc:
+                cls.__logger.warning("Failed to register debug session: %s", exc)
+
             cls.__global_metadata = {
                 **cls.__global_metadata,
                 "rollout.session_id": runtime.session_id,
