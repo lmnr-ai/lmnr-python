@@ -52,6 +52,16 @@ class _FakeSql:
 class _FakeClient:
     def __init__(self, metadata_rows, payload_rows):
         self.sql = _FakeSql(metadata_rows, payload_rows)
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
 
 
 def test_runtime_get_cached_advances_occurrence():
@@ -457,6 +467,16 @@ class _SpyDebugClient:
         self.rollout_sessions = _SpyRolloutSessions(
             raises=raises, project_id=project_id
         )
+        self.closed = False
+
+    def close(self):
+        self.closed = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
 
 
 def test_init_registers_session_with_backend(monkeypatch):
@@ -481,6 +501,9 @@ def test_init_registers_session_with_backend(monkeypatch):
     runtime = get_runtime()
     assert runtime is not None
     assert spy.rollout_sessions.registered == [(runtime.session_id, None)]
+    # The init-only client must be closed so its httpx connection pool isn't
+    # leaked on every initialize() with LMNR_DEBUG set.
+    assert spy.closed is True
     _reset_runtime()
 
 

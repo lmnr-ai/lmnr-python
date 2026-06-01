@@ -423,32 +423,38 @@ class Laminar:
             from lmnr.sdk.client.synchronous.sync_client import LaminarClient
             from lmnr.sdk.utils import get_frontend_url
 
-            client = LaminarClient(
+            # The client is only needed during init (synchronous replay-cache
+            # build + session register); the runtime never retains it. Close it
+            # on the way out so its httpx.Client connection pool / fds aren't
+            # leaked on every initialize() with LMNR_DEBUG set.
+            with LaminarClient(
                 base_url=base_url,
                 project_api_key=cls.__project_api_key,
                 port=http_port,
-            )
-            debugger_url = os.getenv("LMNR_FRONTEND_URL") or get_frontend_url(base_url)
-            runtime = init_debug_runtime(client, debugger_url=debugger_url)
-            if runtime is None:
-                return
+            ) as client:
+                debugger_url = (
+                    os.getenv("LMNR_FRONTEND_URL") or get_frontend_url(base_url)
+                )
+                runtime = init_debug_runtime(client, debugger_url=debugger_url)
+                if runtime is None:
+                    return
 
-            # Register the SDK-minted session id with the backend so the run
-            # shows up in the UI. This idempotent upsert is what makes a bare
-            # `LMNR_DEBUG=true` run (no replay) useful. Best-effort: a failure
-            # here must never crash initialization, so it stays inside the
-            # surrounding try/except. The backend returns the project id (derived
-            # from the API key) so we can print the human-facing session URL.
-            try:
-                project_id = client.rollout_sessions.register(runtime.session_id)
-                if project_id:
-                    session_url = (
-                        f"{debugger_url}/project/{project_id}"
-                        f"/debugger-sessions/{runtime.session_id}"
-                    )
-                    cls.__logger.info("Laminar debugger session: %s", session_url)
-            except Exception as exc:
-                cls.__logger.warning("Failed to register debug session: %s", exc)
+                # Register the SDK-minted session id with the backend so the run
+                # shows up in the UI. This idempotent upsert is what makes a bare
+                # `LMNR_DEBUG=true` run (no replay) useful. Best-effort: a failure
+                # here must never crash initialization, so it stays inside the
+                # surrounding try/except. The backend returns the project id
+                # (derived from the API key) so we can print the session URL.
+                try:
+                    project_id = client.rollout_sessions.register(runtime.session_id)
+                    if project_id:
+                        session_url = (
+                            f"{debugger_url}/project/{project_id}"
+                            f"/debugger-sessions/{runtime.session_id}"
+                        )
+                        cls.__logger.info("Laminar debugger session: %s", session_url)
+                except Exception as exc:
+                    cls.__logger.warning("Failed to register debug session: %s", exc)
 
             cls.__global_metadata = {
                 **cls.__global_metadata,
