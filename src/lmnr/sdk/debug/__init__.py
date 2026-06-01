@@ -146,11 +146,15 @@ def init_debug_runtime(
     global _runtime, _initialized
     if _initialized:
         return _runtime
-    _initialized = True
 
     config = build_debug_config()
     if config is None:
+        # Debug mode is off: nothing was built, so do NOT latch the one-shot
+        # flag. Otherwise a later init (e.g. after the env flips LMNR_DEBUG on)
+        # would short-circuit to None until reset_debug_runtime(). The off path
+        # only reads env vars, so re-running it on a repeat call is cheap.
         return None
+    _initialized = True
 
     cache = None
     if config.replay_enabled:

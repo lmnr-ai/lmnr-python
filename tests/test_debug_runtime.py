@@ -322,6 +322,23 @@ def test_init_debug_runtime_skips_client_when_debug_off(monkeypatch):
     _reset_runtime()
 
 
+def test_init_off_does_not_latch_flag(monkeypatch):
+    # When debug is off, init must NOT spend the one-shot flag: a later init
+    # after the env flips LMNR_DEBUG on must still build a runtime without an
+    # intervening reset_debug_runtime().
+    _reset_runtime()
+    monkeypatch.delenv("LMNR_DEBUG", raising=False)
+    assert init_debug_runtime(client=object()) is None
+
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.delenv("LMNR_DEBUG_REPLAY_TRACE_ID", raising=False)
+    monkeypatch.delenv("LMNR_DEBUG_CACHE_UNTIL", raising=False)
+    runtime = init_debug_runtime(client=object())
+    assert runtime is not None
+    assert get_runtime() is runtime
+    _reset_runtime()
+
+
 def test_init_is_idempotent(monkeypatch):
     _reset_runtime()
     monkeypatch.setenv("LMNR_DEBUG", "true")
