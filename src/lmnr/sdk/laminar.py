@@ -409,13 +409,15 @@ class Laminar:
         """
         try:
             from lmnr.sdk.debug import init_debug_runtime
-            from lmnr.sdk.debug.config import build_debug_config
+            from lmnr.sdk.debug.config import _is_truthy
 
             # Debug mode off: bail before constructing a LaminarClient (and its
             # httpx.Client), which would otherwise leak unclosed on every normal
-            # initialize(). build_debug_config() returns None when LMNR_DEBUG is
-            # falsy/absent — the same gate init_debug_runtime applies internally.
-            if build_debug_config() is None:
+            # initialize(). This is the same LMNR_DEBUG gate build_debug_config()
+            # applies first; checking it directly avoids a redundant config build
+            # here (which would mint a throwaway session uuid and re-read the
+            # last-run file) that init_debug_runtime() then discards and rebuilds.
+            if not _is_truthy(os.environ.get("LMNR_DEBUG")):
                 return
 
             from lmnr.sdk.client.synchronous.sync_client import LaminarClient
