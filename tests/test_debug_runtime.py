@@ -295,6 +295,33 @@ def test_init_disabled_returns_none(monkeypatch):
     assert get_runtime() is None
 
 
+def test_init_debug_runtime_skips_client_when_debug_off(monkeypatch):
+    # When LMNR_DEBUG is off, Laminar._init_debug_runtime must NOT construct a
+    # LaminarClient (and its httpx.Client) — that would leak unclosed on every
+    # normal initialize().
+    from lmnr.sdk.laminar import Laminar
+
+    _reset_runtime()
+    monkeypatch.delenv("LMNR_DEBUG", raising=False)
+
+    constructed = []
+
+    class _SpyClient:
+        def __init__(self, *args, **kwargs):
+            constructed.append((args, kwargs))
+
+    monkeypatch.setattr(
+        "lmnr.sdk.client.synchronous.sync_client.LaminarClient", _SpyClient
+    )
+    monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
+
+    Laminar._init_debug_runtime(base_url="http://localhost", http_port=8000)
+
+    assert constructed == []
+    assert get_runtime() is None
+    _reset_runtime()
+
+
 def test_init_is_idempotent(monkeypatch):
     _reset_runtime()
     monkeypatch.setenv("LMNR_DEBUG", "true")

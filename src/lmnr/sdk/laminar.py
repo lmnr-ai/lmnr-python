@@ -398,8 +398,17 @@ class Laminar:
         is a no-op and the SDK behaves exactly as before.
         """
         try:
-            from lmnr.sdk.client.synchronous.sync_client import LaminarClient
             from lmnr.sdk.debug import init_debug_runtime
+            from lmnr.sdk.debug.config import build_debug_config
+
+            # Debug mode off: bail before constructing a LaminarClient (and its
+            # httpx.Client), which would otherwise leak unclosed on every normal
+            # initialize(). build_debug_config() returns None when LMNR_DEBUG is
+            # falsy/absent — the same gate init_debug_runtime applies internally.
+            if build_debug_config() is None:
+                return
+
+            from lmnr.sdk.client.synchronous.sync_client import LaminarClient
             from lmnr.sdk.utils import get_frontend_url
 
             client = LaminarClient(
