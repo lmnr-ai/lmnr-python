@@ -42,10 +42,18 @@ class DebugRuntime:
         config: DebugConfig,
         cache: ReplayCache | None,
         debugger_url: str | None,
+        replay_active: bool | None = None,
     ):
         self._config = config
         self._cache = cache
         self._debugger_url = debugger_url
+        # Whether the provider wrappers should treat this run as replay-enabled.
+        # Defaults to the config (so direct construction during the async
+        # cache-loading window still reports replay active); `init_debug_runtime`
+        # passes False explicitly when the synchronous build degrades to no cache.
+        self._replay_active = (
+            config.replay_enabled if replay_active is None else replay_active
+        )
         self._trace_id: str | None = None
         self._emitted = False
         self._lock = threading.Lock()
@@ -64,8 +72,11 @@ class DebugRuntime:
 
     @property
     def replay_configured(self) -> bool:
-        """True when replay is configured (source trace + cache window)."""
-        return self._config.replay_enabled
+        """True when replay is active (source trace + cache window) and the cache
+        either exists or is still loading. Set False when the synchronous build
+        degrades to no cache (no spine / overlap / fetch failure) so the provider
+        wrappers don't install and pointlessly advance per-path counters."""
+        return self._replay_active
 
     def record_trace_id(self, trace_id: str) -> None:
         """Remember the root trace id of this run (first root span wins)."""
@@ -167,7 +178,13 @@ def init_debug_runtime(
                 exc,
             )
 
-    _runtime = DebugRuntime(config, cache, debugger_url)
+    # The cache is built synchronously above (no async loading window), so a
+    # replay-configured run that produced no cache (no spine / overlap / fetch
+    # failure) has permanently degraded to debug-no-replay. Mark replay inactive
+    # so the provider wrappers don't install and advance per-path occurrence
+    # counters against a cache that will never be served.
+    replay_active = config.replay_enabled and cache is not None
+    _runtime = DebugRuntime(config, cache, debugger_url, replay_active=replay_active)
     return _runtime
 
 

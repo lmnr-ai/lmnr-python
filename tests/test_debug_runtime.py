@@ -412,6 +412,9 @@ def test_init_degrades_to_live_on_overlap(monkeypatch):
     assert runtime is not None
     # Overlap guard -> no cache -> every call runs live.
     assert runtime.get_cached("loop.llm") is None
+    # Degraded synchronously to no cache: replay must report inactive so the
+    # provider wrappers don't install and advance per-path counters pointlessly.
+    assert runtime.replay_configured is False
     _reset_runtime()
 
 
@@ -430,6 +433,8 @@ def test_init_degrades_to_live_on_fetch_failure(monkeypatch):
     runtime = init_debug_runtime(client=_BoomClient())
     assert runtime is not None  # never crashes
     assert runtime.get_cached("loop.llm") is None
+    # Fetch failure degraded to no cache: replay must report inactive.
+    assert runtime.replay_configured is False
     _reset_runtime()
 
 
