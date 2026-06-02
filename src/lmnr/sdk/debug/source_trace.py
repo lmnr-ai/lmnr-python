@@ -37,9 +37,7 @@ def _to_epoch(value: Any, missing_default: float = 0.0) -> float:
         # ClickHouse returns DateTime64(9) (nanosecond) strings, but
         # datetime.fromisoformat rejects >6 fractional digits before Python 3.11,
         # so truncate the fractional part to microseconds first.
-        normalized = re.sub(
-            r"(\.\d{6})\d+", r"\1", s.replace("Z", "+00:00")
-        )
+        normalized = re.sub(r"(\.\d{6})\d+", r"\1", s.replace("Z", "+00:00"))
         return datetime.datetime.fromisoformat(normalized).timestamp()
     except Exception:
         # Lexical fallback: ISO-8601 strings sort chronologically, so map the
@@ -58,9 +56,7 @@ def _to_epoch(value: Any, missing_default: float = 0.0) -> float:
         return score
 
 
-def fetch_spine_metadata(
-    client: LaminarClient, trace_id: str
-) -> list[SpanRecord]:
+def fetch_spine_metadata(client: LaminarClient, trace_id: str) -> list[SpanRecord]:
     """Phase 1: lightweight fetch of path / type / times for all spans."""
     records: list[SpanRecord] = []
     offset = 0
@@ -109,7 +105,7 @@ def fetch_spine_payloads(
         rows = client.sql.query(
             "SELECT name, input, output, attributes, start_time FROM spans "
             "WHERE trace_id = {trace_id:UUID} AND path = {path:String} "
-            "AND span_type = 'LLM' "
+            "AND span_type IN ('LLM', 'CACHED') "
             "ORDER BY start_time LIMIT {limit:UInt32} OFFSET {offset:UInt32}",
             parameters={
                 "trace_id": trace_id,
