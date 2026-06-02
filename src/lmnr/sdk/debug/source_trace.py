@@ -18,13 +18,6 @@ logger = get_default_logger(__name__)
 
 _PAGE_SIZE = 1000
 
-# Response payload attributes the per-provider cached_response_to_* functions read.
-_PAYLOAD_KEYS = ("lmnr.sdk.raw.response", "gen_ai.output.messages")
-
-
-def _row_start(row: dict[str, Any]) -> float:
-    return _to_epoch(row.get("start_time"))
-
 
 def _to_epoch(value: Any, missing_default: float = 0.0) -> float:
     """Best-effort conversion of a ClickHouse timestamp to a float epoch.
