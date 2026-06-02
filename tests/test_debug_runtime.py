@@ -310,7 +310,7 @@ def test_emit_pointer_uses_construction_time_started_at(tmp_path, monkeypatch, c
         for line in capsys.readouterr().out.splitlines()
         if line.startswith("LMNR_DEBUG_RUN ")
     )
-    payload = json.loads(line[len("LMNR_DEBUG_RUN "):])
+    payload = json.loads(line[len("LMNR_DEBUG_RUN ") :])
     assert payload["started_at"] == captured
 
 
@@ -347,7 +347,7 @@ def test_emit_pointer_uses_full_debugger_url(tmp_path, monkeypatch, capsys):
         for line in capsys.readouterr().out.splitlines()
         if line.startswith("LMNR_DEBUG_RUN ")
     )
-    payload = json.loads(line[len("LMNR_DEBUG_RUN "):])
+    payload = json.loads(line[len("LMNR_DEBUG_RUN ") :])
     assert payload["debugger_url"] == (
         "https://app.x/project/proj-1/debugger-sessions/sess-1"
     )
@@ -439,8 +439,18 @@ def test_init_builds_cache_for_looping_spine(monkeypatch):
     monkeypatch.setenv("LMNR_DEBUG_CACHE_UNTIL", "2")
 
     metadata = [
-        {"path": "agent.loop.llm", "span_type": "LLM", "start_time": 1.0, "end_time": 1.5},
-        {"path": "agent.loop.llm", "span_type": "LLM", "start_time": 2.0, "end_time": 2.5},
+        {
+            "path": "agent.loop.llm",
+            "span_type": "LLM",
+            "start_time": 1.0,
+            "end_time": 1.5,
+        },
+        {
+            "path": "agent.loop.llm",
+            "span_type": "LLM",
+            "start_time": 2.0,
+            "end_time": 2.5,
+        },
     ]
     payloads = [
         {"name": "chat", "input": "a", "output": "0", "attributes": {}},
@@ -455,6 +465,7 @@ def test_init_builds_cache_for_looping_spine(monkeypatch):
         "input": "a",
         "output": "0",
         "attributes": {},
+        "start_time": 0,
     }
     _reset_runtime()
 
@@ -726,9 +737,7 @@ def test_shutdown_completes_cleanup_when_emit_pointer_raises(tmp_path, monkeypat
     runtime = get_runtime()
     assert runtime is not None
     # Simulate a broken stdout: emit_pointer raises.
-    monkeypatch.setattr(
-        runtime, "emit_pointer", _raise_broken_pipe
-    )
+    monkeypatch.setattr(runtime, "emit_pointer", _raise_broken_pipe)
 
     # Must not propagate the BrokenPipeError out of shutdown().
     Laminar.shutdown()
