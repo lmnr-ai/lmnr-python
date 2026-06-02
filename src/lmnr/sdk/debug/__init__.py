@@ -55,6 +55,7 @@ class DebugRuntime:
             config.replay_enabled if replay_active is None else replay_active
         )
         self._trace_id: str | None = None
+        self._project_id: str | None = None
         self._emitted = False
         self._lock = threading.Lock()
         self._counters: dict[str, int] = {}
@@ -84,6 +85,35 @@ class DebugRuntime:
             if self._trace_id is None:
                 self._trace_id = trace_id
 
+    def record_project_id(self, project_id: str) -> None:
+        """Remember the backend-resolved project id (first wins).
+
+        Resolved by the session-register call AFTER construction, so the
+        runtime starts with only the base `debugger_url`; this lets
+        `debugger_session_url` upgrade to the full per-session URL once known.
+        """
+        with self._lock:
+            if self._project_id is None:
+                self._project_id = project_id
+
+    def debugger_session_url(self) -> str | None:
+        """The human-facing debugger URL for this run, or None.
+
+        Single source of truth for the URL printed to the console AND stored in
+        the run pointer's `debugger_url` field. When the project id is known
+        (register succeeded) it is the full
+        `<base>/project/<project_id>/debugger-sessions/<session_id>`; otherwise
+        it falls back to the base `debugger_url` (None when even that is unset).
+        """
+        if self._debugger_url is None:
+            return None
+        if self._project_id is None:
+            return self._debugger_url
+        return (
+            f"{self._debugger_url}/project/{self._project_id}"
+            f"/debugger-sessions/{self._config.session_id}"
+        )
+
     def get_cached(self, span_path: str) -> dict[str, Any] | None:
         """Return the cached payload to replay for the next occurrence, or None.
 
@@ -111,7 +141,7 @@ class DebugRuntime:
             session_id=self._config.session_id,
             replay_trace_id=self._config.replay_trace_id,
             cache_until=self._config.cache_until,
-            debugger_url=self._debugger_url,
+            debugger_url=self.debugger_session_url(),
             started_at=self._started_at,
         )
         emit_pointer(pointer)

@@ -448,11 +448,14 @@ class Laminar:
                 try:
                     project_id = client.rollout_sessions.register(runtime.session_id)
                     if project_id:
-                        session_url = (
-                            f"{debugger_url}/project/{project_id}"
-                            f"/debugger-sessions/{runtime.session_id}"
+                        # Record the project id so the run pointer's debugger_url
+                        # field carries the SAME full per-session URL we print
+                        # here (single code path via debugger_session_url).
+                        runtime.record_project_id(project_id)
+                        cls.__logger.info(
+                            "Laminar debugger session: %s",
+                            runtime.debugger_session_url(),
                         )
-                        cls.__logger.info("Laminar debugger session: %s", session_url)
                 except Exception as exc:
                     cls.__logger.warning("Failed to register debug session: %s", exc)
 

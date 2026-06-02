@@ -103,6 +103,34 @@ def test_record_trace_id_first_wins():
     assert runtime._trace_id == "trace-a"
 
 
+def test_record_project_id_first_wins():
+    runtime = DebugRuntime(_config(), cache=None, debugger_url="https://x")
+    runtime.record_project_id("proj-a")
+    runtime.record_project_id("proj-b")
+    assert runtime._project_id == "proj-a"
+
+
+def test_debugger_session_url_falls_back_to_base_without_project_id():
+    # Before register resolves a project id, the URL is just the base.
+    runtime = DebugRuntime(_config(), cache=None, debugger_url="https://app.x")
+    assert runtime.debugger_session_url() == "https://app.x"
+
+
+def test_debugger_session_url_is_none_without_base():
+    runtime = DebugRuntime(_config(), cache=None, debugger_url=None)
+    assert runtime.debugger_session_url() is None
+
+
+def test_debugger_session_url_full_with_project_id():
+    runtime = DebugRuntime(
+        _config(session_id="sess-1"), cache=None, debugger_url="https://app.x"
+    )
+    runtime.record_project_id("proj-1")
+    assert runtime.debugger_session_url() == (
+        "https://app.x/project/proj-1/debugger-sessions/sess-1"
+    )
+
+
 def test_record_debug_trace_id_from_env_populates_pointer(monkeypatch):
     # A run attached via LMNR_SPAN_CONTEXT never opens a root span, so the
     # pointer would emit an empty trace_id unless the inherited trace id is
@@ -298,6 +326,31 @@ def test_emit_pointer_only_once(tmp_path, monkeypatch, capsys):
         if line.startswith("LMNR_DEBUG_RUN ")
     ]
     assert len(lines) == 1
+
+
+def test_emit_pointer_uses_full_debugger_url(tmp_path, monkeypatch, capsys):
+    # The pointer's debugger_url must carry the SAME full per-session URL the
+    # console prints, not just the base — built via the shared
+    # debugger_session_url code path once the project id is recorded.
+    import json
+
+    monkeypatch.chdir(tmp_path)
+    runtime = DebugRuntime(
+        _config(session_id="sess-1"), cache=None, debugger_url="https://app.x"
+    )
+    runtime.record_project_id("proj-1")
+    runtime.record_trace_id("trace-a")
+    runtime.emit_pointer()
+
+    line = next(
+        line
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith("LMNR_DEBUG_RUN ")
+    )
+    payload = json.loads(line[len("LMNR_DEBUG_RUN "):])
+    assert payload["debugger_url"] == (
+        "https://app.x/project/proj-1/debugger-sessions/sess-1"
+    )
 
 
 def test_init_disabled_returns_none(monkeypatch):
