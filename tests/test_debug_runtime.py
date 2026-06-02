@@ -653,3 +653,43 @@ def test_init_does_not_build_debug_runtime_when_tracing_fails(monkeypatch):
     assert spy.rollout_sessions.registered == []
     _reset_runtime()
     monkeypatch.setattr(Laminar, "_Laminar__initialized", False, raising=False)
+
+
+def test_exit_hook_does_not_accumulate_across_cycles(tmp_path, monkeypatch):
+    # atexit holds a strong ref to whatever it registers, so each debug-mode
+    # init must unregister the previous pointer hook on shutdown — otherwise an
+    # init/shutdown loop pins every retired DebugRuntime (and its replay cache)
+    # alive and leaks one atexit handler per cycle.
+    import atexit
+
+    from lmnr.sdk.laminar import Laminar
+
+    _reset_runtime()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.delenv("LMNR_DEBUG_REPLAY_TRACE_ID", raising=False)
+    monkeypatch.delenv("LMNR_DEBUG_CACHE_UNTIL", raising=False)
+
+    registered: list = []
+    monkeypatch.setattr(atexit, "register", lambda fn, *a, **k: registered.append(fn))
+    monkeypatch.setattr(
+        atexit,
+        "unregister",
+        lambda fn: registered.remove(fn) if fn in registered else None,
+    )
+
+    monkeypatch.setattr(
+        "lmnr.sdk.client.synchronous.sync_client.LaminarClient",
+        lambda *a, **k: _SpyDebugClient(),
+    )
+    monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
+    monkeypatch.setattr("lmnr.opentelemetry_lib.TracerManager.shutdown", lambda: None)
+
+    for _ in range(12):
+        Laminar._init_debug_runtime(base_url="http://localhost", http_port=8000)
+        monkeypatch.setattr(Laminar, "_Laminar__initialized", True, raising=False)
+        Laminar.shutdown()
+
+    assert registered == []
+    _reset_runtime()
+    monkeypatch.setattr(Laminar, "_Laminar__initialized", False, raising=False)

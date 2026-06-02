@@ -7,7 +7,7 @@ import re
 import uuid
 import warnings
 from contextlib import contextmanager
-from typing import Any, Generator, Literal
+from typing import Any, Callable, Generator, Literal
 
 from opentelemetry import context as context_api
 from opentelemetry import trace
@@ -170,6 +170,12 @@ class Laminar:
     __initialized: bool = False
     __base_http_url: str | None = None
     __global_metadata: dict[str, AttributeValue] = {}
+    # The debug run's atexit pointer hook (a bound `runtime.emit_pointer`),
+    # kept by reference so shutdown() can unregister it. atexit holds a strong
+    # ref to whatever it registers, so without this an initialize()/shutdown()
+    # loop (common in tests / notebooks) keeps every retired DebugRuntime — and
+    # its replay cache — alive and uncollectable.
+    __debug_exit_hook: Callable[[], None] | None = None
 
     @classmethod
     def initialize(
@@ -463,7 +469,14 @@ class Laminar:
                 **cls.__global_metadata,
                 "rollout.session_id": runtime.session_id,
             }
-            atexit.register(runtime.emit_pointer)
+            # Drop any prior hook first so a repeated initialize() (or an
+            # init/shutdown loop) doesn't pin every retired DebugRuntime (and
+            # its replay cache) alive via atexit's strong reference; keep this
+            # one by reference for shutdown() to unregister.
+            if cls.__debug_exit_hook is not None:
+                atexit.unregister(cls.__debug_exit_hook)
+            cls.__debug_exit_hook = runtime.emit_pointer
+            atexit.register(cls.__debug_exit_hook)
         except Exception as exc:  # never let debug setup crash initialization
             cls.__logger.warning("Failed to initialize debug runtime: %s", exc)
 
@@ -1333,6 +1346,12 @@ class Laminar:
             # initialize() re-reads LMNR_DEBUG* instead of resurrecting the
             # previous run.
             reset_debug_runtime()
+            # The pointer was just emitted above, so the atexit hook would be a
+            # redundant no-op; unregister it so init/shutdown loops don't pin
+            # the retired runtime (and its replay cache) alive via atexit.
+            if cls.__debug_exit_hook is not None:
+                atexit.unregister(cls.__debug_exit_hook)
+                cls.__debug_exit_hook = None
 
     @classmethod
     def set_span_tags(cls, tags: list[str]):
