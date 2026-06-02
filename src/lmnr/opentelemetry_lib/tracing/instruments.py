@@ -174,8 +174,7 @@ def init_instrumentations(
     if instruments is None:
         instruments = set(Instruments)
         deepagents_active = (
-            _deepagents_installed()
-            and Instruments.DEEPAGENTS not in block_instruments
+            _deepagents_installed() and Instruments.DEEPAGENTS not in block_instruments
         )
         # Only auto-enable PYDANTIC_AI if the package is actually installed,
         # and only auto-remove overlapping provider instrumentors in that case.
@@ -195,6 +194,13 @@ def init_instrumentations(
             # want pydantic_ai's de-duplication can pass an explicit
             # `instruments` set to `Laminar.initialize`.
             if not deepagents_active:
+                module_logger.warning(
+                    "Not enabling default LLM instrumentations to avoid double "
+                    + "instrumentation with Pydantic AI. To opt-in, pass the following "
+                    + "to Laminar.initialize() instruments=[Instruments.ANTHROPIC, "
+                    + "Instruments.BEDROCK, Instruments.COHERE, Instruments.GOOGLE_GENAI, "
+                    + "Instruments.GROQ, Instruments.MISTRAL, Instruments.OPENAI]"
+                )
                 instruments = instruments - _PYDANTIC_AI_PROVIDER_CONFLICTS
         else:
             instruments = instruments - {Instruments.PYDANTIC_AI}
