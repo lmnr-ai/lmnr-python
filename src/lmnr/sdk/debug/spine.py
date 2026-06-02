@@ -23,6 +23,9 @@ class SpanRecord:
     span_type: str
     start_time: float
     end_time: float
+    # The span's UUID (as stored in ClickHouse). Used to resolve a span-id
+    # `LMNR_DEBUG_CACHE_UNTIL` to an occurrence count; "" when unavailable.
+    span_id: str = ""
 
 
 @dataclass
@@ -72,6 +75,35 @@ def detect_spine(spans: list[SpanRecord]) -> SpineResult:
 
     spine_calls = sorted(groups[spine_path], key=lambda s: s.start_time)
     return SpineResult(spine_path=spine_path, spine_calls=spine_calls)
+
+
+def _match_span_id(needle: str, span_id: str) -> bool:
+    """True if `needle` (hyphen-stripped lowercase hex) suffix-matches `span_id`.
+
+    The source-trace span ids are full UUIDs, but the user may pass a full UUID,
+    the last two groups, the raw 16-hex OTel id, or a short hex suffix — all of
+    which are a suffix of the hyphen-stripped UUID. Identical logic in both SDKs.
+    """
+    if not needle or not span_id:
+        return False
+    haystack = span_id.lower().replace("-", "")
+    return haystack.endswith(needle)
+
+
+def resolve_cache_until_span_id(
+    spine_calls: list[SpanRecord], needle: str
+) -> int | None:
+    """Resolve a span-id `cache_until` to an occurrence count over the spine.
+
+    The spine calls are in execution order, so the matched span's 1-based index
+    is the number of calls to cache (inclusive of the target). Returns None when
+    the needle matches none of the spine calls (invalid / not on the spine path)
+    so the caller can warn and degrade to live.
+    """
+    for index, call in enumerate(spine_calls):
+        if _match_span_id(needle, call.span_id):
+            return index + 1
+    return None
 
 
 def has_overlap(spine_calls: list[SpanRecord], n: int) -> bool:

@@ -41,6 +41,7 @@ def test_config_truth_table(case, monkeypatch):
     assert config.session_id == expect["session_id"]
     assert config.replay_trace_id == expect["replay_trace_id"]
     assert config.cache_until == expect["cache_until"]
+    assert config.cache_until_span_id == expect.get("cache_until_span_id")
     assert config.replay_enabled is expect["replay_enabled"]
 
 

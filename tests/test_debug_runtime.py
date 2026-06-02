@@ -470,6 +470,80 @@ def test_init_builds_cache_for_looping_spine(monkeypatch):
     _reset_runtime()
 
 
+def test_init_resolves_span_id_cache_until(monkeypatch):
+    # A span-id LMNR_DEBUG_CACHE_UNTIL resolves to the matched call's 1-based
+    # occurrence on the spine: matching the 2nd of 3 calls caches occurrences 0-1.
+    _reset_runtime()
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.setenv("LMNR_DEBUG_REPLAY_TRACE_ID", "trace-1")
+    monkeypatch.setenv("LMNR_DEBUG_CACHE_UNTIL", "0123-456789abcdef")
+
+    metadata = [
+        {
+            "path": "agent.loop.llm",
+            "span_type": "LLM",
+            "start_time": 1.0,
+            "end_time": 1.5,
+            "span_id": "11111111-1111-1111-1111-111111111111",
+        },
+        {
+            "path": "agent.loop.llm",
+            "span_type": "LLM",
+            "start_time": 2.0,
+            "end_time": 2.5,
+            "span_id": "00000000-0000-0000-0123-456789abcdef",
+        },
+        {
+            "path": "agent.loop.llm",
+            "span_type": "LLM",
+            "start_time": 3.0,
+            "end_time": 3.5,
+            "span_id": "22222222-2222-2222-2222-222222222222",
+        },
+    ]
+    payloads = [
+        {"name": "chat", "input": "a", "output": "0", "attributes": {}},
+        {"name": "chat", "input": "b", "output": "1", "attributes": {}},
+        {"name": "chat", "input": "c", "output": "2", "attributes": {}},
+    ]
+    client = _FakeClient(metadata, payloads)
+
+    runtime = init_debug_runtime(client=client)
+    assert runtime is not None
+    assert runtime.replay_configured is True
+    # Occurrences 0 and 1 are cached (up to and including the matched span).
+    assert runtime.get_cached("agent.loop.llm")["output"] == "0"
+    assert runtime.get_cached("agent.loop.llm")["output"] == "1"
+    # The 3rd call is past the resolved window -> live.
+    assert runtime.get_cached("agent.loop.llm") is None
+    _reset_runtime()
+
+
+def test_init_degrades_to_live_on_unmatched_span_id(monkeypatch):
+    # A span-id cache_until that matches no spine call degrades to live.
+    _reset_runtime()
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.setenv("LMNR_DEBUG_REPLAY_TRACE_ID", "trace-1")
+    monkeypatch.setenv("LMNR_DEBUG_CACHE_UNTIL", "deadbeef")
+
+    metadata = [
+        {
+            "path": "agent.loop.llm",
+            "span_type": "LLM",
+            "start_time": 1.0,
+            "end_time": 1.5,
+            "span_id": "11111111-1111-1111-1111-111111111111",
+        },
+    ]
+    client = _FakeClient(metadata, [])
+
+    runtime = init_debug_runtime(client=client)
+    assert runtime is not None
+    assert runtime.get_cached("agent.loop.llm") is None
+    assert runtime.replay_configured is False
+    _reset_runtime()
+
+
 def test_init_degrades_to_live_on_overlap(monkeypatch):
     _reset_runtime()
     monkeypatch.setenv("LMNR_DEBUG", "true")

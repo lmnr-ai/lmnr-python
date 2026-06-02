@@ -62,7 +62,7 @@ def fetch_spine_metadata(client: LaminarClient, trace_id: str) -> list[SpanRecor
     offset = 0
     while True:
         rows = client.sql.query(
-            "SELECT path, span_type, start_time, end_time FROM spans "
+            "SELECT path, span_type, start_time, end_time, span_id FROM spans "
             "WHERE trace_id = {trace_id:UUID} "
             "ORDER BY start_time LIMIT {limit:UInt32} OFFSET {offset:UInt32}",
             parameters={
@@ -82,6 +82,7 @@ def fetch_spine_metadata(client: LaminarClient, trace_id: str) -> list[SpanRecor
                     end_time=_to_epoch(
                         row.get("end_time"), missing_default=float("inf")
                     ),
+                    span_id=str(row.get("span_id") or ""),
                 )
             )
         if len(rows) < _PAGE_SIZE:

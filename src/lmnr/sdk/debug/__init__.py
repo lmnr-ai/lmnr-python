@@ -24,7 +24,11 @@ from lmnr.sdk.debug.config import DebugConfig, build_debug_config
 from lmnr.sdk.debug.pointer import build_pointer, emit_pointer
 from lmnr.sdk.debug.replay_cache import ReplayCache
 from lmnr.sdk.debug.source_trace import fetch_spine_metadata, fetch_spine_payloads
-from lmnr.sdk.debug.spine import detect_spine, has_overlap
+from lmnr.sdk.debug.spine import (
+    detect_spine,
+    has_overlap,
+    resolve_cache_until_span_id,
+)
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
@@ -136,11 +140,20 @@ class DebugRuntime:
             if self._emitted:
                 return
             self._emitted = True
+        # Prefer the cache's resolved window so a span-id `cache_until` is
+        # persisted as the concrete occurrence count it resolved to — that keeps
+        # a later LMNR_DEBUG_FROM_LAST_RUN replay stable instead of re-resolving
+        # the span id against a (possibly different) trace.
+        cache_until = (
+            self._cache.cache_until
+            if self._cache is not None
+            else self._config.cache_until
+        )
         pointer = build_pointer(
             trace_id=self._trace_id or "",
             session_id=self._config.session_id,
             replay_trace_id=self._config.replay_trace_id,
-            cache_until=self._config.cache_until,
+            cache_until=cache_until,
             debugger_url=self.debugger_session_url(),
             started_at=self._started_at,
         )
@@ -221,8 +234,9 @@ def init_debug_runtime(
 def _build_cache(client: Any, config: DebugConfig) -> ReplayCache | None:
     """Fetch the source trace, detect the spine, and build the replay cache.
 
-    Returns None (degrade to debug-no-replay) when there is no spine or when the
-    spine's first N calls overlap in time (§F overlap guard, fail-loud-but-live).
+    Returns None (degrade to debug-no-replay) when there is no spine, when a
+    span-id `cache_until` doesn't resolve to a spine call, or when the spine's
+    first N calls overlap in time (§F overlap guard, fail-loud-but-live).
     """
     trace_id = config.replay_trace_id
     records = fetch_spine_metadata(client, trace_id)
@@ -231,7 +245,24 @@ def _build_cache(client: Any, config: DebugConfig) -> ReplayCache | None:
     if result.spine_path is None:
         return None
 
-    if has_overlap(result.spine_calls, config.cache_until):
+    cache_until = config.cache_until
+    if config.cache_until_span_id is not None:
+        resolved = resolve_cache_until_span_id(
+            result.spine_calls, config.cache_until_span_id
+        )
+        if resolved is None:
+            logger.warning(
+                "LMNR_DEBUG_CACHE_UNTIL span id %r did not match any LLM call on "
+                "the spine '%s' of source trace %s (invalid, not found, or not on "
+                "the spine path); running live.",
+                config.cache_until_span_id,
+                result.spine_path,
+                trace_id,
+            )
+            return None
+        cache_until = resolved
+
+    if has_overlap(result.spine_calls, cache_until):
         logger.warning(
             "Spine '%s' of source trace %s has LLM calls that overlap in time; "
             "v1 cannot safely replay a non-sequential spine — running live.",
@@ -243,6 +274,6 @@ def _build_cache(client: Any, config: DebugConfig) -> ReplayCache | None:
     payloads = fetch_spine_payloads(client, trace_id, result.spine_path)
     return ReplayCache(
         spine_path=result.spine_path,
-        cache_until=config.cache_until,
+        cache_until=cache_until,
         payloads=payloads,
     )

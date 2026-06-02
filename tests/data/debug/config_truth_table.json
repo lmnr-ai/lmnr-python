@@ -1,5 +1,5 @@
 {
-  "description": "Cross-language parity vectors for DebugConfig (build_debug_config / buildDebugConfig). 'env' is the process environment subset; 'expect' is null when debug mode is off, otherwise the expected config fields. 'replay_enabled' asserts the derived property.",
+  "description": "Cross-language parity vectors for DebugConfig (build_debug_config / buildDebugConfig). 'env' is the process environment subset; 'expect' is null when debug mode is off, otherwise the expected config fields. 'replay_enabled' asserts the derived property. 'cache_until_span_id' is the hyphen-stripped lowercase hex needle parsed from a span-id-shaped LMNR_DEBUG_CACHE_UNTIL (null for a plain count).",
   "cases": [
     {
       "name": "debug-off-absent",
@@ -132,6 +132,85 @@
         "session_id": "sess-9",
         "replay_trace_id": "44444444-4444-4444-4444-444444444444",
         "cache_until": 0,
+        "replay_enabled": false
+      }
+    },
+    {
+      "name": "cache-until-full-uuid-span-id",
+      "env": {
+        "LMNR_DEBUG": "1",
+        "LMNR_DEBUG_SESSION_ID": "sess-10",
+        "LMNR_DEBUG_REPLAY_TRACE_ID": "55555555-5555-5555-5555-555555555555",
+        "LMNR_DEBUG_CACHE_UNTIL": "00000000-0000-0000-0123-456789abcdef"
+      },
+      "expect": {
+        "session_id": "sess-10",
+        "replay_trace_id": "55555555-5555-5555-5555-555555555555",
+        "cache_until": 0,
+        "cache_until_span_id": "00000000000000000123456789abcdef",
+        "replay_enabled": true
+      }
+    },
+    {
+      "name": "cache-until-last-groups-span-id",
+      "env": {
+        "LMNR_DEBUG": "1",
+        "LMNR_DEBUG_SESSION_ID": "sess-11",
+        "LMNR_DEBUG_REPLAY_TRACE_ID": "55555555-5555-5555-5555-555555555555",
+        "LMNR_DEBUG_CACHE_UNTIL": "0123-456789abcdef"
+      },
+      "expect": {
+        "session_id": "sess-11",
+        "replay_trace_id": "55555555-5555-5555-5555-555555555555",
+        "cache_until": 0,
+        "cache_until_span_id": "0123456789abcdef",
+        "replay_enabled": true
+      }
+    },
+    {
+      "name": "cache-until-raw-otel-span-id",
+      "env": {
+        "LMNR_DEBUG": "1",
+        "LMNR_DEBUG_SESSION_ID": "sess-12",
+        "LMNR_DEBUG_REPLAY_TRACE_ID": "55555555-5555-5555-5555-555555555555",
+        "LMNR_DEBUG_CACHE_UNTIL": "0123456789ABCDEF"
+      },
+      "expect": {
+        "session_id": "sess-12",
+        "replay_trace_id": "55555555-5555-5555-5555-555555555555",
+        "cache_until": 0,
+        "cache_until_span_id": "0123456789abcdef",
+        "replay_enabled": true
+      }
+    },
+    {
+      "name": "cache-until-short-hex-suffix-span-id",
+      "env": {
+        "LMNR_DEBUG": "1",
+        "LMNR_DEBUG_SESSION_ID": "sess-13",
+        "LMNR_DEBUG_REPLAY_TRACE_ID": "55555555-5555-5555-5555-555555555555",
+        "LMNR_DEBUG_CACHE_UNTIL": "abcdef"
+      },
+      "expect": {
+        "session_id": "sess-13",
+        "replay_trace_id": "55555555-5555-5555-5555-555555555555",
+        "cache_until": 0,
+        "cache_until_span_id": "abcdef",
+        "replay_enabled": true
+      }
+    },
+    {
+      "name": "cache-until-span-id-without-replay-trace",
+      "env": {
+        "LMNR_DEBUG": "1",
+        "LMNR_DEBUG_SESSION_ID": "sess-14",
+        "LMNR_DEBUG_CACHE_UNTIL": "0123-456789abcdef"
+      },
+      "expect": {
+        "session_id": "sess-14",
+        "replay_trace_id": null,
+        "cache_until": 0,
+        "cache_until_span_id": "0123456789abcdef",
         "replay_enabled": false
       }
     }
