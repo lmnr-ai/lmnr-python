@@ -1339,7 +1339,14 @@ class Laminar:
 
             runtime = get_runtime()
             if runtime is not None:
-                runtime.emit_pointer()
+                # Best-effort: emit_pointer prints to stdout, which can raise
+                # OSError/BrokenPipeError (closed stdout in daemons/containers,
+                # notebook kernel restarts). That must never skip the cleanup
+                # below — leaving exporter threads alive and __initialized=True.
+                try:
+                    runtime.emit_pointer()
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    cls.__logger.debug("Failed to emit debug run pointer: %s", exc)
             TracerManager.shutdown()
             cls.__initialized = False
             # Clear the one-shot debug-runtime state so a subsequent

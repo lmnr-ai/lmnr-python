@@ -693,3 +693,53 @@ def test_exit_hook_does_not_accumulate_across_cycles(tmp_path, monkeypatch):
     assert registered == []
     _reset_runtime()
     monkeypatch.setattr(Laminar, "_Laminar__initialized", False, raising=False)
+
+
+def test_shutdown_completes_cleanup_when_emit_pointer_raises(tmp_path, monkeypatch):
+    # emit_pointer prints to stdout, which can raise OSError/BrokenPipeError
+    # (closed stdout in daemons/containers, notebook kernel restarts). That must
+    # never abort shutdown's cleanup: TracerManager.shutdown(), the reset, and
+    # the __initialized flip must still run.
+    from lmnr.sdk.laminar import Laminar
+
+    _reset_runtime()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.delenv("LMNR_DEBUG_REPLAY_TRACE_ID", raising=False)
+    monkeypatch.delenv("LMNR_DEBUG_CACHE_UNTIL", raising=False)
+
+    monkeypatch.setattr(
+        "lmnr.sdk.client.synchronous.sync_client.LaminarClient",
+        lambda *a, **k: _SpyDebugClient(),
+    )
+    monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
+
+    shutdown_calls: list = []
+    monkeypatch.setattr(
+        "lmnr.opentelemetry_lib.TracerManager.shutdown",
+        lambda: shutdown_calls.append(True),
+    )
+
+    Laminar._init_debug_runtime(base_url="http://localhost", http_port=8000)
+    monkeypatch.setattr(Laminar, "_Laminar__initialized", True, raising=False)
+
+    runtime = get_runtime()
+    assert runtime is not None
+    # Simulate a broken stdout: emit_pointer raises.
+    monkeypatch.setattr(
+        runtime, "emit_pointer", _raise_broken_pipe
+    )
+
+    # Must not propagate the BrokenPipeError out of shutdown().
+    Laminar.shutdown()
+
+    # The cleanup after emit_pointer still ran.
+    assert shutdown_calls == [True]
+    assert Laminar.is_initialized() is False
+    assert get_runtime() is None
+    _reset_runtime()
+    monkeypatch.setattr(Laminar, "_Laminar__initialized", False, raising=False)
+
+
+def _raise_broken_pipe():
+    raise BrokenPipeError("stdout closed")
