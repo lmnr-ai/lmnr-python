@@ -30,7 +30,6 @@ class SpineResult:
     spine_path: str | None
     # Spine calls in execution order (by start_time). Empty when no spine.
     spine_calls: list[SpanRecord]
-    overlap: bool = False
 
 
 def _depth(span_path: str) -> int:
