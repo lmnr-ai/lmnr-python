@@ -1,6 +1,6 @@
 """Spine detection over a source trace's spans.
 
-Implements the authoritative §7 heuristic plus the overlap guard from §F.
+Implements the authoritative heuristic plus the overlap guard.
 Part of the cross-language parity surface — keep line-comparable with the TS
 `spine.ts` and cover with the shared test vectors.
 """
@@ -48,7 +48,7 @@ def detect_spine(spans: list[SpanRecord]) -> SpineResult:
     Returns the chosen spine_path and its calls sorted by start_time. spine_path
     is None only when the trace has zero LLM spans.
     """
-    llm_spans = [s for s in spans if s.span_type == "LLM"]
+    llm_spans = [s for s in spans if s.span_type in ["LLM", "CACHED"]]
     if not llm_spans:
         logger.warning("Source trace has no LLM spans; nothing to cache.")
         return SpineResult(spine_path=None, spine_calls=[])
