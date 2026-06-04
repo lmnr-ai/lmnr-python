@@ -196,7 +196,7 @@ def _push_laminar_context(laminar_ctx: LaminarSpanContext) -> None:
     from lmnr.opentelemetry_lib.tracing.context import set_association_prop_context
     from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 
-    otel_span_ctx = laminar_ctx.try_to_otel_span_context()
+    otel_span_ctx = LaminarSpanContext.try_to_otel_span_context(laminar_ctx)
     if otel_span_ctx is None:
         return
 
