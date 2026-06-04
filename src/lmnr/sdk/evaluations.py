@@ -391,6 +391,7 @@ class Evaluation:
 
         eval_id_ctx = set_association_prop_context(
             metadata={"evaluation_id": str(eval_id)},
+            trace_type=TraceType.EVALUATION,
             attach=False,
         )
         eval_id_token = attach_context(eval_id_ctx)

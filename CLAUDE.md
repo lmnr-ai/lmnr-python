@@ -81,6 +81,10 @@ LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
 - Schema extraction lives in `span_utils._extract_structured_output_schema`. It handles: (1) `output_format=PydanticModel` via `model_json_schema()`, (2) `output_format=<any TypeAdapter-compatible type>` via `pydantic.TypeAdapter(...).json_schema()`, (3) raw-dict `output_format` (bare schema or `JSONOutputFormatParam`), and (4) `output_config={"format": {"type": "json_schema", "schema": {...}}}` on `messages.create`.
 - `anthropic.lib.bedrock._beta_messages.Messages` does **not** expose `parse` (only regular + `beta.messages.messages` do). `_instrument` already swallows `ModuleNotFoundError` / `AttributeError` so the missing bedrock.parse attempt is a silent no-op.
 
+## Evaluation trace type propagation
+
+- `_evaluate_datapoint` in `evaluations.py` must set `trace_type=TraceType.EVALUATION` on the isolated context (via `set_association_prop_context`) **before** starting the root evaluation span. Without it, the `LaminarSpanProcessor.on_start()` handler has no `CONTEXT_TRACE_TYPE_KEY` in `parent_context` for child spans (executor, evaluator), so they export without `lmnr.association.properties.trace_type` and the app-server classifies the trace as `DEFAULT`.
+
 ## deepagents instrument
 
 - `Instruments.DEEPAGENTS` is auto-enabled when `deepagents` is installed. When auto-enabled, `LANGCHAIN` and `LANGGRAPH` are auto-removed from the default instrument set (see `_DEEPAGENTS_NOISE_CONFLICTS` in `tracing/instruments.py`) — the LangSmith-style node-level spans they emit add no signal on top of what `LaminarMiddleware` already captures, and clutter the transcript view.
