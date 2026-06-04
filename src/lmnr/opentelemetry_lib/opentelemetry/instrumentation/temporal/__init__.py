@@ -49,6 +49,7 @@ from opentelemetry.trace import NonRecordingSpan, TraceFlags
 
 from lmnr.opentelemetry_lib.tracing.context import (
     attach_context,
+    detach_context,
     get_current_context,
 )
 from lmnr.opentelemetry_lib.tracing import TracerWrapper as TracerManager
@@ -139,10 +140,14 @@ def _build_headers(existing: dict[str, Any]) -> dict[str, Any]:
 
 def _restore_context_from_headers(
     headers: dict[str, Any] | None,
-) -> LaminarSpanContext | None:
+) -> tuple[LaminarSpanContext, Any] | None:
     """
     Read `laminar-span-context` (preferred) or `traceparent` (fallback) from
     Temporal headers and restore the parent context onto Laminar's context stack.
+
+    Returns a (LaminarSpanContext, token) pair so the caller can detach the
+    context when the activity finishes, or None if no usable trace context was
+    found.
     """
     if not headers:
         return None
@@ -154,8 +159,9 @@ def _restore_context_from_headers(
             from lmnr.sdk.laminar import Laminar
 
             ctx = Laminar.deserialize_span_context(laminar_raw)
-            _push_laminar_context(ctx)
-            return ctx
+            token = _push_laminar_context(ctx)
+            if token is not None:
+                return ctx, token
         except Exception as e:
             logger.warning(
                 "[Laminar] Could not restore %s: %s",
@@ -181,8 +187,9 @@ def _restore_context_from_headers(
                     span_path=[],
                     span_ids_path=[],
                 )
-                _push_laminar_context(ctx)
-                return ctx
+                token = _push_laminar_context(ctx)
+                if token is not None:
+                    return ctx, token
             except Exception as e:
                 logger.warning(
                     "[Laminar] Could not restore traceparent: %s", e
@@ -191,14 +198,17 @@ def _restore_context_from_headers(
     return None
 
 
-def _push_laminar_context(laminar_ctx: LaminarSpanContext) -> None:
-    """Push a LaminarSpanContext onto Laminar's context stack as a remote parent."""
+def _push_laminar_context(laminar_ctx: LaminarSpanContext) -> Any | None:
+    """Push a LaminarSpanContext onto Laminar's context stack as a remote parent.
+
+    Returns the detach token so the caller can clean up after the activity.
+    """
     from lmnr.opentelemetry_lib.tracing.context import set_association_prop_context
     from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 
     otel_span_ctx = LaminarSpanContext.try_to_otel_span_context(laminar_ctx)
     if otel_span_ctx is None:
-        return
+        return None
 
     # Register parent path info in the span processor so descendant spans
     # inherit the correct span path hierarchy.
@@ -236,7 +246,7 @@ def _push_laminar_context(laminar_ctx: LaminarSpanContext) -> None:
         context=ctx_with_span,
         attach=False,
     )
-    attach_context(ctx_with_props)
+    return attach_context(ctx_with_props)
 
 
 # ─── Interceptors ──────────────────────────────────────────────────────────────
@@ -339,27 +349,38 @@ class _LaminarActivityInboundInterceptor:
 
     async def execute_activity(self, input: Any) -> Any:
         headers = getattr(input, "headers", None) or {}
-        restored_ctx = _restore_context_from_headers(dict(headers))
+        restored = _restore_context_from_headers(dict(headers))
 
-        if not self._create_activity_span or restored_ctx is None:
+        if restored is None:
             return await self._next.execute_activity(input)
 
-        from lmnr.sdk.laminar import Laminar
+        restored_ctx, ctx_token = restored
 
-        activity_name: str = "temporal.activity"
         try:
-            import temporalio.activity as _ta
+            if not self._create_activity_span:
+                return await self._next.execute_activity(input)
 
-            info = _ta.info()
-            activity_name = info.activity_type
-        except Exception:
-            pass
+            from lmnr.sdk.laminar import Laminar
 
-        with Laminar.start_as_current_span(
-            activity_name,
-            parent_span_context=restored_ctx,
-        ):
-            return await self._next.execute_activity(input)
+            activity_name: str = "temporal.activity"
+            try:
+                import temporalio.activity as _ta
+
+                info = _ta.info()
+                activity_name = info.activity_type
+            except Exception:
+                pass
+
+            with Laminar.start_as_current_span(
+                activity_name,
+                parent_span_context=restored_ctx,
+            ):
+                return await self._next.execute_activity(input)
+        finally:
+            try:
+                detach_context(ctx_token)
+            except Exception:
+                pass
 
 
 # ─── Auto-patch helpers ────────────────────────────────────────────────────────
