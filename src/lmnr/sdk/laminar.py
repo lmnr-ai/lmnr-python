@@ -5,6 +5,8 @@ import json
 import logging
 import os
 import re
+import subprocess
+import sys
 import uuid
 import warnings
 from contextlib import contextmanager
@@ -298,7 +300,7 @@ class Laminar:
         cls.__initialized = True
         cls.__base_http_url = f"{http_url}:{http_port or 443}"
         env_metadata: dict[str, Any] = {}
-        if env_metadata_str := os.getenv("LMNR_METADATA"):
+        if env_metadata_str := os.getenv("LMNR_TRACE_METADATA"):
             try:
                 env_metadata = json.loads(env_metadata_str)
             except Exception:
@@ -465,9 +467,22 @@ class Laminar:
                         # field carries the SAME full per-session URL we print
                         # here (single code path via debugger_session_url).
                         runtime.record_project_id(project_id)
+                        session_url = runtime.debugger_session_url()
                         cls.__logger.info(
                             "Laminar debugger session: %s",
-                            runtime.debugger_session_url(),
+                            session_url,
+                        )
+                        opener = (
+                            "open"
+                            if sys.platform == "darwin"
+                            else "start"
+                            if sys.platform == "win32"
+                            else "xdg-open"
+                        )
+                        subprocess.Popen(
+                            [opener, session_url],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
                         )
                 except Exception as exc:
                     cls.__logger.warning("Failed to register debug session: %s", exc)
