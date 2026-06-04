@@ -1,9 +1,9 @@
 """Emit the debug-run pointer (§5, §I).
 
-On startup of a debug run we always print one console line prefixed with
-`LMNR_DEBUG_RUN ` followed by compact JSON, then best-effort write the same
-payload to `${CWD}/.lmnr/last-run.json`. The file write is best-effort: any IO
-error is swallowed so a read-only working directory never breaks the run.
+On a debug run we always print one console line prefixed with `LMNR_DEBUG_RUN `
+followed by compact JSON. When `LMNR_DEBUG_WRITE_LAST_RUN_TO_FILE` is set the
+same payload is also written to `${CWD}/.lmnr/last-run.json` (best-effort: any
+IO error is swallowed so a read-only working directory never breaks the run).
 
 Part of the cross-language parity surface — keep line-comparable with the TS
 `pointer.ts` (identical key order, prefix, and best-effort semantics).
