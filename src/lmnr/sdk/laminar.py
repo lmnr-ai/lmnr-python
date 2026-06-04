@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 import datetime
+import json
 import logging
 import os
 import re
@@ -296,7 +297,13 @@ class Laminar:
 
         cls.__initialized = True
         cls.__base_http_url = f"{http_url}:{http_port or 443}"
-        cls.__global_metadata = metadata or {}
+        env_metadata: dict[str, Any] = {}
+        if env_metadata_str := os.getenv("LMNR_METADATA"):
+            try:
+                env_metadata = json.loads(env_metadata_str)
+            except Exception:
+                pass
+        cls.__global_metadata = {**env_metadata, **(metadata or {})}
 
         if not os.getenv("OTEL_ATTRIBUTE_COUNT_LIMIT"):
             # each message is at least 2 attributes: role and content,

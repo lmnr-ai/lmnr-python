@@ -56,7 +56,8 @@ def emit_pointer(pointer: dict[str, Any]) -> None:
     """Print the console line, then best-effort write the pointer file."""
     payload = json.dumps(pointer, separators=(",", ":"))
     print(f"{CONSOLE_PREFIX}{payload}", flush=True)
-    _write_pointer_file(payload)
+    if os.getenv("LMNR_DEBUG_WRITE_LAST_RUN_TO_FILE"):
+        _write_pointer_file(payload)
 
 
 def _write_pointer_file(payload: str) -> None:

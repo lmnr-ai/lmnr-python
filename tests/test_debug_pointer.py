@@ -48,8 +48,9 @@ def test_emit_pointer_prints_prefixed_compact_json(tmp_path, monkeypatch, capsys
     assert json.loads(payload) == pointer
 
 
-def test_emit_pointer_writes_file(tmp_path, monkeypatch):
+def test_emit_pointer_writes_file_when_env_var_is_set(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LMNR_DEBUG_WRITE_LAST_RUN_TO_FILE", "1")
     pointer = build_pointer("t", "s", "r", 2, "https://www.lmnr.ai")
     emit_pointer(pointer)
 
@@ -59,10 +60,21 @@ def test_emit_pointer_writes_file(tmp_path, monkeypatch):
         assert json.load(f) == pointer
 
 
+def test_emit_pointer_does_not_write_file_without_env_var(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("LMNR_DEBUG_WRITE_LAST_RUN_TO_FILE", raising=False)
+    pointer = build_pointer("t", "s", None, 0, None)
+    emit_pointer(pointer)
+
+    path = os.path.join(tmp_path, POINTER_DIR, POINTER_FILE)
+    assert not os.path.exists(path)
+
+
 def test_emit_pointer_best_effort_on_unwritable_dir(tmp_path, monkeypatch, capsys):
     # Make the working directory's .lmnr path un-creatable by pointing CWD at a
     # location where makedirs raises; emit_pointer must still print and not raise.
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LMNR_DEBUG_WRITE_LAST_RUN_TO_FILE", "1")
 
     def boom(*args, **kwargs):
         raise OSError("read-only filesystem")
