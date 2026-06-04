@@ -387,6 +387,10 @@ class _LaminarActivityInboundInterceptor:
 
 # ─── Auto-patch helpers ────────────────────────────────────────────────────────
 
+_PATCHED_WORKER_MODULES: set[int] = set()
+_PATCHED_CLIENT_MODULES: set[int] = set()
+
+
 def patch_temporal_worker(
     worker_module: Any,
     *,
@@ -396,15 +400,21 @@ def patch_temporal_worker(
     Patch a `temporalio.worker` module so that every `Worker(...)` constructor
     call automatically includes `LaminarTemporalInterceptor`.
 
-    Called by Laminar.initialize() when `temporal_modules` is provided.
+    Idempotent — calling with the same module more than once is a no-op.
     """
+    module_id = id(worker_module)
+    if module_id in _PATCHED_WORKER_MODULES:
+        return
+    _PATCHED_WORKER_MODULES.add(module_id)
+
     original_init = worker_module.Worker.__init__
 
     def patched_init(self: Any, *args: Any, **kwargs: Any) -> None:
         interceptors: list[Any] = list(kwargs.pop("interceptors", []) or [])
-        interceptors.insert(0, LaminarTemporalInterceptor(
-            create_activity_span=create_activity_span,
-        ))
+        if not any(isinstance(i, LaminarTemporalInterceptor) for i in interceptors):
+            interceptors.insert(0, LaminarTemporalInterceptor(
+                create_activity_span=create_activity_span,
+            ))
         original_init(self, *args, interceptors=interceptors, **kwargs)
 
     worker_module.Worker.__init__ = patched_init
@@ -419,16 +429,22 @@ def patch_temporal_client(
     Patch a `temporalio.client` module so that every `Client.connect()` call
     automatically includes `LaminarTemporalInterceptor`.
 
-    Called by Laminar.initialize() when `temporal_modules` is provided.
+    Idempotent — calling with the same module more than once is a no-op.
     """
+    module_id = id(client_module)
+    if module_id in _PATCHED_CLIENT_MODULES:
+        return
+    _PATCHED_CLIENT_MODULES.add(module_id)
+
     original_connect = client_module.Client.connect
 
     @staticmethod  # type: ignore[misc]
     async def patched_connect(*args: Any, **kwargs: Any) -> Any:
         interceptors: list[Any] = list(kwargs.pop("interceptors", []) or [])
-        interceptors.insert(0, LaminarTemporalInterceptor(
-            create_activity_span=create_activity_span,
-        ))
+        if not any(isinstance(i, LaminarTemporalInterceptor) for i in interceptors):
+            interceptors.insert(0, LaminarTemporalInterceptor(
+                create_activity_span=create_activity_span,
+            ))
         return await original_connect(*args, interceptors=interceptors, **kwargs)
 
     client_module.Client.connect = patched_connect
