@@ -192,6 +192,7 @@ class Laminar:
         session_recording_options: SessionRecordingOptions | None = None,
         force_http: bool = False,
         metadata: dict[str, AttributeValue] | None = None,
+        temporal_modules: dict[str, Any] | None = None,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -244,6 +245,26 @@ class Laminar:
                 Defaults to None (uses default masking behavior).
             force_http (bool, optional): If set to True, the HTTP OTEL exporter will be\
                 used instead of the gRPC OTEL exporter. Defaults to False.
+            temporal_modules (dict[str, Any] | None, optional): Temporal modules to\
+                auto-patch for transparent trace context propagation. Pass a dict with\
+                keys "worker" (the `temporalio.worker` module) and/or "client" (the\
+                `temporalio.client` module). When provided, `Worker.create()` and\
+                `Client.connect()` are patched to automatically include Laminar\
+                interceptors so activity spans are linked to the outer client span.\
+                Also accepts an optional "create_activity_span" bool (default True).\
+                Defaults to None.
+
+                Example::
+
+                    import temporalio.worker as temporal_worker
+                    import temporalio.client as temporal_client
+
+                    Laminar.initialize(
+                        temporal_modules={
+                            "worker": temporal_worker,
+                            "client": temporal_client,
+                        },
+                    )
         Raises:
             ValueError: If project API key is not set
         """
@@ -320,6 +341,48 @@ class Laminar:
             attach_context(new_ctx)
 
         cls._initialize_context_from_env()
+
+        if temporal_modules:
+            cls._patch_temporal_modules(temporal_modules)
+
+    @classmethod
+    def _patch_temporal_modules(cls, temporal_modules: dict[str, Any]) -> None:
+        """Auto-patch Temporal Worker/Client modules with Laminar interceptors."""
+        from lmnr.opentelemetry_lib.opentelemetry.instrumentation.temporal import (
+            patch_temporal_client,
+            patch_temporal_worker,
+        )
+
+        create_activity_span: bool = temporal_modules.get(
+            "create_activity_span", True
+        )
+
+        worker_module = temporal_modules.get("worker")
+        if worker_module is not None:
+            try:
+                patch_temporal_worker(
+                    worker_module,
+                    create_activity_span=create_activity_span,
+                )
+                cls.__logger.debug(
+                    "Laminar: patched temporalio.worker.Worker.create"
+                )
+            except Exception as e:
+                cls.__logger.warning(
+                    "Laminar: could not patch temporalio.worker: %s", e
+                )
+
+        client_module = temporal_modules.get("client")
+        if client_module is not None:
+            try:
+                patch_temporal_client(client_module)
+                cls.__logger.debug(
+                    "Laminar: patched temporalio.client.Client.connect"
+                )
+            except Exception as e:
+                cls.__logger.warning(
+                    "Laminar: could not patch temporalio.client: %s", e
+                )
 
     @classmethod
     def _initialize_context_from_env(cls) -> None:

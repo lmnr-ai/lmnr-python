@@ -8,6 +8,9 @@ from .sdk.types import HumanEvaluator
 from .sdk.decorators import observe
 from .sdk.types import LaminarSpanContext
 from .opentelemetry_lib.litellm import LaminarLiteLLMCallback
+from .opentelemetry_lib.opentelemetry.instrumentation.temporal import (
+    LaminarTemporalInterceptor,
+)
 from .opentelemetry_lib.tracing.attributes import Attributes
 from .opentelemetry_lib.tracing.instruments import Instruments
 from .opentelemetry_lib.tracing.processor import LaminarSpanProcessor
@@ -28,6 +31,7 @@ __all__ = [
     "LaminarSpanProcessor",
     "LaminarSpan",
     "get_laminar_tracer_provider",
+    "LaminarTemporalInterceptor",
     "get_tracer",
     "evaluate",
     "observe",
