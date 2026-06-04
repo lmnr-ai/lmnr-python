@@ -365,7 +365,7 @@ class Laminar:
                     create_activity_span=create_activity_span,
                 )
                 cls.__logger.debug(
-                    "Laminar: patched temporalio.worker.Worker.create"
+                    "Laminar: patched temporalio.worker.Worker.__init__"
                 )
             except Exception as e:
                 cls.__logger.warning(

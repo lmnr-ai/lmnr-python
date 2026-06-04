@@ -9,7 +9,9 @@ Usage — Option A (explicit, always works):
     from temporalio.worker import Worker
     from temporalio.client import Client
 
-    worker = await Worker.create(
+    worker = Worker(
+        client,
+        task_queue="my-queue",
         interceptors=[LaminarTemporalInterceptor()],
         ...
     )
@@ -33,8 +35,8 @@ Usage — Option B (auto-patch via Laminar.initialize()):
         },
     )
 
-    # Worker.create() and Client.connect() now include Laminar interceptors.
-    worker = await temporal_worker.Worker.create(...)
+    # Worker(...) and Client.connect() now include Laminar interceptors.
+    worker = temporal_worker.Worker(client, task_queue="my-queue", ...)
     client = await temporal_client.Client.connect(...)
 """
 
@@ -391,22 +393,21 @@ def patch_temporal_worker(
     create_activity_span: bool = True,
 ) -> None:
     """
-    Patch a `temporalio.worker` module so that every `Worker.create()` call
-    automatically includes `LaminarTemporalInterceptor`.
+    Patch a `temporalio.worker` module so that every `Worker(...)` constructor
+    call automatically includes `LaminarTemporalInterceptor`.
 
     Called by Laminar.initialize() when `temporal_modules` is provided.
     """
-    original_create = worker_module.Worker.create
+    original_init = worker_module.Worker.__init__
 
-    @staticmethod  # type: ignore[misc]
-    async def patched_create(*args: Any, **kwargs: Any) -> Any:
+    def patched_init(self: Any, *args: Any, **kwargs: Any) -> None:
         interceptors: list[Any] = list(kwargs.pop("interceptors", []) or [])
         interceptors.insert(0, LaminarTemporalInterceptor(
             create_activity_span=create_activity_span,
         ))
-        return await original_create(*args, interceptors=interceptors, **kwargs)
+        original_init(self, *args, interceptors=interceptors, **kwargs)
 
-    worker_module.Worker.create = patched_create
+    worker_module.Worker.__init__ = patched_init
 
 
 def patch_temporal_client(
