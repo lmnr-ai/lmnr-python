@@ -58,7 +58,7 @@ from lmnr.sdk.types import LaminarSpanContext
 logger = logging.getLogger(__name__)
 
 # Header keys
-LAMINAR_SPAN_CONTEXT_HEADER = "laminar-span-context"
+LAMINAR_SPAN_CONTEXT_HEADER = "x-lmnr-span-context"
 TRACEPARENT_HEADER = "traceparent"
 
 
