@@ -192,7 +192,6 @@ class Laminar:
         session_recording_options: SessionRecordingOptions | None = None,
         force_http: bool = False,
         metadata: dict[str, AttributeValue] | None = None,
-        temporal_modules: bool | dict[str, Any] | None = None,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -245,20 +244,6 @@ class Laminar:
                 Defaults to None (uses default masking behavior).
             force_http (bool, optional): If set to True, the HTTP OTEL exporter will be\
                 used instead of the gRPC OTEL exporter. Defaults to False.
-            temporal_modules (bool | dict[str, Any] | None, optional): Enable\
-                automatic Temporal trace context propagation. Pass ``True`` to\
-                auto-import ``temporalio.worker`` and ``temporalio.client`` and\
-                patch ``Worker.__init__`` and ``Client.connect`` so all activity\
-                spans are linked to the outer client span. Pass a dict to\
-                customize behaviour — the only recognised key is\
-                ``"create_activity_span"`` (bool, default ``True``). Module\
-                objects are no longer accepted; the SDK always imports the\
-                modules itself. Silently skips if ``temporalio`` is not\
-                installed. Defaults to None.
-
-                Example::
-
-                    Laminar.initialize(temporal_modules=True)
         Raises:
             ValueError: If project API key is not set
         """
@@ -335,15 +320,11 @@ class Laminar:
             attach_context(new_ctx)
 
         cls._initialize_context_from_env()
-
-        if temporal_modules is not None and temporal_modules is not False:
-            cls._patch_temporal_modules(temporal_modules)
+        cls._patch_temporal_modules()
 
     @classmethod
-    def _patch_temporal_modules(
-        cls, temporal_modules: bool | dict[str, Any]
-    ) -> None:
-        """Auto-patch Temporal Worker/Client modules with Laminar interceptors."""
+    def _patch_temporal_modules(cls) -> None:
+        """Auto-patch Temporal Worker/Client if temporalio is installed."""
         import importlib
 
         from lmnr.opentelemetry_lib.opentelemetry.instrumentation.temporal import (
@@ -351,15 +332,9 @@ class Laminar:
             patch_temporal_worker,
         )
 
-        opts: dict[str, Any] = temporal_modules if isinstance(temporal_modules, dict) else {}
-        create_activity_span: bool = opts.get("create_activity_span", True)
-
         try:
             worker_module = importlib.import_module("temporalio.worker")
-            patch_temporal_worker(
-                worker_module,
-                create_activity_span=create_activity_span,
-            )
+            patch_temporal_worker(worker_module, create_activity_span=True)
             cls.__logger.debug("Laminar: patched temporalio.worker.Worker.__init__")
         except ImportError:
             cls.__logger.debug(
