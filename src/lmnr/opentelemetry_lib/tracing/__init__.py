@@ -154,6 +154,7 @@ class TracerWrapper(object):
                     instruments=instruments,
                     block_instruments=block_instruments,
                     async_client=obj._async_client,
+                    lmnr_span_processor=obj._span_processor,
                 )
 
                 cls.instance = obj

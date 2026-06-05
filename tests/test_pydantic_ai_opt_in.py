@@ -82,6 +82,19 @@ def deepagents_not_installed(monkeypatch):
         instruments_mod, "_deepagents_installed", lambda: False)
 
 
+@pytest.fixture(autouse=True)
+def _langfuse_absent(monkeypatch):
+    """Stub langfuse as absent for every pydantic_ai-opt-in test.
+
+    `langfuse` is a dev dependency of lmnr-python, which otherwise triggers
+    the `_LANGFUSE_PROVIDER_CONFLICTS` auto-removal and strips
+    OPENAI/ANTHROPIC/etc. from the default set — making every pydantic_ai
+    assertion here fail. These tests only care about pydantic_ai's own
+    auto-enable logic, so we isolate them from the Langfuse branch.
+    """
+    monkeypatch.setattr(instruments_mod, "_langfuse_installed", lambda: False)
+
+
 def test_pydantic_ai_not_installed_defaults_exclude_it(
     track_initializers, pydantic_ai_not_installed
 ):

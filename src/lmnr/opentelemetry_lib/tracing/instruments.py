@@ -5,11 +5,15 @@ from typing import TYPE_CHECKING
 
 from opentelemetry.trace import TracerProvider
 import lmnr.opentelemetry_lib.tracing._instrument_initializers as initializers
-from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
+from lmnr.opentelemetry_lib.utils.package_check import (
+    get_package_version,
+    is_package_installed,
+)
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 
 if TYPE_CHECKING:
     from opentelemetry.sdk._logs import LoggerProvider
+    from opentelemetry.sdk.trace import SpanProcessor
 
 module_logger = logging.getLogger(__name__)
 
@@ -37,6 +41,14 @@ class Instruments(Enum):
     KERNEL = "kernel"
     LANCEDB = "lancedb"
     LANGCHAIN = "langchain"
+    # Auto-enabled by default when `langfuse` (>= 3.0) is installed. Langfuse's
+    # own SDK is built on OpenTelemetry; this instrumentor dual-attaches
+    # Laminar's span processor to every Langfuse `TracerProvider` so spans
+    # emitted by `@observe`, `langfuse.openai`, and `langfuse.langchain` flow
+    # into Laminar in addition to Langfuse. See
+    # `_LANGFUSE_PROVIDER_CONFLICTS` for the raw-provider instrumentors that
+    # are auto-removed to avoid duplicate spans.
+    LANGFUSE = "langfuse"
     LANGGRAPH = "langgraph"
     LITELLM = "litellm"
     LLAMA_INDEX = "llama_index"
@@ -97,6 +109,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.KERNEL: initializers.KernelInstrumentorInitializer(),
     Instruments.LANCEDB: initializers.LanceDBInstrumentorInitializer(),
     Instruments.LANGCHAIN: initializers.LangchainInstrumentorInitializer(),
+    Instruments.LANGFUSE: initializers.LangfuseInstrumentorInitializer(),
     Instruments.LANGGRAPH: initializers.LanggraphInstrumentorInitializer(),
     Instruments.LITELLM: initializers.LitellmInstrumentorInitializer(),
     Instruments.LLAMA_INDEX: initializers.LlamaIndexInstrumentorInitializer(),
@@ -153,6 +166,23 @@ _DEEPAGENTS_NOISE_CONFLICTS: set[Instruments] = {
 }
 
 
+#: Instrumentors that overlap with Langfuse's own wrappers. Langfuse emits
+#: GenAI / tool spans through `langfuse.openai`, `langfuse.langchain`, and
+#: its `@observe` decorator for everything the user routes through it. When
+#: LANGFUSE is auto-enabled, running Laminar's raw-provider instrumentors on
+#: top of that would produce duplicate spans for the same call.
+_LANGFUSE_PROVIDER_CONFLICTS: set[Instruments] = {
+    Instruments.ANTHROPIC,
+    Instruments.BEDROCK,
+    Instruments.COHERE,
+    Instruments.GOOGLE_GENAI,
+    Instruments.GROQ,
+    Instruments.LANGCHAIN,
+    Instruments.MISTRAL,
+    Instruments.OPENAI,
+}
+
+
 def _pydantic_ai_installed() -> bool:
     return is_package_installed("pydantic-ai-slim") or is_package_installed(
         "pydantic-ai"
@@ -163,47 +193,88 @@ def _deepagents_installed() -> bool:
     return is_package_installed("deepagents")
 
 
+def _langfuse_installed() -> bool:
+    """The bridge targets langfuse >= 3.0 (OTel-native). For langfuse 2.x we
+    must report False so `_LANGFUSE_PROVIDER_CONFLICTS` does NOT strip the
+    raw-provider instrumentors — the bridge initializer would then return None
+    for 2.x and leave those providers silently uninstrumented."""
+    if not is_package_installed("langfuse"):
+        return False
+    from packaging.version import InvalidVersion, parse
+
+    version = get_package_version("langfuse")
+    if version is None:
+        # Present but unreadable version metadata — err on the side of not
+        # stripping providers.
+        return False
+    try:
+        return parse(version) >= parse("3.0.0")
+    except InvalidVersion:
+        return False
+
+
 def init_instrumentations(
     tracer_provider: TracerProvider,
     logger_provider: "LoggerProvider | None" = None,
     instruments: set[Instruments] | None = None,
     block_instruments: set[Instruments] | None = None,
     async_client: AsyncLaminarClient | None = None,
+    lmnr_span_processor: "SpanProcessor | None" = None,
 ):
     block_instruments = block_instruments or set()
     if instruments is None:
-        instruments = set(Instruments)
-        deepagents_active = (
-            _deepagents_installed()
-            and Instruments.DEEPAGENTS not in block_instruments
+        langfuse_active = (
+            _langfuse_installed() and Instruments.LANGFUSE not in block_instruments
         )
-        # Only auto-enable PYDANTIC_AI if the package is actually installed,
-        # and only auto-remove overlapping provider instrumentors in that case.
-        # If pydantic_ai isn't installed, PYDANTIC_AI stays in the set but its
-        # initializer will short-circuit to None (see PydanticAIInstrumentorInitializer).
-        if (
-            _pydantic_ai_installed()
-            and Instruments.PYDANTIC_AI not in block_instruments
-        ):
-            # Deepagents wins over pydantic_ai when both are installed: the
-            # deepagents instrumentation relies on the raw-provider
-            # instrumentors (Anthropic / OpenAI / …) to emit LLM spans
-            # underneath each tool call, so stripping them would leave the
-            # `deep_agent` trace with only root + tool spans and no LLM
-            # children. If the same app also uses pydantic_ai Agents,
-            # provider calls on that path will be traced twice; callers who
-            # want pydantic_ai's de-duplication can pass an explicit
-            # `instruments` set to `Laminar.initialize`.
-            if not deepagents_active:
-                instruments = instruments - _PYDANTIC_AI_PROVIDER_CONFLICTS
+        if langfuse_active:
+            # Langfuse bridge takes over: when langfuse is installed and the
+            # caller didn't pass an explicit `instruments` set, disable every
+            # Laminar auto-instrumentor and route spans exclusively through
+            # Langfuse's own auto-patchers (`langfuse.openai`,
+            # `langfuse.langchain`, `@observe`, …). The bridge dual-attaches
+            # Laminar's `SpanProcessor` to every Langfuse `TracerProvider`, so
+            # Langfuse-emitted spans still reach Laminar — running any of
+            # Laminar's raw-provider / framework / agent instrumentors on top
+            # would double-cover the same calls. `OPENTELEMETRY` is a
+            # DataDog-SpanContext patch that emits no spans, so it stays.
+            # Callers who want specific Laminar instrumentors alongside
+            # Langfuse can pass an explicit `instruments` set to
+            # `Laminar.initialize`.
+            instruments = {Instruments.LANGFUSE, Instruments.OPENTELEMETRY}
         else:
-            instruments = instruments - {Instruments.PYDANTIC_AI}
-        # Auto-remove LangChain/LangGraph noise when deepagents is present;
-        # LaminarMiddleware emits the relevant spans at the agent boundary.
-        if deepagents_active:
-            instruments = instruments - _DEEPAGENTS_NOISE_CONFLICTS
-        else:
-            instruments = instruments - {Instruments.DEEPAGENTS}
+            instruments = set(Instruments) - {Instruments.LANGFUSE}
+            deepagents_active = (
+                _deepagents_installed()
+                and Instruments.DEEPAGENTS not in block_instruments
+            )
+            # Only auto-enable PYDANTIC_AI if the package is actually installed,
+            # and only auto-remove overlapping provider instrumentors in that case.
+            # If pydantic_ai isn't installed, PYDANTIC_AI stays in the set but its
+            # initializer will short-circuit to None (see
+            # PydanticAIInstrumentorInitializer).
+            if (
+                _pydantic_ai_installed()
+                and Instruments.PYDANTIC_AI not in block_instruments
+            ):
+                # Deepagents wins over pydantic_ai when both are installed: the
+                # deepagents instrumentation relies on the raw-provider
+                # instrumentors (Anthropic / OpenAI / …) to emit LLM spans
+                # underneath each tool call, so stripping them would leave the
+                # `deep_agent` trace with only root + tool spans and no LLM
+                # children. If the same app also uses pydantic_ai Agents,
+                # provider calls on that path will be traced twice; callers who
+                # want pydantic_ai's de-duplication can pass an explicit
+                # `instruments` set to `Laminar.initialize`.
+                if not deepagents_active:
+                    instruments = instruments - _PYDANTIC_AI_PROVIDER_CONFLICTS
+            else:
+                instruments = instruments - {Instruments.PYDANTIC_AI}
+            # Auto-remove LangChain/LangGraph noise when deepagents is present;
+            # LaminarMiddleware emits the relevant spans at the agent boundary.
+            if deepagents_active:
+                instruments = instruments - _DEEPAGENTS_NOISE_CONFLICTS
+            else:
+                instruments = instruments - {Instruments.DEEPAGENTS}
     if not isinstance(instruments, set):
         instruments = set(instruments)
 
@@ -219,6 +290,20 @@ def init_instrumentations(
         try:
             instrumentor = initializer.init_instrumentor(async_client)
             if instrumentor is None:
+                continue
+            # LangfuseInstrumentor doesn't extend BaseInstrumentor; it needs
+            # access to the Laminar SpanProcessor so it can dual-attach that
+            # same processor onto Langfuse-owned TracerProviders.
+            if instrument == Instruments.LANGFUSE:
+                if lmnr_span_processor is None:
+                    module_logger.debug(
+                        "Skipping Langfuse bridge: no Laminar SpanProcessor provided."
+                    )
+                    continue
+                instrumentor.instrument(
+                    lmnr_tracer_provider=tracer_provider,
+                    lmnr_span_processor=lmnr_span_processor,
+                )
                 continue
             if not instrumentor.is_instrumented_by_opentelemetry:
                 instrumentor.instrument(
