@@ -6,7 +6,7 @@
 > outcomes, the input hash, or what app-server does lives in the shared spec — do
 > not re-derive it here.
 > Branch: `feat/lam-1715-debugger-cache-v2` (off
-> `refactor/lam-1672-sdk-debugger-rework`).
+> `refactor/lam-1672-sdk-debugger-rework`), final PR goes to `main`.
 
 This plan is the Python mirror of `lmnr-ts/plans/lam-1715/02-ts-sdk.md`. Where TS
 and Python differ, it is called out explicitly; otherwise the two SDKs implement
