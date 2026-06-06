@@ -40,7 +40,6 @@ def test_config_truth_table(case, monkeypatch):
     assert config is not None
     assert config.session_id == expect["session_id"]
     assert config.replay_trace_id == expect["replay_trace_id"]
-    assert config.cache_until == expect["cache_until"]
     assert config.cache_until_span_id == expect.get("cache_until_span_id")
     assert config.replay_enabled is expect["replay_enabled"]
 
@@ -72,7 +71,7 @@ def test_from_last_run_seeds_replay_from_pointer(tmp_path, monkeypatch):
         {
             "trace_id": "trace-abc",
             "session_id": "session-xyz",
-            "cache_until": 5,
+            "cache_until": "0123-456789abcdef",
         },
     )
     monkeypatch.setenv("LMNR_DEBUG", "true")
@@ -82,7 +81,7 @@ def test_from_last_run_seeds_replay_from_pointer(tmp_path, monkeypatch):
     assert config is not None
     assert config.replay_trace_id == "trace-abc"
     assert config.session_id == "session-xyz"
-    assert config.cache_until == 5
+    assert config.cache_until_span_id == "0123456789abcdef"
     assert config.replay_enabled is True
 
 
@@ -90,18 +89,22 @@ def test_from_last_run_env_overrides_per_field(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write_last_run(
         tmp_path,
-        {"trace_id": "trace-abc", "session_id": "session-xyz", "cache_until": 5},
+        {
+            "trace_id": "trace-abc",
+            "session_id": "session-xyz",
+            "cache_until": "0123-456789abcdef",
+        },
     )
     monkeypatch.setenv("LMNR_DEBUG", "true")
     monkeypatch.setenv("LMNR_DEBUG_FROM_LAST_RUN", "true")
     monkeypatch.setenv("LMNR_DEBUG_REPLAY_TRACE_ID", "trace-override")
-    monkeypatch.setenv("LMNR_DEBUG_CACHE_UNTIL", "9")
+    monkeypatch.setenv("LMNR_DEBUG_CACHE_UNTIL", "fedcba")
 
     config = build_debug_config()
     assert config is not None
     assert config.replay_trace_id == "trace-override"
     assert config.session_id == "session-xyz"
-    assert config.cache_until == 9
+    assert config.cache_until_span_id == "fedcba"
 
 
 def test_from_last_run_ignored_when_flag_falsey(tmp_path, monkeypatch):

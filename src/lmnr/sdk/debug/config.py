@@ -46,30 +46,25 @@ def _normalize_span_id(value: str) -> str | None:
     return None
 
 
-def _parse_cache_until(value: str | None) -> tuple[int, str | None]:
-    """Parse LMNR_DEBUG_CACHE_UNTIL into (N, span_id_needle).
+def _parse_cache_until_span_id(value: str | None) -> str | None:
+    """Parse LMNR_DEBUG_CACHE_UNTIL into a span-id needle.
 
-    The value is either a count N (clamp <0 to 0) or a span id in UUID shape that
-    is resolved to N once the source trace is fetched. A numeric value always
-    wins, so a purely decimal string is treated as a count, never a span id.
-    Returns (0, None) for an empty value and warns (then returns (0, None)) for a
-    value that is neither a number nor a span id.
+    v2 dropped the count form (shared spec §3): the value is **only** a span id.
+    The four needle forms (full UUID / last-two UUID groups / raw 16-hex / short
+    hex suffix) are accepted via `_normalize_span_id` and sent verbatim to
+    app-server, which does the suffix match against the source trace's span ids.
+    Returns None for an empty value and warns (then returns None) for a value
+    that isn't span-id-shaped.
     """
     if value is None or value == "":
-        return 0, None
-    try:
-        n = int(value)
-    except (TypeError, ValueError):
-        needle = _normalize_span_id(value)
-        if needle is not None:
-            return 0, needle
+        return None
+    needle = _normalize_span_id(value)
+    if needle is None:
         logger.warning(
-            "LMNR_DEBUG_CACHE_UNTIL=%r is neither an integer nor a span id; "
-            "defaulting to 0",
+            "LMNR_DEBUG_CACHE_UNTIL=%r is not a span id; replay disabled",
             value,
         )
-        return 0, None
-    return (n if n > 0 else 0), None
+    return needle
 
 
 def _load_last_run() -> dict[str, Any]:
@@ -95,25 +90,22 @@ class DebugConfig:
 
     session_id: str
     replay_trace_id: str | None
-    cache_until: int
-    # When LMNR_DEBUG_CACHE_UNTIL was given as a span id rather than a count, this
-    # holds the hyphen-stripped lowercase hex needle; `cache_until` stays 0 until
-    # the source trace is fetched and the needle is resolved to an occurrence
-    # count (see `_build_cache`). None when the value was a plain count.
+    # The hyphen-stripped lowercase hex span-id needle parsed from
+    # LMNR_DEBUG_CACHE_UNTIL. v2 has no count form — app-server resolves the
+    # needle against the source trace (shared spec §3, §6.2). None when unset.
     cache_until_span_id: str | None = None
 
     @property
     def replay_enabled(self) -> bool:
-        """True when a source trace is set and at least one call should replay.
+        """True when both replay env vars resolved non-empty (shared spec §4).
 
-        A span-id cache window also counts as replay-configured even though
-        `cache_until` is still 0 — the count is resolved later from the source
-        trace, so gating on `cache_until > 0` alone would wrongly treat a
-        span-id run as no-replay before the trace is fetched.
+        Replay needs a source trace AND a `cache_until` span-id needle; either
+        one missing is a debug-no-replay run.
         """
-        if self.replay_trace_id is None:
-            return False
-        return self.cache_until > 0 or self.cache_until_span_id is not None
+        return (
+            self.replay_trace_id is not None
+            and self.cache_until_span_id is not None
+        )
 
 
 def build_debug_config() -> DebugConfig | None:
@@ -150,12 +142,13 @@ def build_debug_config() -> DebugConfig | None:
     )
     cache_until_value = os.environ.get("LMNR_DEBUG_CACHE_UNTIL")
     if cache_until_value is None and last_run.get("cache_until") is not None:
+        # The pointer persists the needle as-is (v2 has no resolution step), so
+        # the stored value is already a span-id string.
         cache_until_value = str(last_run.get("cache_until"))
-    cache_until, cache_until_span_id = _parse_cache_until(cache_until_value)
+    cache_until_span_id = _parse_cache_until_span_id(cache_until_value)
 
     return DebugConfig(
         session_id=session_id,
         replay_trace_id=replay_trace_id,
-        cache_until=cache_until,
         cache_until_span_id=cache_until_span_id,
     )

@@ -1,20 +1,24 @@
 """
 Debug replay wrapper for LiteLLM instrumentation.
 
-On a debug run with replay enabled, serves the first N spine LLM calls from the
-in-process `ReplayCache` (reconstructing a LiteLLM `ModelResponse` /
-`ResponsesAPIResponse` from cached attributes) and runs the rest live. Overrides
-+ HTTP cache server are gone (§H).
+On a debug run with replay configured, each live LLM call asks the server-side
+cache (shared spec §7) what to do: on a HIT it reconstructs a LiteLLM
+`ModelResponse` / `ResponsesAPIResponse` from the cached span and serves it; on
+MISS / LIVE it runs the call live. The decision is made by `cache_outcome_for`.
+
+LiteLLM has no async cache helper: its instrumentation dispatches both sync and
+async calls through these sync wrappers and only checks `inspect.iscoroutine` on
+the result, so the cache lookup is a blocking HTTP call even on the async path
+(a known v1 limitation carried forward — the lookup is small and one-shot).
 """
 
 import json
 from typing import Any, AsyncGenerator, Generator
 
 from lmnr.sdk.debug.replay import (
-    cached_payload_for,
+    cache_outcome_for,
     mark_span_cached,
     replay_enabled,
-    span_path_from_span,
 )
 from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
@@ -534,12 +538,11 @@ class LiteLLMRolloutWrapper:
     ) -> Any:
         """Serve a cached completion response if available, else run live."""
         span = Laminar.get_current_span()
-        span_path = span_path_from_span(span)
-        cached = cached_payload_for(span_path)
-        if cached is not None:
-            response = self.cached_response_to_completion(cached)
+        outcome = cache_outcome_for(span)
+        if outcome is not None and outcome.kind == "hit":
+            response = self.cached_response_to_completion(outcome.cached)
             if response is not None:
-                logger.debug("Replaying cached LiteLLM completion at %s", span_path)
+                logger.debug("Serving cached LiteLLM completion from replay cache")
                 mark_span_cached(span)
                 if is_streaming:
                     sync_gen = self._create_cached_completion_stream(response)
@@ -557,12 +560,11 @@ class LiteLLMRolloutWrapper:
     ) -> Any:
         """Serve a cached responses-API response if available, else run live."""
         span = Laminar.get_current_span()
-        span_path = span_path_from_span(span)
-        cached = cached_payload_for(span_path)
-        if cached is not None:
-            response = self.cached_response_to_responses(cached)
+        outcome = cache_outcome_for(span)
+        if outcome is not None and outcome.kind == "hit":
+            response = self.cached_response_to_responses(outcome.cached)
             if response is not None:
-                logger.debug("Replaying cached LiteLLM responses at %s", span_path)
+                logger.debug("Serving cached LiteLLM responses from replay cache")
                 mark_span_cached(span)
                 if is_streaming:
                     sync_gen = self._create_cached_responses_stream(response)

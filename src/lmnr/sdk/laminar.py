@@ -179,6 +179,21 @@ class Laminar:
     # loop (common in tests / notebooks) keeps every retired DebugRuntime — and
     # its replay cache — alive and uncollectable.
     __debug_exit_hook: Callable[[], None] | None = None
+    # Process-wide "run live" latch for v2 debugger replay (shared spec §7.3).
+    # Set True on the first cache MISS so every later LLM call in this process
+    # skips the cache endpoint and runs live; reset in shutdown(). Mirrors the
+    # TS `Laminar.debugRunLive`.
+    __debug_run_live: bool = False
+
+    @classmethod
+    def is_debug_run_live(cls) -> bool:
+        """True once any LLM call in this run has seen a cache MISS."""
+        return cls.__debug_run_live
+
+    @classmethod
+    def set_debug_run_live(cls, value: bool) -> None:
+        """Latch (or reset) the process-wide debugger run-live flag."""
+        cls.__debug_run_live = value
 
     @classmethod
     def initialize(
@@ -415,19 +430,25 @@ class Laminar:
     def _init_debug_runtime(
         cls, base_url: str | None, http_port: int | None
     ) -> None:
-        """Build the in-process debug runtime (§4, §5) when LMNR_DEBUG is set.
+        """Build the v2 debug runtime (shared spec §4) when LMNR_DEBUG is set.
 
         On a debug run the session id from the config is stamped into the global
         trace metadata as `rollout.session_id`, and a process-exit hook emits the
         run pointer once the root trace id is known. When debug mode is off this
         is a no-op and the SDK behaves exactly as before.
+
+        Unlike v1 (which closed the client at the end of init), v2 retains BOTH a
+        sync `LaminarClient` and an async `AsyncLaminarClient` on the runtime for
+        the whole run — every live LLM call looks its input hash up in the
+        server-side cache through them (sync providers via `client`, async
+        providers via `async_client`). `shutdown()` closes them.
         """
         try:
             from lmnr.sdk.debug import init_debug_runtime
             from lmnr.sdk.debug.config import _is_truthy
 
-            # Debug mode off: bail before constructing a LaminarClient (and its
-            # httpx.Client), which would otherwise leak unclosed on every normal
+            # Debug mode off: bail before constructing the clients (and their
+            # httpx pools), which would otherwise leak unclosed on every normal
             # initialize(). This is the same LMNR_DEBUG gate build_debug_config()
             # applies first; checking it directly avoids a redundant config build
             # here (which would mint a throwaway session uuid and re-read the
@@ -435,57 +456,66 @@ class Laminar:
             if not _is_truthy(os.environ.get("LMNR_DEBUG")):
                 return
 
+            from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
             from lmnr.sdk.client.synchronous.sync_client import LaminarClient
             from lmnr.sdk.utils import get_frontend_url
 
-            # The client is only needed during init (synchronous replay-cache
-            # build + session register); the runtime never retains it. Close it
-            # on the way out so its httpx.Client connection pool / fds aren't
-            # leaked on every initialize() with LMNR_DEBUG set.
-            with LaminarClient(
+            # Retained for the run's lifetime (NOT closed here) — the provider
+            # wrappers reach back through the runtime to hit the cache endpoint
+            # on every live call. shutdown() closes both.
+            client = LaminarClient(
                 base_url=base_url,
                 project_api_key=cls.__project_api_key,
                 port=http_port,
-            ) as client:
-                debugger_url = (
-                    os.getenv("LMNR_FRONTEND_URL") or get_frontend_url(base_url)
-                )
-                runtime = init_debug_runtime(client, debugger_url=debugger_url)
-                if runtime is None:
-                    return
+            )
+            async_client = AsyncLaminarClient(
+                base_url=base_url,
+                project_api_key=cls.__project_api_key,
+                port=http_port,
+            )
+            debugger_url = os.getenv("LMNR_FRONTEND_URL") or get_frontend_url(base_url)
+            runtime = init_debug_runtime(
+                client, async_client, debugger_url=debugger_url
+            )
+            if runtime is None:
+                # Debug mode is off after all (build_debug_config returned None):
+                # close the clients we speculatively opened so they don't leak.
+                client.close()
+                cls._close_debug_async_client(async_client)
+                return
 
-                # Register the SDK-minted session id with the backend so the run
-                # shows up in the UI. This idempotent upsert is what makes a bare
-                # `LMNR_DEBUG=true` run (no replay) useful. Best-effort: a failure
-                # here must never crash initialization, so it stays inside the
-                # surrounding try/except. The backend returns the project id
-                # (derived from the API key) so we can print the session URL.
-                try:
-                    project_id = client.rollout_sessions.register(runtime.session_id)
-                    if project_id:
-                        # Record the project id so the run pointer's debugger_url
-                        # field carries the SAME full per-session URL we print
-                        # here (single code path via debugger_session_url).
-                        runtime.record_project_id(project_id)
-                        session_url = runtime.debugger_session_url()
-                        cls.__logger.info(
-                            "Laminar debugger session: %s",
-                            session_url,
-                        )
-                        opener = (
-                            "open"
-                            if sys.platform == "darwin"
-                            else "start"
-                            if sys.platform == "win32"
-                            else "xdg-open"
-                        )
-                        subprocess.Popen(
-                            [opener, session_url],
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
-                        )
-                except Exception as exc:
-                    cls.__logger.warning("Failed to register debug session: %s", exc)
+            # Register the SDK-minted session id with the backend so the run
+            # shows up in the UI. This idempotent upsert is what makes a bare
+            # `LMNR_DEBUG=true` run (no replay) useful. Best-effort: a failure
+            # here must never crash initialization, so it stays inside the
+            # surrounding try/except. The backend returns the project id
+            # (derived from the API key) so we can print the session URL.
+            try:
+                project_id = client.rollout_sessions.register(runtime.session_id)
+                if project_id:
+                    # Record the project id so the run pointer's debugger_url
+                    # field carries the SAME full per-session URL we print
+                    # here (single code path via debugger_session_url).
+                    runtime.record_project_id(project_id)
+                    session_url = runtime.debugger_session_url()
+                    cls.__logger.info(
+                        "Laminar debugger session: %s",
+                        session_url,
+                    )
+                    opener = (
+                        "open"
+                        if sys.platform == "darwin"
+                        else "start"
+                        if sys.platform == "win32"
+                        else "xdg-open"
+                    )
+                    subprocess.Popen(
+                        [opener, session_url],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+            except Exception as exc:
+                cls.__logger.warning("Failed to register debug session: %s", exc)
 
             cls.__global_metadata = {
                 **cls.__global_metadata,
@@ -501,6 +531,23 @@ class Laminar:
             atexit.register(cls.__debug_exit_hook)
         except Exception as exc:  # never let debug setup crash initialization
             cls.__logger.warning("Failed to initialize debug runtime: %s", exc)
+
+    @staticmethod
+    def _close_debug_async_client(async_client: Any) -> None:
+        """Best-effort close of the retained async cache client from sync code.
+
+        `AsyncLaminarClient.close()` is a coroutine, but both call sites (the
+        `_init_debug_runtime` bail path and `shutdown()`) are synchronous, so we
+        drive it to completion with `asyncio.run()`. Everything is swallowed: a
+        failed close of the cache client must never crash init or shutdown. If a
+        loop is already running on this thread (async caller), `asyncio.run`
+        raises `RuntimeError` — there is no safe synchronous way to await on the
+        live loop, so we leave the close to the loop's own teardown.
+        """
+        try:
+            asyncio.run(async_client.close())
+        except Exception:
+            pass
 
     @classmethod
     def is_initialized(cls):
@@ -1369,12 +1416,24 @@ class Laminar:
                     runtime.emit_pointer()
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     cls.__logger.debug("Failed to emit debug run pointer: %s", exc)
+                # Close the cache clients retained for the run's lifetime (v2
+                # keeps both open so provider wrappers can hit the cache
+                # endpoint on every live call). Best-effort, each guarded
+                # independently so one failing close can't leak the other.
+                try:
+                    runtime.client.close()
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    cls.__logger.debug("Failed to close debug cache client: %s", exc)
+                cls._close_debug_async_client(runtime.async_client)
             TracerManager.shutdown()
             cls.__initialized = False
             # Clear the one-shot debug-runtime state so a subsequent
             # initialize() re-reads LMNR_DEBUG* instead of resurrecting the
             # previous run.
             reset_debug_runtime()
+            # Reset the process-wide run-live latch so a fresh debug run in the
+            # same process (init/shutdown loop) starts from a clean cache state.
+            cls.set_debug_run_live(False)
             # The pointer was just emitted above, so the atexit hook would be a
             # redundant no-op; unregister it so init/shutdown loops don't pin
             # the retired runtime (and its replay cache) alive via atexit.

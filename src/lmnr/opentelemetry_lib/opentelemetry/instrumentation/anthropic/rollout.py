@@ -1,10 +1,11 @@
 """
 Debug replay wrapper for Anthropic chat completions instrumentation.
 
-On a debug run with replay enabled, this serves the first N spine LLM calls from
-the in-process `ReplayCache` (reconstructing an Anthropic `Message` from cached
-attributes) and runs the rest live. Override application and the old HTTP cache
-server are gone (§2 non-goals, §H).
+On a debug run with replay configured, each live LLM call asks the server-side
+cache (shared spec §7) what to do: on a HIT it reconstructs an Anthropic
+`Message` from the cached span and serves it; on MISS / LIVE it runs the call
+live. The decision is made by `cache_outcome_for` (sync) / `acache_outcome_for`
+(async); there is no in-process cache anymore.
 """
 
 import json
@@ -30,10 +31,10 @@ from anthropic.types import (
 
 from anthropic.types.raw_message_delta_event import Delta
 from lmnr.sdk.debug.replay import (
-    cached_payload_for,
+    acache_outcome_for,
+    cache_outcome_for,
     mark_span_cached,
     replay_enabled,
-    span_path_from_span,
 )
 from lmnr.sdk.log import get_default_logger
 
@@ -110,24 +111,38 @@ class AnthropicRolloutWrapper:
         is_streaming: bool = False,
         is_async: bool = False,
     ) -> Any:
-        span_path = span_path_from_span(span)
-        cached = cached_payload_for(span_path)
-        if cached is not None:
-            response = self.cached_response_to_anthropic(cached)
+        # The async call site always awaits the result, so on the async path
+        # return the coroutine directly (it does its own cache lookup + await).
+        if is_async:
+            return self._awrap_create(wrapped, args, kwargs, span, is_streaming)
+
+        outcome = cache_outcome_for(span)
+        if outcome is not None and outcome.kind == "hit":
+            response = self.cached_response_to_anthropic(outcome.cached)
             if response is not None:
-                logger.debug("Replaying cached Anthropic response at %s", span_path)
+                logger.debug("Serving cached Anthropic response from replay cache")
                 mark_span_cached(span)
                 if is_streaming:
-                    if is_async:
-                        return self._as_coroutine(
-                            self._create_async_cached_stream(response)
-                        )
                     return self._create_cached_stream(response)
-                if is_async:
-                    return self._as_coroutine(response)
                 return response
 
         return wrapped(*args, **kwargs)
+
+    async def _awrap_create(
+        self, wrapped, args, kwargs, span, is_streaming
+    ) -> Any:
+        """Async cache lookup; on a HIT serve cached, else run the call live."""
+        outcome = await acache_outcome_for(span)
+        if outcome is not None and outcome.kind == "hit":
+            response = self.cached_response_to_anthropic(outcome.cached)
+            if response is not None:
+                logger.debug("Serving cached Anthropic response from replay cache")
+                mark_span_cached(span)
+                if is_streaming:
+                    return self._create_async_cached_stream(response)
+                return response
+
+        return await wrapped(*args, **kwargs)
 
     def _create_cached_stream(
         self, response: Message
@@ -207,10 +222,6 @@ class AnthropicRolloutWrapper:
         """Yield a cached response as a sequence of async streaming events."""
         for event in self._create_cached_stream(response):
             yield event
-
-    async def _as_coroutine(self, response: Any) -> Any:
-        """Return a response as a coroutine."""
-        return response
 
 
 _anthropic_rollout_wrapper: AnthropicRolloutWrapper | None = None

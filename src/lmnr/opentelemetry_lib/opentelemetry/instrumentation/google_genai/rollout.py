@@ -1,9 +1,11 @@
 """
 Debug replay wrapper for Google GenAI instrumentation.
 
-On a debug run with replay enabled, serves the first N spine LLM calls from the
-in-process `ReplayCache` (reconstructing a `GenerateContentResponse` from cached
-attributes) and runs the rest live. Overrides + HTTP cache server are gone (§H).
+On a debug run with replay configured, each live LLM call asks the server-side
+cache (shared spec §7) what to do: on a HIT it reconstructs a
+`GenerateContentResponse` from the cached span and serves it; on MISS / LIVE it
+runs the call live. The decision is made by `cache_outcome_for` (sync) /
+`acache_outcome_for` (async); there is no in-process cache anymore.
 """
 
 import json
@@ -16,10 +18,10 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils imp
     to_dict,
 )
 from lmnr.sdk.debug.replay import (
-    cached_payload_for,
+    acache_outcome_for,
+    cache_outcome_for,
     mark_span_cached,
     replay_enabled,
-    span_path_from_span,
 )
 from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
@@ -279,22 +281,44 @@ class GoogleGenAIRolloutWrapper:
         Returns:
             GenerateContentResponse (cached or live), or Generator/AsyncGenerator
         """
+        # Capture the span synchronously: the caller's `Laminar.use_span(span)`
+        # only spans the sync call to this method, so on the async path the
+        # current-span context is already gone by the time the coroutine runs.
         span = Laminar.get_current_span()
-        span_path = span_path_from_span(span)
-        cached = cached_payload_for(span_path)
-        if cached is not None:
+        if is_async:
+            return self._awrap_generate_content(
+                wrapped, args, kwargs, span, is_streaming
+            )
+
+        outcome = cache_outcome_for(span)
+        if outcome is not None and outcome.kind == "hit":
             config = kwargs.get("config")
-            response = self.cached_response_to_google_genai(cached, config)
+            response = self.cached_response_to_google_genai(outcome.cached, config)
             if response is not None:
-                logger.debug("Replaying cached Google GenAI response at %s", span_path)
+                logger.debug("Serving cached Google GenAI response from replay cache")
                 mark_span_cached(span)
                 if is_streaming:
-                    if is_async:
-                        return self._create_async_cached_stream(response)
                     return self._create_cached_stream(response)
                 return response
 
         return wrapped(*args, **kwargs)
+
+    async def _awrap_generate_content(
+        self, wrapped, args, kwargs, span, is_streaming
+    ) -> Any:
+        """Async cache lookup; on a HIT serve cached, else run the call live."""
+        outcome = await acache_outcome_for(span)
+        if outcome is not None and outcome.kind == "hit":
+            config = kwargs.get("config")
+            response = self.cached_response_to_google_genai(outcome.cached, config)
+            if response is not None:
+                logger.debug("Serving cached Google GenAI response from replay cache")
+                mark_span_cached(span)
+                if is_streaming:
+                    return self._create_async_cached_stream(response)
+                return response
+
+        return await wrapped(*args, **kwargs)
 
     def _create_cached_stream(
         self, response: types.GenerateContentResponse

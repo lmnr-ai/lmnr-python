@@ -30,7 +30,7 @@ def build_pointer(
     trace_id: str,
     session_id: str,
     replay_trace_id: str | None,
-    cache_until: int,
+    cache_until: str | None,
     debugger_url: str | None,
     started_at: str | None = None,
 ) -> dict[str, Any]:

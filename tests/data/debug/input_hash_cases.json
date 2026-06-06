@@ -1,0 +1,165 @@
+{
+  "cases": [
+    {
+      "name": "single_user_message_no_system",
+      "description": "One user message, no system message; whole input hashed.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello, world"
+        }
+      ],
+      "expected_hash": "169a70503f7de3cc7cdfb2fbd959f03deece09c7e16fc4d15732f82d40e1ce72"
+    },
+    {
+      "name": "openai_system_excluded",
+      "description": "OpenAI string-content system message is excluded before hashing.",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are a helpful assistant."
+        },
+        {
+          "role": "user",
+          "content": "What is 2+2?"
+        }
+      ],
+      "expected_hash": "d2fb41c5d8c3b7aeebe5c19d3bc37be2b80737763f72e41194e66446ac72ac31"
+    },
+    {
+      "name": "anthropic_system_content_array_excluded",
+      "description": "Anthropic content-array system message (list of text blocks) is excluded.",
+      "messages": [
+        {
+          "role": "system",
+          "content": [
+            {
+              "type": "text",
+              "text": "Be concise."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": "Summarize the plot of Hamlet."
+        }
+      ],
+      "expected_hash": "ff4b4147593ac81460a3806858bc413113929b92e1242bbdfc53f8779e5e5021"
+    },
+    {
+      "name": "gemini_parts_system_excluded",
+      "description": "Gemini parts-shaped system message (parts[0].text) is excluded.",
+      "messages": [
+        {
+          "role": "system",
+          "parts": [
+            {
+              "text": "Answer in French."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "parts": [
+            {
+              "text": "Bonjour"
+            }
+          ]
+        }
+      ],
+      "expected_hash": "8d6d9138bd10d3c0aa5838e00a0cb4e1a1045e37d1f83c0dc853087b4abc4a87"
+    },
+    {
+      "name": "otel_parts_system_excluded",
+      "description": "OTel parts-shaped system message (parts[0].content) is excluded.",
+      "messages": [
+        {
+          "role": "system",
+          "parts": [
+            {
+              "content": "Reply with JSON."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "parts": [
+            {
+              "content": "Give me an object."
+            }
+          ]
+        }
+      ],
+      "expected_hash": "61a288ef73eb527e672ed241640e8c5f2ee86b5093f25cf339725bd3a9fc3d27"
+    },
+    {
+      "name": "empty_system_text_not_excluded",
+      "description": "Empty system text is not excluded; whole input is hashed.",
+      "messages": [
+        {
+          "role": "system",
+          "content": ""
+        },
+        {
+          "role": "user",
+          "content": "Hi"
+        }
+      ],
+      "expected_hash": "dfc7d451217ecae3891bea2e5903037305707ee292b9f182eae49f0304fcd65c"
+    },
+    {
+      "name": "multi_turn_no_system",
+      "description": "Multiple turns, no system; order is preserved.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "First"
+        },
+        {
+          "role": "assistant",
+          "content": "Second"
+        },
+        {
+          "role": "user",
+          "content": "Third"
+        }
+      ],
+      "expected_hash": "e03189036af1171aeeb60c01dbecb3feb78c48efff946de2e088ac3834528287"
+    },
+    {
+      "name": "object_key_order_canonicalized",
+      "description": "Object keys are sorted recursively before hashing (canonical JSON).",
+      "messages": [
+        {
+          "content": "Hello",
+          "role": "user",
+          "extra": {
+            "z": 1,
+            "a": 2
+          }
+        }
+      ],
+      "expected_hash": "7afbc41c824955a3f2773fd62ff4f03d39f1b4330140d48e60361b54436b8741"
+    },
+    {
+      "name": "non_array_input_passthrough",
+      "description": "A non-array input is hashed as-is (no system extraction).",
+      "messages": {
+        "role": "user",
+        "content": "Single object, not a list"
+      },
+      "expected_hash": "8eb0de153ce1fb1b364882db8b4019c3640162b83cb6c4bd282a94939378860b"
+    },
+    {
+      "name": "unicode_content",
+      "description": "Unicode content is hashed without ASCII escaping (ensure_ascii=False).",
+      "messages": [
+        {
+          "role": "user",
+          "content": "héllo 世界 🌍"
+        }
+      ],
+      "expected_hash": "46873ca090cc36db839791fa323f4fd56f7790647a65b495afffba73cca9efec"
+    }
+  ]
+}

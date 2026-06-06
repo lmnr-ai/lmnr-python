@@ -3,6 +3,10 @@
 import uuid
 
 from lmnr.sdk.client.asynchronous.resources.base import BaseAsyncResource
+from lmnr.sdk.client.synchronous.resources.rollout_sessions import (
+    _parse_cache_outcome,
+)
+from lmnr.sdk.debug.outcome import CacheOutcome
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
@@ -52,3 +56,37 @@ class AsyncRolloutSessions(BaseAsyncResource):
             headers=self._headers(),
         )
         response.raise_for_status()
+
+    async def cache(
+        self,
+        session_id: uuid.UUID | str,
+        replay_trace_id: uuid.UUID | str,
+        cache_until: str,
+        input_hash: str,
+    ) -> CacheOutcome:
+        """Async variant of `RolloutSessions.cache` (shared spec §7).
+
+        Same swallow-and-degrade posture: never raises, degrades to
+        `kind="live"` on any non-2xx / transport error.
+        """
+        try:
+            response = await self._client.post(
+                f"{self._base_url}/v1/rollouts/{session_id}/cache",
+                headers=self._headers(),
+                json={
+                    "replayTraceId": str(replay_trace_id),
+                    "cacheUntil": cache_until,
+                    "inputHash": input_hash,
+                },
+            )
+            if response.status_code // 100 != 2:
+                logger.debug(
+                    "Cache lookup returned HTTP %s; running this call live",
+                    response.status_code,
+                )
+                return CacheOutcome(kind="live")
+            data = response.json()
+        except Exception as exc:
+            logger.debug("Cache lookup failed (%s); running this call live", exc)
+            return CacheOutcome(kind="live")
+        return _parse_cache_outcome(data)

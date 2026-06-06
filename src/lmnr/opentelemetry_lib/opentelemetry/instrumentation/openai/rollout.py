@@ -1,9 +1,11 @@
 """
 Debug replay wrapper for OpenAI chat completions instrumentation.
 
-On a debug run with replay enabled, serves the first N spine LLM calls from the
-in-process `ReplayCache` (reconstructing an OpenAI `ChatCompletion` from cached
-attributes) and runs the rest live. Overrides + HTTP cache server are gone (§H).
+On a debug run with replay configured, each live LLM call asks the server-side
+cache (shared spec §7) what to do: on a HIT it reconstructs an OpenAI
+`ChatCompletion` from the cached span and serves it; on MISS / LIVE it runs the
+call live. The decision is made by `cache_outcome_for` (sync) /
+`acache_outcome_for` (async) — there is no in-process cache anymore.
 """
 
 import json
@@ -25,10 +27,10 @@ from openai.types.chat.chat_completion_message_function_tool_call import (
 )
 
 from lmnr.sdk.debug.replay import (
-    cached_payload_for,
+    acache_outcome_for,
+    cache_outcome_for,
     mark_span_cached,
     replay_enabled,
-    span_path_from_span,
 )
 from lmnr.sdk.log import get_default_logger
 
@@ -138,23 +140,40 @@ class OpenAIRolloutWrapper:
         is_streaming: bool = False,
         is_async: bool = False,
     ) -> Any:
-        # Read path from the span's attributes rather than Laminar.get_current_span(),
-        # because OpenAI spans are created with tracer.start_span() and are not
-        # registered in Laminar's context.
-        span_path = span_path_from_span(span)
-        cached = cached_payload_for(span_path)
-        if cached is not None:
-            response = self.cached_response_to_openai(cached)
+        # Async path: hand back the coroutine so the call site (which checks
+        # inspect.iscoroutine) awaits the cache lookup off the event loop.
+        if is_async:
+            return self._awrap_chat_completion(
+                wrapped, args, kwargs, span, is_streaming
+            )
+
+        outcome = cache_outcome_for(span)
+        if outcome is not None and outcome.kind == "hit":
+            response = self.cached_response_to_openai(outcome.cached)
             if response is not None:
-                logger.debug("Replaying cached OpenAI response at %s", span_path)
+                logger.debug("Serving cached OpenAI response from replay cache")
                 mark_span_cached(span)
                 if is_streaming:
-                    if is_async:
-                        return self._create_async_cached_stream(response)
                     return self._create_cached_stream(response)
                 return response
 
         return wrapped(*args, **kwargs)
+
+    async def _awrap_chat_completion(
+        self, wrapped, args, kwargs, span, is_streaming
+    ) -> Any:
+        """Async cache lookup; on a HIT serve cached, else run the call live."""
+        outcome = await acache_outcome_for(span)
+        if outcome is not None and outcome.kind == "hit":
+            response = self.cached_response_to_openai(outcome.cached)
+            if response is not None:
+                logger.debug("Serving cached OpenAI response from replay cache")
+                mark_span_cached(span)
+                if is_streaming:
+                    return self._create_async_cached_stream(response)
+                return response
+
+        return await wrapped(*args, **kwargs)
 
     def _create_cached_stream(
         self, response: ChatCompletion
