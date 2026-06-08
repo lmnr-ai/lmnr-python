@@ -1,15 +1,13 @@
 import base64
-import httpx
 import json
-import pytest
+
+import httpx
 import pydantic
-
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from opentelemetry.trace import StatusCode
-
+import pytest
 from google.genai import Client, types
 from google.genai.errors import ClientError
-
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import StatusCode
 
 image_url = "https://upload.wikimedia.org/wikipedia/commons/8/8e/MuseumOfFineArtsBoston_CopleySquare_19thc.jpg"
 image_media_type = "image/jpeg"
@@ -69,11 +67,13 @@ def test_google_genai(span_exporter: InMemorySpanExporter):
         "role": "user",
         "parts": [{"text": "What is the capital of France?"}],
     }
-    assert json.loads(spans[0].attributes["gen_ai.completion.0.content"])[0] == {
-        "type": "text",
-        "text": response.text,
-    }
-    assert spans[0].attributes["gen_ai.completion.0.role"] == "model"
+    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+        {
+            "content": {"role": "model", "parts": [{"text": response.text}]},
+            "finish_reason": "STOP",
+            "index": 0,
+        }
+    ]
 
 
 @pytest.mark.vcr
@@ -157,11 +157,13 @@ def test_google_genai_multiturn(span_exporter: InMemorySpanExporter):
             }
         ],
     }
-    assert json.loads(adjective_span.attributes["gen_ai.completion.0.content"])[0] == {
-        "type": "text",
-        "text": adjective_response.text,
-    }
-    assert adjective_span.attributes["gen_ai.completion.0.role"] == "model"
+    assert json.loads(adjective_span.attributes["gen_ai.output.messages"]) == [
+        {
+            "content": {"role": "model", "parts": [{"text": adjective_response.text}]},
+            "finish_reason": "STOP",
+            "index": 0,
+        }
+    ]
 
     haiku_messages = json.loads(haiku_span.attributes["gen_ai.input.messages"])
     assert haiku_messages[1] == {
@@ -178,12 +180,13 @@ def test_google_genai_multiturn(span_exporter: InMemorySpanExporter):
         "role": "user",
         "parts": [{"text": "Now generate a haiku using this adjective."}],
     }
-
-    assert json.loads(haiku_span.attributes["gen_ai.completion.0.content"])[0] == {
-        "type": "text",
-        "text": haiku_response.text,
-    }
-    assert haiku_span.attributes["gen_ai.completion.0.role"] == "model"
+    assert json.loads(haiku_span.attributes["gen_ai.output.messages"]) == [
+        {
+            "content": {"role": "model", "parts": [{"text": haiku_response.text}]},
+            "finish_reason": "STOP",
+            "index": 0,
+        }
+    ]
 
 
 @pytest.mark.vcr
@@ -219,11 +222,25 @@ def test_google_genai_tool_calls(span_exporter: InMemorySpanExporter):
         "role": "user",
         "parts": [{"text": "What is the weather in Tokyo?"}],
     }
-    assert spans[0].attributes["gen_ai.completion.0.tool_calls.0.name"] == "get_weather"
-    assert json.loads(
-        spans[0].attributes["gen_ai.completion.0.tool_calls.0.arguments"]
-    ) == {"location": "Tokyo"}
-    assert spans[0].attributes["gen_ai.completion.0.role"] == "model"
+    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+        {
+            "content": {
+                "role": "model",
+                "parts": [
+                    {
+                        "function_call": {
+                            "name": "get_weather",
+                            "args": {
+                                "location": "Tokyo",
+                            },
+                        }
+                    }
+                ],
+            },
+            "finish_reason": "STOP",
+            "index": 0,
+        }
+    ]
 
 
 @pytest.mark.vcr(record_mode="once")
@@ -283,10 +300,25 @@ def test_google_genai_tool_calls_history(span_exporter: InMemorySpanExporter):
     span1 = sorted(spans, key=lambda x: x.start_time)[0]
     span2 = sorted(spans, key=lambda x: x.start_time)[1]
 
-    assert span1.attributes["gen_ai.completion.0.tool_calls.0.name"] == "get_weather"
-    assert json.loads(
-        span1.attributes["gen_ai.completion.0.tool_calls.0.arguments"]
-    ) == {"location": "Tokyo"}
+    assert json.loads(span1.attributes["gen_ai.output.messages"]) == [
+        {
+            "content": {
+                "role": "model",
+                "parts": [
+                    {
+                        "function_call": {
+                            "name": "get_weather",
+                            "args": {
+                                "location": "Tokyo",
+                            },
+                        }
+                    }
+                ],
+            },
+            "finish_reason": "STOP",
+            "index": 0,
+        }
+    ]
 
     for span in spans:
         assert span.name == "gemini.generate_content"
@@ -302,8 +334,6 @@ def test_google_genai_tool_calls_history(span_exporter: InMemorySpanExporter):
             "parts": [{"text": "What is the weather in Tokyo?"}],
         }
 
-        assert span.attributes["gen_ai.completion.0.role"] == "model"
-
     messages2 = json.loads(span2.attributes["gen_ai.input.messages"])
     assert messages2[2]["role"] == "model"
     assert messages2[2]["parts"][0]["function_call"]["name"] == "get_weather"
@@ -317,11 +347,18 @@ def test_google_genai_tool_calls_history(span_exporter: InMemorySpanExporter):
             }
         }
     ]
-    assert span2.attributes["gen_ai.completion.0.role"] == "model"
-    assert json.loads(span2.attributes["gen_ai.completion.0.content"]) == [
+    assert json.loads(span2.attributes["gen_ai.output.messages"]) == [
         {
-            "type": "text",
-            "text": "The weather in Tokyo is sunny with a temperature of 22°C.",
+            "content": {
+                "role": "model",
+                "parts": [
+                    {
+                        "text": "The weather in Tokyo is sunny with a temperature of 22°C.",
+                    }
+                ],
+            },
+            "finish_reason": "STOP",
+            "index": 0,
         }
     ]
 
@@ -383,10 +420,25 @@ def test_google_genai_tool_calls_history_from_function_response(
     span1 = sorted(spans, key=lambda x: x.start_time)[0]
     span2 = sorted(spans, key=lambda x: x.start_time)[1]
 
-    assert span1.attributes["gen_ai.completion.0.tool_calls.0.name"] == "get_weather"
-    assert json.loads(
-        span1.attributes["gen_ai.completion.0.tool_calls.0.arguments"]
-    ) == {"location": "Tokyo"}
+    assert json.loads(span1.attributes["gen_ai.output.messages"]) == [
+        {
+            "content": {
+                "role": "model",
+                "parts": [
+                    {
+                        "function_call": {
+                            "name": "get_weather",
+                            "args": {
+                                "location": "Tokyo",
+                            },
+                        }
+                    }
+                ],
+            },
+            "finish_reason": "STOP",
+            "index": 0,
+        }
+    ]
 
     for span in spans:
         assert span.name == "gemini.generate_content"
@@ -402,8 +454,6 @@ def test_google_genai_tool_calls_history_from_function_response(
             "parts": [{"text": "What is the weather in Tokyo?"}],
         }
 
-        assert span.attributes["gen_ai.completion.0.role"] == "model"
-
     messages2 = json.loads(span2.attributes["gen_ai.input.messages"])
     assert messages2[2]["role"] == "model"
     assert messages2[2]["parts"][0]["function_call"]["name"] == "get_weather"
@@ -413,51 +463,20 @@ def test_google_genai_tool_calls_history_from_function_response(
         "name": "get_weather",
         "response": {"output": "Sunny, 22°C."},
     }
-    assert span2.attributes["gen_ai.completion.0.role"] == "model"
-    assert json.loads(span2.attributes["gen_ai.completion.0.content"]) == [
+    assert json.loads(span2.attributes["gen_ai.output.messages"]) == [
         {
-            "type": "text",
-            "text": "The weather in Tokyo is sunny with a temperature of 22°C.",
+            "content": {
+                "role": "model",
+                "parts": [
+                    {
+                        "text": "The weather in Tokyo is sunny with a temperature of 22°C.",
+                    }
+                ],
+            },
+            "finish_reason": "STOP",
+            "index": 0,
         }
     ]
-
-
-#     # The actual key was used during recording and the request/response was saved
-#     # to the VCR cassette.
-#     client = Client(api_key="123")
-#     system_instruction = "Be concise and to the point. Use tools as much as possible."
-#     client.models.generate_content(
-#         model="gemini-2.5-flash-lite",
-#         contents=[
-#             {
-#                 "role": "user",
-#                 "parts": [
-#                     {"text": "What is the weather in Tokyo?"},
-#                 ],
-#             }
-#         ],
-#         config=types.GenerateContentConfig(
-#             system_instruction={"text": system_instruction},
-#             tools=[types.Tool(function_declarations=[get_weather_declaration])],
-#         ),
-#     )
-
-#     spans = span_exporter.get_finished_spans()
-#     assert len(spans) == 1
-#     assert spans[0].name == "gemini.generate_content"
-#     assert spans[0].attributes["gen_ai.request.model"] == "gemini-2.5-flash-lite"
-#     assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-#     assert spans[0].attributes["gen_ai.prompt.0.content"] == system_instruction
-#     assert spans[0].attributes["gen_ai.prompt.0.role"] == "system"
-#     user_content = json.loads(spans[0].attributes["gen_ai.prompt.1.content"])
-#     assert user_content[0]["type"] == "text"
-#     assert user_content[0]["text"] == "What is the weather in Tokyo?"
-#     assert spans[0].attributes["gen_ai.prompt.1.role"] == "user"
-#     assert spans[0].attributes["gen_ai.completion.0.tool_calls.0.name"] == "get_weather"
-#     assert json.loads(
-#         spans[0].attributes["gen_ai.completion.0.tool_calls.0.arguments"]
-#     ) == {"location": "Tokyo"}
-#     assert spans[0].attributes["gen_ai.completion.0.role"] == "model"
 
 
 @pytest.mark.vcr
@@ -498,15 +517,6 @@ def test_google_genai_multiple_tool_calls(span_exporter: InMemorySpanExporter):
         "role": "user",
         "parts": [{"text": "What is the weather in Tokyo and Paris?"}],
     }
-    assert spans[0].attributes["gen_ai.completion.0.tool_calls.0.name"] == "get_weather"
-    assert json.loads(
-        spans[0].attributes["gen_ai.completion.0.tool_calls.0.arguments"]
-    ) == {"location": "Tokyo"}
-    assert spans[0].attributes["gen_ai.completion.0.tool_calls.1.name"] == "get_weather"
-    assert json.loads(
-        spans[0].attributes["gen_ai.completion.0.tool_calls.1.arguments"]
-    ) == {"location": "Paris"}
-    assert spans[0].attributes["gen_ai.completion.0.role"] == "model"
 
 
 @pytest.mark.vcr
@@ -542,17 +552,26 @@ def test_google_genai_tool_calls_and_text_part(span_exporter: InMemorySpanExport
     messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
     assert messages[0] == {"role": "system", "parts": [{"text": system_instruction}]}
     assert messages[1] == {"role": "user", "parts": [{"text": user_message}]}
-    assert json.loads(spans[0].attributes["gen_ai.completion.0.content"]) == [
+    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
         {
-            "type": "text",
-            "text": "The opposite of 'bright' is 'dim'.",
+            "content": {
+                "role": "model",
+                "parts": [
+                    {
+                        "text": "The opposite of 'bright' is 'dim'.",
+                    },
+                    {
+                        "function_call": {
+                            "name": "get_weather",
+                            "args": {"location": "Tokyo"},
+                        }
+                    },
+                ],
+            },
+            "finish_reason": "STOP",
+            "index": 0,
         }
     ]
-    assert spans[0].attributes["gen_ai.completion.0.tool_calls.0.name"] == "get_weather"
-    assert json.loads(
-        spans[0].attributes["gen_ai.completion.0.tool_calls.0.arguments"]
-    ) == {"location": "Tokyo"}
-    assert spans[0].attributes["gen_ai.completion.0.role"] == "model"
 
 
 @pytest.mark.vcr
@@ -599,11 +618,20 @@ def test_google_genai_image(span_exporter: InMemorySpanExporter):
     assert messages[1]["parts"][1] == {
         "inline_data": {"mime_type": image_media_type, "data": image_data}
     }
-    assert json.loads(spans[0].attributes["gen_ai.completion.0.content"])[0] == {
-        "type": "text",
-        "text": response.text,
-    }
-    assert spans[0].attributes["gen_ai.completion.0.role"] == "model"
+    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+        {
+            "content": {
+                "role": "model",
+                "parts": [
+                    {
+                        "text": response.text,
+                    }
+                ],
+            },
+            "finish_reason": "STOP",
+            "index": 0,
+        }
+    ]
 
 
 @pytest.mark.vcr
@@ -650,11 +678,20 @@ def test_google_genai_image_raw_bytes(span_exporter: InMemorySpanExporter):
     assert messages[1]["parts"][1] == {
         "inline_data": {"mime_type": image_media_type, "data": image_data_raw_bytes}
     }
-    assert json.loads(spans[0].attributes["gen_ai.completion.0.content"])[0] == {
-        "type": "text",
-        "text": response.text,
-    }
-    assert spans[0].attributes["gen_ai.completion.0.role"] == "model"
+    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+        {
+            "content": {
+                "role": "model",
+                "parts": [
+                    {
+                        "text": response.text,
+                    }
+                ],
+            },
+            "finish_reason": "STOP",
+            "index": 0,
+        }
+    ]
 
 
 class CalendarEvent(pydantic.BaseModel):
@@ -714,12 +751,20 @@ def test_google_genai_output_schema(span_exporter: InMemorySpanExporter):
 
     messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
     assert messages[0] == {"role": "user", "parts": [{"text": prompt}]}
-
-    assert json.loads(spans[0].attributes["gen_ai.completion.0.content"])[0] == {
-        "type": "text",
-        "text": response.text,
-    }
-    assert spans[0].attributes["gen_ai.completion.0.role"] == "model"
+    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+        {
+            "content": {
+                "role": "model",
+                "parts": [
+                    {
+                        "text": response.text,
+                    }
+                ],
+            },
+            "finish_reason": "STOP",
+            "index": 0,
+        }
+    ]
     assert (
         json.loads(spans[0].attributes["gen_ai.request.structured_output_schema"])
         == EXPECTED_SCHEMA
@@ -762,11 +807,20 @@ def test_google_genai_output_json_schema(span_exporter: InMemorySpanExporter):
     messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
     assert messages[0] == {"role": "user", "parts": [{"text": prompt}]}
 
-    assert json.loads(spans[0].attributes["gen_ai.completion.0.content"])[0] == {
-        "type": "text",
-        "text": response.text,
-    }
-    assert spans[0].attributes["gen_ai.completion.0.role"] == "model"
+    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+        {
+            "content": {
+                "role": "model",
+                "parts": [
+                    {
+                        "text": response.text,
+                    }
+                ],
+            },
+            "finish_reason": "STOP",
+            "index": 0,
+        }
+    ]
     assert (
         json.loads(spans[0].attributes["gen_ai.request.structured_output_schema"])
         == EXPECTED_SCHEMA
@@ -871,11 +925,21 @@ def test_google_genai_reasoning_tokens_with_include_thoughts(
         == spans[0].attributes["gen_ai.usage.input_tokens"]
         + spans[0].attributes["gen_ai.usage.output_tokens"]
     )
-    span_output = json.loads(spans[0].attributes["gen_ai.completion.0.content"])
-    assert span_output[0]["type"] == "text"
-    assert span_output[0]["text"] == response.parts[0].text
-    assert span_output[1]["type"] == "text"
-    assert span_output[1]["text"] == response.text
+    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+        {
+            "content": {
+                "role": "model",
+                "parts": [
+                    {"text": response.parts[0].text, "thought": True},
+                    {
+                        "text": response.text,
+                    },
+                ],
+            },
+            "finish_reason": "STOP",
+            "index": 0,
+        }
+    ]
 
 
 @pytest.mark.vcr
@@ -978,11 +1042,21 @@ async def test_google_genai_reasoning_tokens_with_include_thoughts_async(
         == spans[0].attributes["gen_ai.usage.input_tokens"]
         + spans[0].attributes["gen_ai.usage.output_tokens"]
     )
-    span_output = json.loads(spans[0].attributes["gen_ai.completion.0.content"])
-    assert span_output[0]["type"] == "text"
-    assert span_output[0]["text"] == response.parts[0].text
-    assert span_output[1]["type"] == "text"
-    assert span_output[1]["text"] == response.text
+    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+        {
+            "content": {
+                "role": "model",
+                "parts": [
+                    {"text": response.parts[0].text, "thought": True},
+                    {
+                        "text": response.text,
+                    },
+                ],
+            },
+            "finish_reason": "STOP",
+            "index": 0,
+        }
+    ]
 
 
 @pytest.mark.vcr
@@ -1007,11 +1081,20 @@ def test_google_genai_string_contents(span_exporter: InMemorySpanExporter):
         "role": "user",
         "parts": [{"text": "What is the capital of France?"}],
     }
-    assert spans[0].attributes["gen_ai.completion.0.role"] == "model"
-
-    span_output = json.loads(spans[0].attributes["gen_ai.completion.0.content"])
-    assert span_output[0]["type"] == "text"
-    assert span_output[0]["text"] == response.parts[0].text
+    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+        {
+            "content": {
+                "role": "model",
+                "parts": [
+                    {
+                        "text": response.text,
+                    }
+                ],
+            },
+            "finish_reason": "STOP",
+            "index": 0,
+        }
+    ]
 
 
 def test_google_genai_error(span_exporter: InMemorySpanExporter):
@@ -1104,14 +1187,18 @@ And steal away a human heart."""
         "role": "user",
         "parts": [{"text": "Write a short poem about cats"}],
     }
-    assert json.loads(span.attributes["gen_ai.completion.0.content"]) == [
+    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
         {
-            "text": final_response,
-            "type": "text",
+            "content": {
+                "role": "model",
+                "parts": [
+                    {
+                        "text": final_response,
+                    }
+                ],
+            },
         }
     ]
-
-    assert span.attributes["gen_ai.completion.0.role"] == "model"
     assert span.attributes["gen_ai.usage.input_tokens"] == 7
     assert span.attributes["gen_ai.usage.output_tokens"] == 166
     assert span.attributes["llm.usage.total_tokens"] == 175  # 173 + 2 (thinking tokens)

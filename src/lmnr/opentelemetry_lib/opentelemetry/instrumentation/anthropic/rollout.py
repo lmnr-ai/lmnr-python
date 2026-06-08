@@ -47,56 +47,48 @@ class AnthropicRolloutWrapper:
     def cached_response_to_anthropic(
         self, cached_span: dict[str, Any]
     ) -> Message | None:
-        """
-        Convert cached span data to Anthropic Message response.
-        Tries raw response first, then falls back to reconstruction.
-        """
-        attributes = cached_span.get("attributes", {})
-        if raw_response := attributes.get("lmnr.sdk.raw.response"):
+        """Convert cached span envelope to Anthropic Message response."""
+        envelope_type = cached_span.get("type")
+        if envelope_type not in ("raw", "genAi"):
+            logger.warning(f"Unknown cached span type: {envelope_type!r}")
+            return None
+
+        if envelope_type == "raw":
             try:
-                response_dict = (
-                    raw_response
-                    if isinstance(raw_response, dict)
-                    else json.loads(raw_response)
-                )
-                if response_dict:
-                    # Reset usage to 0 tokens/cost for cached responses
-                    if "usage" in response_dict:
-                        response_dict["usage"] = {
-                            "input_tokens": 0,
-                            "output_tokens": 0,
-                        }
-                    return Message.model_validate(response_dict)
+                raw = cached_span.get("response")
+                if not raw:
+                    logger.warning("Cached span type='raw' has no response field")
+                    return None
+                response_dict = raw if isinstance(raw, dict) else json.loads(raw)
+                if "usage" in response_dict:
+                    response_dict["usage"] = {"input_tokens": 0, "output_tokens": 0}
+                return Message.model_validate(response_dict)
             except Exception as e:
-                logger.debug(f"Failed to parse raw response: {e}")
+                logger.debug(f"Failed to parse raw Anthropic response: {e}", exc_info=True)
+                return None
 
+        # envelope_type == "genAi"
         try:
-            output_str = attributes.get("gen_ai.output.messages")
-            if not output_str:
-                logger.warning("Cached span has no output messages")
+            messages = cached_span.get("messages")
+            if not isinstance(messages, list) or not messages:
+                logger.warning("Cached span type='genAi' has no messages")
                 return None
-
-            output = json.loads(output_str)
-            if not isinstance(output, list) or not output:
-                return None
-
-            # Anthropic instrumentation saves output as a list of choices, usually just one
-            first_choice = output[0]
-            content_blocks = first_choice.get("content", [])
-
+            model = cached_span.get("model", "unknown")
+            finish_reasons = cached_span.get("finishReasons", [])
+            stop_reason = finish_reasons[0] if finish_reasons else "end_turn"
+            content_blocks = messages[0].get("content", [])
             return Message(
-                id=attributes.get("gen_ai.response.id", "cached"),
-                model=attributes.get("gen_ai.response.model", "unknown"),
+                id="cached",
+                model=model,
                 content=content_blocks,
                 role="assistant",
-                stop_reason=first_choice.get("stop_reason", "end_turn"),
+                stop_reason=stop_reason,
                 type="message",
                 usage=Usage(input_tokens=0, output_tokens=0),
             )
-
         except Exception as e:
             logger.debug(
-                f"Failed to convert cached response to Anthropic format: {e}",
+                f"Failed to convert genAi response to Anthropic format: {e}",
                 exc_info=True,
             )
             return None
@@ -128,9 +120,7 @@ class AnthropicRolloutWrapper:
 
         return wrapped(*args, **kwargs)
 
-    async def _awrap_create(
-        self, wrapped, args, kwargs, span, is_streaming
-    ) -> Any:
+    async def _awrap_create(self, wrapped, args, kwargs, span, is_streaming) -> Any:
         """Async cache lookup; on a HIT serve cached, else run the call live."""
         outcome = await acache_outcome_for(span)
         if outcome is not None and outcome.kind == "hit":

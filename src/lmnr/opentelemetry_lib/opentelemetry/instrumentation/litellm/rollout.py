@@ -165,191 +165,136 @@ class LiteLLMRolloutWrapper:
     """Serves cached LiteLLM responses on a debug run; runs live otherwise."""
 
     def cached_response_to_completion(self, cached_span: dict[str, Any]) -> Any:
-        """
-        Convert cached span data to LiteLLM ModelResponse format.
+        """Convert cached span envelope to LiteLLM ModelResponse format."""
+        types_dict = _import_litellm_types()
+        ModelResponse = types_dict["ModelResponse"]
 
-        Args:
-            cached_span: Cached span data from cache server
+        envelope_type = cached_span.get("type")
+        if envelope_type not in ("raw", "genAi"):
+            logger.warning(f"Unknown cached span type: {envelope_type!r}")
+            return None
 
-        Returns:
-            ModelResponse object, dict, or None
-        """
-        types = _import_litellm_types()
-        ModelResponse = types["ModelResponse"]
-
-        # Try to parse from raw response first
-        if raw_response := cached_span.get("attributes", {}).get(
-            "lmnr.sdk.raw.response"
-        ):
+        if envelope_type == "raw":
             try:
-                response_dict = None
-                if isinstance(raw_response, dict):
-                    response_dict = raw_response
-                elif isinstance(raw_response, str):
-                    response_dict = json.loads(raw_response)
-
-                if response_dict and ModelResponse:
+                raw = cached_span.get("response")
+                if not raw:
+                    logger.warning("Cached span type='raw' has no response field")
+                    return None
+                response_dict = raw if isinstance(raw, dict) else json.loads(raw)
+                if ModelResponse:
                     try:
                         return ModelResponse.model_validate(response_dict)
                     except Exception as e:
-                        logger.debug(
-                            f"Failed to validate ModelResponse, returning dict: {e}"
-                        )
+                        logger.debug(f"Failed to validate ModelResponse, returning dict: {e}")
                         return response_dict
-                elif response_dict:
-                    return response_dict
+                return response_dict
             except Exception as e:
-                logger.debug(f"Failed to parse raw response: {e}")
-                pass  # fallback to the legacy parsing path
+                logger.debug(f"Failed to parse raw LiteLLM completion response: {e}", exc_info=True)
+                return None
 
+        # envelope_type == "genAi"
         try:
-            attributes = cached_span.get("attributes", {})
-            output_str = cached_span.get("output", "")
-
-            if not output_str:
-                logger.warning("Cached span has no output")
-                return None
-
-            # Parse the output JSON - should be array of messages
-            messages = json.loads(output_str)
+            messages = cached_span.get("messages")
             if not isinstance(messages, list):
-                logger.warning(f"Unexpected output format: {type(messages)}")
+                logger.warning("Cached span type='genAi' has no messages list")
                 return None
+            model = cached_span.get("model", "unknown")
+            finish_reasons = cached_span.get("finishReasons", [])
 
-            # Reconstruct ModelResponse dict
             choices = []
             for i, message in enumerate(messages):
-                choices.append(
-                    {
-                        "index": i,
-                        "message": message,
-                        "finish_reason": "stop",  # Default for cached responses
-                    }
-                )
+                finish_reason = finish_reasons[i] if i < len(finish_reasons) else "stop"
+                choices.append({"index": i, "message": message, "finish_reason": finish_reason})
 
             response_dict = {
-                "id": attributes.get("gen_ai.response.id", "cached"),
-                "model": attributes.get("gen_ai.response.model", "unknown"),
+                "id": "cached",
+                "model": model,
                 "choices": choices,
-                "created": int(cached_span.get("start_time", 0) / 1_000_000_000),
+                "created": 0,
                 "object": "chat.completion",
-                "system_fingerprint": attributes.get(
-                    "gen_ai.response.system_fingerprint"
-                ),
-                "usage": None,  # Cached responses don't track tokens
+                "usage": None,
             }
 
-            # Try to construct ModelResponse object
             if ModelResponse:
                 try:
                     return ModelResponse.model_validate(response_dict)
                 except Exception as e:
-                    logger.debug(
-                        f"Failed to validate ModelResponse, returning dict: {e}"
-                    )
+                    logger.debug(f"Failed to validate ModelResponse, returning dict: {e}")
                     return response_dict
-
             return response_dict
 
         except Exception as e:
             logger.debug(
-                f"Failed to convert cached response to completion format: {e}",
+                f"Failed to convert genAi response to LiteLLM completion format: {e}",
                 exc_info=True,
             )
             return None
 
     def cached_response_to_responses(self, cached_span: dict[str, Any]) -> Any:
-        """
-        Convert cached span data to LiteLLM ResponsesAPIResponse format.
+        """Convert cached span envelope to LiteLLM ResponsesAPIResponse format."""
+        types_dict = _import_litellm_types()
+        ResponsesAPIResponse = types_dict["ResponsesAPIResponse"]
 
-        Args:
-            cached_span: Cached span data from cache server
+        envelope_type = cached_span.get("type")
+        if envelope_type not in ("raw", "genAi"):
+            logger.warning(f"Unknown cached span type: {envelope_type!r}")
+            return None
 
-        Returns:
-            ResponsesAPIResponse object, dict, or None
-        """
-        types = _import_litellm_types()
-        ResponsesAPIResponse = types["ResponsesAPIResponse"]
-
-        # Try to parse from raw response first
-        if raw_response := cached_span.get("attributes", {}).get(
-            "lmnr.sdk.raw.response"
-        ):
+        if envelope_type == "raw":
             try:
-                response_dict = None
-                if isinstance(raw_response, dict):
-                    response_dict = raw_response
-                elif isinstance(raw_response, str):
-                    response_dict = json.loads(raw_response)
-
-                if response_dict and ResponsesAPIResponse:
+                raw = cached_span.get("response")
+                if not raw:
+                    logger.warning("Cached span type='raw' has no response field")
+                    return None
+                response_dict = raw if isinstance(raw, dict) else json.loads(raw)
+                if ResponsesAPIResponse:
                     try:
                         return ResponsesAPIResponse.model_validate(response_dict)
                     except Exception as e:
-                        logger.debug(
-                            f"Failed to validate ResponsesAPIResponse, returning dict: {e}"
-                        )
+                        logger.debug(f"Failed to validate ResponsesAPIResponse, returning dict: {e}")
                         return response_dict
-                elif response_dict:
-                    return response_dict
+                return response_dict
             except Exception as e:
-                logger.debug(f"Failed to parse raw response: {e}")
-                pass  # fallback to the legacy parsing path
+                logger.debug(f"Failed to parse raw LiteLLM responses response: {e}", exc_info=True)
+                return None
 
+        # envelope_type == "genAi"
         try:
-            attributes = cached_span.get("attributes", {})
-            output_str = cached_span.get("output", "")
-
-            if not output_str:
-                logger.warning("Cached span has no output")
+            messages = cached_span.get("messages")
+            if not isinstance(messages, list):
+                logger.warning("Cached span type='genAi' has no messages list")
                 return None
+            model = cached_span.get("model", "unknown")
 
-            # Parse the output JSON - may contain reasoning + output items
-            items = json.loads(output_str)
-            if not isinstance(items, list):
-                logger.warning(f"Unexpected output format: {type(items)}")
-                return None
-
-            # Separate reasoning from output items
             reasoning = None
             output_items = []
-
-            for item in items:
-                # Check if it's a reasoning object (has summary or effort)
-                if isinstance(item, dict) and (
-                    item.get("summary") or item.get("effort")
-                ):
+            for item in messages:
+                if isinstance(item, dict) and (item.get("summary") or item.get("effort")):
                     reasoning = item
                 else:
                     output_items.append(item)
 
-            # Reconstruct ResponsesAPIResponse dict
             response_dict = {
-                "id": attributes.get("gen_ai.response.id", "cached"),
-                "model": attributes.get("gen_ai.response.model", "unknown"),
+                "id": "cached",
+                "model": model,
                 "output": output_items,
-                "usage": None,  # Cached responses don't track tokens
-                "created_at": int(cached_span.get("end_time", 0) / 1_000_000_000),
+                "usage": None,
+                "created_at": 0,
             }
-
             if reasoning:
                 response_dict["reasoning"] = reasoning
 
-            # Try to construct ResponsesAPIResponse object
             if ResponsesAPIResponse:
                 try:
                     return ResponsesAPIResponse.model_validate(response_dict)
                 except Exception as e:
-                    logger.debug(
-                        f"Failed to validate ResponsesAPIResponse, returning dict: {e}"
-                    )
+                    logger.debug(f"Failed to validate ResponsesAPIResponse, returning dict: {e}")
                     return response_dict
-
             return response_dict
 
         except Exception as e:
             logger.debug(
-                f"Failed to convert cached response to responses format: {e}",
+                f"Failed to convert genAi response to LiteLLM responses format: {e}",
                 exc_info=True,
             )
             return None

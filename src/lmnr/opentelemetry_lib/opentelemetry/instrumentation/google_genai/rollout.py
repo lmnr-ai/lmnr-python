@@ -77,16 +77,7 @@ class GoogleGenAIRolloutWrapper:
     def cached_response_to_google_genai(
         self, cached_span: dict[str, Any], config: Any | None = None
     ) -> types.GenerateContentResponse | None:
-        """
-        Convert cached span data to Google GenAI GenerateContentResponse.
-
-        Args:
-            cached_span: Cached span data from cache server
-            config: Optional config that may contain response_schema for structured output
-
-        Returns:
-            Optional[types.GenerateContentResponse]: Reconstructed response or None
-        """
+        """Convert cached span envelope to Google GenAI GenerateContentResponse."""
 
         def is_raw_genai_candidate_like(candidate: dict[str, Any]) -> bool:
             if not isinstance(candidate, dict):
@@ -103,18 +94,24 @@ class GoogleGenAIRolloutWrapper:
                 )
             return False
 
-        if raw_response := cached_span.get("attributes", {}).get(
-            "lmnr.sdk.raw.response"
-        ):
+        envelope_type = cached_span.get("type")
+        if envelope_type not in ("raw", "genAi"):
+            logger.warning(f"Unknown cached span type: {envelope_type!r}")
+            return None
+
+        if envelope_type == "raw":
             try:
-                if isinstance(raw_response, dict):
-                    response = types.GenerateContentResponse.model_validate(
-                        raw_response
-                    )
-                elif isinstance(raw_response, str):
-                    response = types.GenerateContentResponse.model_validate_json(
-                        raw_response
-                    )
+                raw = cached_span.get("response")
+                if not raw:
+                    logger.warning("Cached span type='raw' has no response field")
+                    return None
+                if isinstance(raw, dict):
+                    response = types.GenerateContentResponse.model_validate(raw)
+                elif isinstance(raw, str):
+                    response = types.GenerateContentResponse.model_validate_json(raw)
+                else:
+                    logger.warning(f"Unexpected raw response type: {type(raw)}")
+                    return None
                 if response:
                     self._add_parsed_to_response(
                         response,
@@ -122,82 +119,66 @@ class GoogleGenAIRolloutWrapper:
                         config,
                     )
                     return response
+                return None
             except Exception as e:
-                logger.debug(f"Failed to parse raw response: {e}")
-                pass  # fallback to the legacy parsing path
+                logger.debug(
+                    f"Failed to parse raw Google GenAI response: {e}", exc_info=True
+                )
+                return None
 
+        # envelope_type == "genAi"
         try:
-            output_str = cached_span.get("output", "")
-            if not output_str:
-                logger.warning("Cached span has no output")
+            messages = cached_span.get("messages")
+            if not isinstance(messages, list) or not messages:
+                logger.warning("Cached span type='genAi' has no messages")
                 return None
+            finish_reasons = cached_span.get("finishReasons", [])
+            finish_reason = finish_reasons[0] if finish_reasons else "STOP"
 
-            # Parse the output JSON
-            parsed = self._parse_output_json(output_str)
-            if not parsed:
-                return None
-
-            # Expected format: [{"role":"model","content":[...]}]
-            if not isinstance(parsed, list) or len(parsed) == 0:
-                logger.warning(f"Unexpected output format: {type(parsed)}")
-                return None
-
-            if all(is_raw_genai_candidate_like(candidate) for candidate in parsed):
+            if all(is_raw_genai_candidate_like(candidate) for candidate in messages):
                 response = types.GenerateContentResponse.model_validate(
-                    {"candidates": parsed}
+                    {"candidates": messages}
                 )
                 self._add_parsed_to_response(
                     response,
-                    parsed[0]["content"]["parts"],
+                    messages[0]["content"]["parts"],
                     config,
                 )
                 return response
-            message = parsed[0]
+
+            message = messages[0]
             content_blocks = message.get("content", [])
 
-            # Convert content blocks to Google GenAI Parts
             parts = []
             for block in content_blocks:
                 block_type = block.get("type")
-
                 if block_type == "text":
                     parts.append(types.Part(text=block.get("text", "")))
-
                 elif block_type == "tool_call":
-                    # Convert to function_call
                     function_call = types.FunctionCall(
                         name=block.get("name", ""),
                         args=block.get("arguments", {}),
                     )
                     parts.append(types.Part(function_call=function_call))
-
                 else:
                     logger.debug(f"Unknown content block type: {block_type}")
 
-            # Build the response
             content = types.Content(parts=parts, role="model")
-
-            # Get finish reason from attributes
-            attributes = cached_span.get("attributes", {})
-            finish_reason = attributes.get("ai.response.finishReason", "stop")
-
             candidate = types.Candidate(
                 content=content,
                 finish_reason=finish_reason,
             )
-
             response = types.GenerateContentResponse(
                 candidates=[candidate],
-                usage_metadata=None,  # Cached responses don't track tokens
+                usage_metadata=None,
                 model_version=None,
             )
             self._add_parsed_to_response(response, content_blocks, config)
-
             return response
 
         except Exception as e:
             logger.debug(
-                f"Failed to convert cached response to Google GenAI format: {e}",
+                f"Failed to convert genAi response to Google GenAI format: {e}",
                 exc_info=True,
             )
             return None

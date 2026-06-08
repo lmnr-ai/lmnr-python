@@ -1,3 +1,4 @@
+import pytest
 from unittest.mock import patch
 
 from lmnr.sdk.debug import (
@@ -8,6 +9,12 @@ from lmnr.sdk.debug import (
 )
 from lmnr.sdk.debug.config import DebugConfig
 from lmnr.sdk.debug.outcome import CacheOutcome
+
+
+@pytest.fixture
+def no_browser(monkeypatch):
+    """Prevent _init_debug_runtime from opening a browser tab during tests."""
+    monkeypatch.setenv("LMNR_DEBUG_SESSION_ID", "test-session")
 
 
 def _reset_runtime():
@@ -506,7 +513,7 @@ def test_init_registers_session_with_backend(monkeypatch):
     _reset_runtime()
 
 
-def test_init_logs_debugger_url_when_project_id_returned(monkeypatch, caplog):
+def test_init_logs_debugger_url_when_project_id_returned(no_browser, monkeypatch, caplog):
     # When the backend returns a project id, init must log the human-facing
     # debugger session URL at INFO, respecting LMNR_FRONTEND_URL.
     import logging

@@ -43,41 +43,37 @@ class OpenAIRolloutWrapper:
     def cached_response_to_openai(
         self, cached_span: dict[str, Any]
     ) -> ChatCompletion | None:
-        """
-        Convert cached span data to OpenAI ChatCompletion response.
-        Tries raw response first, then falls back to legacy parsing.
-        """
-        if raw_response := cached_span.get("attributes", {}).get(
-            "lmnr.sdk.raw.response"
-        ):
+        """Convert cached span envelope to OpenAI ChatCompletion response."""
+        envelope_type = cached_span.get("type")
+        if envelope_type not in ("raw", "genAi"):
+            logger.warning(f"Unknown cached span type: {envelope_type!r}")
+            return None
+
+        if envelope_type == "raw":
             try:
-                response_dict = (
-                    raw_response
-                    if isinstance(raw_response, dict)
-                    else json.loads(raw_response)
-                )
-                if response_dict:
-                    return ChatCompletion.model_validate(response_dict)
+                raw = cached_span.get("response")
+                if not raw:
+                    logger.warning("Cached span type='raw' has no response field")
+                    return None
+                response_dict = raw if isinstance(raw, dict) else json.loads(raw)
+                return ChatCompletion.model_validate(response_dict)
             except Exception as e:
-                logger.debug(f"Failed to parse raw response: {e}")
+                logger.debug(f"Failed to parse raw OpenAI response: {e}", exc_info=True)
+                return None
 
+        # envelope_type == "genAi"
         try:
-            attributes = cached_span.get("attributes", {})
-            output_str = cached_span.get("output", "")
-            if not output_str:
-                logger.warning("Cached span has no output")
+            messages = cached_span.get("messages")
+            if not isinstance(messages, list):
+                logger.warning("Cached span type='genAi' has no messages list")
                 return None
-
-            # NOTE: This is assuming the latest openai instrumentation where we save the output as
-            # a list of choices. Not compatible with older versions.
-            output = json.loads(output_str)
-            if not isinstance(output, list):
-                logger.warning(f"Unexpected output format: {type(output)}")
-                return None
+            model = cached_span.get("model", "unknown")
+            finish_reasons = cached_span.get("finishReasons", [])
 
             choices = []
-            for choice_data in output:
+            for i, choice_data in enumerate(messages):
                 msg = choice_data.get("message", {})
+                finish_reason = finish_reasons[i] if i < len(finish_reasons) else "stop"
 
                 tool_calls = None
                 if raw_tool_calls := msg.get("tool_calls"):
@@ -102,30 +98,31 @@ class OpenAIRolloutWrapper:
 
                 choices.append(
                     Choice(
-                        index=choice_data.get("index", len(choices)),
-                        finish_reason=choice_data.get("finish_reason", "stop"),
+                        index=choice_data.get("index", i),
+                        finish_reason=finish_reason,
                         message=ChatCompletionMessage(
                             role=msg.get("role", "assistant"),
                             content=msg.get("content"),
                             refusal=msg.get("refusal"),
                             tool_calls=tool_calls,
                             function_call=function_call,
+                            annotations=msg.get("annotations", []),
                         ),
                     )
                 )
 
             return ChatCompletion(
-                id=attributes.get("gen_ai.response.id", "cached"),
-                model=attributes.get("gen_ai.response.model", "unknown"),
+                id="cached",
+                model=model,
                 choices=choices,
-                created=int(cached_span.get("start_time", 0) / 1_000_000_000),
+                created=0,
                 object="chat.completion",
                 usage=None,
             )
 
         except Exception as e:
             logger.debug(
-                f"Failed to convert cached response to OpenAI format: {e}",
+                f"Failed to convert genAi response to OpenAI format: {e}",
                 exc_info=True,
             )
             return None

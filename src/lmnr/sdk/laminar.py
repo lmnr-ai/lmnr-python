@@ -427,9 +427,7 @@ class Laminar:
             cls.__logger.debug("Failed to record debug trace id from env: %s", exc)
 
     @classmethod
-    def _init_debug_runtime(
-        cls, base_url: str | None, http_port: int | None
-    ) -> None:
+    def _init_debug_runtime(cls, base_url: str | None, http_port: int | None) -> None:
         """Build the v2 debug runtime (shared spec §4) when LMNR_DEBUG is set.
 
         On a debug run the session id from the config is stamped into the global
@@ -502,18 +500,19 @@ class Laminar:
                         "Laminar debugger session: %s",
                         session_url,
                     )
-                    opener = (
-                        "open"
-                        if sys.platform == "darwin"
-                        else "start"
-                        if sys.platform == "win32"
-                        else "xdg-open"
-                    )
-                    subprocess.Popen(
-                        [opener, session_url],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
+                    if not os.getenv("LMNR_DEBUG_SESSION_ID"):
+                        opener = (
+                            "open"
+                            if sys.platform == "darwin"
+                            else "start"
+                            if sys.platform == "win32"
+                            else "xdg-open"
+                        )
+                        subprocess.Popen(
+                            [opener, session_url],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
             except Exception as exc:
                 cls.__logger.warning("Failed to register debug session: %s", exc)
 
