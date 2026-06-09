@@ -847,6 +847,59 @@ def test_arm_from_context_closes_clients_when_losing_race(monkeypatch):
     _reset_runtime()
 
 
+def test_init_closes_clients_when_runtime_already_armed_from_context(monkeypatch):
+    # _init_debug_runtime (the env path) allocates fresh sync/async clients
+    # BEFORE consulting init_debug_runtime, which is first-wins. If a propagated
+    # DebugContext armed the runtime first (deep in span creation, before
+    # initialize() ran to completion), init_debug_runtime returns the EXISTING
+    # runtime retaining ITS clients — so the env path's freshly-allocated clients
+    # are orphaned and must be closed, or their httpx pools leak. We simulate this
+    # by patching init_debug_runtime to return a runtime built from different
+    # clients.
+    from lmnr.sdk.debug.config import DebugConfig
+    from lmnr.sdk.laminar import Laminar
+
+    _reset_runtime()
+    SESSION = "00000000-0000-0000-0000-0000000000aa"
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.delenv("LMNR_DEBUG_REPLAY_TRACE_ID", raising=False)
+    monkeypatch.delenv("LMNR_DEBUG_CACHE_UNTIL", raising=False)
+
+    # The runtime armed earlier from a propagated context retains its own
+    # clients; _init_debug_runtime must NOT close these.
+    existing_sync = _SpyDebugClient()
+    existing_async = _SpyAsyncDebugClient()
+    existing = DebugRuntime(
+        DebugConfig(session_id=SESSION, replay_trace_id=None, local_origin=False),
+        existing_sync,
+        existing_async,
+        None,
+    )
+
+    def _fake_init(client, async_client, debugger_url=None):
+        # Mimic first-wins: a context already armed the runtime, so return the
+        # existing instance, ignoring the clients this caller passed.
+        return existing
+
+    monkeypatch.setattr("lmnr.sdk.debug.init_debug_runtime", _fake_init)
+
+    # _init_debug_runtime allocates these (the orphaned env-path clients).
+    env_sync = _SpyDebugClient()
+    env_async = _SpyAsyncDebugClient()
+    _patch_clients(monkeypatch, env_sync, env_async)
+    monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
+
+    Laminar._init_debug_runtime(base_url="http://localhost", http_port=8000)
+
+    # The env path's freshly-allocated clients are closed (not leaked); the
+    # context-armed runtime's clients stay open (it owns the run).
+    assert env_sync.closed is True
+    assert env_async.closed is True
+    assert existing_sync.closed is False
+    assert existing_async.closed is False
+    _reset_runtime()
+
+
 def test_arm_from_context_refreshes_isolated_context_metadata(monkeypatch):
     # `LaminarSpanProcessor.on_start` reads `rollout.session_id` from
     # CONTEXT_METADATA_KEY on the parent context (NOT from __global_metadata), so
