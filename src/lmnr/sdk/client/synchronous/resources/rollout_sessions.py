@@ -102,7 +102,15 @@ def _parse_cache_outcome(data: object) -> CacheOutcome:
     """
     outcome = data.get("outcome") if isinstance(data, dict) else None
     if outcome == "hit":
-        return CacheOutcome(kind="hit", cached=data.get("response"))
+        # A HIT must carry a response envelope to be servable; the provider
+        # wrappers call cached_response_to_*(cached), which does cached.get().
+        # A response-less HIT (omitted/null `response`) is malformed — degrade
+        # to `live` so the call runs live (no latch) instead of raising.
+        response = data.get("response")
+        if response is None:
+            logger.debug("Cache HIT without response body; running call live")
+            return CacheOutcome(kind="live")
+        return CacheOutcome(kind="hit", cached=response)
     if outcome == "miss":
         return CacheOutcome(kind="miss")
     return CacheOutcome(kind="live")

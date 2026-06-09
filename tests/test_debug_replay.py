@@ -5,6 +5,9 @@ from pathlib import Path
 import pytest
 
 import lmnr.sdk.debug as debug
+from lmnr.sdk.client.synchronous.resources.rollout_sessions import (
+    _parse_cache_outcome,
+)
 from lmnr.sdk.debug.hash import debug_input_hash
 from lmnr.sdk.debug.outcome import CacheOutcome
 from lmnr.sdk.debug.replay import (
@@ -307,3 +310,27 @@ def test_input_hash_matches_shared_vector(case):
     # Pins debug_input_hash against the shared cross-language vector. The TS SDK
     # and app-server must produce byte-identical hashes for the same inputs.
     assert debug_input_hash(case["messages"]) == case["expected_hash"]
+
+
+# --- _parse_cache_outcome boundary ---------------------------------------
+
+
+def test_parse_outcome_hit_with_response():
+    out = _parse_cache_outcome({"outcome": "hit", "response": {"type": "raw"}})
+    assert out.kind == "hit"
+    assert out.cached == {"type": "raw"}
+
+
+def test_parse_outcome_hit_without_response_degrades_to_live():
+    # A HIT must carry a response envelope; the provider wrappers call
+    # cached_response_to_*(cached) which does cached.get(...). A null/omitted
+    # response would crash with AttributeError, so it must degrade to `live`.
+    assert _parse_cache_outcome({"outcome": "hit"}).kind == "live"
+    none_resp = {"outcome": "hit", "response": None}
+    assert _parse_cache_outcome(none_resp).kind == "live"
+
+
+def test_parse_outcome_miss_and_unknown():
+    assert _parse_cache_outcome({"outcome": "miss"}).kind == "miss"
+    assert _parse_cache_outcome({"outcome": "bogus"}).kind == "live"
+    assert _parse_cache_outcome(None).kind == "live"
