@@ -146,8 +146,12 @@ def build_debug_config() -> DebugConfig | None:
     )
     session_id = provided_session_id or str(uuid.uuid4())
     # The browser is opened once per fresh run; a reused (provided) session id
-    # is a continuation/replay, so it is not reopened.
-    session_minted = provided_session_id is None
+    # is a continuation/replay, so it is not reopened. A FROM_LAST_RUN run is
+    # also a continuation attempt even when the pointer file is missing / has no
+    # session_id (_load_last_run returns {}), so suppress the browser there too.
+    session_minted = provided_session_id is None and not _is_truthy(
+        os.environ.get("LMNR_DEBUG_FROM_LAST_RUN")
+    )
     replay_trace_id = (
         os.environ.get("LMNR_DEBUG_REPLAY_TRACE_ID")
         or last_run.get("trace_id")

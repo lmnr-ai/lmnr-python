@@ -87,6 +87,9 @@ def test_from_last_run_seeds_replay_from_pointer(tmp_path, monkeypatch):
     assert config.session_id == "session-xyz"
     assert config.cache_until_span_id == "0123456789abcdef"
     assert config.replay_enabled is True
+    # A continuation reuses the pointer's session id, so the browser must not
+    # reopen.
+    assert config.session_minted is False
 
 
 def test_from_last_run_env_overrides_per_field(tmp_path, monkeypatch):
@@ -131,6 +134,9 @@ def test_from_last_run_missing_file_falls_back_to_env(tmp_path, monkeypatch):
     assert config is not None
     assert config.replay_trace_id is None
     assert len(config.session_id) == 36
+    # FROM_LAST_RUN is a continuation attempt; even with a missing pointer the
+    # browser must not reopen, despite the freshly minted fallback id.
+    assert config.session_minted is False
 
 
 def test_local_origin_and_session_minted_from_env():
