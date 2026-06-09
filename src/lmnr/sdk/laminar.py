@@ -626,7 +626,12 @@ class Laminar:
             runtime = init_debug_runtime_from_context(
                 debug, client, async_client, debugger_url=debugger_url
             )
-            if runtime is None:
+            if runtime is None or runtime.client is not client:
+                # `runtime is None`: the block was unarmed. `runtime.client is
+                # not client`: another caller won the first-wins race, so the
+                # returned runtime retains ITS clients and ours are orphaned.
+                # Close ours either way (the winner owns session registration +
+                # `rollout.session_id`); leaving them open leaks httpx pools.
                 client.close()
                 cls._close_debug_async_client(async_client)
                 return

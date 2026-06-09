@@ -788,3 +788,60 @@ def test_shutdown_completes_cleanup_when_emit_pointer_raises(tmp_path, monkeypat
 
 def _raise_broken_pipe():
     raise BrokenPipeError("stdout closed")
+
+
+def test_arm_from_context_closes_clients_when_losing_race(monkeypatch):
+    # _arm_debug_runtime_from_context allocates fresh sync/async clients BEFORE
+    # consulting init_debug_runtime_from_context, which is first-wins. Under a
+    # concurrent arm, both callers pass the get_runtime() fast path, both
+    # allocate, and one loses inside init_*_from_context — getting back a runtime
+    # that retains the WINNER's clients. The loser's freshly-allocated clients
+    # are orphaned and must be closed, or their httpx pools leak. We simulate the
+    # lost race by patching init_*_from_context to return a winner runtime built
+    # from different clients (get_runtime() stays None at the fast-path check).
+    from lmnr.sdk.debug.config import DebugConfig
+    from lmnr.sdk.laminar import Laminar
+    from lmnr.sdk.types import DebugContext
+
+    _reset_runtime()
+    SESSION = "00000000-0000-0000-0000-0000000000aa"
+    block = DebugContext(enabled=True, session_id=SESSION)
+
+    # The winner runtime (built by the thread that won the race) retains its own
+    # clients; _arm_debug_runtime_from_context must NOT close these.
+    winner_sync = _SpyDebugClient()
+    winner_async = _SpyAsyncDebugClient()
+    winner = DebugRuntime(
+        DebugConfig(session_id=SESSION, replay_trace_id=None, local_origin=False),
+        winner_sync,
+        winner_async,
+        None,
+    )
+
+    def _fake_init_from_context(dbg, client, async_client, debugger_url=None):
+        # Mimic the lost-race outcome: return the winner runtime, ignoring the
+        # clients this caller passed (init is first-wins and already armed).
+        return winner
+
+    monkeypatch.setattr(
+        "lmnr.sdk.debug.init_debug_runtime_from_context", _fake_init_from_context
+    )
+
+    # _arm_debug_runtime_from_context allocates these (the loser's clients).
+    loser_sync = _SpyDebugClient()
+    loser_async = _SpyAsyncDebugClient()
+    _patch_clients(monkeypatch, loser_sync, loser_async)
+    monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
+    monkeypatch.setattr(Laminar, "_Laminar__base_url_for_debug", "http://localhost",
+                        raising=False)
+    monkeypatch.setattr(Laminar, "_Laminar__http_port_for_debug", 8000, raising=False)
+
+    Laminar._arm_debug_runtime_from_context(block)
+
+    # The loser's freshly-allocated clients are closed (not leaked); the winner's
+    # clients stay open (the winner owns the run).
+    assert loser_sync.closed is True
+    assert loser_async.closed is True
+    assert winner_sync.closed is False
+    assert winner_async.closed is False
+    _reset_runtime()
