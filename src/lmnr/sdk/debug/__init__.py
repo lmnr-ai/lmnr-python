@@ -175,6 +175,11 @@ class DebugRuntime:
 
 _runtime: DebugRuntime | None = None
 _initialized = False
+# Serializes the check-and-set of the one-shot init globals. Span creation runs
+# `init_debug_runtime_from_context` from arbitrary worker threads, so the
+# `_initialized` read and the `_runtime` write must be atomic or two threads
+# both build a runtime, overwrite `_runtime`, and leak the loser's clients.
+_init_lock = threading.Lock()
 
 
 def get_runtime() -> DebugRuntime | None:
@@ -260,7 +265,16 @@ def init_debug_runtime_from_context(
         return None
     if config is None:
         return None
-    _initialized = True
 
-    _runtime = DebugRuntime(config, client, async_client, debugger_url)
-    return _runtime
+    # Span creation calls this from arbitrary worker threads. Re-check
+    # `_initialized` under the lock so only ONE thread builds + publishes the
+    # runtime; losers return the winner's instance. Without this, two threads
+    # both pass the unlocked check above, both construct a DebugRuntime, and the
+    # loser's clients are returned to a caller whose `runtime.client is client`
+    # cleanup guard then leaks them.
+    with _init_lock:
+        if _initialized:
+            return _runtime
+        _runtime = DebugRuntime(config, client, async_client, debugger_url)
+        _initialized = True
+        return _runtime

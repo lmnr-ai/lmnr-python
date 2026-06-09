@@ -845,3 +845,76 @@ def test_arm_from_context_closes_clients_when_losing_race(monkeypatch):
     assert winner_sync.closed is False
     assert winner_async.closed is False
     _reset_runtime()
+
+
+def test_init_from_context_publishes_single_runtime_under_concurrency(monkeypatch):
+    # Span creation calls init_debug_runtime_from_context from arbitrary worker
+    # threads. The check-and-set of the one-shot globals must be atomic, or two
+    # threads both pass the _initialized check, both build a DebugRuntime, and
+    # publish different instances — leaving every loser's clients (each thread
+    # passes its own pair) returned to a caller whose `runtime.client is client`
+    # cleanup guard then fails to recognize the win and leaks them. With the lock,
+    # exactly one runtime is built and published and every caller gets it back.
+    import threading
+    import time
+
+    import lmnr.sdk.debug as debug_mod
+    from lmnr.sdk.debug import init_debug_runtime_from_context
+    from lmnr.sdk.types import DebugContext
+
+    _reset_runtime()
+    SESSION = "00000000-0000-0000-0000-0000000000aa"
+    block = DebugContext(enabled=True, session_id=SESSION)
+
+    n = 16
+    start = threading.Barrier(n)
+
+    # Count how many runtimes actually get constructed. Widen the race window by
+    # sleeping in the config build (runs before the flag is set in the buggy
+    # path) so every thread clears the unlocked _initialized check before any
+    # thread publishes — the unsynchronized version then builds n runtimes.
+    constructed = 0
+    construct_lock = threading.Lock()
+    real_runtime_cls = debug_mod.DebugRuntime
+
+    class _CountingRuntime(real_runtime_cls):
+        def __init__(self, *args, **kwargs):
+            nonlocal constructed
+            with construct_lock:
+                constructed += 1
+            super().__init__(*args, **kwargs)
+
+    real_build = debug_mod.build_debug_config_from_context
+
+    def _slow_build(dbg):
+        time.sleep(0.02)
+        return real_build(dbg)
+
+    monkeypatch.setattr(debug_mod, "DebugRuntime", _CountingRuntime)
+    monkeypatch.setattr(debug_mod, "build_debug_config_from_context", _slow_build)
+
+    returned: list[DebugRuntime] = []
+    returned_lock = threading.Lock()
+
+    def _arm():
+        # Each thread brings its own client pair, like _arm_debug_runtime_from_context.
+        client, async_client = object(), object()
+        start.wait()
+        runtime = init_debug_runtime_from_context(block, client, async_client)
+        with returned_lock:
+            returned.append(runtime)
+
+    threads = [threading.Thread(target=_arm) for _ in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    published = get_runtime()
+    assert published is not None
+    # Exactly one runtime was built (no losers whose clients would leak), and
+    # every caller got back that single published instance.
+    assert constructed == 1
+    assert len(returned) == n
+    assert all(r is published for r in returned)
+    _reset_runtime()
