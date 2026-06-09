@@ -325,6 +325,20 @@ class Laminar:
             else:
                 cls.__logger.info(f"Using HTTP port passed as an argument: {http_port}")
 
+        # Capture the connection args for debug BEFORE flipping __initialized:
+        # once initialization is marked done, span creation is live and a span
+        # carrying a propagated debug block can arm the debug runtime (via
+        # _arm_debug_runtime_from_context) in the window before _init_debug_runtime
+        # runs below. That from-context path reads these static fields to build its
+        # own cache clients, so leaving them None here would point the clients at
+        # the default base URL instead of this initialize()'s base_url/http_port —
+        # and first-wins would then pin that mis-targeted runtime. Set
+        # unconditionally (even when local debug is off): a downstream span may
+        # still arrive carrying a debug block. _init_debug_runtime re-sets these
+        # (harmless) so its direct-call test path keeps working.
+        cls.__base_url_for_debug = url
+        cls.__http_port_for_debug = http_port
+
         cls.__initialized = True
         cls.__base_http_url = f"{http_url}:{http_port or 443}"
         env_metadata: dict[str, Any] = {}

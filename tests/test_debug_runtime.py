@@ -653,6 +653,44 @@ def test_init_does_not_build_debug_runtime_when_tracing_fails(monkeypatch):
     monkeypatch.setattr(Laminar, "_Laminar__initialized", False, raising=False)
 
 
+def test_initialize_captures_debug_connection_args_before_marking_initialized(
+    monkeypatch,
+):
+    # The from-context arm path (_arm_debug_runtime_from_context) builds its own
+    # cache clients from __base_url_for_debug / __http_port_for_debug. Those are
+    # also set inside _init_debug_runtime, but that runs AFTER initialize() flips
+    # __initialized (and after TracerManager.init) — so a span arriving with a
+    # propagated debug block in that window would read None and target the
+    # default base URL, then first-wins would pin the mis-targeted runtime.
+    # initialize() must therefore capture the args itself, BEFORE __initialized.
+    # We stub _init_debug_runtime to a no-op so ONLY the initialize()-level
+    # capture can populate the fields, and assert they hold the parsed values.
+    import os
+
+    from lmnr.sdk.laminar import Laminar
+
+    _reset_runtime()
+    monkeypatch.setattr(Laminar, "_Laminar__initialized", False, raising=False)
+    monkeypatch.setattr(Laminar, "_Laminar__base_url_for_debug", None, raising=False)
+    monkeypatch.setattr(Laminar, "_Laminar__http_port_for_debug", None, raising=False)
+    monkeypatch.setattr("lmnr.opentelemetry_lib.TracerManager.init", lambda *a, **k: None)
+    # No-op the debug-runtime build so the only thing that can set the static
+    # connection fields is the capture in initialize() itself.
+    monkeypatch.setattr(Laminar, "_init_debug_runtime", classmethod(lambda cls, **k: None))
+
+    with patch.dict(os.environ, {"LMNR_PROJECT_API_KEY": "k"}, clear=True):
+        Laminar.initialize(
+            project_api_key="k",
+            base_url="https://custom.example.com",
+            http_port=1234,
+        )
+
+    assert Laminar._Laminar__base_url_for_debug == "https://custom.example.com"
+    assert Laminar._Laminar__http_port_for_debug == 1234
+    monkeypatch.setattr(Laminar, "_Laminar__initialized", False, raising=False)
+    _reset_runtime()
+
+
 def test_exit_hook_does_not_accumulate_across_cycles(tmp_path, monkeypatch):
     # atexit holds a strong ref to whatever it registers, so each debug-mode
     # init must unregister the previous pointer hook on shutdown — otherwise an
