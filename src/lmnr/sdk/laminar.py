@@ -651,6 +651,16 @@ class Laminar:
                 **cls.__global_metadata,
                 "rollout.session_id": runtime.session_id,
             }
+            # Re-stamp global metadata onto the ambient isolated context.
+            # `__global_metadata` alone is not enough: `LaminarSpanProcessor`
+            # reads `rollout.session_id` from `CONTEXT_METADATA_KEY` on the
+            # parent context, so auto-instrumented spans (no explicit
+            # start_span funnel) would omit it on a downstream joined run.
+            # Mirrors the LMNR_SPAN_CONTEXT / env-init paths in initialize().
+            refreshed = context_api.set_value(
+                CONTEXT_METADATA_KEY, cls.__global_metadata, get_current_context()
+            )
+            attach_context(refreshed)
             # No atexit pointer hook: a downstream run must not emit the pointer.
         except Exception as exc:  # never let debug arming crash span creation
             cls.__logger.debug("Failed to arm debug runtime from context: %s", exc)

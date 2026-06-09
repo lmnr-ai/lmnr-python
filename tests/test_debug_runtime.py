@@ -847,6 +847,52 @@ def test_arm_from_context_closes_clients_when_losing_race(monkeypatch):
     _reset_runtime()
 
 
+def test_arm_from_context_refreshes_isolated_context_metadata(monkeypatch):
+    # `LaminarSpanProcessor.on_start` reads `rollout.session_id` from
+    # CONTEXT_METADATA_KEY on the parent context (NOT from __global_metadata), so
+    # arming the debug runtime from a propagated block must also re-stamp the
+    # ambient isolated context — otherwise auto-instrumented spans on a
+    # downstream joined run omit `rollout.session_id`.
+    from opentelemetry.context import get_value
+
+    from lmnr.opentelemetry_lib.tracing.context import (
+        CONTEXT_METADATA_KEY,
+        attach_context,
+        detach_context,
+        get_current_context,
+    )
+    from lmnr.sdk.laminar import Laminar
+    from lmnr.sdk.types import DebugContext
+
+    _reset_runtime()
+    SESSION = "00000000-0000-0000-0000-0000000000aa"
+    block = DebugContext(enabled=True, session_id=SESSION)
+
+    _patch_clients(monkeypatch, _SpyDebugClient())
+    monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
+    monkeypatch.setattr(Laminar, "_Laminar__base_url_for_debug", "http://localhost",
+                        raising=False)
+    monkeypatch.setattr(Laminar, "_Laminar__http_port_for_debug", 8000, raising=False)
+    monkeypatch.setattr(Laminar, "_Laminar__global_metadata", {}, raising=False)
+
+    # Start from a clean ambient context that carries no rollout.session_id.
+    token = attach_context(get_current_context())
+    try:
+        assert (get_value(CONTEXT_METADATA_KEY, get_current_context()) or {}).get(
+            "rollout.session_id"
+        ) is None
+
+        Laminar._arm_debug_runtime_from_context(block)
+
+        runtime = get_runtime()
+        assert runtime is not None
+        ctx_metadata = get_value(CONTEXT_METADATA_KEY, get_current_context()) or {}
+        assert ctx_metadata.get("rollout.session_id") == runtime.session_id
+    finally:
+        detach_context(token)
+        _reset_runtime()
+
+
 def test_init_from_context_publishes_single_runtime_under_concurrency(monkeypatch):
     # Span creation calls init_debug_runtime_from_context from arbitrary worker
     # threads. The check-and-set of the one-shot globals must be atomic, or two
