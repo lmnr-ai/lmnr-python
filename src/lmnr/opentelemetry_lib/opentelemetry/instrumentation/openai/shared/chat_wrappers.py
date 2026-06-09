@@ -412,9 +412,11 @@ class ChatStream(ObjectProxy):
         self._complete_response["service_tier"] = getattr(item, "service_tier", "")
         self._complete_response["created"] = getattr(item, "created", 0)
         self._complete_response["system_fingerprint"] = getattr(
-            item, "system_fingerprint", 0
+            item, "system_fingerprint", None
         )
-        self._complete_response["moderation"] = getattr(item, "moderation", 0)
+        self._complete_response["moderation"] = getattr(
+            item, "moderation", None
+        )
 
         _accumulate_stream_items(item, self._complete_response)
 
