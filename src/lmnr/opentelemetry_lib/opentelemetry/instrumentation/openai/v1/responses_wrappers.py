@@ -73,6 +73,17 @@ from ..utils import (
 SPAN_NAME = "openai.response"
 
 
+def _replay_enabled() -> bool:
+    """True on a debug run with replay configured. Imported lazily to keep the
+    debug machinery out of the instrumentation import path on normal runs."""
+    try:
+        from lmnr.sdk.debug.replay import replay_enabled
+
+        return replay_enabled()
+    except Exception:
+        return False
+
+
 def prepare_input_param(input_param: ResponseInputItemParam) -> ResponseInputItemParam:
     """
     Looks like OpenAI API infers the type "message" if the shape is correct,
@@ -170,6 +181,44 @@ def get_tools_from_kwargs(kwargs: dict) -> list[ToolParam]:
     return tools
 
 
+def build_genai_input_messages(input_param: Any) -> Optional[list[dict[str, Any]]]:
+    """Build the `gen_ai.input.messages` array for a Responses-API request.
+
+    Mirrors the LiteLLM responses path (`process_responses_inputs`): each input
+    item is dumped as-is, so the array app-server stores as `spans.input` (it
+    prefers `gen_ai.input.messages` over the legacy `gen_ai.prompt.N.*`
+    reconstruction) is exactly what the debugger replay cache hashes. A bare
+    string input — the common Responses-API case — is wrapped as a single user
+    message so it is still cacheable (LiteLLM drops it; here we keep it). The
+    system prompt lives in `instructions`, not the input array, and is excluded
+    from the hash anyway, so it is intentionally not prepended.
+
+    Returns None when there is no usable input (the replay path then runs live
+    without hashing a partial input).
+    """
+    if isinstance(input_param, str):
+        return [{"role": "user", "content": input_param}]
+    if isinstance(input_param, list):
+        return [model_as_dict(item) for item in input_param]
+    return None
+
+
+def build_genai_output_messages(
+    output_blocks: Optional[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Build the `gen_ai.output.messages` array from a response's output blocks.
+
+    Each block keeps its native `{type, ...}` shape (message / function_call /
+    reasoning / *_call), matching the LiteLLM responses path and what
+    `OpenAIRolloutWrapper.cached_response_to_responses` reads back as the cached
+    `Response.output`. This is the attribute the replay cache stores as the
+    recorded response, so without it a HIT carries no output.
+    """
+    if not output_blocks:
+        return []
+    return [model_as_dict(block) for block in output_blocks.values()]
+
+
 def process_content_block(
     block: dict[str, Any],
 ) -> dict[str, Any]:
@@ -244,6 +293,22 @@ def set_data_attributes(traced_response: TracedData, span: Span):
     )
 
     if should_send_prompts():
+        # Modern OTel GenAI attributes. app-server prefers these over the legacy
+        # `gen_ai.prompt.N.*` / `gen_ai.completion.N.*` below when reconstructing
+        # `spans.input` / `spans.output`, and the debugger replay cache hashes
+        # `gen_ai.input.messages` + serves `gen_ai.output.messages` — so they must
+        # be present for a Responses-API span to participate in replay.
+        input_messages = build_genai_input_messages(traced_response.input)
+        if input_messages is not None:
+            _set_span_attribute(
+                span, "gen_ai.input.messages", json_dumps(input_messages)
+            )
+        output_messages = build_genai_output_messages(traced_response.output_blocks)
+        if output_messages:
+            _set_span_attribute(
+                span, "gen_ai.output.messages", json_dumps(output_messages)
+            )
+
         prompt_index = 0
         if traced_response.tools:
             _set_span_attribute(
@@ -463,6 +528,11 @@ def responses_get_or_create_wrapper(tracer: Tracer, wrapped, instance, args, kwa
         return wrapped(*args, **kwargs)
     start_time = time.time_ns()
 
+    # Debugger replay (non-streaming only): probe the server-side cache before
+    # the live call. Streaming responses fall through to the live path below.
+    if _replay_enabled() and not kwargs.get("stream", False):
+        return _replay_response_sync(tracer, start_time, wrapped, args, kwargs)
+
     try:
         response = wrapped(*args, **kwargs)
         if isinstance(response, Stream):
@@ -486,6 +556,9 @@ async def async_responses_get_or_create_wrapper(
         return await wrapped(*args, **kwargs)
     start_time = time.time_ns()
 
+    if _replay_enabled() and not kwargs.get("stream", False):
+        return await _replay_response_async(tracer, start_time, wrapped, args, kwargs)
+
     try:
         response = await wrapped(*args, **kwargs)
         if isinstance(response, (Stream, AsyncStream)):
@@ -494,6 +567,123 @@ async def async_responses_get_or_create_wrapper(
         _process_exception(tracer, start_time, kwargs, e)
         raise
     return _process_response(tracer, start_time, response, kwargs)
+
+
+def _open_replay_span(tracer: Tracer, start_time: int, kwargs) -> Span:
+    """Open the Responses-API span up front (before the live call) and stamp
+    `gen_ai.input.messages` so the replay cache can hash the input.
+
+    The bytes stamped here MUST equal what `set_data_attributes` later stamps,
+    or the source-trace hash and the replay-run hash diverge. Both go through
+    `build_genai_input_messages(process_input(kwargs["input"]))`.
+    """
+    span = tracer.start_span(
+        SPAN_NAME,
+        kind=SpanKind.CLIENT,
+        start_time=start_time,
+        context=get_current_context(),
+    )
+    if should_send_prompts():
+        processed_input = process_input(kwargs.get("input"))
+        input_messages = build_genai_input_messages(processed_input)
+        if input_messages is not None:
+            _set_span_attribute(
+                span, "gen_ai.input.messages", json_dumps(input_messages)
+            )
+    return span
+
+
+def _record_raw_response(span: Span, response) -> None:
+    """Stamp `lmnr.sdk.raw.response` (the raw provider response) so the source
+    trace is cacheable as a `type="raw"` envelope, mirroring the chat path."""
+    try:
+        if hasattr(response, "model_dump_json"):
+            _set_span_attribute(
+                span, "lmnr.sdk.raw.response", response.model_dump_json()
+            )
+    except Exception:
+        pass
+
+
+def _finish_live_replay(tracer: Tracer, start_time: int, span: Span, response, kwargs):
+    """Process a live response onto the pre-opened replay span and end it."""
+    parsed_response = parse_response(response)
+    traced_data = _build_traced_data(start_time, parsed_response, kwargs)
+    if traced_data is not None:
+        set_data_attributes(traced_data, span)
+        _record_raw_response(span, response)
+    span.end()
+    return response
+
+
+def _serve_cached_response(start_time: int, span: Span, outcome, kwargs):
+    """On a cache HIT, reconstruct + serve an OpenAI `Response`. Returns the
+    served response, or None to fall through to the live path."""
+    from ..rollout import get_openai_rollout_wrapper
+
+    rollout_wrapper = get_openai_rollout_wrapper()
+    if rollout_wrapper is None:
+        return None
+    cached = rollout_wrapper.cached_response_to_responses(outcome.cached)
+    if cached is None:
+        return None
+
+    from lmnr.sdk.debug.replay import mark_span_cached
+
+    traced_data = _build_traced_data(start_time, cached, kwargs)
+    if traced_data is not None:
+        set_data_attributes(traced_data, span)
+    mark_span_cached(span)
+    span.end()
+    return cached
+
+
+def _replay_response_sync(tracer: Tracer, start_time, wrapped, args, kwargs):
+    from lmnr.sdk.debug.replay import cache_outcome_for
+
+    span = _open_replay_span(tracer, start_time, kwargs)
+    outcome = cache_outcome_for(span)
+    if outcome is not None and outcome.kind == "hit":
+        served = _serve_cached_response(start_time, span, outcome, kwargs)
+        if served is not None:
+            return served
+
+    try:
+        response = wrapped(*args, **kwargs)
+        if isinstance(response, Stream):
+            span.end()
+            return response
+    except Exception as e:
+        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
+        span.record_exception(e, attributes=get_event_attributes_from_context())
+        span.set_status(StatusCode.ERROR, str(e))
+        span.end()
+        raise
+    return _finish_live_replay(tracer, start_time, span, response, kwargs)
+
+
+async def _replay_response_async(tracer: Tracer, start_time, wrapped, args, kwargs):
+    from lmnr.sdk.debug.replay import acache_outcome_for
+
+    span = _open_replay_span(tracer, start_time, kwargs)
+    outcome = await acache_outcome_for(span)
+    if outcome is not None and outcome.kind == "hit":
+        served = _serve_cached_response(start_time, span, outcome, kwargs)
+        if served is not None:
+            return served
+
+    try:
+        response = await wrapped(*args, **kwargs)
+        if isinstance(response, (Stream, AsyncStream)):
+            span.end()
+            return response
+    except Exception as e:
+        span.set_attribute(ERROR_TYPE, e.__class__.__name__)
+        span.record_exception(e, attributes=get_event_attributes_from_context())
+        span.set_status(StatusCode.ERROR, str(e))
+        span.end()
+        raise
+    return _finish_live_replay(tracer, start_time, span, response, kwargs)
 
 
 @dont_throw
@@ -551,13 +741,12 @@ def _process_exception(tracer: Tracer, start_time, kwargs, e):
     span.end()
 
 
-@dont_throw
-def _process_response(tracer: Tracer, start_time, response, kwargs):
-    parsed_response = parse_response(response)
-
+def _build_traced_data(start_time, parsed_response, kwargs) -> Optional[TracedData]:
+    """Accumulate a `TracedData` for a parsed response, merging any prior data
+    stashed under its id. Returns None if construction fails."""
     response_id = getattr(parsed_response, "id", None)
     if not response_id:
-        return response
+        return None
     existing_data = responses.get(response_id)
     if existing_data is None:
         existing_data = {}
@@ -565,7 +754,6 @@ def _process_response(tracer: Tracer, start_time, response, kwargs):
         existing_data = existing_data.model_dump()
 
     request_tools = get_tools_from_kwargs(kwargs)
-
     merged_tools = existing_data.get("tools", []) + request_tools
 
     try:
@@ -612,7 +800,21 @@ def _process_response(tracer: Tracer, start_time, response, kwargs):
             ),
         )
         responses[response_id] = traced_data
+        return traced_data
     except Exception:
+        return None
+
+
+@dont_throw
+def _process_response(tracer: Tracer, start_time, response, kwargs):
+    parsed_response = parse_response(response)
+
+    response_id = getattr(parsed_response, "id", None)
+    if not response_id:
+        return response
+
+    traced_data = _build_traced_data(start_time, parsed_response, kwargs)
+    if traced_data is None:
         return response
 
     if parsed_response.status == "completed":

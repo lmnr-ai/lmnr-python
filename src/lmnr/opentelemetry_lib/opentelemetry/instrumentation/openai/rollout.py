@@ -1,11 +1,18 @@
 """
-Debug replay wrapper for OpenAI chat completions instrumentation.
+Debug replay wrapper for OpenAI chat completions and Responses API
+instrumentation.
 
 On a debug run with replay configured, each live LLM call asks the server-side
 cache (shared spec §7) what to do: on a HIT it reconstructs an OpenAI
-`ChatCompletion` from the cached span and serves it; on MISS / LIVE it runs the
-call live. The decision is made by `cache_outcome_for` (sync) /
+`ChatCompletion` / `Response` from the cached span and serves it; on MISS / LIVE
+it runs the call live. The decision is made by `cache_outcome_for` (sync) /
 `acache_outcome_for` (async) — there is no in-process cache anymore.
+
+The chat path probes the cache inside `wrap_chat_completion`; the Responses API
+path keeps its orchestration in `responses_wrappers.py` (its instrumentation
+opens the span and builds `TracedData` post-hoc) and only borrows
+`cached_response_to_responses` from here to turn a cached envelope into an
+`openai.types.responses.Response`.
 """
 
 import json
@@ -25,6 +32,14 @@ from openai.types.chat.chat_completion_message_function_tool_call import (
     ChatCompletionMessageFunctionToolCall,
     Function as ToolCallFunction,
 )
+
+try:
+    from openai.types.responses import Response
+
+    _RESPONSES_AVAILABLE = True
+except ImportError:
+    Response = Any
+    _RESPONSES_AVAILABLE = False
 
 from lmnr.sdk.debug.replay import (
     acache_outcome_for,
@@ -123,6 +138,80 @@ class OpenAIRolloutWrapper:
         except Exception as e:
             logger.debug(
                 f"Failed to convert genAi response to OpenAI format: {e}",
+                exc_info=True,
+            )
+            return None
+
+    def cached_response_to_responses(
+        self, cached_span: dict[str, Any]
+    ) -> "Response | None":
+        """Convert a cached span envelope to an OpenAI Responses-API `Response`.
+
+        Mirrors `cached_response_to_openai` but targets
+        `openai.types.responses.Response`. `type="raw"` validates the recorded
+        provider response directly; `type="genAi"` rebuilds the response from the
+        stored OTel output items (`gen_ai.output.messages`) — each item already
+        has the `{type, ...}` shape `Response.output` expects (message /
+        function_call / reasoning / *_call blocks). Streaming is out of scope.
+        """
+        if not _RESPONSES_AVAILABLE:
+            logger.warning(
+                "openai.types.responses.Response unavailable; cannot serve cached "
+                "Responses-API response"
+            )
+            return None
+
+        envelope_type = cached_span.get("type")
+        if envelope_type not in ("raw", "genAi"):
+            logger.warning(f"Unknown cached span type: {envelope_type!r}")
+            return None
+
+        if envelope_type == "raw":
+            try:
+                raw = cached_span.get("response")
+                if not raw:
+                    logger.warning("Cached span type='raw' has no response field")
+                    return None
+                response_dict = raw if isinstance(raw, dict) else json.loads(raw)
+                return Response.model_validate(response_dict)
+            except Exception as e:
+                logger.debug(
+                    f"Failed to parse raw OpenAI Responses response: {e}",
+                    exc_info=True,
+                )
+                return None
+
+        # envelope_type == "genAi"
+        try:
+            messages = cached_span.get("messages")
+            if not isinstance(messages, list):
+                logger.warning("Cached span type='genAi' has no messages list")
+                return None
+            model = cached_span.get("model", "unknown")
+
+            # The recorder (responses_wrappers.set_data_attributes) stores the
+            # response's output blocks — optionally preceded by a reasoning item —
+            # as the OTel output messages. They already carry the discriminated
+            # `type` field Response.output validates against, so pass them through.
+            output_items = [item for item in messages if isinstance(item, dict)]
+
+            response_dict = {
+                "id": "cached",
+                "created_at": 0,
+                "model": model,
+                "object": "response",
+                "output": output_items,
+                "parallel_tool_calls": False,
+                "tool_choice": "auto",
+                "tools": [],
+                "status": "completed",
+                "usage": None,
+            }
+            return Response.model_validate(response_dict)
+
+        except Exception as e:
+            logger.debug(
+                f"Failed to convert genAi response to OpenAI Responses format: {e}",
                 exc_info=True,
             )
             return None
