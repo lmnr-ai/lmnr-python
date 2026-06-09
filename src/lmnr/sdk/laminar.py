@@ -392,6 +392,16 @@ class Laminar:
             )
             return
 
+        # Arm the debug runtime from a debug block carried by LMNR_SPAN_CONTEXT
+        # (first-wins, idempotent, no-op when already armed or no block present).
+        # The span-creation funnels only see this block when a caller passes the
+        # parent context explicitly; an LMNR_SPAN_CONTEXT-attached run instead
+        # parents off the pushed context with `parent_span_context=None`, so
+        # without arming here a propagated debug block would never activate the
+        # replay cache / `rollout.session_id` on this downstream process. Done
+        # before recording the inherited trace id so the runtime exists for it.
+        cls._arm_debug_runtime_from_context(laminar_context.debug)
+
         try:
             otel_span_context = LaminarSpanContext.try_to_otel_span_context(
                 laminar_context, cls.__logger
@@ -404,6 +414,15 @@ class Laminar:
 
         base_context = trace.set_span_in_context(
             trace.NonRecordingSpan(otel_span_context), get_current_context()
+        )
+        # Re-stamp global metadata onto the pushed context. A debug block in
+        # LMNR_SPAN_CONTEXT was armed above, AFTER initialize() attached the
+        # ambient metadata context, so `rollout.session_id` is now in
+        # __global_metadata but not on the context auto-instrumentation spans
+        # descend from. Refresh it here (idempotent for non-debug runs — the
+        # value already on the context is the same global metadata).
+        base_context = context_api.set_value(
+            CONTEXT_METADATA_KEY, cls.__global_metadata, base_context
         )
         processor = TracerWrapper.instance._span_processor
         if isinstance(processor, LaminarSpanProcessor):

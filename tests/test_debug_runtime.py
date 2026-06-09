@@ -128,6 +128,42 @@ def test_record_debug_trace_id_from_env_populates_pointer(monkeypatch):
     _reset_runtime()
 
 
+def test_env_context_arms_debug_runtime_from_block(monkeypatch):
+    # A debug block carried by LMNR_SPAN_CONTEXT must arm the debug runtime: an
+    # LMNR_SPAN_CONTEXT-attached run parents off the pushed context with
+    # parent_span_context=None, so the span-creation funnels never see the block
+    # and only _initialize_context_from_env can activate replay downstream.
+    import uuid as _uuid
+
+    from lmnr.sdk.laminar import Laminar
+    from lmnr.sdk.types import DebugContext, LaminarSpanContext
+
+    _reset_runtime()
+
+    session_id = str(_uuid.uuid4())
+    ctx = LaminarSpanContext(
+        trace_id=_uuid.UUID("01234567-89ab-cdef-0123-456789abcdef"),
+        span_id=_uuid.UUID("00000000-0000-0000-0123-456789abcdef"),
+        debug=DebugContext(enabled=True, session_id=session_id),
+    )
+
+    armed_with = {}
+
+    def _fake_arm(debug):
+        armed_with["debug"] = debug
+
+    monkeypatch.setattr(Laminar, "_arm_debug_runtime_from_context", _fake_arm)
+    monkeypatch.setenv("LMNR_SPAN_CONTEXT", str(ctx))
+
+    Laminar._initialize_context_from_env()
+
+    assert "debug" in armed_with
+    assert armed_with["debug"] is not None
+    assert armed_with["debug"].enabled is True
+    assert armed_with["debug"].session_id == session_id
+    _reset_runtime()
+
+
 def test_processor_records_trace_id_when_tracing_disabled(monkeypatch):
     # Even with LMNR_DISABLE_TRACING=true the processor must record the root
     # trace id, otherwise the shutdown pointer emits an empty trace_id while
