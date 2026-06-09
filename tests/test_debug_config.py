@@ -223,6 +223,17 @@ def test_debug_context_empty_ids_become_none():
     assert ctx.replay_trace_id is None
 
 
+def test_debug_context_non_boolean_enabled_never_arms():
+    # The producer always emits a real boolean. A truthy non-True value (e.g.
+    # the string "false", or 1) is a malformed/forged block and must parse to
+    # enabled=False, never arming a downstream runtime.
+    for enabled in ("false", "true", 1, {"x": 1}):
+        ctx = DebugContext.deserialize(
+            {"enabled": enabled, "session_id": "my-session"}
+        )
+        assert ctx.enabled is False
+
+
 def test_laminar_span_context_parses_nested_debug():
     sc = LaminarSpanContext.deserialize(
         {

@@ -253,7 +253,11 @@ class DebugContext(BaseModel):
         round-trip them unchanged or a downstream run fails to join the run.
         """
         return cls(
-            enabled=bool(data.get("enabled", False)),
+            # Strict `is True`, NOT bool(...): the producer always emits a real
+            # boolean, so anything else (e.g. the string "false", which is
+            # truthy) is a malformed/forged block and must NOT arm a downstream
+            # runtime.
+            enabled=data.get("enabled") is True,
             session_id=(data.get("session_id") or data.get("sessionId")) or None,
             replay_trace_id=(
                 data.get("replay_trace_id") or data.get("replayTraceId")
