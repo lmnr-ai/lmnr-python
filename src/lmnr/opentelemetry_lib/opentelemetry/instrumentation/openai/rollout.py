@@ -16,6 +16,7 @@ opens the span and builds `TracedData` post-hoc) and only borrows
 """
 
 import json
+import uuid
 from typing import Any, AsyncGenerator, Generator
 
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
@@ -196,7 +197,11 @@ class OpenAIRolloutWrapper:
             output_items = [item for item in messages if isinstance(item, dict)]
 
             response_dict = {
-                "id": "cached",
+                # Unique per reconstruction: the Responses instrumentation keys
+                # its module-level `responses` accumulator by response id, so a
+                # constant id collides across sequential cached HITs and stamps
+                # the first call's (stale, shorter) input on every later span.
+                "id": f"cached_{uuid.uuid4().hex}",
                 "created_at": 0,
                 "model": model,
                 "object": "response",

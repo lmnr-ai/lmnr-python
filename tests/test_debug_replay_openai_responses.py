@@ -47,6 +47,16 @@ def test_cached_response_to_responses_genai():
     assert response.output_text == "Paris"
 
 
+def test_cached_genai_responses_have_unique_ids():
+    # The Responses instrumentation keys its `responses` accumulator by id; a
+    # constant id collides across sequential cached HITs and stamps the first
+    # call's stale input on every later span. Each reconstruction must be unique.
+    wrapper = OpenAIRolloutWrapper()
+    a = wrapper.cached_response_to_responses(_genai_envelope())
+    b = wrapper.cached_response_to_responses(_genai_envelope())
+    assert a.id != b.id
+
+
 def test_cached_response_to_responses_raw():
     wrapper = OpenAIRolloutWrapper()
     raw = {
