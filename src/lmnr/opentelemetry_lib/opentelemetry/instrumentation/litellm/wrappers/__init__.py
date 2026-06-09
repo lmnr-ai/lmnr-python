@@ -40,9 +40,9 @@ logger = get_default_logger(__name__)
 def _get_rollout_wrapper():
     """Lazy import and get rollout wrapper to avoid circular imports."""
     try:
-        from lmnr.sdk.rollout_control import is_rollout_mode
+        from lmnr.sdk.debug.replay import replay_enabled
 
-        if not is_rollout_mode():
+        if not replay_enabled():
             return None, False
 
         from ..rollout import get_litellm_rollout_wrapper

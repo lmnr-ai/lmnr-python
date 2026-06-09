@@ -188,7 +188,6 @@ def _set_request_attributes(span, args, kwargs):
 
 @dont_throw
 def _set_response_attributes(span, response: types.GenerateContentResponse):
-    candidates = response.candidates or []
     set_span_attribute(
         span, gen_ai_attributes.GEN_AI_RESPONSE_ID, to_dict(response).get("response_id")
     )
@@ -236,65 +235,6 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
             thoughts_token_count,
         )
 
-    if should_send_prompts():
-        set_span_attribute(span, "gen_ai.completion.0.role", "model")
-        candidates_list = candidates if isinstance(candidates, list) else [candidates]
-        i = 0
-        for candidate in candidates_list:
-            has_content = False
-            processed_content = process_content_union(candidate.content)
-            content_payload = get_content(processed_content)
-            if isinstance(content_payload, dict):
-                content_payload = [content_payload]
-
-            set_span_attribute(span, f"gen_ai.completion.{i}.role", "model")
-            if content_payload:
-                has_content = True
-                set_span_attribute(
-                    span,
-                    f"gen_ai.completion.{i}.content",
-                    (
-                        content_payload
-                        if isinstance(content_payload, str)
-                        else json_dumps(content_payload)
-                    ),
-                )
-            blocks = (
-                processed_content
-                if isinstance(processed_content, list)
-                else [processed_content]
-            )
-
-            tool_call_index = 0
-            for block in blocks:
-                block_dict = to_dict(block)
-                if not block_dict.get("function_call"):
-                    continue
-                function_call = to_dict(block_dict.get("function_call", {}))
-                has_content = True
-                set_span_attribute(
-                    span,
-                    f"gen_ai.completion.{i}.tool_calls.{tool_call_index}.name",
-                    function_call.get("name"),
-                )
-                set_span_attribute(
-                    span,
-                    f"gen_ai.completion.{i}.tool_calls.{tool_call_index}.id",
-                    (
-                        function_call.get("id")
-                        if function_call.get("id") is not None
-                        else function_call.get("name")
-                    ),  # google genai doesn't support tool call ids
-                )
-                set_span_attribute(
-                    span,
-                    f"gen_ai.completion.{i}.tool_calls.{tool_call_index}.arguments",
-                    json_dumps(function_call.get("arguments")),
-                )
-                tool_call_index += 1
-            if has_content:
-                i += 1
-
 
 @dont_throw
 def _set_raw_response_attribute(
@@ -305,7 +245,7 @@ def _set_raw_response_attribute(
         "gen_ai.output.messages",
         json_dumps(
             [
-                candidate.model_dump(mode="json", exclude_unset=True)
+                candidate.model_dump(mode="json", exclude_unset=True, exclude_none=True)
                 for candidate in (response.candidates or [])
             ]
         ),
@@ -456,10 +396,10 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     _set_request_attributes(span, args, kwargs)
 
     try:
-        # Check for rollout mode and apply caching/overrides
-        from lmnr.sdk.rollout_control import is_rollout_mode
+        # Check for debug replay mode and serve cached responses if available
+        from lmnr.sdk.debug.replay import replay_enabled
 
-        is_rollout = is_rollout_mode()
+        is_rollout = replay_enabled()
     except Exception:
         is_rollout = False
 
@@ -520,10 +460,10 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
     _set_request_attributes(span, args, kwargs)
 
     try:
-        # Check for rollout mode and apply caching/overrides
-        from lmnr.sdk.rollout_control import is_rollout_mode
+        # Check for debug replay mode and serve cached responses if available
+        from lmnr.sdk.debug.replay import replay_enabled
 
-        is_rollout = is_rollout_mode()
+        is_rollout = replay_enabled()
     except Exception:
         is_rollout = False
 

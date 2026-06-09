@@ -19,7 +19,6 @@ from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     METADATA,
-    ROLLOUT_SESSION_ID_ATTR,
     SPAN_TYPE,
 )
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
@@ -67,9 +66,6 @@ def _setup_span(
             if association_properties is not None:
                 for key, value in association_properties.items():
                     span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)
-                    if key == "rollout_session_id":
-                        # special case, rollout session id is stored in a separate attribute
-                        span.set_attribute(ROLLOUT_SESSION_ID_ATTR, value)
 
             return span
     except Exception:

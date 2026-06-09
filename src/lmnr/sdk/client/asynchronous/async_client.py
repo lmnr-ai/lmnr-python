@@ -12,7 +12,7 @@ from lmnr.sdk.client.asynchronous.resources import (
     AsyncDatasets,
     AsyncEvals,
     AsyncEvaluators,
-    AsyncRollout,
+    AsyncRolloutSessions,
     AsyncTags,
     AsyncSql,
     AsyncTraces,
@@ -105,11 +105,11 @@ class AsyncLaminarClient:
         self.__datasets = AsyncDatasets(
             self.__client, self.__base_url, self.__project_api_key
         )
-        self.__rollout = AsyncRollout(
-            self.__client, self.__base_url, self.__project_api_key
-        )
         self.__sql = AsyncSql(self.__client, self.__base_url, self.__project_api_key)
         self.__traces = AsyncTraces(
+            self.__client, self.__base_url, self.__project_api_key
+        )
+        self.__rollout_sessions = AsyncRolloutSessions(
             self.__client, self.__base_url, self.__project_api_key
         )
 
@@ -159,15 +159,6 @@ class AsyncLaminarClient:
         return self.__datasets
 
     @property
-    def rollout(self) -> AsyncRollout:
-        """Get the Rollout resource.
-
-        Returns:
-            AsyncRollout: The Rollout resource instance.
-        """
-        return self.__rollout
-
-    @property
     def sql(self) -> AsyncSql:
         """Get the SQL resource.
 
@@ -184,6 +175,15 @@ class AsyncLaminarClient:
             AsyncTraces: The Traces resource instance.
         """
         return self.__traces
+
+    @property
+    def rollout_sessions(self) -> AsyncRolloutSessions:
+        """Get the RolloutSessions resource.
+
+        Returns:
+            AsyncRolloutSessions: The RolloutSessions resource instance.
+        """
+        return self.__rollout_sessions
 
     @property
     def is_closed(self) -> bool:

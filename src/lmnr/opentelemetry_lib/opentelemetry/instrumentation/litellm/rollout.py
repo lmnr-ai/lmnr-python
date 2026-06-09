@@ -1,17 +1,27 @@
 """
-Rollout wrapper for LiteLLM instrumentation.
+Debug replay wrapper for LiteLLM instrumentation.
 
-This module adds caching and override capabilities to LiteLLM instrumentation
-during rollout sessions.
+On a debug run with replay configured, each live LLM call asks the server-side
+cache (shared spec §7) what to do: on a HIT it reconstructs a LiteLLM
+`ModelResponse` / `ResponsesAPIResponse` from the cached span and serves it; on
+MISS / LIVE it runs the call live. The decision is made by `cache_outcome_for`.
+
+LiteLLM has no async cache helper: its instrumentation dispatches both sync and
+async calls through these sync wrappers and only checks `inspect.iscoroutine` on
+the result, so the cache lookup is a blocking HTTP call even on the async path
+(a known v1 limitation carried forward — the lookup is small and one-shot).
 """
 
 import json
 from typing import Any, AsyncGenerator, Generator
 
+from lmnr.sdk.debug.replay import (
+    cache_outcome_for,
+    mark_span_cached,
+    replay_enabled,
+)
 from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.rollout.instrumentation import RolloutInstrumentationWrapper
-from lmnr.sdk.rollout_control import is_rollout_mode
 
 logger = get_default_logger(__name__)
 
@@ -151,202 +161,140 @@ def _import_litellm_types():
     return types
 
 
-class LiteLLMRolloutWrapper(RolloutInstrumentationWrapper):
-    """
-    Rollout wrapper specific to LiteLLM instrumentation.
-
-    Handles:
-    - Converting cached responses to LiteLLM format (both completion and responses)
-    - Applying overrides to system prompts and tool definitions
-    - Setting rollout-specific span attributes
-    """
+class LiteLLMRolloutWrapper:
+    """Serves cached LiteLLM responses on a debug run; runs live otherwise."""
 
     def cached_response_to_completion(self, cached_span: dict[str, Any]) -> Any:
-        """
-        Convert cached span data to LiteLLM ModelResponse format.
+        """Convert cached span envelope to LiteLLM ModelResponse format."""
+        types_dict = _import_litellm_types()
+        ModelResponse = types_dict["ModelResponse"]
 
-        Args:
-            cached_span: Cached span data from cache server
+        envelope_type = cached_span.get("type")
+        if envelope_type not in ("raw", "genAi"):
+            logger.warning(f"Unknown cached span type: {envelope_type!r}")
+            return None
 
-        Returns:
-            ModelResponse object, dict, or None
-        """
-        types = _import_litellm_types()
-        ModelResponse = types["ModelResponse"]
-
-        # Try to parse from raw response first
-        if raw_response := cached_span.get("attributes", {}).get(
-            "lmnr.sdk.raw.response"
-        ):
+        if envelope_type == "raw":
             try:
-                response_dict = None
-                if isinstance(raw_response, dict):
-                    response_dict = raw_response
-                elif isinstance(raw_response, str):
-                    response_dict = json.loads(raw_response)
-
-                if response_dict and ModelResponse:
+                raw = cached_span.get("response")
+                if not raw:
+                    logger.warning("Cached span type='raw' has no response field")
+                    return None
+                response_dict = raw if isinstance(raw, dict) else json.loads(raw)
+                if ModelResponse:
                     try:
                         return ModelResponse.model_validate(response_dict)
                     except Exception as e:
-                        logger.debug(
-                            f"Failed to validate ModelResponse, returning dict: {e}"
-                        )
+                        logger.debug(f"Failed to validate ModelResponse, returning dict: {e}")
                         return response_dict
-                elif response_dict:
-                    return response_dict
+                return response_dict
             except Exception as e:
-                logger.debug(f"Failed to parse raw response: {e}")
-                pass  # fallback to the legacy parsing path
+                logger.debug(f"Failed to parse raw LiteLLM completion response: {e}", exc_info=True)
+                return None
 
+        # envelope_type == "genAi"
         try:
-            attributes = cached_span.get("attributes", {})
-            output_str = cached_span.get("output", "")
-
-            if not output_str:
-                logger.warning("Cached span has no output")
-                return None
-
-            # Parse the output JSON - should be array of messages
-            messages = json.loads(output_str)
+            messages = cached_span.get("messages")
             if not isinstance(messages, list):
-                logger.warning(f"Unexpected output format: {type(messages)}")
+                logger.warning("Cached span type='genAi' has no messages list")
                 return None
+            model = cached_span.get("model", "unknown")
+            finish_reasons = cached_span.get("finishReasons", [])
 
-            # Reconstruct ModelResponse dict
             choices = []
             for i, message in enumerate(messages):
-                choices.append(
-                    {
-                        "index": i,
-                        "message": message,
-                        "finish_reason": "stop",  # Default for cached responses
-                    }
-                )
+                finish_reason = finish_reasons[i] if i < len(finish_reasons) else "stop"
+                choices.append({"index": i, "message": message, "finish_reason": finish_reason})
 
             response_dict = {
-                "id": attributes.get("gen_ai.response.id", "cached"),
-                "model": attributes.get("gen_ai.response.model", "unknown"),
+                "id": "cached",
+                "model": model,
                 "choices": choices,
-                "created": int(cached_span.get("start_time", 0) / 1_000_000_000),
+                "created": 0,
                 "object": "chat.completion",
-                "system_fingerprint": attributes.get(
-                    "gen_ai.response.system_fingerprint"
-                ),
-                "usage": None,  # Cached responses don't track tokens
+                "usage": None,
             }
 
-            # Try to construct ModelResponse object
             if ModelResponse:
                 try:
                     return ModelResponse.model_validate(response_dict)
                 except Exception as e:
-                    logger.debug(
-                        f"Failed to validate ModelResponse, returning dict: {e}"
-                    )
+                    logger.debug(f"Failed to validate ModelResponse, returning dict: {e}")
                     return response_dict
-
             return response_dict
 
         except Exception as e:
             logger.debug(
-                f"Failed to convert cached response to completion format: {e}",
+                f"Failed to convert genAi response to LiteLLM completion format: {e}",
                 exc_info=True,
             )
             return None
 
     def cached_response_to_responses(self, cached_span: dict[str, Any]) -> Any:
-        """
-        Convert cached span data to LiteLLM ResponsesAPIResponse format.
+        """Convert cached span envelope to LiteLLM ResponsesAPIResponse format."""
+        types_dict = _import_litellm_types()
+        ResponsesAPIResponse = types_dict["ResponsesAPIResponse"]
 
-        Args:
-            cached_span: Cached span data from cache server
+        envelope_type = cached_span.get("type")
+        if envelope_type not in ("raw", "genAi"):
+            logger.warning(f"Unknown cached span type: {envelope_type!r}")
+            return None
 
-        Returns:
-            ResponsesAPIResponse object, dict, or None
-        """
-        types = _import_litellm_types()
-        ResponsesAPIResponse = types["ResponsesAPIResponse"]
-
-        # Try to parse from raw response first
-        if raw_response := cached_span.get("attributes", {}).get(
-            "lmnr.sdk.raw.response"
-        ):
+        if envelope_type == "raw":
             try:
-                response_dict = None
-                if isinstance(raw_response, dict):
-                    response_dict = raw_response
-                elif isinstance(raw_response, str):
-                    response_dict = json.loads(raw_response)
-
-                if response_dict and ResponsesAPIResponse:
+                raw = cached_span.get("response")
+                if not raw:
+                    logger.warning("Cached span type='raw' has no response field")
+                    return None
+                response_dict = raw if isinstance(raw, dict) else json.loads(raw)
+                if ResponsesAPIResponse:
                     try:
                         return ResponsesAPIResponse.model_validate(response_dict)
                     except Exception as e:
-                        logger.debug(
-                            f"Failed to validate ResponsesAPIResponse, returning dict: {e}"
-                        )
+                        logger.debug(f"Failed to validate ResponsesAPIResponse, returning dict: {e}")
                         return response_dict
-                elif response_dict:
-                    return response_dict
+                return response_dict
             except Exception as e:
-                logger.debug(f"Failed to parse raw response: {e}")
-                pass  # fallback to the legacy parsing path
+                logger.debug(f"Failed to parse raw LiteLLM responses response: {e}", exc_info=True)
+                return None
 
+        # envelope_type == "genAi"
         try:
-            attributes = cached_span.get("attributes", {})
-            output_str = cached_span.get("output", "")
-
-            if not output_str:
-                logger.warning("Cached span has no output")
+            messages = cached_span.get("messages")
+            if not isinstance(messages, list):
+                logger.warning("Cached span type='genAi' has no messages list")
                 return None
+            model = cached_span.get("model", "unknown")
 
-            # Parse the output JSON - may contain reasoning + output items
-            items = json.loads(output_str)
-            if not isinstance(items, list):
-                logger.warning(f"Unexpected output format: {type(items)}")
-                return None
-
-            # Separate reasoning from output items
             reasoning = None
             output_items = []
-
-            for item in items:
-                # Check if it's a reasoning object (has summary or effort)
-                if isinstance(item, dict) and (
-                    item.get("summary") or item.get("effort")
-                ):
+            for item in messages:
+                if isinstance(item, dict) and (item.get("summary") or item.get("effort")):
                     reasoning = item
                 else:
                     output_items.append(item)
 
-            # Reconstruct ResponsesAPIResponse dict
             response_dict = {
-                "id": attributes.get("gen_ai.response.id", "cached"),
-                "model": attributes.get("gen_ai.response.model", "unknown"),
+                "id": "cached",
+                "model": model,
                 "output": output_items,
-                "usage": None,  # Cached responses don't track tokens
-                "created_at": int(cached_span.get("end_time", 0) / 1_000_000_000),
+                "usage": None,
+                "created_at": 0,
             }
-
             if reasoning:
                 response_dict["reasoning"] = reasoning
 
-            # Try to construct ResponsesAPIResponse object
             if ResponsesAPIResponse:
                 try:
                     return ResponsesAPIResponse.model_validate(response_dict)
                 except Exception as e:
-                    logger.debug(
-                        f"Failed to validate ResponsesAPIResponse, returning dict: {e}"
-                    )
+                    logger.debug(f"Failed to validate ResponsesAPIResponse, returning dict: {e}")
                     return response_dict
-
             return response_dict
 
         except Exception as e:
             logger.debug(
-                f"Failed to convert cached response to responses format: {e}",
+                f"Failed to convert genAi response to LiteLLM responses format: {e}",
                 exc_info=True,
             )
             return None
@@ -533,70 +481,19 @@ class LiteLLMRolloutWrapper(RolloutInstrumentationWrapper):
         kwargs,
         is_streaming: bool = False,
     ) -> Any:
-        """
-        Wrap completion with rollout logic.
-
-        Args:
-            wrapped: Original function
-            instance: Instance object
-            args: Positional arguments
-            kwargs: Keyword arguments
-            is_streaming: Whether this is a streaming call
-            is_async: Whether this is an async call
-
-        Returns:
-            Response (cached or live), or Generator/AsyncGenerator
-        """
-        # Check if rollout mode is active
-        if not self.should_use_rollout():
-            return wrapped(*args, **kwargs)
-
-        # Get span path
-        span_path = self.get_span_path()
-        if not span_path:
-            return wrapped(*args, **kwargs)
-
-        # Get current call index
-        current_index = self.get_current_index_for_path(span_path)
-
-        logger.debug(f"LiteLLM completion call at {span_path}:{current_index}")
+        """Serve a cached completion response if available, else run live."""
         span = Laminar.get_current_span()
+        outcome = cache_outcome_for(span)
+        if outcome is not None and outcome.kind == "hit":
+            response = self.cached_response_to_completion(outcome.cached)
+            if response is not None:
+                logger.debug("Serving cached LiteLLM completion from replay cache")
+                mark_span_cached(span)
+                if is_streaming:
+                    sync_gen = self._create_cached_completion_stream(response)
+                    return DualIteratorWrapper(sync_gen, cached_response=response)
+                return response
 
-        # Check cache
-        if self.should_use_cache(span_path, current_index):
-            cached_span = self.get_cached_response(span_path, current_index)
-            if cached_span:
-                logger.debug(
-                    f"Using cached response for LiteLLM completion at {span_path}:{current_index}"
-                )
-
-                # Convert cached data to completion response
-                response = self.cached_response_to_completion(cached_span)
-                if response:
-                    # Mark span as cached
-                    try:
-                        if span and span.is_recording():
-                            span.set_attributes(
-                                {
-                                    "lmnr.span.type": "CACHED",
-                                    "lmnr.rollout.cache_index": current_index,
-                                    "lmnr.span.original_type": "LLM",
-                                }
-                            )
-                    except Exception:
-                        pass
-
-                    # For streaming, return a dual iterator that works in both sync and async contexts
-                    if is_streaming:
-                        sync_gen = self._create_cached_completion_stream(response)
-                        return DualIteratorWrapper(sync_gen, cached_response=response)
-
-                    return response
-
-        # Cache miss or conversion failed - execute live
-        logger.debug(
-            f"Executing live LiteLLM completion call for {span_path}:{current_index}"
-        )
         return wrapped(*args, **kwargs)
 
     def wrap_responses(
@@ -606,68 +503,19 @@ class LiteLLMRolloutWrapper(RolloutInstrumentationWrapper):
         kwargs,
         is_streaming: bool = False,
     ) -> Any:
-        """
-        Wrap responses with rollout logic.
-
-        Args:
-            wrapped: Original function
-            args: Positional arguments
-            kwargs: Keyword arguments
-            is_streaming: Whether this is a streaming call
-
-        Returns:
-            Response (cached or live), or Generator/AsyncGenerator
-        """
-        # Check if rollout mode is active
-        if not self.should_use_rollout():
-            return wrapped(*args, **kwargs)
-
-        # Get span path
-        span_path = self.get_span_path()
-        if not span_path:
-            return wrapped(*args, **kwargs)
-
-        # Get current call index
-        current_index = self.get_current_index_for_path(span_path)
-
-        logger.debug(f"LiteLLM responses call at {span_path}:{current_index}")
+        """Serve a cached responses-API response if available, else run live."""
         span = Laminar.get_current_span()
+        outcome = cache_outcome_for(span)
+        if outcome is not None and outcome.kind == "hit":
+            response = self.cached_response_to_responses(outcome.cached)
+            if response is not None:
+                logger.debug("Serving cached LiteLLM responses from replay cache")
+                mark_span_cached(span)
+                if is_streaming:
+                    sync_gen = self._create_cached_responses_stream(response)
+                    return DualIteratorWrapper(sync_gen, cached_response=response)
+                return response
 
-        # Check cache
-        if self.should_use_cache(span_path, current_index):
-            cached_span = self.get_cached_response(span_path, current_index)
-            if cached_span:
-                logger.debug(
-                    f"Using cached response for LiteLLM responses at {span_path}:{current_index}"
-                )
-
-                # Convert cached data to responses response
-                response = self.cached_response_to_responses(cached_span)
-                if response:
-                    # Mark span as cached
-                    try:
-                        if span and span.is_recording():
-                            span.set_attributes(
-                                {
-                                    "lmnr.span.type": "CACHED",
-                                    "lmnr.rollout.cache_index": current_index,
-                                    "lmnr.span.original_type": "LLM",
-                                }
-                            )
-                    except Exception:
-                        pass
-
-                    # For streaming, return a dual iterator that works in both sync and async contexts
-                    if is_streaming:
-                        sync_gen = self._create_cached_responses_stream(response)
-                        return DualIteratorWrapper(sync_gen, cached_response=response)
-
-                    return response
-
-        # Cache miss or conversion failed - execute live
-        logger.debug(
-            f"Executing live LiteLLM responses call for {span_path}:{current_index}"
-        )
         return wrapped(*args, **kwargs)
 
 
@@ -684,7 +532,7 @@ def get_litellm_rollout_wrapper() -> LiteLLMRolloutWrapper | None:
     """
     global _litellm_rollout_wrapper
 
-    if not is_rollout_mode():
+    if not replay_enabled():
         return None
 
     if _litellm_rollout_wrapper is None:

@@ -66,9 +66,9 @@ def chat_wrapper(
     _handle_request(span, kwargs, instance)
 
     try:
-        from lmnr.sdk.rollout_control import is_rollout_mode
+        from lmnr.sdk.debug.replay import replay_enabled
 
-        is_rollout = is_rollout_mode()
+        is_rollout = replay_enabled()
     except Exception:
         is_rollout = False
 
@@ -150,9 +150,9 @@ async def achat_wrapper(
     _handle_request(span, kwargs, instance)
 
     try:
-        from lmnr.sdk.rollout_control import is_rollout_mode
+        from lmnr.sdk.debug.replay import replay_enabled
 
-        is_rollout = is_rollout_mode()
+        is_rollout = replay_enabled()
     except Exception:
         is_rollout = False
 
@@ -324,6 +324,9 @@ class ChatStream(ObjectProxy):
             "model": "",
             "id": "",
             "service_tier": None,
+            "moderation": None,
+            "created": 0,
+            "system_fingerprint": None,
         }
 
         self._cleanup_completed = False
@@ -405,9 +408,14 @@ class ChatStream(ObjectProxy):
 
     def _process_item(self, item):
         self._span.add_event(name="llm.content.completion.chunk")
-        self._complete_response["id"] = item.id if hasattr(item, "id") else ""
-        self._complete_response["service_tier"] = (
-            item.service_tier if hasattr(item, "service_tier") else ""
+        self._complete_response["id"] = getattr(item, "id", "")
+        self._complete_response["service_tier"] = getattr(item, "service_tier", "")
+        self._complete_response["created"] = getattr(item, "created", 0)
+        self._complete_response["system_fingerprint"] = getattr(
+            item, "system_fingerprint", None
+        )
+        self._complete_response["moderation"] = getattr(
+            item, "moderation", None
         )
 
         _accumulate_stream_items(item, self._complete_response)

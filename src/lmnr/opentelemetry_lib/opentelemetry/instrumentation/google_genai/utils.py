@@ -374,7 +374,7 @@ def part_to_dict(part) -> dict[str, Any]:
     if isinstance(part, dict):
         return strip_none_values(part)
     if hasattr(part, "model_dump"):
-        return strip_none_values(part.model_dump(mode="json", exclude_unset=True))
+        return part.model_dump(mode="json", exclude_unset=True, exclude_none=True)
     return strip_none_values(to_dict(part))
 
 
@@ -384,7 +384,7 @@ def content_union_to_dict(
 ) -> dict[str, Any]:
     """Convert a ContentUnion to a Gemini Content dict with 'parts' and 'role'."""
     if isinstance(content, types.Content):
-        result = content.model_dump(mode="json", exclude_unset=True)
+        result = content.model_dump(mode="json", exclude_unset=True, exclude_none=True)
         if "role" not in result:
             result["role"] = default_role
         return result

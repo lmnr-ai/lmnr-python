@@ -1,12 +1,16 @@
 import asyncio
+import atexit
 import datetime
+import json
 import logging
 import os
 import re
+import subprocess
+import sys
 import uuid
 import warnings
 from contextlib import contextmanager
-from typing import Any, Generator, Literal
+from typing import Any, Callable, Generator, Literal
 
 from opentelemetry import context as context_api
 from opentelemetry import trace
@@ -52,7 +56,7 @@ from lmnr.sdk.utils import (
     json_dumps,
 )
 
-from .log import VerboseColorfulFormatter
+from .log import VerboseColorfulFormatter, get_level_from_env
 from .types import (
     LaminarSpanContext,
     LaminarSpanType,
@@ -169,6 +173,27 @@ class Laminar:
     __initialized: bool = False
     __base_http_url: str | None = None
     __global_metadata: dict[str, AttributeValue] = {}
+    # The debug run's atexit pointer hook (a bound `runtime.emit_pointer`),
+    # kept by reference so shutdown() can unregister it. atexit holds a strong
+    # ref to whatever it registers, so without this an initialize()/shutdown()
+    # loop (common in tests / notebooks) keeps every retired DebugRuntime — and
+    # its replay cache — alive and uncollectable.
+    __debug_exit_hook: Callable[[], None] | None = None
+    # Process-wide "run live" latch for v2 debugger replay (shared spec §7.3).
+    # Set True on the first cache MISS so every later LLM call in this process
+    # skips the cache endpoint and runs live; reset in shutdown(). Mirrors the
+    # TS `Laminar.debugRunLive`.
+    __debug_run_live: bool = False
+
+    @classmethod
+    def is_debug_run_live(cls) -> bool:
+        """True once any LLM call in this run has seen a cache MISS."""
+        return cls.__debug_run_live
+
+    @classmethod
+    def set_debug_run_live(cls, value: bool) -> None:
+        """Latch (or reset) the process-wide debugger run-live flag."""
+        cls.__debug_run_live = value
 
     @classmethod
     def initialize(
@@ -289,7 +314,13 @@ class Laminar:
 
         cls.__initialized = True
         cls.__base_http_url = f"{http_url}:{http_port or 443}"
-        cls.__global_metadata = metadata or {}
+        env_metadata: dict[str, Any] = {}
+        if env_metadata_str := os.getenv("LMNR_TRACE_METADATA"):
+            try:
+                env_metadata = json.loads(env_metadata_str)
+            except Exception:
+                pass
+        cls.__global_metadata = {**env_metadata, **(metadata or {})}
 
         if not os.getenv("OTEL_ATTRIBUTE_COUNT_LIMIT"):
             # each message is at least 2 attributes: role and content,
@@ -313,6 +344,18 @@ class Laminar:
             session_recording_options=session_recording_options,
             force_http=force_http,
         )
+
+        # Build the debug runtime only after tracing is up. It has no dependency
+        # on TracerManager.init (which never reads the runtime or global
+        # metadata), so running it here means a tracer-init failure aborts before
+        # any debug side effects — backend session registration, the
+        # `rollout.session_id` stamp, the atexit pointer hook — instead of
+        # leaving them live on a process whose tracing never came up. It must
+        # still precede the metadata-context attach below so `rollout.session_id`
+        # lands on the OTEL context, and `_initialize_context_from_env` so the
+        # runtime is registered before the inherited trace id is recorded.
+        cls._init_debug_runtime(base_url=url, http_port=http_port)
+
         with get_tracer_with_context() as (tracer, isolated_context):
             new_ctx = context_api.set_value(
                 CONTEXT_METADATA_KEY, cls.__global_metadata, isolated_context
@@ -359,6 +402,152 @@ class Laminar:
         push_span_context(base_context)
         cls.__logger.debug("Initialized Laminar parent context from LMNR_SPAN_CONTEXT.")
 
+        # On a debug run attached via LMNR_SPAN_CONTEXT, no span has a null parent
+        # (everything descends from the injected context), so the processor's
+        # root-span hook never fires. Record the inherited trace id here so the
+        # run pointer (§5) isn't emitted with an empty trace_id.
+        cls._record_debug_trace_id_from_env(otel_span_context)
+
+    @classmethod
+    def _record_debug_trace_id_from_env(
+        cls, otel_span_context: trace.SpanContext
+    ) -> None:
+        """Record the trace id inherited from LMNR_SPAN_CONTEXT on the debug runtime.
+
+        No-op when debug mode is off. Best-effort: never break initialization.
+        """
+        try:
+            from lmnr.sdk.debug import get_runtime
+
+            runtime = get_runtime()
+            if runtime is None:
+                return
+            runtime.record_trace_id(str(uuid.UUID(int=otel_span_context.trace_id)))
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            cls.__logger.debug("Failed to record debug trace id from env: %s", exc)
+
+    @classmethod
+    def _init_debug_runtime(cls, base_url: str | None, http_port: int | None) -> None:
+        """Build the v2 debug runtime (shared spec §4) when LMNR_DEBUG is set.
+
+        On a debug run the session id from the config is stamped into the global
+        trace metadata as `rollout.session_id`, and a process-exit hook emits the
+        run pointer once the root trace id is known. When debug mode is off this
+        is a no-op and the SDK behaves exactly as before.
+
+        Unlike v1 (which closed the client at the end of init), v2 retains BOTH a
+        sync `LaminarClient` and an async `AsyncLaminarClient` on the runtime for
+        the whole run — every live LLM call looks its input hash up in the
+        server-side cache through them (sync providers via `client`, async
+        providers via `async_client`). `shutdown()` closes them.
+        """
+        try:
+            from lmnr.sdk.debug import init_debug_runtime
+            from lmnr.sdk.debug.config import _is_truthy
+
+            # Debug mode off: bail before constructing the clients (and their
+            # httpx pools), which would otherwise leak unclosed on every normal
+            # initialize(). This is the same LMNR_DEBUG gate build_debug_config()
+            # applies first; checking it directly avoids a redundant config build
+            # here (which would mint a throwaway session uuid and re-read the
+            # last-run file) that init_debug_runtime() then discards and rebuilds.
+            if not _is_truthy(os.environ.get("LMNR_DEBUG")):
+                return
+
+            from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
+            from lmnr.sdk.client.synchronous.sync_client import LaminarClient
+            from lmnr.sdk.utils import get_frontend_url
+
+            # Retained for the run's lifetime (NOT closed here) — the provider
+            # wrappers reach back through the runtime to hit the cache endpoint
+            # on every live call. shutdown() closes both.
+            client = LaminarClient(
+                base_url=base_url,
+                project_api_key=cls.__project_api_key,
+                port=http_port,
+            )
+            async_client = AsyncLaminarClient(
+                base_url=base_url,
+                project_api_key=cls.__project_api_key,
+                port=http_port,
+            )
+            debugger_url = os.getenv("LMNR_FRONTEND_URL") or get_frontend_url(base_url)
+            runtime = init_debug_runtime(
+                client, async_client, debugger_url=debugger_url
+            )
+            if runtime is None:
+                # Debug mode is off after all (build_debug_config returned None):
+                # close the clients we speculatively opened so they don't leak.
+                client.close()
+                cls._close_debug_async_client(async_client)
+                return
+
+            # Register the SDK-minted session id with the backend so the run
+            # shows up in the UI. This idempotent upsert is what makes a bare
+            # `LMNR_DEBUG=true` run (no replay) useful. Best-effort: a failure
+            # here must never crash initialization, so it stays inside the
+            # surrounding try/except. The backend returns the project id
+            # (derived from the API key) so we can print the session URL.
+            try:
+                project_id = client.rollout_sessions.register(runtime.session_id)
+                if project_id:
+                    # Record the project id so the run pointer's debugger_url
+                    # field carries the SAME full per-session URL we print
+                    # here (single code path via debugger_session_url).
+                    runtime.record_project_id(project_id)
+                    session_url = runtime.debugger_session_url()
+                    cls.__logger.info(
+                        "Laminar debugger session: %s",
+                        session_url,
+                    )
+                    if not os.getenv("LMNR_DEBUG_SESSION_ID"):
+                        opener = (
+                            "open"
+                            if sys.platform == "darwin"
+                            else "start"
+                            if sys.platform == "win32"
+                            else "xdg-open"
+                        )
+                        subprocess.Popen(
+                            [opener, session_url],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
+            except Exception as exc:
+                cls.__logger.warning("Failed to register debug session: %s", exc)
+
+            cls.__global_metadata = {
+                **cls.__global_metadata,
+                "rollout.session_id": runtime.session_id,
+            }
+            # Drop any prior hook first so a repeated initialize() (or an
+            # init/shutdown loop) doesn't pin every retired DebugRuntime (and
+            # its replay cache) alive via atexit's strong reference; keep this
+            # one by reference for shutdown() to unregister.
+            if cls.__debug_exit_hook is not None:
+                atexit.unregister(cls.__debug_exit_hook)
+            cls.__debug_exit_hook = runtime.emit_pointer
+            atexit.register(cls.__debug_exit_hook)
+        except Exception as exc:  # never let debug setup crash initialization
+            cls.__logger.warning("Failed to initialize debug runtime: %s", exc)
+
+    @staticmethod
+    def _close_debug_async_client(async_client: Any) -> None:
+        """Best-effort close of the retained async cache client from sync code.
+
+        `AsyncLaminarClient.close()` is a coroutine, but both call sites (the
+        `_init_debug_runtime` bail path and `shutdown()`) are synchronous, so we
+        drive it to completion with `asyncio.run()`. Everything is swallowed: a
+        failed close of the cache client must never crash init or shutdown. If a
+        loop is already running on this thread (async caller), `asyncio.run`
+        raises `RuntimeError` — there is no safe synchronous way to await on the
+        live loop, so we leave the close to the loop's own teardown.
+        """
+        try:
+            asyncio.run(async_client.close())
+        except Exception:
+            pass
+
     @classmethod
     def is_initialized(cls):
         """Check if Laminar is initialized. A utility to make sure other
@@ -372,6 +561,7 @@ class Laminar:
     @classmethod
     def _initialize_logger(cls):
         cls.__logger = logging.getLogger(__name__)
+        cls.__logger.setLevel(get_level_from_env())
         console_log_handler = logging.StreamHandler()
         console_log_handler.setFormatter(VerboseColorfulFormatter())
         cls.__logger.addHandler(console_log_handler)
@@ -1209,8 +1399,46 @@ class Laminar:
     @classmethod
     def shutdown(cls):
         if cls.is_initialized():
+            # Emit the debug run pointer before shutting down tracing so flows
+            # that shut down without terminating the process still get
+            # LMNR_DEBUG_RUN + .lmnr/last-run.json. Idempotent — the atexit hook
+            # is a fallback.
+            from lmnr.sdk.debug import get_runtime, reset_debug_runtime
+
+            runtime = get_runtime()
+            if runtime is not None:
+                # Best-effort: emit_pointer prints to stdout, which can raise
+                # OSError/BrokenPipeError (closed stdout in daemons/containers,
+                # notebook kernel restarts). That must never skip the cleanup
+                # below — leaving exporter threads alive and __initialized=True.
+                try:
+                    runtime.emit_pointer()
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    cls.__logger.debug("Failed to emit debug run pointer: %s", exc)
+                # Close the cache clients retained for the run's lifetime (v2
+                # keeps both open so provider wrappers can hit the cache
+                # endpoint on every live call). Best-effort, each guarded
+                # independently so one failing close can't leak the other.
+                try:
+                    runtime.client.close()
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    cls.__logger.debug("Failed to close debug cache client: %s", exc)
+                cls._close_debug_async_client(runtime.async_client)
             TracerManager.shutdown()
             cls.__initialized = False
+            # Clear the one-shot debug-runtime state so a subsequent
+            # initialize() re-reads LMNR_DEBUG* instead of resurrecting the
+            # previous run.
+            reset_debug_runtime()
+            # Reset the process-wide run-live latch so a fresh debug run in the
+            # same process (init/shutdown loop) starts from a clean cache state.
+            cls.set_debug_run_live(False)
+            # The pointer was just emitted above, so the atexit hook would be a
+            # redundant no-op; unregister it so init/shutdown loops don't pin
+            # the retired runtime (and its replay cache) alive via atexit.
+            if cls.__debug_exit_hook is not None:
+                atexit.unregister(cls.__debug_exit_hook)
+                cls.__debug_exit_hook = None
 
     @classmethod
     def set_span_tags(cls, tags: list[str]):

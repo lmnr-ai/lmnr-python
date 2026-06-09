@@ -12,8 +12,8 @@ from lmnr.sdk.client.synchronous.resources import (
     Datasets,
     Evals,
     Evaluators,
+    RolloutSessions,
     Tags,
-    Rollout,
     Sql,
     Traces,
 )
@@ -30,7 +30,6 @@ class LaminarClient:
     __evals: Evals | None = None
     __tags: Tags | None = None
     __evaluators: Evaluators | None = None
-    __rollout: Rollout | None = None
 
     def __init__(
         self,
@@ -107,9 +106,11 @@ class LaminarClient:
         self.__datasets = Datasets(
             self.__client, self.__base_url, self.__project_api_key
         )
-        self.__rollout = Rollout(self.__client, self.__base_url, self.__project_api_key)
         self.__sql = Sql(self.__client, self.__base_url, self.__project_api_key)
         self.__traces = Traces(self.__client, self.__base_url, self.__project_api_key)
+        self.__rollout_sessions = RolloutSessions(
+            self.__client, self.__base_url, self.__project_api_key
+        )
 
     @property
     def evals(self) -> Evals:
@@ -157,15 +158,6 @@ class LaminarClient:
         return self.__datasets
 
     @property
-    def rollout(self) -> Rollout:
-        """Get the Rollout resource.
-
-        Returns:
-            Rollout: The Rollout resource instance.
-        """
-        return self.__rollout
-
-    @property
     def sql(self) -> Sql:
         """Get the SQL resource.
 
@@ -182,6 +174,15 @@ class LaminarClient:
             Traces: The Traces resource instance.
         """
         return self.__traces
+
+    @property
+    def rollout_sessions(self) -> RolloutSessions:
+        """Get the RolloutSessions resource.
+
+        Returns:
+            RolloutSessions: The RolloutSessions resource instance.
+        """
+        return self.__rollout_sessions
 
     def shutdown(self):
         """Shutdown the client by closing underlying connections."""

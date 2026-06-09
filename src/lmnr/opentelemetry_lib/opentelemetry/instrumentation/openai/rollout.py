@@ -1,11 +1,22 @@
 """
-Rollout wrapper for OpenAI chat completions instrumentation.
+Debug replay wrapper for OpenAI chat completions and Responses API
+instrumentation.
 
-This module adds caching and override capabilities to OpenAI chat completions
-instrumentation during rollout sessions.
+On a debug run with replay configured, each live LLM call asks the server-side
+cache (shared spec §7) what to do: on a HIT it reconstructs an OpenAI
+`ChatCompletion` / `Response` from the cached span and serves it; on MISS / LIVE
+it runs the call live. The decision is made by `cache_outcome_for` (sync) /
+`acache_outcome_for` (async) — there is no in-process cache anymore.
+
+The chat path probes the cache inside `wrap_chat_completion`; the Responses API
+path keeps its orchestration in `responses_wrappers.py` (its instrumentation
+opens the span and builds `TracedData` post-hoc) and only borrows
+`cached_response_to_responses` from here to turn a cached envelope into an
+`openai.types.responses.Response`.
 """
 
 import json
+import uuid
 from typing import Any, AsyncGenerator, Generator
 
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
@@ -22,165 +33,63 @@ from openai.types.chat.chat_completion_message_function_tool_call import (
     ChatCompletionMessageFunctionToolCall,
     Function as ToolCallFunction,
 )
-from opentelemetry.trace import Span
 
+try:
+    from openai.types.responses import Response
+
+    _RESPONSES_AVAILABLE = True
+except ImportError:
+    Response = Any
+    _RESPONSES_AVAILABLE = False
+
+from lmnr.sdk.debug.replay import (
+    acache_outcome_for,
+    cache_outcome_for,
+    mark_span_cached,
+    replay_enabled,
+)
 from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.rollout.instrumentation import RolloutInstrumentationWrapper
-from lmnr.sdk.rollout_control import is_rollout_mode
 
 logger = get_default_logger(__name__)
 
 
-class OpenAIRolloutWrapper(RolloutInstrumentationWrapper):
-    """
-    Rollout wrapper specific to OpenAI chat completions instrumentation.
-
-    Handles:
-    - Converting cached responses to OpenAI ChatCompletion format
-    - Applying overrides to system prompts and tool definitions
-    - Setting rollout-specific span attributes
-    """
-
-    def apply_openai_overrides(
-        self, kwargs: dict[str, Any], path: str, span: Span | None = None
-    ) -> dict[str, Any]:
-        overrides = self.get_overrides(path)
-        if not overrides:
-            return kwargs
-
-        modified_kwargs = kwargs.copy()
-
-        if "system" in overrides:
-            system_override = overrides["system"]
-            logger.debug(f"Applying system override for {path}")
-
-            if span and span.is_recording():
-                try:
-                    if input_messages_raw := span.attributes.get(
-                        "gen_ai.input.messages"
-                    ):
-                        input_messages = json.loads(input_messages_raw)
-                        if input_messages and input_messages[0].get("role") == "system":
-                            input_messages[0]["content"] = system_override
-                            span.set_attribute(
-                                "gen_ai.input.messages",
-                                json.dumps(input_messages),
-                            )
-                except Exception:
-                    pass
-
-            messages = modified_kwargs.get("messages", [])
-            if messages and isinstance(messages, list):
-                modified_kwargs["messages"] = list(messages)
-                if modified_kwargs["messages"][0].get("role") == "system":
-                    modified_kwargs["messages"][0] = {
-                        **modified_kwargs["messages"][0],
-                        "content": system_override,
-                    }
-                else:
-                    modified_kwargs["messages"].insert(
-                        0, {"role": "system", "content": system_override}
-                    )
-
-        if "tools" in overrides:
-            tool_overrides = overrides["tools"]
-            logger.debug(
-                f"Applying tool overrides for {path}: {len(tool_overrides)} tools"
-            )
-
-            existing_tools = modified_kwargs.get("tools", [])
-            updated_tools = self._apply_tool_overrides(existing_tools, tool_overrides)
-            if updated_tools is not None:
-                modified_kwargs["tools"] = updated_tools
-
-        return modified_kwargs
-
-    def _apply_tool_overrides(
-        self,
-        existing_tools: list[dict[str, Any]] | None,
-        tool_overrides: list[dict[str, Any]],
-    ) -> list[dict[str, Any]] | None:
-        if not tool_overrides:
-            return existing_tools
-
-        tools_by_name: dict[str, dict[str, Any]] = {}
-        if existing_tools:
-            for tool in existing_tools:
-                func = tool.get("function", {})
-                if name := func.get("name"):
-                    tools_by_name[name] = tool
-
-        for override in tool_overrides:
-            name = override.get("name")
-            if not name:
-                continue
-
-            if name in tools_by_name:
-                existing_func = tools_by_name[name].get("function", {})
-                tools_by_name[name] = {
-                    "type": "function",
-                    "function": {
-                        "name": name,
-                        "description": override.get(
-                            "description", existing_func.get("description")
-                        ),
-                        "parameters": override.get(
-                            "parameters", existing_func.get("parameters")
-                        ),
-                    },
-                }
-            elif "parameters" in override:
-                tools_by_name[name] = {
-                    "type": "function",
-                    "function": {
-                        "name": name,
-                        "description": override.get("description"),
-                        "parameters": override["parameters"],
-                    },
-                }
-
-        if tools_by_name:
-            return list(tools_by_name.values())
-        return None
+class OpenAIRolloutWrapper:
+    """Serves cached OpenAI responses on a debug run; runs live otherwise."""
 
     def cached_response_to_openai(
         self, cached_span: dict[str, Any]
     ) -> ChatCompletion | None:
-        """
-        Convert cached span data to OpenAI ChatCompletion response.
-        Tries raw response first, then falls back to legacy parsing.
-        """
-        if raw_response := cached_span.get("attributes", {}).get(
-            "lmnr.sdk.raw.response"
-        ):
+        """Convert cached span envelope to OpenAI ChatCompletion response."""
+        envelope_type = cached_span.get("type")
+        if envelope_type not in ("raw", "genAi"):
+            logger.warning(f"Unknown cached span type: {envelope_type!r}")
+            return None
+
+        if envelope_type == "raw":
             try:
-                response_dict = (
-                    raw_response
-                    if isinstance(raw_response, dict)
-                    else json.loads(raw_response)
-                )
-                if response_dict:
-                    return ChatCompletion.model_validate(response_dict)
+                raw = cached_span.get("response")
+                if not raw:
+                    logger.warning("Cached span type='raw' has no response field")
+                    return None
+                response_dict = raw if isinstance(raw, dict) else json.loads(raw)
+                return ChatCompletion.model_validate(response_dict)
             except Exception as e:
-                logger.debug(f"Failed to parse raw response: {e}")
+                logger.debug(f"Failed to parse raw OpenAI response: {e}", exc_info=True)
+                return None
 
+        # envelope_type == "genAi"
         try:
-            attributes = cached_span.get("attributes", {})
-            output_str = cached_span.get("output", "")
-            if not output_str:
-                logger.warning("Cached span has no output")
+            messages = cached_span.get("messages")
+            if not isinstance(messages, list):
+                logger.warning("Cached span type='genAi' has no messages list")
                 return None
-
-            # NOTE: This is assuming the latest openai instrumentation where we save the output as
-            # a list of choices. Not compatible with older versions.
-            output = json.loads(output_str)
-            if not isinstance(output, list):
-                logger.warning(f"Unexpected output format: {type(output)}")
-                return None
+            model = cached_span.get("model", "unknown")
+            finish_reasons = cached_span.get("finishReasons", [])
 
             choices = []
-            for choice_data in output:
+            for i, choice_data in enumerate(messages):
                 msg = choice_data.get("message", {})
+                finish_reason = finish_reasons[i] if i < len(finish_reasons) else "stop"
 
                 tool_calls = None
                 if raw_tool_calls := msg.get("tool_calls"):
@@ -205,43 +114,112 @@ class OpenAIRolloutWrapper(RolloutInstrumentationWrapper):
 
                 choices.append(
                     Choice(
-                        index=choice_data.get("index", len(choices)),
-                        finish_reason=choice_data.get("finish_reason", "stop"),
+                        index=choice_data.get("index", i),
+                        finish_reason=finish_reason,
                         message=ChatCompletionMessage(
                             role=msg.get("role", "assistant"),
                             content=msg.get("content"),
                             refusal=msg.get("refusal"),
                             tool_calls=tool_calls,
                             function_call=function_call,
+                            annotations=msg.get("annotations", []),
                         ),
                     )
                 )
 
             return ChatCompletion(
-                id=attributes.get("gen_ai.response.id", "cached"),
-                model=attributes.get("gen_ai.response.model", "unknown"),
+                id="cached",
+                model=model,
                 choices=choices,
-                created=int(cached_span.get("start_time", 0) / 1_000_000_000),
+                created=0,
                 object="chat.completion",
                 usage=None,
             )
 
         except Exception as e:
             logger.debug(
-                f"Failed to convert cached response to OpenAI format: {e}",
+                f"Failed to convert genAi response to OpenAI format: {e}",
                 exc_info=True,
             )
             return None
 
-    def _get_span_path_from_span(self, span: Span) -> str | None:
-        """Get the span path from the span's attributes (set by the processor)."""
+    def cached_response_to_responses(
+        self, cached_span: dict[str, Any]
+    ) -> "Response | None":
+        """Convert a cached span envelope to an OpenAI Responses-API `Response`.
+
+        Mirrors `cached_response_to_openai` but targets
+        `openai.types.responses.Response`. `type="raw"` validates the recorded
+        provider response directly; `type="genAi"` rebuilds the response from the
+        stored OTel output items (`gen_ai.output.messages`) — each item already
+        has the `{type, ...}` shape `Response.output` expects (message /
+        function_call / reasoning / *_call blocks). Streaming is out of scope.
+        """
+        if not _RESPONSES_AVAILABLE:
+            logger.warning(
+                "openai.types.responses.Response unavailable; cannot serve cached "
+                "Responses-API response"
+            )
+            return None
+
+        envelope_type = cached_span.get("type")
+        if envelope_type not in ("raw", "genAi"):
+            logger.warning(f"Unknown cached span type: {envelope_type!r}")
+            return None
+
+        if envelope_type == "raw":
+            try:
+                raw = cached_span.get("response")
+                if not raw:
+                    logger.warning("Cached span type='raw' has no response field")
+                    return None
+                response_dict = raw if isinstance(raw, dict) else json.loads(raw)
+                return Response.model_validate(response_dict)
+            except Exception as e:
+                logger.debug(
+                    f"Failed to parse raw OpenAI Responses response: {e}",
+                    exc_info=True,
+                )
+                return None
+
+        # envelope_type == "genAi"
         try:
-            path_list = span.attributes.get("lmnr.span.path")
-            if path_list:
-                return ".".join(path_list)
-        except Exception:
-            pass
-        return None
+            messages = cached_span.get("messages")
+            if not isinstance(messages, list):
+                logger.warning("Cached span type='genAi' has no messages list")
+                return None
+            model = cached_span.get("model", "unknown")
+
+            # The recorder (responses_wrappers.set_data_attributes) stores the
+            # response's output blocks — optionally preceded by a reasoning item —
+            # as the OTel output messages. They already carry the discriminated
+            # `type` field Response.output validates against, so pass them through.
+            output_items = [item for item in messages if isinstance(item, dict)]
+
+            response_dict = {
+                # Unique per reconstruction: the Responses instrumentation keys
+                # its module-level `responses` accumulator by response id, so a
+                # constant id collides across sequential cached HITs and stamps
+                # the first call's (stale, shorter) input on every later span.
+                "id": f"cached_{uuid.uuid4().hex}",
+                "created_at": 0,
+                "model": model,
+                "object": "response",
+                "output": output_items,
+                "parallel_tool_calls": False,
+                "tool_choice": "auto",
+                "tools": [],
+                "status": "completed",
+                "usage": None,
+            }
+            return Response.model_validate(response_dict)
+
+        except Exception as e:
+            logger.debug(
+                f"Failed to convert genAi response to OpenAI Responses format: {e}",
+                exc_info=True,
+            )
+            return None
 
     def wrap_chat_completion(
         self,
@@ -249,53 +227,44 @@ class OpenAIRolloutWrapper(RolloutInstrumentationWrapper):
         instance,
         args,
         kwargs,
-        span: Span | None = None,
+        span: Any = None,
         is_streaming: bool = False,
         is_async: bool = False,
     ) -> Any:
-        if not self.should_use_rollout():
-            return wrapped(*args, **kwargs)
+        # Async path: hand back the coroutine so the call site (which checks
+        # inspect.iscoroutine) awaits the cache lookup off the event loop.
+        if is_async:
+            return self._awrap_chat_completion(
+                wrapped, args, kwargs, span, is_streaming
+            )
 
-        # Read path from the span's attributes rather than Laminar.get_current_span(),
-        # because OpenAI spans are created with tracer.start_span() and are not
-        # registered in Laminar's context.
-        span_path = self._get_span_path_from_span(span) if span else None
-        if not span_path:
-            return wrapped(*args, **kwargs)
+        outcome = cache_outcome_for(span)
+        if outcome is not None and outcome.kind == "hit":
+            response = self.cached_response_to_openai(outcome.cached)
+            if response is not None:
+                logger.debug("Serving cached OpenAI response from replay cache")
+                mark_span_cached(span)
+                if is_streaming:
+                    return self._create_cached_stream(response)
+                return response
 
-        current_index = self.get_current_index_for_path(span_path)
-        logger.debug(f"OpenAI chat completion call at {span_path}:{current_index}")
+        return wrapped(*args, **kwargs)
 
-        if self.should_use_cache(span_path, current_index):
-            cached_span = self.get_cached_response(span_path, current_index)
-            if cached_span:
-                logger.debug(
-                    f"Using cached response for OpenAI at {span_path}:{current_index}"
-                )
-                response = self.cached_response_to_openai(cached_span)
-                if response:
-                    try:
-                        if span and span.is_recording():
-                            span.set_attributes(
-                                {
-                                    "lmnr.span.type": "CACHED",
-                                    "lmnr.rollout.cache_index": current_index,
-                                    "lmnr.span.original_type": "LLM",
-                                }
-                            )
-                    except Exception:
-                        pass
+    async def _awrap_chat_completion(
+        self, wrapped, args, kwargs, span, is_streaming
+    ) -> Any:
+        """Async cache lookup; on a HIT serve cached, else run the call live."""
+        outcome = await acache_outcome_for(span)
+        if outcome is not None and outcome.kind == "hit":
+            response = self.cached_response_to_openai(outcome.cached)
+            if response is not None:
+                logger.debug("Serving cached OpenAI response from replay cache")
+                mark_span_cached(span)
+                if is_streaming:
+                    return self._create_async_cached_stream(response)
+                return response
 
-                    if is_streaming:
-                        if is_async:
-                            return self._create_async_cached_stream(response)
-                        else:
-                            return self._create_cached_stream(response)
-                    return response
-
-        modified_kwargs = self.apply_openai_overrides(kwargs, span_path, span)
-        logger.debug(f"Executing live OpenAI call for {span_path}:{current_index}")
-        return wrapped(*args, **modified_kwargs)
+        return await wrapped(*args, **kwargs)
 
     def _create_cached_stream(
         self, response: ChatCompletion
@@ -342,7 +311,7 @@ _openai_rollout_wrapper: OpenAIRolloutWrapper | None = None
 def get_openai_rollout_wrapper() -> OpenAIRolloutWrapper | None:
     global _openai_rollout_wrapper
 
-    if not is_rollout_mode():
+    if not replay_enabled():
         return None
 
     if _openai_rollout_wrapper is None:
