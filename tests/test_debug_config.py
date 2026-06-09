@@ -199,9 +199,25 @@ def test_debug_context_parse_snake_case():
     assert ctx.cache_until == "abcdef"
 
 
-def test_debug_context_drops_unparseable_ids():
+def test_debug_context_keeps_non_uuid_ids_verbatim():
+    # `LMNR_DEBUG_SESSION_ID` may be an arbitrary string; the origin registers
+    # and propagates that exact value, so the consumer must round-trip it
+    # unchanged. Dropping non-UUID ids to None would make the downstream treat
+    # the block as session-less and never join the run.
     ctx = DebugContext.deserialize(
-        {"enabled": True, "session_id": "not-a-uuid", "replay_trace_id": "nope"}
+        {
+            "enabled": True,
+            "session_id": "my-session",
+            "replay_trace_id": "my-replay",
+        }
+    )
+    assert ctx.session_id == "my-session"
+    assert ctx.replay_trace_id == "my-replay"
+
+
+def test_debug_context_empty_ids_become_none():
+    ctx = DebugContext.deserialize(
+        {"enabled": True, "session_id": "", "replay_trace_id": ""}
     )
     assert ctx.session_id is None
     assert ctx.replay_trace_id is None

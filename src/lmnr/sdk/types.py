@@ -220,21 +220,6 @@ class GetDatapointsResponse(BaseModel):
     total_count: int = Field(alias="totalCount")
 
 
-def _normalize_uuid_like(value: Any) -> str | None:
-    """Normalize a value to a canonical hyphenated lowercase UUID string.
-
-    Returns None when the value isn't UUID-shaped (so the caller treats it as
-    absent). Used for the debug block's `session_id` / `replay_trace_id`, which
-    are always full ids regardless of whether the producer hyphenated them.
-    """
-    if value is None:
-        return None
-    try:
-        return str(uuid.UUID(str(value)))
-    except (ValueError, AttributeError, TypeError):
-        return None
-
-
 class DebugContext(BaseModel):
     """Debugger context propagated as ONE nested block of a LaminarSpanContext.
 
@@ -244,10 +229,12 @@ class DebugContext(BaseModel):
     treated as absent by the consumer (behaviour is explicitly undefined).
 
     - `enabled`: armed flag — only `True` blocks are ever constructed by us.
-    - `session_id`: the run's session id, normalized to a hyphenated UUID
-      (None when unparseable — the consumer then mints its own).
-    - `replay_trace_id`: the source trace to replay, normalized to a hyphenated
-      UUID (None when absent / unparseable).
+    - `session_id`: the run's session id, kept VERBATIM. It is the exact string
+      the origin registered with the backend, and `LMNR_DEBUG_SESSION_ID` may be
+      an arbitrary (non-UUID) value — normalizing it here would drop or mutate
+      the id so the downstream never joins the run.
+    - `replay_trace_id`: the source trace to replay, kept VERBATIM (the origin
+      sends it un-normalized as `replayTraceId` to the cache endpoint).
     - `cache_until`: the cache-window span-id needle, kept VERBATIM (hyphenated
       or not, full UUID or short suffix) — the server resolves it.
     """
@@ -261,17 +248,17 @@ class DebugContext(BaseModel):
     def deserialize(cls, data: dict[str, Any]) -> "DebugContext":
         """Parse a debug block from a dict, accepting camelCase and snake_case.
 
-        Per-field tolerant: a malformed id is dropped to None rather than
-        raising, so a partially-broken block never breaks span context parsing.
+        All ids are kept VERBATIM: the producer emits the run's exact session /
+        replay-trace / cache-until strings (un-normalized), so the consumer must
+        round-trip them unchanged or a downstream run fails to join the run.
         """
         return cls(
             enabled=bool(data.get("enabled", False)),
-            session_id=_normalize_uuid_like(
-                data.get("session_id") or data.get("sessionId")
-            ),
-            replay_trace_id=_normalize_uuid_like(
+            session_id=(data.get("session_id") or data.get("sessionId")) or None,
+            replay_trace_id=(
                 data.get("replay_trace_id") or data.get("replayTraceId")
-            ),
+            )
+            or None,
             cache_until=(data.get("cache_until") or data.get("cacheUntil")) or None,
         )
 
