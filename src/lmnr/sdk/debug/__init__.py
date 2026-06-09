@@ -147,7 +147,15 @@ class DebugRuntime:
         )
 
     def emit_pointer(self) -> None:
-        """Emit the run pointer once (console line + best-effort file)."""
+        """Emit the run pointer once (console line + best-effort file).
+
+        No-op on a downstream run (`local_origin=False`): a runtime armed from a
+        propagated `DebugContext` joins the upstream replay session and must NOT
+        write a run pointer — the origin owns it. Gated here (not just at the
+        call sites) so `shutdown()` and any atexit hook stay safe.
+        """
+        if not self._config.local_origin:
+            return
         with self._lock:
             if self._emitted:
                 return

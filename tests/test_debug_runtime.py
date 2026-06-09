@@ -318,6 +318,24 @@ def test_emit_pointer_only_once(tmp_path, monkeypatch, capsys):
     assert len(lines) == 1
 
 
+def test_emit_pointer_noop_for_downstream_run(tmp_path, monkeypatch, capsys):
+    # A runtime armed from a propagated DebugContext (local_origin=False) joins
+    # the upstream replay session and must NOT write a run pointer — the origin
+    # owns it. Gated inside emit_pointer so shutdown()/atexit stay safe.
+    monkeypatch.chdir(tmp_path)
+    runtime = _runtime(local_origin=False)
+    runtime.record_trace_id("trace-downstream")
+    runtime.emit_pointer()
+
+    lines = [
+        line
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith("LMNR_DEBUG_RUN ")
+    ]
+    assert lines == []
+    assert not (tmp_path / ".lmnr" / "last-run.json").exists()
+
+
 def test_emit_pointer_uses_full_debugger_url(tmp_path, monkeypatch, capsys):
     # The pointer's debugger_url must carry the SAME full per-session URL the
     # console prints, not just the base — built via the shared
