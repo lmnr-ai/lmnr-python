@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from lmnr.sdk.debug.config import build_debug_config
+from lmnr.sdk.debug.config import (
+    build_debug_config,
+    build_debug_config_from_context,
+)
+from lmnr.sdk.types import DebugContext, LaminarSpanContext
 
 _DEBUG_ENV_KEYS = (
     "LMNR_DEBUG",
@@ -127,3 +131,136 @@ def test_from_last_run_missing_file_falls_back_to_env(tmp_path, monkeypatch):
     assert config is not None
     assert config.replay_trace_id is None
     assert len(config.session_id) == 36
+
+
+def test_local_origin_and_session_minted_from_env():
+    config = build_debug_config_env_with({"LMNR_DEBUG": "true"})
+    assert config is not None
+    assert config.local_origin is True
+    assert config.session_minted is True
+
+
+def build_debug_config_env_with(env: dict):
+    import os as _os
+
+    saved = {k: _os.environ.get(k) for k in env}
+    try:
+        for k, v in env.items():
+            _os.environ[k] = v
+        return build_debug_config()
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                _os.environ.pop(k, None)
+            else:
+                _os.environ[k] = v
+
+
+def test_provided_session_id_not_minted(monkeypatch):
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.setenv("LMNR_DEBUG_SESSION_ID", "sess-123")
+    config = build_debug_config()
+    assert config is not None
+    assert config.session_minted is False
+
+
+# --- DebugContext parsing (consumer side) ---
+
+_SESSION = "00000000-0000-0000-0000-0000000000aa"
+_REPLAY = "00000000-0000-0000-0000-0000000000bb"
+
+
+def test_debug_context_parse_camel_case():
+    ctx = DebugContext.deserialize(
+        {
+            "enabled": True,
+            "sessionId": _SESSION,
+            "replayTraceId": _REPLAY,
+            "cacheUntil": "0123-456789abcdef",
+        }
+    )
+    assert ctx.enabled is True
+    assert ctx.session_id == _SESSION
+    assert ctx.replay_trace_id == _REPLAY
+    assert ctx.cache_until == "0123-456789abcdef"
+
+
+def test_debug_context_parse_snake_case():
+    ctx = DebugContext.deserialize(
+        {
+            "enabled": True,
+            "session_id": _SESSION,
+            "replay_trace_id": _REPLAY,
+            "cache_until": "abcdef",
+        }
+    )
+    assert ctx.session_id == _SESSION
+    assert ctx.replay_trace_id == _REPLAY
+    assert ctx.cache_until == "abcdef"
+
+
+def test_debug_context_drops_unparseable_ids():
+    ctx = DebugContext.deserialize(
+        {"enabled": True, "session_id": "not-a-uuid", "replay_trace_id": "nope"}
+    )
+    assert ctx.session_id is None
+    assert ctx.replay_trace_id is None
+
+
+def test_laminar_span_context_parses_nested_debug():
+    sc = LaminarSpanContext.deserialize(
+        {
+            "traceId": _SESSION,
+            "spanId": _REPLAY,
+            "debug": {"enabled": True, "sessionId": _SESSION},
+        }
+    )
+    assert sc.debug is not None
+    assert sc.debug.enabled is True
+    assert sc.debug.session_id == _SESSION
+
+
+def test_laminar_span_context_no_debug_is_none():
+    sc = LaminarSpanContext.deserialize({"traceId": _SESSION, "spanId": _REPLAY})
+    assert sc.debug is None
+
+
+# --- from-context config builder (inherited path) ---
+
+
+def test_build_from_context_armed():
+    config = build_debug_config_from_context(
+        DebugContext(
+            enabled=True,
+            session_id=_SESSION,
+            replay_trace_id=_REPLAY,
+            cache_until="0123-456789abcdef",
+        )
+    )
+    assert config is not None
+    assert config.session_id == _SESSION
+    assert config.replay_trace_id == _REPLAY
+    assert config.cache_until_span_id == "0123456789abcdef"
+    assert config.local_origin is False
+    assert config.session_minted is False
+    assert config.replay_enabled is True
+
+
+def test_build_from_context_none_when_disabled():
+    assert (
+        build_debug_config_from_context(
+            DebugContext(enabled=False, session_id=_SESSION)
+        )
+        is None
+    )
+
+
+def test_build_from_context_none_when_no_session():
+    assert (
+        build_debug_config_from_context(DebugContext(enabled=True, session_id=None))
+        is None
+    )
+
+
+def test_build_from_context_none_when_block_absent():
+    assert build_debug_config_from_context(None) is None

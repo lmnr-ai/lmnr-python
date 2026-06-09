@@ -94,6 +94,17 @@ class DebugConfig:
     # LMNR_DEBUG_CACHE_UNTIL. v2 has no count form — app-server resolves the
     # needle against the source trace (shared spec §3, §6.2). None when unset.
     cache_until_span_id: str | None = None
+    # True when this process is the ORIGIN of the debug run (config built from
+    # local env vars). False when the config was inherited from an upstream
+    # service via a propagated LaminarSpanContext debug block — a downstream run
+    # must not open the browser or emit the run pointer (the origin owns both).
+    local_origin: bool = True
+    # True when the SDK minted a fresh session id (neither an explicit
+    # LMNR_DEBUG_SESSION_ID nor a last-run pointer supplied one). Gates the
+    # one-time browser open: a reused session id is a continuation/replay, so
+    # the browser is not reopened. Lets the browser decision read the resolved
+    # config instead of re-reading env vars at the call site.
+    session_minted: bool = False
 
     @property
     def replay_enabled(self) -> bool:
@@ -130,11 +141,13 @@ def build_debug_config() -> DebugConfig | None:
         else {}
     )
 
-    session_id = (
-        os.environ.get("LMNR_DEBUG_SESSION_ID")
-        or last_run.get("session_id")
-        or str(uuid.uuid4())
+    provided_session_id = os.environ.get("LMNR_DEBUG_SESSION_ID") or last_run.get(
+        "session_id"
     )
+    session_id = provided_session_id or str(uuid.uuid4())
+    # The browser is opened once per fresh run; a reused (provided) session id
+    # is a continuation/replay, so it is not reopened.
+    session_minted = provided_session_id is None
     replay_trace_id = (
         os.environ.get("LMNR_DEBUG_REPLAY_TRACE_ID")
         or last_run.get("trace_id")
@@ -151,4 +164,45 @@ def build_debug_config() -> DebugConfig | None:
         session_id=session_id,
         replay_trace_id=replay_trace_id,
         cache_until_span_id=cache_until_span_id,
+        local_origin=True,
+        session_minted=session_minted,
+    )
+
+
+def build_debug_config_from_context(debug: Any) -> DebugConfig | None:
+    """Build a debug config from a propagated `DebugContext` (the inherited path).
+
+    Unlike `build_debug_config` (which reads `LMNR_DEBUG*`), this consumes the
+    debug block carried inside a `LaminarSpanContext` that arrived from an
+    upstream service. It is the context-based half of the cross-language parity
+    surface — keep line-comparable with the TS `buildDebugConfigFromContext`.
+
+    Returns None when the block is absent or not armed (`enabled` is falsey). We
+    are the only producer of this block, so an unarmed/forged block is treated
+    as absent (behaviour explicitly undefined). A block with no session id is
+    also ignored — without it the run can't be tied to a cache window.
+
+    The resulting config is marked `local_origin=False`: a downstream run reuses
+    the upstream session and may consult the cache, but must NOT open a browser
+    or emit the run pointer (the origin owns those).
+    """
+    if debug is None:
+        return None
+    enabled = getattr(debug, "enabled", None)
+    session_id = getattr(debug, "session_id", None)
+    if not enabled or not session_id:
+        return None
+
+    replay_trace_id = getattr(debug, "replay_trace_id", None) or None
+    # The needle is propagated verbatim; re-run it through the same normalizer
+    # the env path uses so a downstream config holds an identical needle form.
+    cache_until_span_id = _parse_cache_until_span_id(
+        getattr(debug, "cache_until", None)
+    )
+
+    return DebugConfig(
+        session_id=session_id,
+        replay_trace_id=replay_trace_id,
+        cache_until_span_id=cache_until_span_id,
+        local_origin=False,
     )

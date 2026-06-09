@@ -220,6 +220,62 @@ class GetDatapointsResponse(BaseModel):
     total_count: int = Field(alias="totalCount")
 
 
+def _normalize_uuid_like(value: Any) -> str | None:
+    """Normalize a value to a canonical hyphenated lowercase UUID string.
+
+    Returns None when the value isn't UUID-shaped (so the caller treats it as
+    absent). Used for the debug block's `session_id` / `replay_trace_id`, which
+    are always full ids regardless of whether the producer hyphenated them.
+    """
+    if value is None:
+        return None
+    try:
+        return str(uuid.UUID(str(value)))
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
+class DebugContext(BaseModel):
+    """Debugger context propagated as ONE nested block of a LaminarSpanContext.
+
+    Carries the debug-replay v2 coordinates a downstream run needs to consult
+    the same server-side cache window as the run that produced this context.
+    Laminar is the only producer; a hand-forged or `enabled=False` block is
+    treated as absent by the consumer (behaviour is explicitly undefined).
+
+    - `enabled`: armed flag — only `True` blocks are ever constructed by us.
+    - `session_id`: the run's session id, normalized to a hyphenated UUID
+      (None when unparseable — the consumer then mints its own).
+    - `replay_trace_id`: the source trace to replay, normalized to a hyphenated
+      UUID (None when absent / unparseable).
+    - `cache_until`: the cache-window span-id needle, kept VERBATIM (hyphenated
+      or not, full UUID or short suffix) — the server resolves it.
+    """
+
+    enabled: bool = Field(default=False)
+    session_id: str | None = Field(default=None)
+    replay_trace_id: str | None = Field(default=None)
+    cache_until: str | None = Field(default=None)
+
+    @classmethod
+    def deserialize(cls, data: dict[str, Any]) -> "DebugContext":
+        """Parse a debug block from a dict, accepting camelCase and snake_case.
+
+        Per-field tolerant: a malformed id is dropped to None rather than
+        raising, so a partially-broken block never breaks span context parsing.
+        """
+        return cls(
+            enabled=bool(data.get("enabled", False)),
+            session_id=_normalize_uuid_like(
+                data.get("session_id") or data.get("sessionId")
+            ),
+            replay_trace_id=_normalize_uuid_like(
+                data.get("replay_trace_id") or data.get("replayTraceId")
+            ),
+            cache_until=(data.get("cache_until") or data.get("cacheUntil")) or None,
+        )
+
+
 class LaminarSpanContext(BaseModel):
     """
     A span context that can be used to continue a trace across services. This
@@ -241,6 +297,7 @@ class LaminarSpanContext(BaseModel):
     session_id: str | None = Field(default=None)
     trace_type: TraceType | None = Field(default=None)
     metadata: dict[str, Any] | None = Field(default=None)
+    debug: DebugContext | None = Field(default=None)
 
     def __str__(self) -> str:
         return self.model_dump_json()
@@ -289,6 +346,7 @@ class LaminarSpanContext(BaseModel):
     def deserialize(cls, data: dict[str, Any] | str) -> "LaminarSpanContext":
         if isinstance(data, dict):
             # Convert camelCase to snake_case for known fields
+            debug_raw = data.get("debug")
             converted_data = {
                 "trace_id": data.get("trace_id") or data.get("traceId"),
                 "span_id": data.get("span_id") or data.get("spanId"),
@@ -300,6 +358,11 @@ class LaminarSpanContext(BaseModel):
                 "session_id": data.get("session_id") or data.get("sessionId"),
                 "trace_type": data.get("trace_type") or data.get("traceType"),
                 "metadata": data.get("metadata") or data.get("metadata", {}),
+                "debug": (
+                    DebugContext.deserialize(debug_raw)
+                    if isinstance(debug_raw, dict)
+                    else None
+                ),
             }
             return cls.model_validate(converted_data)
         elif isinstance(data, str):

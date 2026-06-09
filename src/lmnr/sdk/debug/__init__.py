@@ -20,7 +20,11 @@ import datetime
 import threading
 from typing import Any
 
-from lmnr.sdk.debug.config import DebugConfig, build_debug_config
+from lmnr.sdk.debug.config import (
+    DebugConfig,
+    build_debug_config,
+    build_debug_config_from_context,
+)
 from lmnr.sdk.debug.pointer import build_pointer, emit_pointer
 from lmnr.sdk.log import get_default_logger
 
@@ -66,6 +70,26 @@ class DebugRuntime:
     @property
     def cache_until_span_id(self) -> str | None:
         return self._config.cache_until_span_id
+
+    @property
+    def local_origin(self) -> bool:
+        """True when this process originated the run (config from local env).
+
+        False when the runtime was armed from a propagated `DebugContext`: a
+        downstream run reuses the upstream session and may consult the cache,
+        but must not open a browser or emit the run pointer.
+        """
+        return self._config.local_origin
+
+    @property
+    def should_open_browser(self) -> bool:
+        """True when this run should open the debugger URL in a browser once.
+
+        Only a local-origin run that minted a fresh session id qualifies: a
+        reused session id (continuation/replay) or a context-armed downstream
+        run must not reopen the browser.
+        """
+        return self._config.local_origin and self._config.session_minted
 
     @property
     def client(self) -> Any:
@@ -190,6 +214,43 @@ def init_debug_runtime(
         # flag. Otherwise a later init (e.g. after the env flips LMNR_DEBUG on)
         # would short-circuit to None until reset_debug_runtime(). The off path
         # only reads env vars, so re-running it on a repeat call is cheap.
+        return None
+    _initialized = True
+
+    _runtime = DebugRuntime(config, client, async_client, debugger_url)
+    return _runtime
+
+
+def init_debug_runtime_from_context(
+    debug: Any,
+    client: Any,
+    async_client: Any,
+    debugger_url: str | None = None,
+) -> DebugRuntime | None:
+    """Arm the debug runtime from a propagated `DebugContext` (process-global).
+
+    Called deep in span creation when a parent `LaminarSpanContext` carrying a
+    debug block first parses successfully — so a downstream service joins the
+    upstream run regardless of how the span originated (auto-instrumentation,
+    manual observe, or an external library). First-wins and idempotent: once a
+    runtime exists (from env at init OR an earlier context), this is a no-op, so
+    env-var config always takes precedence over a later context, and the first
+    qualifying context wins over subsequent ones.
+
+    Returns None when the block is absent / unarmed (`build_debug_config_from_context`
+    yields None) WITHOUT latching the one-shot flag, so a later, valid context
+    can still arm the runtime. Never raises.
+    """
+    global _runtime, _initialized
+    if _initialized:
+        return _runtime
+
+    try:
+        config = build_debug_config_from_context(debug)
+    except Exception as exc:
+        logger.debug("Failed to build debug config from context: %s", exc)
+        return None
+    if config is None:
         return None
     _initialized = True
 

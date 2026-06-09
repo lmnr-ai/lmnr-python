@@ -31,10 +31,34 @@ from lmnr.opentelemetry_lib.tracing.context import (
     pop_span_context,
 )
 from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.types import LaminarSpanContext
+from lmnr.sdk.types import DebugContext, LaminarSpanContext
 from lmnr.sdk.utils import is_otel_attribute_value_type, json_dumps
 
 MAX_MANUAL_SPAN_PAYLOAD_SIZE = 1024 * 1024 * 10  # 10MB
+
+
+def _current_debug_context() -> DebugContext | None:
+    """Build the debug block to propagate, or None when debug mode is off.
+
+    Reads the process-wide debug runtime so a serialized span context carries
+    the run's coordinates to downstream services. Only an armed (`enabled=True`)
+    block is ever produced — we are the sole producer. Best-effort: any failure
+    (or no runtime) yields None so serialization never breaks.
+    """
+    try:
+        from lmnr.sdk.debug import get_runtime
+
+        runtime = get_runtime()
+        if runtime is None:
+            return None
+        return DebugContext(
+            enabled=True,
+            session_id=runtime.session_id,
+            replay_trace_id=runtime.replay_trace_id,
+            cache_until=runtime.cache_until_span_id,
+        )
+    except Exception:
+        return None
 
 
 class LaminarSpanInterfaceMixin:
@@ -122,6 +146,7 @@ class LaminarSpanInterfaceMixin:
             session_id=session_id,
             trace_type=trace_type,
             metadata=metadata,
+            debug=_current_debug_context(),
         )
 
     def span_id(self, format: Literal["int", "uuid"] = "int") -> int | uuid.UUID:

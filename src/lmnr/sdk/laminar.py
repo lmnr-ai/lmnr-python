@@ -75,6 +75,9 @@ class ParsedParentSpanContext(TypedDict):
     session_id: str | None
     trace_type: TraceType | None
     metadata: dict[str, Any] | None
+    # The propagated debugger block, if any (used to arm the debug runtime on a
+    # downstream run). None when the context carried no debug block.
+    debug: Any | None
 
 
 def _parse_parent_span_context(
@@ -100,6 +103,7 @@ def _parse_parent_span_context(
             session_id=None,
             trace_type=None,
             metadata=None,
+            debug=None,
         )
 
     path = []
@@ -108,6 +112,7 @@ def _parse_parent_span_context(
     session_id = None
     trace_type = None
     metadata = None
+    debug = None
     laminar_span_context = None
 
     # Try to deserialize if dict or str
@@ -139,6 +144,7 @@ def _parse_parent_span_context(
             except (ValueError, TypeError):
                 pass
         metadata = laminar_span_context.metadata
+        debug = laminar_span_context.debug
 
     # Convert to OTEL span context
     try:
@@ -155,6 +161,7 @@ def _parse_parent_span_context(
             session_id=session_id,
             trace_type=trace_type,
             metadata=metadata,
+            debug=debug,
         )
 
     return ParsedParentSpanContext(
@@ -165,6 +172,7 @@ def _parse_parent_span_context(
         session_id=session_id,
         trace_type=trace_type,
         metadata=metadata,
+        debug=debug,
     )
 
 
@@ -179,6 +187,11 @@ class Laminar:
     # loop (common in tests / notebooks) keeps every retired DebugRuntime — and
     # its replay cache — alive and uncollectable.
     __debug_exit_hook: Callable[[], None] | None = None
+    # Base url / http port captured at initialize(), reused to build the clients
+    # when the debug runtime is armed late from a propagated context (the
+    # from-context path has no access to initialize()'s args).
+    __base_url_for_debug: str | None = None
+    __http_port_for_debug: int | None = None
     # Process-wide "run live" latch for v2 debugger replay (shared spec §7.3).
     # Set True on the first cache MISS so every later LLM call in this process
     # skips the cache endpoint and runs live; reset in shutdown(). Mirrors the
@@ -441,6 +454,13 @@ class Laminar:
         server-side cache through them (sync providers via `client`, async
         providers via `async_client`). `shutdown()` closes them.
         """
+        # Capture the connection args so a later context-armed runtime (built
+        # deep in span creation, with no access to initialize()'s args) can
+        # construct its own clients. Set unconditionally — even when local debug
+        # is off, a downstream span may still arrive carrying a debug block.
+        cls.__base_url_for_debug = base_url
+        cls.__http_port_for_debug = http_port
+
         try:
             from lmnr.sdk.debug import init_debug_runtime
             from lmnr.sdk.debug.config import _is_truthy
@@ -500,7 +520,7 @@ class Laminar:
                         "Laminar debugger session: %s",
                         session_url,
                     )
-                    if not os.getenv("LMNR_DEBUG_SESSION_ID"):
+                    if runtime.should_open_browser:
                         opener = (
                             "open"
                             if sys.platform == "darwin"
@@ -530,6 +550,86 @@ class Laminar:
             atexit.register(cls.__debug_exit_hook)
         except Exception as exc:  # never let debug setup crash initialization
             cls.__logger.warning("Failed to initialize debug runtime: %s", exc)
+
+    @classmethod
+    def _arm_debug_runtime_from_context(cls, debug: Any) -> None:
+        """Arm the debug runtime from a propagated `DebugContext`, if not already armed.
+
+        Called from the span-creation funnels when a parent `LaminarSpanContext`
+        carrying an armed debug block first parses — so a downstream service
+        joins the upstream debug run regardless of how its spans originate
+        (auto-instrumentation, manual observe, or an external library).
+
+        First-wins and idempotent: if a runtime already exists (from env at
+        init, or an earlier qualifying context) this returns immediately, so
+        env-var config keeps precedence over context. A downstream runtime
+        reuses the upstream session and may consult the cache, but — unlike the
+        local-origin path — does NOT open the browser, print the session URL, or
+        register an exit-time pointer hook (the origin owns those). It still
+        registers the session (idempotent) and stamps `rollout.session_id`.
+
+        Never raises: any failure leaves debug inert.
+        """
+        try:
+            from lmnr.sdk.debug import get_runtime
+
+            # Fast path: already armed (env or a prior context). Bail before any
+            # allocation so this stays cheap on the hot span-creation path.
+            if get_runtime() is not None:
+                return
+            # Pre-check the block before allocating clients, so a span carrying
+            # no / an unarmed debug block costs nothing.
+            if (
+                debug is None
+                or not getattr(debug, "enabled", False)
+                or not getattr(debug, "session_id", None)
+            ):
+                return
+
+            from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
+            from lmnr.sdk.client.synchronous.sync_client import LaminarClient
+            from lmnr.sdk.debug import init_debug_runtime_from_context
+            from lmnr.sdk.utils import get_frontend_url
+
+            base_url = cls.__base_url_for_debug
+            http_port = cls.__http_port_for_debug
+            client = LaminarClient(
+                base_url=base_url,
+                project_api_key=cls.__project_api_key,
+                port=http_port,
+            )
+            async_client = AsyncLaminarClient(
+                base_url=base_url,
+                project_api_key=cls.__project_api_key,
+                port=http_port,
+            )
+            debugger_url = os.getenv("LMNR_FRONTEND_URL") or get_frontend_url(base_url)
+            runtime = init_debug_runtime_from_context(
+                debug, client, async_client, debugger_url=debugger_url
+            )
+            if runtime is None:
+                client.close()
+                cls._close_debug_async_client(async_client)
+                return
+
+            # Register the (upstream) session id so downstream cache lookups are
+            # accepted. Idempotent upsert, best-effort: never crash span
+            # creation. Unlike the local-origin path we do NOT log the URL or
+            # open a browser — the origin already did.
+            try:
+                client.rollout_sessions.register(runtime.session_id)
+            except Exception as exc:
+                cls.__logger.debug(
+                    "Failed to register downstream debug session: %s", exc
+                )
+
+            cls.__global_metadata = {
+                **cls.__global_metadata,
+                "rollout.session_id": runtime.session_id,
+            }
+            # No atexit pointer hook: a downstream run must not emit the pointer.
+        except Exception as exc:  # never let debug arming crash span creation
+            cls.__logger.debug("Failed to arm debug runtime from context: %s", exc)
 
     @staticmethod
     def _close_debug_async_client(async_client: Any) -> None:
@@ -689,6 +789,13 @@ class Laminar:
 
             # Parse parent_span_context and extract all info
             parsed = _parse_parent_span_context(parent_span_context, cls.__logger)
+
+            # Arm the debug runtime from a propagated debug block (first-wins,
+            # idempotent, no-op when already armed or no block present). Placed
+            # here — deep in span creation, before any caching instrumentation
+            # consults the runtime — so a downstream run joins the upstream debug
+            # session regardless of how its spans originate.
+            cls._arm_debug_runtime_from_context(parsed["debug"])
 
             # Set parent span in context if present
             if parsed["otel_span_context"] is not None:
@@ -904,6 +1011,11 @@ class Laminar:
 
             # Parse parent_span_context and extract all info
             parsed = _parse_parent_span_context(parent_span_context, cls.__logger)
+
+            # Arm the debug runtime from a propagated debug block (first-wins,
+            # idempotent, no-op when already armed or no block present). See the
+            # matching call in start_as_current_span for the rationale.
+            cls._arm_debug_runtime_from_context(parsed["debug"])
 
             # Set parent span in context if present
             if parsed["otel_span_context"] is not None:
