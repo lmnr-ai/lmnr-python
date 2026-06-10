@@ -112,15 +112,13 @@ class DebugRuntime:
         run's IDENTITY and never change here (the caller only ever updates a
         `local_origin=False` runtime; env-origin config keeps precedence).
 
-        `DebugConfig` is frozen, so the coordinates can't be mutated in place;
-        the whole config is rebuilt and the reference swapped (atomic under the
-        GIL, so a concurrent `lookup`/`replay_configured` reader sees a coherent
-        config). Returns True when the session id changed, so the caller can
-        re-register the new session and re-stamp `rollout.session_id`.
-
         Mirrors the TS `DebugRuntime.updateContextConfig`.
         """
-        session_changed = self._config.session_id != config.session_id
+        config_changed = (
+            self._config.session_id != config.session_id
+            or self._config.replay_trace_id != config.replay_trace_id
+            or self._config.cache_until_span_id != config.cache_until_span_id
+        )
         self._config = DebugConfig(
             session_id=config.session_id,
             replay_trace_id=config.replay_trace_id,
@@ -128,7 +126,7 @@ class DebugRuntime:
             local_origin=self._config.local_origin,
             session_minted=self._config.session_minted,
         )
-        return session_changed
+        return config_changed
 
     @property
     def replay_configured(self) -> bool:
@@ -288,9 +286,8 @@ def init_debug_runtime_from_context(
     - A `local_origin=False` (context-armed) runtime exists → REUSE its clients
       and just refresh the dynamic coordinates from the new context.
 
-    Returns a `(runtime, session_changed)` tuple. `session_changed` is True when
-    the refresh moved to a different session id (or a fresh runtime was just
-    built), so the caller can re-register it and re-stamp `rollout.session_id`.
+    Returns a `(runtime, config_changed)` tuple. `config_changed` is True when
+    the refresh updated the debugger dynamic config.
     Returns `(None, False)` WITHOUT latching the one-shot flag when the block is
     absent / unarmed (`build_debug_config_from_context` yields None), so a later,
     valid context can still arm the runtime. Never raises.
@@ -323,8 +320,8 @@ def init_debug_runtime_from_context(
             # already-built clients.
             if _runtime.local_origin:
                 return _runtime, False
-            session_changed = _runtime.update_context_config(config)
-            return _runtime, session_changed
+            config_changed = _runtime.update_context_config(config)
+            return _runtime, config_changed
 
         _runtime = DebugRuntime(config, client, async_client, debugger_url)
         _initialized = True

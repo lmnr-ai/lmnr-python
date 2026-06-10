@@ -666,7 +666,7 @@ class Laminar:
                 built_clients = True
 
             debugger_url = os.getenv("LMNR_FRONTEND_URL") or get_frontend_url(base_url)
-            runtime, session_changed = init_debug_runtime_from_context(
+            runtime, config_changed = init_debug_runtime_from_context(
                 debug, client, async_client, debugger_url=debugger_url
             )
             if runtime is None or runtime.client is not client:
@@ -689,7 +689,7 @@ class Laminar:
             # (upstream) session id so downstream cache lookups are accepted:
             # idempotent upsert, best-effort. Unlike the local-origin path we do
             # NOT log the URL or open a browser — the origin already did.
-            if not session_changed:
+            if not config_changed:
                 return
 
             # A new session is a fresh debug run: clear the process-wide run-live
