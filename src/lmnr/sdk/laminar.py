@@ -495,7 +495,11 @@ class Laminar:
         cls.__http_port_for_debug = http_port
 
         try:
-            from lmnr.sdk.debug import init_debug_runtime
+            from lmnr.sdk.debug import (
+                get_runtime,
+                init_debug_runtime,
+                reset_debug_runtime,
+            )
             from lmnr.sdk.debug.config import _is_truthy
 
             # Debug mode off: bail before constructing the clients (and their
@@ -506,6 +510,23 @@ class Laminar:
             # last-run file) that init_debug_runtime() then discards and rebuilds.
             if not _is_truthy(os.environ.get("LMNR_DEBUG")):
                 return
+
+            # LMNR_DEBUG is set, so env config owns this process. But initialize()
+            # flips __initialized BEFORE calling this method, and the span funnels
+            # gate only on is_initialized() — so in that window a span carrying a
+            # propagated debug block could have armed a context runtime
+            # (local_origin=False). init_debug_runtime() is idempotent and would
+            # then return THAT runtime, whose clients differ from the env ones
+            # built below, so the `runtime.client is not client` guard would bail —
+            # skipping session registration, the browser open, and the pointer
+            # hook the local run needs. Discard the context runtime (closing its
+            # now-orphaned clients) and clear the one-shot flag so the env path
+            # below builds a fresh local-origin runtime that owns the process.
+            preempting = get_runtime()
+            if preempting is not None and not preempting.local_origin:
+                preempting.client.close()
+                cls._close_debug_async_client(preempting.async_client)
+                reset_debug_runtime()
 
             from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
             from lmnr.sdk.client.synchronous.sync_client import LaminarClient
@@ -531,10 +552,13 @@ class Laminar:
             if runtime is None or runtime.client is not client:
                 # `runtime is None`: debug mode is off after all
                 # (build_debug_config returned None). `runtime.client is not
-                # client`: a propagated context armed the runtime first (it
-                # retains ITS clients), so ours are orphaned. Close ours either
-                # way — the existing runtime owns session registration +
-                # `rollout.session_id`; leaving them open leaks httpx pools.
+                # client`: a propagated context armed the runtime in the narrow
+                # window between the discard above and this build, so ours are
+                # orphaned. The discard above clears the COMMON preempt case so
+                # the local run still owns the process; this stays as a defensive
+                # fallback for that residual race — close ours either way, since
+                # the existing runtime retains ITS clients and leaving ours open
+                # leaks httpx pools.
                 client.close()
                 cls._close_debug_async_client(async_client)
                 return

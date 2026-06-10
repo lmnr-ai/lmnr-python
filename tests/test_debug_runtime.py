@@ -989,6 +989,70 @@ def test_init_closes_clients_when_runtime_already_armed_from_context(monkeypatch
     _reset_runtime()
 
 
+def test_init_preempts_context_runtime_when_env_debug_set(monkeypatch):
+    # initialize() flips __initialized BEFORE _init_debug_runtime runs, and the
+    # span funnels gate only on is_initialized() — so a span carrying a
+    # propagated debug block can arm a context runtime (local_origin=False) in
+    # that window. With LMNR_DEBUG set, env config owns the process, so
+    # _init_debug_runtime must DISCARD that context runtime (closing its
+    # orphaned clients) and build a fresh local-origin runtime that registers
+    # the session and is wired for the browser / pointer hook. Without the
+    # preempt, init_debug_runtime would idempotently return the context runtime
+    # and the `runtime.client is not client` guard would bail — leaving the
+    # local debug run with no session registration at all.
+    from lmnr.sdk.laminar import Laminar
+
+    _reset_runtime()
+    CONTEXT_SESSION = "00000000-0000-0000-0000-0000000000c1"
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.delenv("LMNR_DEBUG_SESSION_ID", raising=False)
+    monkeypatch.delenv("LMNR_DEBUG_REPLAY_TRACE_ID", raising=False)
+    monkeypatch.delenv("LMNR_DEBUG_CACHE_UNTIL", raising=False)
+    monkeypatch.delenv("LMNR_DEBUG_FROM_LAST_RUN", raising=False)
+
+    # A context-armed runtime that raced ahead of _init_debug_runtime, retaining
+    # its own clients.
+    ctx_sync = _SpyDebugClient()
+    ctx_async = _SpyAsyncDebugClient()
+    import lmnr.sdk.debug as debug_mod
+
+    debug_mod._runtime = DebugRuntime(
+        DebugConfig(
+            session_id=CONTEXT_SESSION,
+            replay_trace_id=None,
+            local_origin=False,
+        ),
+        ctx_sync,
+        ctx_async,
+        None,
+    )
+    debug_mod._initialized = True
+
+    # The env path allocates these fresh local-origin clients.
+    env_sync = _SpyDebugClient()
+    env_async = _SpyAsyncDebugClient()
+    _patch_clients(monkeypatch, env_sync, env_async)
+    monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
+    monkeypatch.setattr(Laminar, "_Laminar__global_metadata", {}, raising=False)
+
+    Laminar._init_debug_runtime(base_url="http://localhost", http_port=8000)
+
+    runtime = get_runtime()
+    assert runtime is not None
+    # The local-origin env runtime took over the process.
+    assert runtime.local_origin is True
+    assert runtime.client is env_sync
+    assert runtime.session_id != CONTEXT_SESSION
+    # The new local run registered its own session id with the backend.
+    assert env_sync.rollout_sessions.registered == [(runtime.session_id, None)]
+    # The raced context runtime's orphaned clients were closed; the env run's
+    # clients stay open (it now owns the run).
+    assert ctx_sync.closed is True
+    assert ctx_async.closed is True
+    assert env_sync.closed is False
+    _reset_runtime()
+
+
 def test_arm_from_context_refreshes_isolated_context_metadata(monkeypatch):
     # `LaminarSpanProcessor.on_start` reads `rollout.session_id` from
     # CONTEXT_METADATA_KEY on the parent context (NOT from __global_metadata), so
