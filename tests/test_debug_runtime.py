@@ -1160,6 +1160,67 @@ def test_arm_from_context_refreshes_session_on_new_context(monkeypatch):
         _reset_runtime()
 
 
+def test_span_uses_freshly_armed_session_over_stale_context(monkeypatch, span_exporter):
+    # Regression: in start_span / start_as_current_span the parent `ctx` is
+    # snapshot BEFORE arming the debug runtime. Arming the session attaches a
+    # refreshed isolated context carrying that session's `rollout.session_id`, but
+    # the metadata merge reads from the pre-arm snapshot — where context wins over
+    # global — so a PRIOR request's `rollout.session_id` lingering on the ambient
+    # context would override the just-armed session on the emitted span. The fix
+    # re-reads the isolated context after arming; the span must carry the armed
+    # session, not the stale one.
+    import uuid
+
+    from lmnr.opentelemetry_lib.tracing.context import (
+        CONTEXT_METADATA_KEY,
+        attach_context,
+        detach_context,
+        get_current_context,
+    )
+    from lmnr.sdk.laminar import Laminar
+    from lmnr.sdk.types import DebugContext, LaminarSpanContext
+    from opentelemetry.context import set_value
+
+    _reset_runtime()
+    span_exporter.clear()
+    STALE_SESSION = "00000000-0000-0000-0000-0000000000a1"
+    ARMED_SESSION = "00000000-0000-0000-0000-0000000000b2"
+
+    _patch_clients(monkeypatch, _SpyDebugClient())
+    monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
+    monkeypatch.setattr(
+        Laminar, "_Laminar__base_url_for_debug", "http://localhost", raising=False
+    )
+    monkeypatch.setattr(Laminar, "_Laminar__http_port_for_debug", 8000, raising=False)
+    monkeypatch.setattr(Laminar, "_Laminar__global_metadata", {}, raising=False)
+
+    # Simulate a PRIOR request having left its session id on the ambient context.
+    stale_ctx = set_value(
+        CONTEXT_METADATA_KEY,
+        {"rollout.session_id": STALE_SESSION},
+        get_current_context(),
+    )
+    token = attach_context(stale_ctx)
+    try:
+        parent = LaminarSpanContext(
+            trace_id=uuid.uuid4(),
+            span_id=uuid.uuid4(),
+            debug=DebugContext(enabled=True, session_id=ARMED_SESSION),
+        )
+        with Laminar.start_as_current_span("test", parent_span_context=parent):
+            pass
+    finally:
+        detach_context(token)
+        _reset_runtime()
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert (
+        spans[0].attributes["lmnr.association.properties.metadata.rollout.session_id"]
+        == ARMED_SESSION
+    )
+
+
 def test_arm_from_context_reuses_clients_on_same_session(monkeypatch):
     # A steady stream of requests on the SAME session must not allocate new
     # clients per span, nor re-register or re-stamp metadata on every span.

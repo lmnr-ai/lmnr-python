@@ -891,6 +891,15 @@ class Laminar:
             # session regardless of how its spans originate.
             cls._arm_debug_runtime_from_context(parsed["debug"])
 
+            # Arming a new session attaches a refreshed isolated context carrying
+            # the newly-armed `rollout.session_id`. When we're building on that
+            # isolated context (no explicit `context` arg), re-read it so the
+            # metadata merge below reflects the armed session — `ctx` was snapshot
+            # BEFORE arming, and since context wins over global in the merge, a
+            # prior request's stale session id would otherwise override it.
+            if context is None:
+                ctx = get_current_context()
+
             # Set parent span in context if present
             if parsed["otel_span_context"] is not None:
                 ctx = trace.set_span_in_context(
@@ -1110,6 +1119,13 @@ class Laminar:
             # idempotent, no-op when already armed or no block present). See the
             # matching call in start_as_current_span for the rationale.
             cls._arm_debug_runtime_from_context(parsed["debug"])
+
+            # Re-read the isolated context after arming so the metadata merge
+            # below reflects a newly-armed `rollout.session_id`. See the matching
+            # comment in start_as_current_span — `ctx` was snapshot before arming
+            # and context wins over global in the merge.
+            if context is None:
+                ctx = get_current_context()
 
             # Set parent span in context if present
             if parsed["otel_span_context"] is not None:
