@@ -67,6 +67,7 @@ class Instruments(Enum):
     REPLICATE = "replicate"
     SAGEMAKER = "sagemaker"
     SKYVERN = "skyvern"
+    TEMPORAL = "temporal"
     TOGETHER = "together"
     TRANSFORMERS = "transformers"
     VERTEXAI = "vertexai"
@@ -116,6 +117,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.REPLICATE: initializers.ReplicateInstrumentorInitializer(),
     Instruments.SAGEMAKER: initializers.SageMakerInstrumentorInitializer(),
     Instruments.SKYVERN: initializers.SkyvernInstrumentorInitializer(),
+    Instruments.TEMPORAL: initializers.TemporalInstrumentorInitializer(),
     Instruments.TOGETHER: initializers.TogetherInstrumentorInitializer(),
     Instruments.TRANSFORMERS: initializers.TransformersInstrumentorInitializer(),
     Instruments.VERTEXAI: initializers.VertexAIInstrumentorInitializer(),
