@@ -590,30 +590,32 @@ class Laminar:
 
     @classmethod
     def _arm_debug_runtime_from_context(cls, debug: Any) -> None:
-        """Arm the debug runtime from a propagated `DebugContext`, if not already armed.
+        """Arm OR refresh the debug runtime from a propagated `DebugContext`.
 
         Called from the span-creation funnels when a parent `LaminarSpanContext`
-        carrying an armed debug block first parses — so a downstream service
-        joins the upstream debug run regardless of how its spans originate
+        carrying an armed debug block parses — so a downstream service joins the
+        upstream debug run regardless of how its spans originate
         (auto-instrumentation, manual observe, or an external library).
 
-        First-wins and idempotent: if a runtime already exists (from env at
-        init, or an earlier qualifying context) this returns immediately, so
-        env-var config keeps precedence over context. A downstream runtime
-        reuses the upstream session and may consult the cache, but — unlike the
-        local-origin path — does NOT open the browser, print the session URL, or
-        register an exit-time pointer hook (the origin owns those). It still
-        registers the session (idempotent) and stamps `rollout.session_id`.
+        The coordinates carried in the span context are DYNAMIC: a long-lived
+        downstream service handling many requests must follow each request's
+        session / replay-trace / cache-until, not freeze on the first context it
+        ever saw. So the transport (the clients) is built once and reused, while
+        the replay coordinates are refreshed in place on every new context. An
+        env-origin runtime is the exception — it owns the process, so a
+        propagated context never overrides it. A context-armed (downstream)
+        runtime reuses the upstream session and may consult the cache, but —
+        unlike the local-origin path — does NOT open the browser, print the
+        session URL, or register an exit-time pointer hook (the origin owns
+        those). It (re-)registers the session and re-stamps `rollout.session_id`
+        only when the session id actually changes.
 
-        Never raises: any failure leaves debug inert.
+        Never raises: any failure leaves debug inert. Mirrors the TS
+        `_armDebugRuntimeFromContext`.
         """
         try:
             from lmnr.sdk.debug import get_runtime
 
-            # Fast path: already armed (env or a prior context). Bail before any
-            # allocation so this stays cheap on the hot span-creation path.
-            if get_runtime() is not None:
-                return
             # Pre-check the block before allocating clients, so a span carrying
             # no / an unarmed debug block costs nothing.
             if (
@@ -623,43 +625,75 @@ class Laminar:
             ):
                 return
 
-            from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
-            from lmnr.sdk.client.synchronous.sync_client import LaminarClient
+            # An env-origin run owns the process and pins its own coordinates — a
+            # propagated context never overrides it, so there is nothing to
+            # refresh. Bail before any allocation.
+            existing = get_runtime()
+            if existing is not None and existing.local_origin:
+                return
+
             from lmnr.sdk.debug import init_debug_runtime_from_context
             from lmnr.sdk.utils import get_frontend_url
 
             base_url = cls.__base_url_for_debug
             http_port = cls.__http_port_for_debug
-            client = LaminarClient(
-                base_url=base_url,
-                project_api_key=cls.__project_api_key,
-                port=http_port,
-            )
-            async_client = AsyncLaminarClient(
-                base_url=base_url,
-                project_api_key=cls.__project_api_key,
-                port=http_port,
-            )
+
+            # Reuse the already-built clients when a context-armed runtime exists
+            # — the transport is stable; only the dynamic coordinates (session /
+            # replay / cache-until) move per request. Build clients only on first
+            # arm so a long-lived downstream service doesn't allocate a pair per
+            # span.
+            if existing is not None:
+                client = existing.client
+                async_client = existing.async_client
+                built_clients = False
+            else:
+                from lmnr.sdk.client.asynchronous.async_client import (
+                    AsyncLaminarClient,
+                )
+                from lmnr.sdk.client.synchronous.sync_client import LaminarClient
+
+                client = LaminarClient(
+                    base_url=base_url,
+                    project_api_key=cls.__project_api_key,
+                    port=http_port,
+                )
+                async_client = AsyncLaminarClient(
+                    base_url=base_url,
+                    project_api_key=cls.__project_api_key,
+                    port=http_port,
+                )
+                built_clients = True
+
             debugger_url = os.getenv("LMNR_FRONTEND_URL") or get_frontend_url(base_url)
-            runtime = init_debug_runtime_from_context(
+            runtime, session_changed = init_debug_runtime_from_context(
                 debug, client, async_client, debugger_url=debugger_url
             )
             if runtime is None or runtime.client is not client:
                 # `runtime is None`: the block was unarmed. `runtime.client is
-                # not client`: another caller won the first-wins race, so the
-                # returned runtime retains ITS clients and ours are orphaned.
-                # Close ours either way (the winner owns session registration +
-                # `rollout.session_id`); leaving them open leaks httpx pools.
-                client.close()
-                cls._close_debug_async_client(async_client)
+                # not client`: another caller won the first-arm race (or this is
+                # a refresh that reused a pre-existing runtime's clients), so the
+                # clients WE built here are orphaned. Close them only when we
+                # built them — never close clients we borrowed from `existing`,
+                # which the live runtime still uses. Leaving built ones open
+                # leaks httpx pools.
+                if built_clients:
+                    client.close()
+                    cls._close_debug_async_client(async_client)
+                if runtime is None:
+                    return
+
+            # Only (re-)register + re-stamp when the session id actually moved — a
+            # steady stream of requests on the SAME session must not spam the
+            # backend or rewrite global metadata on every span. Register the
+            # (upstream) session id so downstream cache lookups are accepted:
+            # idempotent upsert, best-effort. Unlike the local-origin path we do
+            # NOT log the URL or open a browser — the origin already did.
+            if not session_changed:
                 return
 
-            # Register the (upstream) session id so downstream cache lookups are
-            # accepted. Idempotent upsert, best-effort: never crash span
-            # creation. Unlike the local-origin path we do NOT log the URL or
-            # open a browser — the origin already did.
             try:
-                client.rollout_sessions.register(runtime.session_id)
+                runtime.client.rollout_sessions.register(runtime.session_id)
             except Exception as exc:
                 cls.__logger.debug(
                     "Failed to register downstream debug session: %s", exc

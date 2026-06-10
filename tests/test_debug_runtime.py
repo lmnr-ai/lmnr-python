@@ -69,6 +69,45 @@ def test_runtime_retains_both_clients():
     assert runtime.async_client is async_client
 
 
+def test_update_context_config_moves_coordinates_keeps_identity():
+    # The dynamic coordinates (session / replay / cache-until) follow the live
+    # request; local_origin / session_minted are run identity and must NOT change.
+    runtime = _runtime(
+        session_id="sess-a",
+        replay_trace_id="trace-a",
+        cache_until_span_id="aaaa",
+        local_origin=False,
+        session_minted=False,
+    )
+    changed = runtime.update_context_config(
+        _config(
+            session_id="sess-b",
+            replay_trace_id="trace-b",
+            cache_until_span_id="bbbb",
+            # Deliberately different identity flags — they must be ignored.
+            local_origin=True,
+            session_minted=True,
+        )
+    )
+    assert changed is True
+    assert runtime.session_id == "sess-b"
+    assert runtime.replay_trace_id == "trace-b"
+    assert runtime.cache_until_span_id == "bbbb"
+    # Identity is preserved: a downstream run stays downstream.
+    assert runtime.local_origin is False
+    assert runtime.should_open_browser is False
+
+
+def test_update_context_config_reports_no_change_for_same_session():
+    runtime = _runtime(session_id="sess", local_origin=False)
+    changed = runtime.update_context_config(
+        _config(session_id="sess", replay_trace_id="other", local_origin=False)
+    )
+    assert changed is False
+    # Replay coords still move even when the session id is unchanged.
+    assert runtime.replay_trace_id == "other"
+
+
 def test_record_trace_id_first_wins():
     runtime = _runtime()
     runtime.record_trace_id("trace-a")
@@ -858,8 +897,9 @@ def test_arm_from_context_closes_clients_when_losing_race(monkeypatch):
 
     def _fake_init_from_context(dbg, client, async_client, debugger_url=None):
         # Mimic the lost-race outcome: return the winner runtime, ignoring the
-        # clients this caller passed (init is first-wins and already armed).
-        return winner
+        # clients this caller passed (init is first-arm and already armed). The
+        # session changed (a runtime was just published), so report True.
+        return winner, True
 
     monkeypatch.setattr(
         "lmnr.sdk.debug.init_debug_runtime_from_context", _fake_init_from_context
@@ -984,6 +1024,165 @@ def test_arm_from_context_refreshes_isolated_context_metadata(monkeypatch):
         _reset_runtime()
 
 
+def test_init_from_context_refreshes_context_runtime_reusing_clients(monkeypatch):
+    # A context-armed runtime must REFRESH its dynamic coordinates on a new
+    # context (the transport is reused; only the coordinates move) instead of
+    # bailing first-wins. A different client pair on the refresh must be IGNORED.
+    from lmnr.sdk.debug import init_debug_runtime_from_context
+    from lmnr.sdk.types import DebugContext
+
+    _reset_runtime()
+    sync_client, async_client = object(), object()
+    first, first_changed = init_debug_runtime_from_context(
+        DebugContext(enabled=True, session_id="sess-a", replay_trace_id="trace-a"),
+        sync_client,
+        async_client,
+    )
+    assert first is not None
+    assert first_changed is True
+
+    # A different client pair on the refresh must be IGNORED — the transport
+    # built on first arm is reused; only the coordinates move.
+    second, second_changed = init_debug_runtime_from_context(
+        DebugContext(enabled=True, session_id="sess-b", replay_trace_id="trace-b"),
+        object(),
+        object(),
+    )
+    assert second is first
+    assert second_changed is True
+    assert second.session_id == "sess-b"
+    assert second.client is sync_client
+    assert second.async_client is async_client
+    _reset_runtime()
+
+
+def test_init_from_context_never_overrides_env_origin_runtime(monkeypatch):
+    # An env-origin runtime owns the process: a propagated context must not
+    # hijack it — neither its coordinates nor its clients change.
+    from lmnr.sdk.debug import init_debug_runtime
+    from lmnr.sdk.debug import init_debug_runtime_from_context
+    from lmnr.sdk.types import DebugContext
+
+    _reset_runtime()
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.setenv("LMNR_DEBUG_SESSION_ID", "env-sess")
+    monkeypatch.delenv("LMNR_DEBUG_REPLAY_TRACE_ID", raising=False)
+    monkeypatch.delenv("LMNR_DEBUG_CACHE_UNTIL", raising=False)
+
+    env = init_debug_runtime(client=object(), async_client=object())
+    assert env is not None
+    assert env.local_origin is True
+
+    runtime, changed = init_debug_runtime_from_context(
+        DebugContext(enabled=True, session_id="ctx-sess", replay_trace_id="trace"),
+        object(),
+        object(),
+    )
+    # Env config owns the process: the context must not hijack it.
+    assert runtime is env
+    assert changed is False
+    assert get_runtime().session_id == "env-sess"
+    _reset_runtime()
+
+
+def test_arm_from_context_refreshes_session_on_new_context(monkeypatch):
+    # The coordinates in a propagated debug block are DYNAMIC: a long-lived
+    # downstream service must follow each request's session id, not freeze on the
+    # first context it ever saw. A second block with a different session must
+    # update the runtime in place (clients reused) and re-stamp the metadata.
+    from opentelemetry.context import get_value
+
+    from lmnr.opentelemetry_lib.tracing.context import (
+        CONTEXT_METADATA_KEY,
+        attach_context,
+        detach_context,
+        get_current_context,
+    )
+    from lmnr.sdk.laminar import Laminar
+    from lmnr.sdk.types import DebugContext
+
+    _reset_runtime()
+    SESSION_A = "00000000-0000-0000-0000-0000000000a1"
+    SESSION_B = "00000000-0000-0000-0000-0000000000b2"
+
+    spy = _SpyDebugClient()
+    _patch_clients(monkeypatch, spy)
+    monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
+    monkeypatch.setattr(Laminar, "_Laminar__base_url_for_debug", "http://localhost",
+                        raising=False)
+    monkeypatch.setattr(Laminar, "_Laminar__http_port_for_debug", 8000, raising=False)
+    monkeypatch.setattr(Laminar, "_Laminar__global_metadata", {}, raising=False)
+
+    token = attach_context(get_current_context())
+    try:
+        Laminar._arm_debug_runtime_from_context(
+            DebugContext(enabled=True, session_id=SESSION_A)
+        )
+        runtime_a = get_runtime()
+        assert runtime_a is not None
+        assert runtime_a.session_id == SESSION_A
+
+        Laminar._arm_debug_runtime_from_context(
+            DebugContext(enabled=True, session_id=SESSION_B)
+        )
+        # Same runtime instance (clients reused), refreshed coordinates.
+        assert get_runtime() is runtime_a
+        assert get_runtime().session_id == SESSION_B
+        # Both sessions were registered (one per change), the new one re-stamped.
+        assert spy.rollout_sessions.registered == [
+            (SESSION_A, None),
+            (SESSION_B, None),
+        ]
+        ctx_metadata = get_value(CONTEXT_METADATA_KEY, get_current_context()) or {}
+        assert ctx_metadata.get("rollout.session_id") == SESSION_B
+    finally:
+        detach_context(token)
+        _reset_runtime()
+
+
+def test_arm_from_context_reuses_clients_on_same_session(monkeypatch):
+    # A steady stream of requests on the SAME session must not allocate new
+    # clients per span, nor re-register or re-stamp metadata on every span.
+    from lmnr.sdk.laminar import Laminar
+    from lmnr.sdk.types import DebugContext
+
+    _reset_runtime()
+    SESSION = "00000000-0000-0000-0000-0000000000aa"
+    block = DebugContext(enabled=True, session_id=SESSION)
+
+    built = []
+
+    def _spy_factory(*a, **k):
+        c = _SpyDebugClient()
+        built.append(c)
+        return c
+
+    monkeypatch.setattr(
+        "lmnr.sdk.client.synchronous.sync_client.LaminarClient", _spy_factory
+    )
+    monkeypatch.setattr(
+        "lmnr.sdk.client.asynchronous.async_client.AsyncLaminarClient",
+        lambda *a, **k: _SpyAsyncDebugClient(),
+    )
+    monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
+    monkeypatch.setattr(Laminar, "_Laminar__base_url_for_debug", "http://localhost",
+                        raising=False)
+    monkeypatch.setattr(Laminar, "_Laminar__http_port_for_debug", 8000, raising=False)
+    monkeypatch.setattr(Laminar, "_Laminar__global_metadata", {}, raising=False)
+
+    Laminar._arm_debug_runtime_from_context(block)
+    Laminar._arm_debug_runtime_from_context(block)
+    Laminar._arm_debug_runtime_from_context(block)
+
+    runtime = get_runtime()
+    assert runtime is not None
+    # A sync client was built exactly once (first arm), reused thereafter.
+    assert len(built) == 1
+    # The session was registered exactly once (no re-register on unchanged id).
+    assert runtime.client.rollout_sessions.registered == [(SESSION, None)]
+    _reset_runtime()
+
+
 def test_init_from_context_publishes_single_runtime_under_concurrency(monkeypatch):
     # Span creation calls init_debug_runtime_from_context from arbitrary worker
     # threads. The check-and-set of the one-shot globals must be atomic, or two
@@ -1037,7 +1236,7 @@ def test_init_from_context_publishes_single_runtime_under_concurrency(monkeypatc
         # Each thread brings its own client pair, like _arm_debug_runtime_from_context.
         client, async_client = object(), object()
         start.wait()
-        runtime = init_debug_runtime_from_context(block, client, async_client)
+        runtime, _ = init_debug_runtime_from_context(block, client, async_client)
         with returned_lock:
             returned.append(runtime)
 

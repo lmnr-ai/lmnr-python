@@ -101,6 +101,35 @@ class DebugRuntime:
         """The retained asynchronous `AsyncLaminarClient` for cache lookups."""
         return self._async_client
 
+    def update_context_config(self, config: DebugConfig) -> bool:
+        """Refresh the DYNAMIC replay coordinates from a fresh context config.
+
+        The transport (the retained sync/async clients) is STABLE and reused;
+        only the per-request coordinates move — `session_id`, `replay_trace_id`,
+        `cache_until_span_id`. This is what lets a long-lived downstream service
+        follow each incoming request's `LaminarSpanContext` instead of freezing
+        on the very first one. `local_origin` / `session_minted` are part of the
+        run's IDENTITY and never change here (the caller only ever updates a
+        `local_origin=False` runtime; env-origin config keeps precedence).
+
+        `DebugConfig` is frozen, so the coordinates can't be mutated in place;
+        the whole config is rebuilt and the reference swapped (atomic under the
+        GIL, so a concurrent `lookup`/`replay_configured` reader sees a coherent
+        config). Returns True when the session id changed, so the caller can
+        re-register the new session and re-stamp `rollout.session_id`.
+
+        Mirrors the TS `DebugRuntime.updateContextConfig`.
+        """
+        session_changed = self._config.session_id != config.session_id
+        self._config = DebugConfig(
+            session_id=config.session_id,
+            replay_trace_id=config.replay_trace_id,
+            cache_until_span_id=config.cache_until_span_id,
+            local_origin=self._config.local_origin,
+            session_minted=self._config.session_minted,
+        )
+        return session_changed
+
     @property
     def replay_configured(self) -> bool:
         """True when replay is configured (source trace + cache_until needle).
@@ -239,42 +268,64 @@ def init_debug_runtime_from_context(
     client: Any,
     async_client: Any,
     debugger_url: str | None = None,
-) -> DebugRuntime | None:
-    """Arm the debug runtime from a propagated `DebugContext` (process-global).
+) -> tuple[DebugRuntime | None, bool]:
+    """Arm OR refresh the debug runtime from a propagated `DebugContext`.
 
     Called deep in span creation when a parent `LaminarSpanContext` carrying a
     debug block first parses successfully — so a downstream service joins the
     upstream run regardless of how the span originated (auto-instrumentation,
-    manual observe, or an external library). First-wins and idempotent: once a
-    runtime exists (from env at init OR an earlier context), this is a no-op, so
-    env-var config always takes precedence over a later context, and the first
-    qualifying context wins over subsequent ones.
+    manual observe, or an external library). The whole point of propagating
+    coordinates through the span context is that they are DYNAMIC: a long-lived
+    downstream service handling many requests must follow each request's
+    `session_id` / `replay_trace_id` / `cache_until`, not freeze on the first
+    context it ever saw. So the transport (the clients) is stable but the
+    coordinates move:
 
-    Returns None when the block is absent / unarmed (`build_debug_config_from_context`
-    yields None) WITHOUT latching the one-shot flag, so a later, valid context
-    can still arm the runtime. Never raises.
+    - No runtime yet → build one from the context (latch `_initialized`).
+    - A `local_origin` (env) runtime exists → env config wins; leave it
+      untouched. The local process owns the run; a propagated context must not
+      hijack it.
+    - A `local_origin=False` (context-armed) runtime exists → REUSE its clients
+      and just refresh the dynamic coordinates from the new context.
+
+    Returns a `(runtime, session_changed)` tuple. `session_changed` is True when
+    the refresh moved to a different session id (or a fresh runtime was just
+    built), so the caller can re-register it and re-stamp `rollout.session_id`.
+    Returns `(None, False)` WITHOUT latching the one-shot flag when the block is
+    absent / unarmed (`build_debug_config_from_context` yields None), so a later,
+    valid context can still arm the runtime. Never raises.
+
+    Mirrors the TS `initDebugRuntimeFromContext`.
     """
     global _runtime, _initialized
-    if _initialized:
-        return _runtime
 
     try:
         config = build_debug_config_from_context(debug)
     except Exception as exc:
         logger.debug("Failed to build debug config from context: %s", exc)
-        return None
+        return None, False
     if config is None:
-        return None
+        # No coordinates to apply, but a runtime may already exist (env or a
+        # prior context). Return it untouched so the caller can reuse it.
+        return _runtime, False
 
-    # Span creation calls this from arbitrary worker threads. Re-check
-    # `_initialized` under the lock so only ONE thread builds + publishes the
-    # runtime; losers return the winner's instance. Without this, two threads
-    # both pass the unlocked check above, both construct a DebugRuntime, and the
-    # loser's clients are returned to a caller whose `runtime.client is client`
-    # cleanup guard then leaks them.
+    # Span creation calls this from arbitrary worker threads. The check-and-set
+    # of `_runtime` / `_initialized` AND the in-place coordinate refresh both run
+    # under the lock so only ONE thread builds + publishes the runtime (losers
+    # reuse it) and concurrent refreshes don't interleave. Without this, two
+    # threads both build a DebugRuntime on first arm and the loser's clients leak
+    # past the caller's `runtime.client is client` guard.
     with _init_lock:
-        if _initialized:
-            return _runtime
+        if _runtime is not None:
+            # An env-origin run owns the process — a propagated context never
+            # overrides it. A context-armed run, by contrast, tracks the live
+            # request: refresh its dynamic coordinates in place and reuse the
+            # already-built clients.
+            if _runtime.local_origin:
+                return _runtime, False
+            session_changed = _runtime.update_context_config(config)
+            return _runtime, session_changed
+
         _runtime = DebugRuntime(config, client, async_client, debugger_url)
         _initialized = True
-        return _runtime
+        return _runtime, True
