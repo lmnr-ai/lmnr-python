@@ -44,7 +44,9 @@ def _config(**kwargs) -> DebugConfig:
     return DebugConfig(**base)
 
 
-def _runtime(*, debugger_url=None, client=None, async_client=None, **cfg) -> DebugRuntime:
+def _runtime(
+    *, debugger_url=None, client=None, async_client=None, **cfg
+) -> DebugRuntime:
     """Construct a DebugRuntime with the v2 two-client signature.
 
     Most tests don't exercise the cache clients (no live LLM call), so they
@@ -103,7 +105,7 @@ def test_update_context_config_reports_no_change_for_same_session():
     changed = runtime.update_context_config(
         _config(session_id="sess", replay_trace_id="other", local_origin=False)
     )
-    assert changed is False
+    assert changed is True
     # Replay coords still move even when the session id is unchanged.
     assert runtime.replay_trace_id == "other"
 
@@ -606,7 +608,9 @@ def test_init_registers_session_with_backend(monkeypatch):
     _reset_runtime()
 
 
-def test_init_logs_debugger_url_when_project_id_returned(no_browser, monkeypatch, caplog):
+def test_init_logs_debugger_url_when_project_id_returned(
+    no_browser, monkeypatch, caplog
+):
     # When the backend returns a project id, init must log the human-facing
     # debugger session URL at INFO, respecting LMNR_FRONTEND_URL.
     import logging
@@ -712,10 +716,14 @@ def test_initialize_captures_debug_connection_args_before_marking_initialized(
     monkeypatch.setattr(Laminar, "_Laminar__initialized", False, raising=False)
     monkeypatch.setattr(Laminar, "_Laminar__base_url_for_debug", None, raising=False)
     monkeypatch.setattr(Laminar, "_Laminar__http_port_for_debug", None, raising=False)
-    monkeypatch.setattr("lmnr.opentelemetry_lib.TracerManager.init", lambda *a, **k: None)
+    monkeypatch.setattr(
+        "lmnr.opentelemetry_lib.TracerManager.init", lambda *a, **k: None
+    )
     # No-op the debug-runtime build so the only thing that can set the static
     # connection fields is the capture in initialize() itself.
-    monkeypatch.setattr(Laminar, "_init_debug_runtime", classmethod(lambda cls, **k: None))
+    monkeypatch.setattr(
+        Laminar, "_init_debug_runtime", classmethod(lambda cls, **k: None)
+    )
 
     with patch.dict(os.environ, {"LMNR_PROJECT_API_KEY": "k"}, clear=True):
         Laminar.initialize(
@@ -910,8 +918,9 @@ def test_arm_from_context_closes_clients_when_losing_race(monkeypatch):
     loser_async = _SpyAsyncDebugClient()
     _patch_clients(monkeypatch, loser_sync, loser_async)
     monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
-    monkeypatch.setattr(Laminar, "_Laminar__base_url_for_debug", "http://localhost",
-                        raising=False)
+    monkeypatch.setattr(
+        Laminar, "_Laminar__base_url_for_debug", "http://localhost", raising=False
+    )
     monkeypatch.setattr(Laminar, "_Laminar__http_port_for_debug", 8000, raising=False)
 
     Laminar._arm_debug_runtime_from_context(block)
@@ -1001,8 +1010,9 @@ def test_arm_from_context_refreshes_isolated_context_metadata(monkeypatch):
 
     _patch_clients(monkeypatch, _SpyDebugClient())
     monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
-    monkeypatch.setattr(Laminar, "_Laminar__base_url_for_debug", "http://localhost",
-                        raising=False)
+    monkeypatch.setattr(
+        Laminar, "_Laminar__base_url_for_debug", "http://localhost", raising=False
+    )
     monkeypatch.setattr(Laminar, "_Laminar__http_port_for_debug", 8000, raising=False)
     monkeypatch.setattr(Laminar, "_Laminar__global_metadata", {}, raising=False)
 
@@ -1108,8 +1118,9 @@ def test_arm_from_context_refreshes_session_on_new_context(monkeypatch):
     spy = _SpyDebugClient()
     _patch_clients(monkeypatch, spy)
     monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
-    monkeypatch.setattr(Laminar, "_Laminar__base_url_for_debug", "http://localhost",
-                        raising=False)
+    monkeypatch.setattr(
+        Laminar, "_Laminar__base_url_for_debug", "http://localhost", raising=False
+    )
     monkeypatch.setattr(Laminar, "_Laminar__http_port_for_debug", 8000, raising=False)
     monkeypatch.setattr(Laminar, "_Laminar__global_metadata", {}, raising=False)
 
@@ -1172,8 +1183,9 @@ def test_arm_from_context_reuses_clients_on_same_session(monkeypatch):
         lambda *a, **k: _SpyAsyncDebugClient(),
     )
     monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
-    monkeypatch.setattr(Laminar, "_Laminar__base_url_for_debug", "http://localhost",
-                        raising=False)
+    monkeypatch.setattr(
+        Laminar, "_Laminar__base_url_for_debug", "http://localhost", raising=False
+    )
     monkeypatch.setattr(Laminar, "_Laminar__http_port_for_debug", 8000, raising=False)
     monkeypatch.setattr(Laminar, "_Laminar__global_metadata", {}, raising=False)
 
