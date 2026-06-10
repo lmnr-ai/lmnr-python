@@ -1122,6 +1122,10 @@ def test_arm_from_context_refreshes_session_on_new_context(monkeypatch):
         assert runtime_a is not None
         assert runtime_a.session_id == SESSION_A
 
+        # Simulate the first session having latched run-live on a cache MISS —
+        # the new session below must clear it so it starts from a clean state.
+        Laminar.set_debug_run_live(True)
+
         Laminar._arm_debug_runtime_from_context(
             DebugContext(enabled=True, session_id=SESSION_B)
         )
@@ -1135,8 +1139,11 @@ def test_arm_from_context_refreshes_session_on_new_context(monkeypatch):
         ]
         ctx_metadata = get_value(CONTEXT_METADATA_KEY, get_current_context()) or {}
         assert ctx_metadata.get("rollout.session_id") == SESSION_B
+        # The new session reset the process-wide run-live latch.
+        assert Laminar.is_debug_run_live() is False
     finally:
         detach_context(token)
+        Laminar.set_debug_run_live(False)
         _reset_runtime()
 
 

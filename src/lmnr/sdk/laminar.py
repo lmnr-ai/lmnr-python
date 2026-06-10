@@ -692,6 +692,12 @@ class Laminar:
             if not session_changed:
                 return
 
+            # A new session is a fresh debug run: clear the process-wide run-live
+            # latch so the new session starts from a clean cache state. Otherwise
+            # a MISS latched by the PREVIOUS session would make every call in the
+            # new one skip the cache and run live.
+            cls.set_debug_run_live(False)
+
             try:
                 runtime.client.rollout_sessions.register(runtime.session_id)
             except Exception as exc:
