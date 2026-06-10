@@ -112,7 +112,14 @@ class DebugRuntime:
         run's IDENTITY and never change here (the caller only ever updates a
         `local_origin=False` runtime; env-origin config keeps precedence).
 
-        Mirrors the TS `DebugRuntime.updateContextConfig`.
+        Returns True when ANY dynamic coordinate moved (session id, replay trace
+        id, or cache-until needle) — i.e. when the propagated context describes a
+        fresh run, not only a fresh session. The caller treats that as the
+        trigger to re-register + re-stamp `rollout.session_id` and reset the
+        run-live latch, because new replay coordinates mean a new run's cache
+        state regardless of whether the session id happened to change. Identical
+        coordinates (a steady stream of same-run requests) return False so the
+        caller can skip that work.
         """
         config_changed = (
             self._config.session_id != config.session_id

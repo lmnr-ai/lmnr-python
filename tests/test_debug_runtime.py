@@ -100,7 +100,9 @@ def test_update_context_config_moves_coordinates_keeps_identity():
     assert runtime.should_open_browser is False
 
 
-def test_update_context_config_reports_no_change_for_same_session():
+def test_update_context_config_reports_change_for_moved_replay_coords():
+    # The flag tracks ANY moved dynamic coordinate (per-run), not only the
+    # session id: a replay-trace change on the same session still reports True.
     runtime = _runtime(session_id="sess", local_origin=False)
     changed = runtime.update_context_config(
         _config(session_id="sess", replay_trace_id="other", local_origin=False)

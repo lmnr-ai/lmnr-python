@@ -683,19 +683,21 @@ class Laminar:
                 if runtime is None:
                     return
 
-            # Only (re-)register + re-stamp when the session id actually moved — a
-            # steady stream of requests on the SAME session must not spam the
-            # backend or rewrite global metadata on every span. Register the
-            # (upstream) session id so downstream cache lookups are accepted:
-            # idempotent upsert, best-effort. Unlike the local-origin path we do
-            # NOT log the URL or open a browser — the origin already did.
+            # Only (re-)register + re-stamp when the propagated context describes
+            # a fresh run — ANY moved coordinate (session id, replay trace id, or
+            # cache-until needle), not just a new session id. A steady stream of
+            # requests carrying the SAME coordinates must not spam the backend or
+            # rewrite global metadata on every span. Register the (upstream)
+            # session id so downstream cache lookups are accepted: idempotent
+            # upsert, best-effort. Unlike the local-origin path we do NOT log the
+            # URL or open a browser — the origin already did.
             if not config_changed:
                 return
 
-            # A new session is a fresh debug run: clear the process-wide run-live
-            # latch so the new session starts from a clean cache state. Otherwise
-            # a MISS latched by the PREVIOUS session would make every call in the
-            # new one skip the cache and run live.
+            # New replay coordinates mean a new run's cache state: clear the
+            # process-wide run-live latch so the new run starts clean. Otherwise a
+            # MISS latched by the PREVIOUS run would make every call in the new
+            # one skip the cache and run live.
             cls.set_debug_run_live(False)
 
             try:
