@@ -20,7 +20,11 @@ import datetime
 import threading
 from typing import Any
 
-from lmnr.sdk.debug.config import DebugConfig, build_debug_config
+from lmnr.sdk.debug.config import (
+    DebugConfig,
+    build_debug_config,
+    build_debug_config_from_context,
+)
 from lmnr.sdk.debug.pointer import build_pointer, emit_pointer
 from lmnr.sdk.log import get_default_logger
 
@@ -68,6 +72,26 @@ class DebugRuntime:
         return self._config.cache_until_span_id
 
     @property
+    def local_origin(self) -> bool:
+        """True when this process originated the run (config from local env).
+
+        False when the runtime was armed from a propagated `DebugContext`: a
+        downstream run reuses the upstream session and may consult the cache,
+        but must not open a browser or emit the run pointer.
+        """
+        return self._config.local_origin
+
+    @property
+    def should_open_browser(self) -> bool:
+        """True when this run should open the debugger URL in a browser once.
+
+        Only a local-origin run that minted a fresh session id qualifies: a
+        reused session id (continuation/replay) or a context-armed downstream
+        run must not reopen the browser.
+        """
+        return self._config.local_origin and self._config.session_minted
+
+    @property
     def client(self) -> Any:
         """The retained synchronous `LaminarClient` for cache lookups."""
         return self._client
@@ -76,6 +100,40 @@ class DebugRuntime:
     def async_client(self) -> Any:
         """The retained asynchronous `AsyncLaminarClient` for cache lookups."""
         return self._async_client
+
+    def update_context_config(self, config: DebugConfig) -> bool:
+        """Refresh the DYNAMIC replay coordinates from a fresh context config.
+
+        The transport (the retained sync/async clients) is STABLE and reused;
+        only the per-request coordinates move — `session_id`, `replay_trace_id`,
+        `cache_until_span_id`. This is what lets a long-lived downstream service
+        follow each incoming request's `LaminarSpanContext` instead of freezing
+        on the very first one. `local_origin` / `session_minted` are part of the
+        run's IDENTITY and never change here (the caller only ever updates a
+        `local_origin=False` runtime; env-origin config keeps precedence).
+
+        Returns True when ANY dynamic coordinate moved (session id, replay trace
+        id, or cache-until needle) — i.e. when the propagated context describes a
+        fresh run, not only a fresh session. The caller treats that as the
+        trigger to re-register + re-stamp `rollout.session_id` and reset the
+        run-live latch, because new replay coordinates mean a new run's cache
+        state regardless of whether the session id happened to change. Identical
+        coordinates (a steady stream of same-run requests) return False so the
+        caller can skip that work.
+        """
+        config_changed = (
+            self._config.session_id != config.session_id
+            or self._config.replay_trace_id != config.replay_trace_id
+            or self._config.cache_until_span_id != config.cache_until_span_id
+        )
+        self._config = DebugConfig(
+            session_id=config.session_id,
+            replay_trace_id=config.replay_trace_id,
+            cache_until_span_id=config.cache_until_span_id,
+            local_origin=self._config.local_origin,
+            session_minted=self._config.session_minted,
+        )
+        return config_changed
 
     @property
     def replay_configured(self) -> bool:
@@ -123,7 +181,15 @@ class DebugRuntime:
         )
 
     def emit_pointer(self) -> None:
-        """Emit the run pointer once (console line + best-effort file)."""
+        """Emit the run pointer once (console line + best-effort file).
+
+        No-op on a downstream run (`local_origin=False`): a runtime armed from a
+        propagated `DebugContext` joins the upstream replay session and must NOT
+        write a run pointer — the origin owns it. Gated here (not just at the
+        call sites) so `shutdown()` and any atexit hook stay safe.
+        """
+        if not self._config.local_origin:
+            return
         with self._lock:
             if self._emitted:
                 return
@@ -143,6 +209,11 @@ class DebugRuntime:
 
 _runtime: DebugRuntime | None = None
 _initialized = False
+# Serializes the check-and-set of the one-shot init globals. Span creation runs
+# `init_debug_runtime_from_context` from arbitrary worker threads, so the
+# `_initialized` read and the `_runtime` write must be atomic or two threads
+# both build a runtime, overwrite `_runtime`, and leak the loser's clients.
+_init_lock = threading.Lock()
 
 
 def get_runtime() -> DebugRuntime | None:
@@ -195,3 +266,70 @@ def init_debug_runtime(
 
     _runtime = DebugRuntime(config, client, async_client, debugger_url)
     return _runtime
+
+
+def init_debug_runtime_from_context(
+    debug: Any,
+    client: Any,
+    async_client: Any,
+    debugger_url: str | None = None,
+) -> tuple[DebugRuntime | None, bool]:
+    """Arm OR refresh the debug runtime from a propagated `DebugContext`.
+
+    Called deep in span creation when a parent `LaminarSpanContext` carrying a
+    debug block first parses successfully — so a downstream service joins the
+    upstream run regardless of how the span originated (auto-instrumentation,
+    manual observe, or an external library). The whole point of propagating
+    coordinates through the span context is that they are DYNAMIC: a long-lived
+    downstream service handling many requests must follow each request's
+    `session_id` / `replay_trace_id` / `cache_until`, not freeze on the first
+    context it ever saw. So the transport (the clients) is stable but the
+    coordinates move:
+
+    - No runtime yet → build one from the context (latch `_initialized`).
+    - A `local_origin` (env) runtime exists → env config wins; leave it
+      untouched. The local process owns the run; a propagated context must not
+      hijack it.
+    - A `local_origin=False` (context-armed) runtime exists → REUSE its clients
+      and just refresh the dynamic coordinates from the new context.
+
+    Returns a `(runtime, config_changed)` tuple. `config_changed` is True when
+    the refresh updated the debugger dynamic config.
+    Returns `(None, False)` WITHOUT latching the one-shot flag when the block is
+    absent / unarmed (`build_debug_config_from_context` yields None), so a later,
+    valid context can still arm the runtime. Never raises.
+
+    Mirrors the TS `initDebugRuntimeFromContext`.
+    """
+    global _runtime, _initialized
+
+    try:
+        config = build_debug_config_from_context(debug)
+    except Exception as exc:
+        logger.debug("Failed to build debug config from context: %s", exc)
+        return None, False
+    if config is None:
+        # No coordinates to apply, but a runtime may already exist (env or a
+        # prior context). Return it untouched so the caller can reuse it.
+        return _runtime, False
+
+    # Span creation calls this from arbitrary worker threads. The check-and-set
+    # of `_runtime` / `_initialized` AND the in-place coordinate refresh both run
+    # under the lock so only ONE thread builds + publishes the runtime (losers
+    # reuse it) and concurrent refreshes don't interleave. Without this, two
+    # threads both build a DebugRuntime on first arm and the loser's clients leak
+    # past the caller's `runtime.client is client` guard.
+    with _init_lock:
+        if _runtime is not None:
+            # An env-origin run owns the process — a propagated context never
+            # overrides it. A context-armed run, by contrast, tracks the live
+            # request: refresh its dynamic coordinates in place and reuse the
+            # already-built clients.
+            if _runtime.local_origin:
+                return _runtime, False
+            config_changed = _runtime.update_context_config(config)
+            return _runtime, config_changed
+
+        _runtime = DebugRuntime(config, client, async_client, debugger_url)
+        _initialized = True
+        return _runtime, True
