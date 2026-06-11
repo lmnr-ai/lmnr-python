@@ -501,6 +501,16 @@ class SkyvernInstrumentorInitializer(InstrumentorInitializer):
         return SkyvernInstrumentor()
 
 
+class TemporalInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("temporalio"):
+            return None
+
+        from ..opentelemetry.instrumentation.temporal import TemporalInstrumentor
+
+        return TemporalInstrumentor()
+
+
 class TogetherInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("together"):

@@ -1345,6 +1345,97 @@ class Laminar:
                     span.end()
 
     @classmethod
+    @contextmanager
+    def use_span_context(
+        cls,
+        parent_span_context: LaminarSpanContext | dict | str,
+    ) -> Generator[None, None, None]:
+        """Activate a remote `LaminarSpanContext` as the parent for spans created
+        inside this block, WITHOUT creating a span of its own.
+
+        Everything started inside the `with` block — `@observe` spans, auto-
+        instrumented LLM spans, etc. — parents off the provided context, so it
+        nests under the upstream trace. This is the span-less counterpart to
+        ``start_span(parent_span_context=...)``: use it when you want the caller's
+        own spans to inherit the remote trace but don't want an extra wrapper span
+        in between (e.g. a Temporal activity with `create_activity_span=False`).
+
+        Like the span funnels, this also arms the downstream debug runtime from a
+        nested ``debug`` block in the context and registers the parent path info
+        so child span paths are correct.
+        """
+        if not cls.is_initialized():
+            yield
+            return
+
+        parsed = _parse_parent_span_context(parent_span_context, cls.__logger)
+
+        # Arm the debug runtime from a propagated debug block (first-wins,
+        # idempotent), so a debug run flows through even when no span is created.
+        cls._arm_debug_runtime_from_context(parsed["debug"])
+
+        if parsed["otel_span_context"] is None:
+            yield
+            return
+
+        # Re-read the isolated context AFTER arming so the merge below picks up a
+        # freshly-stamped `rollout.session_id`, then set the remote parent on it.
+        ctx = trace.set_span_in_context(
+            trace.NonRecordingSpan(parsed["otel_span_context"]),
+            get_current_context(),
+        )
+
+        # Merge association props the same way `start_span` does
+        # (global < context < parent) instead of overwriting. A plain
+        # `set_association_prop_context(metadata=parent_metadata)` would
+        # `set_value` over `CONTEXT_METADATA_KEY` wholesale and drop the global /
+        # ambient metadata — most importantly the just-armed `rollout.session_id`.
+        ctx_user_id = get_value(CONTEXT_USER_ID_KEY, ctx)
+        ctx_session_id = get_value(CONTEXT_SESSION_ID_KEY, ctx)
+        ctx_metadata = get_value(CONTEXT_METADATA_KEY, ctx)
+
+        merged_metadata = {
+            **(cls.__global_metadata or {}),
+            **(ctx_metadata or {}),
+            **(parsed["metadata"] or {}),
+        }
+        final_user_id = (
+            parsed["user_id"] if parsed["user_id"] is not None else ctx_user_id
+        )
+        final_session_id = (
+            parsed["session_id"]
+            if parsed["session_id"] is not None
+            else ctx_session_id
+        )
+
+        ctx = set_association_prop_context(
+            trace_type=parsed["trace_type"],
+            user_id=final_user_id,
+            session_id=final_session_id,
+            metadata=merged_metadata or None,
+            context=ctx,
+            attach=False,
+        )
+
+        # Register the parent path so child spans build correct dotted paths,
+        # mirroring the LMNR_SPAN_CONTEXT env-init path.
+        processor = TracerWrapper.instance._span_processor
+        if isinstance(processor, LaminarSpanProcessor):
+            processor.set_parent_path_info(
+                parsed["otel_span_context"].span_id,
+                parsed["path"],
+                parsed["span_ids_path"],
+            )
+
+        ctx_token = context_api.attach(ctx)
+        isolated_context_token = attach_context(ctx)
+        try:
+            yield
+        finally:
+            detach_context(isolated_context_token)
+            context_api.detach(ctx_token)
+
+    @classmethod
     def start_active_span(
         cls,
         name: str,
