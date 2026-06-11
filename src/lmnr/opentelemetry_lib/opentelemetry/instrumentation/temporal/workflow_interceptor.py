@@ -24,10 +24,29 @@ from typing import Any, NoReturn
 
 import temporalio.api.common.v1
 import temporalio.worker
+from temporalio.converter import PayloadConverter
 
 from .consts import LAMINAR_SPAN_CONTEXT_HEADER, TRACEPARENT_HEADER
 
 _Headers = dict[str, temporalio.api.common.v1.Payload]
+
+# `PayloadConverter.default` is what the client side used to ENCODE these headers
+# (see helpers.encode_payload), so decoding with it here is symmetric. It is a
+# pure JSON codec — no clock / randomness / I/O — so it is sandbox-deterministic,
+# and `temporalio` is a sandbox passthrough module. We cannot reuse
+# helpers.decode_payload because helpers imports `lmnr`, which the sandbox bans.
+_payload_converter = PayloadConverter.default
+
+
+def _decode(payload: temporalio.api.common.v1.Payload | None) -> str | None:
+    """Decode a Temporal Payload to a string, or ``None`` if it carries none."""
+    if payload is None:
+        return None
+    try:
+        value = _payload_converter.from_payloads([payload])[0]
+        return value if isinstance(value, str) else None
+    except Exception:
+        return None
 
 # Trace headers scoped to the currently-running signal/update handler coroutine.
 # Each handler runs as its own asyncio task (which copies the context), so this
@@ -39,16 +58,19 @@ _handler_headers: contextvars.ContextVar[_Headers | None] = contextvars.ContextV
 
 
 def _has_trace_headers(headers: _Headers) -> bool:
-    """True when the headers map actually carries an injected trace context.
+    """True when the headers map carries a DECODABLE injected trace context.
 
-    A signal or update may arrive with no injected context; in that case we must
-    NOT enter the handler-headers scope, or ``_active_headers`` would resolve to
-    that empty map and drop the workflow-start trace from any activity /
-    child-workflow scheduled inside the handler.
+    A signal or update may arrive with no injected context — or with a payload
+    under our keys that does not decode to usable trace context (e.g. a foreign
+    ``traceparent`` written by another interceptor). In either case we must NOT
+    enter the handler-headers scope, or ``_active_headers`` would resolve to that
+    map and drop the workflow-start trace from any activity / child-workflow
+    scheduled inside the handler. So mirror the activity-side restoration: only
+    count a header that actually decodes (presence alone is not enough).
     """
     return (
-        headers.get(LAMINAR_SPAN_CONTEXT_HEADER) is not None
-        or headers.get(TRACEPARENT_HEADER) is not None
+        _decode(headers.get(LAMINAR_SPAN_CONTEXT_HEADER)) is not None
+        or _decode(headers.get(TRACEPARENT_HEADER)) is not None
     )
 
 

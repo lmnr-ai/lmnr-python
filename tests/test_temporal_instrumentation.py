@@ -462,6 +462,32 @@ async def test_workflow_signal_without_context_uses_start_headers():
 
 
 @pytest.mark.asyncio
+async def test_workflow_signal_with_undecodable_headers_uses_start_headers():
+    """A signal whose payload under our keys does NOT decode to trace context
+    (e.g. a foreign/binary traceparent from another interceptor) must NOT enter
+    the handler scope — otherwise the workflow-start trace is dropped from
+    activities scheduled inside the handler."""
+    from temporalio.api.common.v1 import Payload
+
+    inbound, next_ = _wf_interceptor()
+    start_ctx = _span_context()
+    start_headers = build_headers({}, start_ctx)
+    await inbound.execute_workflow(SimpleNamespace(headers=start_headers))
+
+    # Present-but-undecodable payload under a Laminar key (non-json/plain
+    # encoding so the default converter raises rather than returning a string).
+    junk = Payload(metadata={"encoding": b"binary/null"}, data=b"\x00\x01\x02")
+    await inbound.handle_signal(
+        SimpleNamespace(headers={TRACEPARENT_HEADER: junk})
+    )
+    forwarded = next_.start_activity_input.headers
+    assert (
+        forwarded[LAMINAR_SPAN_CONTEXT_HEADER]
+        == start_headers[LAMINAR_SPAN_CONTEXT_HEADER]
+    )
+
+
+@pytest.mark.asyncio
 async def test_workflow_caller_headers_win_on_merge():
     inbound, next_ = _wf_interceptor()
     ctx = _span_context()
