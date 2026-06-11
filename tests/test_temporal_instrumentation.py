@@ -323,8 +323,8 @@ async def test_activity_restores_context_and_spans(
 
 
 @pytest.mark.asyncio
-async def test_activity_no_span_when_disabled(
-    span_exporter: InMemorySpanExporter, monkeypatch
+async def test_activity_no_wrapper_span_when_disabled(
+    span_exporter: InMemorySpanExporter,
 ):
     span_exporter.clear()
     root = LaminarTracingInterceptor(
@@ -340,7 +340,46 @@ async def test_activity_no_span_when_disabled(
     result = await interceptor.execute_activity(input)
     assert result == "out"
     assert next_.executed_input is input
+    # No wrapper span named after the activity is created.
     assert span_exporter.get_finished_spans() == ()
+
+
+@pytest.mark.asyncio
+async def test_activity_disabled_still_nests_inner_spans(
+    span_exporter: InMemorySpanExporter,
+):
+    """With create_activity_span=False the wrapper span is skipped, but the
+    propagated context is still activated, so a span created INSIDE the activity
+    parents to the workflow trace instead of starting a detached one."""
+    span_exporter.clear()
+    root = LaminarTracingInterceptor(
+        LaminarTemporalInterceptorOptions(create_activity_span=False)
+    )
+
+    class _InnerSpanNext(_FakeActivityNext):
+        async def execute_activity(self, input):
+            # Simulate a user `observe`/manual span inside the activity body.
+            with Laminar.start_as_current_span("inner-work"):
+                pass
+            return await super().execute_activity(input)
+
+    next_ = _InnerSpanNext(result="out")
+    interceptor = _LaminarActivityInboundInterceptor(next_, root)
+
+    parent = _span_context()
+    headers = build_headers({}, parent)
+    input = SimpleNamespace(args=["a"], headers=headers)
+
+    result = await interceptor.execute_activity(input)
+    assert result == "out"
+
+    spans = span_exporter.get_finished_spans()
+    inner = [s for s in spans if s.name == "inner-work"]
+    assert len(inner) == 1
+    # The inner span joined the propagated trace and parents to the remote span.
+    assert inner[0].context.trace_id == parent.trace_id.int
+    assert inner[0].parent is not None
+    assert inner[0].parent.span_id == parent.span_id.int & ((1 << 64) - 1)
 
 
 @pytest.mark.asyncio

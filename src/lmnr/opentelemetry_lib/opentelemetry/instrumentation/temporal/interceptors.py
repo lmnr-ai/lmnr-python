@@ -15,7 +15,9 @@ client patch, worker patch, and bundled workflow module) into one object.
   activity runs under a Laminar span parented to it. Passing the context as
   ``parent_span_context`` is what restores the debugger context too —
   ``Laminar.start_span`` parses the nested ``debug`` block and arms the
-  downstream debug runtime for free.
+  downstream debug runtime for free. When ``create_activity_span`` is disabled,
+  the context is still activated (via ``Laminar.use_span_context``) so spans
+  created inside the activity nest under the workflow trace without a wrapper.
 - Workflow side: see :mod:`.workflow_interceptor` (runs in the sandbox).
 """
 
@@ -46,8 +48,10 @@ class LaminarTemporalInterceptorOptions:
     """
 
     #: Wrap each activity execution in a Laminar span named after the activity
-    #: type. When ``False``, only context restoration happens (so your own
-    #: ``observe`` calls act as roots inside the activity).
+    #: type. When ``False``, no wrapper span is created but the propagated trace
+    #: context is still activated, so your own ``observe`` calls (and any
+    #: auto-instrumented spans) inside the activity nest under the workflow /
+    #: client trace rather than starting a detached trace.
     create_activity_span: bool = True
     #: Record the activity's arguments as the span input. Ignored when
     #: ``create_activity_span`` is ``False``.
@@ -218,8 +222,16 @@ class _LaminarActivityInboundInterceptor(
         self, input: temporalio.worker.ExecuteActivityInput
     ) -> Any:
         restored = restore_context_from_headers(dict(input.headers or {}))
-        if not self.root.options.create_activity_span or restored is None:
+        if restored is None:
             return await super().execute_activity(input)
+
+        # When the wrapper span is disabled, still activate the propagated
+        # context as the parent so spans created inside the activity (manual
+        # `observe`, auto-instrumented LLM calls, etc.) nest under the workflow /
+        # client trace — and a propagated debug block still arms the runtime.
+        if not self.root.options.create_activity_span:
+            with Laminar.use_span_context(restored):
+                return await super().execute_activity(input)
 
         info = temporalio.activity.info()
         name = info.activity_type or "temporal.activity"
