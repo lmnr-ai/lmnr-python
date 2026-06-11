@@ -1378,15 +1378,41 @@ class Laminar:
             yield
             return
 
+        # Re-read the isolated context AFTER arming so the merge below picks up a
+        # freshly-stamped `rollout.session_id`, then set the remote parent on it.
         ctx = trace.set_span_in_context(
             trace.NonRecordingSpan(parsed["otel_span_context"]),
             get_current_context(),
         )
+
+        # Merge association props the same way `start_span` does
+        # (global < context < parent) instead of overwriting. A plain
+        # `set_association_prop_context(metadata=parent_metadata)` would
+        # `set_value` over `CONTEXT_METADATA_KEY` wholesale and drop the global /
+        # ambient metadata — most importantly the just-armed `rollout.session_id`.
+        ctx_user_id = get_value(CONTEXT_USER_ID_KEY, ctx)
+        ctx_session_id = get_value(CONTEXT_SESSION_ID_KEY, ctx)
+        ctx_metadata = get_value(CONTEXT_METADATA_KEY, ctx)
+
+        merged_metadata = {
+            **(cls.__global_metadata or {}),
+            **(ctx_metadata or {}),
+            **(parsed["metadata"] or {}),
+        }
+        final_user_id = (
+            parsed["user_id"] if parsed["user_id"] is not None else ctx_user_id
+        )
+        final_session_id = (
+            parsed["session_id"]
+            if parsed["session_id"] is not None
+            else ctx_session_id
+        )
+
         ctx = set_association_prop_context(
             trace_type=parsed["trace_type"],
-            user_id=parsed["user_id"],
-            session_id=parsed["session_id"],
-            metadata=parsed["metadata"] or None,
+            user_id=final_user_id,
+            session_id=final_session_id,
+            metadata=merged_metadata or None,
             context=ctx,
             attach=False,
         )

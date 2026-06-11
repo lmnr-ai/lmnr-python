@@ -11,11 +11,17 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
+from opentelemetry.context import get_value
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from lmnr import Laminar
+from lmnr.opentelemetry_lib.tracing.context import (
+    CONTEXT_METADATA_KEY,
+    get_current_context,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.temporal.consts import (
     LAMINAR_SPAN_CONTEXT_HEADER,
     TRACEPARENT_HEADER,
@@ -395,6 +401,68 @@ async def test_activity_no_span_without_context(
     result = await interceptor.execute_activity(input)
     assert result == "out"
     assert span_exporter.get_finished_spans() == ()
+
+
+@pytest.mark.asyncio
+async def test_activity_disabled_preserves_global_metadata(
+    span_exporter: InMemorySpanExporter,
+):
+    """With create_activity_span=False, a parent context carrying its own
+    metadata must NOT wipe global metadata (e.g. a debug run's
+    `rollout.session_id`) off the active context — `use_span_context` merges
+    global < context < parent the same way `start_span` does, rather than
+    overwriting `CONTEXT_METADATA_KEY` wholesale.
+
+    Asserting on the context value (not a span's attributes) is deliberate:
+    `LaminarSpanProcessor.on_start` stamps metadata onto auto-instrumented spans
+    by reading `CONTEXT_METADATA_KEY` directly — it does NOT re-merge global
+    metadata the way the manual `start_span` funnel does. So overwriting the
+    context metadata here would silently drop `rollout.session_id` from every
+    auto-instrumented span created inside the activity.
+    """
+    span_exporter.clear()
+    root = LaminarTracingInterceptor(
+        LaminarTemporalInterceptorOptions(create_activity_span=False)
+    )
+
+    # Stand in for a debug run's global metadata stamped at init.
+    global_meta = {"rollout.session_id": "sess-123"}
+    prev_global = getattr(Laminar, "_Laminar__global_metadata", {})
+    Laminar._Laminar__global_metadata = global_meta
+
+    captured: dict[str, Any] = {}
+
+    class _CaptureNext(_FakeActivityNext):
+        async def execute_activity(self, input):
+            captured["metadata"] = get_value(
+                CONTEXT_METADATA_KEY, get_current_context()
+            )
+            return await super().execute_activity(input)
+
+    next_ = _CaptureNext(result="out")
+    interceptor = _LaminarActivityInboundInterceptor(next_, root)
+
+    # Parent context carries a DIFFERENT, non-empty metadata map.
+    parent = LaminarSpanContext(
+        trace_id=uuid.uuid4(),
+        span_id=uuid.UUID(int=uuid.uuid4().int & ((1 << 64) - 1)),
+        metadata={"from_parent": "yes"},
+    )
+    headers = build_headers({}, parent)
+    input = SimpleNamespace(args=["a"], headers=headers)
+
+    try:
+        result = await interceptor.execute_activity(input)
+    finally:
+        Laminar._Laminar__global_metadata = prev_global
+
+    assert result == "out"
+    # Both the global (debug) metadata AND the parent metadata survive on the
+    # context the activity body runs under.
+    assert captured["metadata"] == {
+        "rollout.session_id": "sess-123",
+        "from_parent": "yes",
+    }
 
 
 # --------------------------------------------------------------------------- #
