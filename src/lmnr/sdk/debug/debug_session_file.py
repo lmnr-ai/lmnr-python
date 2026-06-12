@@ -70,6 +70,37 @@ def read_debug_session_file(directory: str | None = None) -> dict[str, Any] | No
         return None
 
 
+def find_debug_session_dir(start_dir: str | None = None) -> str | None:
+    """Find the nearest directory (walking up from `start_dir` to the
+    filesystem root) whose `.lmnr/debug-session.json` holds a usable session
+    record, so a debug run started from a subdirectory of a project joins the
+    project's session. Returns None when no ancestor (including `start_dir`)
+    has one. Keep line-comparable with the TS `findDebugSessionDir`.
+    """
+    directory = os.path.abspath(start_dir if start_dir is not None else os.getcwd())
+    while True:
+        if read_debug_session_file(directory) is not None:
+            return directory
+        parent = os.path.dirname(directory)
+        if parent == directory:
+            return None
+        directory = parent
+
+
+def resolve_debug_session_dir(start_dir: str | None = None) -> str:
+    """The directory the debug-session file should be read from AND written to:
+    the nearest ancestor (incl. `start_dir`) that already has one, else
+    `start_dir` itself. Read and write MUST share this anchor — reading from an
+    ancestor but writing to cwd would strand the ancestor's copy stale and
+    shadow it with a nested one. Keep line-comparable with the TS
+    `resolveDebugSessionDir`.
+    """
+    found = find_debug_session_dir(start_dir)
+    if found is not None:
+        return found
+    return os.path.abspath(start_dir if start_dir is not None else os.getcwd())
+
+
 def write_debug_session_file(
     file: dict[str, Any], directory: str | None = None
 ) -> bool:

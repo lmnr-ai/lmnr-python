@@ -17,7 +17,11 @@ import datetime
 import json
 from typing import Any
 
-from lmnr.sdk.debug.debug_session_file import write_debug_session_file
+from lmnr.sdk.debug.debug_session_file import (
+    read_debug_session_file,
+    resolve_debug_session_dir,
+    write_debug_session_file,
+)
 
 # Console marker the orchestrating tooling greps for. Must match the TS SDK.
 CONSOLE_PREFIX = "LMNR_DEBUG_RUN "
@@ -50,6 +54,22 @@ def build_debug_session_file(
 
 
 def emit_pointer(file: dict[str, Any]) -> None:
-    """Print the console line, then best-effort write the debug-session file."""
+    """Print the console line, then best-effort write the debug-session file.
+
+    Clobber guard: a fresher session may have been minted on disk while this
+    run was in flight (e.g. `lmnr-cli debug session new`) — writing this run's
+    session would clobber that fresher session id. So skip the file write when
+    the on-disk `session_id` is present and differs from ours; we no longer own
+    the file. The console marker is always printed regardless.
+
+    The file location is the nearest-ancestor anchor
+    (`resolve_debug_session_dir`), matching where startup (`config.py`) read
+    the session from — the guard's re-read and the write must hit the SAME
+    file or the guard is meaningless.
+    """
     print(f"{CONSOLE_PREFIX}{json.dumps(file, separators=(',', ':'))}", flush=True)
-    write_debug_session_file(file)
+    directory = resolve_debug_session_dir()
+    on_disk = read_debug_session_file(directory)
+    if on_disk is not None and on_disk["session_id"] != file["session_id"]:
+        return
+    write_debug_session_file(file, directory)

@@ -12,7 +12,10 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from lmnr.sdk.debug.debug_session_file import read_debug_session_file
+from lmnr.sdk.debug.debug_session_file import (
+    read_debug_session_file,
+    resolve_debug_session_dir,
+)
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
@@ -127,7 +130,9 @@ def build_debug_config() -> DebugConfig | None:
     if not _is_truthy(os.environ.get("LMNR_DEBUG")):
         return None
 
-    existing = read_debug_session_file()
+    # Nearest-ancestor resolution: a run started from a subdirectory of a
+    # project joins the project's session.
+    existing = read_debug_session_file(resolve_debug_session_dir())
 
     provided_session_id = (
         os.environ.get("LMNR_DEBUG_SESSION_ID")

@@ -4,7 +4,9 @@ import os
 from lmnr.sdk.debug.debug_session_file import (
     DEBUG_SESSION_DIR,
     DEBUG_SESSION_FILE,
+    find_debug_session_dir,
     read_debug_session_file,
+    resolve_debug_session_dir,
     write_debug_session_file,
 )
 from lmnr.sdk.debug.pointer import (
@@ -150,3 +152,81 @@ def test_read_coerces_non_string_fields_to_none(tmp_path):
     assert read["replay_trace_id"] is None
     assert read["cache_until"] is None
     assert read["debugger_url"] is None
+
+
+# --- find_debug_session_dir / resolve_debug_session_dir (nearest-ancestor anchor) ---
+
+
+def test_find_returns_none_when_no_ancestor_has_a_session(tmp_path):
+    nested = tmp_path / "packages" / "app"
+    nested.mkdir(parents=True)
+    assert find_debug_session_dir(str(nested)) is None
+
+
+def test_find_walks_up_to_the_nearest_ancestor_with_a_session(tmp_path):
+    write_debug_session_file(_SAMPLE, str(tmp_path))
+    nested = tmp_path / "packages" / "app"
+    nested.mkdir(parents=True)
+    assert find_debug_session_dir(str(nested)) == str(tmp_path)
+
+
+def test_find_prefers_the_nearest_ancestor(tmp_path):
+    write_debug_session_file(_SAMPLE, str(tmp_path))
+    mid = tmp_path / "packages"
+    nested = mid / "app"
+    nested.mkdir(parents=True)
+    write_debug_session_file(dict(_SAMPLE, session_id="sess-closer"), str(mid))
+    assert find_debug_session_dir(str(nested)) == str(mid)
+
+
+def test_find_ignores_an_unusable_file_and_keeps_walking(tmp_path):
+    write_debug_session_file(_SAMPLE, str(tmp_path))
+    nested = tmp_path / "packages" / "app"
+    nested.mkdir(parents=True)
+    # A malformed nested file (no usable session_id) must not stop the walk.
+    _write_raw(str(nested), "not json")
+    assert find_debug_session_dir(str(nested)) == str(tmp_path)
+
+
+def test_resolve_falls_back_to_start_dir(tmp_path):
+    nested = tmp_path / "packages" / "app"
+    nested.mkdir(parents=True)
+    assert resolve_debug_session_dir(str(nested)) == str(nested)
+
+
+def test_emit_from_subdirectory_writes_back_to_the_ancestor_anchor(
+    tmp_path, monkeypatch, capsys
+):
+    existing = build_debug_session_file("s", None, None, None, None)
+    write_debug_session_file(existing, str(tmp_path))
+    nested = tmp_path / "packages" / "app"
+    nested.mkdir(parents=True)
+    monkeypatch.chdir(nested)
+
+    updated = build_debug_session_file("s", "t-new", None, None, None)
+    emit_pointer(updated)
+
+    # The ancestor file was updated in place; no nested copy was created.
+    ancestor_path = tmp_path / DEBUG_SESSION_DIR / DEBUG_SESSION_FILE
+    with open(ancestor_path, encoding="utf-8") as f:
+        assert json.load(f) == updated
+    assert not (nested / DEBUG_SESSION_DIR).exists()
+    capsys.readouterr()
+
+
+def test_emit_skips_the_write_when_on_disk_session_differs(
+    tmp_path, monkeypatch, capsys
+):
+    # A fresher session minted on disk while this run was in flight (e.g.
+    # `lmnr-cli debug session new`) must not be clobbered.
+    fresher = build_debug_session_file("sess-fresher", None, None, None, None)
+    write_debug_session_file(fresher, str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+
+    ours = build_debug_session_file("sess-ours", "t", None, None, None)
+    emit_pointer(ours)
+
+    # The console marker is always printed; the fresher file is preserved.
+    out = capsys.readouterr().out.strip()
+    assert out.startswith(CONSOLE_PREFIX)
+    assert read_debug_session_file(str(tmp_path)) == fresher

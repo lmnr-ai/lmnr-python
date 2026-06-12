@@ -99,6 +99,31 @@ def test_session_file_rejoins_silently_continuation_not_minted(tmp_path, monkeyp
     assert config.cache_until_span_id == "0123456789abcdef"
 
 
+def test_session_file_found_in_ancestor_joins_its_session(tmp_path, monkeypatch):
+    # Nearest-ancestor resolution: a run started from a subdirectory of a
+    # project joins the project's session, not a fresh one.
+    _write_session_file(
+        tmp_path,
+        {
+            "session_id": "session-ancestor",
+            "trace_id": "trace-abc",
+            "replay_trace_id": None,
+            "cache_until": None,
+            "debugger_url": None,
+            "started_at": "2026-01-01T00:00:00.000Z",
+        },
+    )
+    nested = tmp_path / "packages" / "app"
+    nested.mkdir(parents=True)
+    monkeypatch.chdir(nested)
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+
+    config = build_debug_config()
+    assert config is not None
+    assert config.session_id == "session-ancestor"
+    assert config.session_minted is False
+
+
 def test_session_file_reads_replay_and_cache_when_env_unset(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write_session_file(
