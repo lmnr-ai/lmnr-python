@@ -8,3 +8,5 @@ lmnr_engine/
 .idea
 .env
 .claude
+# Local debug-session state written by LMNR_DEBUG runs (default-on, per-cwd).
+.lmnr/

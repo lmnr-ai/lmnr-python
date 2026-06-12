@@ -6,14 +6,13 @@ contract. This file is part of the cross-language parity surface — keep its
 logic line-comparable with the TS `config.ts`.
 """
 
-import json
 import os
 import re
 import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from lmnr.sdk.debug.pointer import POINTER_DIR, POINTER_FILE
+from lmnr.sdk.debug.debug_session_file import read_debug_session_file
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
@@ -67,23 +66,6 @@ def _parse_cache_until_span_id(value: str | None) -> str | None:
     return needle
 
 
-def _load_last_run() -> dict[str, Any]:
-    """Read `${CWD}/.lmnr/last-run.json` (the previous run's pointer).
-
-    Best-effort: a missing / unreadable / malformed file returns {} so the
-    caller silently falls back to env vars. Keep line-comparable with the TS
-    `loadLastRun`.
-    """
-    try:
-        path = os.path.join(os.getcwd(), POINTER_DIR, POINTER_FILE)
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except Exception as exc:
-        logger.debug("Could not read debug pointer file: %s", exc)
-        return {}
-
-
 @dataclass(frozen=True)
 class DebugConfig:
     """Immutable debug configuration, built once at process start."""
@@ -99,11 +81,12 @@ class DebugConfig:
     # service via a propagated LaminarSpanContext debug block — a downstream run
     # must not open the browser or emit the run pointer (the origin owns both).
     local_origin: bool = True
-    # True when the SDK minted a fresh session id (neither an explicit
-    # LMNR_DEBUG_SESSION_ID nor a last-run pointer supplied one). Gates the
-    # one-time browser open: a reused session id is a continuation/replay, so
-    # the browser is not reopened. Lets the browser decision read the resolved
-    # config instead of re-reading env vars at the call site.
+    # True ONLY when the SDK minted a fresh session id — i.e. neither an explicit
+    # LMNR_DEBUG_SESSION_ID nor an existing `.lmnr/debug-session.json` supplied
+    # one. Gates the one-time browser open: a reused session id (explicit env or
+    # a continuation from the file) is NOT a fresh run, so the browser is not
+    # reopened. Lets the browser decision read the resolved config instead of
+    # re-reading env vars at the call site.
     session_minted: bool = False
 
     @property
@@ -125,43 +108,48 @@ def build_debug_config() -> DebugConfig | None:
     Returns None when debug mode is disabled (LMNR_DEBUG falsey/absent) — the
     caller treats None as "everything inert".
 
-    When `LMNR_DEBUG_FROM_LAST_RUN` is truthy, seed the config from the previous
-    run's pointer file (`${CWD}/.lmnr/last-run.json`): the file's `trace_id` (the
-    trace that run produced) becomes this run's `replay_trace_id`, and its
-    `session_id` / `cache_until` are reused. Individual `LMNR_DEBUG_*` env vars
-    still override per-field, so the agent can replay the last run without
-    copying its ids into the environment by hand.
+    The `.lmnr/debug-session.json` file is now DEFAULT-ON: it is read
+    unconditionally (no opt-in env gate). The decision tree:
+
+      1. Read the file (best-effort → existing | None).
+      2. `session_id` precedence: LMNR_DEBUG_SESSION_ID → existing["session_id"]
+         → a freshly-minted UUID.
+      3. `session_minted` is True ONLY when we minted (neither env nor file
+         supplied a session id). A file-present run is a CONTINUATION: it rejoins
+         the same session silently (no browser).
+      4. `replay_trace_id`: LMNR_DEBUG_REPLAY_TRACE_ID → existing["replay_trace_id"]
+         → None. NOTE: continuation is NOT auto-replay — we do NOT promote the
+         prior run's `trace_id` into `replay_trace_id`. Replay is armed explicitly
+         by the agent via the env var or the file's `replay_trace_id`.
+      5. `cache_until_span_id`: parsed from LMNR_DEBUG_CACHE_UNTIL ??
+         existing["cache_until"].
     """
     if not _is_truthy(os.environ.get("LMNR_DEBUG")):
         return None
 
-    last_run = (
-        _load_last_run()
-        if _is_truthy(os.environ.get("LMNR_DEBUG_FROM_LAST_RUN"))
-        else {}
-    )
+    existing = read_debug_session_file()
 
-    provided_session_id = os.environ.get("LMNR_DEBUG_SESSION_ID") or last_run.get(
-        "session_id"
+    provided_session_id = (
+        os.environ.get("LMNR_DEBUG_SESSION_ID")
+        or (existing.get("session_id") if existing else None)
+        or None
     )
     session_id = provided_session_id or str(uuid.uuid4())
-    # The browser is opened once per fresh run; a reused (provided) session id
-    # is a continuation/replay, so it is not reopened. A FROM_LAST_RUN run is
-    # also a continuation attempt even when the pointer file is missing / has no
-    # session_id (_load_last_run returns {}), so suppress the browser there too.
-    session_minted = provided_session_id is None and not _is_truthy(
-        os.environ.get("LMNR_DEBUG_FROM_LAST_RUN")
-    )
+    # The browser is opened once per fresh run; a reused session id (explicit env
+    # OR a continuation from the file) is NOT a fresh run, so it is not reopened.
+    session_minted = provided_session_id is None
+    # Continuation is NOT replay: only an explicit replay trace (env or the file's
+    # `replay_trace_id`) arms replay. The prior run's `trace_id` is never promoted.
     replay_trace_id = (
         os.environ.get("LMNR_DEBUG_REPLAY_TRACE_ID")
-        or last_run.get("trace_id")
+        or (existing.get("replay_trace_id") if existing else None)
         or None
     )
     cache_until_value = os.environ.get("LMNR_DEBUG_CACHE_UNTIL")
-    if cache_until_value is None and last_run.get("cache_until") is not None:
-        # The pointer persists the needle as-is (v2 has no resolution step), so
-        # the stored value is already a span-id string.
-        cache_until_value = str(last_run.get("cache_until"))
+    if cache_until_value is None and existing is not None:
+        # The file persists the needle as-is (v2 has no resolution step), so the
+        # stored value is already a span-id string.
+        cache_until_value = existing.get("cache_until")
     cache_until_span_id = _parse_cache_until_span_id(cache_until_value)
 
     return DebugConfig(

@@ -507,7 +507,8 @@ class Laminar:
             # initialize(). This is the same LMNR_DEBUG gate build_debug_config()
             # applies first; checking it directly avoids a redundant config build
             # here (which would mint a throwaway session uuid and re-read the
-            # last-run file) that init_debug_runtime() then discards and rebuilds.
+            # debug-session file) that init_debug_runtime() then discards and
+            # rebuilds.
             if not _is_truthy(os.environ.get("LMNR_DEBUG")):
                 return
 
@@ -1736,10 +1737,10 @@ class Laminar:
     @classmethod
     def shutdown(cls):
         if cls.is_initialized():
-            # Emit the debug run pointer before shutting down tracing so flows
+            # Emit the debug-session record before shutting down tracing so flows
             # that shut down without terminating the process still get
-            # LMNR_DEBUG_RUN + .lmnr/last-run.json. Idempotent — the atexit hook
-            # is a fallback.
+            # LMNR_DEBUG_RUN + .lmnr/debug-session.json. Idempotent — the atexit
+            # hook is a fallback.
             from lmnr.sdk.debug import get_runtime, reset_debug_runtime
 
             runtime = get_runtime()

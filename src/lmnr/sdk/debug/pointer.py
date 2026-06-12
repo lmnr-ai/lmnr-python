@@ -1,48 +1,45 @@
-"""Emit the debug-run pointer (§5, §I).
+"""Emit the debug-session record (§5, §I).
 
 On a debug run we always print one console line prefixed with `LMNR_DEBUG_RUN `
-followed by compact JSON. When `LMNR_DEBUG_WRITE_LAST_RUN_TO_FILE` is set the
-same payload is also written to `${CWD}/.lmnr/last-run.json` (best-effort: any
-IO error is swallowed so a read-only working directory never breaks the run).
+followed by compact JSON, AND write the same payload to
+`${CWD}/.lmnr/debug-session.json` (default-on now — there is no longer an opt-in
+env gate). The file write is best-effort (any IO error is swallowed so a
+read-only working directory never breaks the run) and delegates to the local
+`write_debug_session_file` helper, which writes the SAME shape (the
+`DebugSessionFile` contract + filename consts) the rest of the tooling reads, so
+the on-disk file stays consistent across writers.
 
 Part of the cross-language parity surface — keep line-comparable with the TS
-`pointer.ts` (identical key order, prefix, and best-effort semantics).
+`pointer.ts` (identical prefix and best-effort semantics).
 """
 
 import datetime
 import json
-import os
 from typing import Any
 
-from lmnr.sdk.log import get_default_logger
-
-logger = get_default_logger(__name__)
+from lmnr.sdk.debug.debug_session_file import write_debug_session_file
 
 # Console marker the orchestrating tooling greps for. Must match the TS SDK.
 CONSOLE_PREFIX = "LMNR_DEBUG_RUN "
 
-# Pointer file location, relative to the current working directory.
-POINTER_DIR = ".lmnr"
-POINTER_FILE = "last-run.json"
 
-
-def build_pointer(
-    trace_id: str,
+def build_debug_session_file(
     session_id: str,
+    trace_id: str | None,
     replay_trace_id: str | None,
     cache_until: str | None,
     debugger_url: str | None,
     started_at: str | None = None,
 ) -> dict[str, Any]:
-    """Build the pointer payload. Key order matches the TS SDK.
+    """Build the persisted debug-session record. Key order matches the TS SDK.
 
     `started_at` is the run's start time, captured by `DebugRuntime` at SDK init
-    so the pointer reflects when tracing began rather than when it was emitted
+    so the record reflects when tracing began rather than when it was emitted
     (shutdown). Defaults to now for standalone callers.
     """
     return {
-        "trace_id": trace_id,
         "session_id": session_id,
+        "trace_id": trace_id,
         "replay_trace_id": replay_trace_id,
         "cache_until": cache_until,
         "debugger_url": debugger_url,
@@ -52,19 +49,7 @@ def build_pointer(
     }
 
 
-def emit_pointer(pointer: dict[str, Any]) -> None:
-    """Print the console line, then best-effort write the pointer file."""
-    payload = json.dumps(pointer, separators=(",", ":"))
-    print(f"{CONSOLE_PREFIX}{payload}", flush=True)
-    if os.getenv("LMNR_DEBUG_WRITE_LAST_RUN_TO_FILE"):
-        _write_pointer_file(payload)
-
-
-def _write_pointer_file(payload: str) -> None:
-    try:
-        directory = os.path.join(os.getcwd(), POINTER_DIR)
-        os.makedirs(directory, exist_ok=True)
-        with open(os.path.join(directory, POINTER_FILE), "w", encoding="utf-8") as f:
-            f.write(payload)
-    except Exception as exc:  # pragma: no cover - best-effort only
-        logger.debug("Could not write debug pointer file: %s", exc)
+def emit_pointer(file: dict[str, Any]) -> None:
+    """Print the console line, then best-effort write the debug-session file."""
+    print(f"{CONSOLE_PREFIX}{json.dumps(file, separators=(',', ':'))}", flush=True)
+    write_debug_session_file(file)
