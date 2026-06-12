@@ -15,7 +15,6 @@ _DEBUG_ENV_KEYS = (
     "LMNR_DEBUG_SESSION_ID",
     "LMNR_DEBUG_REPLAY_TRACE_ID",
     "LMNR_DEBUG_CACHE_UNTIL",
-    "LMNR_DEBUG_FROM_LAST_RUN",
 )
 
 _VECTORS = json.loads(
@@ -30,7 +29,10 @@ def _clear_debug_env(monkeypatch):
 
 
 @pytest.mark.parametrize("case", _VECTORS, ids=[c["name"] for c in _VECTORS])
-def test_config_truth_table(case, monkeypatch):
+def test_config_truth_table(case, tmp_path, monkeypatch):
+    # build_debug_config now reads `.lmnr/debug-session.json` from cwd
+    # unconditionally; pin cwd to an empty temp dir so a stray file can't leak in.
+    monkeypatch.chdir(tmp_path)
     for key, value in case["env"].items():
         monkeypatch.setenv(key, value)
 
@@ -48,7 +50,8 @@ def test_config_truth_table(case, monkeypatch):
     assert config.replay_enabled is expect["replay_enabled"]
 
 
-def test_session_id_defaults_to_uuid(monkeypatch):
+def test_session_id_defaults_to_uuid(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("LMNR_DEBUG", "true")
     config = build_debug_config()
     assert config is not None
@@ -62,107 +65,166 @@ def test_disabled_when_env_absent():
     assert build_debug_config() is None
 
 
-def _write_last_run(tmp_path: Path, payload: dict) -> None:
-    pointer_dir = tmp_path / ".lmnr"
-    pointer_dir.mkdir(parents=True, exist_ok=True)
-    (pointer_dir / "last-run.json").write_text(json.dumps(payload))
+def _write_session_file(tmp_path: Path, payload: dict) -> None:
+    session_dir = tmp_path / ".lmnr"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    (session_dir / "debug-session.json").write_text(json.dumps(payload))
 
 
-def test_from_last_run_seeds_replay_from_pointer(tmp_path, monkeypatch):
+def test_session_file_rejoins_silently_continuation_not_minted(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _write_last_run(
+    _write_session_file(
         tmp_path,
         {
-            "trace_id": "trace-abc",
             "session_id": "session-xyz",
+            "trace_id": "trace-abc",
+            "replay_trace_id": None,
             "cache_until": "0123-456789abcdef",
+            "debugger_url": None,
+            "started_at": "2026-01-01T00:00:00.000Z",
         },
     )
     monkeypatch.setenv("LMNR_DEBUG", "true")
-    monkeypatch.setenv("LMNR_DEBUG_FROM_LAST_RUN", "true")
 
     config = build_debug_config()
     assert config is not None
-    assert config.replay_trace_id == "trace-abc"
+    # The session id comes from the file; the browser must NOT reopen.
     assert config.session_id == "session-xyz"
+    assert config.session_minted is False
+    assert config.local_origin is True
+    # Continuation is NOT replay: the prior run's trace_id is NOT promoted into
+    # replay_trace_id. Only an explicit replay_trace_id (file or env) arms replay.
+    assert config.replay_trace_id is None
+    # cache_until is read from the file when the env var is unset.
     assert config.cache_until_span_id == "0123456789abcdef"
-    assert config.replay_enabled is True
-    # A continuation reuses the pointer's session id, so the browser must not
-    # reopen.
+
+
+def test_session_file_found_in_ancestor_joins_its_session(tmp_path, monkeypatch):
+    # Nearest-ancestor resolution: a run started from a subdirectory of a
+    # project joins the project's session, not a fresh one.
+    _write_session_file(
+        tmp_path,
+        {
+            "session_id": "session-ancestor",
+            "trace_id": "trace-abc",
+            "replay_trace_id": None,
+            "cache_until": None,
+            "debugger_url": None,
+            "started_at": "2026-01-01T00:00:00.000Z",
+        },
+    )
+    nested = tmp_path / "packages" / "app"
+    nested.mkdir(parents=True)
+    monkeypatch.chdir(nested)
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+
+    config = build_debug_config()
+    assert config is not None
+    assert config.session_id == "session-ancestor"
     assert config.session_minted is False
 
 
-def test_from_last_run_env_overrides_per_field(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    _write_last_run(
+def test_config_pins_session_dir_and_file_session_id(tmp_path, monkeypatch):
+    # The anchor and the on-disk session id are captured at init for the
+    # emit-side write/guard: session_dir is the resolved ancestor (chdir-safe
+    # write target) and file_session_id is what the guard compares against
+    # (so an env override still persists to an unchanged file).
+    _write_session_file(
         tmp_path,
         {
-            "trace_id": "trace-abc",
+            "session_id": "session-on-disk",
+            "trace_id": None,
+            "replay_trace_id": None,
+            "cache_until": None,
+            "debugger_url": None,
+            "started_at": "2026-01-01T00:00:00.000Z",
+        },
+    )
+    nested = tmp_path / "packages" / "app"
+    nested.mkdir(parents=True)
+    monkeypatch.chdir(nested)
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.setenv("LMNR_DEBUG_SESSION_ID", "session-from-env")
+
+    config = build_debug_config()
+    assert config is not None
+    assert config.session_id == "session-from-env"
+    assert config.session_dir == str(tmp_path)
+    assert config.file_session_id == "session-on-disk"
+
+
+def test_session_file_reads_replay_and_cache_when_env_unset(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_session_file(
+        tmp_path,
+        {
             "session_id": "session-xyz",
-            "cache_until": "0123-456789abcdef",
+            "trace_id": "trace-abc",
+            "replay_trace_id": "replay-from-file",
+            "cache_until": "abcdef",
+            "debugger_url": None,
+            "started_at": "2026-01-01T00:00:00.000Z",
         },
     )
     monkeypatch.setenv("LMNR_DEBUG", "true")
-    monkeypatch.setenv("LMNR_DEBUG_FROM_LAST_RUN", "true")
-    monkeypatch.setenv("LMNR_DEBUG_REPLAY_TRACE_ID", "trace-override")
-    monkeypatch.setenv("LMNR_DEBUG_CACHE_UNTIL", "fedcba")
 
     config = build_debug_config()
     assert config is not None
-    assert config.replay_trace_id == "trace-override"
-    assert config.session_id == "session-xyz"
-    assert config.cache_until_span_id == "fedcba"
+    assert config.replay_trace_id == "replay-from-file"
+    assert config.cache_until_span_id == "abcdef"
+    assert config.replay_enabled is True
 
 
-def test_from_last_run_ignored_when_flag_falsey(tmp_path, monkeypatch):
+def test_env_overrides_the_file_per_field(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    _write_last_run(tmp_path, {"trace_id": "trace-abc", "session_id": "session-xyz"})
+    _write_session_file(
+        tmp_path,
+        {
+            "session_id": "session-xyz",
+            "trace_id": "trace-abc",
+            "replay_trace_id": "replay-from-file",
+            "cache_until": "0123-456789abcdef",
+            "debugger_url": None,
+            "started_at": "2026-01-01T00:00:00.000Z",
+        },
+    )
     monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.setenv("LMNR_DEBUG_SESSION_ID", "env-session")
+    monkeypatch.setenv("LMNR_DEBUG_REPLAY_TRACE_ID", "env-replay")
+    monkeypatch.setenv("LMNR_DEBUG_CACHE_UNTIL", "cafe")
 
     config = build_debug_config()
     assert config is not None
-    assert config.replay_trace_id is None
-    assert config.session_id != "session-xyz"
-
-
-def test_from_last_run_missing_file_falls_back_to_env(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("LMNR_DEBUG", "true")
-    monkeypatch.setenv("LMNR_DEBUG_FROM_LAST_RUN", "true")
-
-    config = build_debug_config()
-    assert config is not None
-    assert config.replay_trace_id is None
-    assert len(config.session_id) == 36
-    # FROM_LAST_RUN is a continuation attempt; even with a missing pointer the
-    # browser must not reopen, despite the freshly minted fallback id.
+    # Explicit env session id wins over the file and is still a continuation.
+    assert config.session_id == "env-session"
     assert config.session_minted is False
+    assert config.replay_trace_id == "env-replay"
+    assert config.cache_until_span_id == "cafe"
 
 
-def test_local_origin_and_session_minted_from_env():
-    config = build_debug_config_env_with({"LMNR_DEBUG": "true"})
+def test_mints_fresh_session_when_no_file_and_no_env_id(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+
+    config = build_debug_config()
+    assert config is not None
+    assert len(config.session_id) == 36
+    assert config.session_minted is True
+    assert config.local_origin is True
+    assert config.replay_trace_id is None
+
+
+def test_local_origin_and_session_minted_from_env(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    config = build_debug_config()
     assert config is not None
     assert config.local_origin is True
     assert config.session_minted is True
 
 
-def build_debug_config_env_with(env: dict):
-    import os as _os
-
-    saved = {k: _os.environ.get(k) for k in env}
-    try:
-        for k, v in env.items():
-            _os.environ[k] = v
-        return build_debug_config()
-    finally:
-        for k, v in saved.items():
-            if v is None:
-                _os.environ.pop(k, None)
-            else:
-                _os.environ[k] = v
-
-
-def test_provided_session_id_not_minted(monkeypatch):
+def test_provided_session_id_not_minted(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("LMNR_DEBUG", "true")
     monkeypatch.setenv("LMNR_DEBUG_SESSION_ID", "sess-123")
     config = build_debug_config()

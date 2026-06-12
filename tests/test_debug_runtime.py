@@ -365,8 +365,8 @@ def test_emit_pointer_uses_construction_time_started_at(tmp_path, monkeypatch, c
 
 
 def test_emit_pointer_persists_cache_until_span_id(tmp_path, monkeypatch, capsys):
-    # v2 persists the raw span-id needle in the pointer's cache_until (no
-    # resolution step), so a later LMNR_DEBUG_FROM_LAST_RUN re-sends the needle.
+    # v2 persists the raw span-id needle in the record's cache_until (no
+    # resolution step), so a later replay re-sends the needle.
     import json
 
     monkeypatch.chdir(tmp_path)
@@ -412,7 +412,7 @@ def test_emit_pointer_noop_for_downstream_run(tmp_path, monkeypatch, capsys):
         if line.startswith("LMNR_DEBUG_RUN ")
     ]
     assert lines == []
-    assert not (tmp_path / ".lmnr" / "last-run.json").exists()
+    assert not (tmp_path / ".lmnr" / "debug-session.json").exists()
 
 
 def test_emit_pointer_uses_full_debugger_url(tmp_path, monkeypatch, capsys):
@@ -1008,7 +1008,6 @@ def test_init_preempts_context_runtime_when_env_debug_set(monkeypatch):
     monkeypatch.delenv("LMNR_DEBUG_SESSION_ID", raising=False)
     monkeypatch.delenv("LMNR_DEBUG_REPLAY_TRACE_ID", raising=False)
     monkeypatch.delenv("LMNR_DEBUG_CACHE_UNTIL", raising=False)
-    monkeypatch.delenv("LMNR_DEBUG_FROM_LAST_RUN", raising=False)
 
     # A context-armed runtime that raced ahead of _init_debug_runtime, retaining
     # its own clients.
