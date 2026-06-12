@@ -230,3 +230,55 @@ def test_emit_skips_the_write_when_on_disk_session_differs(
     out = capsys.readouterr().out.strip()
     assert out.startswith(CONSOLE_PREFIX)
     assert read_debug_session_file(str(tmp_path)) == fresher
+
+
+def test_emit_persists_env_session_override_when_file_unchanged(
+    tmp_path, monkeypatch, capsys
+):
+    # LMNR_DEBUG_SESSION_ID overrode the file's session at init; the file is
+    # unchanged since that read, so this run still owns it and the override
+    # must persist (guard compares against the id read at init, not just ours).
+    original = build_debug_session_file("sess-from-file", None, None, None, None)
+    write_debug_session_file(original, str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+
+    ours = build_debug_session_file("sess-from-env", "t", None, None, None)
+    emit_pointer(ours, file_session_id_at_init="sess-from-file")
+
+    assert read_debug_session_file(str(tmp_path)) == ours
+    capsys.readouterr()
+
+
+def test_emit_skips_when_file_changed_since_init(tmp_path, monkeypatch, capsys):
+    # Init read sess-at-init, but a fresher session replaced it mid-run — even
+    # an env-overridden run no longer owns the file.
+    fresher = build_debug_session_file("sess-fresher", None, None, None, None)
+    write_debug_session_file(fresher, str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+
+    ours = build_debug_session_file("sess-from-env", "t", None, None, None)
+    emit_pointer(ours, file_session_id_at_init="sess-at-init")
+
+    assert read_debug_session_file(str(tmp_path)) == fresher
+    capsys.readouterr()
+
+
+def test_emit_writes_to_the_pinned_directory_after_chdir(
+    tmp_path, monkeypatch, capsys
+):
+    # The anchor is resolved once at init and passed in; a chdir between init
+    # and shutdown must not retarget the write.
+    anchor = tmp_path / "project"
+    elsewhere = tmp_path / "elsewhere"
+    anchor.mkdir()
+    elsewhere.mkdir()
+    existing = build_debug_session_file("s", None, None, None, None)
+    write_debug_session_file(existing, str(anchor))
+    monkeypatch.chdir(elsewhere)
+
+    updated = build_debug_session_file("s", "t-new", None, None, None)
+    emit_pointer(updated, directory=str(anchor))
+
+    assert read_debug_session_file(str(anchor)) == updated
+    assert not (elsewhere / DEBUG_SESSION_DIR).exists()
+    capsys.readouterr()

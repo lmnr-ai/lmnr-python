@@ -53,23 +53,33 @@ def build_debug_session_file(
     }
 
 
-def emit_pointer(file: dict[str, Any]) -> None:
+def emit_pointer(
+    file: dict[str, Any],
+    directory: str | None = None,
+    file_session_id_at_init: str | None = None,
+) -> None:
     """Print the console line, then best-effort write the debug-session file.
 
     Clobber guard: a fresher session may have been minted on disk while this
     run was in flight (e.g. `lmnr-cli debug session new`) — writing this run's
-    session would clobber that fresher session id. So skip the file write when
-    the on-disk `session_id` is present and differs from ours; we no longer own
-    the file. The console marker is always printed regardless.
+    session would clobber that fresher session id. The guard asks "did the file
+    change since startup read it?": skip the write when the on-disk
+    `session_id` differs from BOTH ours and `file_session_id_at_init` (the id
+    config read at init). Comparing against ours alone would also block the
+    write when LMNR_DEBUG_SESSION_ID overrode an unchanged file — an explicit
+    override must still persist. The console marker is always printed.
 
-    The file location is the nearest-ancestor anchor
-    (`resolve_debug_session_dir`), matching where startup (`config.py`) read
-    the session from — the guard's re-read and the write must hit the SAME
-    file or the guard is meaningless.
+    `directory` is the anchor pinned at init (`DebugConfig.session_dir`), so
+    startup's read and this write hit the SAME file even if the process chdir'd
+    in between. Falls back to resolving from the current cwd for standalone
+    callers that never built a config.
     """
     print(f"{CONSOLE_PREFIX}{json.dumps(file, separators=(',', ':'))}", flush=True)
-    directory = resolve_debug_session_dir()
+    directory = directory if directory is not None else resolve_debug_session_dir()
     on_disk = read_debug_session_file(directory)
-    if on_disk is not None and on_disk["session_id"] != file["session_id"]:
+    if on_disk is not None and on_disk["session_id"] not in (
+        file["session_id"],
+        file_session_id_at_init,
+    ):
         return
     write_debug_session_file(file, directory)

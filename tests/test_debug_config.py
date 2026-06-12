@@ -124,6 +124,35 @@ def test_session_file_found_in_ancestor_joins_its_session(tmp_path, monkeypatch)
     assert config.session_minted is False
 
 
+def test_config_pins_session_dir_and_file_session_id(tmp_path, monkeypatch):
+    # The anchor and the on-disk session id are captured at init for the
+    # emit-side write/guard: session_dir is the resolved ancestor (chdir-safe
+    # write target) and file_session_id is what the guard compares against
+    # (so an env override still persists to an unchanged file).
+    _write_session_file(
+        tmp_path,
+        {
+            "session_id": "session-on-disk",
+            "trace_id": None,
+            "replay_trace_id": None,
+            "cache_until": None,
+            "debugger_url": None,
+            "started_at": "2026-01-01T00:00:00.000Z",
+        },
+    )
+    nested = tmp_path / "packages" / "app"
+    nested.mkdir(parents=True)
+    monkeypatch.chdir(nested)
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.setenv("LMNR_DEBUG_SESSION_ID", "session-from-env")
+
+    config = build_debug_config()
+    assert config is not None
+    assert config.session_id == "session-from-env"
+    assert config.session_dir == str(tmp_path)
+    assert config.file_session_id == "session-on-disk"
+
+
 def test_session_file_reads_replay_and_cache_when_env_unset(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     _write_session_file(

@@ -205,7 +205,15 @@ class DebugRuntime:
             debugger_url=self.debugger_session_url(),
             started_at=self._started_at,
         )
-        emit_pointer(file)
+        emit_pointer(
+            file,
+            # Anchor + on-disk session id pinned at init: the write targets the
+            # same file startup read (chdir-safe), and the clobber guard
+            # detects "file changed under us" rather than "file differs from
+            # ours" (an explicit LMNR_DEBUG_SESSION_ID override must persist).
+            directory=self._config.session_dir,
+            file_session_id_at_init=self._config.file_session_id,
+        )
 
 
 _runtime: DebugRuntime | None = None

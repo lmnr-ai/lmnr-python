@@ -91,6 +91,16 @@ class DebugConfig:
     # reopened. Lets the browser decision read the resolved config instead of
     # re-reading env vars at the call site.
     session_minted: bool = False
+    # The nearest-ancestor anchor directory the session file was resolved to at
+    # init. emit_pointer writes back HERE — re-resolving at shutdown would
+    # target a different file if the process chdir'd in between. None on a
+    # from-context config (downstream runs never emit the pointer).
+    session_dir: str | None = None
+    # The on-disk session_id read at init (None when no file existed). The
+    # emit-side clobber guard compares against THIS — "did the file change
+    # under us since we read it?" — not against our own session_id, so an
+    # explicit LMNR_DEBUG_SESSION_ID override still persists to the file.
+    file_session_id: str | None = None
 
     @property
     def replay_enabled(self) -> bool:
@@ -131,8 +141,11 @@ def build_debug_config() -> DebugConfig | None:
         return None
 
     # Nearest-ancestor resolution: a run started from a subdirectory of a
-    # project joins the project's session.
-    existing = read_debug_session_file(resolve_debug_session_dir())
+    # project joins the project's session. Resolved ONCE here and pinned on the
+    # config — emit_pointer writes back to this same directory at shutdown
+    # (re-resolving there would target a different file after a chdir).
+    session_dir = resolve_debug_session_dir()
+    existing = read_debug_session_file(session_dir)
 
     provided_session_id = (
         os.environ.get("LMNR_DEBUG_SESSION_ID")
@@ -163,6 +176,8 @@ def build_debug_config() -> DebugConfig | None:
         cache_until_span_id=cache_until_span_id,
         local_origin=True,
         session_minted=session_minted,
+        session_dir=session_dir,
+        file_session_id=existing.get("session_id") if existing else None,
     )
 
 
