@@ -362,8 +362,9 @@ class Laminar:
         # LMNR_DEBUG truthy gate used by _init_debug_runtime / the TS SDK.
         from lmnr.sdk.debug.config import _is_truthy
 
-        if _is_truthy(os.environ.get("LMNR_DEBUG")):
-            disable_batch = True
+        disable_batch_resolved = disable_batch or _is_truthy(
+            os.environ.get("LMNR_DEBUG")
+        )
 
         TracerManager.init(
             base_url=url,
@@ -374,7 +375,7 @@ class Laminar:
             block_instruments=(
                 set(disabled_instruments) if disabled_instruments is not None else None
             ),
-            disable_batch=disable_batch,
+            disable_batch=disable_batch_resolved,
             max_export_batch_size=max_export_batch_size,
             timeout_seconds=export_timeout_seconds,
             set_global_tracer_provider=set_global_tracer_provider,
