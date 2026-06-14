@@ -354,6 +354,18 @@ class Laminar:
             # but the default attribute limit is 128, so raise it
             os.environ["OTEL_ATTRIBUTE_COUNT_LIMIT"] = "10000"
 
+        # A debug run wants spans to land in the UI instantly so the agent can
+        # iterate against fresh results — batching would hold them back by up to
+        # the schedule delay. Force the SimpleSpanProcessor on any LMNR_DEBUG run
+        # (the env-origin gate; a downstream context-armed run inherits the
+        # upstream session but configures its own transport). Mirrors the
+        # LMNR_DEBUG truthy gate used by _init_debug_runtime / the TS SDK.
+        from lmnr.sdk.debug.config import _is_truthy
+
+        disable_batch_resolved = disable_batch or _is_truthy(
+            os.environ.get("LMNR_DEBUG")
+        )
+
         TracerManager.init(
             base_url=url,
             http_port=http_port or 443,
@@ -363,7 +375,7 @@ class Laminar:
             block_instruments=(
                 set(disabled_instruments) if disabled_instruments is not None else None
             ),
-            disable_batch=disable_batch,
+            disable_batch=disable_batch_resolved,
             max_export_batch_size=max_export_batch_size,
             timeout_seconds=export_timeout_seconds,
             set_global_tracer_provider=set_global_tracer_provider,
