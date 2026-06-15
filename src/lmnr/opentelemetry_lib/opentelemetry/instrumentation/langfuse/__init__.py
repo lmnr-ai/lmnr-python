@@ -601,7 +601,17 @@ class LangfuseInstrumentor:
             from langfuse._client.resource_manager import (  # type: ignore[import-not-found]
                 LangfuseResourceManager,
             )
-        except Exception:
-            return
-        LangfuseResourceManager._initialize_instance = cls._original_initialize_instance
-        cls._original_initialize_instance = None
+            LangfuseResourceManager._initialize_instance = (
+                cls._original_initialize_instance
+            )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # If langfuse can't be imported here it isn't usable in this
+            # interpreter, so the patched hook can never be invoked anyway.
+            # Clear the bookkeeping regardless so `uninstrument` leaves no
+            # half-reset state (a retained `_original_initialize_instance`
+            # would make a later `_patch_resource_manager` short-circuit).
+            logger.debug(
+                "Could not restore Langfuse _initialize_instance patch: %s", exc
+            )
+        finally:
+            cls._original_initialize_instance = None
