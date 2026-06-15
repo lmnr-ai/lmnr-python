@@ -567,6 +567,17 @@ class LangfuseInstrumentor:
                 "Failed to attach Laminar processor to Langfuse TracerProvider: %s",
                 exc,
             )
+            # Roll back the partial attach and un-mark the provider so a later
+            # attempt (e.g. the resource-manager re-init hook) can retry. Left
+            # as-is, `pid` would stay in `_handled_providers` and every future
+            # `_attach_to_provider` call would short-circuit, so dual-export to
+            # Laminar would never run for this provider.
+            if self._translator is not None:
+                _remove_span_processor(provider, self._translator)
+            if self._lmnr_span_processor is not None:
+                _remove_span_processor(provider, self._lmnr_span_processor)
+            self._handled_providers.discard(pid)
+            type(self)._attached_providers.pop(pid, None)
 
     def _patch_resource_manager(self) -> None:
         try:
