@@ -106,6 +106,14 @@ def track_initializers(monkeypatch):
 @pytest.fixture
 def langfuse_installed(monkeypatch):
     monkeypatch.setattr(instruments_mod, "_langfuse_installed", lambda: True)
+    # The auto-enable path also gates on the SDK actually importing (metadata
+    # alone isn't enough — langfuse's pydantic-v1 models fail to import on
+    # Python 3.14). These tests assert the auto-enable instrument set, so the
+    # importability probe must be stubbed True too; otherwise on 3.14 the real
+    # probe returns False, `langfuse_active` never becomes true, and the tests
+    # assert against the fallback set instead.
+    monkeypatch.setattr(
+        instruments_mod, "_langfuse_sdk_importable", lambda: True)
 
 
 @pytest.fixture
