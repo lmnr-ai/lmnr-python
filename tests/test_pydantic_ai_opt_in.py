@@ -16,6 +16,7 @@ in the environment, and verify that:
   auto-removal.
 """
 
+import logging
 from unittest.mock import MagicMock
 
 import pytest
@@ -168,7 +169,7 @@ def test_block_pydantic_ai_disables_auto_logic(
 
 
 def test_deepagents_wins_over_pydantic_ai_when_both_installed(
-    track_initializers, pydantic_ai_installed, deepagents_installed
+    track_initializers, pydantic_ai_installed, deepagents_installed, caplog
 ):
     """When both deepagents and pydantic_ai are installed, deepagents wins.
 
@@ -178,7 +179,8 @@ def test_deepagents_wins_over_pydantic_ai_when_both_installed(
     spans and no LLM children. Deepagents' own noise-conflicts (LANGCHAIN /
     LANGGRAPH) still apply.
     """
-    init_instrumentations(tracer_provider=MagicMock(), instruments=None)
+    with caplog.at_level(logging.WARNING, logger=instruments_mod.__name__):
+        init_instrumentations(tracer_provider=MagicMock(), instruments=None)
 
     assert Instruments.DEEPAGENTS in track_initializers
     assert Instruments.PYDANTIC_AI in track_initializers
@@ -191,6 +193,9 @@ def test_deepagents_wins_over_pydantic_ai_when_both_installed(
     # Deepagents' own noise conflicts are still removed.
     assert Instruments.LANGCHAIN not in track_initializers
     assert Instruments.LANGGRAPH not in track_initializers
+    # The "Not enabling default LLM instrumentations" warning must NOT fire:
+    # the providers stayed enabled, so warning would misstate what happened.
+    assert "Not enabling default LLM instrumentations" not in caplog.text
 
 
 def test_blocking_deepagents_restores_pydantic_ai_conflict_removal(

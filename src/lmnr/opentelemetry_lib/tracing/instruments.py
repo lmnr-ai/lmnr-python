@@ -296,14 +296,17 @@ def init_instrumentations(
                 # provider calls on that path will be traced twice; callers who
                 # want pydantic_ai's de-duplication can pass an explicit
                 # `instruments` set to `Laminar.initialize`.
-                module_logger.warning(
-                    "Not enabling default LLM instrumentations to avoid double "
-                    + "instrumentation with Pydantic AI. To opt-in, pass the following "
-                    + "to Laminar.initialize() instruments=[Instruments.ANTHROPIC, "
-                    + "Instruments.BEDROCK, Instruments.COHERE, Instruments.GOOGLE_GENAI, "
-                    + "Instruments.GROQ, Instruments.MISTRAL, Instruments.OPENAI]"
-                )
                 if not deepagents_active:
+                    # Only emitted when the providers are actually stripped —
+                    # with deepagents active they stay enabled, so warning here
+                    # would misstate what happened and misdirect debugging.
+                    module_logger.warning(
+                        "Not enabling default LLM instrumentations to avoid double "
+                        + "instrumentation with Pydantic AI. To opt-in, pass the following "
+                        + "to Laminar.initialize() instruments=[Instruments.ANTHROPIC, "
+                        + "Instruments.BEDROCK, Instruments.COHERE, Instruments.GOOGLE_GENAI, "
+                        + "Instruments.GROQ, Instruments.MISTRAL, Instruments.OPENAI]"
+                    )
                     instruments = instruments - _PYDANTIC_AI_PROVIDER_CONFLICTS
             else:
                 instruments = instruments - {Instruments.PYDANTIC_AI}
