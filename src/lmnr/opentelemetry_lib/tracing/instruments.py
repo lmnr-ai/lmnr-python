@@ -215,6 +215,28 @@ def _langfuse_installed() -> bool:
         return False
 
 
+def _langfuse_sdk_importable() -> bool:
+    """Whether the langfuse SDK can actually be imported in this interpreter.
+
+    `_langfuse_installed()` reads package *metadata* only (it never imports
+    langfuse), so it reports True whenever a langfuse >= 3.0 distribution is
+    present — even when the SDK fails to import. langfuse (as of 3.14.x) ships
+    pydantic-v1-generated models that raise on Python 3.14, so the metadata
+    says "installed" while `import langfuse` blows up. In that state the bridge
+    installs but is inert: `_attach_to_existing_langfuse_providers` /
+    `_patch_resource_manager` swallow the import error and attach nothing. If we
+    still collapsed the default set to `{LANGFUSE, OPENTELEMETRY}` on that path,
+    the app would get NO tracing at all — no Langfuse spans (SDK unusable) and
+    no raw-provider/framework spans (auto-instrumentors stripped). Gate the
+    auto-enable on real importability so we fall back to the normal instrument
+    set when the bridge can't function."""
+    try:
+        import langfuse._client.resource_manager  # noqa: F401
+    except Exception:  # pylint: disable=broad-exception-caught
+        return False
+    return True
+
+
 def init_instrumentations(
     tracer_provider: TracerProvider,
     logger_provider: "LoggerProvider | None" = None,
@@ -226,7 +248,14 @@ def init_instrumentations(
     block_instruments = block_instruments or set()
     if instruments is None:
         langfuse_active = (
-            _langfuse_installed() and Instruments.LANGFUSE not in block_instruments
+            _langfuse_installed()
+            and Instruments.LANGFUSE not in block_instruments
+            # Only defer the whole instrument set to the bridge if the langfuse
+            # SDK actually imports. If metadata says >= 3.0 but `import langfuse`
+            # fails (pydantic v1 on Python 3.14), the bridge attaches nothing —
+            # collapsing the set would leave the app with no tracing at all, so
+            # fall through to the normal default instrument set instead.
+            and _langfuse_sdk_importable()
         )
         if langfuse_active:
             # Langfuse bridge takes over: when langfuse is installed and the
