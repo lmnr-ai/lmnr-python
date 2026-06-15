@@ -545,18 +545,23 @@ class LangfuseInstrumentor:
             # Laminar processor, plain append is fine — it's the exporter; as
             # long as the translator runs first, export order among exporters
             # doesn't matter.
-            attached = False
+            #
+            # Record the provider in `_attached_providers` as soon as the
+            # FIRST processor lands — not after both. If attaching the
+            # Laminar span processor raises after the translator was already
+            # prepended, an end-of-block record would be skipped and
+            # `uninstrument` could never detach the orphaned translator,
+            # letting a reinstall stack a second one. `_remove_span_processor`
+            # tolerates a processor that was never attached, so recording
+            # eagerly is safe.
             if self._translator is not None:
                 _prepend_span_processor(provider, self._translator)
-                attached = True
+                type(self)._attached_providers[pid] = provider
             if self._lmnr_span_processor is not None:
                 add = getattr(provider, "add_span_processor", None)
                 if callable(add):
                     add(self._lmnr_span_processor)
-                    attached = True
-            if attached:
-                # Track so `uninstrument` can walk back and detach.
-                type(self)._attached_providers[pid] = provider
+                    type(self)._attached_providers[pid] = provider
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning(
                 "Failed to attach Laminar processor to Langfuse TracerProvider: %s",
