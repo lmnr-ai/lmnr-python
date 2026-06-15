@@ -1117,6 +1117,9 @@ class LangfuseInstrumentor:
         repeat calls for the same provider a no-op).
         """
         try:
+            from litellm.integrations.langfuse.langfuse_otel import (  # type: ignore[import-not-found]
+                LangfuseOtelLogger,
+            )
             from litellm.litellm_core_utils import (  # type: ignore[import-not-found]
                 litellm_logging,
             )
@@ -1138,9 +1141,15 @@ class LangfuseInstrumentor:
         def patched(*args, **kwargs):  # type: ignore[no-untyped-def]
             result = original(*args, **kwargs)
             try:
-                provider = getattr(result, "_tracer_provider", None)
-                if provider is not None:
-                    instrumentor._attach_to_provider(provider)
+                # Only the `langfuse_otel` callback should be bridged. The
+                # factory builds many OTel-based callbacks (arize, otel, …),
+                # all of which carry a private `_tracer_provider`; attaching
+                # Laminar's translator + exporter to those would ship
+                # unrelated spans into Laminar.
+                if isinstance(result, LangfuseOtelLogger):
+                    provider = getattr(result, "_tracer_provider", None)
+                    if provider is not None:
+                        instrumentor._attach_to_provider(provider)
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.debug("LiteLLM post-init attach failed: %s", exc)
             return result

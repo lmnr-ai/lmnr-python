@@ -1474,3 +1474,68 @@ def test_litellm_bridge_patches_factory_for_late_loggers(span_exporter):
         )
         litellm_logging._in_memory_loggers[:] = original_loggers
         _reset_langfuse_instrumentor_state()
+
+
+@_litellm_required
+def test_litellm_factory_does_not_bridge_non_langfuse_loggers(span_exporter):
+    """The factory patch must bridge ONLY `langfuse_otel`. Other OTel-based
+    LiteLLM callbacks built through the same factory also carry a private
+    `_tracer_provider` (the base `otel` callback is exactly such a case);
+    attaching Laminar's translator to them would ship unrelated spans into
+    Laminar. The base `otel` provider is in fact the global (Laminar's own)
+    provider, so we can't assert on its processors — instead we assert the
+    factory patch never routes a non-langfuse logger through
+    `_attach_to_provider`."""
+    from litellm.litellm_core_utils import litellm_logging
+
+    _reset_langfuse_instrumentor_state()
+
+    original_loggers = list(litellm_logging._in_memory_loggers)
+    original_factory = (
+        litellm_logging._init_custom_logger_compatible_class
+    )
+    try:
+        wrapper = TracerWrapper.instance
+        instrumentor = LangfuseInstrumentor()
+        instrumentor.instrument(
+            lmnr_tracer_provider=wrapper._tracer_provider,
+            lmnr_span_processor=wrapper._span_processor,
+        )
+
+        attached: list = []
+        original_attach = instrumentor._attach_to_provider
+
+        def _spy(provider):
+            attached.append(provider)
+            return original_attach(provider)
+
+        instrumentor._attach_to_provider = _spy
+
+        # The base `otel` callback is an `OpenTelemetry` instance (NOT a
+        # `LangfuseOtelLogger`) that carries its own `_tracer_provider`. The
+        # factory patch must NOT attach to it.
+        litellm_logging._init_custom_logger_compatible_class(
+            "otel",
+            internal_usage_cache=None,
+            llm_router=None,
+        )
+        assert attached == [], (
+            "non-langfuse LiteLLM logger must NOT be routed to "
+            "_attach_to_provider"
+        )
+
+        # A `langfuse_otel` logger built through the same factory MUST attach.
+        litellm_logging._init_custom_logger_compatible_class(
+            "langfuse_otel",
+            internal_usage_cache=None,
+            llm_router=None,
+        )
+        assert attached, "langfuse_otel logger must be bridged via the factory"
+
+        instrumentor.uninstrument()
+    finally:
+        litellm_logging._init_custom_logger_compatible_class = (
+            original_factory
+        )
+        litellm_logging._in_memory_loggers[:] = original_loggers
+        _reset_langfuse_instrumentor_state()
