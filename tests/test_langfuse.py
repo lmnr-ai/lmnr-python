@@ -360,8 +360,10 @@ def test_translator_maps_generation_to_llm_span():
         "langfuse.observation.cost_details": json.dumps(
             {"input": 0.001, "output": 0.002, "total": 0.003}
         ),
+        # A non-message input dict (no "messages" key) is not a recognized
+        # chat-prompt shape, so it falls back to the raw lmnr.span.input blob.
         "langfuse.observation.input": '{"prompt": "hi"}',
-        "langfuse.observation.output": '{"text": "hello"}',
+        "langfuse.observation.output": '{"role": "assistant", "content": "hello"}',
     })
     translator.on_end(span)
 
@@ -375,7 +377,160 @@ def test_translator_maps_generation_to_llm_span():
     assert span.attributes["gen_ai.usage.output_cost"] == 0.002
     assert span.attributes["gen_ai.usage.cost"] == 0.003
     assert span.attributes[SPAN_INPUT] == '{"prompt": "hi"}'
-    assert span.attributes[SPAN_OUTPUT] == '{"text": "hello"}'
+    # A dict output is normalized into a one-element gen_ai.output.messages.
+    assert json.loads(span.attributes["gen_ai.output.messages"]) == [
+        {"role": "assistant", "content": "hello"}
+    ]
+
+
+def test_translator_splits_openai_input_messages_and_tools():
+    """Langfuse's OpenAI integration ships input as {messages, tools, ...}.
+
+    The translator must split that into gen_ai.input.messages +
+    gen_ai.tool.definitions rather than dumping the whole dict into
+    lmnr.span.input, or the Laminar frontend can't render the transcript.
+    """
+    translator = LangfuseAttributeTranslator()
+    tools = [{"type": "function", "function": {"name": "get_weather"}}]
+    messages = [
+        {"role": "system", "content": "You are helpful"},
+        {"role": "user", "content": "weather in SF?"},
+    ]
+    span = _FakeSpan({
+        "langfuse.observation.type": "generation",
+        "langfuse.observation.input": json.dumps(
+            {"messages": messages, "tools": tools}
+        ),
+        "langfuse.observation.output": json.dumps(
+            {"role": "assistant", "content": "It's sunny"}
+        ),
+    })
+    translator.on_end(span)
+
+    assert json.loads(span.attributes["gen_ai.input.messages"]) == messages
+    assert json.loads(span.attributes["gen_ai.tool.definitions"]) == tools
+    # The whole {messages, tools} dict must NOT leak into lmnr.span.input.
+    assert SPAN_INPUT not in span.attributes
+    assert json.loads(span.attributes["gen_ai.output.messages"]) == [
+        {"role": "assistant", "content": "It's sunny"}
+    ]
+
+
+def test_translator_handles_bare_message_list_input():
+    """The vanilla OpenAI case (no tools) ships a bare message array."""
+    translator = LangfuseAttributeTranslator()
+    messages = [{"role": "user", "content": "hi"}]
+    span = _FakeSpan({
+        "langfuse.observation.type": "generation",
+        "langfuse.observation.input": json.dumps(messages),
+    })
+    translator.on_end(span)
+    assert json.loads(span.attributes["gen_ai.input.messages"]) == messages
+    assert "gen_ai.tool.definitions" not in span.attributes
+    assert SPAN_INPUT not in span.attributes
+
+
+def test_translator_maps_openai_functions_to_tool_definitions():
+    """The legacy `functions` key maps to tool definitions too."""
+    translator = LangfuseAttributeTranslator()
+    functions = [{"name": "get_weather", "parameters": {}}]
+    span = _FakeSpan({
+        "langfuse.observation.type": "generation",
+        "langfuse.observation.input": json.dumps(
+            {"messages": [{"role": "user", "content": "hi"}], "functions": functions}
+        ),
+    })
+    translator.on_end(span)
+    assert json.loads(span.attributes["gen_ai.tool.definitions"]) == functions
+
+
+def test_translator_non_llm_input_falls_back_to_span_input():
+    """Non-LLM observations keep the raw input/output blob behaviour."""
+    translator = LangfuseAttributeTranslator()
+    span = _FakeSpan({
+        "langfuse.observation.type": "span",
+        "langfuse.observation.input": '{"messages": [{"role": "user"}]}',
+        "langfuse.observation.output": '{"role": "assistant"}',
+    })
+    translator.on_end(span)
+    assert span.attributes[SPAN_INPUT] == '{"messages": [{"role": "user"}]}'
+    assert span.attributes[SPAN_OUTPUT] == '{"role": "assistant"}'
+    assert "gen_ai.input.messages" not in span.attributes
+    assert "gen_ai.output.messages" not in span.attributes
+
+
+def test_translator_converts_openinference_llm_span():
+    """openinference instrumentations (groq / google_genai) emit a flat,
+    indexed attribute layout with no langfuse.* keys. The translator must
+    recognize and convert them into Laminar / GenAI conventions."""
+    translator = LangfuseAttributeTranslator()
+    span = _FakeSpan(
+        {
+            "openinference.span.kind": "LLM",
+            "llm.model_name": "gemini-2.0-flash",
+            "llm.token_count.prompt": 12,
+            "llm.token_count.completion": 8,
+            "llm.token_count.total": 20,
+            "llm.input_messages.0.message.role": "system",
+            "llm.input_messages.0.message.content": "You are helpful",
+            "llm.input_messages.1.message.role": "user",
+            "llm.input_messages.1.message.content": "weather in SF?",
+            "llm.output_messages.0.message.role": "assistant",
+            "llm.output_messages.0.message.tool_calls.0.tool_call.id": "call_1",
+            "llm.output_messages.0.message.tool_calls.0.tool_call.function.name": "get_weather",
+            "llm.output_messages.0.message.tool_calls.0.tool_call.function.arguments": '{"city": "SF"}',
+            "llm.tools.0.tool.json_schema": json.dumps(
+                {"type": "function", "function": {"name": "get_weather"}}
+            ),
+        },
+        scope_name="openinference.instrumentation.google_genai",
+    )
+    translator.on_end(span)
+
+    assert span.attributes[SPAN_TYPE] == "LLM"
+    assert span.attributes["gen_ai.request.model"] == "gemini-2.0-flash"
+    assert span.attributes["gen_ai.usage.input_tokens"] == 12
+    assert span.attributes["gen_ai.usage.output_tokens"] == 8
+    assert span.attributes["llm.usage.total_tokens"] == 20
+    assert json.loads(span.attributes["gen_ai.input.messages"]) == [
+        {"role": "system", "content": "You are helpful"},
+        {"role": "user", "content": "weather in SF?"},
+    ]
+    out = json.loads(span.attributes["gen_ai.output.messages"])
+    assert out[0]["role"] == "assistant"
+    assert out[0]["tool_calls"][0]["function"]["name"] == "get_weather"
+    assert out[0]["tool_calls"][0]["function"]["arguments"] == '{"city": "SF"}'
+    assert json.loads(span.attributes["gen_ai.tool.definitions"]) == [
+        {"type": "function", "function": {"name": "get_weather"}}
+    ]
+
+
+def test_translator_converts_openinference_without_span_kind():
+    """openinference spans are still recognized via the llm.* indexed keys
+    even when openinference.span.kind is absent."""
+    translator = LangfuseAttributeTranslator()
+    span = _FakeSpan(
+        {
+            "llm.input_messages.0.message.role": "user",
+            "llm.input_messages.0.message.content": "hi",
+            "llm.token_count.prompt": 3,
+        },
+        scope_name="openinference.instrumentation.groq",
+    )
+    translator.on_end(span)
+    assert span.attributes[SPAN_TYPE] == "LLM"
+    assert json.loads(span.attributes["gen_ai.input.messages"]) == [
+        {"role": "user", "content": "hi"}
+    ]
+    assert span.attributes["gen_ai.usage.input_tokens"] == 3
+
+
+def test_translator_ignores_plain_non_langfuse_non_oi_spans():
+    """A span that is neither langfuse- nor openinference-shaped is untouched."""
+    translator = LangfuseAttributeTranslator()
+    span = _FakeSpan({"some.attr": "x"}, scope_name="my.app")
+    translator.on_end(span)
+    assert span.attributes == {"some.attr": "x"}
 
 
 def test_translator_maps_tool_observation():
@@ -533,6 +688,41 @@ def test_connect_to_langfuse_translates_generation_attributes(
     assert span.attributes["gen_ai.usage.input_cost"] == 0.001
     assert span.attributes["gen_ai.usage.output_cost"] == 0.002
     assert span.attributes["gen_ai.usage.cost"] == 0.003
+
+
+def test_connect_to_langfuse_splits_openai_generation_input(
+    span_exporter, langfuse_client
+):
+    """End-to-end: a generation whose input is the OpenAI {messages, tools}
+    shape (what `langfuse.openai` ships) is split into gen_ai.input.messages +
+    gen_ai.tool.definitions on the Laminar side."""
+    import contextlib
+
+    assert Laminar.connect_to_langfuse() is True
+
+    tools = [{"type": "function", "function": {"name": "get_weather"}}]
+    messages = [{"role": "user", "content": "weather in SF?"}]
+    with langfuse_client.start_as_current_observation(
+        name="openai-gen",
+        as_type="generation",
+        model="gpt-4o",
+        input={"messages": messages, "tools": tools},
+    ) as gen:
+        gen.update(output={"role": "assistant", "content": "It's sunny"})
+
+    with contextlib.redirect_stderr(open(os.devnull, "w")):
+        langfuse_client.flush()
+    TracerWrapper.instance.flush()
+
+    span = next(
+        s for s in span_exporter.get_finished_spans() if s.name == "openai-gen"
+    )
+    assert json.loads(span.attributes["gen_ai.input.messages"]) == messages
+    assert json.loads(span.attributes["gen_ai.tool.definitions"]) == tools
+    assert SPAN_INPUT not in span.attributes
+    assert json.loads(span.attributes["gen_ai.output.messages"]) == [
+        {"role": "assistant", "content": "It's sunny"}
+    ]
 
 
 def test_connect_to_langfuse_promotes_trace_session_and_user(

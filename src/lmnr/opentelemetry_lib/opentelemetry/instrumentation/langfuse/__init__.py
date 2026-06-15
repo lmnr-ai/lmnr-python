@@ -27,8 +27,13 @@ Two operations are performed:
    - A lightweight `SpanProcessor` sits in front of Laminar's exporter and
      rewrites attributes on `on_end` so the span renders with correct model,
      tokens, cost, input/output in the Laminar UI.
-   - Only attributes from Langfuse-scoped spans are mutated (detected by
-     instrumentation_scope.name == "langfuse-sdk").
+   - Langfuse-scoped spans (detected by instrumentation_scope.name ==
+     "langfuse-sdk" or any `langfuse.*` attribute) have LLM input/output split
+     into the GenAI message conventions (`gen_ai.input.messages` /
+     `gen_ai.output.messages` / `gen_ai.tool.definitions`).
+   - openinference-instrumented spans (groq / google_genai, which Langfuse's
+     docs recommend) carry a different flat/indexed attribute layout and no
+     `langfuse.*` keys; they're detected and translated separately.
 """
 
 from __future__ import annotations
@@ -49,6 +54,7 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
     USER_ID,
 )
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.utils import json_dumps
 
 logger = get_default_logger(__name__)
 
@@ -73,6 +79,9 @@ _OBSERVATION_METADATA_PREFIX = "langfuse.observation.metadata"
 
 _GEN_AI_REQUEST_MODEL = "gen_ai.request.model"
 _GEN_AI_RESPONSE_MODEL = "gen_ai.response.model"
+_GEN_AI_INPUT_MESSAGES = "gen_ai.input.messages"
+_GEN_AI_OUTPUT_MESSAGES = "gen_ai.output.messages"
+_GEN_AI_TOOL_DEFINITIONS = "gen_ai.tool.definitions"
 _GEN_AI_USAGE_INPUT_TOKENS = "gen_ai.usage.input_tokens"
 _GEN_AI_USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens"
 _GEN_AI_USAGE_TOTAL_TOKENS = "llm.usage.total_tokens"
@@ -86,6 +95,29 @@ _GEN_AI_USAGE_TOTAL_COST = "gen_ai.usage.cost"
 _LLM_OBSERVATION_TYPES = {"generation", "completion", "embedding"}
 _TOOL_OBSERVATION_TYPES = {"tool"}
 
+# --- OpenInference semantic conventions -------------------------------------
+# Langfuse's docs recommend openinference instrumentations for groq and
+# google_genai (e.g. `openinference-instrumentation-google-genai`). Those emit
+# a flat, indexed attribute layout — `llm.input_messages.0.message.role`,
+# `llm.input_messages.0.message.content`, `llm.output_messages.0...`,
+# `llm.token_count.prompt`, `llm.tools.0.tool.json_schema`, etc. — completely
+# different from both Langfuse's `langfuse.*` blobs and Laminar's GenAI shape.
+# See the openinference-semantic-conventions package in the Arize-ai/
+# openinference repo. We translate the flat layout into Laminar / OTel GenAI
+# conventions.
+_OI_SPAN_KIND = "openinference.span.kind"
+_OI_LLM_MODEL_NAME = "llm.model_name"
+_OI_LLM_INPUT_MESSAGES = "llm.input_messages"
+_OI_LLM_OUTPUT_MESSAGES = "llm.output_messages"
+_OI_LLM_TOOLS = "llm.tools"
+_OI_TOKEN_PROMPT = "llm.token_count.prompt"
+_OI_TOKEN_COMPLETION = "llm.token_count.completion"
+_OI_TOKEN_TOTAL = "llm.token_count.total"
+_OI_INPUT_VALUE = "input.value"
+_OI_OUTPUT_VALUE = "output.value"
+# openinference.span.kind values that mean "LLM call".
+_OI_LLM_SPAN_KINDS = {"LLM"}
+
 
 def _parse_json(raw: Any) -> Any:
     if not isinstance(raw, str):
@@ -94,6 +126,55 @@ def _parse_json(raw: Any) -> Any:
         return json.loads(raw)
     except (ValueError, TypeError):
         return raw
+
+
+def _genai_input_from_langfuse(input_raw: Any) -> tuple[Any, Any] | None:
+    """Split a Langfuse LLM input into (messages, tool_definitions).
+
+    Langfuse's OpenAI integration ships the call input in one of two shapes
+    (see `langfuse.openai._extract_chat_prompt`):
+
+    - A bare list of OpenAI-style message dicts (`[{role, content}, ...]`) when
+      the caller passed no `tools`/`functions`.
+    - A dict `{"messages": [...], "tools": [...], "functions": [...],
+      "function_call": ...}` when tools/functions were supplied.
+
+    Laminar (and the app-server's GenAI parser) want these split into
+    `gen_ai.input.messages` (the message array) and `gen_ai.tool.definitions`
+    (the tool/function array) — dumping the whole dict into `lmnr.span.input`
+    leaves them unparsed in the UI. Returns `(messages, tools_or_none)` when
+    the shape is recognized, or `None` when it isn't (caller falls back to the
+    raw input). Langchain-style inputs share the OpenAI message shape, so the
+    same split applies.
+    """
+    parsed = _parse_json(input_raw)
+    if isinstance(parsed, list):
+        return parsed, None
+    if isinstance(parsed, dict) and isinstance(parsed.get("messages"), list):
+        tools = parsed.get("tools")
+        if tools is None:
+            tools = parsed.get("functions")
+        return parsed["messages"], tools
+    return None
+
+
+def _genai_output_from_langfuse(output_raw: Any) -> Any | None:
+    """Normalize a Langfuse LLM output into a `gen_ai.output.messages` array.
+
+    Langfuse's OpenAI integration emits the response as a single message dict
+    (`{role, content, tool_calls, function_call, audio}` — see
+    `_extract_chat_response`). The GenAI convention is an array of such message
+    dicts (one per choice), matching what Laminar's own litellm wrapper stamps.
+    A single dict is wrapped into a one-element list; an already-list value is
+    passed through. Returns `None` for any other shape so the caller falls back
+    to `lmnr.span.output`.
+    """
+    parsed = _parse_json(output_raw)
+    if isinstance(parsed, list):
+        return parsed
+    if isinstance(parsed, dict):
+        return [parsed]
+    return None
 
 
 def _usage_field(usage: Any, *keys: str) -> int | None:
@@ -114,6 +195,167 @@ def _cost_field(cost: Any, *keys: str) -> float | None:
         if isinstance(v, (int, float)):
             return float(v)
     return None
+
+
+def _oi_collect_indexed(
+    attrs: dict[str, Any], prefix: str
+) -> list[dict[str, Any]]:
+    """Reassemble openinference's flat indexed attributes into a list of dicts.
+
+    OpenInference flattens nested structures into dotted keys with numeric
+    indices, e.g. for `llm.input_messages`:
+
+        llm.input_messages.0.message.role     = "user"
+        llm.input_messages.0.message.content  = "hi"
+        llm.input_messages.1.message.role     = "assistant"
+        llm.input_messages.1.message.tool_calls.0.tool_call.function.name = ...
+
+    Given the list prefix (`llm.input_messages`) this walks every matching key,
+    parses the remaining dotted path (treating all-digit segments as list
+    indices and everything else as dict keys), and rebuilds the nested
+    structure. Returns the list ordered by leading index. Leaf JSON-string
+    values (openinference stamps e.g. `*.arguments` as a JSON string) are left
+    as-is; the caller decides whether to re-parse.
+    """
+    by_index: dict[int, Any] = {}
+    plen = len(prefix) + 1
+    for key, value in attrs.items():
+        if not isinstance(key, str) or not key.startswith(prefix + "."):
+            continue
+        rest = key[plen:]
+        segments = rest.split(".")
+        if not segments or not segments[0].isdigit():
+            continue
+        idx = int(segments[0])
+        container = by_index.setdefault(idx, {})
+        _oi_assign_path(container, segments[1:], value)
+    return [by_index[i] for i in sorted(by_index)]
+
+
+def _oi_assign_path(
+    container: dict[str, Any], segments: list[str], value: Any
+) -> None:
+    """Assign `value` into `container` following a dotted openinference path.
+
+    Numeric segments index into lists, named segments index into dicts. Lists
+    are grown with placeholder dicts as needed. The first segment is always a
+    dict key (openinference never starts a sub-path with an index once the
+    leading list index has been stripped).
+    """
+    cur: Any = container
+    for i, seg in enumerate(segments):
+        last = i == len(segments) - 1
+        nxt = segments[i + 1] if not last else None
+        if seg.isdigit():
+            seg_idx = int(seg)
+            if not isinstance(cur, list):
+                return
+            while len(cur) <= seg_idx:
+                cur.append({})
+            if last:
+                cur[seg_idx] = value
+            else:
+                if not isinstance(cur[seg_idx], (dict, list)):
+                    cur[seg_idx] = [] if (nxt and nxt.isdigit()) else {}
+                cur = cur[seg_idx]
+        else:
+            if not isinstance(cur, dict):
+                return
+            if last:
+                cur[seg] = value
+            else:
+                child = cur.get(seg)
+                if not isinstance(child, (dict, list)):
+                    child = [] if (nxt and nxt.isdigit()) else {}
+                    cur[seg] = child
+                cur = child
+
+
+def _oi_message_to_genai(raw: dict[str, Any]) -> dict[str, Any]:
+    """Convert one reassembled openinference message dict into an OpenAI-style
+    GenAI message dict.
+
+    OpenInference nests the message under a `message` key with fields like
+    `role`, `content`, `contents` (multi-part), `tool_calls` (each
+    `{tool_call: {id, function: {name, arguments}}}`), `tool_call_id`,
+    `function_call_name` / `function_call_arguments_json`. We flatten that into
+    the `{role, content, tool_calls: [{id, type, function: {...}}]}` shape
+    Laminar's other instrumentors emit.
+    """
+    msg = raw.get("message", raw) if isinstance(raw, dict) else {}
+    if not isinstance(msg, dict):
+        return {"role": "assistant", "content": str(msg)}
+    out: dict[str, Any] = {"role": msg.get("role") or "assistant"}
+
+    content = msg.get("content")
+    contents = msg.get("contents")
+    if content is not None:
+        out["content"] = content
+    elif isinstance(contents, list):
+        out["content"] = contents
+
+    tool_calls = msg.get("tool_calls")
+    if isinstance(tool_calls, list):
+        converted = []
+        for tc in tool_calls:
+            inner = tc.get("tool_call", tc) if isinstance(tc, dict) else {}
+            if not isinstance(inner, dict):
+                continue
+            fn = inner.get("function", {})
+            fn = fn if isinstance(fn, dict) else {}
+            converted.append(
+                {
+                    "id": inner.get("id"),
+                    "type": "function",
+                    "function": {
+                        "name": fn.get("name"),
+                        "arguments": fn.get("arguments"),
+                    },
+                }
+            )
+        if converted:
+            out["tool_calls"] = converted
+
+    if msg.get("function_call_name") is not None:
+        out["function_call"] = {
+            "name": msg.get("function_call_name"),
+            "arguments": msg.get("function_call_arguments_json"),
+        }
+    if msg.get("tool_call_id") is not None:
+        out["tool_call_id"] = msg.get("tool_call_id")
+    if msg.get("name") is not None:
+        out["name"] = msg.get("name")
+    return out
+
+
+def _oi_tool_to_genai(raw: dict[str, Any]) -> Any:
+    """Convert one reassembled openinference tool dict into a GenAI tool
+    definition.
+
+    OpenInference stamps each tool as `llm.tools.K.tool.json_schema`, where the
+    value is the full JSON-schema tool definition (usually a JSON string). We
+    return the parsed schema so it lands in `gen_ai.tool.definitions` in the
+    same shape OpenAI/litellm tools use.
+    """
+    tool = raw.get("tool", raw) if isinstance(raw, dict) else raw
+    if isinstance(tool, dict) and "json_schema" in tool:
+        return _parse_json(tool["json_schema"])
+    return tool
+
+
+def _is_openinference_span(span: ReadableSpan) -> bool:
+    attrs = span.attributes or {}
+    if _OI_SPAN_KIND in attrs:
+        return True
+    return any(
+        isinstance(k, str)
+        and (
+            k.startswith(_OI_LLM_INPUT_MESSAGES + ".")
+            or k.startswith(_OI_LLM_OUTPUT_MESSAGES + ".")
+            or k.startswith("llm.token_count.")
+        )
+        for k in attrs.keys()
+    )
 
 
 def _prepend_span_processor(provider: Any, processor: SpanProcessor) -> bool:
@@ -227,10 +469,15 @@ class LangfuseAttributeTranslator(SpanProcessor):
         return None
 
     def on_end(self, span: ReadableSpan) -> None:
-        if not _is_langfuse_span(span):
-            return
+        # openinference-shaped spans (groq / google_genai via the
+        # openinference instrumentations Langfuse recommends) carry neither the
+        # `langfuse-sdk` scope nor `langfuse.*` attributes, so they're checked
+        # separately. A span can't be both shapes; prefer the langfuse check.
         try:
-            self._translate(span)
+            if _is_langfuse_span(span):
+                self._translate(span)
+            elif _is_openinference_span(span):
+                self._translate_openinference(span)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.debug("Langfuse attribute translation failed: %s", exc)
 
@@ -247,10 +494,12 @@ class LangfuseAttributeTranslator(SpanProcessor):
             return
         new_attrs: dict[str, Any] = {}
 
+        is_llm = False
         obs_type = attrs.get(_OBSERVATION_TYPE)
         if isinstance(obs_type, str):
             if obs_type.lower() in _LLM_OBSERVATION_TYPES:
                 new_attrs[SPAN_TYPE] = "LLM"
+                is_llm = True
             elif obs_type.lower() in _TOOL_OBSERVATION_TYPES:
                 new_attrs[SPAN_TYPE] = "TOOL"
 
@@ -299,18 +548,47 @@ class LangfuseAttributeTranslator(SpanProcessor):
             new_attrs[_GEN_AI_USAGE_TOTAL_COST] = total_cost
 
         # Input / output — prefer observation-level, fall back to trace-level.
+        # For LLM observations we translate into the GenAI message conventions
+        # (`gen_ai.input.messages` / `gen_ai.output.messages` /
+        # `gen_ai.tool.definitions`) so the Laminar UI renders them as a chat
+        # transcript and the app-server parses tokens/tools correctly. For
+        # non-LLM observations (or when the LLM shape isn't recognized) we fall
+        # back to the raw `lmnr.span.input/output` blob.
         input_raw = attrs.get(_OBSERVATION_INPUT)
         if input_raw is None:
             input_raw = attrs.get(_TRACE_INPUT)
-        if isinstance(input_raw,
-                      str) and input_raw and SPAN_INPUT not in attrs:
+        input_handled = False
+        if is_llm and input_raw is not None:
+            split = _genai_input_from_langfuse(input_raw)
+            if split is not None:
+                messages, tools = split
+                new_attrs[_GEN_AI_INPUT_MESSAGES] = json_dumps(messages)
+                if tools:
+                    new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(tools)
+                input_handled = True
+        if (
+            not input_handled
+            and isinstance(input_raw, str)
+            and input_raw
+            and SPAN_INPUT not in attrs
+        ):
             new_attrs[SPAN_INPUT] = input_raw
 
         output_raw = attrs.get(_OBSERVATION_OUTPUT)
         if output_raw is None:
             output_raw = attrs.get(_TRACE_OUTPUT)
-        if isinstance(output_raw,
-                      str) and output_raw and SPAN_OUTPUT not in attrs:
+        output_handled = False
+        if is_llm and output_raw is not None:
+            messages = _genai_output_from_langfuse(output_raw)
+            if messages is not None:
+                new_attrs[_GEN_AI_OUTPUT_MESSAGES] = json_dumps(messages)
+                output_handled = True
+        if (
+            not output_handled
+            and isinstance(output_raw, str)
+            and output_raw
+            and SPAN_OUTPUT not in attrs
+        ):
             new_attrs[SPAN_OUTPUT] = output_raw
 
         # Session / user id — promote to Laminar association properties so the
@@ -352,6 +630,10 @@ class LangfuseAttributeTranslator(SpanProcessor):
                     new_attrs[f"{ASSOCIATION_PROPERTIES}.metadata.{sub}"] = v
                     break
 
+        LangfuseAttributeTranslator._write_attrs(span, new_attrs)
+
+    @staticmethod
+    def _write_attrs(span: ReadableSpan, new_attrs: dict[str, Any]) -> None:
         if not new_attrs:
             return
         # `on_end` receives a `ReadableSpan` (no `set_attribute` method), and
@@ -365,6 +647,101 @@ class LangfuseAttributeTranslator(SpanProcessor):
                 target[k] = v
             except Exception:  # pylint: disable=broad-exception-caught
                 pass
+
+    @staticmethod
+    def _translate_openinference(span: ReadableSpan) -> None:
+        """Translate openinference-flattened LLM attributes into Laminar / OTel
+        GenAI conventions.
+
+        Handles the groq / google_genai path: Langfuse's docs route those
+        through openinference instrumentations, whose attribute layout is a
+        flat set of indexed keys rather than Langfuse's `langfuse.*` JSON
+        blobs. We reassemble the indexed messages/tools, convert tokens, model
+        name, and mark the span as LLM so it renders correctly.
+        """
+        attrs = dict(span.attributes or {})
+        if not attrs:
+            return
+        new_attrs: dict[str, Any] = {}
+
+        kind = attrs.get(_OI_SPAN_KIND)
+        is_llm = (
+            isinstance(kind, str) and kind.upper() in _OI_LLM_SPAN_KINDS
+        ) or any(
+            isinstance(k, str)
+            and (
+                k.startswith(_OI_LLM_INPUT_MESSAGES + ".")
+                or k.startswith(_OI_LLM_OUTPUT_MESSAGES + ".")
+            )
+            for k in attrs.keys()
+        )
+        if is_llm:
+            new_attrs[SPAN_TYPE] = "LLM"
+        elif isinstance(kind, str) and kind.upper() == "TOOL":
+            new_attrs[SPAN_TYPE] = "TOOL"
+
+        # Model
+        model = attrs.get(_OI_LLM_MODEL_NAME)
+        if isinstance(model, str) and model:
+            new_attrs.setdefault(_GEN_AI_REQUEST_MODEL, model)
+            new_attrs.setdefault(_GEN_AI_RESPONSE_MODEL, model)
+
+        # Tokens
+        prompt_tokens = attrs.get(_OI_TOKEN_PROMPT)
+        completion_tokens = attrs.get(_OI_TOKEN_COMPLETION)
+        total_tokens = attrs.get(_OI_TOKEN_TOTAL)
+        if isinstance(prompt_tokens, (int, float)):
+            new_attrs[_GEN_AI_USAGE_INPUT_TOKENS] = int(prompt_tokens)
+        if isinstance(completion_tokens, (int, float)):
+            new_attrs[_GEN_AI_USAGE_OUTPUT_TOKENS] = int(completion_tokens)
+        if isinstance(total_tokens, (int, float)):
+            new_attrs[_GEN_AI_USAGE_TOTAL_TOKENS] = int(total_tokens)
+        elif isinstance(prompt_tokens, (int, float)) or isinstance(
+            completion_tokens, (int, float)
+        ):
+            new_attrs[_GEN_AI_USAGE_TOTAL_TOKENS] = int(
+                (prompt_tokens or 0) + (completion_tokens or 0)
+            )
+
+        # Messages
+        input_messages = [
+            _oi_message_to_genai(m)
+            for m in _oi_collect_indexed(attrs, _OI_LLM_INPUT_MESSAGES)
+        ]
+        if input_messages:
+            new_attrs[_GEN_AI_INPUT_MESSAGES] = json_dumps(input_messages)
+        output_messages = [
+            _oi_message_to_genai(m)
+            for m in _oi_collect_indexed(attrs, _OI_LLM_OUTPUT_MESSAGES)
+        ]
+        if output_messages:
+            new_attrs[_GEN_AI_OUTPUT_MESSAGES] = json_dumps(output_messages)
+
+        # Tool definitions
+        tools = [
+            _oi_tool_to_genai(t)
+            for t in _oi_collect_indexed(attrs, _OI_LLM_TOOLS)
+        ]
+        tools = [t for t in tools if t]
+        if tools:
+            new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(tools)
+
+        # Fall back to openinference's opaque input/output blobs only when the
+        # structured messages weren't available.
+        if not input_messages:
+            in_val = attrs.get(_OI_INPUT_VALUE)
+            if isinstance(in_val, str) and in_val and SPAN_INPUT not in attrs:
+                new_attrs[SPAN_INPUT] = in_val
+        if not output_messages:
+            out_val = attrs.get(_OI_OUTPUT_VALUE)
+            if (
+                isinstance(out_val, str)
+                and out_val
+                and SPAN_OUTPUT not in attrs
+            ):
+                new_attrs[SPAN_OUTPUT] = out_val
+
+        LangfuseAttributeTranslator._write_attrs(span, new_attrs)
 
 
 class LangfuseInstrumentor:
