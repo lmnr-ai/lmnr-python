@@ -437,9 +437,7 @@ def _remove_span_processor(provider: Any, processor: SpanProcessor) -> bool:
 
 def _is_langfuse_span(span: ReadableSpan) -> bool:
     scope = getattr(span, "instrumentation_scope", None)
-    if scope is None:
-        return False
-    if scope.name == LANGFUSE_TRACER_NAME:
+    if scope is not None and scope.name == LANGFUSE_TRACER_NAME:
         return True
     attrs = span.attributes or {}
     return any(

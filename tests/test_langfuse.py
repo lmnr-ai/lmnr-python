@@ -36,6 +36,7 @@ from lmnr import Laminar  # noqa: E402
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (  # noqa: E402
     LangfuseAttributeTranslator,
     LangfuseInstrumentor,
+    _is_langfuse_span,
 )
 from lmnr.opentelemetry_lib.tracing import TracerWrapper, instruments as instruments_mod  # noqa: E402
 from lmnr.opentelemetry_lib.tracing.attributes import (  # noqa: E402
@@ -347,6 +348,15 @@ def test_translator_ignores_non_langfuse_spans():
     span = _FakeSpan({"some.attr": "x"}, scope_name="openai")
     translator.on_end(span)
     assert span.attributes == {"some.attr": "x"}
+
+
+def test_is_langfuse_span_detects_attrs_without_scope():
+    """A span carrying `langfuse.*` attributes is a Langfuse span even when its
+    instrumentation scope is missing — detection must fall through to the
+    attribute check rather than short-circuiting on a None scope."""
+    span = _FakeSpan({"langfuse.observation.type": "generation"})
+    span.instrumentation_scope = None
+    assert _is_langfuse_span(span) is True
 
 
 def test_translator_maps_generation_to_llm_span():
