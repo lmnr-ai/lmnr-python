@@ -469,15 +469,25 @@ class LangfuseAttributeTranslator(SpanProcessor):
         return None
 
     def on_end(self, span: ReadableSpan) -> None:
-        # openinference-shaped spans (groq / google_genai via the
-        # openinference instrumentations Langfuse recommends) carry neither the
-        # `langfuse-sdk` scope nor `langfuse.*` attributes, so they're checked
-        # separately. A span can't be both shapes; prefer the langfuse check.
+        # Routing precedence — openinference FIRST:
+        #   * groq / google_genai (the openinference instrumentations Langfuse
+        #     recommends) emit purely openinference `llm.*` attrs, no
+        #     `langfuse.*` keys.
+        #   * LiteLLM's `langfuse_otel` callback emits a HYBRID: openinference
+        #     `llm.*` attrs (model, tokens, indexed messages, tools, span kind)
+        #     AND `langfuse.*` attrs — but it never sets
+        #     `langfuse.observation.type`, so the langfuse path can't tell the
+        #     span is an LLM call and would miss the model/tokens/messages.
+        #     The openinference path carries all of that, so it wins; it also
+        #     promotes the `langfuse.*` trace-level session/user/metadata.
+        #   * Real Langfuse-SDK spans never carry `openinference.span.kind` /
+        #     `llm.token_count.*` / `llm.input_messages.*`, so they fall
+        #     through to the langfuse path.
         try:
-            if _is_langfuse_span(span):
-                self._translate(span)
-            elif _is_openinference_span(span):
+            if _is_openinference_span(span):
                 self._translate_openinference(span)
+            elif _is_langfuse_span(span):
+                self._translate(span)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.debug("Langfuse attribute translation failed: %s", exc)
 
@@ -591,8 +601,24 @@ class LangfuseAttributeTranslator(SpanProcessor):
         ):
             new_attrs[SPAN_OUTPUT] = output_raw
 
-        # Session / user id — promote to Laminar association properties so the
-        # trace groups by session in the UI.
+        LangfuseAttributeTranslator._promote_trace_attributes(attrs, new_attrs)
+        LangfuseAttributeTranslator._write_attrs(span, new_attrs)
+
+    @staticmethod
+    def _promote_trace_attributes(
+        attrs: dict[str, Any], new_attrs: dict[str, Any]
+    ) -> None:
+        """Promote Langfuse trace-level `langfuse.*` attrs to Laminar
+        association properties.
+
+        Shared by both the langfuse and openinference translators: LiteLLM's
+        `langfuse_otel` callback stamps `session.id` / `user.id` /
+        `langfuse.trace.*` alongside the openinference `llm.*` attrs, so the
+        openinference path needs this promotion too (the openinference
+        instrumentations for groq / google_genai simply won't have these keys,
+        making it a harmless no-op there).
+        """
+        # Session / user id — promote so the trace groups by session in the UI.
         session_id = attrs.get(_TRACE_SESSION_ID)
         if isinstance(session_id, str) and session_id:
             new_attrs[f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}"] = session_id
@@ -629,8 +655,6 @@ class LangfuseAttributeTranslator(SpanProcessor):
                     sub = k[len(prefix) + 1:]
                     new_attrs[f"{ASSOCIATION_PROPERTIES}.metadata.{sub}"] = v
                     break
-
-        LangfuseAttributeTranslator._write_attrs(span, new_attrs)
 
     @staticmethod
     def _write_attrs(span: ReadableSpan, new_attrs: dict[str, Any]) -> None:
@@ -726,20 +750,32 @@ class LangfuseAttributeTranslator(SpanProcessor):
         if tools:
             new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(tools)
 
-        # Fall back to openinference's opaque input/output blobs only when the
-        # structured messages weren't available.
+        # Fall back to opaque input/output blobs only when the structured
+        # messages weren't available. openinference stamps `input.value` /
+        # `output.value`; LiteLLM's hybrid spans additionally carry the
+        # `langfuse.observation.input/output` blobs, so try those too.
         if not input_messages:
             in_val = attrs.get(_OI_INPUT_VALUE)
+            if not (isinstance(in_val, str) and in_val):
+                in_val = attrs.get(_OBSERVATION_INPUT)
             if isinstance(in_val, str) and in_val and SPAN_INPUT not in attrs:
                 new_attrs[SPAN_INPUT] = in_val
         if not output_messages:
             out_val = attrs.get(_OI_OUTPUT_VALUE)
+            if not (isinstance(out_val, str) and out_val):
+                out_val = attrs.get(_OBSERVATION_OUTPUT)
             if (
                 isinstance(out_val, str)
                 and out_val
                 and SPAN_OUTPUT not in attrs
             ):
                 new_attrs[SPAN_OUTPUT] = out_val
+
+        # LiteLLM's `langfuse_otel` hybrid spans also carry trace-level
+        # `langfuse.*` session/user/metadata; promote those too. For the pure
+        # openinference (groq / google_genai) case these keys are absent, so
+        # this is a no-op.
+        LangfuseAttributeTranslator._promote_trace_attributes(attrs, new_attrs)
 
         LangfuseAttributeTranslator._write_attrs(span, new_attrs)
 
@@ -766,6 +802,11 @@ class LangfuseInstrumentor:
     _attached_providers: "dict[int, Any]" = {}
     _lmnr_tracer_provider: Any = None
     _original_initialize_instance: Callable[..., Any] | None = None
+    #: Saved reference to LiteLLM's
+    #: `litellm_logging._init_custom_logger_compatible_class` factory so the
+    #: monkey-patch installed for late-constructed `langfuse_otel` loggers can
+    #: be reverted on `uninstrument`. See `_patch_litellm_logger_factory`.
+    _original_litellm_init_logger: Callable[..., Any] | None = None
     _translator: LangfuseAttributeTranslator | None = None
     _lmnr_span_processor: SpanProcessor | None = None
 
@@ -830,6 +871,12 @@ class LangfuseInstrumentor:
             self._attach_to_existing_langfuse_providers()
             # Patch future Langfuse-client construction.
             self._patch_resource_manager()
+            # LiteLLM's `langfuse_otel` success callback never registers with
+            # `LangfuseResourceManager`, so the two steps above can't reach it.
+            # Attach to its private TracerProvider separately (existing loggers
+            # + a factory patch for ones constructed later).
+            self._attach_to_existing_litellm_loggers()
+            self._patch_litellm_logger_factory()
         except Exception:  # pylint: disable=broad-exception-caught
             # Best-effort cleanup: detach whatever we've attached so far and
             # clear class-level state. `uninstrument()` is idempotent and
@@ -854,6 +901,7 @@ class LangfuseInstrumentor:
         if not cls._installed:
             return
         self._unpatch_resource_manager()
+        self._unpatch_litellm_logger_factory()
 
         translator = cls._translator
         lmnr_processor = cls._lmnr_span_processor
@@ -1008,3 +1056,113 @@ class LangfuseInstrumentor:
             )
         finally:
             cls._original_initialize_instance = None
+
+    # --- LiteLLM `langfuse_otel` bridge ---
+    #
+    # LiteLLM ships a `langfuse_otel` success callback
+    # (`litellm.integrations.langfuse.langfuse_otel.LangfuseOtelLogger`) that
+    # subclasses LiteLLM's base `OpenTelemetry` integration with
+    # `skip_set_global=True`. As a result it builds its OWN private
+    # `TracerProvider` (a stock `opentelemetry.sdk.trace.TracerProvider`,
+    # stored on `logger._tracer_provider`) and exports OTLP straight to
+    # Langfuse Cloud — it never registers with `LangfuseResourceManager`, so
+    # the resource-manager attach/patch path above can't see it.
+    #
+    # The spans it emits carry a hybrid of `langfuse.*` attrs (via
+    # `_set_langfuse_specific_attributes`) AND openinference `llm.*` indexed
+    # attrs (via `litellm.integrations.arize._utils.set_attributes`), both of
+    # which `LangfuseAttributeTranslator` already knows how to translate. So
+    # the only missing piece is provider attachment: prepend our translator and
+    # append Laminar's span processor onto that private provider, exactly like
+    # we do for a Langfuse-owned provider. The translator only ADDS Laminar /
+    # GenAI attributes, so LiteLLM's own export to Langfuse Cloud is unchanged.
+
+    def _attach_to_existing_litellm_loggers(self) -> None:
+        for logger_obj in self._iter_litellm_langfuse_otel_loggers():
+            provider = getattr(logger_obj, "_tracer_provider", None)
+            self._attach_to_provider(provider)
+
+    @staticmethod
+    def _iter_litellm_langfuse_otel_loggers() -> list[Any]:
+        """Return every constructed LiteLLM `langfuse_otel` logger instance.
+
+        LiteLLM keeps callback singletons in
+        `litellm.litellm_core_utils.litellm_logging._in_memory_loggers`. We
+        filter that list for `LangfuseOtelLogger` instances. Any import/attr
+        failure (LiteLLM absent, internal layout changed) yields an empty
+        list so the bridge stays inert rather than raising.
+        """
+        try:
+            from litellm.integrations.langfuse.langfuse_otel import (  # type: ignore[import-not-found]
+                LangfuseOtelLogger,
+            )
+            from litellm.litellm_core_utils import (  # type: ignore[import-not-found]
+                litellm_logging,
+            )
+        except Exception:
+            return []
+        loggers = getattr(litellm_logging, "_in_memory_loggers", None) or []
+        return [lg for lg in loggers if isinstance(lg, LangfuseOtelLogger)]
+
+    def _patch_litellm_logger_factory(self) -> None:
+        """Wrap LiteLLM's `_init_custom_logger_compatible_class` so any
+        `langfuse_otel` logger constructed AFTER the bridge installs also gets
+        its private provider dual-attached.
+
+        LiteLLM constructs the callback lazily — the first LLM call (or a
+        `litellm.success_callback = ["langfuse_otel"]` assignment that triggers
+        `litellm.utils._init_custom_callbacks`) is what builds the logger. All
+        call sites import the factory freshly from the module each time (see
+        `litellm/utils.py`, `litellm/proxy/...`), so a module-level patch is
+        observed by every caller. We attach on the way out, reusing the
+        idempotent `_attach_to_provider` (its `_handled_providers` guard makes
+        repeat calls for the same provider a no-op).
+        """
+        try:
+            from litellm.litellm_core_utils import (  # type: ignore[import-not-found]
+                litellm_logging,
+            )
+        except Exception:
+            return
+
+        cls = type(self)
+        if cls._original_litellm_init_logger is not None:
+            return
+
+        original = getattr(
+            litellm_logging, "_init_custom_logger_compatible_class", None
+        )
+        if not callable(original):
+            return
+        cls._original_litellm_init_logger = original
+        instrumentor = self
+
+        def patched(*args, **kwargs):  # type: ignore[no-untyped-def]
+            result = original(*args, **kwargs)
+            try:
+                provider = getattr(result, "_tracer_provider", None)
+                if provider is not None:
+                    instrumentor._attach_to_provider(provider)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.debug("LiteLLM post-init attach failed: %s", exc)
+            return result
+
+        litellm_logging._init_custom_logger_compatible_class = patched
+
+    def _unpatch_litellm_logger_factory(self) -> None:
+        cls = type(self)
+        if cls._original_litellm_init_logger is None:
+            return
+        try:
+            from litellm.litellm_core_utils import (  # type: ignore[import-not-found]
+                litellm_logging,
+            )
+            litellm_logging._init_custom_logger_compatible_class = (
+                cls._original_litellm_init_logger
+            )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.debug(
+                "Could not restore LiteLLM logger factory patch: %s", exc
+            )
+        finally:
+            cls._original_litellm_init_logger = None

@@ -1288,3 +1288,179 @@ def test_uninstrument_detaches_processors_from_langfuse_providers(
     )
     assert lmnr_processor in reinstalled
     instrumentor.uninstrument()
+
+
+# ---------------------------------------------------------------------------
+# LiteLLM `langfuse_otel` bridge
+# ---------------------------------------------------------------------------
+
+
+def _litellm_langfuse_otel_importable() -> bool:
+    try:
+        import litellm  # noqa: F401
+        from litellm.integrations.langfuse.langfuse_otel import (  # noqa: F401
+            LangfuseOtelLogger,
+        )
+    except Exception:
+        return False
+    return True
+
+
+_LITELLM_IMPORTABLE = _litellm_langfuse_otel_importable()
+_litellm_required = pytest.mark.skipif(
+    not _LITELLM_IMPORTABLE,
+    reason="litellm (with langfuse_otel) not importable on this interpreter",
+)
+
+
+def test_translator_routes_litellm_hybrid_span_through_openinference():
+    """LiteLLM's `langfuse_otel` callback emits a HYBRID span: openinference
+    `llm.*` attrs (model, tokens, indexed messages, tools) AND `langfuse.*`
+    trace attrs (session.id, user.id) — but NO `langfuse.observation.type`.
+
+    The openinference path must win (it carries the LLM data the langfuse path
+    can't see without an observation type) AND it must still promote the
+    `langfuse.*` trace-level session/user attributes.
+    """
+    translator = LangfuseAttributeTranslator()
+    span = _FakeSpan(
+        {
+            # openinference half
+            "openinference.span.kind": "LLM",
+            "llm.model_name": "gpt-4o",
+            "llm.token_count.prompt": 11,
+            "llm.token_count.completion": 5,
+            "llm.token_count.total": 16,
+            "llm.input_messages.0.message.role": "user",
+            "llm.input_messages.0.message.content": "hi",
+            "llm.output_messages.0.message.role": "assistant",
+            "llm.output_messages.0.message.content": "hello",
+            # langfuse half (no observation.type!)
+            "session.id": "sess-9",
+            "user.id": "user-3",
+            "langfuse.observation.input": '{"messages": [{"role": "user"}]}',
+        },
+        scope_name="litellm",
+    )
+    translator.on_end(span)
+
+    assert span.attributes[SPAN_TYPE] == "LLM"
+    assert span.attributes["gen_ai.request.model"] == "gpt-4o"
+    assert span.attributes["gen_ai.usage.input_tokens"] == 11
+    assert span.attributes["gen_ai.usage.output_tokens"] == 5
+    assert json.loads(span.attributes["gen_ai.input.messages"]) == [
+        {"role": "user", "content": "hi"}
+    ]
+    assert json.loads(span.attributes["gen_ai.output.messages"]) == [
+        {"role": "assistant", "content": "hello"}
+    ]
+    # Trace-level promotion from the langfuse half must still happen.
+    assert span.attributes[f"{ASSOCIATION_PROPERTIES}.session_id"] == "sess-9"
+    assert span.attributes[f"{ASSOCIATION_PROPERTIES}.user_id"] == "user-3"
+
+
+def _reset_langfuse_instrumentor_state():
+    LangfuseInstrumentor._installed = False
+    LangfuseInstrumentor._handled_providers = set()
+    LangfuseInstrumentor._attached_providers = {}
+    LangfuseInstrumentor._translator = None
+    LangfuseInstrumentor._lmnr_span_processor = None
+    LangfuseInstrumentor._lmnr_tracer_provider = None
+    LangfuseInstrumentor._original_initialize_instance = None
+    LangfuseInstrumentor._original_litellm_init_logger = None
+
+
+@_litellm_required
+def test_litellm_bridge_attaches_to_existing_logger(span_exporter):
+    """A `LangfuseOtelLogger` already constructed before the bridge installs
+    must get the translator + Laminar span processor attached to its private
+    `_tracer_provider`."""
+    from opentelemetry.sdk.trace import TracerProvider
+
+    from litellm.integrations.langfuse.langfuse_otel import LangfuseOtelLogger
+    from litellm.litellm_core_utils import litellm_logging
+
+    _reset_langfuse_instrumentor_state()
+
+    logger_obj = LangfuseOtelLogger(callback_name="langfuse_otel")
+    provider = logger_obj._tracer_provider
+    assert isinstance(provider, TracerProvider)
+
+    original_loggers = list(litellm_logging._in_memory_loggers)
+    litellm_logging._in_memory_loggers.append(logger_obj)
+    try:
+        wrapper = TracerWrapper.instance
+        instrumentor = LangfuseInstrumentor()
+        instrumentor.instrument(
+            lmnr_tracer_provider=wrapper._tracer_provider,
+            lmnr_span_processor=wrapper._span_processor,
+        )
+        processors = list(provider._active_span_processor._span_processors)
+        assert any(
+            isinstance(p, LangfuseAttributeTranslator) for p in processors
+        ), "translator must be attached to the LiteLLM logger's provider"
+        assert wrapper._span_processor in processors, (
+            "Laminar span processor must be attached to the LiteLLM provider"
+        )
+
+        instrumentor.uninstrument()
+        after = list(provider._active_span_processor._span_processors)
+        assert not any(
+            isinstance(p, LangfuseAttributeTranslator) for p in after
+        ), "uninstrument must detach the translator from the LiteLLM provider"
+        assert wrapper._span_processor not in after
+    finally:
+        litellm_logging._in_memory_loggers[:] = original_loggers
+        _reset_langfuse_instrumentor_state()
+
+
+@_litellm_required
+def test_litellm_bridge_patches_factory_for_late_loggers(span_exporter):
+    """A `langfuse_otel` logger constructed AFTER the bridge installs (via
+    LiteLLM's `_init_custom_logger_compatible_class` factory) must also get
+    dual-attached. The factory patch must be reverted on uninstrument."""
+    from litellm.litellm_core_utils import litellm_logging
+
+    _reset_langfuse_instrumentor_state()
+
+    original_loggers = list(litellm_logging._in_memory_loggers)
+    original_factory = (
+        litellm_logging._init_custom_logger_compatible_class
+    )
+    try:
+        wrapper = TracerWrapper.instance
+        instrumentor = LangfuseInstrumentor()
+        instrumentor.instrument(
+            lmnr_tracer_provider=wrapper._tracer_provider,
+            lmnr_span_processor=wrapper._span_processor,
+        )
+        # The factory must have been wrapped.
+        assert (
+            litellm_logging._init_custom_logger_compatible_class
+            is not original_factory
+        )
+
+        logger_obj = litellm_logging._init_custom_logger_compatible_class(
+            "langfuse_otel",
+            internal_usage_cache=None,
+            llm_router=None,
+        )
+        provider = logger_obj._tracer_provider
+        processors = list(provider._active_span_processor._span_processors)
+        assert any(
+            isinstance(p, LangfuseAttributeTranslator) for p in processors
+        ), "late-constructed LiteLLM logger must be bridged via the factory"
+        assert wrapper._span_processor in processors
+
+        instrumentor.uninstrument()
+        # Factory patch must be reverted.
+        assert (
+            litellm_logging._init_custom_logger_compatible_class
+            is original_factory
+        )
+    finally:
+        litellm_logging._init_custom_logger_compatible_class = (
+            original_factory
+        )
+        litellm_logging._in_memory_loggers[:] = original_loggers
+        _reset_langfuse_instrumentor_state()
