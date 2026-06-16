@@ -28,9 +28,13 @@ import pytest
 os.environ.setdefault("LANGFUSE_PUBLIC_KEY", "pk-lf-test")
 os.environ.setdefault("LANGFUSE_SECRET_KEY", "sk-lf-test")
 os.environ.setdefault("LANGFUSE_HOST", "http://127.0.0.1:1")
+# Disable the media-upload consumer thread. Its `run()` loop blocks on
+# `queue.get(block=True, timeout=1)` with a HARDCODED 1s timeout (unaffected by
+# flush_interval), so `client.shutdown()` would join() it for ~1s per test —
+# the dominant cost in this file's teardown.
+os.environ.setdefault("LANGFUSE_MEDIA_UPLOAD_ENABLED", "False")
 logging.getLogger("opentelemetry.sdk.trace.export").setLevel(logging.CRITICAL)
-logging.getLogger("opentelemetry.exporter.otlp.proto.http").setLevel(
-    logging.CRITICAL)
+logging.getLogger("opentelemetry.exporter.otlp.proto.http").setLevel(logging.CRITICAL)
 
 from lmnr import Laminar  # noqa: E402
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (  # noqa: E402
@@ -91,8 +95,7 @@ def track_initializers(monkeypatch):
     for instrument, initializer in INSTRUMENTATION_INITIALIZERS.items():
         fake = MagicMock(spec=initializer)
         fake.init_instrumentor = MagicMock(
-            side_effect=lambda *_a, _inst=instrument, **_kw: called.add(_inst)
-            or None
+            side_effect=lambda *_a, _inst=instrument, **_kw: called.add(_inst) or None
         )
         replacements[instrument] = fake
 
@@ -113,8 +116,7 @@ def langfuse_installed(monkeypatch):
     # importability probe must be stubbed True too; otherwise on 3.14 the real
     # probe returns False, `langfuse_active` never becomes true, and the tests
     # assert against the fallback set instead.
-    monkeypatch.setattr(
-        instruments_mod, "_langfuse_sdk_importable", lambda: True)
+    monkeypatch.setattr(instruments_mod, "_langfuse_sdk_importable", lambda: True)
 
 
 @pytest.fixture
@@ -129,26 +131,17 @@ def deepagents_installed(monkeypatch):
 
 @pytest.fixture
 def deepagents_not_installed(monkeypatch):
-    monkeypatch.setattr(
-        instruments_mod,
-        "_deepagents_installed",
-        lambda: False)
+    monkeypatch.setattr(instruments_mod, "_deepagents_installed", lambda: False)
 
 
 @pytest.fixture
 def pydantic_ai_not_installed(monkeypatch):
-    monkeypatch.setattr(
-        instruments_mod,
-        "_pydantic_ai_installed",
-        lambda: False)
+    monkeypatch.setattr(instruments_mod, "_pydantic_ai_installed", lambda: False)
 
 
 @pytest.fixture
 def pydantic_ai_installed(monkeypatch):
-    monkeypatch.setattr(
-        instruments_mod,
-        "_pydantic_ai_installed",
-        lambda: True)
+    monkeypatch.setattr(instruments_mod, "_pydantic_ai_installed", lambda: True)
 
 
 def test_langfuse_not_installed_defaults_exclude_it(
@@ -159,13 +152,12 @@ def test_langfuse_not_installed_defaults_exclude_it(
     init_instrumentations(tracer_provider=MagicMock(), instruments=None)
     assert Instruments.LANGFUSE not in track_initializers
     for instrument in _LANGFUSE_PROVIDER_CONFLICTS:
-        assert instrument in track_initializers, (
-            f"{instrument} should remain when langfuse isn't installed"
-        )
+        assert (
+            instrument in track_initializers
+        ), f"{instrument} should remain when langfuse isn't installed"
 
 
-def test_langfuse_initializer_skips_on_unreadable_or_invalid_version(
-        monkeypatch):
+def test_langfuse_initializer_skips_on_unreadable_or_invalid_version(monkeypatch):
     """Regression: the initializer used to pass version guards when
     `get_package_version` returned `None` (the check
     `if version and parse(version) < parse("3.0.0")` short-circuits on None),
@@ -232,7 +224,10 @@ def test_langfuse_v2_reports_not_installed(monkeypatch):
 
 
 def test_langfuse_installed_auto_enables_and_disables_all_other_instruments(
-    track_initializers, langfuse_installed, pydantic_ai_not_installed, deepagents_not_installed
+    track_initializers,
+    langfuse_installed,
+    pydantic_ai_not_installed,
+    deepagents_not_installed,
 ):
     """When langfuse is installed and the caller didn't pass an explicit
     `instruments` set, only LANGFUSE (plus the OPENTELEMETRY Datadog-context
@@ -257,7 +252,10 @@ def test_langfuse_installed_auto_enables_and_disables_all_other_instruments(
 
 
 def test_block_langfuse_disables_auto_logic(
-    track_initializers, langfuse_installed, pydantic_ai_not_installed, deepagents_not_installed
+    track_initializers,
+    langfuse_installed,
+    pydantic_ai_not_installed,
+    deepagents_not_installed,
 ):
     """Blocking LANGFUSE suppresses the auto-enable AND restores the normal
     default set — every raw-provider instrumentor comes back on."""
@@ -272,7 +270,10 @@ def test_block_langfuse_disables_auto_logic(
 
 
 def test_langfuse_auto_enable_disables_pydantic_ai(
-    track_initializers, langfuse_installed, pydantic_ai_installed, deepagents_not_installed
+    track_initializers,
+    langfuse_installed,
+    pydantic_ai_installed,
+    deepagents_not_installed,
 ):
     """Regression: pydantic_ai used to stay active alongside LANGFUSE,
     producing duplicate spans. Under the "langfuse wins, bridge is the
@@ -288,7 +289,10 @@ def test_langfuse_auto_enable_disables_pydantic_ai(
 
 
 def test_langfuse_auto_enable_disables_deepagents(
-    track_initializers, langfuse_installed, deepagents_installed, pydantic_ai_not_installed
+    track_initializers,
+    langfuse_installed,
+    deepagents_installed,
+    pydantic_ai_not_installed,
 ):
     """When both langfuse and deepagents are installed, langfuse wins and
     deepagents is also disabled — the Langfuse bridge is the single source
@@ -361,20 +365,22 @@ def test_is_langfuse_span_detects_attrs_without_scope():
 
 def test_translator_maps_generation_to_llm_span():
     translator = LangfuseAttributeTranslator()
-    span = _FakeSpan({
-        "langfuse.observation.type": "generation",
-        "langfuse.observation.model.name": "gpt-4o",
-        "langfuse.observation.usage_details": json.dumps(
-            {"input": 10, "output": 20, "total": 30}
-        ),
-        "langfuse.observation.cost_details": json.dumps(
-            {"input": 0.001, "output": 0.002, "total": 0.003}
-        ),
-        # A non-message input dict (no "messages" key) is not a recognized
-        # chat-prompt shape, so it falls back to the raw lmnr.span.input blob.
-        "langfuse.observation.input": '{"prompt": "hi"}',
-        "langfuse.observation.output": '{"role": "assistant", "content": "hello"}',
-    })
+    span = _FakeSpan(
+        {
+            "langfuse.observation.type": "generation",
+            "langfuse.observation.model.name": "gpt-4o",
+            "langfuse.observation.usage_details": json.dumps(
+                {"input": 10, "output": 20, "total": 30}
+            ),
+            "langfuse.observation.cost_details": json.dumps(
+                {"input": 0.001, "output": 0.002, "total": 0.003}
+            ),
+            # A non-message input dict (no "messages" key) is not a recognized
+            # chat-prompt shape, so it falls back to the raw lmnr.span.input blob.
+            "langfuse.observation.input": '{"prompt": "hi"}',
+            "langfuse.observation.output": '{"role": "assistant", "content": "hello"}',
+        }
+    )
     translator.on_end(span)
 
     assert span.attributes[SPAN_TYPE] == "LLM"
@@ -406,15 +412,17 @@ def test_translator_splits_openai_input_messages_and_tools():
         {"role": "system", "content": "You are helpful"},
         {"role": "user", "content": "weather in SF?"},
     ]
-    span = _FakeSpan({
-        "langfuse.observation.type": "generation",
-        "langfuse.observation.input": json.dumps(
-            {"messages": messages, "tools": tools}
-        ),
-        "langfuse.observation.output": json.dumps(
-            {"role": "assistant", "content": "It's sunny"}
-        ),
-    })
+    span = _FakeSpan(
+        {
+            "langfuse.observation.type": "generation",
+            "langfuse.observation.input": json.dumps(
+                {"messages": messages, "tools": tools}
+            ),
+            "langfuse.observation.output": json.dumps(
+                {"role": "assistant", "content": "It's sunny"}
+            ),
+        }
+    )
     translator.on_end(span)
 
     assert json.loads(span.attributes["gen_ai.input.messages"]) == messages
@@ -430,10 +438,12 @@ def test_translator_handles_bare_message_list_input():
     """The vanilla OpenAI case (no tools) ships a bare message array."""
     translator = LangfuseAttributeTranslator()
     messages = [{"role": "user", "content": "hi"}]
-    span = _FakeSpan({
-        "langfuse.observation.type": "generation",
-        "langfuse.observation.input": json.dumps(messages),
-    })
+    span = _FakeSpan(
+        {
+            "langfuse.observation.type": "generation",
+            "langfuse.observation.input": json.dumps(messages),
+        }
+    )
     translator.on_end(span)
     assert json.loads(span.attributes["gen_ai.input.messages"]) == messages
     assert "gen_ai.tool.definitions" not in span.attributes
@@ -444,12 +454,17 @@ def test_translator_maps_openai_functions_to_tool_definitions():
     """The legacy `functions` key maps to tool definitions too."""
     translator = LangfuseAttributeTranslator()
     functions = [{"name": "get_weather", "parameters": {}}]
-    span = _FakeSpan({
-        "langfuse.observation.type": "generation",
-        "langfuse.observation.input": json.dumps(
-            {"messages": [{"role": "user", "content": "hi"}], "functions": functions}
-        ),
-    })
+    span = _FakeSpan(
+        {
+            "langfuse.observation.type": "generation",
+            "langfuse.observation.input": json.dumps(
+                {
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "functions": functions,
+                }
+            ),
+        }
+    )
     translator.on_end(span)
     assert json.loads(span.attributes["gen_ai.tool.definitions"]) == functions
 
@@ -457,11 +472,13 @@ def test_translator_maps_openai_functions_to_tool_definitions():
 def test_translator_non_llm_input_falls_back_to_span_input():
     """Non-LLM observations keep the raw input/output blob behaviour."""
     translator = LangfuseAttributeTranslator()
-    span = _FakeSpan({
-        "langfuse.observation.type": "span",
-        "langfuse.observation.input": '{"messages": [{"role": "user"}]}',
-        "langfuse.observation.output": '{"role": "assistant"}',
-    })
+    span = _FakeSpan(
+        {
+            "langfuse.observation.type": "span",
+            "langfuse.observation.input": '{"messages": [{"role": "user"}]}',
+            "langfuse.observation.output": '{"role": "assistant"}',
+        }
+    )
     translator.on_end(span)
     assert span.attributes[SPAN_INPUT] == '{"messages": [{"role": "user"}]}'
     assert span.attributes[SPAN_OUTPUT] == '{"role": "assistant"}'
@@ -508,8 +525,9 @@ def test_translator_converts_openinference_llm_span():
     ]
     out = json.loads(span.attributes["gen_ai.output.messages"])
     assert out[0]["role"] == "assistant"
-    assert out[0]["tool_calls"][0]["function"]["name"] == "get_weather"
-    assert out[0]["tool_calls"][0]["function"]["arguments"] == '{"city": "SF"}'
+    assert out[0]["content"][0]["type"] == "tool_call"
+    assert out[0]["content"][0]["name"] == "get_weather"
+    assert out[0]["content"][0]["arguments"] == '{"city": "SF"}'
     assert json.loads(span.attributes["gen_ai.tool.definitions"]) == [
         {"type": "function", "function": {"name": "get_weather"}}
     ]
@@ -552,28 +570,30 @@ def test_translator_maps_tool_observation():
 
 def test_translator_promotes_trace_session_user_tags_metadata():
     translator = LangfuseAttributeTranslator()
-    span = _FakeSpan({
-        "session.id": "s456",
-        "user.id": "u123",
-        "langfuse.trace.tags": ("t1", "t2"),
-        "langfuse.trace.metadata.mk": "mv",
-        "langfuse.observation.type": "span",
-    })
+    span = _FakeSpan(
+        {
+            "session.id": "s456",
+            "user.id": "u123",
+            "langfuse.trace.tags": ("t1", "t2"),
+            "langfuse.trace.metadata.mk": "mv",
+            "langfuse.observation.type": "span",
+        }
+    )
     translator.on_end(span)
     assert span.attributes[f"{ASSOCIATION_PROPERTIES}.session_id"] == "s456"
     assert span.attributes[f"{ASSOCIATION_PROPERTIES}.user_id"] == "u123"
     assert span.attributes[f"{ASSOCIATION_PROPERTIES}.tags"] == ["t1", "t2"]
-    assert (
-        span.attributes[f"{ASSOCIATION_PROPERTIES}.metadata.mk"] == "mv"
-    )
+    assert span.attributes[f"{ASSOCIATION_PROPERTIES}.metadata.mk"] == "mv"
 
 
 def test_translator_infers_total_tokens_when_absent():
     translator = LangfuseAttributeTranslator()
-    span = _FakeSpan({
-        "langfuse.observation.type": "generation",
-        "langfuse.observation.usage_details": json.dumps({"input": 7, "output": 3}),
-    })
+    span = _FakeSpan(
+        {
+            "langfuse.observation.type": "generation",
+            "langfuse.observation.usage_details": json.dumps({"input": 7, "output": 3}),
+        }
+    )
     translator.on_end(span)
     assert span.attributes["llm.usage.total_tokens"] == 10
 
@@ -581,13 +601,15 @@ def test_translator_infers_total_tokens_when_absent():
 def test_translator_handles_dict_usage_without_json_wrap():
     """Langfuse sometimes passes a dict rather than a JSON string."""
     translator = LangfuseAttributeTranslator()
-    span = _FakeSpan({
-        "langfuse.observation.type": "generation",
-        # Directly a dict (not JSON-encoded) — the translator should still
-        # handle it, but OTel's attribute type-check will have flattened it by
-        # the time on_end runs. We keep the helper resilient.
-        "langfuse.observation.usage_details": {"input": 1, "output": 2},
-    })
+    span = _FakeSpan(
+        {
+            "langfuse.observation.type": "generation",
+            # Directly a dict (not JSON-encoded) — the translator should still
+            # handle it, but OTel's attribute type-check will have flattened it by
+            # the time on_end runs. We keep the helper resilient.
+            "langfuse.observation.usage_details": {"input": 1, "output": 2},
+        }
+    )
     translator.on_end(span)
     assert span.attributes["gen_ai.usage.input_tokens"] == 1
     assert span.attributes["gen_ai.usage.output_tokens"] == 2
@@ -596,6 +618,53 @@ def test_translator_handles_dict_usage_without_json_wrap():
 # ---------------------------------------------------------------------------
 # End-to-end integration tests with real langfuse SDK
 # ---------------------------------------------------------------------------
+
+
+def _silence_langfuse_background_threads(instances):
+    """Neutralize the background threads a Langfuse client spins up so they
+    don't slow the test suite down.
+
+    Two distinct costs are eliminated:
+
+    1. The OTLP span exporter (would POST to a dead host on every flush) is
+       swapped for a no-op. Laminar's own SimpleSpanProcessor already exports
+       Langfuse spans synchronously into the InMemorySpanExporter, so the tests
+       never need Langfuse's exporter to run.
+
+    2. The prompt-cache refresh thread (`PromptCacheTaskManager`) blocks on a
+       HARDCODED 1s `queue.get(timeout=1)` and registers its OWN
+       `atexit.register(shutdown)` that `client.shutdown()` never reaches. Left
+       alone, every test's manager accumulates an atexit handler, and at
+       interpreter teardown each one `join()`s a thread mid-`get()` — ~1s
+       apiece, which is the multi-second freeze after the suite finishes. We
+       pause the consumers and unregister their atexit hook; the threads are
+       daemons, so the interpreter reaps them without a blocking join.
+    """
+    import atexit
+
+    from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
+
+    class _NoopExporter(SpanExporter):
+        def export(self, spans):
+            return SpanExportResult.SUCCESS
+
+        def shutdown(self):
+            pass
+
+    for instance in instances:
+        if getattr(instance, "tracer_provider", None) is not None:
+            active = instance.tracer_provider._active_span_processor
+            for proc in getattr(active, "_span_processors", ()):
+                if hasattr(proc, "_batch_processor"):
+                    proc._batch_processor._exporter = _NoopExporter()
+
+        task_manager = getattr(
+            getattr(instance, "prompt_cache", None), "_task_manager", None
+        )
+        if task_manager is not None:
+            atexit.unregister(task_manager.shutdown)
+            for consumer in task_manager._consumers:
+                consumer.pause()
 
 
 @pytest.fixture
@@ -621,6 +690,8 @@ def langfuse_client():
     from langfuse import Langfuse
 
     client = Langfuse()
+    _silence_langfuse_background_threads(LangfuseResourceManager._instances.values())
+
     yield client
     try:
         client.shutdown()
@@ -629,13 +700,9 @@ def langfuse_client():
     LangfuseResourceManager._instances.clear()
 
 
-def test_connect_to_langfuse_dual_exports_observation(
-    span_exporter, langfuse_client
-):
+def test_connect_to_langfuse_dual_exports_observation(span_exporter, langfuse_client):
     """After `connect_to_langfuse`, Langfuse `@observe` spans reach Laminar's
     in-memory exporter with translated attributes."""
-    import contextlib
-
     assert Laminar.connect_to_langfuse() is True
 
     from langfuse import observe
@@ -645,12 +712,6 @@ def test_connect_to_langfuse_dual_exports_observation(
         return x * 2
 
     compute(21)
-
-    # Langfuse's flush will fail against the fake host; silence its stderr.
-    with contextlib.redirect_stderr(open(os.devnull, "w")):
-        langfuse_client.flush()
-
-    TracerWrapper.instance.flush()
 
     spans = span_exporter.get_finished_spans()
     names = [s.name for s in spans]
@@ -667,8 +728,6 @@ def test_connect_to_langfuse_dual_exports_observation(
 def test_connect_to_langfuse_translates_generation_attributes(
     span_exporter, langfuse_client
 ):
-    import contextlib
-
     assert Laminar.connect_to_langfuse() is True
 
     with langfuse_client.start_as_current_observation(
@@ -683,13 +742,7 @@ def test_connect_to_langfuse_translates_generation_attributes(
             cost_details={"input": 0.001, "output": 0.002, "total": 0.003},
         )
 
-    with contextlib.redirect_stderr(open(os.devnull, "w")):
-        langfuse_client.flush()
-    TracerWrapper.instance.flush()
-
-    span = next(
-        s for s in span_exporter.get_finished_spans() if s.name == "my-llm"
-    )
+    span = next(s for s in span_exporter.get_finished_spans() if s.name == "my-llm")
     assert span.attributes[SPAN_TYPE] == "LLM"
     assert span.attributes["gen_ai.request.model"] == "gpt-4o"
     assert span.attributes["gen_ai.usage.input_tokens"] == 10
@@ -706,8 +759,6 @@ def test_connect_to_langfuse_splits_openai_generation_input(
     """End-to-end: a generation whose input is the OpenAI {messages, tools}
     shape (what `langfuse.openai` ships) is split into gen_ai.input.messages +
     gen_ai.tool.definitions on the Laminar side."""
-    import contextlib
-
     assert Laminar.connect_to_langfuse() is True
 
     tools = [{"type": "function", "function": {"name": "get_weather"}}]
@@ -720,13 +771,7 @@ def test_connect_to_langfuse_splits_openai_generation_input(
     ) as gen:
         gen.update(output={"role": "assistant", "content": "It's sunny"})
 
-    with contextlib.redirect_stderr(open(os.devnull, "w")):
-        langfuse_client.flush()
-    TracerWrapper.instance.flush()
-
-    span = next(
-        s for s in span_exporter.get_finished_spans() if s.name == "openai-gen"
-    )
+    span = next(s for s in span_exporter.get_finished_spans() if s.name == "openai-gen")
     assert json.loads(span.attributes["gen_ai.input.messages"]) == messages
     assert json.loads(span.attributes["gen_ai.tool.definitions"]) == tools
     assert SPAN_INPUT not in span.attributes
@@ -738,38 +783,29 @@ def test_connect_to_langfuse_splits_openai_generation_input(
 def test_connect_to_langfuse_promotes_trace_session_and_user(
     span_exporter, langfuse_client
 ):
-    import contextlib
-
     assert Laminar.connect_to_langfuse() is True
 
-    with langfuse_client.start_as_current_span(name="root") as root:
-        root.update_trace(
+    from langfuse import propagate_attributes
+
+    with langfuse_client.start_as_current_observation(name="root") as root:
+        with propagate_attributes(
             user_id="user-42",
             session_id="session-7",
             tags=["env:test"],
             metadata={"feature": "beta"},
-        )
+        ):
+            pass
 
-    with contextlib.redirect_stderr(open(os.devnull, "w")):
-        langfuse_client.flush()
-    TracerWrapper.instance.flush()
-
-    root = next(
-        s for s in span_exporter.get_finished_spans() if s.name == "root"
-    )
+    root = next(s for s in span_exporter.get_finished_spans() if s.name == "root")
     assert root.attributes[f"{ASSOCIATION_PROPERTIES}.session_id"] == "session-7"
     assert root.attributes[f"{ASSOCIATION_PROPERTIES}.user_id"] == "user-42"
     tags = root.attributes[f"{ASSOCIATION_PROPERTIES}.tags"]
     assert "env:test" in tags
-    assert (
-        root.attributes[f"{ASSOCIATION_PROPERTIES}.metadata.feature"] == "beta"
-    )
+    assert root.attributes[f"{ASSOCIATION_PROPERTIES}.metadata.feature"] == "beta"
 
 
 def test_connect_to_langfuse_is_idempotent(span_exporter, langfuse_client):
     """Calling the bridge twice must not duplicate spans on the Laminar side."""
-    import contextlib
-
     assert Laminar.connect_to_langfuse() is True
     assert Laminar.connect_to_langfuse() is True  # second call: no-op
 
@@ -780,9 +816,6 @@ def test_connect_to_langfuse_is_idempotent(span_exporter, langfuse_client):
         return "done"
 
     once()
-    with contextlib.redirect_stderr(open(os.devnull, "w")):
-        langfuse_client.flush()
-    TracerWrapper.instance.flush()
 
     spans = [s for s in span_exporter.get_finished_spans() if s.name == "once"]
     assert len(spans) == 1, f"expected exactly one span, got {len(spans)}"
@@ -914,7 +947,9 @@ def test_connect_to_langfuse_returns_false_without_langfuse(monkeypatch):
     monkey-patch). The version-aware `_langfuse_installed` check is what
     guards this — see the companion 2.x-specific test below."""
     monkeypatch.setattr(
-        instruments_mod, "_langfuse_installed", lambda: False,
+        instruments_mod,
+        "_langfuse_installed",
+        lambda: False,
     )
 
     LangfuseInstrumentor._installed = False
@@ -955,8 +990,6 @@ def test_connect_to_langfuse_rejects_langfuse_v2(monkeypatch):
 def test_late_attach_patches_future_langfuse_clients(span_exporter):
     """The resource-manager patch means Langfuse clients created AFTER the
     bridge is installed still get dual-attached."""
-    import contextlib
-
     from langfuse._client.resource_manager import LangfuseResourceManager
 
     # Install bridge with NO langfuse client yet.
@@ -969,19 +1002,19 @@ def test_late_attach_patches_future_langfuse_clients(span_exporter):
     from langfuse import Langfuse, observe
 
     client = Langfuse()
+    _silence_langfuse_background_threads(LangfuseResourceManager._instances.values())
+
     try:
+
         @observe
         def late() -> int:
             return 7
 
         late()
-        with contextlib.redirect_stderr(open(os.devnull, "w")):
-            client.flush()
     finally:
         client.shutdown()
         LangfuseResourceManager._instances.clear()
 
-    TracerWrapper.instance.flush()
     names = [s.name for s in span_exporter.get_finished_spans()]
     assert "late" in names, f"late-created Langfuse client was not bridged: {names}"
 
@@ -999,16 +1032,13 @@ def test_instrumentor_skips_laminar_own_provider(span_exporter):
     )
     instrumentor._lmnr_span_processor = wrapper._span_processor
     instrumentor._attach_to_provider(wrapper._tracer_provider)
-    after_count = len(
-        wrapper._tracer_provider._active_span_processor._span_processors
-    )
-    assert after_count == initial_count, (
-        "attached to Laminar's own provider — would cause duplicate exports"
-    )
+    after_count = len(wrapper._tracer_provider._active_span_processor._span_processors)
+    assert (
+        after_count == initial_count
+    ), "attached to Laminar's own provider — would cause duplicate exports"
 
 
-def test_instrument_rolls_back_translator_if_attach_phase_raises(
-        span_exporter):
+def test_instrument_rolls_back_translator_if_attach_phase_raises(span_exporter):
     """Regression: if `_attach_to_existing_langfuse_providers` or
     `_patch_resource_manager` raises, the translator that was already
     prepended to Laminar's provider in step 1 must be removed and all
@@ -1044,12 +1074,8 @@ def test_instrument_rolls_back_translator_if_attach_phase_raises(
     def exploding_attach(self):  # noqa: ARG001
         raise RuntimeError("simulated attach failure")
 
-    original_attach = (
-        LangfuseInstrumentor._attach_to_existing_langfuse_providers
-    )
-    LangfuseInstrumentor._attach_to_existing_langfuse_providers = (
-        exploding_attach
-    )
+    original_attach = LangfuseInstrumentor._attach_to_existing_langfuse_providers
+    LangfuseInstrumentor._attach_to_existing_langfuse_providers = exploding_attach
     try:
         with pytest.raises(RuntimeError, match="simulated attach failure"):
             instrumentor.instrument(
@@ -1057,14 +1083,12 @@ def test_instrument_rolls_back_translator_if_attach_phase_raises(
                 lmnr_span_processor=MagicMock(),
             )
     finally:
-        LangfuseInstrumentor._attach_to_existing_langfuse_providers = (
-            original_attach
-        )
+        LangfuseInstrumentor._attach_to_existing_langfuse_providers = original_attach
 
     # Translator must have been rolled back.
-    assert count_translators() == baseline, (
-        "translator must be removed on partial install failure"
-    )
+    assert (
+        count_translators() == baseline
+    ), "translator must be removed on partial install failure"
     assert LangfuseInstrumentor._installed is False
     assert LangfuseInstrumentor._translator is None
 
@@ -1080,8 +1104,7 @@ def test_instrument_rolls_back_translator_if_attach_phase_raises(
     instrumentor2.uninstrument()
 
 
-def test_instrument_skips_shared_laminar_provider_without_tracerwrapper(
-        span_exporter):
+def test_instrument_skips_shared_laminar_provider_without_tracerwrapper(span_exporter):
     """Regression: during auto-install via `init_instrumentations`,
     `TracerWrapper.instance` is assigned AFTER `init_instrumentations`
     returns. If a pre-existing Langfuse client happens to share Laminar's
@@ -1122,7 +1145,8 @@ def test_instrument_skips_shared_laminar_provider_without_tracerwrapper(
         shared_provider._active_span_processor._span_processors
     )
     translator_count = sum(
-        1 for p in processors_after_install
+        1
+        for p in processors_after_install
         if isinstance(p, LangfuseAttributeTranslator)
     )
     assert translator_count == 1
@@ -1140,12 +1164,13 @@ def test_instrument_skips_shared_laminar_provider_without_tracerwrapper(
         shared_provider._active_span_processor._span_processors
     )
     translator_count_after = sum(
-        1 for p in processors_after_simulated_langfuse
+        1
+        for p in processors_after_simulated_langfuse
         if isinstance(p, LangfuseAttributeTranslator)
     )
-    assert translator_count_after == 1, (
-        "translator should not be attached twice to Laminar's provider"
-    )
+    assert (
+        translator_count_after == 1
+    ), "translator should not be attached twice to Laminar's provider"
     assert mock_processor not in processors_after_simulated_langfuse, (
         "Laminar span processor should not be appended to Laminar's own "
         "provider via the Langfuse attach path"
@@ -1221,8 +1246,7 @@ def test_uninstrument_removes_translator_and_clears_state(span_exporter):
     assert count_translators() == baseline_translators
 
 
-def test_uninstrument_detaches_processors_from_langfuse_providers(
-        span_exporter):
+def test_uninstrument_detaches_processors_from_langfuse_providers(span_exporter):
     """Regression: after `uninstrument`, every provider we previously attached
     the translator / Laminar span processor to must lose those processors.
     Re-install must also succeed (stale `_handled_providers` must not
@@ -1260,26 +1284,20 @@ def test_uninstrument_detaches_processors_from_langfuse_providers(
     # monkey-patched `_initialize_instance` would in production.
     instrumentor._attach_to_provider(fake_lf_provider)
 
-    after_install = list(
-        fake_lf_provider._active_span_processor._span_processors
-    )
-    assert any(
-        isinstance(p, LangfuseAttributeTranslator) for p in after_install
-    )
+    after_install = list(fake_lf_provider._active_span_processor._span_processors)
+    assert any(isinstance(p, LangfuseAttributeTranslator) for p in after_install)
     assert lmnr_processor in after_install
     assert id(fake_lf_provider) in LangfuseInstrumentor._attached_providers
 
     instrumentor.uninstrument()
 
-    after_uninstall = list(
-        fake_lf_provider._active_span_processor._span_processors
-    )
+    after_uninstall = list(fake_lf_provider._active_span_processor._span_processors)
     assert not any(
         isinstance(p, LangfuseAttributeTranslator) for p in after_uninstall
     ), "translator should be removed from the Langfuse-owned provider"
-    assert lmnr_processor not in after_uninstall, (
-        "Laminar span processor should be removed from the Langfuse-owned provider"
-    )
+    assert (
+        lmnr_processor not in after_uninstall
+    ), "Laminar span processor should be removed from the Langfuse-owned provider"
     # Ordering of unrelated processors should be preserved.
     assert after_uninstall == baseline
 
@@ -1290,12 +1308,8 @@ def test_uninstrument_detaches_processors_from_langfuse_providers(
         lmnr_span_processor=lmnr_processor,
     )
     instrumentor._attach_to_provider(fake_lf_provider)
-    reinstalled = list(
-        fake_lf_provider._active_span_processor._span_processors
-    )
-    assert any(
-        isinstance(p, LangfuseAttributeTranslator) for p in reinstalled
-    )
+    reinstalled = list(fake_lf_provider._active_span_processor._span_processors)
+    assert any(isinstance(p, LangfuseAttributeTranslator) for p in reinstalled)
     assert lmnr_processor in reinstalled
     instrumentor.uninstrument()
 
@@ -1409,9 +1423,9 @@ def test_litellm_bridge_attaches_to_existing_logger(span_exporter):
         assert any(
             isinstance(p, LangfuseAttributeTranslator) for p in processors
         ), "translator must be attached to the LiteLLM logger's provider"
-        assert wrapper._span_processor in processors, (
-            "Laminar span processor must be attached to the LiteLLM provider"
-        )
+        assert (
+            wrapper._span_processor in processors
+        ), "Laminar span processor must be attached to the LiteLLM provider"
 
         instrumentor.uninstrument()
         after = list(provider._active_span_processor._span_processors)
@@ -1434,9 +1448,7 @@ def test_litellm_bridge_patches_factory_for_late_loggers(span_exporter):
     _reset_langfuse_instrumentor_state()
 
     original_loggers = list(litellm_logging._in_memory_loggers)
-    original_factory = (
-        litellm_logging._init_custom_logger_compatible_class
-    )
+    original_factory = litellm_logging._init_custom_logger_compatible_class
     try:
         wrapper = TracerWrapper.instance
         instrumentor = LangfuseInstrumentor()
@@ -1446,8 +1458,7 @@ def test_litellm_bridge_patches_factory_for_late_loggers(span_exporter):
         )
         # The factory must have been wrapped.
         assert (
-            litellm_logging._init_custom_logger_compatible_class
-            is not original_factory
+            litellm_logging._init_custom_logger_compatible_class is not original_factory
         )
 
         logger_obj = litellm_logging._init_custom_logger_compatible_class(
@@ -1464,14 +1475,9 @@ def test_litellm_bridge_patches_factory_for_late_loggers(span_exporter):
 
         instrumentor.uninstrument()
         # Factory patch must be reverted.
-        assert (
-            litellm_logging._init_custom_logger_compatible_class
-            is original_factory
-        )
+        assert litellm_logging._init_custom_logger_compatible_class is original_factory
     finally:
-        litellm_logging._init_custom_logger_compatible_class = (
-            original_factory
-        )
+        litellm_logging._init_custom_logger_compatible_class = original_factory
         litellm_logging._in_memory_loggers[:] = original_loggers
         _reset_langfuse_instrumentor_state()
 
@@ -1491,9 +1497,7 @@ def test_litellm_factory_does_not_bridge_non_langfuse_loggers(span_exporter):
     _reset_langfuse_instrumentor_state()
 
     original_loggers = list(litellm_logging._in_memory_loggers)
-    original_factory = (
-        litellm_logging._init_custom_logger_compatible_class
-    )
+    original_factory = litellm_logging._init_custom_logger_compatible_class
     try:
         wrapper = TracerWrapper.instance
         instrumentor = LangfuseInstrumentor()
@@ -1520,8 +1524,7 @@ def test_litellm_factory_does_not_bridge_non_langfuse_loggers(span_exporter):
             llm_router=None,
         )
         assert attached == [], (
-            "non-langfuse LiteLLM logger must NOT be routed to "
-            "_attach_to_provider"
+            "non-langfuse LiteLLM logger must NOT be routed to " "_attach_to_provider"
         )
 
         # A `langfuse_otel` logger built through the same factory MUST attach.
@@ -1534,8 +1537,6 @@ def test_litellm_factory_does_not_bridge_non_langfuse_loggers(span_exporter):
 
         instrumentor.uninstrument()
     finally:
-        litellm_logging._init_custom_logger_compatible_class = (
-            original_factory
-        )
+        litellm_logging._init_custom_logger_compatible_class = original_factory
         litellm_logging._in_memory_loggers[:] = original_loggers
         _reset_langfuse_instrumentor_state()

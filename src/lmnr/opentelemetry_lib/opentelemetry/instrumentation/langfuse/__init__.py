@@ -364,15 +364,19 @@ def _oi_message_to_genai(raw: dict[str, Any]) -> dict[str, Any]:
             converted.append(
                 {
                     "id": inner.get("id"),
-                    "type": "function",
-                    "function": {
-                        "name": fn.get("name"),
-                        "arguments": fn.get("arguments"),
-                    },
+                    "type": "tool_call",
+                    "name": fn.get("name"),
+                    "arguments": fn.get("arguments"),
                 }
             )
         if converted:
-            out["tool_calls"] = converted
+            existing = out.get("content")
+            if isinstance(existing, list):
+                out["content"] = [*existing, *converted]
+            elif isinstance(existing, str):
+                out["content"] = [{"type": "text", "text": existing}, *converted]
+            else:
+                out["content"] = converted
 
     if msg.get("function_call_name") is not None:
         out["function_call"] = {
