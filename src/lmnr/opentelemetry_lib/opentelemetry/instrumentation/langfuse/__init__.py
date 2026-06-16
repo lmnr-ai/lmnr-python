@@ -158,6 +158,33 @@ def _genai_input_from_langfuse(input_raw: Any) -> tuple[Any, Any] | None:
     return None
 
 
+def _split_messages_and_tool_defs_langchain(
+    messages: Any,
+) -> tuple[Any, list[Any] | None]:
+    """Splits langfuse.langchain input into the actual messages and tool definitions
+
+    The callback inlines everything into one array, where tool definitions are messages
+    with role "tool" and "content" dict with type "function" and "function" key, as per
+    gen_ai.tool.definitions
+    """
+    if not isinstance(messages, list):
+        return (messages, None)
+    new_msgs = []
+    tool_defs = []
+    for msg in messages:
+        if isinstance(msg, dict) and msg.get("role") == "tool":
+            if content := msg.get("content"):
+                if (
+                    isinstance(content, dict)
+                    and content["type"] == "function"
+                    and isinstance(content["function"], dict)
+                ):
+                    tool_defs.append(content["function"])
+                    continue
+        new_msgs.append(msg)
+    return (new_msgs, tool_defs)
+
+
 def _genai_output_from_langfuse(output_raw: Any) -> Any | None:
     """Normalize a Langfuse LLM output into a `gen_ai.output.messages` array.
 
@@ -175,6 +202,41 @@ def _genai_output_from_langfuse(output_raw: Any) -> Any | None:
     if isinstance(parsed, dict):
         return [parsed]
     return None
+
+
+def _convert_openai_tool_calls_to_content_parts(messages: list[Any]) -> list[Any]:
+    """The output of LangChain integration looks a lot like OpenAI's output,
+    i.e. separate tool_calls and content keys. This function wraps extracts
+    tool calls and converts them to a more generic content part style tool
+    calls
+    """
+
+    def looks_like_openai_assistant(msg: Any) -> bool:
+        return (
+            isinstance(msg, dict)
+            and msg.get("role") == "assistant"
+            and isinstance(msg.get("content"), str)
+            and isinstance(msg.get("tool_calls"), list)
+        )
+
+    def wrap_in_choice_shape(msg: dict) -> dict:
+        content = msg.get("content")
+        new_cnt = (
+            content
+            if isinstance(content, list)
+            else [{"type": "text", "text": content}]
+            if isinstance(content, str)
+            else []
+        )
+        return {
+            "role": msg.get("role"),
+            "content": [*new_cnt, *msg.get("tool_calls", [])],
+        }
+
+    return [
+        wrap_in_choice_shape(msg) if looks_like_openai_assistant(msg) else msg
+        for msg in messages
+    ]
 
 
 def _usage_field(usage: Any, *keys: str) -> int | None:
@@ -197,9 +259,7 @@ def _cost_field(cost: Any, *keys: str) -> float | None:
     return None
 
 
-def _oi_collect_indexed(
-    attrs: dict[str, Any], prefix: str
-) -> list[dict[str, Any]]:
+def _oi_collect_indexed(attrs: dict[str, Any], prefix: str) -> list[dict[str, Any]]:
     """Reassemble openinference's flat indexed attributes into a list of dicts.
 
     OpenInference flattens nested structures into dotted keys with numeric
@@ -232,9 +292,7 @@ def _oi_collect_indexed(
     return [by_index[i] for i in sorted(by_index)]
 
 
-def _oi_assign_path(
-    container: dict[str, Any], segments: list[str], value: Any
-) -> None:
+def _oi_assign_path(container: dict[str, Any], segments: list[str], value: Any) -> None:
     """Assign `value` into `container` following a dotted openinference path.
 
     Numeric segments index into lists, named segments index into dicts. Lists
@@ -385,9 +443,7 @@ def _prepend_span_processor(provider: Any, processor: SpanProcessor) -> bool:
     if current is None:
         return True
     try:
-        new_order = (processor,) + tuple(
-            p for p in current if p is not processor
-        )
+        new_order = (processor,) + tuple(p for p in current if p is not processor)
         if lock is not None:
             with lock:
                 active._span_processors = new_order
@@ -429,7 +485,9 @@ def _remove_span_processor(provider: Any, processor: SpanProcessor) -> bool:
             active._span_processors = filtered
     except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.debug(
-            "Could not remove span processor from %r (%s)", provider, exc,
+            "Could not remove span processor from %r (%s)",
+            provider,
+            exc,
         )
         return False
     return True
@@ -440,9 +498,7 @@ def _is_langfuse_span(span: ReadableSpan) -> bool:
     if scope is not None and scope.name == LANGFUSE_TRACER_NAME:
         return True
     attrs = span.attributes or {}
-    return any(
-        isinstance(k, str) and k.startswith("langfuse.") for k in attrs.keys()
-    )
+    return any(isinstance(k, str) and k.startswith("langfuse.") for k in attrs.keys())
 
 
 class LangfuseAttributeTranslator(SpanProcessor):
@@ -462,8 +518,7 @@ class LangfuseAttributeTranslator(SpanProcessor):
     We write to `span._attributes` directly instead.
     """
 
-    def on_start(self, span: Span, parent_context: Context |
-                 None = None) -> None:
+    def on_start(self, span: Span, parent_context: Context | None = None) -> None:
         return None
 
     def on_end(self, span: ReadableSpan) -> None:
@@ -519,11 +574,7 @@ class LangfuseAttributeTranslator(SpanProcessor):
 
         # Usage details (tokens)
         usage_raw = _parse_json(attrs.get(_OBSERVATION_USAGE_DETAILS))
-        input_tokens = _usage_field(
-            usage_raw,
-            "input",
-            "prompt_tokens",
-            "input_tokens")
+        input_tokens = _usage_field(usage_raw, "input", "prompt_tokens", "input_tokens")
         output_tokens = _usage_field(
             usage_raw, "output", "completion_tokens", "output_tokens"
         )
@@ -548,9 +599,7 @@ class LangfuseAttributeTranslator(SpanProcessor):
             new_attrs[_GEN_AI_USAGE_INPUT_COST] = input_cost
         if output_cost is not None:
             new_attrs[_GEN_AI_USAGE_OUTPUT_COST] = output_cost
-        if total_cost is None and (
-            input_cost is not None or output_cost is not None
-        ):
+        if total_cost is None and (input_cost is not None or output_cost is not None):
             total_cost = (input_cost or 0.0) + (output_cost or 0.0)
         if total_cost is not None:
             new_attrs[_GEN_AI_USAGE_TOTAL_COST] = total_cost
@@ -570,9 +619,13 @@ class LangfuseAttributeTranslator(SpanProcessor):
             split = _genai_input_from_langfuse(input_raw)
             if split is not None:
                 messages, tools = split
+                messages, lc_tools = _split_messages_and_tool_defs_langchain(messages)
+                messages = _convert_openai_tool_calls_to_content_parts(messages)
                 new_attrs[_GEN_AI_INPUT_MESSAGES] = json_dumps(messages)
                 if tools:
                     new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(tools)
+                elif lc_tools:
+                    new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(lc_tools)
                 input_handled = True
         if (
             not input_handled
@@ -589,6 +642,8 @@ class LangfuseAttributeTranslator(SpanProcessor):
         if is_llm and output_raw is not None:
             messages = _genai_output_from_langfuse(output_raw)
             if messages is not None:
+                if isinstance(messages, list):
+                    messages = _convert_openai_tool_calls_to_content_parts(messages)
                 new_attrs[_GEN_AI_OUTPUT_MESSAGES] = json_dumps(messages)
                 output_handled = True
         if (
@@ -635,22 +690,19 @@ class LangfuseAttributeTranslator(SpanProcessor):
         for k, v in attrs.items():
             if not isinstance(k, str):
                 continue
-            for prefix in (_TRACE_METADATA_PREFIX,
-                           _OBSERVATION_METADATA_PREFIX):
+            for prefix in (_TRACE_METADATA_PREFIX, _OBSERVATION_METADATA_PREFIX):
                 if k == prefix:
                     parsed = _parse_json(v)
                     if isinstance(parsed, dict):
                         for mk, mv in parsed.items():
-                            new_attrs[
-                                f"{ASSOCIATION_PROPERTIES}.metadata.{mk}"
-                            ] = (
+                            new_attrs[f"{ASSOCIATION_PROPERTIES}.metadata.{mk}"] = (
                                 mv
                                 if isinstance(mv, (str, int, float, bool))
                                 else json.dumps(mv)
                             )
                     break
                 if k.startswith(prefix + "."):
-                    sub = k[len(prefix) + 1:]
+                    sub = k[len(prefix) + 1 :]
                     new_attrs[f"{ASSOCIATION_PROPERTIES}.metadata.{sub}"] = v
                     break
 
@@ -687,9 +739,7 @@ class LangfuseAttributeTranslator(SpanProcessor):
         new_attrs: dict[str, Any] = {}
 
         kind = attrs.get(_OI_SPAN_KIND)
-        is_llm = (
-            isinstance(kind, str) and kind.upper() in _OI_LLM_SPAN_KINDS
-        ) or any(
+        is_llm = (isinstance(kind, str) and kind.upper() in _OI_LLM_SPAN_KINDS) or any(
             isinstance(k, str)
             and (
                 k.startswith(_OI_LLM_INPUT_MESSAGES + ".")
@@ -741,8 +791,7 @@ class LangfuseAttributeTranslator(SpanProcessor):
 
         # Tool definitions
         tools = [
-            _oi_tool_to_genai(t)
-            for t in _oi_collect_indexed(attrs, _OI_LLM_TOOLS)
+            _oi_tool_to_genai(t) for t in _oi_collect_indexed(attrs, _OI_LLM_TOOLS)
         ]
         tools = [t for t in tools if t]
         if tools:
@@ -762,11 +811,7 @@ class LangfuseAttributeTranslator(SpanProcessor):
             out_val = attrs.get(_OI_OUTPUT_VALUE)
             if not (isinstance(out_val, str) and out_val):
                 out_val = attrs.get(_OBSERVATION_OUTPUT)
-            if (
-                isinstance(out_val, str)
-                and out_val
-                and SPAN_OUTPUT not in attrs
-            ):
+            if isinstance(out_val, str) and out_val and SPAN_OUTPUT not in attrs:
                 new_attrs[SPAN_OUTPUT] = out_val
 
         # LiteLLM's `langfuse_otel` hybrid spans also carry trace-level
@@ -834,8 +879,7 @@ class LangfuseInstrumentor:
         try:
             _prepend_span_processor(lmnr_tracer_provider, translator)
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.warning(
-                "Failed to install Langfuse attribute translator: %s", exc)
+            logger.warning("Failed to install Langfuse attribute translator: %s", exc)
             return
         cls._translator = translator
         cls._lmnr_span_processor = lmnr_span_processor
@@ -1040,6 +1084,7 @@ class LangfuseInstrumentor:
             from langfuse._client.resource_manager import (  # type: ignore[import-not-found]
                 LangfuseResourceManager,
             )
+
             LangfuseResourceManager._initialize_instance = (
                 cls._original_initialize_instance
             )
@@ -1164,12 +1209,11 @@ class LangfuseInstrumentor:
             from litellm.litellm_core_utils import (  # type: ignore[import-not-found]
                 litellm_logging,
             )
+
             litellm_logging._init_custom_logger_compatible_class = (
                 cls._original_litellm_init_logger
             )
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.debug(
-                "Could not restore LiteLLM logger factory patch: %s", exc
-            )
+            logger.debug("Could not restore LiteLLM logger factory patch: %s", exc)
         finally:
             cls._original_litellm_init_logger = None
