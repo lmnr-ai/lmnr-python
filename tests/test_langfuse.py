@@ -469,6 +469,115 @@ def test_translator_maps_openai_functions_to_tool_definitions():
     assert json.loads(span.attributes["gen_ai.tool.definitions"]) == functions
 
 
+def test_translator_splits_langchain_openai_inlined_tool_defs():
+    """langfuse.langchain inlines OpenAI tool definitions into the message array
+    as role="tool" messages whose content is {type:"function", function:{...}}.
+    Those must be pulled out into gen_ai.tool.definitions, leaving only the real
+    messages in gen_ai.input.messages."""
+    translator = LangfuseAttributeTranslator()
+    fn = {"name": "get_weather", "parameters": {"type": "object"}}
+    span = _FakeSpan(
+        {
+            "langfuse.observation.type": "generation",
+            "langfuse.observation.input": json.dumps(
+                [
+                    {"role": "user", "content": "weather?"},
+                    {"role": "tool", "content": {"type": "function", "function": fn}},
+                ]
+            ),
+        }
+    )
+    translator.on_end(span)
+    assert json.loads(span.attributes["gen_ai.input.messages"]) == [
+        {"role": "user", "content": "weather?"}
+    ]
+    assert json.loads(span.attributes["gen_ai.tool.definitions"]) == [fn]
+
+
+def test_translator_splits_langchain_anthropic_inlined_tool_defs():
+    """Regression: langchain + Anthropic via langfuse.
+
+    Anthropic-langchain inlines tool DEFINITIONS into the input array as
+    role="tool" messages whose content is the Anthropic-native shape
+    {name, input_schema, description} — there is NO {type:"function"} wrapper.
+    The old splitter did `content["type"]` (KeyError), which the on_end
+    try/except swallowed, so the whole span was left untranslated (all
+    langfuse.* attrs stayed in their original shape). The splitter must
+    recognize the Anthropic shape and route it to gen_ai.tool.definitions."""
+    translator = LangfuseAttributeTranslator()
+    tool_def = {
+        "name": "transform_1",
+        "input_schema": {
+            "properties": {
+                "number": {"type": "integer"},
+                "number2": {"type": "integer"},
+            },
+            "required": ["number"],
+            "type": "object",
+        },
+        "description": "Runs transformation 1 on the given number.",
+    }
+    output = {
+        "role": "assistant",
+        "content": [
+            {"text": "I'll apply these transformations.", "type": "text"},
+            {
+                "id": "toolu_01EF",
+                "input": {"number": 2},
+                "name": "transform_1",
+                "type": "tool_use",
+            },
+        ],
+        "tool_calls": [
+            {
+                "name": "transform_1",
+                "args": {"number": 2},
+                "id": "toolu_01EF",
+                "type": "tool_call",
+            }
+        ],
+    }
+    span = _FakeSpan(
+        {
+            "langfuse.observation.type": "generation",
+            "langfuse.observation.model.name": "claude-haiku-4-5-20251001",
+            "langfuse.observation.usage_details": json.dumps(
+                {
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0,
+                    "input": 862,
+                    "output": 75,
+                }
+            ),
+            "langfuse.observation.input": json.dumps(
+                [
+                    {"role": "user", "content": "Apply transformation 1 to 2."},
+                    {"role": "tool", "content": tool_def},
+                ]
+            ),
+            "langfuse.observation.output": json.dumps(output),
+        }
+    )
+    translator.on_end(span)
+
+    # The span is recognized as an LLM call and model/tokens are translated.
+    assert span.attributes[SPAN_TYPE] == "LLM"
+    assert span.attributes["gen_ai.request.model"] == "claude-haiku-4-5-20251001"
+    assert span.attributes["gen_ai.usage.input_tokens"] == 862
+    assert span.attributes["gen_ai.usage.output_tokens"] == 75
+    # The Anthropic tool definition is pulled out of the message array.
+    assert json.loads(span.attributes["gen_ai.input.messages"]) == [
+        {"role": "user", "content": "Apply transformation 1 to 2."}
+    ]
+    assert json.loads(span.attributes["gen_ai.tool.definitions"]) == [tool_def]
+    # The output keeps the tool_use content blocks and drops the redundant
+    # top-level tool_calls mirror.
+    out_messages = json.loads(span.attributes["gen_ai.output.messages"])
+    assert len(out_messages) == 1
+    assert "tool_calls" not in out_messages[0]
+    assert out_messages[0]["content"] == output["content"]
+
+
 def test_translator_non_llm_input_falls_back_to_span_input():
     """Non-LLM observations keep the raw input/output blob behaviour."""
     translator = LangfuseAttributeTranslator()

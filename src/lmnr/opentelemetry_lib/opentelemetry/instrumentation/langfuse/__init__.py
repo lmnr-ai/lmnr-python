@@ -163,9 +163,18 @@ def _split_messages_and_tool_defs_langchain(
 ) -> tuple[Any, list[Any] | None]:
     """Splits langfuse.langchain input into the actual messages and tool definitions
 
-    The callback inlines everything into one array, where tool definitions are messages
-    with role "tool" and "content" dict with type "function" and "function" key, as per
-    gen_ai.tool.definitions
+    The callback inlines tool definitions into the message array as messages with
+    role "tool" and a "content" dict. Two provider-specific shapes occur:
+
+    * OpenAI: ``{"type": "function", "function": {...}}`` — the actual definition
+      lives under the ``"function"`` key.
+    * Anthropic: ``{"name", "input_schema", "description"}`` — the content dict IS
+      the definition (already the Anthropic-native shape Laminar's own Anthropic
+      instrumentor emits into ``gen_ai.tool.definitions``).
+
+    Both are pulled out into the tool-definitions list; everything else stays a
+    message. Uses ``.get`` throughout so a content dict missing the expected keys
+    falls through to being treated as a normal message instead of raising.
     """
     if not isinstance(messages, list):
         return (messages, None)
@@ -173,13 +182,15 @@ def _split_messages_and_tool_defs_langchain(
     tool_defs = []
     for msg in messages:
         if isinstance(msg, dict) and msg.get("role") == "tool":
-            if content := msg.get("content"):
-                if (
-                    isinstance(content, dict)
-                    and content["type"] == "function"
-                    and isinstance(content["function"], dict)
+            content = msg.get("content")
+            if isinstance(content, dict):
+                if content.get("type") == "function" and isinstance(
+                    content.get("function"), dict
                 ):
                     tool_defs.append(content["function"])
+                    continue
+                if "input_schema" in content and "name" in content:
+                    tool_defs.append(content)
                     continue
         new_msgs.append(msg)
     return (new_msgs, tool_defs)
@@ -206,21 +217,40 @@ def _genai_output_from_langfuse(output_raw: Any) -> Any | None:
 
 def _convert_openai_tool_calls_to_content_parts(messages: list[Any]) -> list[Any]:
     """The output of LangChain integration looks a lot like OpenAI's output,
-    i.e. separate tool_calls and content keys. This function wraps extracts
-    tool calls and converts them to a more generic content part style tool
-    calls
+    i.e. separate tool_calls and content keys. This function extracts the tool
+    calls and converts them to a more generic content-part style.
+
+    Two assistant-message shapes occur:
+
+    * OpenAI/langchain: string ``content`` + a separate ``tool_calls`` list. The
+      string is wrapped into a text part and the tool calls are appended as
+      content parts.
+    * Anthropic/langchain: list ``content`` that ALREADY embeds the calls as
+      ``{"type": "tool_use", ...}`` blocks, PLUS a redundant top-level
+      ``tool_calls`` list mirroring the same calls. Keep the content blocks and
+      drop the duplicate top-level ``tool_calls`` so the call isn't rendered
+      twice.
     """
 
-    def looks_like_openai_assistant(msg: Any) -> bool:
-        return (
-            isinstance(msg, dict)
-            and msg.get("role") == "assistant"
-            and isinstance(msg.get("content"), str)
-            and isinstance(msg.get("tool_calls"), list)
+    def is_assistant(msg: Any) -> bool:
+        return isinstance(msg, dict) and msg.get("role") == "assistant"
+
+    def has_inlined_tool_calls(content: Any) -> bool:
+        return isinstance(content, list) and any(
+            isinstance(part, dict) and part.get("type") in ("tool_use", "tool_call")
+            for part in content
         )
 
-    def wrap_in_choice_shape(msg: dict) -> dict:
+    def normalize(msg: dict) -> dict:
         content = msg.get("content")
+        tool_calls = msg.get("tool_calls")
+        if not isinstance(tool_calls, list):
+            return msg
+        # Anthropic: calls already embedded in the content blocks — drop the
+        # redundant mirror to avoid double rendering.
+        if has_inlined_tool_calls(content):
+            return {k: v for k, v in msg.items() if k != "tool_calls"}
+        # OpenAI: fold the separate tool_calls into the content parts.
         new_cnt = (
             content
             if isinstance(content, list)
@@ -230,13 +260,10 @@ def _convert_openai_tool_calls_to_content_parts(messages: list[Any]) -> list[Any
         )
         return {
             "role": msg.get("role"),
-            "content": [*new_cnt, *msg.get("tool_calls", [])],
+            "content": [*new_cnt, *tool_calls],
         }
 
-    return [
-        wrap_in_choice_shape(msg) if looks_like_openai_assistant(msg) else msg
-        for msg in messages
-    ]
+    return [normalize(msg) if is_assistant(msg) else msg for msg in messages]
 
 
 def _usage_field(usage: Any, *keys: str) -> int | None:
