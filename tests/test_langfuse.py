@@ -1514,6 +1514,7 @@ def _reset_langfuse_instrumentor_state():
     LangfuseInstrumentor._lmnr_tracer_provider = None
     LangfuseInstrumentor._original_initialize_instance = None
     LangfuseInstrumentor._original_litellm_init_logger = None
+    LangfuseInstrumentor._wrapped_litellm_loggers = {}
 
 
 @_litellm_required
@@ -1660,5 +1661,93 @@ def test_litellm_factory_does_not_bridge_non_langfuse_loggers(span_exporter):
         instrumentor.uninstrument()
     finally:
         litellm_logging._init_custom_logger_compatible_class = original_factory
+        litellm_logging._in_memory_loggers[:] = original_loggers
+        _reset_langfuse_instrumentor_state()
+
+
+def test_is_llm_span_detects_llm_parents():
+    """`_is_llm_span` gates LiteLLM primary-span forcing: it must recognise
+    Laminar's own `litellm.completion` LLM span (so folding stays correct) and
+    NOT mistake a plain `@observe` root for one (so the bridge forces a
+    `litellm_request` span there)."""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
+        _is_llm_span,
+    )
+
+    assert _is_llm_span(_FakeSpan({SPAN_TYPE: "LLM"}))
+    assert _is_llm_span(_FakeSpan({"openinference.span.kind": "LLM"}))
+    assert _is_llm_span(_FakeSpan({"gen_ai.request.model": "gpt-4o"}))
+    assert _is_llm_span(_FakeSpan({"gen_ai.response.model": "gpt-4o"}))
+    assert _is_llm_span(_FakeSpan({"gen_ai.system": "openai"}))
+    # A plain root / tool span must NOT read as LLM.
+    assert not _is_llm_span(_FakeSpan({}))
+    assert not _is_llm_span(_FakeSpan({SPAN_TYPE: "DEFAULT"}))
+    assert not _is_llm_span(_FakeSpan({"langfuse.observation.type": "span"}))
+
+
+@_litellm_required
+def test_litellm_bridge_wraps_and_unwraps_logger_methods(span_exporter):
+    """The bridge must wrap each `langfuse_otel` logger's
+    `_get_tracer_with_dynamic_headers` (layer 1: attach to per-credential cache
+    providers) and `_get_span_context` (layer 2: force a `litellm_request`
+    span instead of folding onto a non-LLM parent). The layer-2 wrapper reads
+    `trace.get_current_span()`, so we drive it by activating a span:
+    - a non-LLM active span (a user's `@observe` root) must be reported as
+      `parent_span=None` while the context is preserved, flipping LiteLLM's
+      `should_create_primary_span` to True;
+    - an LLM active span (Laminar's own `litellm.completion`) must be left as
+      the parent so folding stays correct and no duplicate span is created.
+    `uninstrument` must restore both originals.
+    """
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+
+    from litellm.integrations.langfuse.langfuse_otel import LangfuseOtelLogger
+    from litellm.litellm_core_utils import litellm_logging
+
+    _reset_langfuse_instrumentor_state()
+
+    logger_obj = LangfuseOtelLogger(callback_name="langfuse_otel")
+    orig_get_tracer = logger_obj._get_tracer_with_dynamic_headers
+    orig_get_ctx = logger_obj._get_span_context
+
+    original_loggers = list(litellm_logging._in_memory_loggers)
+    litellm_logging._in_memory_loggers.append(logger_obj)
+    probe_tracer = TracerProvider().get_tracer("probe")
+    try:
+        wrapper = TracerWrapper.instance
+        instrumentor = LangfuseInstrumentor()
+        instrumentor.instrument(
+            lmnr_tracer_provider=wrapper._tracer_provider,
+            lmnr_span_processor=wrapper._span_processor,
+        )
+
+        # Both methods must now be wrapped.
+        assert logger_obj._get_tracer_with_dynamic_headers is not orig_get_tracer
+        assert logger_obj._get_span_context is not orig_get_ctx
+
+        # Layer 2 gate: a non-LLM active span (e.g. an `@observe` root) is
+        # nulled out as a parent so LiteLLM creates its own litellm_request.
+        non_llm = probe_tracer.start_span("run")
+        with trace.use_span(non_llm, end_on_exit=False):
+            ctx, parent = logger_obj._get_span_context({})
+        assert parent is None, "non-LLM parent must be nulled to force a primary span"
+        assert ctx is not None, "parent context must be preserved for nesting"
+
+        # ...an LLM active span (Laminar's litellm.completion) is preserved so
+        # LiteLLM folds onto it instead of creating a duplicate nested LLM span.
+        llm = probe_tracer.start_span(
+            "litellm.completion", attributes={SPAN_TYPE: "LLM"}
+        )
+        with trace.use_span(llm, end_on_exit=False):
+            _, parent_llm = logger_obj._get_span_context({})
+        assert parent_llm is llm, "LLM parent must be preserved (no duplicate span)"
+
+        instrumentor.uninstrument()
+        # Both originals restored.
+        assert logger_obj._get_tracer_with_dynamic_headers == orig_get_tracer
+        assert logger_obj._get_span_context == orig_get_ctx
+        assert LangfuseInstrumentor._wrapped_litellm_loggers == {}
+    finally:
         litellm_logging._in_memory_loggers[:] = original_loggers
         _reset_langfuse_instrumentor_state()

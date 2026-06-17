@@ -487,6 +487,36 @@ def _is_openinference_span(span: ReadableSpan) -> bool:
     )
 
 
+def _is_llm_span(span: Any) -> bool:
+    """True if `span` is already typed as an LLM span.
+
+    Used to gate LiteLLM's primary-span forcing: when the active parent is
+    Laminar's own `litellm.completion` LLM span (present when
+    `Instruments.LITELLM` runs alongside the bridge), letting LiteLLM fold its
+    `gen_ai.*` attrs onto that parent is the correct deduplicated shape, so we
+    must NOT redirect it into a second nested `litellm_request` LLM span.
+    Reads the live (still-recording) span's attributes defensively — any
+    unexpected span shape falls back to False (fold not LLM → safe to force).
+    """
+    try:
+        attrs = getattr(span, "attributes", None) or {}
+        if attrs.get("lmnr.span.type") == "LLM":
+            return True
+        if attrs.get(_OI_SPAN_KIND) == "LLM":
+            return True
+        return any(
+            isinstance(k, str)
+            and (
+                k == "gen_ai.request.model"
+                or k == "gen_ai.response.model"
+                or k == "gen_ai.system"
+            )
+            for k in attrs.keys()
+        )
+    except Exception:  # pylint: disable=broad-exception-caught
+        return False
+
+
 def _prepend_span_processor(provider: Any, processor: SpanProcessor) -> bool:
     """Add `processor` to `provider` so that it runs BEFORE any processors
     already registered on the provider.
@@ -946,6 +976,18 @@ class LangfuseInstrumentor:
     #: monkey-patch installed for late-constructed `langfuse_otel` loggers can
     #: be reverted on `uninstrument`. See `_patch_litellm_logger_factory`.
     _original_litellm_init_logger: Callable[..., Any] | None = None
+    #: LiteLLM `langfuse_otel` loggers we wrapped, keyed by logger id(), mapping
+    #: to `(logger, original_get_tracer, original_get_span_context)`. LiteLLM's
+    #: callback emits its `litellm_request` / `raw_gen_ai_request` spans through
+    #: lazily-built, per-credential `TracerProvider`s cached in
+    #: `logger._tracer_provider_cache` — NOT `logger._tracer_provider` (which is
+    #: the only provider the resource-manager attach path can reach). We wrap
+    #: `_get_tracer_with_dynamic_headers` so every cache provider also gets
+    #: Laminar's translator + span processor, and `_get_span_context` so the
+    #: callback creates its own `litellm_request` span instead of folding
+    #: `gen_ai.*` attributes onto the `@observe` root. This map lets
+    #: `uninstrument` restore both originals. See `_patch_litellm_logger`.
+    _wrapped_litellm_loggers: "dict[int, tuple[Any, Callable[..., Any], Callable[..., Any]]]" = {}
     _translator: LangfuseAttributeTranslator | None = None
     _lmnr_span_processor: SpanProcessor | None = None
 
@@ -1040,6 +1082,7 @@ class LangfuseInstrumentor:
             return
         self._unpatch_resource_manager()
         self._unpatch_litellm_logger_factory()
+        self._unwrap_litellm_loggers()
 
         translator = cls._translator
         lmnr_processor = cls._lmnr_span_processor
@@ -1063,6 +1106,22 @@ class LangfuseInstrumentor:
         cls._lmnr_span_processor = None
         cls._lmnr_tracer_provider = None
         cls._installed = False
+
+    def _unwrap_litellm_loggers(self) -> None:
+        """Restore the original `_get_tracer_with_dynamic_headers` /
+        `_get_span_context` bound methods on every `langfuse_otel` logger we
+        wrapped. Mirror of the wrapping in `_patch_litellm_logger`.
+        """
+        cls = type(self)
+        for logger_obj, orig_get_tracer, orig_get_ctx in list(
+            cls._wrapped_litellm_loggers.values()
+        ):
+            try:
+                logger_obj._get_tracer_with_dynamic_headers = orig_get_tracer
+                logger_obj._get_span_context = orig_get_ctx
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.debug("Could not restore LiteLLM logger wrap: %s", exc)
+        cls._wrapped_litellm_loggers = {}
 
     # --- internals ---
 
@@ -1201,25 +1260,45 @@ class LangfuseInstrumentor:
     # LiteLLM ships a `langfuse_otel` success callback
     # (`litellm.integrations.langfuse.langfuse_otel.LangfuseOtelLogger`) that
     # subclasses LiteLLM's base `OpenTelemetry` integration with
-    # `skip_set_global=True`. As a result it builds its OWN private
-    # `TracerProvider` (a stock `opentelemetry.sdk.trace.TracerProvider`,
-    # stored on `logger._tracer_provider`) and exports OTLP straight to
-    # Langfuse Cloud — it never registers with `LangfuseResourceManager`, so
-    # the resource-manager attach/patch path above can't see it.
+    # `skip_set_global=True`. It builds its OWN private `TracerProvider`s and
+    # exports OTLP straight to Langfuse Cloud — it never registers with
+    # `LangfuseResourceManager`, so the resource-manager attach/patch path
+    # above can't see it. The spans it emits carry a hybrid of `langfuse.*`
+    # attrs AND openinference `llm.*` indexed attrs, both of which
+    # `LangfuseAttributeTranslator` already knows how to translate, so the only
+    # work is making those spans flow into Laminar with the right shape. Two
+    # things have to happen, both per-logger (see `_patch_litellm_logger`):
     #
-    # The spans it emits carry a hybrid of `langfuse.*` attrs (via
-    # `_set_langfuse_specific_attributes`) AND openinference `llm.*` indexed
-    # attrs (via `litellm.integrations.arize._utils.set_attributes`), both of
-    # which `LangfuseAttributeTranslator` already knows how to translate. So
-    # the only missing piece is provider attachment: prepend our translator and
-    # append Laminar's span processor onto that private provider, exactly like
-    # we do for a Langfuse-owned provider. The translator only ADDS Laminar /
-    # GenAI attributes, so LiteLLM's own export to Langfuse Cloud is unchanged.
+    #   Layer 1 — provider attachment. When the request carries credentials
+    #   (the common `langfuse_otel` case — env-var or dynamic headers),
+    #   LiteLLM does NOT emit through `logger._tracer_provider`. It calls
+    #   `_get_tracer_with_dynamic_headers`, which lazily builds a SEPARATE
+    #   `TracerProvider` per credential set and caches it in
+    #   `logger._tracer_provider_cache`. Attaching Laminar's translator + span
+    #   processor only to `logger._tracer_provider` therefore misses every
+    #   `litellm_request` / `raw_gen_ai_request` span. We wrap
+    #   `_get_tracer_with_dynamic_headers` to dual-attach to each cache
+    #   provider as it appears (and still attach to `_tracer_provider` for the
+    #   no-credentials path).
+    #
+    #   Layer 2 — force a primary span. In `_handle_success`, when a parent
+    #   span is active and `USE_OTEL_LITELLM_REQUEST_SPAN` is unset (the
+    #   default), LiteLLM creates NO `litellm_request` span and instead folds
+    #   `gen_ai.*` / openinference attrs onto the parent. With
+    #   `instruments=[Instruments.LANGFUSE]` the active parent is the user's
+    #   `@observe` root, so the root gets mis-marked LLM by app-server's
+    #   `gen_ai.*` heuristic and no LLM span is produced at all. We wrap
+    #   `_get_span_context` to report `parent_span=None` (while keeping the
+    #   parent CONTEXT, so nesting is preserved), which flips LiteLLM's
+    #   `should_create_primary_span` to True without touching the global env
+    #   var. The wrap is gated: if the parent is already an LLM span (Laminar's
+    #   own `litellm.completion`, present when `Instruments.LITELLM` also runs),
+    #   folding is correct and we leave the parent untouched to avoid a
+    #   duplicate nested LLM span.
 
     def _attach_to_existing_litellm_loggers(self) -> None:
         for logger_obj in self._iter_litellm_langfuse_otel_loggers():
-            provider = getattr(logger_obj, "_tracer_provider", None)
-            self._attach_to_provider(provider)
+            self._patch_litellm_logger(logger_obj)
 
     @staticmethod
     def _iter_litellm_langfuse_otel_loggers() -> list[Any]:
@@ -1242,6 +1321,62 @@ class LangfuseInstrumentor:
             return []
         loggers = getattr(litellm_logging, "_in_memory_loggers", None) or []
         return [lg for lg in loggers if isinstance(lg, LangfuseOtelLogger)]
+
+    def _patch_litellm_logger(self, logger_obj: Any) -> None:
+        """Apply both bridge layers to a single `langfuse_otel` logger.
+
+        Idempotent per logger (guarded by `_wrapped_litellm_loggers`), so it's
+        safe to call from both the existing-logger scan and the factory patch.
+        Also attaches to `logger._tracer_provider` for the no-credentials path,
+        reusing the `_handled_providers`-guarded `_attach_to_provider`.
+        """
+        if logger_obj is None:
+            return
+        cls = type(self)
+        lid = id(logger_obj)
+        if lid in cls._wrapped_litellm_loggers:
+            return
+
+        # No-credentials path still emits through `_tracer_provider`.
+        self._attach_to_provider(getattr(logger_obj, "_tracer_provider", None))
+
+        orig_get_tracer = getattr(logger_obj, "_get_tracer_with_dynamic_headers", None)
+        orig_get_ctx = getattr(logger_obj, "_get_span_context", None)
+        if not callable(orig_get_tracer) or not callable(orig_get_ctx):
+            return
+
+        instrumentor = self
+
+        def patched_get_tracer(dynamic_headers, _orig=orig_get_tracer):
+            tracer = _orig(dynamic_headers)
+            # Attach to every cache provider we haven't seen yet. The cache is
+            # keyed by credential set, so per-team keys each get a provider;
+            # `_attach_to_provider`'s id() guard makes repeats a no-op.
+            try:
+                cache = getattr(logger_obj, "_tracer_provider_cache", None) or {}
+                for provider in list(cache.values()):
+                    instrumentor._attach_to_provider(provider)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.debug("LiteLLM cache-provider attach failed: %s", exc)
+            return tracer
+
+        def patched_get_ctx(kwargs, default_span=None, _orig=orig_get_ctx):
+            ctx, parent_span = _orig(kwargs, default_span)
+            # Only force primary-span creation when folding would corrupt the
+            # parent. If the parent is already an LLM span (Laminar's own
+            # `litellm.completion`), folding LiteLLM's attrs onto it is the
+            # correct, deduplicated shape — leave it alone.
+            if parent_span is not None and not _is_llm_span(parent_span):
+                return ctx, None
+            return ctx, parent_span
+
+        logger_obj._get_tracer_with_dynamic_headers = patched_get_tracer
+        logger_obj._get_span_context = patched_get_ctx
+        cls._wrapped_litellm_loggers[lid] = (
+            logger_obj,
+            orig_get_tracer,
+            orig_get_ctx,
+        )
 
     def _patch_litellm_logger_factory(self) -> None:
         """Wrap LiteLLM's `_init_custom_logger_compatible_class` so any
@@ -1288,9 +1423,7 @@ class LangfuseInstrumentor:
                 # Laminar's translator + exporter to those would ship
                 # unrelated spans into Laminar.
                 if isinstance(result, LangfuseOtelLogger):
-                    provider = getattr(result, "_tracer_provider", None)
-                    if provider is not None:
-                        instrumentor._attach_to_provider(provider)
+                    instrumentor._patch_litellm_logger(result)
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.debug("LiteLLM post-init attach failed: %s", exc)
             return result
