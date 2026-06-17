@@ -282,10 +282,24 @@ def init_instrumentations(
                         "Skipping Langfuse bridge: no Laminar SpanProcessor provided."
                     )
                     continue
-                instrumentor.instrument(
-                    lmnr_tracer_provider=tracer_provider,
-                    lmnr_span_processor=lmnr_span_processor,
-                )
+                # `instrument()` re-raises after rolling back partial state if
+                # the attach / resource-manager-patch phase fails (e.g. a
+                # `RuntimeError` walking `LangfuseResourceManager._instances`).
+                # Surface that with the SAME clear wording as the imperative
+                # `Laminar.connect_to_langfuse()` path instead of letting the
+                # generic catch-all below bury it under "Error initializing
+                # instrumentor". We still `continue` (don't abort the rest of
+                # the instrument loop) — `initialize()` is best-effort across
+                # instrumentors and one failure must not disable all tracing.
+                try:
+                    instrumentor.instrument(
+                        lmnr_tracer_provider=tracer_provider,
+                        lmnr_span_processor=lmnr_span_processor,
+                    )
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    module_logger.warning(
+                        "Failed to install Laminar/Langfuse bridge: %s", exc
+                    )
                 continue
             if not instrumentor.is_instrumented_by_opentelemetry:
                 instrumentor.instrument(
