@@ -240,6 +240,7 @@ def test_langfuse_installed_auto_enables_and_disables_all_other_instruments(
         tracer_provider=MagicMock(),
         instruments=None,
         lmnr_span_processor=MagicMock(),
+        bridge_from_langfuse=True,
     )
     assert track_initializers == {
         Instruments.LANGFUSE,
@@ -263,6 +264,7 @@ def test_block_langfuse_disables_auto_logic(
         tracer_provider=MagicMock(),
         instruments=None,
         block_instruments={Instruments.LANGFUSE},
+        bridge_from_langfuse=True,
     )
     assert Instruments.LANGFUSE not in track_initializers
     for instrument in _LANGFUSE_PROVIDER_CONFLICTS:
@@ -283,6 +285,7 @@ def test_langfuse_auto_enable_disables_pydantic_ai(
         tracer_provider=MagicMock(),
         instruments=None,
         lmnr_span_processor=MagicMock(),
+        bridge_from_langfuse=True,
     )
     assert Instruments.LANGFUSE in track_initializers
     assert Instruments.PYDANTIC_AI not in track_initializers
@@ -302,6 +305,7 @@ def test_langfuse_auto_enable_disables_deepagents(
         tracer_provider=MagicMock(),
         instruments=None,
         lmnr_span_processor=MagicMock(),
+        bridge_from_langfuse=True,
     )
     assert Instruments.LANGFUSE in track_initializers
     assert Instruments.DEEPAGENTS not in track_initializers
@@ -323,6 +327,30 @@ def test_explicit_instruments_bypass_langfuse_auto_logic(
     assert Instruments.OPENAI in track_initializers
     assert Instruments.ANTHROPIC in track_initializers
     assert Instruments.LANGFUSE not in track_initializers
+
+
+def test_langfuse_installed_without_flag_keeps_default_instruments(
+    track_initializers,
+    langfuse_installed,
+    pydantic_ai_not_installed,
+    deepagents_not_installed,
+):
+    """Regression: the Langfuse bridge is opt-in. Having langfuse merely
+    installed (without `bridge_from_langfuse=True` and without an explicit
+    `instruments` set containing LANGFUSE) must NOT collapse the instrument
+    set to the bridge — the normal default set stays active and LANGFUSE is
+    off. This guards the development-environment footgun where a transitive
+    langfuse install would otherwise silently disable all Laminar tracing."""
+    init_instrumentations(
+        tracer_provider=MagicMock(),
+        instruments=None,
+        lmnr_span_processor=MagicMock(),
+    )
+    assert Instruments.LANGFUSE not in track_initializers
+    for instrument in _LANGFUSE_PROVIDER_CONFLICTS:
+        assert (
+            instrument in track_initializers
+        ), f"{instrument} should remain when the bridge isn't opted into"
 
 
 # ---------------------------------------------------------------------------

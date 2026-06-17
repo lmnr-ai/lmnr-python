@@ -230,6 +230,7 @@ class Laminar:
         session_recording_options: SessionRecordingOptions | None = None,
         force_http: bool = False,
         metadata: dict[str, AttributeValue] | None = None,
+        bridge_from_langfuse: bool = False,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -282,6 +283,16 @@ class Laminar:
                 Defaults to None (uses default masking behavior).
             force_http (bool, optional): If set to True, the HTTP OTEL exporter will be\
                 used instead of the gRPC OTEL exporter. Defaults to False.
+            bridge_from_langfuse (bool, optional): If set to True and `langfuse`\
+                (>= 3.0) is installed and importable, Laminar dual-attaches its\
+                span processor to every Langfuse `TracerProvider` so spans\
+                emitted via `@observe`, `langfuse.openai`, and\
+                `langfuse.langchain` also flow into Laminar. While bridging,\
+                Laminar's own auto-instrumentors are disabled to avoid\
+                double-covering the same calls (pass an explicit `instruments`\
+                set to keep specific ones). This is opt-in: leaving it False\
+                means having langfuse merely installed will NOT disable\
+                Laminar's instrumentation. Defaults to False.
         Raises:
             ValueError: If project API key is not set
         """
@@ -370,6 +381,7 @@ class Laminar:
             otel_logger_level=otel_logger_level,
             session_recording_options=session_recording_options,
             force_http=force_http,
+            bridge_from_langfuse=bridge_from_langfuse,
         )
 
         # Build the debug runtime only after tracing is up. It has no dependency
@@ -1711,11 +1723,14 @@ class Laminar:
         ``@observe``, ``langfuse.openai``, ``langfuse.langchain``, etc. are
         dual-exported to Laminar in addition to Langfuse.
 
-        Calling this is only required when ``Laminar.initialize`` was invoked
-        with an explicit ``instruments={...}`` set that omits
-        ``Instruments.LANGFUSE``. When ``instruments`` is left at the default,
-        the Langfuse bridge is auto-installed during initialization whenever
-        ``langfuse >= 3`` is importable.
+        This is an alternative to the ``bridge_from_langfuse=True`` flag on
+        ``Laminar.initialize`` — call it after initialization to install the
+        bridge imperatively (e.g. when initialization happens in code you don't
+        control). The Langfuse bridge is opt-in: it is NOT installed merely
+        because ``langfuse`` is present. It is installed when you either pass
+        ``bridge_from_langfuse=True`` (or an explicit ``instruments`` set
+        containing ``Instruments.LANGFUSE``) to ``Laminar.initialize``, or call
+        this method.
 
         Returns:
             bool: True if the bridge was installed, False otherwise

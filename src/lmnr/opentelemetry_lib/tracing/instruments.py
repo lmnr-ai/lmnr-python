@@ -244,11 +244,20 @@ def init_instrumentations(
     block_instruments: set[Instruments] | None = None,
     async_client: AsyncLaminarClient | None = None,
     lmnr_span_processor: "SpanProcessor | None" = None,
+    bridge_from_langfuse: bool = False,
 ):
     block_instruments = block_instruments or set()
     if instruments is None:
         langfuse_active = (
-            _langfuse_installed()
+            # The Langfuse bridge is opt-in: merely having langfuse installed
+            # must NOT silently disable Laminar's own instrumentors. A developer
+            # who installs langfuse as a transitive/unrelated dependency and
+            # instruments their code with Laminar only would otherwise get no
+            # Laminar spans. Callers opt in with `bridge_from_langfuse=True` (or
+            # by passing an explicit `instruments` set containing
+            # `Instruments.LANGFUSE`).
+            bridge_from_langfuse
+            and _langfuse_installed()
             and Instruments.LANGFUSE not in block_instruments
             # Only defer the whole instrument set to the bridge if the langfuse
             # SDK actually imports. If metadata says >= 3.0 but `import langfuse`

@@ -76,6 +76,7 @@ class TracerWrapper(object):
         set_global_tracer_provider: bool = True,
         otel_logger_level: int = logging.ERROR,
         session_recording_options: SessionRecordingOptions | None = None,
+        bridge_from_langfuse: bool = False,
     ) -> "TracerWrapper":
         # Silence some opentelemetry warnings
         logging.getLogger("opentelemetry.trace").setLevel(otel_logger_level)
@@ -155,6 +156,7 @@ class TracerWrapper(object):
                     block_instruments=block_instruments,
                     async_client=obj._async_client,
                     lmnr_span_processor=obj._span_processor,
+                    bridge_from_langfuse=bridge_from_langfuse,
                 )
 
                 cls.instance = obj

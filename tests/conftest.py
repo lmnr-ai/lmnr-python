@@ -31,13 +31,16 @@ def span_exporter() -> SpanExporter:
         "lmnr.opentelemetry_lib.TracerManager.init",
         side_effect=mock_tracermanager_init,
     ):
-        # Block PYDANTIC_AI and LANGFUSE so the raw-provider instrumentor
-        # tests still receive the SDK-level spans they expect. Without this,
-        # having `pydantic-ai-slim` or `langfuse` installed in the test
-        # environment would cause `init_instrumentations` to auto-remove
-        # OPENAI/ANTHROPIC/... from the default set in favor of those SDKs'
-        # own GenAI spans. Tests that target those instrumentors directly
-        # install them themselves (see `tests/test_langfuse.py`).
+        # Block PYDANTIC_AI so the raw-provider instrumentor tests still
+        # receive the SDK-level spans they expect. Without this, having
+        # `pydantic-ai-slim` installed in the test environment would cause
+        # `init_instrumentations` to auto-remove OPENAI/ANTHROPIC/... from the
+        # default set in favor of pydantic_ai's own GenAI spans. LANGFUSE is
+        # also blocked defensively: the bridge is opt-in (gated on
+        # `bridge_from_langfuse=True`, which we never pass here) so it wouldn't
+        # auto-enable anyway, but blocking it keeps the intent explicit. Tests
+        # that target those instrumentors directly install them themselves
+        # (see `tests/test_langfuse.py`).
         Laminar.initialize(
             project_api_key="test_key",
             disable_batch=True,
