@@ -106,8 +106,19 @@ def wrap_completion(
                         is_streaming=kwargs.get("stream", False),
                     )
         else:
-            with in_litellm_context():
-                result = wrapped(*args, **kwargs)
+            # Activate our span as the current OTel span for the duration of the
+            # underlying call. LiteLLM's `langfuse_otel` success callback runs
+            # synchronously inside `wrapped()` and resolves its parent via
+            # `OpenTelemetry._get_span_context` — Priority 3 of which is
+            # `trace.get_current_span()`. With no active span it would latch onto
+            # whatever span happens to be current (the user's `@observe` root),
+            # fold its hybrid openinference/langfuse attributes onto it, and skip
+            # creating its own `litellm_request` span — mis-marking the root as
+            # LLM. Making our `litellm.completion` span current keeps litellm's
+            # attributes on the LLM span where they belong.
+            with Laminar.use_span(span):
+                with in_litellm_context():
+                    result = wrapped(*args, **kwargs)
 
         # Handle case where async methods call sync methods internally and return a coroutine
         if iscoroutine(result):
@@ -260,7 +271,11 @@ def wrap_responses(
                     is_streaming=kwargs.get("stream", False),
                 )
         else:
-            result = wrapped(*args, **kwargs)
+            # See `wrap_completion`: activate our span so litellm's
+            # `langfuse_otel` callback parents its attributes onto the
+            # `litellm.responses` span instead of the user's `@observe` root.
+            with Laminar.use_span(span):
+                result = wrapped(*args, **kwargs)
 
         # Handle case where async methods call sync methods internally and return a coroutine
         if iscoroutine(result):
