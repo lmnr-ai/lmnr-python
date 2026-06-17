@@ -41,13 +41,15 @@ class Instruments(Enum):
     KERNEL = "kernel"
     LANCEDB = "lancedb"
     LANGCHAIN = "langchain"
-    # Auto-enabled by default when `langfuse` (>= 3.0) is installed. Langfuse's
-    # own SDK is built on OpenTelemetry; this instrumentor dual-attaches
-    # Laminar's span processor to every Langfuse `TracerProvider` so spans
-    # emitted by `@observe`, `langfuse.openai`, and `langfuse.langchain` flow
-    # into Laminar in addition to Langfuse. See
-    # `_LANGFUSE_PROVIDER_CONFLICTS` for the raw-provider instrumentors that
-    # are auto-removed to avoid duplicate spans.
+    # Opt-in only — NOT auto-enabled merely because `langfuse` is installed.
+    # Langfuse's own SDK is built on OpenTelemetry; this instrumentor
+    # dual-attaches Laminar's span processor to every Langfuse `TracerProvider`
+    # so spans emitted by `@observe`, `langfuse.openai`, and `langfuse.langchain`
+    # flow into Laminar in addition to Langfuse. Enable it either by passing an
+    # explicit `instruments` set containing `Instruments.LANGFUSE` to
+    # `Laminar.initialize`, or by calling `Laminar.connect_to_langfuse()` after
+    # initialization. When you enable it alongside Laminar's raw-provider /
+    # framework instrumentors, the same call may be traced twice.
     LANGFUSE = "langfuse"
     LANGGRAPH = "langgraph"
     LITELLM = "litellm"
@@ -168,23 +170,6 @@ _DEEPAGENTS_NOISE_CONFLICTS: set[Instruments] = {
 }
 
 
-#: Instrumentors that overlap with Langfuse's own wrappers. Langfuse emits
-#: GenAI / tool spans through `langfuse.openai`, `langfuse.langchain`, and
-#: its `@observe` decorator for everything the user routes through it. When
-#: LANGFUSE is auto-enabled, running Laminar's raw-provider instrumentors on
-#: top of that would produce duplicate spans for the same call.
-_LANGFUSE_PROVIDER_CONFLICTS: set[Instruments] = {
-    Instruments.ANTHROPIC,
-    Instruments.BEDROCK,
-    Instruments.COHERE,
-    Instruments.GOOGLE_GENAI,
-    Instruments.GROQ,
-    Instruments.LANGCHAIN,
-    Instruments.MISTRAL,
-    Instruments.OPENAI,
-}
-
-
 def _pydantic_ai_installed() -> bool:
     return is_package_installed("pydantic-ai-slim") or is_package_installed(
         "pydantic-ai"
@@ -197,44 +182,20 @@ def _deepagents_installed() -> bool:
 
 def _langfuse_installed() -> bool:
     """The bridge targets langfuse >= 3.0 (OTel-native). For langfuse 2.x we
-    must report False so `_LANGFUSE_PROVIDER_CONFLICTS` does NOT strip the
-    raw-provider instrumentors — the bridge initializer would then return None
-    for 2.x and leave those providers silently uninstrumented."""
+    report False so `connect_to_langfuse()` refuses to install a useless
+    translator (the bridge initializer returns None for 2.x)."""
     if not is_package_installed("langfuse"):
         return False
     from packaging.version import InvalidVersion, parse
 
     version = get_package_version("langfuse")
     if version is None:
-        # Present but unreadable version metadata — err on the side of not
-        # stripping providers.
+        # Present but unreadable version metadata — err on the side of False.
         return False
     try:
         return parse(version) >= parse("3.0.0")
     except InvalidVersion:
         return False
-
-
-def _langfuse_sdk_importable() -> bool:
-    """Whether the langfuse SDK can actually be imported in this interpreter.
-
-    `_langfuse_installed()` reads package *metadata* only (it never imports
-    langfuse), so it reports True whenever a langfuse >= 3.0 distribution is
-    present — even when the SDK fails to import. langfuse (as of 3.14.x) ships
-    pydantic-v1-generated models that raise on Python 3.14, so the metadata
-    says "installed" while `import langfuse` blows up. In that state the bridge
-    installs but is inert: `_attach_to_existing_langfuse_providers` /
-    `_patch_resource_manager` swallow the import error and attach nothing. If we
-    still collapsed the default set to `{LANGFUSE, OPENTELEMETRY}` on that path,
-    the app would get NO tracing at all — no Langfuse spans (SDK unusable) and
-    no raw-provider/framework spans (auto-instrumentors stripped). Gate the
-    auto-enable on real importability so we fall back to the normal instrument
-    set when the bridge can't function."""
-    try:
-        import langfuse._client.resource_manager  # noqa: F401
-    except Exception:  # pylint: disable=broad-exception-caught
-        return False
-    return True
 
 
 def init_instrumentations(
@@ -244,87 +205,58 @@ def init_instrumentations(
     block_instruments: set[Instruments] | None = None,
     async_client: AsyncLaminarClient | None = None,
     lmnr_span_processor: "SpanProcessor | None" = None,
-    bridge_from_langfuse: bool = False,
 ):
     block_instruments = block_instruments or set()
     if instruments is None:
-        langfuse_active = (
-            # The Langfuse bridge is opt-in: merely having langfuse installed
-            # must NOT silently disable Laminar's own instrumentors. A developer
-            # who installs langfuse as a transitive/unrelated dependency and
-            # instruments their code with Laminar only would otherwise get no
-            # Laminar spans. Callers opt in with `bridge_from_langfuse=True` (or
-            # by passing an explicit `instruments` set containing
-            # `Instruments.LANGFUSE`).
-            bridge_from_langfuse
-            and _langfuse_installed()
-            and Instruments.LANGFUSE not in block_instruments
-            # Only defer the whole instrument set to the bridge if the langfuse
-            # SDK actually imports. If metadata says >= 3.0 but `import langfuse`
-            # fails (pydantic v1 on Python 3.14), the bridge attaches nothing —
-            # collapsing the set would leave the app with no tracing at all, so
-            # fall through to the normal default instrument set instead.
-            and _langfuse_sdk_importable()
+        # The Langfuse bridge is opt-in: it is NEVER part of the default set,
+        # even when `langfuse` is installed. A developer who installs langfuse
+        # as a transitive/unrelated dependency and instruments their code with
+        # Laminar only must still get Laminar's own spans. Opt in by passing an
+        # explicit `instruments` set containing `Instruments.LANGFUSE`, or by
+        # calling `Laminar.connect_to_langfuse()` after initialization.
+        instruments = set(Instruments) - {Instruments.LANGFUSE}
+        deepagents_active = (
+            _deepagents_installed()
+            and Instruments.DEEPAGENTS not in block_instruments
         )
-        if langfuse_active:
-            # Langfuse bridge takes over: when langfuse is installed and the
-            # caller didn't pass an explicit `instruments` set, disable every
-            # Laminar auto-instrumentor and route spans exclusively through
-            # Langfuse's own auto-patchers (`langfuse.openai`,
-            # `langfuse.langchain`, `@observe`, …). The bridge dual-attaches
-            # Laminar's `SpanProcessor` to every Langfuse `TracerProvider`, so
-            # Langfuse-emitted spans still reach Laminar — running any of
-            # Laminar's raw-provider / framework / agent instrumentors on top
-            # would double-cover the same calls. `OPENTELEMETRY` is a
-            # DataDog-SpanContext patch that emits no spans, so it stays.
-            # Callers who want specific Laminar instrumentors alongside
-            # Langfuse can pass an explicit `instruments` set to
-            # `Laminar.initialize`.
-            instruments = {Instruments.LANGFUSE, Instruments.OPENTELEMETRY}
+        # Only auto-enable PYDANTIC_AI if the package is actually installed,
+        # and only auto-remove overlapping provider instrumentors in that case.
+        # If pydantic_ai isn't installed, PYDANTIC_AI stays in the set but its
+        # initializer will short-circuit to None (see
+        # PydanticAIInstrumentorInitializer).
+        if (
+            _pydantic_ai_installed()
+            and Instruments.PYDANTIC_AI not in block_instruments
+        ):
+            # Deepagents wins over pydantic_ai when both are installed: the
+            # deepagents instrumentation relies on the raw-provider
+            # instrumentors (Anthropic / OpenAI / …) to emit LLM spans
+            # underneath each tool call, so stripping them would leave the
+            # `deep_agent` trace with only root + tool spans and no LLM
+            # children. If the same app also uses pydantic_ai Agents,
+            # provider calls on that path will be traced twice; callers who
+            # want pydantic_ai's de-duplication can pass an explicit
+            # `instruments` set to `Laminar.initialize`.
+            if not deepagents_active:
+                # Only emitted when the providers are actually stripped —
+                # with deepagents active they stay enabled, so warning here
+                # would misstate what happened and misdirect debugging.
+                module_logger.warning(
+                    "Not enabling default LLM instrumentations to avoid double "
+                    + "instrumentation with Pydantic AI. To opt-in, pass the following "
+                    + "to Laminar.initialize() instruments=[Instruments.ANTHROPIC, "
+                    + "Instruments.BEDROCK, Instruments.COHERE, Instruments.GOOGLE_GENAI, "
+                    + "Instruments.GROQ, Instruments.MISTRAL, Instruments.OPENAI]"
+                )
+                instruments = instruments - _PYDANTIC_AI_PROVIDER_CONFLICTS
         else:
-            instruments = set(Instruments) - {Instruments.LANGFUSE}
-            deepagents_active = (
-                _deepagents_installed()
-                and Instruments.DEEPAGENTS not in block_instruments
-            )
-            # Only auto-enable PYDANTIC_AI if the package is actually installed,
-            # and only auto-remove overlapping provider instrumentors in that case.
-            # If pydantic_ai isn't installed, PYDANTIC_AI stays in the set but its
-            # initializer will short-circuit to None (see
-            # PydanticAIInstrumentorInitializer).
-            if (
-                _pydantic_ai_installed()
-                and Instruments.PYDANTIC_AI not in block_instruments
-            ):
-                # Deepagents wins over pydantic_ai when both are installed: the
-                # deepagents instrumentation relies on the raw-provider
-                # instrumentors (Anthropic / OpenAI / …) to emit LLM spans
-                # underneath each tool call, so stripping them would leave the
-                # `deep_agent` trace with only root + tool spans and no LLM
-                # children. If the same app also uses pydantic_ai Agents,
-                # provider calls on that path will be traced twice; callers who
-                # want pydantic_ai's de-duplication can pass an explicit
-                # `instruments` set to `Laminar.initialize`.
-                if not deepagents_active:
-                    # Only emitted when the providers are actually stripped —
-                    # with deepagents active they stay enabled, so warning here
-                    # would misstate what happened and misdirect debugging.
-                    module_logger.warning(
-                        "Not enabling default LLM instrumentations to avoid double "
-                        + "instrumentation with Pydantic AI. To opt-in, pass the following "
-                        + "to Laminar.initialize() instruments=[Instruments.ANTHROPIC, "
-                        + "Instruments.BEDROCK, Instruments.COHERE, Instruments.GOOGLE_GENAI, "
-                        + "Instruments.GROQ, Instruments.MISTRAL, Instruments.OPENAI]"
-                    )
-                    instruments = instruments - _PYDANTIC_AI_PROVIDER_CONFLICTS
-            else:
-                instruments = instruments - {Instruments.PYDANTIC_AI}
-            # Auto-remove LangChain/LangGraph noise when deepagents is present;
-            # LaminarMiddleware emits the relevant spans at the agent boundary.
-            if deepagents_active:
-                instruments = instruments - _DEEPAGENTS_NOISE_CONFLICTS
-            else:
-                instruments = instruments - {Instruments.DEEPAGENTS}
+            instruments = instruments - {Instruments.PYDANTIC_AI}
+        # Auto-remove LangChain/LangGraph noise when deepagents is present;
+        # LaminarMiddleware emits the relevant spans at the agent boundary.
+        if deepagents_active:
+            instruments = instruments - _DEEPAGENTS_NOISE_CONFLICTS
+        else:
+            instruments = instruments - {Instruments.DEEPAGENTS}
     if not isinstance(instruments, set):
         instruments = set(instruments)
 

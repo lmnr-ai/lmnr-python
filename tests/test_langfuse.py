@@ -6,12 +6,12 @@ works by attaching Laminar's `SpanProcessor` (plus our attribute translator)
 to Langfuse's `TracerProvider`.
 
 Coverage:
-- Auto-enable behaviour in `init_instrumentations` when langfuse is present.
+- Opt-in behaviour in `init_instrumentations`: the bridge is NEVER in the
+  default set, even when langfuse is installed — it activates only via an
+  explicit `instruments` set or `Laminar.connect_to_langfuse()`.
 - Attribute translation from `langfuse.*` to `gen_ai.*` / `lmnr.*`.
 - Langfuse spans reach Laminar's exporter (dual-export).
 - `Laminar.connect_to_langfuse()` manual helper path.
-- `_LANGFUSE_PROVIDER_CONFLICTS` strips overlapping raw instrumentors.
-- Deepagents wins over Langfuse when both are installed.
 """
 
 from __future__ import annotations
@@ -52,9 +52,24 @@ from lmnr.opentelemetry_lib.tracing.attributes import (  # noqa: E402
 from lmnr.opentelemetry_lib.tracing.instruments import (  # noqa: E402
     INSTRUMENTATION_INITIALIZERS,
     Instruments,
-    _LANGFUSE_PROVIDER_CONFLICTS,
     init_instrumentations,
 )
+
+
+# Raw-provider / framework instrumentors that overlap with what Langfuse emits
+# through its own wrappers. The bridge is opt-in, so these must stay enabled in
+# the default set even when langfuse is installed (the user only pays the
+# double-coverage cost if they explicitly opt into LANGFUSE alongside them).
+_LANGFUSE_OVERLAP_PROVIDERS = {
+    Instruments.ANTHROPIC,
+    Instruments.BEDROCK,
+    Instruments.COHERE,
+    Instruments.GOOGLE_GENAI,
+    Instruments.GROQ,
+    Instruments.LANGCHAIN,
+    Instruments.MISTRAL,
+    Instruments.OPENAI,
+}
 
 
 def _langfuse_sdk_importable() -> bool:
@@ -110,13 +125,6 @@ def track_initializers(monkeypatch):
 @pytest.fixture
 def langfuse_installed(monkeypatch):
     monkeypatch.setattr(instruments_mod, "_langfuse_installed", lambda: True)
-    # The auto-enable path also gates on the SDK actually importing (metadata
-    # alone isn't enough — langfuse's pydantic-v1 models fail to import on
-    # Python 3.14). These tests assert the auto-enable instrument set, so the
-    # importability probe must be stubbed True too; otherwise on 3.14 the real
-    # probe returns False, `langfuse_active` never becomes true, and the tests
-    # assert against the fallback set instead.
-    monkeypatch.setattr(instruments_mod, "_langfuse_sdk_importable", lambda: True)
 
 
 @pytest.fixture
@@ -151,7 +159,7 @@ def test_langfuse_not_installed_defaults_exclude_it(
     overlapping raw-provider instrumentors remain enabled."""
     init_instrumentations(tracer_provider=MagicMock(), instruments=None)
     assert Instruments.LANGFUSE not in track_initializers
-    for instrument in _LANGFUSE_PROVIDER_CONFLICTS:
+    for instrument in _LANGFUSE_OVERLAP_PROVIDERS:
         assert (
             instrument in track_initializers
         ), f"{instrument} should remain when langfuse isn't installed"
@@ -201,8 +209,8 @@ def test_langfuse_initializer_skips_on_unreadable_or_invalid_version(monkeypatch
 
 def test_langfuse_v2_reports_not_installed(monkeypatch):
     """langfuse 2.x is not OTel-native, so the bridge initializer returns None.
-    `_langfuse_installed()` must report False in that case; otherwise the
-    provider-conflict set strips OPENAI/ANTHROPIC/... with no replacement."""
+    `_langfuse_installed()` must report False in that case so
+    `connect_to_langfuse()` refuses to install a useless translator."""
     monkeypatch.setattr(
         instruments_mod,
         "is_package_installed",
@@ -223,102 +231,54 @@ def test_langfuse_v2_reports_not_installed(monkeypatch):
     assert instruments_mod._langfuse_installed() is True
 
 
-def test_langfuse_installed_auto_enables_and_disables_all_other_instruments(
+def test_langfuse_installed_is_never_in_default_set(
     track_initializers,
     langfuse_installed,
     pydantic_ai_not_installed,
     deepagents_not_installed,
 ):
-    """When langfuse is installed and the caller didn't pass an explicit
-    `instruments` set, only LANGFUSE (plus the OPENTELEMETRY Datadog-context
-    patch, which emits no spans) is auto-enabled. Every other Laminar
-    auto-instrumentor is disabled so the Langfuse bridge is the single
-    source of spans and no raw-provider / framework / agent instrumentor
-    double-covers what Langfuse already traces through `langfuse.openai`,
-    `@observe`, etc."""
+    """The Langfuse bridge is opt-in: having langfuse installed must NOT add
+    LANGFUSE to the default set or strip any overlapping raw-provider
+    instrumentor. This guards the development-environment footgun where a
+    transitive langfuse install would otherwise silently disable Laminar's own
+    tracing for a user who only instrumented with Laminar."""
     init_instrumentations(
         tracer_provider=MagicMock(),
         instruments=None,
         lmnr_span_processor=MagicMock(),
-        bridge_from_langfuse=True,
-    )
-    assert track_initializers == {
-        Instruments.LANGFUSE,
-        Instruments.OPENTELEMETRY,
-    }, (
-        "langfuse auto-enable must reduce the active set to just LANGFUSE + "
-        "OPENTELEMETRY (DataDog-context patch); every other Laminar "
-        "instrumentor must be off to avoid double-covering Langfuse traces"
-    )
-
-
-def test_block_langfuse_disables_auto_logic(
-    track_initializers,
-    langfuse_installed,
-    pydantic_ai_not_installed,
-    deepagents_not_installed,
-):
-    """Blocking LANGFUSE suppresses the auto-enable AND restores the normal
-    default set — every raw-provider instrumentor comes back on."""
-    init_instrumentations(
-        tracer_provider=MagicMock(),
-        instruments=None,
-        block_instruments={Instruments.LANGFUSE},
-        bridge_from_langfuse=True,
     )
     assert Instruments.LANGFUSE not in track_initializers
-    for instrument in _LANGFUSE_PROVIDER_CONFLICTS:
-        assert instrument in track_initializers
+    for instrument in _LANGFUSE_OVERLAP_PROVIDERS:
+        assert (
+            instrument in track_initializers
+        ), f"{instrument} should remain when the bridge isn't opted into"
 
 
-def test_langfuse_auto_enable_disables_pydantic_ai(
+def test_langfuse_opt_in_via_explicit_instruments(
     track_initializers,
     langfuse_installed,
     pydantic_ai_installed,
-    deepagents_not_installed,
-):
-    """Regression: pydantic_ai used to stay active alongside LANGFUSE,
-    producing duplicate spans. Under the "langfuse wins, bridge is the
-    single source" policy, PYDANTIC_AI is now off whenever LANGFUSE
-    auto-enables."""
-    init_instrumentations(
-        tracer_provider=MagicMock(),
-        instruments=None,
-        lmnr_span_processor=MagicMock(),
-        bridge_from_langfuse=True,
-    )
-    assert Instruments.LANGFUSE in track_initializers
-    assert Instruments.PYDANTIC_AI not in track_initializers
-
-
-def test_langfuse_auto_enable_disables_deepagents(
-    track_initializers,
-    langfuse_installed,
     deepagents_installed,
-    pydantic_ai_not_installed,
 ):
-    """When both langfuse and deepagents are installed, langfuse wins and
-    deepagents is also disabled — the Langfuse bridge is the single source
-    of spans. Deepagents' DEFAULT + TOOL spans would otherwise layer on top
-    of Langfuse's `@observe` spans for the same agent invocation."""
+    """Passing an explicit `instruments` set is the opt-in path. The set is
+    honored verbatim — LANGFUSE runs alongside whatever else the caller asked
+    for, with no auto-removal of overlapping providers (the caller accepts the
+    double-coverage cost). Auto-enable logic for pydantic_ai/deepagents does
+    NOT run when `instruments` is explicit."""
     init_instrumentations(
         tracer_provider=MagicMock(),
-        instruments=None,
+        instruments={Instruments.LANGFUSE, Instruments.OPENAI},
         lmnr_span_processor=MagicMock(),
-        bridge_from_langfuse=True,
     )
     assert Instruments.LANGFUSE in track_initializers
-    assert Instruments.DEEPAGENTS not in track_initializers
-    for instrument in _LANGFUSE_PROVIDER_CONFLICTS:
-        assert instrument not in track_initializers
+    assert Instruments.OPENAI in track_initializers
 
 
-def test_explicit_instruments_bypass_langfuse_auto_logic(
+def test_explicit_instruments_without_langfuse_skips_bridge(
     track_initializers, langfuse_installed, deepagents_installed, pydantic_ai_installed
 ):
-    """Explicit `instruments=` always wins over the langfuse auto-reset.
-    Callers who want specific Laminar instrumentors alongside Langfuse can
-    opt back in by passing them explicitly."""
+    """An explicit `instruments` set that omits LANGFUSE leaves the bridge
+    off even though langfuse is installed — only what was asked for runs."""
     init_instrumentations(
         tracer_provider=MagicMock(),
         instruments={Instruments.OPENAI, Instruments.ANTHROPIC},
@@ -327,30 +287,6 @@ def test_explicit_instruments_bypass_langfuse_auto_logic(
     assert Instruments.OPENAI in track_initializers
     assert Instruments.ANTHROPIC in track_initializers
     assert Instruments.LANGFUSE not in track_initializers
-
-
-def test_langfuse_installed_without_flag_keeps_default_instruments(
-    track_initializers,
-    langfuse_installed,
-    pydantic_ai_not_installed,
-    deepagents_not_installed,
-):
-    """Regression: the Langfuse bridge is opt-in. Having langfuse merely
-    installed (without `bridge_from_langfuse=True` and without an explicit
-    `instruments` set containing LANGFUSE) must NOT collapse the instrument
-    set to the bridge — the normal default set stays active and LANGFUSE is
-    off. This guards the development-environment footgun where a transitive
-    langfuse install would otherwise silently disable all Laminar tracing."""
-    init_instrumentations(
-        tracer_provider=MagicMock(),
-        instruments=None,
-        lmnr_span_processor=MagicMock(),
-    )
-    assert Instruments.LANGFUSE not in track_initializers
-    for instrument in _LANGFUSE_PROVIDER_CONFLICTS:
-        assert (
-            instrument in track_initializers
-        ), f"{instrument} should remain when the bridge isn't opted into"
 
 
 # ---------------------------------------------------------------------------

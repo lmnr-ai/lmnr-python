@@ -35,12 +35,11 @@ def span_exporter() -> SpanExporter:
         # receive the SDK-level spans they expect. Without this, having
         # `pydantic-ai-slim` installed in the test environment would cause
         # `init_instrumentations` to auto-remove OPENAI/ANTHROPIC/... from the
-        # default set in favor of pydantic_ai's own GenAI spans. LANGFUSE is
-        # also blocked defensively: the bridge is opt-in (gated on
-        # `bridge_from_langfuse=True`, which we never pass here) so it wouldn't
-        # auto-enable anyway, but blocking it keeps the intent explicit. Tests
-        # that target those instrumentors directly install them themselves
-        # (see `tests/test_langfuse.py`).
+        # default set in favor of pydantic_ai's own GenAI spans. LANGFUSE never
+        # needs blocking — the bridge is opt-in and is never in the default
+        # set — but it's listed for symmetry/intent. Tests that target those
+        # instrumentors directly install them themselves (see
+        # `tests/test_langfuse.py`).
         Laminar.initialize(
             project_api_key="test_key",
             disable_batch=True,
