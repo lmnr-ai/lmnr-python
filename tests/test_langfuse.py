@@ -1059,6 +1059,30 @@ def test_connect_to_langfuse_returns_false_without_langfuse(monkeypatch):
     assert LangfuseInstrumentor._translator is None
 
 
+def test_connect_to_langfuse_returns_false_when_sdk_unimportable(monkeypatch):
+    """If `langfuse` is present per metadata but cannot actually be imported
+    (the pydantic-v1 failure on Python 3.14), the bridge's resource-manager
+    attach/patch path would silently no-op while `instrument()` still flips
+    `_installed=True`. `connect_to_langfuse()` must NOT report success there —
+    SDK spans (`@observe`, `langfuse.openai`, ...) would never reach Laminar.
+    Guard on a real import probe and return False without installing."""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation import langfuse as lf
+
+    # Metadata says installed and modern, but the SDK can't be imported.
+    monkeypatch.setattr(instruments_mod, "_langfuse_installed", lambda: True)
+    monkeypatch.setattr(lf, "langfuse_sdk_importable", lambda: False)
+
+    LangfuseInstrumentor._installed = False
+    LangfuseInstrumentor._translator = None
+    LangfuseInstrumentor._original_initialize_instance = None
+
+    assert Laminar.connect_to_langfuse() is False
+    # The bridge must NOT have been installed (no orphaned translator that a
+    # later valid install would have to clean up / could stack a second one).
+    assert LangfuseInstrumentor._installed is False
+    assert LangfuseInstrumentor._translator is None
+
+
 def test_connect_to_langfuse_rejects_langfuse_v2(monkeypatch):
     """Regression: `connect_to_langfuse()` must also version-gate on
     langfuse >= 3.0. With 2.x installed, the bridge initializer returns

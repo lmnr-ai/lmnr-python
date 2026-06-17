@@ -896,6 +896,29 @@ class LangfuseAttributeTranslator(SpanProcessor):
         LangfuseAttributeTranslator._write_attrs(span, new_attrs)
 
 
+def langfuse_sdk_importable() -> bool:
+    """Probe whether the real `langfuse` SDK can actually be imported.
+
+    `_langfuse_installed()` (in `tracing.instruments`) only reads install
+    *metadata* — it deliberately never imports the SDK. But langfuse pins
+    pydantic v1, whose generated API models fail to build on Python 3.14
+    (`pydantic.v1.errors.ConfigError: unable to infer type`). On such an
+    interpreter the package is present (metadata says >= 3.0) yet
+    `import langfuse._client.resource_manager` raises, so the bridge's
+    resource-manager attach/patch path silently no-ops and SDK spans
+    (`@observe`, `langfuse.openai`, `langfuse.langchain`) never reach Laminar.
+
+    Callers use this to refuse to report success for an install that would be
+    inert. We import `resource_manager` specifically because that's the exact
+    module the attach/patch path needs.
+    """
+    try:
+        import langfuse._client.resource_manager  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
 class LangfuseInstrumentor:
     """Attaches Laminar's span processor to every Langfuse `TracerProvider`.
 

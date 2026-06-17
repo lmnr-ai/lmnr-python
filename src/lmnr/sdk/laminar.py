@@ -1749,7 +1749,24 @@ class Laminar:
             return False
         from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
             LangfuseInstrumentor,
+            langfuse_sdk_importable,
         )
+
+        # `_langfuse_installed()` only reads install metadata; it never imports
+        # the SDK. On Python 3.14 langfuse's pydantic-v1 models fail to build,
+        # so the package is "present" but `import
+        # langfuse._client.resource_manager` raises. The bridge's
+        # resource-manager attach/patch path swallows that and silently no-ops,
+        # which would leave the bridge `_installed=True` but inert — SDK spans
+        # would never reach Laminar. Refuse to report success in that case.
+        if not langfuse_sdk_importable():
+            logger.warning(
+                "`langfuse` is installed but cannot be imported in this "
+                "interpreter (a known pydantic v1 incompatibility on Python "
+                "3.14). The Laminar/Langfuse bridge would be inert, so it was "
+                "not installed."
+            )
+            return False
 
         wrapper = TracerWrapper.instance
         if wrapper._tracer_provider is None:
