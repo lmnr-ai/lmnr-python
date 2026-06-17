@@ -173,8 +173,7 @@ def _split_messages_and_tool_defs_langchain(
       instrumentor emits into ``gen_ai.tool.definitions``).
 
     Both are pulled out into the tool-definitions list; everything else stays a
-    message. Uses ``.get`` throughout so a content dict missing the expected keys
-    falls through to being treated as a normal message instead of raising.
+    message.
     """
     if not isinstance(messages, list):
         return (messages, None)
@@ -215,12 +214,14 @@ def _genai_output_from_langfuse(output_raw: Any) -> Any | None:
     return None
 
 
-def _convert_openai_tool_calls_to_content_parts(messages: list[Any]) -> list[Any]:
+def _convert_openai_tool_calls_to_content_parts(
+    messages: list[Any], is_output: bool
+) -> list[Any]:
     """The output of LangChain integration looks a lot like OpenAI's output,
     i.e. separate tool_calls and content keys. This function extracts the tool
     calls and converts them to a more generic content-part style.
 
-    Two assistant-message shapes occur:
+    Three assistant-message shapes occur:
 
     * OpenAI/langchain: string ``content`` + a separate ``tool_calls`` list. The
       string is wrapped into a text part and the tool calls are appended as
@@ -230,6 +231,10 @@ def _convert_openai_tool_calls_to_content_parts(messages: list[Any]) -> list[Any
       ``tool_calls`` list mirroring the same calls. Keep the content blocks and
       drop the duplicate top-level ``tool_calls`` so the call isn't rendered
       twice.
+    * OpenAI (from langfuse.openai). Function calls are content blocks of
+      ``{"type": "function", "function": {...}}``. If such are detected,
+      the entire message is best-effort wrapped into an OpenAI choices schema.
+      This is only relevant to the output messages.
     """
 
     def is_assistant(msg: Any) -> bool:
@@ -241,21 +246,49 @@ def _convert_openai_tool_calls_to_content_parts(messages: list[Any]) -> list[Any
             for part in content
         )
 
+    def is_raw_openai_tool_call_format(tc: Any) -> bool:
+        return (
+            isinstance(tc, dict)
+            and tc.get("type") == "function"
+            and isinstance(tc.get("function"), dict)
+        )
+
     def normalize(msg: dict) -> dict:
         content = msg.get("content")
         tool_calls = msg.get("tool_calls")
         if not isinstance(tool_calls, list):
             return msg
+        # OpenAI output choice
+        if is_output and all([is_raw_openai_tool_call_format(tc) for tc in tool_calls]):
+            return {"message": msg}
         # Anthropic: calls already embedded in the content blocks — drop the
         # redundant mirror to avoid double rendering.
         if has_inlined_tool_calls(content):
             return {k: v for k, v in msg.items() if k != "tool_calls"}
+        # OpenAI tool calls as "function" in input convert to tool_call block
+        if not is_output:
+            new_tool_calls = []
+            for tc in tool_calls:
+                if is_raw_openai_tool_call_format(tc):
+                    fn = tc["function"]
+                    new_tool_calls.append(
+                        {
+                            "id": tc.get("id"),
+                            "type": "tool_call",
+                            "name": fn.get("name"),
+                            "arguments": fn.get("arguments"),
+                        }
+                    )
+                else:
+                    new_tool_calls.append(tc)
+            tool_calls = new_tool_calls
+
         # OpenAI: fold the separate tool_calls into the content parts.
         new_cnt = (
             content
             if isinstance(content, list)
             else [{"type": "text", "text": content}]
-            if isinstance(content, str)
+            if isinstance(content, str) and content != ""
             else []
         )
         return {
@@ -651,7 +684,7 @@ class LangfuseAttributeTranslator(SpanProcessor):
             if split is not None:
                 messages, tools = split
                 messages, lc_tools = _split_messages_and_tool_defs_langchain(messages)
-                messages = _convert_openai_tool_calls_to_content_parts(messages)
+                messages = _convert_openai_tool_calls_to_content_parts(messages, False)
                 new_attrs[_GEN_AI_INPUT_MESSAGES] = json_dumps(messages)
                 if tools:
                     new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(tools)
@@ -674,7 +707,9 @@ class LangfuseAttributeTranslator(SpanProcessor):
             messages = _genai_output_from_langfuse(output_raw)
             if messages is not None:
                 if isinstance(messages, list):
-                    messages = _convert_openai_tool_calls_to_content_parts(messages)
+                    messages = _convert_openai_tool_calls_to_content_parts(
+                        messages, True
+                    )
                 new_attrs[_GEN_AI_OUTPUT_MESSAGES] = json_dumps(messages)
                 output_handled = True
         if (
