@@ -5,11 +5,15 @@ from typing import TYPE_CHECKING
 
 from opentelemetry.trace import TracerProvider
 import lmnr.opentelemetry_lib.tracing._instrument_initializers as initializers
-from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
+from lmnr.opentelemetry_lib.utils.package_check import (
+    get_package_version,
+    is_package_installed,
+)
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 
 if TYPE_CHECKING:
     from opentelemetry.sdk._logs import LoggerProvider
+    from opentelemetry.sdk.trace import SpanProcessor
 
 module_logger = logging.getLogger(__name__)
 
@@ -37,6 +41,16 @@ class Instruments(Enum):
     KERNEL = "kernel"
     LANCEDB = "lancedb"
     LANGCHAIN = "langchain"
+    # Opt-in only — NOT auto-enabled merely because `langfuse` is installed.
+    # Langfuse's own SDK is built on OpenTelemetry; this instrumentor
+    # dual-attaches Laminar's span processor to every Langfuse `TracerProvider`
+    # so spans emitted by `@observe`, `langfuse.openai`, and `langfuse.langchain`
+    # flow into Laminar in addition to Langfuse. Enable it either by passing an
+    # explicit `instruments` set containing `Instruments.LANGFUSE` to
+    # `Laminar.initialize`, or by calling `Laminar.connect_to_langfuse()` after
+    # initialization. When you enable it alongside Laminar's raw-provider /
+    # framework instrumentors, the same call may be traced twice.
+    LANGFUSE = "langfuse"
     LANGGRAPH = "langgraph"
     LITELLM = "litellm"
     LLAMA_INDEX = "llama_index"
@@ -98,6 +112,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.KERNEL: initializers.KernelInstrumentorInitializer(),
     Instruments.LANCEDB: initializers.LanceDBInstrumentorInitializer(),
     Instruments.LANGCHAIN: initializers.LangchainInstrumentorInitializer(),
+    Instruments.LANGFUSE: initializers.LangfuseInstrumentorInitializer(),
     Instruments.LANGGRAPH: initializers.LanggraphInstrumentorInitializer(),
     Instruments.LITELLM: initializers.LitellmInstrumentorInitializer(),
     Instruments.LLAMA_INDEX: initializers.LlamaIndexInstrumentorInitializer(),
@@ -165,23 +180,50 @@ def _deepagents_installed() -> bool:
     return is_package_installed("deepagents")
 
 
+def _langfuse_installed() -> bool:
+    """The bridge targets langfuse >= 3.0 (OTel-native). For langfuse 2.x we
+    report False so `connect_to_langfuse()` refuses to install a useless
+    translator (the bridge initializer returns None for 2.x)."""
+    if not is_package_installed("langfuse"):
+        return False
+    from packaging.version import InvalidVersion, parse
+
+    version = get_package_version("langfuse")
+    if version is None:
+        # Present but unreadable version metadata — err on the side of False.
+        return False
+    try:
+        return parse(version) >= parse("3.0.0")
+    except InvalidVersion:
+        return False
+
+
 def init_instrumentations(
     tracer_provider: TracerProvider,
     logger_provider: "LoggerProvider | None" = None,
     instruments: set[Instruments] | None = None,
     block_instruments: set[Instruments] | None = None,
     async_client: AsyncLaminarClient | None = None,
+    lmnr_span_processor: "SpanProcessor | None" = None,
 ):
     block_instruments = block_instruments or set()
     if instruments is None:
-        instruments = set(Instruments)
+        # The Langfuse bridge is opt-in: it is NEVER part of the default set,
+        # even when `langfuse` is installed. A developer who installs langfuse
+        # as a transitive/unrelated dependency and instruments their code with
+        # Laminar only must still get Laminar's own spans. Opt in by passing an
+        # explicit `instruments` set containing `Instruments.LANGFUSE`, or by
+        # calling `Laminar.connect_to_langfuse()` after initialization.
+        instruments = set(Instruments) - {Instruments.LANGFUSE}
         deepagents_active = (
-            _deepagents_installed() and Instruments.DEEPAGENTS not in block_instruments
+            _deepagents_installed()
+            and Instruments.DEEPAGENTS not in block_instruments
         )
         # Only auto-enable PYDANTIC_AI if the package is actually installed,
         # and only auto-remove overlapping provider instrumentors in that case.
         # If pydantic_ai isn't installed, PYDANTIC_AI stays in the set but its
-        # initializer will short-circuit to None (see PydanticAIInstrumentorInitializer).
+        # initializer will short-circuit to None (see
+        # PydanticAIInstrumentorInitializer).
         if (
             _pydantic_ai_installed()
             and Instruments.PYDANTIC_AI not in block_instruments
@@ -196,6 +238,9 @@ def init_instrumentations(
             # want pydantic_ai's de-duplication can pass an explicit
             # `instruments` set to `Laminar.initialize`.
             if not deepagents_active:
+                # Only emitted when the providers are actually stripped —
+                # with deepagents active they stay enabled, so warning here
+                # would misstate what happened and misdirect debugging.
                 module_logger.warning(
                     "Not enabling default LLM instrumentations to avoid double "
                     + "instrumentation with Pydantic AI. To opt-in, pass the following "
@@ -227,6 +272,34 @@ def init_instrumentations(
         try:
             instrumentor = initializer.init_instrumentor(async_client)
             if instrumentor is None:
+                continue
+            # LangfuseInstrumentor doesn't extend BaseInstrumentor; it needs
+            # access to the Laminar SpanProcessor so it can dual-attach that
+            # same processor onto Langfuse-owned TracerProviders.
+            if instrument == Instruments.LANGFUSE:
+                if lmnr_span_processor is None:
+                    module_logger.debug(
+                        "Skipping Langfuse bridge: no Laminar SpanProcessor provided."
+                    )
+                    continue
+                # `instrument()` re-raises after rolling back partial state if
+                # the attach / resource-manager-patch phase fails (e.g. a
+                # `RuntimeError` walking `LangfuseResourceManager._instances`).
+                # Surface that with the SAME clear wording as the imperative
+                # `Laminar.connect_to_langfuse()` path instead of letting the
+                # generic catch-all below bury it under "Error initializing
+                # instrumentor". We still `continue` (don't abort the rest of
+                # the instrument loop) — `initialize()` is best-effort across
+                # instrumentors and one failure must not disable all tracing.
+                try:
+                    instrumentor.instrument(
+                        lmnr_tracer_provider=tracer_provider,
+                        lmnr_span_processor=lmnr_span_processor,
+                    )
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    module_logger.warning(
+                        "Failed to install Laminar/Langfuse bridge: %s", exc
+                    )
                 continue
             if not instrumentor.is_instrumented_by_opentelemetry:
                 instrumentor.instrument(

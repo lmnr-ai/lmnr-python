@@ -1706,6 +1706,91 @@ class Laminar:
             return LaminarSpan(span)
 
     @classmethod
+    def connect_to_langfuse(cls) -> bool:
+        """Bridge the Langfuse Python SDK into Laminar so spans emitted by
+        ``@observe``, ``langfuse.openai``, ``langfuse.langchain``, etc. are
+        dual-exported to Laminar in addition to Langfuse.
+
+        The Langfuse bridge is opt-in: it is NOT installed merely because
+        ``langfuse`` is present. Install it either by passing an explicit
+        ``instruments`` set containing ``Instruments.LANGFUSE`` to
+        ``Laminar.initialize``, or by calling this method after initialization
+        (e.g. when initialization happens in code you don't control).
+
+        Returns:
+            bool: True if the bridge was installed, False otherwise
+            (e.g. Laminar not initialized, ``langfuse < 3.0`` or not
+            importable).
+        """
+        # `cls.__logger` is only set by `_initialize_logger()` during
+        # `initialize()`, so we cannot rely on it here — this method is
+        # reachable before initialization. Fall back to a module-level
+        # logger instead.
+        logger = logging.getLogger(__name__)
+        if not cls.is_initialized():
+            logger.warning(
+                "Laminar is not initialized. Call Laminar.initialize() first."
+            )
+            return False
+        from lmnr.opentelemetry_lib.tracing.instruments import (
+            _langfuse_installed,
+        )
+
+        # `_langfuse_installed` gates on both presence AND version >= 3.0 —
+        # the bridge is OTel-native and does nothing useful on langfuse 2.x.
+        # Going through `instrument()` on 2.x would install a useless
+        # translator, flip `_installed=True`, and permanently block a later
+        # valid install.
+        if not _langfuse_installed():
+            logger.warning(
+                "`langfuse >= 3.0` is required for the Laminar/Langfuse "
+                "bridge. Install it with `pip install 'langfuse>=3.0'`."
+            )
+            return False
+        from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
+            LangfuseInstrumentor,
+            langfuse_sdk_importable,
+        )
+
+        # `_langfuse_installed()` only reads install metadata; it never imports
+        # the SDK. On Python 3.14 langfuse's pydantic-v1 models fail to build,
+        # so the package is "present" but `import
+        # langfuse._client.resource_manager` raises. The bridge's
+        # resource-manager attach/patch path swallows that and silently no-ops,
+        # which would leave the bridge `_installed=True` but inert — SDK spans
+        # would never reach Laminar. Refuse to report success in that case.
+        if not langfuse_sdk_importable():
+            logger.warning(
+                "`langfuse` is installed but cannot be imported in this "
+                "interpreter (a known pydantic v1 incompatibility on Python "
+                "3.14). The Laminar/Langfuse bridge would be inert, so it was "
+                "not installed."
+            )
+            return False
+
+        wrapper = TracerWrapper.instance
+        if wrapper._tracer_provider is None:
+            return False
+        # `LangfuseInstrumentor.instrument()` re-raises after rollback if the
+        # attach-to-existing / resource-manager-patch phase fails (e.g.
+        # `RuntimeError` from concurrent modification of
+        # `LangfuseResourceManager._instances`). This public helper is
+        # documented to return `bool`, so swallow the exception and surface
+        # the failure as False — `uninstrument()` has already cleaned up
+        # partial state by the time we get here.
+        try:
+            LangfuseInstrumentor().instrument(
+                lmnr_tracer_provider=wrapper._tracer_provider,
+                lmnr_span_processor=wrapper._span_processor,
+            )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning(
+                "Failed to install Laminar/Langfuse bridge: %s", exc
+            )
+            return False
+        return LangfuseInstrumentor._installed
+
+    @classmethod
     def flush(cls) -> bool:
         """Flush the internal tracer.
 
