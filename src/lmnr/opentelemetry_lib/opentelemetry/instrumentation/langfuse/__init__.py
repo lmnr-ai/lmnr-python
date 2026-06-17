@@ -258,8 +258,15 @@ def _convert_openai_tool_calls_to_content_parts(
         tool_calls = msg.get("tool_calls")
         if not isinstance(tool_calls, list):
             return msg
-        # OpenAI output choice
-        if is_output and all([is_raw_openai_tool_call_format(tc) for tc in tool_calls]):
+        # OpenAI output choice. Guard on a NON-EMPTY tool_calls list:
+        # `all([])` is True, so a plain text completion that carries
+        # `tool_calls: []` would otherwise be wrapped into the choices shape
+        # and break transcript rendering.
+        if (
+            is_output
+            and tool_calls
+            and all(is_raw_openai_tool_call_format(tc) for tc in tool_calls)
+        ):
             return {"message": msg}
         # Anthropic: calls already embedded in the content blocks — drop the
         # redundant mirror to avoid double rendering.

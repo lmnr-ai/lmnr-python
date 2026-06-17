@@ -399,6 +399,31 @@ def test_translator_maps_generation_to_llm_span():
     ]
 
 
+def test_translator_empty_tool_calls_output_stays_normal_message():
+    """Regression: a plain text completion that carries an empty `tool_calls`
+    list must NOT be wrapped into the `{"message": ...}` choices shape.
+
+    `all([])` is True, so the OpenAI-output-choice branch would otherwise fire
+    on an empty `tool_calls` and warp the message shape, breaking transcript
+    rendering."""
+    translator = LangfuseAttributeTranslator()
+    msg = {"role": "assistant", "content": "just text", "tool_calls": []}
+    span = _FakeSpan(
+        {
+            "langfuse.observation.type": "generation",
+            "langfuse.observation.output": json.dumps(msg),
+        }
+    )
+    translator.on_end(span)
+    out = json.loads(span.attributes["gen_ai.output.messages"])
+    assert len(out) == 1
+    # Must stay a normal message dict, not a {"message": {...}} choice wrapper.
+    assert "message" not in out[0]
+    assert out[0]["role"] == "assistant"
+    # Empty tool_calls folds into content (no actual calls to append).
+    assert out[0]["content"] == [{"type": "text", "text": "just text"}]
+
+
 def test_translator_splits_openai_input_messages_and_tools():
     """Langfuse's OpenAI integration ships input as {messages, tools, ...}.
 
