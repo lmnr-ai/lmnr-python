@@ -115,6 +115,41 @@ class DebugConfig:
         )
 
 
+# Metadata key that carries the pre-run note attached to a debug run's trace.
+# The backend reads this key and renders its markdown value in the UI.
+ROLLOUT_NOTE_KEY = "rollout.note"
+
+
+def resolve_debug_run_note() -> str | None:
+    """Resolve the debug run note from the environment.
+
+    Only read when debug mode is enabled (LMNR_DEBUG truthy).
+    `LMNR_DEBUG_RUN_NOTES_FILE` (a path to a file holding raw markdown) takes
+    precedence over `LMNR_DEBUG_RUN_NOTES` (inline raw markdown). A missing /
+    unreadable file is logged and skipped (returns None) rather than raising — a
+    bad note path must never block SDK init. Keep line-comparable with the TS
+    `resolveDebugRunNote`.
+
+    Returns the raw note string, or None when debug is off or no note var is set.
+    """
+    if not _is_truthy(os.environ.get("LMNR_DEBUG")):
+        return None
+    file = os.environ.get("LMNR_DEBUG_RUN_NOTES_FILE")
+    if file:
+        try:
+            with open(file, "r", encoding="utf-8") as f:
+                return f.read()
+        except Exception as exc:
+            logger.warning(
+                "LMNR_DEBUG_RUN_NOTES_FILE=%r could not be read; "
+                "ignoring run note: %s",
+                file,
+                exc,
+            )
+            return None
+    return os.environ.get("LMNR_DEBUG_RUN_NOTES")
+
+
 def build_debug_config() -> DebugConfig | None:
     """Build the debug config from the environment.
 

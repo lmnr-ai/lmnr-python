@@ -347,6 +347,16 @@ class Laminar:
                 env_metadata = json.loads(env_metadata_str)
             except Exception:
                 pass
+        # In debug mode, LMNR_DEBUG_RUN_NOTES_FILE / LMNR_DEBUG_RUN_NOTES carry
+        # the pre-run note as raw markdown — a formatting-friendly alternative to
+        # stringifying it into the LMNR_TRACE_METADATA JSON. When set, it
+        # overrides the `rollout.note` key on top of the parsed metadata (file
+        # path wins over inline; see resolve_debug_run_note).
+        from lmnr.sdk.debug.config import ROLLOUT_NOTE_KEY, resolve_debug_run_note
+
+        debug_run_note = resolve_debug_run_note()
+        if debug_run_note is not None:
+            env_metadata[ROLLOUT_NOTE_KEY] = debug_run_note
         cls.__global_metadata = {**env_metadata, **(metadata or {})}
 
         if not os.getenv("OTEL_ATTRIBUTE_COUNT_LIMIT"):
