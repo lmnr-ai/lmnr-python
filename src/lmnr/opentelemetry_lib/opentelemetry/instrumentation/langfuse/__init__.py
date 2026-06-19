@@ -841,15 +841,33 @@ class LangfuseAttributeTranslator(SpanProcessor):
             return
         new_attrs: dict[str, Any] = {}
 
+        # litellm's `langfuse_otel` callback runs through arize's attribute
+        # setter, which forces `openinference.span.kind=TOOL` on ANY completion
+        # that merely passes `tools=[...]` (see litellm
+        # `integrations/arize/_utils.py`: `if optional_tools ... span_kind =
+        # TOOL`). That's a genuine LLM call, not a tool execution, so we must
+        # not trust a `TOOL` kind when the span also carries LLM signals — a
+        # model name, token counts, or indexed input/output messages. Otherwise
+        # `litellm_request` spans get mis-typed `TOOL` whenever the caller used
+        # tool-calling.
         kind = attrs.get(_OI_SPAN_KIND)
-        is_llm = (isinstance(kind, str) and kind.upper() in _OI_LLM_SPAN_KINDS) or any(
-            isinstance(k, str)
-            and (
-                k.startswith(_OI_LLM_INPUT_MESSAGES + ".")
-                or k.startswith(_OI_LLM_OUTPUT_MESSAGES + ".")
+        has_llm_signals = (
+            _OI_LLM_MODEL_NAME in attrs
+            or _OI_TOKEN_PROMPT in attrs
+            or _OI_TOKEN_COMPLETION in attrs
+            or _OI_TOKEN_TOTAL in attrs
+            or any(
+                isinstance(k, str)
+                and (
+                    k.startswith(_OI_LLM_INPUT_MESSAGES + ".")
+                    or k.startswith(_OI_LLM_OUTPUT_MESSAGES + ".")
+                )
+                for k in attrs.keys()
             )
-            for k in attrs.keys()
         )
+        is_llm = (
+            isinstance(kind, str) and kind.upper() in _OI_LLM_SPAN_KINDS
+        ) or has_llm_signals
         if is_llm:
             new_attrs[SPAN_TYPE] = "LLM"
         elif isinstance(kind, str) and kind.upper() == "TOOL":

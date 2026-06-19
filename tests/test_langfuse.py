@@ -651,6 +651,51 @@ def test_translator_converts_openinference_without_span_kind():
     assert span.attributes["gen_ai.usage.input_tokens"] == 3
 
 
+def test_translator_does_not_mistype_tool_forced_llm_call_as_tool():
+    """litellm's `langfuse_otel` callback (via arize `_utils.set_attributes`)
+    forces `openinference.span.kind=TOOL` on ANY completion that passes
+    `tools=[...]`, even though it's a genuine LLM call. Such a span still
+    carries LLM signals (model name / token counts), so it must be typed LLM,
+    not TOOL — otherwise `litellm_request` spans following a tool observation
+    leak the TOOL type (LAM-1784)."""
+    translator = LangfuseAttributeTranslator()
+    span = _FakeSpan(
+        {
+            "openinference.span.kind": "TOOL",
+            "llm.model_name": "gpt-4o-mini",
+            "llm.token_count.prompt": 12,
+            "llm.token_count.completion": 8,
+            "llm.tools.0.name": "get_weather",
+            "langfuse.observation.input": json.dumps(
+                [{"role": "user", "content": "weather in SF?"}]
+            ),
+            "langfuse.observation.output": json.dumps(
+                {"role": "assistant", "content": "It is sunny."}
+            ),
+        },
+        scope_name="litellm",
+    )
+    translator.on_end(span)
+    assert span.attributes[SPAN_TYPE] == "LLM"
+    assert span.attributes["gen_ai.request.model"] == "gpt-4o-mini"
+
+
+def test_translator_keeps_genuine_tool_span_as_tool():
+    """A true tool-execution span (TOOL kind, no model / tokens / messages)
+    must still be typed TOOL — the LLM-signal guard must not over-trigger."""
+    translator = LangfuseAttributeTranslator()
+    span = _FakeSpan(
+        {
+            "openinference.span.kind": "TOOL",
+            "input.value": json.dumps({"city": "SF"}),
+            "output.value": "sunny",
+        },
+        scope_name="litellm",
+    )
+    translator.on_end(span)
+    assert span.attributes[SPAN_TYPE] == "TOOL"
+
+
 def test_translator_ignores_plain_non_langfuse_non_oi_spans():
     """A span that is neither langfuse- nor openinference-shaped is untouched."""
     translator = LangfuseAttributeTranslator()
