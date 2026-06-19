@@ -7,6 +7,7 @@ import pytest
 from lmnr.sdk.debug.config import (
     build_debug_config,
     build_debug_config_from_context,
+    resolve_debug_run_note,
 )
 from lmnr.sdk.types import DebugContext, LaminarSpanContext
 
@@ -15,6 +16,8 @@ _DEBUG_ENV_KEYS = (
     "LMNR_DEBUG_SESSION_ID",
     "LMNR_DEBUG_REPLAY_TRACE_ID",
     "LMNR_DEBUG_CACHE_UNTIL",
+    "LMNR_DEBUG_RUN_NOTES",
+    "LMNR_DEBUG_RUN_NOTES_FILE",
 )
 
 _VECTORS = json.loads(
@@ -359,3 +362,35 @@ def test_build_from_context_none_when_no_session():
 
 def test_build_from_context_none_when_block_absent():
     assert build_debug_config_from_context(None) is None
+
+
+def test_run_note_none_when_debug_off(monkeypatch):
+    monkeypatch.setenv("LMNR_DEBUG_RUN_NOTES", "inline note")
+    assert resolve_debug_run_note() is None
+
+
+def test_run_note_reads_inline_when_debug_on(monkeypatch):
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.setenv("LMNR_DEBUG_RUN_NOTES", "## inline\nbody")
+    assert resolve_debug_run_note() == "## inline\nbody"
+
+
+def test_run_note_file_wins_over_inline(tmp_path, monkeypatch):
+    note_file = tmp_path / "note.md"
+    note_file.write_text("## from file\nbody")
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.setenv("LMNR_DEBUG_RUN_NOTES", "inline note")
+    monkeypatch.setenv("LMNR_DEBUG_RUN_NOTES_FILE", str(note_file))
+    assert resolve_debug_run_note() == "## from file\nbody"
+
+
+def test_run_note_missing_file_returns_none_no_inline_fallback(tmp_path, monkeypatch):
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    monkeypatch.setenv("LMNR_DEBUG_RUN_NOTES", "inline note")
+    monkeypatch.setenv("LMNR_DEBUG_RUN_NOTES_FILE", str(tmp_path / "missing.md"))
+    assert resolve_debug_run_note() is None
+
+
+def test_run_note_none_when_unset(monkeypatch):
+    monkeypatch.setenv("LMNR_DEBUG", "true")
+    assert resolve_debug_run_note() is None
