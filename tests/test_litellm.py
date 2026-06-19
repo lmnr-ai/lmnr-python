@@ -213,6 +213,44 @@ def test_litellm_completion_basic(span_exporter: InMemorySpanExporter):
     check_span_has_basic_attributes(spans[0])
 
 
+def test_litellm_completion_activates_span_for_otel_callbacks(
+    span_exporter: InMemorySpanExporter,
+):
+    """LAM-1784: an OTel-based litellm callback (e.g. `langfuse_otel`) resolves
+    its parent span via `trace.get_current_span()`. The wrapper must make the
+    `litellm.completion` span the active OTel span during the underlying call so
+    such callbacks attach to it — not to whatever ambient span (a user's
+    `@observe` root) happens to be current, which would mis-mark that span as an
+    LLM call and suppress litellm's own request span.
+    """
+    from litellm.integrations.custom_logger import CustomLogger
+    from opentelemetry import trace
+
+    captured: dict[str, object] = {}
+
+    class _SpanCapturingCallback(CustomLogger):
+        def log_success_event(self, kwargs, response_obj, start_time, end_time):
+            captured["span_id"] = (
+                trace.get_current_span().get_span_context().span_id
+            )
+
+    litellm.callbacks = [_SpanCapturingCallback()]
+    try:
+        litellm.completion(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "say hi"}],
+            mock_response="Hello there!",
+        )
+    finally:
+        litellm.callbacks = []
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "litellm.completion"
+    # The callback observed our span as the active OTel span.
+    assert captured["span_id"] == spans[0].get_span_context().span_id
+
+
 @pytest.mark.vcr(record_mode="once")
 @pytest.mark.asyncio
 async def test_litellm_completion_callback_doesnt_create_double_spans(
