@@ -25,7 +25,7 @@ from lmnr.sdk.debug.config import (
     build_debug_config,
     build_debug_config_from_context,
 )
-from lmnr.sdk.debug.pointer import build_pointer, emit_pointer
+from lmnr.sdk.debug.pointer import build_debug_session_file, emit_pointer
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
@@ -181,11 +181,12 @@ class DebugRuntime:
         )
 
     def emit_pointer(self) -> None:
-        """Emit the run pointer once (console line + best-effort file).
+        """Emit the debug-session record once (console line + best-effort file
+        write to `.lmnr/debug-session.json`).
 
         No-op on a downstream run (`local_origin=False`): a runtime armed from a
         propagated `DebugContext` joins the upstream replay session and must NOT
-        write a run pointer — the origin owns it. Gated here (not just at the
+        own/overwrite the file — the origin owns it. Gated here (not just at the
         call sites) so `shutdown()` and any atexit hook stay safe.
         """
         if not self._config.local_origin:
@@ -194,17 +195,25 @@ class DebugRuntime:
             if self._emitted:
                 return
             self._emitted = True
-        pointer = build_pointer(
-            trace_id=self._trace_id or "",
+        file = build_debug_session_file(
             session_id=self._config.session_id,
+            trace_id=self._trace_id,
             replay_trace_id=self._config.replay_trace_id,
             # v2 persists the span-id needle as-is (no resolution step), so a
-            # later LMNR_DEBUG_FROM_LAST_RUN replay re-sends the same needle.
+            # later replay re-sends the same needle.
             cache_until=self._config.cache_until_span_id,
             debugger_url=self.debugger_session_url(),
             started_at=self._started_at,
         )
-        emit_pointer(pointer)
+        emit_pointer(
+            file,
+            # Anchor + on-disk session id pinned at init: the write targets the
+            # same file startup read (chdir-safe), and the clobber guard
+            # detects "file changed under us" rather than "file differs from
+            # ours" (an explicit LMNR_DEBUG_SESSION_ID override must persist).
+            directory=self._config.session_dir,
+            file_session_id_at_init=self._config.file_session_id,
+        )
 
 
 _runtime: DebugRuntime | None = None
