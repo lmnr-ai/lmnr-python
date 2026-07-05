@@ -86,7 +86,7 @@ def get_evaluation_url(
 SESSION_METADATA_KEY = "rollout.session_id"
 
 
-def with_session_metadata(
+def _with_debugger_session_metadata(
     metadata: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
     """Stamp the debug session id into eval metadata when running under debug.
@@ -349,7 +349,7 @@ class Evaluation:
             evaluation = await self.client.evals.init(
                 name=self.name,
                 group_name=self.group_name,
-                metadata=with_session_metadata(self.metadata),
+                metadata=_with_debugger_session_metadata(self.metadata),
             )
             evaluation_id = evaluation.id
             project_id = evaluation.projectId
