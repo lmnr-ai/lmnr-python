@@ -8,6 +8,7 @@ from lmnr.sdk.client.synchronous.resources.rollout_sessions import (
 )
 from lmnr.sdk.debug.outcome import CacheOutcome
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.types import SessionBlock, SessionBlockContent, SessionBlockType
 
 logger = get_default_logger(__name__)
 
@@ -56,6 +57,67 @@ class AsyncRolloutSessions(BaseAsyncResource):
             headers=self._headers(),
         )
         response.raise_for_status()
+
+    async def add_block(
+        self,
+        session_id: uuid.UUID | str,
+        type: SessionBlockType,
+        content: SessionBlockContent,
+        fail_on_not_found: bool = False,
+    ) -> str | None:
+        """Async variant of `RolloutSessions.add_block`.
+
+        Same 404 posture: logged and swallowed unless `fail_on_not_found` is
+        set, in which case it raises. Any other non-OK status raises.
+
+        Raises:
+            httpx.HTTPStatusError: If the request fails (non-404).
+        """
+        response = await self._client.post(
+            f"{self._base_url}/v1/rollouts/{session_id}/blocks",
+            headers=self._headers(),
+            json={"type": type, "content": content},
+        )
+        if response.status_code == 404:
+            message = (
+                f"Could not add a note: HTTP 404 for session {session_id}. "
+                "Either the session isn't registered in this project (mint one "
+                "with `lmnr-cli debug session new`, or run under LMNR_DEBUG=1), "
+                "or this Laminar server doesn't expose the session-blocks write "
+                "endpoint (POST /v1/rollouts/{sessionId}/blocks) yet."
+            )
+            if fail_on_not_found:
+                raise RuntimeError(message)
+            logger.warning(message)
+            return None
+        response.raise_for_status()
+        try:
+            return response.json().get("id")
+        except Exception as e:
+            logger.warning(f"Failed to parse add-block response: {e}")
+            return None
+
+    async def list_blocks(self, session_id: uuid.UUID | str) -> list[SessionBlock]:
+        """Async variant of `RolloutSessions.list_blocks`.
+
+        Returns every block on the session in creation order, or an empty list
+        when there are none / the body can't be parsed.
+
+        Raises:
+            httpx.HTTPStatusError: If the request fails.
+        """
+        response = await self._client.get(
+            f"{self._base_url}/v1/rollouts/{session_id}/blocks",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        try:
+            body = response.json()
+            blocks = body if isinstance(body, list) else body.get("blocks")
+            return blocks or []
+        except Exception as e:
+            logger.warning(f"Failed to parse list-blocks response: {e}")
+            return []
 
     async def cache(
         self,

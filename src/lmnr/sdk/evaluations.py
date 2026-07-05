@@ -80,6 +80,39 @@ def get_evaluation_url(
     return f"{frontend_url}/project/{project_id}/evaluations/{evaluation_id}"
 
 
+# Evaluation-metadata key that links an eval run to its debug session. Kept as
+# `rollout.session_id` (matching the trace-metadata key the debugger stamps) so
+# the eval and its debug session cross-reference under one identifier.
+SESSION_METADATA_KEY = "rollout.session_id"
+
+
+def _with_debugger_session_metadata(
+    metadata: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Stamp the debug session id into eval metadata when running under debug.
+
+    When this eval runs under a debug session, auto-stamp the session id into
+    the evaluation metadata so the created evaluation links back to it with no
+    extra step. The session id is resolved by the debug runtime EXACTLY like
+    traces — `LMNR_DEBUG_SESSION_ID` env → `.lmnr/debug-session.json` → freshly
+    minted — so a plain `LMNR_DEBUG=1 <run-your-eval>` groups the eval under the
+    current debug session (no CLI wrapper needed). `get_runtime()` is None when
+    debug mode is off, so the metadata is returned unchanged.
+
+    The backend writes the `evaluation` block from this key at eval creation;
+    notes are attached separately as `text` blocks keyed by the same session id
+    (`lmnr-cli debug session add-note`). Called after `Laminar.initialize()`, so
+    the runtime (and its resolved session id) already exist.
+    """
+    from lmnr.sdk.debug import get_runtime
+
+    runtime = get_runtime()
+    session_id = runtime.session_id if runtime is not None else None
+    if session_id is None:
+        return metadata
+    return {**(metadata or {}), SESSION_METADATA_KEY: session_id}
+
+
 def get_average_scores(results: list[EvaluationResultDatapoint]) -> dict[str, Numeric]:
     per_score_values = {}
     for result in results:
@@ -313,7 +346,9 @@ class Evaluation:
 
         try:
             evaluation = await self.client.evals.init(
-                name=self.name, group_name=self.group_name, metadata=self.metadata
+                name=self.name,
+                group_name=self.group_name,
+                metadata=_with_debugger_session_metadata(self.metadata),
             )
             evaluation_id = evaluation.id
             project_id = evaluation.projectId

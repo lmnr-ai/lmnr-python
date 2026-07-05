@@ -8,7 +8,7 @@ import uuid
 
 from enum import Enum
 from opentelemetry.trace import SpanContext, TraceFlags
-from typing import Any, Awaitable, Callable, Literal, Optional
+from typing import Any, Awaitable, Callable, Literal, Optional, Union
 from typing_extensions import TypedDict  # compatibility with python < 3.12
 
 from .utils import serialize, json_dumps
@@ -218,6 +218,70 @@ class TraceType(Enum):
 class GetDatapointsResponse(BaseModel):
     items: list[Datapoint]
     total_count: int = Field(alias="totalCount")
+
+
+class TraceBlockContent(TypedDict, total=False):
+    """`content` of a `trace` session block."""
+
+    traceId: str
+    # Legacy note folded onto the trace block at ingest, if any.
+    note: Optional[str]
+
+
+class EvaluationBlockContent(TypedDict, total=False):
+    """`content` of an `evaluation` session block."""
+
+    evaluationId: str
+    # Legacy note folded onto the evaluation block at ingest, if any.
+    note: Optional[str]
+
+
+class TextBlockContent(TypedDict):
+    """`content` of a `text` session block — a standalone agent note."""
+
+    text: str
+
+
+# Block type the SDK knows how to render. `type` is a plain string on the wire
+# so new block types can be added without a client bump; this is the set this
+# SDK knows how to render.
+SessionBlockType = Literal["trace", "evaluation", "text"]
+
+# Union of the known block content shapes.
+SessionBlockContent = Union[
+    TraceBlockContent, EvaluationBlockContent, TextBlockContent
+]
+
+
+class SessionBlock(TypedDict):
+    """One block in a debugger session, as returned by
+    `GET /v1/rollouts/{session_id}/blocks`.
+
+    A debug session renders as an ordered list of blocks (the app-server
+    `debugger_session_blocks` table). Each block has a plain-text `type` and a
+    jsonb `content` whose shape depends on the type:
+
+    - `trace`      — a trace produced under the session (`rollout.session_id`);
+      written at ingest.
+    - `evaluation` — an evaluation created under the session; written at eval
+      creation.
+    - `text`       — a free-text note the agent attaches post-factum via
+      `lmnr-cli debug session add-note` (keyed by session id, not tied to any
+      trace / eval).
+
+    `content` is typed loosely (`dict[str, Any]`) because `type` is open-ended
+    on the wire; narrow it with the `*BlockContent` shapes above once `type` is
+    known. Kept parity with the TS SDK's `@lmnr-ai/types` `session-block.ts`.
+    """
+
+    # Block id (deterministic UUIDv5 for trace/eval blocks; random for text).
+    id: str
+    # ISO-8601 creation timestamp — the sort key for rendering oldest-first.
+    createdAt: str
+    # Block type; one of `SessionBlockType` for known blocks.
+    type: str
+    # Type-specific payload; narrow via the `*BlockContent` shapes.
+    content: dict[str, Any]
 
 
 class DebugContext(BaseModel):

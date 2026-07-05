@@ -5,6 +5,7 @@ import uuid
 from lmnr.sdk.client.synchronous.resources.base import BaseResource
 from lmnr.sdk.debug.outcome import CacheOutcome
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.types import SessionBlock, SessionBlockContent, SessionBlockType
 
 logger = get_default_logger(__name__)
 
@@ -53,6 +54,78 @@ class RolloutSessions(BaseResource):
             headers=self._headers(),
         )
         response.raise_for_status()
+
+    def add_block(
+        self,
+        session_id: uuid.UUID | str,
+        type: SessionBlockType,
+        content: SessionBlockContent,
+        fail_on_not_found: bool = False,
+    ) -> str | None:
+        """Append a block to a debug session (debugger session blocks).
+
+        A debug session renders as an ordered list of blocks; this writes one to
+        the backend keyed by session id. The CLI uses it for `text` blocks —
+        standalone agent notes attached post-factum — so a note is tied to the
+        SESSION, not to a specific trace / evaluation (those blocks are written
+        at ingest from `rollout.session_id` metadata).
+
+        A 404 (the session is unknown for the project) is logged and swallowed
+        unless `fail_on_not_found` is set — CLI callers pass it so an exit 0
+        means the block actually landed. Any other non-OK status raises.
+
+        Returns the created block id, or None when the response body can't be
+        parsed.
+
+        Raises:
+            httpx.HTTPStatusError: If the request fails (non-404).
+        """
+        response = self._client.post(
+            f"{self._base_url}/v1/rollouts/{session_id}/blocks",
+            headers=self._headers(),
+            json={"type": type, "content": content},
+        )
+        if response.status_code == 404:
+            message = (
+                f"Could not add a note: HTTP 404 for session {session_id}. "
+                "Either the session isn't registered in this project (mint one "
+                "with `lmnr-cli debug session new`, or run under LMNR_DEBUG=1), "
+                "or this Laminar server doesn't expose the session-blocks write "
+                "endpoint (POST /v1/rollouts/{sessionId}/blocks) yet."
+            )
+            if fail_on_not_found:
+                raise RuntimeError(message)
+            logger.warning(message)
+            return None
+        response.raise_for_status()
+        try:
+            return response.json().get("id")
+        except Exception as e:
+            logger.warning(f"Failed to parse add-block response: {e}")
+            return None
+
+    def list_blocks(self, session_id: uuid.UUID | str) -> list[SessionBlock]:
+        """List a debug session's blocks in creation order.
+
+        Returns every `trace` / `evaluation` / `text` block on the session — the
+        same data the debugger UI renders. Returns an empty list when the
+        session has no blocks or the body can't be parsed.
+
+        Raises:
+            httpx.HTTPStatusError: If the request fails.
+        """
+        response = self._client.get(
+            f"{self._base_url}/v1/rollouts/{session_id}/blocks",
+            headers=self._headers(),
+        )
+        response.raise_for_status()
+        try:
+            body = response.json()
+            blocks = body if isinstance(body, list) else body.get("blocks")
+            return blocks or []
+        except Exception as e:
+            logger.warning(f"Failed to parse list-blocks response: {e}")
+            return []
 
     def cache(
         self,
