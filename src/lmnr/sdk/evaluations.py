@@ -102,8 +102,7 @@ def _with_debugger_session_metadata(
     The backend writes the `evaluation` block from this key at eval creation;
     notes are attached separately as `text` blocks keyed by the same session id
     (`lmnr-cli debug session add-note`). Called after `Laminar.initialize()`, so
-    the runtime (and its resolved session id) already exist. Mirrors the TS
-    SDK's `withSessionMetadata`.
+    the runtime (and its resolved session id) already exist.
     """
     from lmnr.sdk.debug import get_runtime
 
