@@ -134,6 +134,90 @@ def test_observe_exception_with_session_id_and_name(
     assert events[0].attributes["exception.message"] == "test"
 
 
+# At the time of writing this test, an erroring observed function would break the context for
+# the following sibling spans
+def test_observe_exception_preserves_context(span_exporter: InMemorySpanExporter):
+    @observe()
+    def err():
+        raise ValueError("test")
+
+    @observe()
+    def success():
+        pass
+
+    @observe()
+    def parent():
+        try:
+            err()
+        except Exception:
+            pass
+        success()
+
+    parent()
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 3
+    err_span = [span for span in spans if span.name == "err"][0]
+    success_span = [span for span in spans if span.name == "success"][0]
+    parent_span = [span for span in spans if span.name == "parent"][0]
+    assert getattr(err_span.get_span_context(), "trace_id") == getattr(
+        parent_span.get_span_context(), "trace_id"
+    )
+    assert getattr(success_span.get_span_context(), "trace_id") == getattr(
+        parent_span.get_span_context(), "trace_id"
+    )
+    assert getattr(err_span.parent, "span_id") == getattr(
+        parent_span.get_span_context(), "span_id"
+    )
+    assert getattr(success_span.parent, "span_id") == getattr(
+        parent_span.get_span_context(), "span_id"
+    )
+    assert err_span.attributes.get("lmnr.span.path") == ("parent", "err")
+    assert success_span.attributes.get("lmnr.span.path") == ("parent", "success")
+
+
+# Async counterpart of test_observe_exception_preserves_context above.
+@pytest.mark.asyncio
+async def test_observe_async_exception_preserves_context(
+    span_exporter: InMemorySpanExporter,
+):
+    @observe()
+    async def err():
+        raise ValueError("test")
+
+    @observe()
+    async def success():
+        pass
+
+    @observe()
+    async def parent():
+        try:
+            await err()
+        except Exception:
+            pass
+        await success()
+
+    await parent()
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 3
+    err_span = [span for span in spans if span.name == "err"][0]
+    success_span = [span for span in spans if span.name == "success"][0]
+    parent_span = [span for span in spans if span.name == "parent"][0]
+    assert getattr(err_span.get_span_context(), "trace_id") == getattr(
+        parent_span.get_span_context(), "trace_id"
+    )
+    assert getattr(success_span.get_span_context(), "trace_id") == getattr(
+        parent_span.get_span_context(), "trace_id"
+    )
+    assert getattr(err_span.parent, "span_id") == getattr(
+        parent_span.get_span_context(), "span_id"
+    )
+    assert getattr(success_span.parent, "span_id") == getattr(
+        parent_span.get_span_context(), "span_id"
+    )
+    assert err_span.attributes.get("lmnr.span.path") == ("parent", "err")
+    assert success_span.attributes.get("lmnr.span.path") == ("parent", "success")
+
+
 @pytest.mark.asyncio
 async def test_observe_async(span_exporter: InMemorySpanExporter):
     @observe()

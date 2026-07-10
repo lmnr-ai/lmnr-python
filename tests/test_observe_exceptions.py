@@ -357,48 +357,6 @@ async def test_context_api_attach_failure_async(span_exporter: InMemorySpanExpor
 
 
 # =============================================================================
-# Context setup failures — lmnr isolated attach_context raises
-# Same outer try/except catches it; isolated_ctx_token stays None.
-# Result: 1 span, function returns correctly.
-# =============================================================================
-
-
-def test_attach_context_failure_sync(span_exporter: InMemorySpanExporter):
-    @observe()
-    def observed_foo():
-        return "foo"
-
-    with patch(
-        "lmnr.opentelemetry_lib.decorators.attach_context",
-        side_effect=RuntimeError("attach_context exploded"),
-    ):
-        result = observed_foo()
-
-    assert result == "foo"
-    spans = span_exporter.get_finished_spans()
-    assert len(spans) == 1
-    assert spans[0].name == "observed_foo"
-
-
-@pytest.mark.asyncio
-async def test_attach_context_failure_async(span_exporter: InMemorySpanExporter):
-    @observe()
-    async def observed_foo():
-        return "foo"
-
-    with patch(
-        "lmnr.opentelemetry_lib.decorators.attach_context",
-        side_effect=RuntimeError("attach_context exploded"),
-    ):
-        result = await observed_foo()
-
-    assert result == "foo"
-    spans = span_exporter.get_finished_spans()
-    assert len(spans) == 1
-    assert spans[0].name == "observed_foo"
-
-
-# =============================================================================
 # Context teardown failures — context_api.detach raises in finally block
 # The individual try/except around context_api.detach(ctx_token) catches it.
 # Result: 1 span, function returns correctly.
@@ -426,48 +384,6 @@ async def test_context_api_detach_failure_async(span_exporter: InMemorySpanExpor
         return "foo"
 
     with patch.object(otel_context, "detach", side_effect=RuntimeError("otel detach exploded")):
-        result = await observed_foo()
-
-    assert result == "foo"
-    spans = span_exporter.get_finished_spans()
-    assert len(spans) == 1
-    assert spans[0].name == "observed_foo"
-
-
-# =============================================================================
-# Context teardown failures — lmnr detach_context raises in finally block
-# The individual try/except around detach_context(isolated_ctx_token) catches it.
-# Result: 1 span, function returns correctly.
-# =============================================================================
-
-
-def test_detach_context_failure_sync(span_exporter: InMemorySpanExporter):
-    @observe()
-    def observed_foo():
-        return "foo"
-
-    with patch(
-        "lmnr.opentelemetry_lib.decorators.detach_context",
-        side_effect=RuntimeError("detach_context exploded"),
-    ):
-        result = observed_foo()
-
-    assert result == "foo"
-    spans = span_exporter.get_finished_spans()
-    assert len(spans) == 1
-    assert spans[0].name == "observed_foo"
-
-
-@pytest.mark.asyncio
-async def test_detach_context_failure_async(span_exporter: InMemorySpanExporter):
-    @observe()
-    async def observed_foo():
-        return "foo"
-
-    with patch(
-        "lmnr.opentelemetry_lib.decorators.detach_context",
-        side_effect=RuntimeError("detach_context exploded"),
-    ):
         result = await observed_foo()
 
     assert result == "foo"

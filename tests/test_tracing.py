@@ -44,6 +44,48 @@ def test_start_as_current_span_exception(span_exporter: InMemorySpanExporter):
     assert events[0].attributes["exception.message"] == "error"
 
 
+# Counterpart of test_observe_exception_preserves_context in test_observe.py, using
+# Laminar.start_as_current_span() instead of @observe(). Not expected to fail, but
+# worth covering since it shares the context push/pop machinery with @observe().
+def test_start_as_current_span_exception_preserves_context(
+    span_exporter: InMemorySpanExporter,
+):
+    def err():
+        with Laminar.start_as_current_span("err"):
+            raise ValueError("test")
+
+    def success():
+        with Laminar.start_as_current_span("success"):
+            pass
+
+    with Laminar.start_as_current_span("parent"):
+        try:
+            err()
+        except Exception:
+            pass
+        success()
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 3
+    err_span = [span for span in spans if span.name == "err"][0]
+    success_span = [span for span in spans if span.name == "success"][0]
+    parent_span = [span for span in spans if span.name == "parent"][0]
+    assert getattr(err_span.get_span_context(), "trace_id") == getattr(
+        parent_span.get_span_context(), "trace_id"
+    )
+    assert getattr(success_span.get_span_context(), "trace_id") == getattr(
+        parent_span.get_span_context(), "trace_id"
+    )
+    assert getattr(err_span.parent, "span_id") == getattr(
+        parent_span.get_span_context(), "span_id"
+    )
+    assert getattr(success_span.parent, "span_id") == getattr(
+        parent_span.get_span_context(), "span_id"
+    )
+    assert err_span.attributes.get("lmnr.span.path") == ("parent", "err")
+    assert success_span.attributes.get("lmnr.span.path") == ("parent", "success")
+
+
 def test_start_as_current_span_span_type(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("test", span_type="LLM"):
         pass

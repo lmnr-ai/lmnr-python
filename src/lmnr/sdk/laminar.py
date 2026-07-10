@@ -1315,7 +1315,6 @@ class Laminar:
             # don't have access to our isolated context. We attach the context
             # to the OTEL global context, so that spans know their parent
             # span and trace_id.
-            isolated_context_token = attach_context(context)
             context_token = context_api.attach(context)
             if isinstance(span, LaminarSpan):
                 yield span
@@ -1351,7 +1350,6 @@ class Laminar:
         finally:
             try:
                 context_api.detach(context_token)
-                detach_context(isolated_context_token)
                 wrapper.pop_span_context()
             finally:
                 if end_on_exit:
@@ -1416,9 +1414,7 @@ class Laminar:
             parsed["user_id"] if parsed["user_id"] is not None else ctx_user_id
         )
         final_session_id = (
-            parsed["session_id"]
-            if parsed["session_id"] is not None
-            else ctx_session_id
+            parsed["session_id"] if parsed["session_id"] is not None else ctx_session_id
         )
 
         ctx = set_association_prop_context(
@@ -1565,9 +1561,7 @@ class Laminar:
 
         context = wrapper.push_span_context(span, from_ctx=context)
         context_token = context_api.attach(context)
-        isolated_context_token = attach_context(context)
         span._lmnr_ctx_token = context_token
-        span._lmnr_isolated_ctx_token = isolated_context_token
         try:
             current_task = asyncio.current_task()
         except Exception:
@@ -1797,9 +1791,7 @@ class Laminar:
                 lmnr_span_processor=wrapper._span_processor,
             )
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.warning(
-                "Failed to install Laminar/Langfuse bridge: %s", exc
-            )
+            logger.warning("Failed to install Laminar/Langfuse bridge: %s", exc)
             return False
         return LangfuseInstrumentor._installed
 
