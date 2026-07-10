@@ -116,14 +116,6 @@ all = [
 
 [dependency-groups]
 dev = [
-  # `vcrpy` mocks an internal class, in particular
-  # https://github.com/kevin1024/vcrpy/blob/master/vcr/stubs/aiohttp_stubs.py#L21
-  # relise on `aiohttp.streams.AsyncStreamReaderMixin` that has been removed in
-  # version 3.14.
-  # Created issue with vcrpy https://github.com/kevin1024/vcrpy/issues/995
-  # Pinning to older aiohttp for now
-  "aiohttp (>=3.0.0, <3.14.0)",
-
   "anthropic[bedrock]==0.95.0",
   "autopep8==2.3.2",
   "claude-agent-sdk==0.1.50",
@@ -141,13 +133,13 @@ dev = [
   "openai-agents==0.14.1",
   "patchright==1.58.2",
   "playwright==1.58.0",
-  "pydantic-ai-slim==1.99.0",
+  "pydantic-ai-slim==1.107.0",
   "pytest==9.0.3",
   "pytest-asyncio==1.3.0",
   "pytest-recording==0.13.4",
   "pytest-sugar==1.1.1",
   "temporalio==1.28.0",
-  "vcrpy==8.1.1",
+  "vcrpy==8.3.0",
 ]
 
 [build-system]
