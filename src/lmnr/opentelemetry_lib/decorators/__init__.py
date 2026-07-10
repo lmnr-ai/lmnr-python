@@ -1,29 +1,31 @@
 import asyncio
-from functools import wraps
 import types
+from functools import wraps
 from typing import Any, AsyncGenerator, Callable, Generator, Literal, TypeVar
 
 from opentelemetry import context as context_api
 from opentelemetry.trace import Span, Status, StatusCode
 
-from lmnr.opentelemetry_lib.tracing.context import (
-    CONTEXT_METADATA_KEY,
-    attach_context,
-    detach_context,
-    get_event_attributes_from_context,
-)
-from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
-from lmnr.opentelemetry_lib.tracing.utils import set_association_props_in_context
-from lmnr.sdk.utils import get_input_from_func_args, is_method
-from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
+from lmnr.opentelemetry_lib.tracing import TracerWrapper
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     METADATA,
     SPAN_TYPE,
 )
-from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.tracing.context import (
+    CONTEXT_METADATA_KEY,
+    get_event_attributes_from_context,
+)
+from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
+from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
+from lmnr.opentelemetry_lib.tracing.utils import set_association_props_in_context
 from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.utils import is_otel_attribute_value_type, json_dumps
+from lmnr.sdk.utils import (
+    get_input_from_func_args,
+    is_method,
+    is_otel_attribute_value_type,
+    json_dumps,
+)
 
 logger = get_default_logger(__name__)
 
@@ -209,7 +211,6 @@ def observe_base(
             ctx_token = None
             current_task = None
             current_context_id = None
-            isolated_ctx_token = None
             did_push_context = False
             try:
                 try:
@@ -224,7 +225,6 @@ def observe_base(
                 # to the OTEL global context, so that spans know their parent
                 # span and trace_id.
                 ctx_token = context_api.attach(new_context)
-                isolated_ctx_token = attach_context(new_context)
             except Exception:
                 logger.debug("Failed to setup span context", exc_info=True)
 
@@ -254,10 +254,6 @@ def observe_base(
                     logger.debug(
                         "Not detaching global context, not in the same context"
                     )
-                try:
-                    detach_context(isolated_ctx_token)
-                except Exception:
-                    logger.debug("Failed to detach isolated context", exc_info=True)
             # span will be ended in the generator
             if isinstance(res, types.GeneratorType):
                 return _handle_generator(
@@ -350,7 +346,6 @@ def async_observe_base(
             ctx_token = None
             current_task = None
             current_context_id = None
-            isolated_ctx_token = None
             did_push_context = False
             try:
                 try:
@@ -365,7 +360,6 @@ def async_observe_base(
                 # to the OTEL global context, so that spans know their parent
                 # span and trace_id.
                 ctx_token = context_api.attach(new_context)
-                isolated_ctx_token = attach_context(new_context)
             except Exception:
                 logger.debug("Failed to setup span context", exc_info=True)
 
@@ -378,7 +372,7 @@ def async_observe_base(
             except Exception as e:
                 _process_exception(span, e)
                 _cleanup_span(span, wrapper, did_push_context)
-                raise e
+                raise
             finally:
                 # Always restore global context if we are in the same asyncio context
                 current_task = None
@@ -395,10 +389,6 @@ def async_observe_base(
                     logger.debug(
                         "Not detaching global context, not in the same context"
                     )
-                try:
-                    detach_context(isolated_ctx_token)
-                except Exception:
-                    logger.debug("Failed to detach isolated context", exc_info=True)
 
             # span will be ended in the generator
             if isinstance(res, types.AsyncGeneratorType):

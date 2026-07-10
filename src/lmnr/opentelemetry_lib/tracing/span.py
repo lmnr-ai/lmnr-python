@@ -419,11 +419,6 @@ class LaminarSpan(LaminarSpanInterfaceMixin, SpanDelegationMixin, Span, Readable
                 self._popped = True
             except Exception:
                 self.logger.debug("Failed to pop span context", exc_info=True)
-        if hasattr(self, "_lmnr_isolated_ctx_token"):
-            try:
-                detach_context(self._lmnr_isolated_ctx_token)
-            except Exception:
-                self.logger.debug("Failed to detach isolated context", exc_info=True)
         if hasattr(self, "_lmnr_assoc_props_token") and self._lmnr_assoc_props_token:
             try:
                 detach_context(self._lmnr_assoc_props_token)
