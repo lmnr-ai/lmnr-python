@@ -76,7 +76,7 @@ class PydanticAIInstrumentor(BaseInstrumentor):
         # breakage from a 2.x release that could change `InstrumentationSettings`
         # (which we instantiate eagerly during `_instrument`); when 2.x ships,
         # validate compatibility and bump the cap.
-        return ("pydantic-ai-slim >= 1.0.0, < 2.0.0",)
+        return ("pydantic-ai-slim >= 1.0.0, < 3.0.0",)
 
     def _instrument(self, **kwargs: Any):
         from pydantic_ai import Agent
