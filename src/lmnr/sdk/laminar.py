@@ -49,6 +49,7 @@ from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.utils import set_association_props_in_context
+from lmnr.sdk.git_metadata import collect_git_metadata
 from lmnr.sdk.utils import (
     from_env,
     get_otel_env_var,
@@ -230,6 +231,7 @@ class Laminar:
         session_recording_options: SessionRecordingOptions | None = None,
         force_http: bool = False,
         metadata: dict[str, AttributeValue] | None = None,
+        disable_git_metadata: bool = False,
     ):
         """Initialize Laminar context across the application.
         This method must be called before using any other Laminar methods or
@@ -282,6 +284,11 @@ class Laminar:
                 Defaults to None (uses default masking behavior).
             force_http (bool, optional): If set to True, the HTTP OTEL exporter will be\
                 used instead of the gRPC OTEL exporter. Defaults to False.
+            disable_git_metadata (bool, optional): If set to True, git state\
+                (`git.commit`, `git.branch`, `git.dirty`) is not collected into\
+                the global trace metadata. Can also be disabled with the\
+                LMNR_DISABLE_GIT_METADATA environment variable.\
+                Defaults to False.
         Raises:
             ValueError: If project API key is not set
         """
@@ -347,7 +354,14 @@ class Laminar:
                 env_metadata = json.loads(env_metadata_str)
             except Exception:
                 pass
-        cls.__global_metadata = {**env_metadata, **(metadata or {})}
+        # Git state merges at the LOWEST precedence so both LMNR_TRACE_METADATA
+        # and the explicit `metadata=` argument can override any git.* key.
+        git_metadata = {} if disable_git_metadata else collect_git_metadata()
+        cls.__global_metadata = {
+            **git_metadata,
+            **env_metadata,
+            **(metadata or {}),
+        }
 
         if not os.getenv("OTEL_ATTRIBUTE_COUNT_LIMIT"):
             # each message is at least 2 attributes: role and content,

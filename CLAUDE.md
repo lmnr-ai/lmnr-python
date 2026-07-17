@@ -95,9 +95,18 @@ lmnr datasets pull <id>       # Pull dataset
 ## Environment Variables
 
 ```
-LMNR_PROJECT_API_KEY  # API key (can also pass to initialize())
-LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
+LMNR_PROJECT_API_KEY        # API key (can also pass to initialize())
+LMNR_BASE_URL               # API base URL (default: https://api.lmnr.ai)
+LMNR_DISABLE_GIT_METADATA   # truthy value disables git state collection at initialize()
 ```
+
+## Git metadata (`sdk/git_metadata.py`)
+
+- `Laminar.initialize()` auto-collects `git.commit` / `git.branch` / `git.dirty` (best-effort `git` subprocess with a 1.5s timeout; CI env-var fallback: `GITHUB_SHA`, `VERCEL_GIT_COMMIT_SHA`, etc.) and merges it into `__global_metadata` at the LOWEST precedence — `LMNR_TRACE_METADATA` and the `metadata=` arg both override git keys. Opt out via `disable_git_metadata=True` or `LMNR_DISABLE_GIT_METADATA`. Eval runs get the same keys in their run metadata via `_with_git_metadata` (composed with `_with_debugger_session_metadata` at the `client.evals.init` call site).
+- `collect_git_metadata()` is `lru_cache`d for the process lifetime; tests that vary cwd/env MUST call `collect_git_metadata.cache_clear()` (the `tests/test_git_metadata.py` autouse fixture does).
+- `tests/conftest.py` sets `LMNR_DISABLE_GIT_METADATA=true` at import time for the whole session (many tests re-run `Laminar.initialize()` themselves) — without it the SDK repo's own git state leaks onto test spans and breaks exact-metadata assertions (e.g. `test_ctx_prop_laminar_span_context`). `tests/test_git_metadata.py` deletes the env var in its autouse fixture and restores `__global_metadata` on teardown.
+- Cross-language parity surface with `lmnr-ts/packages/lmnr/src/git-metadata.ts` — keep key names, CI env-var list, precedence, and the truthy set line-comparable.
+- `git.dirty` uses `git status --porcelain --untracked-files=no` (tracked changes only); `git.branch` is omitted on a detached HEAD (`rev-parse --abbrev-ref HEAD` returning literal `HEAD`).
 
 ## Instrumentation tests (VCR)
 

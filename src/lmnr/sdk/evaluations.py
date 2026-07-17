@@ -19,6 +19,7 @@ from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.datasets import EvaluationDataset, LaminarDataset
 from lmnr.sdk.eval_control import EVALUATION_INSTANCES, PREPARE_ONLY
+from lmnr.sdk.git_metadata import collect_git_metadata
 from lmnr.sdk.laminar import Laminar as L
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import (
@@ -111,6 +112,21 @@ def _with_debugger_session_metadata(
     if session_id is None:
         return metadata
     return {**(metadata or {}), SESSION_METADATA_KEY: session_id}
+
+
+def _with_git_metadata(
+    metadata: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Stamp git state (`git.commit` / `git.branch` / `git.dirty`) into eval
+    run metadata, so the evaluation entity itself — not just its traces —
+    records which code produced it. Collection is best-effort and cached at
+    the process level (see `git_metadata.py`); explicit user metadata wins on
+    key collision. Returns the metadata unchanged when nothing was collected.
+    """
+    git_metadata = collect_git_metadata()
+    if not git_metadata:
+        return metadata
+    return {**git_metadata, **(metadata or {})}
 
 
 def get_average_scores(results: list[EvaluationResultDatapoint]) -> dict[str, Numeric]:
@@ -348,7 +364,9 @@ class Evaluation:
             evaluation = await self.client.evals.init(
                 name=self.name,
                 group_name=self.group_name,
-                metadata=_with_debugger_session_metadata(self.metadata),
+                metadata=_with_git_metadata(
+                    _with_debugger_session_metadata(self.metadata)
+                ),
             )
             evaluation_id = evaluation.id
             project_id = evaluation.projectId
