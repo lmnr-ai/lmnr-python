@@ -12,6 +12,8 @@ from lmnr.sdk.git_metadata import (
     GIT_COMMIT_METADATA_KEY,
     GIT_DIRTY_METADATA_KEY,
     collect_git_metadata,
+    reset_git_metadata_cache,
+    set_git_metadata_disabled,
 )
 from lmnr.sdk.laminar import Laminar
 
@@ -28,6 +30,7 @@ def setup_and_teardown(monkeypatch):
     this module and assert on exact metadata contents.
     """
     monkeypatch.delenv("LMNR_DISABLE_GIT_METADATA", raising=False)
+    set_git_metadata_disabled(False)
 
     original_initialized = Laminar._Laminar__initialized
     original_base_http_url = Laminar._Laminar__base_http_url
@@ -37,7 +40,7 @@ def setup_and_teardown(monkeypatch):
     Laminar._Laminar__initialized = False
     Laminar._Laminar__base_http_url = None
     Laminar._Laminar__project_api_key = None
-    collect_git_metadata.cache_clear()
+    reset_git_metadata_cache()
 
     yield
 
@@ -45,7 +48,8 @@ def setup_and_teardown(monkeypatch):
     Laminar._Laminar__base_http_url = original_base_http_url
     Laminar._Laminar__project_api_key = original_project_api_key
     Laminar._Laminar__global_metadata = original_global_metadata
-    collect_git_metadata.cache_clear()
+    set_git_metadata_disabled(False)
+    reset_git_metadata_cache()
 
 
 def _git(cwd, *args):
@@ -232,3 +236,20 @@ def test_with_git_metadata_no_git_returns_unchanged(no_git_dir, monkeypatch):
         monkeypatch.delenv(var, raising=False)
     assert _with_git_metadata(None) is None
     assert _with_git_metadata({"a": 1}) == {"a": 1}
+
+
+def test_initialize_opt_out_also_disables_eval_git_metadata(git_repo):
+    """The disable_git_metadata init param must apply to eval run metadata
+    too, not just global trace metadata (Bugbot finding on PR #311)."""
+    Laminar.initialize(project_api_key="test_key", disable_git_metadata=True)
+    assert _with_git_metadata(None) is None
+    assert _with_git_metadata({"a": 1}) == {"a": 1}
+
+
+def test_opt_out_applies_even_after_prior_collection(git_repo):
+    """A collection cached BEFORE the opt-out was recorded must not resurface
+    after it: the disabled check runs per call, outside the lru_cache."""
+    assert collect_git_metadata()[GIT_BRANCH_METADATA_KEY] == "main"
+    set_git_metadata_disabled(True)
+    assert collect_git_metadata() == {}
+    assert _with_git_metadata(None) is None

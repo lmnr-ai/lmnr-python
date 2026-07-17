@@ -42,6 +42,23 @@ _CI_ENV_VARS: list[tuple[str, str]] = [
 ]
 
 
+# Process-level opt-out recorded by `Laminar.initialize(disable_git_metadata=
+# True)`. Kept here (not on the Laminar class) so EVERY collection point —
+# global trace metadata AND eval run metadata — honors the same flag without
+# re-plumbing the init argument through each call site.
+_disabled: bool = False
+
+
+def set_git_metadata_disabled(disabled: bool) -> None:
+    """Record the initialize()-time opt-out for later collection points."""
+    global _disabled
+    _disabled = disabled
+
+
+def _git_metadata_disabled() -> bool:
+    return _disabled or _is_truthy(os.environ.get("LMNR_DISABLE_GIT_METADATA"))
+
+
 def _run_git(*args: str) -> str | None:
     """Run a git command; return its stripped stdout, None on ANY failure."""
     try:
@@ -58,21 +75,34 @@ def _run_git(*args: str) -> str | None:
     return result.stdout.strip()
 
 
-@lru_cache(maxsize=1)
 def collect_git_metadata() -> dict[str, str | bool]:
     """Collect `git.commit` / `git.branch` / `git.dirty`, best-effort.
 
-    Cached for the process lifetime (git state is fixed once the process is
-    running; re-running subprocesses per initialize()/evaluate() call would
-    only add latency). Tests that vary cwd or env must call
-    `collect_git_metadata.cache_clear()`.
+    Returns {} when collection is disabled — via the `disable_git_metadata`
+    argument to `Laminar.initialize()` or the LMNR_DISABLE_GIT_METADATA env
+    var. The disabled check runs on every call (NOT inside the cache) so an
+    opt-out recorded after a prior collection still applies.
 
     `git.branch` is omitted on a detached HEAD, and `git.dirty` counts only
     tracked-file changes (untracked build artifacts should not flip it).
     """
-    if _is_truthy(os.environ.get("LMNR_DISABLE_GIT_METADATA")):
+    if _git_metadata_disabled():
         return {}
+    return _collect_git_metadata_cached()
 
+
+def reset_git_metadata_cache() -> None:
+    """Reset the process-level collection cache. Exposed for tests only."""
+    _collect_git_metadata_cached.cache_clear()
+
+
+@lru_cache(maxsize=1)
+def _collect_git_metadata_cached() -> dict[str, str | bool]:
+    """The actual collection, cached for the process lifetime (git state is
+    fixed once the process is running; re-running subprocesses per
+    initialize()/evaluate() call would only add latency). Tests that vary cwd
+    or env must call `reset_git_metadata_cache()`.
+    """
     metadata: dict[str, str | bool] = {}
     commit = _run_git("rev-parse", "HEAD")
     if commit:

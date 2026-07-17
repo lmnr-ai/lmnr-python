@@ -49,7 +49,10 @@ from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.utils import set_association_props_in_context
-from lmnr.sdk.git_metadata import collect_git_metadata
+from lmnr.sdk.git_metadata import (
+    collect_git_metadata,
+    set_git_metadata_disabled,
+)
 from lmnr.sdk.utils import (
     from_env,
     get_otel_env_var,
@@ -356,9 +359,11 @@ class Laminar:
                 pass
         # Git state merges at the LOWEST precedence so both LMNR_TRACE_METADATA
         # and the explicit `metadata=` argument can override any git.* key.
-        git_metadata = {} if disable_git_metadata else collect_git_metadata()
+        # The opt-out is recorded process-wide so eval run metadata
+        # (`_with_git_metadata` in evaluations.py) honors it too.
+        set_git_metadata_disabled(disable_git_metadata)
         cls.__global_metadata = {
-            **git_metadata,
+            **collect_git_metadata(),
             **env_metadata,
             **(metadata or {}),
         }
