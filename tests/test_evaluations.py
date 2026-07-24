@@ -3,9 +3,14 @@ import pytest
 from unittest.mock import patch, MagicMock
 from datetime import datetime
 
-from lmnr import Laminar
+from lmnr import Laminar, LaminarDataset
 from lmnr.sdk.evaluations import evaluate, get_average_scores
-from lmnr.sdk.types import HumanEvaluator, EvaluationResultDatapoint, Datapoint
+from lmnr.sdk.types import (
+    HumanEvaluator,
+    EvaluationResultDatapoint,
+    Datapoint,
+    GetDatapointsResponse,
+)
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 import uuid
 
@@ -517,6 +522,184 @@ def test_get_average_scores_with_human_evaluators():
     # Verify correct averages
     assert abs(average_scores["accuracy"] - (0.8 + 0.6 + 1.0) / 3) < 1e-10  # ~0.8
     assert abs(average_scores["precision"] - (0.9 + 0.7 + 0.8) / 3) < 1e-10  # ~0.8
+
+
+def _make_pull_pages(total: int, fetch_size: int):
+    """Build side-effect responses for Datasets.pull, one page per call."""
+    all_items = [
+        Datapoint(
+            id=uuid.uuid4(),
+            data=f"test-{i}",
+            target=f"test-{i}",
+            createdAt=datetime.now(),
+        )
+        for i in range(total)
+    ]
+
+    def pull(name=None, id=None, limit=fetch_size, offset=0):
+        return GetDatapointsResponse(
+            items=all_items[offset:offset + limit],
+            totalCount=total,
+        )
+
+    return pull
+
+
+@pytest.mark.asyncio
+@patch("lmnr.sdk.client.asynchronous.resources.datasets.AsyncDatasets.get_dataset_by_name")
+@patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+async def test_evaluate_laminar_dataset_streams_in_batches(
+    mock_init,
+    mock_datapoints,
+    mock_dataset_pull,
+    mock_get_dataset_by_name,
+    mock_eval_response,
+    mock_datapoints_response,
+    span_exporter: InMemorySpanExporter,
+):
+    """A LaminarDataset is fetched in `fetch_size` batches while datapoints
+    run, and fetched batches are not retained on the dataset."""
+    mock_init.return_value = mock_eval_response
+    mock_datapoints.return_value = mock_datapoints_response
+    mock_dataset_pull.side_effect = _make_pull_pages(total=7, fetch_size=3)
+    mock_dataset = MagicMock()
+    mock_dataset.id = uuid.uuid4()
+    mock_get_dataset_by_name.return_value = [mock_dataset]
+    executed = []
+
+    dataset = LaminarDataset(name="test_dataset", fetch_size=3)
+
+    result = await evaluate(
+        data=dataset,
+        executor=lambda data: executed.append(data) or data,
+        evaluators={
+            "exact": lambda output, target: 1 if output == target else 0,
+        },
+        project_api_key="test",
+    )
+
+    assert result["average_scores"]["exact"] == 1
+    assert len(executed) == 7
+    # 1 len() call caching the first page of 3, then 2 streamed pages of 3, 1
+    assert mock_dataset_pull.call_count == 3
+    # Streaming must not accumulate items on the dataset beyond the initial
+    # len() batch
+    assert len(dataset._fetched_items) <= 3
+    # 7 datapoints * (evaluation + executor + evaluator) = 21 spans
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 21
+
+
+@pytest.mark.asyncio
+@patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
+@patch("lmnr.sdk.client.asynchronous.resources.datasets.AsyncDatasets.push")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+async def test_evaluate_runs_datapoints_concurrently(
+    mock_init,
+    mock_datapoints,
+    mock_dataset_push,
+    mock_dataset_pull,
+    mock_eval_response,
+    mock_datapoints_response,
+    mock_dataset_push_response,
+    mock_dataset_pull_response,
+    span_exporter: InMemorySpanExporter,
+):
+    """The semaphore sliding window keeps up to `concurrency_limit`
+    datapoints in flight at once."""
+    import asyncio
+
+    mock_init.return_value = mock_eval_response
+    mock_datapoints.return_value = mock_datapoints_response
+    mock_dataset_push.return_value = mock_dataset_push_response
+    mock_dataset_pull.return_value = mock_dataset_pull_response
+
+    in_flight = 0
+    max_in_flight = 0
+
+    async def executor(data):
+        nonlocal in_flight, max_in_flight
+        in_flight += 1
+        max_in_flight = max(max_in_flight, in_flight)
+        await asyncio.sleep(0.05)
+        in_flight -= 1
+        return data
+
+    result = await evaluate(
+        data=[{"data": f"test-{i}", "target": f"test-{i}"} for i in range(6)],
+        executor=executor,
+        evaluators={
+            "exact": lambda output, target: 1 if output == target else 0,
+        },
+        concurrency_limit=3,
+        project_api_key="test",
+    )
+
+    assert result["average_scores"]["exact"] == 1
+    assert max_in_flight == 3
+
+
+def test_laminar_dataset_iter_streams_without_retaining():
+    """LaminarDataset.__iter__ pages through the API and does not append the
+    streamed items to the in-memory cache."""
+    dataset = LaminarDataset(name="test_dataset", fetch_size=2)
+    client = MagicMock()
+    client.datasets.pull.side_effect = _make_pull_pages(total=5, fetch_size=2)
+    dataset.set_client(client)
+
+    # Iterate manually: list(dataset) would call __len__ as a size hint,
+    # which caches the first page — here we exercise pure streaming.
+    items = [item for item in iter(dataset)]
+
+    assert len(items) == 5
+    assert [item.data for item in items] == [f"test-{i}" for i in range(5)]
+    # 3 pages of 2, 2, 1
+    assert client.datasets.pull.call_count == 3
+    assert dataset._fetched_items == []
+    # len() is learned from the first page
+    assert len(dataset) == 5
+
+
+def test_laminar_dataset_iter_serves_cached_items_first():
+    """Items already cached via __len__/__getitem__ are served from memory;
+    only the remainder is fetched."""
+    dataset = LaminarDataset(name="test_dataset", fetch_size=2)
+    client = MagicMock()
+    client.datasets.pull.side_effect = _make_pull_pages(total=5, fetch_size=2)
+    dataset.set_client(client)
+
+    assert len(dataset) == 5  # caches the first page of 2
+    assert client.datasets.pull.call_count == 1
+
+    items = list(dataset)
+
+    assert [item.data for item in items] == [f"test-{i}" for i in range(5)]
+    # 1 cached page + 2 streamed pages (2, 1)
+    assert client.datasets.pull.call_count == 3
+    assert len(dataset._fetched_items) == 2
+
+
+def test_evaluation_dataset_default_iter():
+    """The EvaluationDataset ABC gets a default __iter__ over __getitem__."""
+    from lmnr.sdk.datasets import EvaluationDataset
+
+    class CustomDataset(EvaluationDataset):
+        def __init__(self):
+            self.points = [
+                Datapoint(data=f"d{i}", target=f"t{i}") for i in range(3)
+            ]
+
+        def __len__(self):
+            return len(self.points)
+
+        def __getitem__(self, idx):
+            return self.points[idx]
+
+    items = list(CustomDataset())
+    assert [item.data for item in items] == ["d0", "d1", "d2"]
 
 
 @pytest.mark.asyncio
