@@ -76,6 +76,44 @@ class AsyncEvals(BaseAsyncResource):
         )
         return evaluation.id
 
+    async def update_evaluation(
+        self,
+        eval_id: uuid.UUID,
+        name: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> InitEvaluationResponse:
+        """Update an evaluation's name and/or metadata. The group ID is
+        immutable. Fields left as None are kept unchanged.
+
+        Args:
+            eval_id (uuid.UUID): The evaluation ID.
+            name (str | None, optional): New name of the evaluation.
+                Defaults to None.
+            metadata (dict[str, Any] | None, optional): New metadata for
+                the evaluation. Defaults to None.
+
+        Returns:
+            InitEvaluationResponse: The updated evaluation.
+        """
+        response = await self._client.post(
+            self._base_url + f"/v1/evals/{eval_id}",
+            json={
+                "name": name,
+                "metadata": metadata,
+            },
+            headers=self._headers(),
+        )
+        if response.status_code != 200:
+            if response.status_code == 401:
+                raise ValueError(
+                    "Unauthorized. Please check your project API key."
+                )
+            raise ValueError(
+                f"Error updating evaluation: "
+                f"[{response.status_code}] {response.text}"
+            )
+        return InitEvaluationResponse.model_validate(response.json())
+
     async def create_datapoint(
         self,
         eval_id: uuid.UUID,
