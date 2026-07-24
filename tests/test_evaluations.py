@@ -642,6 +642,53 @@ async def test_evaluate_runs_datapoints_concurrently(
     assert max_in_flight == 3
 
 
+@pytest.mark.asyncio
+@patch("lmnr.sdk.client.synchronous.resources.datasets.Datasets.pull")
+@patch("lmnr.sdk.client.asynchronous.resources.datasets.AsyncDatasets.push")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
+@patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
+async def test_evaluate_datapoint_failure_does_not_abort_remaining(
+    mock_init,
+    mock_datapoints,
+    mock_dataset_push,
+    mock_dataset_pull,
+    mock_eval_response,
+    mock_datapoints_response,
+    mock_dataset_push_response,
+    mock_dataset_pull_response,
+    span_exporter: InMemorySpanExporter,
+):
+    """A failing datapoint must not stop the remaining datapoints from being
+    scheduled and run; its error still propagates once all have finished."""
+    mock_init.return_value = mock_eval_response
+    mock_datapoints.return_value = mock_datapoints_response
+    mock_dataset_push.return_value = mock_dataset_push_response
+    mock_dataset_pull.return_value = mock_dataset_pull_response
+
+    executed = []
+
+    async def executor(data):
+        executed.append(data)
+        if data == "test-0":
+            raise RuntimeError("executor failed")
+        return data
+
+    with pytest.raises(RuntimeError, match="executor failed"):
+        await evaluate(
+            data=[{"data": f"test-{i}", "target": f"test-{i}"} for i in range(6)],
+            executor=executor,
+            evaluators={
+                "exact": lambda output, target: 1 if output == target else 0,
+            },
+            concurrency_limit=1,
+            project_api_key="test",
+        )
+
+    # With concurrency_limit=1 the failure on the first datapoint completes
+    # before the second is scheduled — all datapoints must still run
+    assert executed == [f"test-{i}" for i in range(6)]
+
+
 def test_laminar_dataset_iter_streams_without_retaining():
     """LaminarDataset.__iter__ pages through the API and does not append the
     streamed items to the in-memory cache."""

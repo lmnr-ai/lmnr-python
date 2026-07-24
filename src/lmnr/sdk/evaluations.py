@@ -423,12 +423,19 @@ class Evaluation:
         def next_datapoint():
             return next(data_iter, None)
 
+        first_error: BaseException | None = None
+
         def prune_finished(task_list: list[asyncio.Task]) -> list[asyncio.Task]:
-            # Drop references to completed tasks as we go, re-raising any
-            # exception they hold (matching the fail-fast `gather` behavior)
+            # Drop references to completed tasks as we go. A failed task's
+            # exception is recorded, NOT raised here: every datapoint must
+            # still be scheduled and run (matching the previous behavior,
+            # where all tasks were created before `gather` surfaced errors).
+            nonlocal first_error
             for task in task_list:
-                if task.done():
-                    task.result()
+                if task.done() and not task.cancelled():
+                    exc = task.exception()
+                    if exc is not None and first_error is None:
+                        first_error = exc
             return [task for task in task_list if not task.done()]
 
         # Create tasks only after acquiring semaphore, so at most
@@ -443,7 +450,13 @@ class Evaluation:
 
         # Wait for the remaining in-flight tasks to complete
         if tasks:
-            await asyncio.gather(*tasks)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, BaseException) and first_error is None:
+                    first_error = result
+
+        if first_error is not None:
+            raise first_error
 
         return {
             key: score_sums[key] / score_counts[key]
