@@ -17,7 +17,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
 
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
-from lmnr.sdk.datasets import EvaluationDataset, LaminarDataset
+from lmnr.sdk.datasets import EvaluationDataset
 from lmnr.sdk.eval_control import EVALUATION_INSTANCES, PREPARE_ONLY
 from lmnr.sdk.laminar import Laminar as L
 from lmnr.sdk.log import get_default_logger
@@ -275,8 +275,13 @@ class Evaluation:
             ]
         else:
             self.data = data
-        if not isinstance(self.data, LaminarDataset) and len(self.data) == 0:
+        # Only eagerly-materialized lists can be length-checked here; any
+        # EvaluationDataset (remote or subsampled) is resolved lazily in _run.
+        if isinstance(self.data, list) and len(self.data) == 0:
             raise ValueError("No data provided. Skipping evaluation")
+        # The underlying remote source (through any depth of subsampling
+        # chaining), resolved in _run. None for in-memory data.
+        self._source_dataset = None
         self.executor = executor
         self.evaluators = evaluators
         self.group_name = group_name
@@ -324,25 +329,32 @@ class Evaluation:
         return await self._run()
 
     async def _run(self) -> EvaluationRunResult:
-        if isinstance(self.data, LaminarDataset):
+        source = (
+            self.data.source_dataset()
+            if isinstance(self.data, EvaluationDataset)
+            else None
+        )
+        self._source_dataset = source
+        if source is not None:
+            # set_client forwards through any subsampling wrappers to the source.
             self.data.set_client(
                 LaminarClient(
                     base_url=self.base_http_url,
                     project_api_key=self.project_api_key,
                 )
             )
-            if not self.data.id:
+            if not source.id:
                 try:
                     datasets = await self.client.datasets.get_dataset_by_name(
-                        self.data.name
+                        source.name
                     )
                     if len(datasets) == 0:
-                        self._logger.warning(f"Dataset {self.data.name} not found")
+                        self._logger.warning(f"Dataset {source.name} not found")
                     else:
-                        self.data.id = datasets[0].id
+                        source.id = datasets[0].id
                 except Exception as e:
                     # Backward compatibility with old Laminar API (self hosted)
-                    self._logger.warning(f"Error getting dataset {self.data.name}: {e}")
+                    self._logger.warning(f"Error getting dataset {source.name}: {e}")
 
         try:
             evaluation = await self.client.evals.init(
@@ -387,8 +399,9 @@ class Evaluation:
         # the next evaluation.
         L.flush()
         await self.client.close()
-        if isinstance(self.data, LaminarDataset) and self.data.client:
-            self.data.client.close()
+        source = self._source_dataset
+        if source is not None and getattr(source, "client", None):
+            source.client.close()
 
     async def _evaluate_in_batches(
         self, eval_id: uuid.UUID
@@ -454,10 +467,10 @@ class Evaluation:
                         executor_span_id=executor_span_id,
                         metadata=datapoint.metadata,
                     )
-                    if isinstance(self.data, LaminarDataset):
+                    if self._source_dataset is not None:
                         partial_datapoint.dataset_link = (
                             EvaluationDatapointDatasetLink(
-                                dataset_id=self.data.id,
+                                dataset_id=self._source_dataset.id,
                                 datapoint_id=datapoint.id,
                                 created_at=datapoint.created_at,
                             )
@@ -544,9 +557,9 @@ class Evaluation:
             index=index,
             metadata=datapoint.metadata,
         )
-        if isinstance(self.data, LaminarDataset):
+        if self._source_dataset is not None:
             eval_datapoint.dataset_link = EvaluationDatapointDatasetLink(
-                dataset_id=self.data.id,
+                dataset_id=self._source_dataset.id,
                 datapoint_id=datapoint.id,
                 created_at=datapoint.created_at,
             )
