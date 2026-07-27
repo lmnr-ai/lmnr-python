@@ -28,6 +28,10 @@ class EvaluationDataset(ABC):
     def slice(self, start: int, end: int):
         return [self[i] for i in range(max(start, 0), min(end, len(self)))]
 
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
 
 class LaminarDataset(EvaluationDataset):
     client: LaminarClient
@@ -76,6 +80,31 @@ class LaminarDataset(EvaluationDataset):
         if idx >= len(self._fetched_items):
             self._fetch_batch()
         return self._fetched_items[idx]
+
+    def __iter__(self):
+        # Serves items already cached by `__len__`/`__getitem__`, then streams
+        # the rest in `fetch_size` batches WITHOUT retaining them, keeping
+        # memory bounded for large datasets. `__getitem__` keeps its
+        # accumulate-and-cache behavior for random access.
+        yield from self._fetched_items
+        identifier = {"id": self.id} if self.id is not None else {"name": self.name}
+        offset = len(self._fetched_items)
+        while self._len is None or offset < self._len:
+            self._logger.debug(
+                f"dataset name: {self.name}, id: {self.id}. Streaming batch from "
+                + f"{offset} to {offset + self._fetch_size}"
+            )
+            resp = self.client.datasets.pull(
+                **identifier,
+                offset=offset,
+                limit=self._fetch_size,
+            )
+            if self._len is None:
+                self._len = resp.total_count
+            if not resp.items:
+                return
+            yield from resp.items
+            offset += len(resp.items)
 
     def set_client(self, client: LaminarClient):
         self.client = client

@@ -357,7 +357,7 @@ class Evaluation:
             print(f"Check the results at {url}")
 
             self.reporter.start(len(self.data))
-            result_datapoints = await self._evaluate_in_batches(evaluation.id)
+            average_scores = await self._evaluate_in_batches(evaluation.id)
             # Wait for all background upload tasks to complete
             if self.upload_tasks:
                 self._logger.debug(
@@ -369,7 +369,6 @@ class Evaluation:
             await self._shutdown()
             self.reporter.stop_with_error(e)
 
-        average_scores = get_average_scores(result_datapoints)
         self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
         await self._shutdown()
         return {
@@ -390,34 +389,80 @@ class Evaluation:
         if isinstance(self.data, LaminarDataset) and self.data.client:
             self.data.client.close()
 
-    async def _evaluate_in_batches(
-        self, eval_id: uuid.UUID
-    ) -> list[EvaluationResultDatapoint]:
-
+    async def _evaluate_in_batches(self, eval_id: uuid.UUID) -> dict[str, Numeric]:
         semaphore = asyncio.Semaphore(self.concurrency_limit)
         tasks = []
-        data_iter = self.data if isinstance(self.data, list) else range(len(self.data))
+        # Aggregate scores incrementally so result datapoints (with their full
+        # data/target/output payloads) are not retained for the whole run.
+        score_sums: dict[str, Numeric] = {}
+        score_counts: dict[str, int] = {}
+
+        def accumulate_scores(result: EvaluationResultDatapoint):
+            for key, value in result.scores.items():
+                if value is None:
+                    continue
+                score_sums[key] = score_sums.get(key, 0) + value
+                score_counts[key] = score_counts.get(key, 0) + 1
 
         async def evaluate_task(datapoint, index):
             try:
                 result = await self._evaluate_datapoint(eval_id, datapoint, index)
+                accumulate_scores(result)
                 self.reporter.update(1)
-                return index, result
             finally:
                 semaphore.release()
 
-        # Create tasks only after acquiring semaphore
-        for idx, item in enumerate(data_iter):
+        # `LaminarDataset.__iter__` streams from the API in `fetch_size`
+        # batches and drops each batch once consumed, so a huge dataset is
+        # never fully resident. Fetching the next datapoint may block on a
+        # network call, so run the iterator in a thread pool to keep in-flight
+        # datapoint tasks running while we wait.
+        loop = asyncio.get_event_loop()
+        data_iter = enumerate(iter(self.data))
+
+        def next_datapoint():
+            return next(data_iter, None)
+
+        first_error: BaseException | None = None
+
+        def prune_finished(task_list: list[asyncio.Task]) -> list[asyncio.Task]:
+            # Drop references to completed tasks as we go. A failed task's
+            # exception is recorded, NOT raised here: every datapoint must
+            # still be scheduled and run (matching the previous behavior,
+            # where all tasks were created before `gather` surfaced errors).
+            nonlocal first_error
+            for task in task_list:
+                if task.done() and not task.cancelled():
+                    exc = task.exception()
+                    if exc is not None and first_error is None:
+                        first_error = exc
+            return [task for task in task_list if not task.done()]
+
+        # Create tasks only after acquiring semaphore, so at most
+        # `concurrency_limit` datapoints are in flight (and referenced) at once
+        while (item := await loop.run_in_executor(None, next_datapoint)) is not None:
+            idx, datapoint = item
             await semaphore.acquire()
-            datapoint = item if isinstance(self.data, list) else self.data[item]
             task = asyncio.create_task(evaluate_task(datapoint, idx))
             tasks.append(task)
+            tasks = prune_finished(tasks)
+            self.upload_tasks = prune_finished(self.upload_tasks)
 
-        # Wait for all tasks to complete and preserve order
-        results = await asyncio.gather(*tasks)
-        ordered_results = [result for _, result in sorted(results, key=lambda x: x[0])]
+        # Wait for the remaining in-flight tasks to complete
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, BaseException) and first_error is None:
+                    first_error = result
 
-        return ordered_results
+        if first_error is not None:
+            raise first_error
+
+        return {
+            key: score_sums[key] / score_counts[key]
+            for key in score_sums
+            if score_counts[key] > 0
+        }
 
     async def _evaluate_datapoint(
         self, eval_id: uuid.UUID, datapoint: Datapoint, index: int
