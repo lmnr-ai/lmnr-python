@@ -329,32 +329,33 @@ class Evaluation:
         return await self._run()
 
     async def _run(self) -> EvaluationRunResult:
-        source = (
-            self.data.source_dataset()
-            if isinstance(self.data, EvaluationDataset)
-            else None
-        )
-        self._source_dataset = source
-        if source is not None:
-            # set_client forwards through any subsampling wrappers to the source.
-            self.data.set_client(
-                LaminarClient(
-                    base_url=self.base_http_url,
-                    project_api_key=self.project_api_key,
-                )
-            )
-            if not source.id:
-                try:
-                    datasets = await self.client.datasets.get_dataset_by_name(
-                        source.name
+        source = None
+        if isinstance(self.data, EvaluationDataset):
+            source = self.data.source_dataset()
+            if source is not None:
+                # set_client forwards through any subsampling wrappers to the
+                # source.
+                self.data.set_client(
+                    LaminarClient(
+                        base_url=self.base_http_url,
+                        project_api_key=self.project_api_key,
                     )
-                    if len(datasets) == 0:
-                        self._logger.warning(f"Dataset {source.name} not found")
-                    else:
-                        source.id = datasets[0].id
-                except Exception as e:
-                    # Backward compatibility with old Laminar API (self hosted)
-                    self._logger.warning(f"Error getting dataset {source.name}: {e}")
+                )
+                if not source.id:
+                    try:
+                        datasets = await self.client.datasets.get_dataset_by_name(
+                            source.name
+                        )
+                        if len(datasets) == 0:
+                            self._logger.warning(f"Dataset {source.name} not found")
+                        else:
+                            source.id = datasets[0].id
+                    except Exception as e:
+                        # Backward compatibility with old Laminar API (self hosted)
+                        self._logger.warning(
+                            f"Error getting dataset {source.name}: {e}"
+                        )
+        self._source_dataset = source
 
         try:
             evaluation = await self.client.evals.init(

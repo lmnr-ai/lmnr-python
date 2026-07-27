@@ -13,6 +13,21 @@ from lmnr.sdk.types import Datapoint
 DEFAULT_FETCH_SIZE = 25
 LOG = get_default_logger(__name__, verbose=False)
 
+# One-time (per process) debug note that `filter` scans the whole dataset,
+# mirroring the TypeScript SDK's `filterMaterializeNoted` flag.
+_filter_materialize_noted = False
+
+
+def _note_filter_materializes() -> None:
+    global _filter_materialize_noted
+    if _filter_materialize_noted:
+        return
+    _filter_materialize_noted = True
+    LOG.debug(
+        "EvaluationDataset.filter materializes the full dataset: it scans every "
+        "datapoint (in pages) to evaluate the predicate."
+    )
+
 
 class EvaluationDataset(ABC):
     @abstractmethod
@@ -88,10 +103,7 @@ class EvaluationDataset(ABC):
         it materializes the full dataset. The predicate is synchronous."""
 
         def resolver() -> list[int]:
-            LOG.debug(
-                "filter() scans the full dataset once to materialize surviving "
-                "indices"
-            )
+            _note_filter_materializes()
             return [i for i in range(len(self)) if predicate(self[i])]
 
         return _SubsetDataset(self, resolver=resolver)
@@ -187,6 +199,9 @@ class LaminarDataset(EvaluationDataset):
     def __len__(self) -> int:
         if self._len is None:
             self._fetch_page(0)
+        # _fetch_page always sets _len from the response's (non-optional)
+        # total_count, so it is resolved to an int by this point.
+        assert self._len is not None
         return self._len
 
     def __getitem__(self, idx) -> Datapoint:
