@@ -68,6 +68,59 @@ class TestAsyncLaminarClientEvaluations:
             mock_create.assert_called_once_with()
 
     @pytest.mark.asyncio
+    async def test_update_evaluation_success(self, async_client):
+        """Test evaluation update sends name and metadata in the request body."""
+        eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "id": str(eval_id),
+            "createdAt": "2026-07-24T00:00:00Z",
+            "groupId": "default",
+            "name": "Renamed Evaluation",
+            "projectId": "11111111-1111-1111-1111-111111111111",
+        }
+
+        with patch.object(
+            async_client.evals._client,
+            "post",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_post:
+            result = await async_client.evals.update_evaluation(
+                eval_id=eval_id,
+                name="Renamed Evaluation",
+                metadata={"revision": 2},
+            )
+
+            mock_post.assert_called_once()
+            assert mock_post.call_args[0][0].endswith(f"/v1/evals/{eval_id}")
+            call_json = mock_post.call_args[1]["json"]
+            assert call_json["name"] == "Renamed Evaluation"
+            assert call_json["metadata"] == {"revision": 2}
+            assert result.id == eval_id
+            assert result.name == "Renamed Evaluation"
+
+    @pytest.mark.asyncio
+    async def test_update_evaluation_error(self, async_client):
+        """Test evaluation update raises on non-200 responses."""
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.text = "Evaluation not found"
+
+        with patch.object(
+            async_client.evals._client,
+            "post",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ):
+            with pytest.raises(ValueError, match="Error updating evaluation"):
+                await async_client.evals.update_evaluation(
+                    eval_id=uuid.uuid4(), name="New Name"
+                )
+
+    @pytest.mark.asyncio
     async def test_create_datapoint_success(self, async_client):
         """Test successful datapoint creation."""
         eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
@@ -272,6 +325,51 @@ class TestLaminarClientEvaluations:
 
             assert eval_id == mock_eval_response.id
             mock_create.assert_called_once_with()
+
+    def test_update_evaluation_success(self, sync_client):
+        """Test evaluation update sends name and metadata in the request body."""
+        eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "id": str(eval_id),
+            "createdAt": "2026-07-24T00:00:00Z",
+            "groupId": "default",
+            "name": "Renamed Evaluation",
+            "projectId": "11111111-1111-1111-1111-111111111111",
+        }
+
+        with patch.object(
+            sync_client.evals._client, "post", return_value=mock_response
+        ) as mock_post:
+            result = sync_client.evals.update_evaluation(
+                eval_id=eval_id,
+                name="Renamed Evaluation",
+                metadata={"revision": 2},
+            )
+
+            mock_post.assert_called_once()
+            assert mock_post.call_args[0][0].endswith(f"/v1/evals/{eval_id}")
+            call_json = mock_post.call_args[1]["json"]
+            assert call_json["name"] == "Renamed Evaluation"
+            assert call_json["metadata"] == {"revision": 2}
+            assert result.id == eval_id
+            assert result.name == "Renamed Evaluation"
+
+    def test_update_evaluation_error(self, sync_client):
+        """Test evaluation update raises on non-200 responses."""
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.text = "Evaluation not found"
+
+        with patch.object(
+            sync_client.evals._client, "post", return_value=mock_response
+        ):
+            with pytest.raises(ValueError, match="Error updating evaluation"):
+                sync_client.evals.update_evaluation(
+                    eval_id=uuid.uuid4(), name="New Name"
+                )
 
     def test_create_datapoint_success(self, sync_client):
         """Test successful datapoint creation."""
