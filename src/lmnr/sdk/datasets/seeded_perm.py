@@ -13,7 +13,7 @@ across SDK versions.
 _UINT32_MASK = 0xFFFFFFFF
 
 
-def _imul(a: int, b: int) -> int:
+def _seeded_perm_imul(a: int, b: int) -> int:
     """32-bit integer multiply, matching JS ``Math.imul`` (low 32 bits)."""
     return ((a & _UINT32_MASK) * (b & _UINT32_MASK)) & _UINT32_MASK
 
@@ -35,8 +35,8 @@ def seeded_perm(n: int, seed: int) -> list[int]:
         # mulberry32 -> float in [0, 1)
         state = (state + 0x6D2B79F5) & _UINT32_MASK
         t = state
-        t = _imul(t ^ (t >> 15), t | 1)
-        t = (t ^ (t + _imul(t ^ (t >> 7), t | 61))) & _UINT32_MASK
+        t = _seeded_perm_imul(t ^ (t >> 15), t | 1)
+        t = (t ^ (t + _seeded_perm_imul(t ^ (t >> 7), t | 61))) & _UINT32_MASK
         return ((t ^ (t >> 14)) & _UINT32_MASK) / 0x100000000
 
     ix = list(range(n))

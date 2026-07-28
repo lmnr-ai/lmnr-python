@@ -255,7 +255,7 @@ def test_shuffle_over_paged_dataset():
 
 
 def test_seeded_perm_matches_fixture():
-    cases = json.loads(FIXTURE.read_text())
+    cases = json.loads(FIXTURE.read_text())["cases"]
     assert len(cases) >= 4
     for case in cases:
         assert seeded_perm(case["n"], case["seed"]) == case["permutation"]

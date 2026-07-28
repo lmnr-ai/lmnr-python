@@ -13,19 +13,20 @@ from lmnr.sdk.types import Datapoint
 DEFAULT_FETCH_SIZE = 25
 LOG = get_default_logger(__name__, verbose=False)
 
-# One-time (per process) debug note that `filter` scans the whole dataset,
-# mirroring the TypeScript SDK's `filterMaterializeNoted` flag.
-_filter_materialize_noted = False
+# `filter` has no way to honor the by-index contract without testing every
+# datapoint, so it fetches the whole dataset (all pages) into memory. Warn once
+# per process so callers on large remote datasets aren't surprised by the cost.
+_filter_materialize_warned = False
 
 
-def _note_filter_materializes() -> None:
-    global _filter_materialize_noted
-    if _filter_materialize_noted:
+def _warn_filter_materializes_once() -> None:
+    global _filter_materialize_warned
+    if _filter_materialize_warned:
         return
-    _filter_materialize_noted = True
-    LOG.debug(
-        "EvaluationDataset.filter materializes the full dataset: it scans every "
-        "datapoint (in pages) to evaluate the predicate."
+    _filter_materialize_warned = True
+    LOG.warning(
+        "EvaluationDataset.filter scans every datapoint to evaluate the "
+        "predicate, fetching the whole dataset (all pages) into memory."
     )
 
 
@@ -99,11 +100,10 @@ class EvaluationDataset(ABC):
         truthy, order preserved.
 
         Scans the whole dataset once (in pages, reusing the page-cached fetch),
-        holding only surviving indices in memory. Emits a one-time debug log that
-        it materializes the full dataset. The predicate is synchronous."""
+        holding only surviving indices in memory. The predicate is synchronous."""
 
         def resolver() -> list[int]:
-            _note_filter_materializes()
+            _warn_filter_materializes_once()
             return [i for i in range(len(self)) if predicate(self[i])]
 
         return _SubsetDataset(self, resolver=resolver)
