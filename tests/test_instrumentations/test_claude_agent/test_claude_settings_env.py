@@ -216,6 +216,33 @@ def test_flag_settings_pin_foundry_base_url_for_resource_only_setup(isolated_set
     assert settings["env"][FOUNDRY_RESOURCE_ENV] == ""
 
 
+def test_foundry_resource_is_blanked_when_enabled_only_in_settings(
+    isolated_settings, monkeypatch
+):
+    """The resource is mutually exclusive with the base URL we pin.
+
+    The CLI hard-fails with "baseURL and resource are mutually exclusive" if both
+    are live, so a resource left in the process env must still be blanked.
+    """
+    config_dir, _ = isolated_settings
+    write_settings(config_dir / "settings.json", {"CLAUDE_CODE_USE_FOUNDRY": "1"})
+    monkeypatch.setenv(FOUNDRY_RESOURCE_ENV, "stray-resource")
+
+    settings = json.loads(build_proxy_flag_settings(None, PROXY_URL))
+
+    assert settings["env"][FOUNDRY_BASE_URL_ENV] == PROXY_URL
+    assert settings["env"][FOUNDRY_RESOURCE_ENV] == ""
+
+
+def test_process_env_proxy_var_is_blanked_in_flag_settings(isolated_settings, monkeypatch):
+    """A proxy var in the process env must not route the CLI around our proxy."""
+    monkeypatch.setenv("HTTPS_PROXY", "http://corp:8080")
+
+    settings = json.loads(build_proxy_flag_settings(None, PROXY_URL))
+
+    assert settings["env"]["HTTPS_PROXY"] == ""
+
+
 def test_flag_settings_pin_provider_base_url_from_enabling_flag(isolated_settings):
     config_dir, _ = isolated_settings
     write_settings(config_dir / "settings.json", {"CLAUDE_CODE_USE_VERTEX": "1"})

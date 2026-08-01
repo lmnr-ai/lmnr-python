@@ -409,8 +409,15 @@ def build_proxy_flag_settings(
         )
         if enabled or in_play:
             env_dict[base_url_key] = proxy_url
+        # The Foundry resource is mutually exclusive with the base URL we just
+        # pinned — the CLI hard-fails ("baseURL and resource are mutually
+        # exclusive") if both are live. Blank it whenever Foundry is in play,
+        # even when the resource only exists in the process env, since the flag
+        # layer is the only place we can override it for the subprocess.
+        if base_url_key == FOUNDRY_BASE_URL_ENV and env_dict.get(base_url_key) == proxy_url:
+            env_dict[FOUNDRY_RESOURCE_ENV] = ""
     for key in PROXY_NEUTRALIZED_ENV_KEYS:
-        if key in settings_env or key in env_dict:
+        if key in settings_env or key in env_dict or key in os.environ:
             env_dict[key] = ""
 
     settings_obj["env"] = env_dict
