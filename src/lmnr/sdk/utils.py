@@ -1,3 +1,4 @@
+import base64
 import datetime
 import dataclasses
 import dotenv
@@ -260,6 +261,14 @@ DEFAULT_PLACEHOLDER = {}
 
 
 def default_json(o):
+    # STANDARD base64 (`+`/`/`), not pydantic's URL-safe `ser_json_bytes`
+    # alphabet: consumers decode with `base64.b64decode`, which defaults to
+    # `validate=False` and silently DROPS out-of-alphabet characters instead of
+    # raising, shifting every following byte. Without this branch bytes fall
+    # through to `str(o)` and serialize as the useless repr "b'\\xfb\\xef'".
+    if isinstance(o, (bytes, bytearray)):
+        return base64.b64encode(o).decode("utf-8")
+
     if isinstance(o, pydantic.BaseModel):
         return o.model_dump()
 
@@ -295,15 +304,56 @@ def describe_response(response) -> str:
     return f"[{response.status_code}] {body}"
 
 
+_JSON_DUMPS_OPTIONS = (
+    orjson.OPT_SERIALIZE_DATACLASS
+    | orjson.OPT_SERIALIZE_UUID
+    | orjson.OPT_UTC_Z
+    | orjson.OPT_NON_STR_KEYS
+)
+
+
+def stringify_dict_keys(value: typing.Any) -> typing.Any:
+    """Coerce non-string mapping keys so orjson can encode them.
+
+    `OPT_NON_STR_KEYS` only covers a fixed set of scalar key types, and orjson
+    raises on the rest (tuples, bytes, arbitrary objects) — which would collapse
+    the whole payload to "{}". Only called on the retry path, so the common case
+    pays nothing.
+    """
+    if isinstance(value, dict):
+        return {
+            (
+                key
+                if isinstance(key, str)
+                else (
+                    base64.b64encode(key).decode("utf-8")
+                    if isinstance(key, (bytes, bytearray))
+                    else str(key)
+                )
+            ): stringify_dict_keys(inner)
+            for key, inner in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [stringify_dict_keys(item) for item in value]
+    return value
+
+
 def json_dumps(data: dict | list) -> str:
     try:
         return orjson.dumps(
             data,
             default=default_json,
-            option=orjson.OPT_SERIALIZE_DATACLASS
-            | orjson.OPT_SERIALIZE_UUID
-            | orjson.OPT_UTC_Z
-            | orjson.OPT_NON_STR_KEYS,
+            option=_JSON_DUMPS_OPTIONS,
+        ).decode("utf-8")
+    except Exception:
+        pass
+    try:
+        # An unencodable mapping key is the one failure worth retrying — it
+        # aborts the whole document, losing every sibling value with it.
+        return orjson.dumps(
+            stringify_dict_keys(data),
+            default=default_json,
+            option=_JSON_DUMPS_OPTIONS,
         ).decode("utf-8")
     except Exception:
         # Log the exception and return a placeholder if serialization completely fails

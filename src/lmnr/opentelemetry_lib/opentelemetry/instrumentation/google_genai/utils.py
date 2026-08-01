@@ -367,6 +367,20 @@ def strip_none_values(obj: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def model_to_json_safe_dict(model: pydantic.BaseModel, **kwargs) -> dict[str, Any]:
+    """Dump a pydantic model to a dict safe to hand to `json_dumps`.
+
+    Deliberately `mode="python"` rather than `mode="json"`: google-genai's models
+    set `ser_json_bytes="base64"`, which is pydantic's URL-SAFE alphabet, so json
+    mode emits `-`/`_`. Consumers decode with `base64.b64decode`, which defaults
+    to `validate=False` and silently DROPS the out-of-alphabet characters instead
+    of raising — every following byte shifts and an image decodes to garbage.
+    Python mode keeps `bytes` intact so `json_dumps` encodes them as standard
+    base64 on the way out.
+    """
+    return model.model_dump(mode="python", **kwargs)
+
+
 def part_to_dict(part) -> dict[str, Any]:
     """Convert a Part-like object to a serializable dict."""
     if isinstance(part, str):
@@ -374,7 +388,7 @@ def part_to_dict(part) -> dict[str, Any]:
     if isinstance(part, dict):
         return strip_none_values(part)
     if hasattr(part, "model_dump"):
-        return part.model_dump(mode="json", exclude_unset=True, exclude_none=True)
+        return model_to_json_safe_dict(part, exclude_unset=True, exclude_none=True)
     return strip_none_values(to_dict(part))
 
 
@@ -384,7 +398,7 @@ def content_union_to_dict(
 ) -> dict[str, Any]:
     """Convert a ContentUnion to a Gemini Content dict with 'parts' and 'role'."""
     if isinstance(content, types.Content):
-        result = content.model_dump(mode="json", exclude_unset=True, exclude_none=True)
+        result = model_to_json_safe_dict(content, exclude_unset=True, exclude_none=True)
         if "role" not in result:
             result["role"] = default_role
         return result
@@ -398,7 +412,7 @@ def content_union_to_dict(
                 result["role"] = default_role
             return result
         else:
-            return {"role": default_role, "parts": [strip_none_values(content)]}
+            return {"role": default_role, "parts": [part_to_dict(content)]}
     elif isinstance(content, list):
         return {"role": default_role, "parts": [part_to_dict(p) for p in content]}
     else:

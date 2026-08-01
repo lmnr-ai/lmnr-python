@@ -1,3 +1,4 @@
+import base64
 import dataclasses
 import json
 import pytest
@@ -1072,3 +1073,55 @@ def test_merge_text_parts_leading_non_text():
     assert len(result) == 2
     assert result[0].inline_data is not None
     assert result[1].text == "Text1 Text2"
+
+
+def test_json_dumps_bytes_use_standard_base64():
+    """Bytes must serialize as STANDARD base64, not a Python repr.
+
+    Without a bytes branch they fall through to `str(o)` and land in the span
+    as the useless literal "b'\\xfb\\xef'". Standard rather than URL-safe
+    because consumers decode with `base64.b64decode`, which defaults to
+    `validate=False` and silently DROPS `-`/`_` instead of raising, shifting
+    every following byte.
+    """
+    raw = bytes([0xFB, 0xEF, 0xBE, 0xFF, 0xFF, 0xFF])
+
+    parsed = json.loads(json_dumps({"data": raw}))
+
+    assert parsed["data"] == "++++////"
+    assert base64.b64decode(parsed["data"]) == raw
+
+    # bytearray takes the same path
+    parsed = json.loads(json_dumps({"data": bytearray(raw)}))
+    assert parsed["data"] == "++++////"
+
+    # and nested inside containers the orjson hook has to recurse through
+    parsed = json.loads(json_dumps({"outer": [{"inner": raw}, {raw}]}))
+    assert parsed["outer"][0]["inner"] == "++++////"
+    assert parsed["outer"][1] == ["++++////"]
+
+
+def test_json_dumps_non_string_dict_keys_do_not_discard_the_payload():
+    """An unencodable mapping key must not collapse the whole document.
+
+    orjson's `OPT_NON_STR_KEYS` covers only a fixed set of scalar key types and
+    raises on the rest, which would drop every sibling value with it.
+    """
+    raw = bytes([0xFB, 0xEF, 0xBE, 0xFF, 0xFF, 0xFF])
+
+    parsed = json.loads(json_dumps({"keep": "me", "grid": {(0, 1): "hit"}}))
+    assert parsed["keep"] == "me"
+    assert parsed["grid"] == {"(0, 1)": "hit"}
+
+    # bytes keys become standard base64 rather than a repr
+    parsed = json.loads(json_dumps({"keep": "me", "by_hash": {raw: "hit"}}))
+    assert parsed["keep"] == "me"
+    assert parsed["by_hash"] == {"++++////": "hit"}
+
+    # nested under a list, too
+    parsed = json.loads(json_dumps({"rows": [{"keep": 1, "k": {(2, 3): "v"}}]}))
+    assert parsed["rows"][0]["keep"] == 1
+
+    # keys orjson already handles natively are left exactly as they were
+    parsed = json.loads(json_dumps({1: "a", "b": 2, None: "c"}))
+    assert parsed == {"1": "a", "b": 2, "null": "c"}
