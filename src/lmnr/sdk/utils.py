@@ -312,19 +312,36 @@ _JSON_DUMPS_OPTIONS = (
 )
 
 
+#: Key types `OPT_NON_STR_KEYS` encodes itself. Left untouched on the retry path
+#: so a key's name never depends on whether some unrelated sibling key forced
+#: the retry — orjson renders these differently from `str()` (`None` -> "null",
+#: `True` -> "true", datetimes -> RFC 3339, enums -> their value).
+_ORJSON_NATIVE_KEY_TYPES = (
+    str,
+    int,  # covers bool and IntEnum
+    float,
+    type(None),
+    uuid.UUID,
+    datetime.datetime,
+    datetime.date,
+    datetime.time,
+    enum.Enum,
+)
+
+
 def _stringify_dict_keys(value: typing.Any) -> typing.Any:
-    """Coerce non-string mapping keys so orjson can encode them.
+    """Coerce the mapping keys orjson cannot encode into strings.
 
     `OPT_NON_STR_KEYS` only covers a fixed set of scalar key types, and orjson
-    raises on the rest (tuples, bytes, arbitrary objects) — which would collapse
-    the whole payload to "{}". Only called on the retry path, so the common case
-    pays nothing.
+    raises on the rest (tuples, bytes, Decimal, arbitrary objects) — which would
+    collapse the whole payload to "{}". Only called on the retry path, so the
+    common case pays nothing.
     """
     if isinstance(value, dict):
         return {
             (
                 key
-                if isinstance(key, str)
+                if isinstance(key, _ORJSON_NATIVE_KEY_TYPES)
                 else (
                     base64.b64encode(key).decode("utf-8")
                     if isinstance(key, (bytes, bytearray))

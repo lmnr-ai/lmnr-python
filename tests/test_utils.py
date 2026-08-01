@@ -1125,3 +1125,44 @@ def test_json_dumps_non_string_dict_keys_do_not_discard_the_payload():
     # keys orjson already handles natively are left exactly as they were
     parsed = json.loads(json_dumps({1: "a", "b": 2, None: "c"}))
     assert parsed == {"1": "a", "b": 2, "null": "c"}
+
+
+def test_json_dumps_key_names_do_not_depend_on_the_retry_path():
+    """The retry must not rename keys orjson already encodes itself.
+
+    `OPT_NON_STR_KEYS` renders these differently from `str()` (`None` -> "null",
+    `True` -> "true", datetimes -> RFC 3339, enums -> their value), so coercing
+    them would make a key's name depend on whether some unrelated sibling key
+    happened to force the retry.
+    """
+    import datetime
+    import enum
+    import uuid
+
+    class Color(enum.Enum):
+        RED = "red"
+
+    native_keys = {
+        None: 1,
+        True: 2,
+        False: 3,
+        7: 4,
+        2.5: 5,
+        uuid.UUID(int=1): 6,
+        datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc): 7,
+        datetime.date(2026, 1, 1): 8,
+        datetime.time(1, 2, 3): 9,
+        Color.RED: 10,
+        "plain": 11,
+    }
+
+    first_pass = json.loads(json_dumps({"m": dict(native_keys)}))["m"]
+    # A tuple key elsewhere in the document forces the retry.
+    retry_pass = json.loads(
+        json_dumps({"m": dict(native_keys), "other": {(0, 1): "x"}})
+    )["m"]
+
+    assert first_pass == retry_pass
+    assert "null" in first_pass and "true" in first_pass
+    assert "2026-01-01T00:00:00Z" in first_pass
+    assert "red" in first_pass
