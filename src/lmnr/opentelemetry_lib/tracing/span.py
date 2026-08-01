@@ -35,6 +35,25 @@ from lmnr.sdk.types import DebugContext, LaminarSpanContext
 from lmnr.sdk.utils import is_otel_attribute_value_type, json_dumps
 
 MAX_MANUAL_SPAN_PAYLOAD_SIZE = 1024 * 1024 * 10  # 10MB
+TRUNCATION_SUFFIX = "...[Laminar: truncated]"
+
+
+def _truncate_payload(serialized: str, kind: Literal["input", "output"]) -> str:
+    """Cut an oversized payload down to the limit instead of discarding it.
+
+    Keeping the leading bytes preserves the start of the value (the useful part when
+    debugging), where replacing the whole thing with a placeholder threw it all away.
+    """
+    if len(serialized) <= MAX_MANUAL_SPAN_PAYLOAD_SIZE:
+        return serialized
+    logger = get_default_logger(__name__)
+    logger.warning(
+        f"Laminar: span {kind} is {len(serialized)} bytes, which exceeds the "
+        f"{MAX_MANUAL_SPAN_PAYLOAD_SIZE} byte limit. Truncating to the limit; "
+        f"the recorded value will not be valid JSON."
+    )
+    keep = MAX_MANUAL_SPAN_PAYLOAD_SIZE - len(TRUNCATION_SUFFIX)
+    return serialized[:keep] + TRUNCATION_SUFFIX
 
 
 def _current_debug_context() -> DebugContext | None:
@@ -180,25 +199,15 @@ class LaminarSpanInterfaceMixin:
 
     def set_output(self, output: Any = None) -> None:
         if output is not None:
-            serialized_output = json_dumps(output)
-            if len(serialized_output) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
-                self.span.set_attribute(
-                    SPAN_OUTPUT,
-                    "Laminar: output too large to record",
-                )
-            else:
-                self.span.set_attribute(SPAN_OUTPUT, serialized_output)
+            self.span.set_attribute(
+                SPAN_OUTPUT, _truncate_payload(json_dumps(output), "output")
+            )
 
     def set_input(self, input: Any = None) -> None:
         if input is not None:
-            serialized_input = json_dumps(input)
-            if len(serialized_input) > MAX_MANUAL_SPAN_PAYLOAD_SIZE:
-                self.span.set_attribute(
-                    SPAN_INPUT,
-                    "Laminar: input too large to record",
-                )
-            else:
-                self.span.set_attribute(SPAN_INPUT, serialized_input)
+            self.span.set_attribute(
+                SPAN_INPUT, _truncate_payload(json_dumps(input), "input")
+            )
 
     def add_tags(self, tags: list[str]) -> None:
         if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
