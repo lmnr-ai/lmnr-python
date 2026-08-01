@@ -312,7 +312,7 @@ _JSON_DUMPS_OPTIONS = (
 )
 
 
-def stringify_dict_keys(value: typing.Any) -> typing.Any:
+def _stringify_dict_keys(value: typing.Any) -> typing.Any:
     """Coerce non-string mapping keys so orjson can encode them.
 
     `OPT_NON_STR_KEYS` only covers a fixed set of scalar key types, and orjson
@@ -330,11 +330,11 @@ def stringify_dict_keys(value: typing.Any) -> typing.Any:
                     if isinstance(key, (bytes, bytearray))
                     else str(key)
                 )
-            ): stringify_dict_keys(inner)
+            ): _stringify_dict_keys(inner)
             for key, inner in value.items()
         }
     if isinstance(value, (list, tuple)):
-        return [stringify_dict_keys(item) for item in value]
+        return [_stringify_dict_keys(item) for item in value]
     return value
 
 
@@ -351,7 +351,7 @@ def json_dumps(data: dict | list) -> str:
         # An unencodable mapping key is the one failure worth retrying — it
         # aborts the whole document, losing every sibling value with it.
         return orjson.dumps(
-            stringify_dict_keys(data),
+            _stringify_dict_keys(data),
             default=default_json,
             option=_JSON_DUMPS_OPTIONS,
         ).decode("utf-8")
