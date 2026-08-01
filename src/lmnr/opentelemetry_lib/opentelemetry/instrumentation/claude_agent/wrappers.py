@@ -1,7 +1,9 @@
 """Wrapper functions for Claude Agent instrumentation."""
 
 import asyncio
+import json
 import os
+from pathlib import Path
 from typing import Any
 
 from lmnr import Laminar
@@ -21,6 +23,8 @@ from .utils import (
     restore_env,
     resolve_target_url_from_env,
     is_truthy_env,
+    read_claude_user_settings_env,
+    PROXY_BASE_URL_ENV_KEYS,
     FOUNDRY_BASE_URL_ENV,
     FOUNDRY_RESOURCE_ENV,
     FOUNDRY_USE_ENV,
@@ -201,13 +205,21 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
         is_custom = not isinstance(instance, SubprocessCLITransport)
 
         options_env_snapshot = {}
+        options_settings_snapshot = None
         if is_custom:
             original_env = setup_proxy_env(proxy_url)
             env_set_keys = {k for k, v in original_env.items() if v is not None}
         else:
             if hasattr(instance, "_options"):
                 options_env_snapshot = snapshot_options_env_for_proxy(instance._options)
+                options_settings_snapshot = getattr(
+                    instance._options, "settings", None
+                )
                 update_options_env_for_proxy(instance._options, proxy_url, target_url)
+                # Claude Code may prefer settings.json env over process.env for
+                # ANTHROPIC_BASE_URL. Inject flag-level settings so the CLI hits
+                # our proxy (highest user-controlled settings layer).
+                apply_settings_env_proxy_override(instance._options, proxy_url)
 
             original_env = {}
             env_set_keys = set()
@@ -232,6 +244,7 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
             "original_env": original_env,
             "env_set_keys": env_set_keys,
             "options_env_snapshot": options_env_snapshot,
+            "options_settings_snapshot": options_settings_snapshot,
         }
 
         instance.__lmnr_context = context
@@ -250,6 +263,10 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
             if options_env_snapshot and hasattr(instance, "_options"):
                 restore_options_env_from_snapshot(
                     instance._options, options_env_snapshot
+                )
+            if hasattr(instance, "_options"):
+                restore_options_settings(
+                    instance._options, options_settings_snapshot
                 )
 
             try:
@@ -290,6 +307,15 @@ async def _cleanup_transport_context(instance) -> None:
                 restore_env(
                     context.get("original_env", {}),
                     context.get("env_set_keys", set()),
+                )
+
+            if context.get("options_env_snapshot") and hasattr(instance, "_options"):
+                restore_options_env_from_snapshot(
+                    instance._options, context["options_env_snapshot"]
+                )
+            if hasattr(instance, "_options") and "options_settings_snapshot" in context:
+                restore_options_settings(
+                    instance._options, context.get("options_settings_snapshot")
                 )
 
             # Release port immediately to prevent leaks
@@ -377,6 +403,93 @@ def restore_options_env_from_snapshot(options, snapshot: dict[str, str | None]) 
             options.env[key] = value
 
 
+def _load_settings_object(settings_value: str | None) -> dict[str, Any]:
+    """Parse ClaudeAgentOptions.settings (JSON string or file path) into a dict."""
+    if not settings_value:
+        return {}
+
+    settings_str = settings_value.strip()
+    if settings_str.startswith("{") and settings_str.endswith("}"):
+        try:
+            parsed = json.loads(settings_str)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+
+    path = Path(settings_str).expanduser()
+    if not path.is_file():
+        return {}
+    try:
+        with path.open(encoding="utf-8") as f:
+            parsed = json.load(f)
+        return parsed if isinstance(parsed, dict) else {}
+    except (OSError, json.JSONDecodeError, TypeError):
+        return {}
+
+
+def apply_settings_env_proxy_override(options, proxy_url: str) -> None:
+    """
+    Inject flag-level settings so Claude Code CLI routes API traffic via proxy.
+
+    Claude Code loads ``env`` from ``~/.claude/settings.json`` (and project
+    settings). That layer can take precedence over the subprocess process.env
+    values we set in ``options.env``, so rewriting ``options.env`` alone is not
+    enough when ``ANTHROPIC_BASE_URL`` is configured in settings.
+
+    Claude Agent SDK maps ``options.settings`` to ``--settings``, the highest
+    user-controlled settings layer. We merge proxy base-URL overrides into that
+    layer so the CLI uses the local proxy while the proxy forwards to the
+    original upstream (already configured via ``start_proxy(target_url=...)``).
+
+    Does not mutate the on-disk settings file.
+    """
+    if not hasattr(options, "settings"):
+        logger.debug(
+            "ClaudeAgentOptions has no settings field; cannot override settings.json env"
+        )
+        return
+
+    settings_obj = _load_settings_object(getattr(options, "settings", None))
+    env = settings_obj.get("env")
+    env_dict: dict[str, str] = dict(env) if isinstance(env, dict) else {}
+
+    # Mirror proxy base URLs from options.env into flag settings env.
+    options_env = getattr(options, "env", None) or {}
+    for key in PROXY_BASE_URL_ENV_KEYS:
+        if key in options_env:
+            env_dict[key] = options_env[key]
+    env_dict["ANTHROPIC_BASE_URL"] = proxy_url
+    env_dict.pop(FOUNDRY_RESOURCE_ENV, None)
+
+    settings_obj["env"] = env_dict
+    options.settings = json.dumps(settings_obj)
+
+    settings_env = read_claude_user_settings_env()
+    conflicting = [
+        key
+        for key in PROXY_BASE_URL_ENV_KEYS
+        if key in settings_env and settings_env[key] not in ("", proxy_url)
+    ]
+    if conflicting:
+        logger.info(
+            "Claude Code user settings define %s; injected flag settings so "
+            "auto-instrumentation proxy at %s intercepts API traffic. "
+            "Original settings file was not modified.",
+            ", ".join(conflicting),
+            proxy_url,
+        )
+
+
+def restore_options_settings(options, snapshot: str | None) -> None:
+    """Restore options.settings after proxy setup (or clear if it was unset)."""
+    if not hasattr(options, "settings"):
+        return
+    if snapshot is None:
+        options.settings = None
+    else:
+        options.settings = snapshot
+
+
 def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> None:
     """
     Update options.env to point subprocess to proxy.
@@ -396,14 +509,18 @@ def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> No
     from os.environ are handled separately in wrap_transport_connect by temporarily removing
     them before subprocess starts (since subprocess inherits os.environ).
 
+    Also see :func:`apply_settings_env_proxy_override` — settings.json ``env`` can
+    override process.env for ANTHROPIC_BASE_URL; flag settings must rewrite it too.
+
     Args:
         options: ClaudeAgentOptions instance with .env dict
         proxy_url: Proxy URL (e.g., "http://127.0.0.1:45667")
         target_url: Original target URL to forward to (e.g., "https://api.anthropic.com")
     """
+    settings_env = read_claude_user_settings_env()
 
     def get_env_value(key: str) -> str | None:
-        return options.env.get(key) or os.environ.get(key)
+        return options.env.get(key) or os.environ.get(key) or settings_env.get(key)
 
     foundry_enabled = is_truthy_env(get_env_value("CLAUDE_CODE_USE_FOUNDRY"))
 

@@ -1,9 +1,12 @@
 """Shared utilities for Claude Agent instrumentation."""
 
+import json
 import os
 import re
 import socket
 import time
+from pathlib import Path
+from typing import Any
 
 from lmnr.sdk.log import get_default_logger
 
@@ -21,10 +24,62 @@ BEDROCK_AWS_REGION_ENV = "AWS_REGION"
 VERTEX_BASE_URL_ENV = "ANTHROPIC_VERTEX_BASE_URL"
 VERTEX_USE_ENV = "CLAUDE_CODE_USE_VERTEX"
 
+# Provider base-URL env keys that Claude Code may load from settings.json `env`
+# and that must be rewritten to the local proxy for auto-instrumentation.
+PROXY_BASE_URL_ENV_KEYS = (
+    "ANTHROPIC_BASE_URL",
+    FOUNDRY_BASE_URL_ENV,
+    BEDROCK_BASE_URL_ENV,
+    VERTEX_BASE_URL_ENV,
+)
+
 
 def is_truthy_env(value: str | None) -> bool:
     """Check if environment variable value is truthy (equals '1')."""
     return value == "1"
+
+
+def get_claude_config_dir() -> Path:
+    """Resolve Claude Code config directory (respects CLAUDE_CONFIG_DIR)."""
+    override = os.environ.get("CLAUDE_CONFIG_DIR")
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".claude"
+
+
+def read_claude_user_settings() -> dict[str, Any]:
+    """
+    Load user-level Claude Code settings.json if present.
+
+    Returns an empty dict when the file is missing or invalid.
+    """
+    settings_path = get_claude_config_dir() / "settings.json"
+    try:
+        with settings_path.open(encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError, TypeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def read_claude_user_settings_env() -> dict[str, str]:
+    """
+    Read the `env` block from ~/.claude/settings.json (or CLAUDE_CONFIG_DIR).
+
+    Claude Code applies this block to the CLI session. For some versions /
+    paths it effectively overrides subprocess process.env for keys like
+    ANTHROPIC_BASE_URL, which causes Laminar's injected proxy URL to be ignored.
+    """
+    data = read_claude_user_settings()
+    env = data.get("env")
+    if not isinstance(env, dict):
+        return {}
+    result: dict[str, str] = {}
+    for key, value in env.items():
+        if value is None:
+            continue
+        result[str(key)] = str(value)
+    return result
 
 
 def snapshot_env(keys: list[str]) -> tuple[dict[str, str | None], set[str]]:
@@ -142,7 +197,10 @@ def resolve_target_url_from_env(
     4. ANTHROPIC_BASE_URL - standard Anthropic API base URL
     5. Fall back to default (https://api.anthropic.com)
 
-    For each environment variable, checks env_dict first, then os.environ as fallback.
+    For each environment variable, checks env_dict first, then os.environ,
+    then the `env` block from Claude Code user settings.json (CLAUDE_CONFIG_DIR
+    or ~/.claude/settings.json). Settings are a common place for custom
+    ANTHROPIC_BASE_URL when using non-default Anthropic-compatible endpoints.
 
     Args:
         env_dict: Dictionary of environment variables (e.g., from options.env)
@@ -151,10 +209,11 @@ def resolve_target_url_from_env(
     Returns:
         Resolved target URL, or None if provider is misconfigured
     """
+    settings_env = read_claude_user_settings_env()
 
-    # Helper to get value from env_dict first, then os.environ
+    # Helper: options.env > process env > Claude user settings env
     def get_env_value(key: str) -> str | None:
-        return env_dict.get(key) or os.environ.get(key)
+        return env_dict.get(key) or os.environ.get(key) or settings_env.get(key)
 
     # 1. Check for HTTPS_PROXY (highest priority)
     https_proxy = get_env_value("HTTPS_PROXY")
