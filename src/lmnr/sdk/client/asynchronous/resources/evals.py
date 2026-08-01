@@ -111,8 +111,7 @@ class AsyncEvals(BaseAsyncResource):
                     "Unauthorized. Please check your project API key."
                 )
             raise ValueError(
-                f"Error updating evaluation: "
-                f"[{response.status_code}] {response.text}"
+                f"Error updating evaluation: {describe_response(response)}"
             )
         return InitEvaluationResponse.model_validate(response.json())
 
@@ -188,7 +187,7 @@ class AsyncEvals(BaseAsyncResource):
 
         if response.status_code != 200:
             raise ValueError(
-                f"Error saving evaluation datapoints: [{response.status_code}] {response.text}"
+                f"Error saving evaluation datapoints: {describe_response(response)}"
             )
 
     async def get_datapoints(
@@ -261,7 +260,7 @@ class AsyncEvals(BaseAsyncResource):
 
         if response.status_code != 200:
             raise ValueError(
-                f"Error updating evaluation datapoint: [{response.status_code}] {response.text}"
+                f"Error updating evaluation datapoint: {describe_response(response)}"
             )
 
     async def _retry_save_datapoints(

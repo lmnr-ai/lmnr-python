@@ -109,8 +109,7 @@ class Evals(BaseResource):
                     "Unauthorized. Please check your project API key."
                 )
             raise ValueError(
-                f"Error updating evaluation: "
-                f"[{response.status_code}] {response.text}"
+                f"Error updating evaluation: {describe_response(response)}"
             )
         return InitEvaluationResponse.model_validate(response.json())
 
@@ -186,7 +185,7 @@ class Evals(BaseResource):
 
         if response.status_code != 200:
             raise ValueError(
-                f"Error saving evaluation datapoints: [{response.status_code}] {response.text}"
+                f"Error saving evaluation datapoints: {describe_response(response)}"
             )
 
     def update_datapoint(

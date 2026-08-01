@@ -1,10 +1,14 @@
 """A 413 must surface the server's message in human-readable form (LAM-2050)."""
 
+import inspect
+import re
 import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from lmnr.sdk.client.asynchronous.resources import evals as async_evals
+from lmnr.sdk.client.synchronous.resources import evals as sync_evals
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.types import PartialEvaluationDatapoint
 from lmnr.sdk.utils import MAX_ERROR_BODY_CHARS, describe_response
@@ -124,6 +128,33 @@ class TestSaveDatapoints413:
         with patch.object(sync_client.evals._client, "post", return_value=response):
             with pytest.raises(ValueError, match=r"\[500\] internal error"):
                 sync_client.evals.save_datapoints(eval_id, sample_datapoints)
+
+
+class TestSyncAsyncLockstep:
+    """The sync and async eval resources are hand-mirrored, so error reporting drifts
+    silently. Both of these compare the two modules' sources directly."""
+
+    def test_no_eval_error_path_interpolates_a_raw_response_body(self):
+        # A raw `{response.text}` skips describe_response's truncation and empty-body
+        # labelling. Bugbot caught exactly this on the async update_datapoint.
+        for module in (sync_evals, async_evals):
+            source = inspect.getsource(module)
+            offenders = re.findall(r".*\{response\.text\}.*", source)
+            assert not offenders, (
+                f"{module.__name__} interpolates a raw response body; route it through "
+                f"describe_response instead: {offenders}"
+            )
+
+    def test_both_mirrors_raise_the_same_error_messages(self):
+        def messages(module) -> set[str]:
+            return set(
+                re.findall(
+                    r'"([^"]*describe_response\(response\)[^"]*)"',
+                    inspect.getsource(module),
+                )
+            )
+
+        assert messages(sync_evals) == messages(async_evals)
 
 
 class TestInitEval413:
