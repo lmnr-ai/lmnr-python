@@ -359,11 +359,13 @@ def snapshot_options_env_for_proxy(options) -> dict[str, str | None]:
     Returns:
         Dictionary mapping keys to their original values (or None if not present)
     """
+    # PROXY_ENV_KEYS covers both the upper and lower case spellings that
+    # update_options_env_for_proxy pops; a key popped but not snapshotted is lost
+    # from options.env when a failed connect restores.
     keys_to_snapshot = [
         "ANTHROPIC_BASE_URL",
         "ANTHROPIC_ORIGINAL_BASE_URL",
-        "HTTP_PROXY",
-        "HTTPS_PROXY",
+        *PROXY_ENV_KEYS,
         FOUNDRY_BASE_URL_ENV,
         FOUNDRY_RESOURCE_ENV,
         FOUNDRY_USE_ENV,

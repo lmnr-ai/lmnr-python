@@ -69,7 +69,11 @@ def is_truthy_env(value: str | None) -> bool:
     the CLI considers enabled, so we would blank its routing keys without pinning
     a base URL and break the run.
     """
-    return value is not None and value.strip().lower() in ("1", "true", "yes", "on")
+    if not isinstance(value, str):
+        # Settings JSON can carry booleans / numbers; never crash proxy setup on
+        # a value that was not normalized to a string upstream.
+        return value is True
+    return value.strip().lower() in ("1", "true", "yes", "on")
 
 
 def _load_settings_file(path: Path) -> dict[str, Any] | None:
@@ -412,8 +416,10 @@ def build_proxy_flag_settings(
                 return None
             settings_obj = loaded
 
-    env_block = settings_obj.get("env")
-    env_dict: dict[str, str] = dict(env_block) if isinstance(env_block, dict) else {}
+    # Normalize through the same coercion as the on-disk layers: a caller's
+    # options.settings may carry JSON booleans / numbers, and those would reach
+    # is_truthy_env (which lowercases the value) as non-strings.
+    env_dict: dict[str, str] = _settings_env_block(settings_obj)
 
     settings_env = read_claude_settings_env(cwd, setting_sources)
 
@@ -467,11 +473,13 @@ def setup_proxy_env(proxy_url: str) -> dict[str, str | None]:
     Returns:
         Dictionary of original env values for restoration
     """
+    # Snapshot every key the pops below touch — PROXY_ENV_KEYS covers both the
+    # upper and lower case spellings, and a key popped but not snapshotted is
+    # lost from the process for good.
     snapshot: dict[str, str | None] = {
         "ANTHROPIC_BASE_URL": os.environ.get("ANTHROPIC_BASE_URL"),
         "ANTHROPIC_ORIGINAL_BASE_URL": os.environ.get("ANTHROPIC_ORIGINAL_BASE_URL"),
-        "HTTP_PROXY": os.environ.get("HTTP_PROXY"),
-        "HTTPS_PROXY": os.environ.get("HTTPS_PROXY"),
+        **{key: os.environ.get(key) for key in PROXY_ENV_KEYS},
     }
 
     # Store original target URL in ANTHROPIC_ORIGINAL_BASE_URL if not already set

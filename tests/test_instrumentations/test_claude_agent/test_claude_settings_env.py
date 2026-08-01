@@ -6,18 +6,25 @@ proxy idle when a user keeps ``ANTHROPIC_BASE_URL`` in ``~/.claude/settings.json
 """
 
 import json
+import os
 
 import pytest
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.utils import (
     build_proxy_flag_settings,
+    is_truthy_env,
     read_claude_settings_env,
     resolve_target_url_from_env,
+    restore_env,
+    setup_proxy_env,
     FOUNDRY_BASE_URL_ENV,
     FOUNDRY_RESOURCE_ENV,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.wrappers import (
     apply_settings_proxy_override,
+    restore_options_env_from_snapshot,
+    snapshot_options_env_for_proxy,
+    update_options_env_for_proxy,
 )
 
 PROXY_URL = "http://127.0.0.1:45667"
@@ -217,6 +224,61 @@ def test_provider_flag_falsy_values_do_not_pin_a_base_url(isolated_settings, val
     settings = json.loads(build_proxy_flag_settings(None, PROXY_URL))
 
     assert "ANTHROPIC_VERTEX_BASE_URL" not in settings["env"]
+
+
+def test_non_string_provider_flag_does_not_crash(isolated_settings):
+    """options.settings may carry JSON booleans / numbers, not just strings.
+
+    Those reach is_truthy_env, which lowercases the value — an uncoerced bool
+    used to raise AttributeError and abort proxy setup entirely.
+    """
+    existing = json.dumps({"env": {"CLAUDE_CODE_USE_FOUNDRY": True}})
+
+    settings = json.loads(build_proxy_flag_settings(existing, PROXY_URL))
+
+    # Coerced to "True", which the CLI treats as enabled, so the base URL is pinned.
+    assert settings["env"][FOUNDRY_BASE_URL_ENV] == PROXY_URL
+
+
+def test_numeric_provider_flag_does_not_crash(isolated_settings):
+    existing = json.dumps({"env": {"CLAUDE_CODE_USE_VERTEX": 1}})
+
+    settings = json.loads(build_proxy_flag_settings(existing, PROXY_URL))
+
+    assert settings["env"]["ANTHROPIC_VERTEX_BASE_URL"] == PROXY_URL
+
+
+def test_is_truthy_env_tolerates_non_strings():
+    assert is_truthy_env(True) is True
+    assert is_truthy_env(False) is False
+    assert is_truthy_env(1) is False  # not a string and not True — no crash
+    assert is_truthy_env(None) is False
+
+
+def test_setup_proxy_env_restores_lowercase_proxy_vars(monkeypatch):
+    """Every key the pops touch must be snapshotted, or it is lost for good."""
+    for key in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("https_proxy", "http://corp:8080")
+
+    snapshot = setup_proxy_env(PROXY_URL)
+
+    assert os.environ.get("https_proxy") is None
+    restore_env(snapshot, {k for k, v in snapshot.items() if v is not None})
+    assert os.environ.get("https_proxy") == "http://corp:8080"
+
+
+def test_options_env_snapshot_restores_lowercase_proxy_vars(isolated_settings):
+    """A failed connect restores options.env; lowercase keys must come back."""
+    options = MockOptions(env={"https_proxy": "http://corp:8080"})
+
+    snapshot = snapshot_options_env_for_proxy(options)
+    update_options_env_for_proxy(options, PROXY_URL, "https://api.anthropic.com")
+    assert "https_proxy" not in options.env
+
+    restore_options_env_from_snapshot(options, snapshot)
+
+    assert options.env["https_proxy"] == "http://corp:8080"
 
 
 def test_settings_proxy_var_does_not_shadow_the_gateway(isolated_settings):
