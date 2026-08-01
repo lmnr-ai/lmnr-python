@@ -14,6 +14,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.utils imp
     build_proxy_flag_settings,
     is_truthy_env,
     read_claude_settings_env,
+    PROXY_ENV_KEYS,
     resolve_target_url_from_env,
     restore_env,
     setup_proxy_env,
@@ -61,8 +62,10 @@ def isolated_settings(tmp_path, monkeypatch):
         "CLAUDE_CODE_USE_FOUNDRY",
         "CLAUDE_CODE_USE_BEDROCK",
         "CLAUDE_CODE_USE_VERTEX",
-        "HTTP_PROXY",
-        "HTTPS_PROXY",
+        # Both spellings: the resolver reads the lowercase pair too, and those
+        # outrank every base URL, so a host that exports them would otherwise
+        # make upstream assertions resolve the corporate proxy.
+        *PROXY_ENV_KEYS,
     ):
         monkeypatch.delenv(key, raising=False)
 
