@@ -5,7 +5,6 @@ import uuid
 from opentelemetry.context import Context, get_value
 from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor
 from opentelemetry.sdk.trace.export import (
-    BatchSpanProcessor,
     SimpleSpanProcessor,
     SpanExporter,
 )
@@ -22,6 +21,11 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
     SPAN_SDK_VERSION,
     TRACE_TYPE,
     USER_ID,
+)
+from lmnr.opentelemetry_lib.tracing.batch_processor import (
+    DEFAULT_MAX_EXPORT_BATCH_SIZE,
+    DEFAULT_MAX_EXPORT_BATCH_SIZE_BYTES,
+    SizeLimitedBatchSpanProcessor,
 )
 from lmnr.opentelemetry_lib.tracing.context import (
     CONTEXT_METADATA_KEY,
@@ -50,11 +54,12 @@ def _replay_active() -> bool:
 
 
 class LaminarSpanProcessor(SpanProcessor):
-    instance: BatchSpanProcessor | SimpleSpanProcessor
+    instance: SizeLimitedBatchSpanProcessor | SimpleSpanProcessor
     logger: logging.Logger
     __span_id_to_path: dict[int, list[str]] = {}
     __span_id_lists: dict[int, list[str]] = {}
     max_export_batch_size: int
+    max_export_batch_size_bytes: int
     _instance_lock: threading.RLock
     _paths_lock: threading.RLock
 
@@ -66,14 +71,20 @@ class LaminarSpanProcessor(SpanProcessor):
         api_key: str | None = None,
         timeout_seconds: int = 30,
         force_http: bool = False,
-        max_export_batch_size: int = 64,
+        max_export_batch_size: int | None = None,
+        max_export_batch_size_bytes: int | None = None,
         disable_batch: bool = False,
         exporter: SpanExporter | None = None,
     ):
         self._instance_lock = threading.RLock()
         self._paths_lock = threading.RLock()
         self.logger = get_default_logger(__name__)
-        self.max_export_batch_size = max_export_batch_size
+        self.max_export_batch_size = (
+            max_export_batch_size or DEFAULT_MAX_EXPORT_BATCH_SIZE
+        )
+        self.max_export_batch_size_bytes = (
+            max_export_batch_size_bytes or DEFAULT_MAX_EXPORT_BATCH_SIZE_BYTES
+        )
         port = http_port if force_http else grpc_port
         self.exporter = exporter or LaminarSpanExporter(
             base_url=base_url,
@@ -85,9 +96,14 @@ class LaminarSpanProcessor(SpanProcessor):
         self.instance = (
             SimpleSpanProcessor(self.exporter)
             if disable_batch
-            else BatchSpanProcessor(
-                self.exporter, max_export_batch_size=max_export_batch_size
-            )
+            else self._new_batch_processor()
+        )
+
+    def _new_batch_processor(self) -> SizeLimitedBatchSpanProcessor:
+        return SizeLimitedBatchSpanProcessor(
+            self.exporter,
+            max_export_batch_size=self.max_export_batch_size,
+            max_export_batch_size_bytes=self.max_export_batch_size_bytes,
         )
 
     def on_start(self, span: Span, parent_context: Context | None = None):
@@ -254,9 +270,7 @@ class LaminarSpanProcessor(SpanProcessor):
             self.instance = (
                 SimpleSpanProcessor(self.exporter)
                 if disable_batch
-                else BatchSpanProcessor(
-                    self.exporter, max_export_batch_size=self.max_export_batch_size
-                )
+                else self._new_batch_processor()
             )
             # Force reinit protocol is a clear state, so clear
             # any remaining internal state
