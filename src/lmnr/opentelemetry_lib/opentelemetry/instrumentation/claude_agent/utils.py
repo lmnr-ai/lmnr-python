@@ -47,19 +47,43 @@ def get_claude_config_dir() -> Path:
     return Path.home() / ".claude"
 
 
+def _resolve_session_cwd(cwd: str | Path | None = None) -> Path:
+    """Project/session root for Claude project and local settings files."""
+    if cwd is None:
+        return Path.cwd()
+    return Path(cwd).expanduser()
+
+
+def _read_settings_json_file(path: Path) -> dict[str, Any]:
+    """Load a Claude settings.json file; empty dict if missing/invalid."""
+    try:
+        with path.open(encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError, TypeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _extract_settings_env(data: dict[str, Any]) -> dict[str, str]:
+    """Normalize a settings object ``env`` block to str->str."""
+    env = data.get("env")
+    if not isinstance(env, dict):
+        return {}
+    result: dict[str, str] = {}
+    for key, value in env.items():
+        if value is None:
+            continue
+        result[str(key)] = str(value)
+    return result
+
+
 def read_claude_user_settings() -> dict[str, Any]:
     """
     Load user-level Claude Code settings.json if present.
 
     Returns an empty dict when the file is missing or invalid.
     """
-    settings_path = get_claude_config_dir() / "settings.json"
-    try:
-        with settings_path.open(encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, json.JSONDecodeError, TypeError):
-        return {}
-    return data if isinstance(data, dict) else {}
+    return _read_settings_json_file(get_claude_config_dir() / "settings.json")
 
 
 def read_claude_user_settings_env() -> dict[str, str]:
@@ -70,16 +94,52 @@ def read_claude_user_settings_env() -> dict[str, str]:
     paths it effectively overrides subprocess process.env for keys like
     ANTHROPIC_BASE_URL, which causes Laminar's injected proxy URL to be ignored.
     """
-    data = read_claude_user_settings()
-    env = data.get("env")
-    if not isinstance(env, dict):
-        return {}
-    result: dict[str, str] = {}
-    for key, value in env.items():
-        if value is None:
-            continue
-        result[str(key)] = str(value)
-    return result
+    return _extract_settings_env(read_claude_user_settings())
+
+
+def read_claude_project_settings(cwd: str | Path | None = None) -> dict[str, Any]:
+    """
+    Load shared project settings from ``{cwd}/.claude/settings.json``.
+
+    ``cwd`` defaults to the process working directory (Claude Agent SDK uses
+    ``options.cwd`` when set).
+    """
+    return _read_settings_json_file(
+        _resolve_session_cwd(cwd) / ".claude" / "settings.json"
+    )
+
+
+def read_claude_local_settings(cwd: str | Path | None = None) -> dict[str, Any]:
+    """
+    Load local project settings from ``{cwd}/.claude/settings.local.json``.
+
+    Higher priority than shared project settings; typically gitignored.
+    """
+    return _read_settings_json_file(
+        _resolve_session_cwd(cwd) / ".claude" / "settings.local.json"
+    )
+
+
+def read_claude_settings_env(cwd: str | Path | None = None) -> dict[str, str]:
+    """
+    Merge ``env`` from Claude settings layers using Claude Code priority.
+
+    Priority (highest wins per key):
+    1. Local project: ``{cwd}/.claude/settings.local.json``
+    2. Shared project: ``{cwd}/.claude/settings.json``
+    3. User: ``~/.claude/settings.json`` (or ``CLAUDE_CONFIG_DIR``)
+
+    ``cwd`` is the session/project root (``ClaudeAgentOptions.cwd`` when set;
+    otherwise process cwd). Project/local base URLs must be visible here so the
+    auto-instrumentation proxy forwards to the team's gateway instead of the
+    default Anthropic endpoint when flag-level settings rewrite ``ANTHROPIC_BASE_URL``.
+    """
+    merged: dict[str, str] = {}
+    # Lowest priority first so higher layers overwrite.
+    merged.update(read_claude_user_settings_env())
+    merged.update(_extract_settings_env(read_claude_project_settings(cwd)))
+    merged.update(_extract_settings_env(read_claude_local_settings(cwd)))
+    return merged
 
 
 def snapshot_env(keys: list[str]) -> tuple[dict[str, str | None], set[str]]:
@@ -173,7 +233,10 @@ def _get_region_from_aws_config(profile: str) -> str | None:
 
 
 def resolve_target_url_from_env(
-    env_dict: dict[str, str], fallback: str = DEFAULT_ANTHROPIC_BASE_URL
+    env_dict: dict[str, str],
+    fallback: str = DEFAULT_ANTHROPIC_BASE_URL,
+    *,
+    cwd: str | Path | None = None,
 ) -> str | None:
     """
     Resolve target URL from environment dictionary with os.environ fallback.
@@ -198,20 +261,22 @@ def resolve_target_url_from_env(
     5. Fall back to default (https://api.anthropic.com)
 
     For each environment variable, checks env_dict first, then os.environ,
-    then the `env` block from Claude Code user settings.json (CLAUDE_CONFIG_DIR
-    or ~/.claude/settings.json). Settings are a common place for custom
+    then the merged ``env`` block from Claude Code settings layers (local
+    project > shared project > user). Settings are a common place for custom
     ANTHROPIC_BASE_URL when using non-default Anthropic-compatible endpoints.
 
     Args:
         env_dict: Dictionary of environment variables (e.g., from options.env)
         fallback: Fallback URL if no other source found (default: DEFAULT_ANTHROPIC_BASE_URL)
+        cwd: Session/project root for project and local settings
+            (``ClaudeAgentOptions.cwd``); defaults to process cwd.
 
     Returns:
         Resolved target URL, or None if provider is misconfigured
     """
-    settings_env = read_claude_user_settings_env()
+    settings_env = read_claude_settings_env(cwd)
 
-    # Helper: options.env > process env > Claude user settings env
+    # Helper: options.env > process env > Claude settings env (local>project>user)
     def get_env_value(key: str) -> str | None:
         return env_dict.get(key) or os.environ.get(key) or settings_env.get(key)
 
