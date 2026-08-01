@@ -13,6 +13,8 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.utils imp
     build_proxy_flag_settings,
     read_claude_settings_env,
     resolve_target_url_from_env,
+    FOUNDRY_BASE_URL_ENV,
+    FOUNDRY_RESOURCE_ENV,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.wrappers import (
     apply_settings_proxy_override,
@@ -162,6 +164,33 @@ def test_flag_settings_pin_provider_base_url_when_configured(isolated_settings):
     settings = json.loads(build_proxy_flag_settings(None, PROXY_URL))
 
     assert settings["env"]["ANTHROPIC_BEDROCK_BASE_URL"] == PROXY_URL
+
+
+def test_flag_settings_pin_foundry_base_url_for_resource_only_setup(isolated_settings):
+    """Foundry can be set up by resource alone, with no base-URL key.
+
+    Blanking the resource without pinning a base URL would strip its only routing
+    key and leave nothing for the CLI to talk to.
+    """
+    config_dir, _ = isolated_settings
+    write_settings(
+        config_dir / "settings.json",
+        {"CLAUDE_CODE_USE_FOUNDRY": "1", "ANTHROPIC_FOUNDRY_RESOURCE": "myresource"},
+    )
+
+    settings = json.loads(build_proxy_flag_settings(None, PROXY_URL))
+
+    assert settings["env"][FOUNDRY_BASE_URL_ENV] == PROXY_URL
+    assert settings["env"][FOUNDRY_RESOURCE_ENV] == ""
+
+
+def test_flag_settings_pin_provider_base_url_from_enabling_flag(isolated_settings):
+    config_dir, _ = isolated_settings
+    write_settings(config_dir / "settings.json", {"CLAUDE_CODE_USE_VERTEX": "1"})
+
+    settings = json.loads(build_proxy_flag_settings(None, PROXY_URL))
+
+    assert settings["env"]["ANTHROPIC_VERTEX_BASE_URL"] == PROXY_URL
 
 
 def test_flag_settings_merge_a_settings_file_path(isolated_settings, tmp_path):

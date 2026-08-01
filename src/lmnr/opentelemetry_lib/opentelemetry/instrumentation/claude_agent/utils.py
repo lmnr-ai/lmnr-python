@@ -32,6 +32,16 @@ PROXY_BASE_URL_ENV_KEYS = (
     VERTEX_BASE_URL_ENV,
 )
 
+# Provider base-URL keys paired with the flag that turns that provider on. A
+# provider can be configured without its base-URL key (e.g. Foundry via
+# ANTHROPIC_FOUNDRY_RESOURCE alone), so the flag is what tells us the key is in
+# play and must be pinned to the proxy.
+PROVIDER_BASE_URL_ENV_KEYS = (
+    (FOUNDRY_BASE_URL_ENV, FOUNDRY_USE_ENV),
+    (BEDROCK_BASE_URL_ENV, BEDROCK_USE_ENV),
+    (VERTEX_BASE_URL_ENV, VERTEX_USE_ENV),
+)
+
 # Keys that must be blanked in the flag-settings layer: they would otherwise
 # redirect the CLI away from our proxy. Removing them from the flag layer is not
 # enough — settings layers merge per key, so a lower layer's value would win.
@@ -347,11 +357,25 @@ def build_proxy_flag_settings(
     env_dict: dict[str, str] = dict(env_block) if isinstance(env_block, dict) else {}
 
     settings_env = read_claude_settings_env(cwd)
-    for key in PROXY_BASE_URL_ENV_KEYS:
-        # Only pin the keys that are actually in play, so we never introduce a
-        # provider base URL the user never configured.
-        if key == "ANTHROPIC_BASE_URL" or key in settings_env or key in env_dict:
-            env_dict[key] = proxy_url
+
+    env_dict["ANTHROPIC_BASE_URL"] = proxy_url
+    for base_url_key, use_key in PROVIDER_BASE_URL_ENV_KEYS:
+        # Pin a provider base URL when the provider is enabled OR its base URL is
+        # already set — never introduce one the user has nothing to do with.
+        # Keying only off the base-URL key would miss a provider configured by
+        # another route (e.g. Foundry via ANTHROPIC_FOUNDRY_RESOURCE), leaving it
+        # with its routing key blanked below and no proxy URL to fall back on.
+        enabled = any(
+            is_truthy_env(source.get(use_key))
+            for source in (env_dict, settings_env, os.environ)
+        )
+        in_play = (
+            base_url_key in env_dict
+            or base_url_key in settings_env
+            or base_url_key in os.environ
+        )
+        if enabled or in_play:
+            env_dict[base_url_key] = proxy_url
     for key in PROXY_NEUTRALIZED_ENV_KEYS:
         if key in settings_env or key in env_dict:
             env_dict[key] = ""
