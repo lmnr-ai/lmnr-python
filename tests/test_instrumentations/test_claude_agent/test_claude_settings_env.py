@@ -156,6 +156,69 @@ def test_options_env_still_outranks_settings_for_upstream(isolated_settings):
     assert url == "https://explicit"
 
 
+def test_lowercase_proxy_var_is_blanked(isolated_settings):
+    """Claude Code reads the lowercase spelling too (and prefers it).
+
+    Handling only the uppercase form lets a lowercase corporate proxy in settings
+    divert traffic away from our proxy.
+    """
+    config_dir, _ = isolated_settings
+    write_settings(
+        config_dir / "settings.json",
+        {"ANTHROPIC_BASE_URL": UPSTREAM, "https_proxy": "http://corp:8080"},
+    )
+
+    settings = json.loads(build_proxy_flag_settings(None, PROXY_URL))
+
+    assert settings["env"]["https_proxy"] == ""
+
+
+def test_lowercase_settings_proxy_var_does_not_shadow_the_gateway(isolated_settings):
+    config_dir, _ = isolated_settings
+    write_settings(
+        config_dir / "settings.json",
+        {"ANTHROPIC_BASE_URL": UPSTREAM, "https_proxy": "http://corp:8080"},
+    )
+
+    assert resolve_target_url_from_env({}) == UPSTREAM
+
+
+def test_lowercase_process_env_proxy_var_is_the_upstream(isolated_settings, monkeypatch):
+    """Pre-existing semantics: a proxy var in the real env IS the target."""
+    monkeypatch.setenv("https_proxy", "http://corp:8080")
+
+    assert resolve_target_url_from_env({}) == "http://corp:8080"
+
+
+@pytest.mark.parametrize("value", ["1", "true", "True", " on ", "yes"])
+def test_provider_flag_truthy_values_pin_the_base_url(isolated_settings, value):
+    """The CLI accepts 1/true/yes/on — verified against the bundled binary.
+
+    Missing one would blank the Foundry resource without pinning a base URL,
+    stripping the only routing key and breaking the run.
+    """
+    config_dir, _ = isolated_settings
+    write_settings(
+        config_dir / "settings.json",
+        {"CLAUDE_CODE_USE_FOUNDRY": value, "ANTHROPIC_FOUNDRY_RESOURCE": "myres"},
+    )
+
+    settings = json.loads(build_proxy_flag_settings(None, PROXY_URL))
+
+    assert settings["env"][FOUNDRY_BASE_URL_ENV] == PROXY_URL
+    assert settings["env"][FOUNDRY_RESOURCE_ENV] == ""
+
+
+@pytest.mark.parametrize("value", ["0", "false", "no", "off", ""])
+def test_provider_flag_falsy_values_do_not_pin_a_base_url(isolated_settings, value):
+    config_dir, _ = isolated_settings
+    write_settings(config_dir / "settings.json", {"CLAUDE_CODE_USE_VERTEX": value})
+
+    settings = json.loads(build_proxy_flag_settings(None, PROXY_URL))
+
+    assert "ANTHROPIC_VERTEX_BASE_URL" not in settings["env"]
+
+
 def test_settings_proxy_var_does_not_shadow_the_gateway(isolated_settings):
     """HTTP_PROXY / HTTPS_PROXY are forward proxies, not API bases.
 

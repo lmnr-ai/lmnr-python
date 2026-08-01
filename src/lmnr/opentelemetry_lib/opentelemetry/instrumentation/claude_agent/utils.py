@@ -42,26 +42,34 @@ PROVIDER_BASE_URL_ENV_KEYS = (
     (VERTEX_BASE_URL_ENV, VERTEX_USE_ENV),
 )
 
+# Forward-proxy env vars in BOTH cases. Claude Code reads the lowercase spelling
+# too (and prefers it), so handling only the uppercase form lets a lowercase
+# corporate proxy divert traffic away from us.
+PROXY_ENV_KEYS = ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy")
+
 # Keys that must be blanked in the flag-settings layer: they would otherwise
 # redirect the CLI away from our proxy. Removing them from the flag layer is not
 # enough — settings layers merge per key, so a lower layer's value would win.
-PROXY_NEUTRALIZED_ENV_KEYS = (
-    "HTTP_PROXY",
-    "HTTPS_PROXY",
-    FOUNDRY_RESOURCE_ENV,
-)
+PROXY_NEUTRALIZED_ENV_KEYS = (*PROXY_ENV_KEYS, FOUNDRY_RESOURCE_ENV)
 
 # Transport-level forward proxies, NOT Anthropic API base URLs. They outrank
 # every base URL when resolving our upstream, so reading them from the settings
 # layers would make a settings-defined corporate proxy shadow the gateway
 # configured right beside it. The pre-existing options.env / os.environ handling
 # is unchanged; settings simply do not contribute these keys.
-UPSTREAM_SETTINGS_EXCLUDED_ENV_KEYS = ("HTTP_PROXY", "HTTPS_PROXY")
+UPSTREAM_SETTINGS_EXCLUDED_ENV_KEYS = PROXY_ENV_KEYS
 
 
 def is_truthy_env(value: str | None) -> bool:
-    """Check if environment variable value is truthy (equals '1')."""
-    return value == "1"
+    """
+    Check whether an env value enables a feature.
+
+    Claude Code accepts ``1``, ``true``, ``yes``, and ``on`` (case-insensitive) —
+    verified against the bundled CLI. Accepting only ``"1"`` would miss a provider
+    the CLI considers enabled, so we would blank its routing keys without pinning
+    a base URL and break the run.
+    """
+    return value is not None and value.strip().lower() in ("1", "true", "yes", "on")
 
 
 def _load_settings_file(path: Path) -> dict[str, Any] | None:
@@ -283,12 +291,12 @@ def resolve_target_url_from_env(
         return settings_env.get(key)
 
     # 1. Check for HTTPS_PROXY (highest priority)
-    https_proxy = get_env_value("HTTPS_PROXY")
+    https_proxy = get_env_value("HTTPS_PROXY") or get_env_value("https_proxy")
     if https_proxy:
         return https_proxy.rstrip("/")
 
     # 2. Check for HTTP_PROXY
-    http_proxy = get_env_value("HTTP_PROXY")
+    http_proxy = get_env_value("HTTP_PROXY") or get_env_value("http_proxy")
     if http_proxy:
         return http_proxy.rstrip("/")
 
@@ -478,7 +486,7 @@ def setup_proxy_env(proxy_url: str) -> dict[str, str | None]:
     os.environ["ANTHROPIC_BASE_URL"] = proxy_url
 
     # Remove HTTP_PROXY and HTTPS_PROXY (our proxy will forward to them)
-    for proxy_var in ["HTTP_PROXY", "HTTPS_PROXY"]:
+    for proxy_var in PROXY_ENV_KEYS:
         os.environ.pop(proxy_var, None)
 
     # Handle Foundry-specific env vars

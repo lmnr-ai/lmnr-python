@@ -24,6 +24,7 @@ from .utils import (
     build_proxy_flag_settings,
     read_claude_settings_env,
     PROXY_BASE_URL_ENV_KEYS,
+    PROXY_ENV_KEYS,
     FOUNDRY_BASE_URL_ENV,
     FOUNDRY_RESOURCE_ENV,
     FOUNDRY_USE_ENV,
@@ -231,7 +232,7 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
                 os.environ.pop(FOUNDRY_RESOURCE_ENV)
 
             # Prevent subprocess from routing through corporate proxy
-            for proxy_var in ["HTTP_PROXY", "HTTPS_PROXY"]:
+            for proxy_var in PROXY_ENV_KEYS:
                 if proxy_var in os.environ:
                     original_env[proxy_var] = os.environ[proxy_var]
                     env_set_keys.add(proxy_var)
@@ -484,7 +485,7 @@ def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> No
     options.env["ANTHROPIC_BASE_URL"] = proxy_url
     options.env["ANTHROPIC_ORIGINAL_BASE_URL"] = target_url
 
-    for proxy_var in ["HTTP_PROXY", "HTTPS_PROXY"]:
+    for proxy_var in PROXY_ENV_KEYS:
         options.env.pop(proxy_var, None)
 
     if FOUNDRY_RESOURCE_ENV in options.env:
