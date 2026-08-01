@@ -194,7 +194,10 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
         options = getattr(instance, "_options", None)
         env_dict = options.env if options is not None else {}
         session_cwd = getattr(options, "cwd", None)
-        target_url = resolve_target_url_from_env(env_dict, cwd=session_cwd)
+        setting_sources = getattr(options, "setting_sources", None)
+        target_url = resolve_target_url_from_env(
+            env_dict, cwd=session_cwd, setting_sources=setting_sources
+        )
 
         if target_url is None:
             raise RuntimeError("Invalid provider configuration")
@@ -408,9 +411,12 @@ def apply_settings_proxy_override(options, proxy_url: str) -> tuple[str | None] 
     if not hasattr(options, "settings"):
         return None
 
+    session_cwd = getattr(options, "cwd", None)
+    setting_sources = getattr(options, "setting_sources", None)
+
     original = options.settings
     updated = build_proxy_flag_settings(
-        original, proxy_url, cwd=getattr(options, "cwd", None)
+        original, proxy_url, cwd=session_cwd, setting_sources=setting_sources
     )
     if updated is None:
         logger.warning(
@@ -425,7 +431,7 @@ def apply_settings_proxy_override(options, proxy_url: str) -> tuple[str | None] 
     conflicting = [
         key
         for key, value in read_claude_settings_env(
-            getattr(options, "cwd", None)
+            session_cwd, setting_sources
         ).items()
         if key in PROXY_BASE_URL_ENV_KEYS and value not in ("", proxy_url)
     ]
@@ -466,7 +472,9 @@ def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> No
         target_url: Original target URL to forward to (e.g., "https://api.anthropic.com")
     """
 
-    settings_env = read_claude_settings_env(getattr(options, "cwd", None))
+    settings_env = read_claude_settings_env(
+        getattr(options, "cwd", None), getattr(options, "setting_sources", None)
+    )
 
     def get_env_value(key: str) -> str | None:
         return options.env.get(key) or os.environ.get(key) or settings_env.get(key)

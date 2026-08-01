@@ -97,7 +97,10 @@ def _settings_env_block(data: dict[str, Any]) -> dict[str, str]:
     return {str(k): str(v) for k, v in env.items() if v is not None}
 
 
-def read_claude_settings_env(cwd: str | Path | None = None) -> dict[str, str]:
+def read_claude_settings_env(
+    cwd: str | Path | None = None,
+    setting_sources: list[str] | None = None,
+) -> dict[str, str]:
     """
     Read the merged ``env`` block from Claude Code's on-disk settings layers.
 
@@ -107,17 +110,28 @@ def read_claude_settings_env(cwd: str | Path | None = None) -> dict[str, str]:
     resolve the real upstream and to detect conflicts.
 
     Precedence (highest first): local project, shared project, user.
+
+    ``setting_sources`` mirrors ``ClaudeAgentOptions.setting_sources`` and gates
+    which layers are read: ``None`` means the CLI loads all of them, a list means
+    only those, and ``[]`` disables on-disk settings entirely. Honoring it matters
+    because reading a layer the CLI was told to ignore would resolve an upstream
+    the CLI never uses, pointing the proxy at an unintended host.
     """
     session_cwd = Path(cwd).expanduser() if cwd is not None else Path.cwd()
     config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
     user_dir = Path(config_dir).expanduser() if config_dir else Path.home() / ".claude"
 
+    # Lowest priority first so higher layers overwrite.
+    layers = (
+        ("user", user_dir / "settings.json"),
+        ("project", session_cwd / ".claude" / "settings.json"),
+        ("local", session_cwd / ".claude" / "settings.local.json"),
+    )
+
     merged: dict[str, str] = {}
-    for path in (
-        user_dir / "settings.json",
-        session_cwd / ".claude" / "settings.json",
-        session_cwd / ".claude" / "settings.local.json",
-    ):
+    for source, path in layers:
+        if setting_sources is not None and source not in setting_sources:
+            continue
         merged.update(_settings_env_block(_read_settings_file(path)))
     return merged
 
@@ -217,6 +231,7 @@ def resolve_target_url_from_env(
     fallback: str = DEFAULT_ANTHROPIC_BASE_URL,
     *,
     cwd: str | Path | None = None,
+    setting_sources: list[str] | None = None,
 ) -> str | None:
     """
     Resolve target URL from environment dictionary with os.environ fallback.
@@ -249,11 +264,13 @@ def resolve_target_url_from_env(
         env_dict: Dictionary of environment variables (e.g., from options.env)
         fallback: Fallback URL if no other source found (default: DEFAULT_ANTHROPIC_BASE_URL)
         cwd: Session root used to locate project settings (``options.cwd``)
+        setting_sources: Which settings layers the CLI will load
+            (``options.setting_sources``); ``None`` means all of them.
 
     Returns:
         Resolved target URL, or None if provider is misconfigured
     """
-    settings_env = read_claude_settings_env(cwd)
+    settings_env = read_claude_settings_env(cwd, setting_sources)
 
     # Helper: options.env, then os.environ, then Claude settings env.
     # HTTP_PROXY / HTTPS_PROXY are deliberately NOT taken from settings — they
@@ -345,6 +362,7 @@ def build_proxy_flag_settings(
     proxy_url: str,
     *,
     cwd: str | Path | None = None,
+    setting_sources: list[str] | None = None,
 ) -> str | None:
     """
     Build the ``--settings`` value that forces the CLI through our proxy.
@@ -389,7 +407,7 @@ def build_proxy_flag_settings(
     env_block = settings_obj.get("env")
     env_dict: dict[str, str] = dict(env_block) if isinstance(env_block, dict) else {}
 
-    settings_env = read_claude_settings_env(cwd)
+    settings_env = read_claude_settings_env(cwd, setting_sources)
 
     env_dict["ANTHROPIC_BASE_URL"] = proxy_url
     for base_url_key, use_key in PROVIDER_BASE_URL_ENV_KEYS:

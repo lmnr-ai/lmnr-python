@@ -89,6 +89,49 @@ def test_local_settings_outrank_project_and_user(isolated_settings):
     assert read_claude_settings_env()["ANTHROPIC_BASE_URL"] == "https://local"
 
 
+def test_setting_sources_gates_which_layers_are_read(isolated_settings):
+    """The CLI honors options.setting_sources, so we must too.
+
+    Reading a layer the CLI was told to ignore would resolve an upstream the CLI
+    never uses, pointing the proxy at an unintended host.
+    """
+    config_dir, session_dir = isolated_settings
+    write_settings(config_dir / "settings.json", {"ANTHROPIC_BASE_URL": "https://user"})
+    write_settings(
+        session_dir / ".claude" / "settings.json",
+        {"ANTHROPIC_BASE_URL": "https://project"},
+    )
+
+    assert (
+        read_claude_settings_env(setting_sources=["user"])["ANTHROPIC_BASE_URL"]
+        == "https://user"
+    )
+    assert (
+        read_claude_settings_env(setting_sources=["project"])["ANTHROPIC_BASE_URL"]
+        == "https://project"
+    )
+
+
+def test_empty_setting_sources_disables_on_disk_settings(isolated_settings):
+    config_dir, _ = isolated_settings
+    write_settings(config_dir / "settings.json", {"ANTHROPIC_BASE_URL": UPSTREAM})
+
+    assert read_claude_settings_env(setting_sources=[]) == {}
+
+
+def test_upstream_ignores_a_layer_the_cli_will_not_load(isolated_settings):
+    config_dir, session_dir = isolated_settings
+    write_settings(config_dir / "settings.json", {})
+    write_settings(
+        session_dir / ".claude" / "settings.json", {"ANTHROPIC_BASE_URL": UPSTREAM}
+    )
+
+    # The CLI only loads user settings, so the project gateway must be invisible.
+    url = resolve_target_url_from_env({}, setting_sources=["user"])
+
+    assert url == "https://api.anthropic.com"
+
+
 def test_missing_and_malformed_settings_are_ignored(isolated_settings):
     config_dir, _ = isolated_settings
     (config_dir / "settings.json").write_text("{not json")
