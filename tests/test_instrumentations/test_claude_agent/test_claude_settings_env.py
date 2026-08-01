@@ -211,6 +211,39 @@ def test_unreadable_settings_path_is_left_untouched(isolated_settings):
     assert build_proxy_flag_settings("/nonexistent/settings.json", PROXY_URL) is None
 
 
+def test_malformed_settings_file_is_left_untouched(isolated_settings, tmp_path):
+    """An existing but unparseable file must not be replaced.
+
+    Emitting a proxy-only blob here would silently drop the model / permissions
+    the user configured for this run.
+    """
+    settings_file = tmp_path / "trailing_comma.json"
+    settings_file.write_text('{"model": "sonnet", "permissions": {"allow": ["Bash(*)"]},}')
+
+    assert build_proxy_flag_settings(str(settings_file), PROXY_URL) is None
+
+
+def test_non_object_settings_file_is_left_untouched(isolated_settings, tmp_path):
+    settings_file = tmp_path / "array.json"
+    settings_file.write_text('["a", "b"]')
+
+    assert build_proxy_flag_settings(str(settings_file), PROXY_URL) is None
+
+
+def test_non_object_inline_settings_is_left_untouched(isolated_settings):
+    assert build_proxy_flag_settings("{}[]", PROXY_URL) is None
+
+
+def test_valid_empty_settings_file_still_gets_the_proxy(isolated_settings, tmp_path):
+    """A genuinely empty settings object is readable — it must NOT be skipped."""
+    settings_file = tmp_path / "empty.json"
+    settings_file.write_text("{}")
+
+    settings = build_proxy_flag_settings(str(settings_file), PROXY_URL)
+
+    assert json.loads(settings)["env"]["ANTHROPIC_BASE_URL"] == PROXY_URL
+
+
 def test_apply_override_leaves_unreadable_path_in_place(isolated_settings):
     options = MockOptions(settings="/nonexistent/settings.json")
 

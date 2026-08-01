@@ -57,14 +57,29 @@ def is_truthy_env(value: str | None) -> bool:
     return value == "1"
 
 
-def _read_settings_file(path: Path) -> dict[str, Any]:
-    """Load a Claude settings JSON file; empty dict when missing or invalid."""
+def _load_settings_file(path: Path) -> dict[str, Any] | None:
+    """
+    Load a Claude settings JSON file, or ``None`` when it could not be read.
+
+    ``None`` (unreadable / malformed / not a JSON object) is deliberately
+    distinct from ``{}`` (a valid but empty settings file): callers that would
+    otherwise REPLACE a user's settings need to know they failed to read it.
+    """
     try:
         with path.open(encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _read_settings_file(path: Path) -> dict[str, Any]:
+    """Load a Claude settings JSON file; empty dict when missing or invalid.
+
+    For the on-disk settings LAYERS, where an unreadable file just means we
+    cannot see that layer and must carry on.
+    """
+    return _load_settings_file(path) or {}
 
 
 def _settings_env_block(data: dict[str, Any]) -> dict[str, str]:
@@ -343,15 +358,20 @@ def build_proxy_flag_settings(
                 parsed = json.loads(stripped)
             except ValueError:
                 return None
-            if isinstance(parsed, dict):
-                settings_obj = parsed
+            if not isinstance(parsed, dict):
+                return None
+            settings_obj = parsed
         else:
             path = Path(stripped).expanduser()
             if not path.is_absolute() and cwd is not None:
                 path = Path(cwd).expanduser() / path
-            if not path.is_file():
+            # Bail on any value we could not fully read, not just a missing
+            # file: emitting a proxy-only blob would drop every setting the
+            # user actually configured for this run.
+            loaded = _load_settings_file(path)
+            if loaded is None:
                 return None
-            settings_obj = _read_settings_file(path)
+            settings_obj = loaded
 
     env_block = settings_obj.get("env")
     env_dict: dict[str, str] = dict(env_block) if isinstance(env_block, dict) else {}
