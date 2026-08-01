@@ -51,6 +51,13 @@ PROXY_NEUTRALIZED_ENV_KEYS = (
     FOUNDRY_RESOURCE_ENV,
 )
 
+# Transport-level forward proxies, NOT Anthropic API base URLs. They outrank
+# every base URL when resolving our upstream, so reading them from the settings
+# layers would make a settings-defined corporate proxy shadow the gateway
+# configured right beside it. The pre-existing options.env / os.environ handling
+# is unchanged; settings simply do not contribute these keys.
+UPSTREAM_SETTINGS_EXCLUDED_ENV_KEYS = ("HTTP_PROXY", "HTTPS_PROXY")
+
 
 def is_truthy_env(value: str | None) -> bool:
     """Check if environment variable value is truthy (equals '1')."""
@@ -248,9 +255,15 @@ def resolve_target_url_from_env(
     """
     settings_env = read_claude_settings_env(cwd)
 
-    # Helper: options.env, then os.environ, then Claude settings env
+    # Helper: options.env, then os.environ, then Claude settings env.
+    # HTTP_PROXY / HTTPS_PROXY are deliberately NOT taken from settings — they
+    # are forward proxies rather than API bases and outrank every base URL below,
+    # so a settings-defined corporate proxy would shadow the gateway next to it.
     def get_env_value(key: str) -> str | None:
-        return env_dict.get(key) or os.environ.get(key) or settings_env.get(key)
+        value = env_dict.get(key) or os.environ.get(key)
+        if value or key in UPSTREAM_SETTINGS_EXCLUDED_ENV_KEYS:
+            return value
+        return settings_env.get(key)
 
     # 1. Check for HTTPS_PROXY (highest priority)
     https_proxy = get_env_value("HTTPS_PROXY")

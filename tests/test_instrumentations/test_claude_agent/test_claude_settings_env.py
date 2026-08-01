@@ -113,6 +113,38 @@ def test_options_env_still_outranks_settings_for_upstream(isolated_settings):
     assert url == "https://explicit"
 
 
+def test_settings_proxy_var_does_not_shadow_the_gateway(isolated_settings):
+    """HTTP_PROXY / HTTPS_PROXY are forward proxies, not API bases.
+
+    They outrank every base URL, so taking them from settings would make a
+    corporate proxy shadow the gateway configured right beside it and the
+    interception proxy would forward API calls to the wrong host.
+    """
+    config_dir, _ = isolated_settings
+    write_settings(
+        config_dir / "settings.json",
+        {"ANTHROPIC_BASE_URL": UPSTREAM, "HTTPS_PROXY": "http://corp:8080"},
+    )
+
+    assert resolve_target_url_from_env({}) == UPSTREAM
+
+
+def test_settings_proxy_var_alone_falls_back_to_default(isolated_settings):
+    config_dir, _ = isolated_settings
+    write_settings(config_dir / "settings.json", {"HTTPS_PROXY": "http://corp:8080"})
+
+    assert resolve_target_url_from_env({}) == "https://api.anthropic.com"
+
+
+def test_process_env_proxy_var_is_still_the_upstream(isolated_settings, monkeypatch):
+    """Pre-existing behavior: a proxy var in the real env IS the target."""
+    config_dir, _ = isolated_settings
+    write_settings(config_dir / "settings.json", {"ANTHROPIC_BASE_URL": UPSTREAM})
+    monkeypatch.setenv("HTTPS_PROXY", "http://corp:8080")
+
+    assert resolve_target_url_from_env({}) == "http://corp:8080"
+
+
 def test_flag_settings_pin_base_url_to_proxy(isolated_settings):
     config_dir, _ = isolated_settings
     write_settings(config_dir / "settings.json", {"ANTHROPIC_BASE_URL": UPSTREAM})
