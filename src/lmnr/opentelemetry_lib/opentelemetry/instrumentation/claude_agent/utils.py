@@ -1,9 +1,12 @@
 """Shared utilities for Claude Agent instrumentation."""
 
+import json
 import os
 import re
 import socket
 import time
+from pathlib import Path
+from typing import Any
 
 from lmnr.sdk.log import get_default_logger
 
@@ -21,10 +24,70 @@ BEDROCK_AWS_REGION_ENV = "AWS_REGION"
 VERTEX_BASE_URL_ENV = "ANTHROPIC_VERTEX_BASE_URL"
 VERTEX_USE_ENV = "CLAUDE_CODE_USE_VERTEX"
 
+# Base-URL keys that must point at our proxy in the flag-settings layer.
+PROXY_BASE_URL_ENV_KEYS = (
+    "ANTHROPIC_BASE_URL",
+    FOUNDRY_BASE_URL_ENV,
+    BEDROCK_BASE_URL_ENV,
+    VERTEX_BASE_URL_ENV,
+)
+
+# Keys that must be blanked in the flag-settings layer: they would otherwise
+# redirect the CLI away from our proxy. Removing them from the flag layer is not
+# enough — settings layers merge per key, so a lower layer's value would win.
+PROXY_NEUTRALIZED_ENV_KEYS = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    FOUNDRY_RESOURCE_ENV,
+)
+
 
 def is_truthy_env(value: str | None) -> bool:
     """Check if environment variable value is truthy (equals '1')."""
     return value == "1"
+
+
+def _read_settings_file(path: Path) -> dict[str, Any]:
+    """Load a Claude settings JSON file; empty dict when missing or invalid."""
+    try:
+        with path.open(encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _settings_env_block(data: dict[str, Any]) -> dict[str, str]:
+    """Normalize a settings object's ``env`` block to a str -> str mapping."""
+    env = data.get("env")
+    if not isinstance(env, dict):
+        return {}
+    return {str(k): str(v) for k, v in env.items() if v is not None}
+
+
+def read_claude_settings_env(cwd: str | Path | None = None) -> dict[str, str]:
+    """
+    Read the merged ``env`` block from Claude Code's on-disk settings layers.
+
+    Claude Code applies these to the CLI session with HIGHER priority than the
+    subprocess environment, so a user with ``ANTHROPIC_BASE_URL`` in
+    ``~/.claude/settings.json`` silently bypasses our proxy. We read them to
+    resolve the real upstream and to detect conflicts.
+
+    Precedence (highest first): local project, shared project, user.
+    """
+    session_cwd = Path(cwd).expanduser() if cwd is not None else Path.cwd()
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR")
+    user_dir = Path(config_dir).expanduser() if config_dir else Path.home() / ".claude"
+
+    merged: dict[str, str] = {}
+    for path in (
+        user_dir / "settings.json",
+        session_cwd / ".claude" / "settings.json",
+        session_cwd / ".claude" / "settings.local.json",
+    ):
+        merged.update(_settings_env_block(_read_settings_file(path)))
+    return merged
 
 
 def snapshot_env(keys: list[str]) -> tuple[dict[str, str | None], set[str]]:
@@ -118,7 +181,10 @@ def _get_region_from_aws_config(profile: str) -> str | None:
 
 
 def resolve_target_url_from_env(
-    env_dict: dict[str, str], fallback: str = DEFAULT_ANTHROPIC_BASE_URL
+    env_dict: dict[str, str],
+    fallback: str = DEFAULT_ANTHROPIC_BASE_URL,
+    *,
+    cwd: str | Path | None = None,
 ) -> str | None:
     """
     Resolve target URL from environment dictionary with os.environ fallback.
@@ -142,19 +208,24 @@ def resolve_target_url_from_env(
     4. ANTHROPIC_BASE_URL - standard Anthropic API base URL
     5. Fall back to default (https://api.anthropic.com)
 
-    For each environment variable, checks env_dict first, then os.environ as fallback.
+    For each environment variable, checks env_dict first, then os.environ, then
+    Claude Code's on-disk settings ``env`` block. The settings layer is checked
+    last as a source for the *upstream* URL, but note it wins over process env
+    inside the CLI itself — see ``build_proxy_flag_settings``.
 
     Args:
         env_dict: Dictionary of environment variables (e.g., from options.env)
         fallback: Fallback URL if no other source found (default: DEFAULT_ANTHROPIC_BASE_URL)
+        cwd: Session root used to locate project settings (``options.cwd``)
 
     Returns:
         Resolved target URL, or None if provider is misconfigured
     """
+    settings_env = read_claude_settings_env(cwd)
 
-    # Helper to get value from env_dict first, then os.environ
+    # Helper: options.env, then os.environ, then Claude settings env
     def get_env_value(key: str) -> str | None:
-        return env_dict.get(key) or os.environ.get(key)
+        return env_dict.get(key) or os.environ.get(key) or settings_env.get(key)
 
     # 1. Check for HTTPS_PROXY (highest priority)
     https_proxy = get_env_value("HTTPS_PROXY")
@@ -229,6 +300,64 @@ def resolve_target_url_from_env(
 
     # 5. Use fallback
     return fallback
+
+
+def build_proxy_flag_settings(
+    existing: str | None,
+    proxy_url: str,
+    *,
+    cwd: str | Path | None = None,
+) -> str | None:
+    """
+    Build the ``--settings`` value that forces the CLI through our proxy.
+
+    Claude Code resolves ``env`` from its settings layers with higher priority
+    than the subprocess environment, so rewriting ``options.env`` alone leaves a
+    user with ``ANTHROPIC_BASE_URL`` in ``~/.claude/settings.json`` talking
+    straight to their upstream and the proxy sees zero traffic (lmnr#2167).
+    ``--settings`` is the highest user-controlled layer, so writing the proxy URL
+    there wins without ever touching the user's files on disk.
+
+    Layers merge per key, so keys we simply omit keep their lower-layer value.
+    Redirecting keys are therefore blanked rather than dropped.
+
+    Returns the JSON string to assign to ``options.settings``, or ``None`` when
+    the caller's existing value is a file path we could not read (in that case
+    the path must be left alone so the CLI can still resolve it itself).
+    """
+    settings_obj: dict[str, Any] = {}
+    if existing:
+        stripped = existing.strip()
+        if stripped.startswith("{") and stripped.endswith("}"):
+            try:
+                parsed = json.loads(stripped)
+            except ValueError:
+                return None
+            if isinstance(parsed, dict):
+                settings_obj = parsed
+        else:
+            path = Path(stripped).expanduser()
+            if not path.is_absolute() and cwd is not None:
+                path = Path(cwd).expanduser() / path
+            if not path.is_file():
+                return None
+            settings_obj = _read_settings_file(path)
+
+    env_block = settings_obj.get("env")
+    env_dict: dict[str, str] = dict(env_block) if isinstance(env_block, dict) else {}
+
+    settings_env = read_claude_settings_env(cwd)
+    for key in PROXY_BASE_URL_ENV_KEYS:
+        # Only pin the keys that are actually in play, so we never introduce a
+        # provider base URL the user never configured.
+        if key == "ANTHROPIC_BASE_URL" or key in settings_env or key in env_dict:
+            env_dict[key] = proxy_url
+    for key in PROXY_NEUTRALIZED_ENV_KEYS:
+        if key in settings_env or key in env_dict:
+            env_dict[key] = ""
+
+    settings_obj["env"] = env_dict
+    return json.dumps(settings_obj)
 
 
 def setup_proxy_env(proxy_url: str) -> dict[str, str | None]:
