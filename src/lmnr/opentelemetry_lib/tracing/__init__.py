@@ -208,8 +208,7 @@ class TracerWrapper(object):
 
     def _initialize_logger(self):
         # Delegate so the handler is attached at most once; see get_default_logger.
-        # `propagate=True` preserves the prior behavior of this hand-rolled setup.
-        self._logger = get_default_logger(__name__, propagate=True)
+        self._logger = get_default_logger(__name__)
 
     def get_isolated_context(self) -> Context:
         """Get the current isolated context."""

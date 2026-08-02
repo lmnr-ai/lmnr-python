@@ -629,6 +629,12 @@ def test_init_logs_debugger_url_when_project_id_returned(
     _patch_clients(monkeypatch, spy)
     monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
 
+    # Laminar's loggers set propagate=False (they attach their own handler, so
+    # propagating would double-emit through the app's root handler), and caplog
+    # only sees records that reach the root. Re-enable it just for this assertion.
+    laminar_logger = logging.getLogger("lmnr.sdk.laminar")
+    monkeypatch.setattr(laminar_logger, "propagate", True)
+
     with caplog.at_level(logging.INFO, logger="lmnr.sdk.laminar"):
         Laminar._init_debug_runtime(base_url="http://localhost", http_port=8000)
 

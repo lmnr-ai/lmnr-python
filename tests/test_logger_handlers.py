@@ -41,6 +41,23 @@ def test_a_message_is_emitted_once(caplog):
     assert [r.message for r in caplog.records].count("only once") == 1
 
 
+def test_our_loggers_do_not_propagate():
+    """We attach our own handler, so propagating would double-emit through any root
+    handler the host app installed (e.g. after logging.basicConfig()). An earlier fix
+    passed propagate=True to satisfy a caplog-based test and reintroduced exactly the
+    duplication this module exists to prevent."""
+    from lmnr.opentelemetry_lib.tracing import TracerWrapper
+    from lmnr.sdk.laminar import Laminar
+
+    Laminar._initialize_logger()
+    TracerWrapper._initialize_logger(TracerWrapper)
+
+    for name in ("lmnr.sdk.laminar", "lmnr.opentelemetry_lib.tracing"):
+        logger = logging.getLogger(name)
+        assert logger.propagate is False, f"{name} must not propagate"
+        assert _handler_count(name) == 1, f"{name} must have exactly one handler"
+
+
 def test_a_foreign_handler_is_left_alone():
     """We only dedupe OUR handler, so a user's own handler must survive."""
     name = "lmnr.test.foreign"

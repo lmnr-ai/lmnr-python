@@ -793,9 +793,10 @@ class Laminar:
     def _initialize_logger(cls):
         # Delegate so the handler is attached at most once — this runs on every
         # initialize(), and a hand-rolled addHandler duplicated every log line
-        # across init/shutdown cycles. `propagate=True` keeps the prior behavior
-        # (the hand-rolled version never set it, so it kept logging's default).
-        cls.__logger = get_default_logger(__name__, propagate=True)
+        # across init/shutdown cycles. Keep propagate=False (the helper's default,
+        # and what every other Laminar logger uses): we attach our own handler, so
+        # propagating would double-emit through any root handler the app installed.
+        cls.__logger = get_default_logger(__name__)
 
     @classmethod
     def event(
