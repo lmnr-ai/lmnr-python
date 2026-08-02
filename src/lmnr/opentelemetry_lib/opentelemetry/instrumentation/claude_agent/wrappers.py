@@ -198,7 +198,12 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
         session_cwd = getattr(options, "cwd", None)
         setting_sources = effective_setting_sources(options)
         target_url = resolve_target_url_from_env(
-            env_dict, cwd=session_cwd, setting_sources=setting_sources
+            env_dict,
+            cwd=session_cwd,
+            setting_sources=setting_sources,
+            # options.settings is the highest layer the CLI reads and
+            # apply_settings_proxy_override rewrites its base URLs to the proxy.
+            settings=getattr(options, "settings", None),
         )
 
         if target_url is None:

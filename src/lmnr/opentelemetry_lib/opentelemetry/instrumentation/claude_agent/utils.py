@@ -92,6 +92,37 @@ def _load_settings_file(path: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def flag_settings_env(
+    existing: str | None, cwd: str | Path | None = None
+) -> dict[str, str]:
+    """
+    Read the ``env`` block out of the caller's ``options.settings`` (flag layer).
+
+    This layer OUTRANKS every on-disk layer, so a gateway or provider config that
+    lives only here is what the CLI would actually use — and
+    ``build_proxy_flag_settings`` is about to overwrite those keys with the proxy
+    URL. Upstream resolution must therefore see it FIRST, or we forward to the
+    wrong host (or the default endpoint) while the caller's gateway is lost.
+
+    Returns ``{}`` for a value we could not read; ``build_proxy_flag_settings``
+    owns the bail-out for that case.
+    """
+    if not existing:
+        return {}
+    stripped = existing.strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        try:
+            parsed = json.loads(stripped)
+        except ValueError:
+            return {}
+        return _settings_env_block(parsed) if isinstance(parsed, dict) else {}
+
+    path = Path(stripped).expanduser()
+    if not path.is_absolute() and cwd is not None:
+        path = Path(cwd).expanduser() / path
+    return _settings_env_block(_load_settings_file(path) or {})
+
+
 def effective_setting_sources(options: Any) -> list[str] | None:
     """
     Resolve which settings layers the CLI will actually load for these options.
@@ -255,6 +286,7 @@ def resolve_target_url_from_env(
     *,
     cwd: str | Path | None = None,
     setting_sources: list[str] | None = None,
+    settings: str | None = None,
 ) -> str | None:
     """
     Resolve target URL from environment dictionary with os.environ fallback.
@@ -289,13 +321,20 @@ def resolve_target_url_from_env(
         cwd: Session root used to locate project settings (``options.cwd``)
         setting_sources: Which settings layers the CLI will load
             (``options.setting_sources``); ``None`` means all of them.
+        settings: The caller's ``options.settings`` (flag layer), whose base URLs
+            we are about to rewrite to the proxy.
 
     Returns:
         Resolved target URL, or None if provider is misconfigured
     """
+    # The caller's flag layer outranks the on-disk layers inside the CLI, and we
+    # are about to overwrite its base URLs with the proxy — so read it here or a
+    # gateway configured only there is lost and we forward to the wrong host.
+    flag_env = flag_settings_env(settings, cwd)
     settings_env = read_claude_settings_env(cwd, setting_sources)
 
-    # Helper: options.env, then os.environ, then Claude settings env.
+    # Helper: options.env, then os.environ, then flag settings, then on-disk
+    # Claude settings env.
     # HTTP_PROXY / HTTPS_PROXY are deliberately NOT taken from settings — they
     # are forward proxies rather than API bases and outrank every base URL below,
     # so a settings-defined corporate proxy would shadow the gateway next to it.
@@ -303,7 +342,7 @@ def resolve_target_url_from_env(
         value = env_dict.get(key) or os.environ.get(key)
         if value or key in UPSTREAM_SETTINGS_EXCLUDED_ENV_KEYS:
             return value
-        return settings_env.get(key)
+        return flag_env.get(key) or settings_env.get(key)
 
     # 1. Check for HTTPS_PROXY (highest priority)
     https_proxy = get_env_value("HTTPS_PROXY") or get_env_value("https_proxy")

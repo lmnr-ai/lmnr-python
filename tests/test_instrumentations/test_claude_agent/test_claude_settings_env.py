@@ -195,6 +195,60 @@ def test_missing_and_malformed_settings_are_ignored(isolated_settings):
     assert read_claude_settings_env() == {}
 
 
+def test_options_settings_gateway_becomes_the_upstream(isolated_settings):
+    """The flag layer outranks every on-disk layer inside the CLI.
+
+    build_proxy_flag_settings is about to overwrite its base URLs with the proxy,
+    so upstream resolution must read it first or the gateway is silently lost and
+    we forward to the default endpoint.
+    """
+    existing = json.dumps({"env": {"ANTHROPIC_BASE_URL": UPSTREAM}})
+
+    assert resolve_target_url_from_env({}, settings=existing) == UPSTREAM
+
+
+def test_options_settings_provider_gateway_becomes_the_upstream(isolated_settings):
+    existing = json.dumps(
+        {"env": {"CLAUDE_CODE_USE_BEDROCK": "1", "ANTHROPIC_BEDROCK_BASE_URL": UPSTREAM}}
+    )
+
+    assert resolve_target_url_from_env({}, settings=existing) == UPSTREAM
+
+
+def test_options_settings_from_a_file_becomes_the_upstream(isolated_settings, tmp_path):
+    settings_file = tmp_path / "caller.json"
+    settings_file.write_text(json.dumps({"env": {"ANTHROPIC_BASE_URL": UPSTREAM}}))
+
+    assert resolve_target_url_from_env({}, settings=str(settings_file)) == UPSTREAM
+
+
+def test_options_env_still_outranks_options_settings(isolated_settings):
+    existing = json.dumps({"env": {"ANTHROPIC_BASE_URL": UPSTREAM}})
+
+    url = resolve_target_url_from_env(
+        {"ANTHROPIC_BASE_URL": "https://explicit"}, settings=existing
+    )
+
+    assert url == "https://explicit"
+
+
+def test_options_settings_outranks_on_disk_settings(isolated_settings):
+    config_dir, _ = isolated_settings
+    write_settings(config_dir / "settings.json", {"ANTHROPIC_BASE_URL": "https://ondisk"})
+    existing = json.dumps({"env": {"ANTHROPIC_BASE_URL": UPSTREAM}})
+
+    assert resolve_target_url_from_env({}, settings=existing) == UPSTREAM
+
+
+def test_unreadable_options_settings_does_not_break_resolution(isolated_settings):
+    """A value we cannot read contributes nothing; the on-disk layers still apply."""
+    config_dir, _ = isolated_settings
+    write_settings(config_dir / "settings.json", {"ANTHROPIC_BASE_URL": UPSTREAM})
+
+    assert resolve_target_url_from_env({}, settings="{not json}") == UPSTREAM
+    assert resolve_target_url_from_env({}, settings="/nonexistent.json") == UPSTREAM
+
+
 def test_settings_base_url_becomes_proxy_upstream(isolated_settings):
     """The proxy must forward to the gateway the user configured in settings."""
     config_dir, _ = isolated_settings
