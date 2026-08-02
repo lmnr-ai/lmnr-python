@@ -1285,3 +1285,85 @@ def test_json_dumps_recovers_bad_keys_nested_in_non_builtin_containers():
     )
     assert parsed["t"] == "hello"
     assert parsed["b"] == "++++////"
+
+
+def test_json_dumps_recovers_bad_keys_nested_in_pydantic_models():
+    """`default_json` opens pydantic models, so the retry walker must too.
+
+    `part_to_dict` deliberately leaves a nested model un-dumped inside a dict
+    part, so a bad key under e.g. a `FunctionResponse` reaches `json_dumps`
+    still wrapped in the model.
+    """
+
+    class Inner(BaseModel):
+        payload: Dict[Any, Any] = {}
+
+    bad = {(0, 1): "hit"}
+
+    # Model directly, and nested under each container kind.
+    for value in (
+        Inner(payload=bad),
+        {"k": Inner(payload=bad)},
+        [Inner(payload=bad)],
+        (Inner(payload=bad),),
+        Inner(payload={"inner": Inner(payload=bad)}),
+    ):
+        parsed = json.loads(json_dumps({"keep": "me", "v": value}))
+        assert parsed["keep"] == "me", value
+        assert "(0, 1)" in json_dumps(parsed), value
+
+    # A model on the happy path (no retry) is unchanged.
+    assert json.loads(json_dumps({"m": Inner(payload={"a": 1})})) == {
+        "m": {"payload": {"a": 1}}
+    }
+
+
+def test_unwrap_container_is_the_single_source_of_truth_for_containers():
+    """`default_json` and `_stringify_dict_keys` must not diverge.
+
+    Both route through `_unwrap_container`; every past divergence (builtins only,
+    then a missing `Mapping` branch, then a missing `BaseModel` branch) silently
+    collapsed a whole span attribute to "{}". This pins the contract rather than
+    re-testing each type: anything the unwrapper opens must survive a retry with
+    its bad keys repaired.
+    """
+    import collections.abc
+
+    from lmnr.sdk.utils import _UNWRAP_MISS, _unwrap_container
+
+    class Mapped(collections.abc.Mapping):
+        def __init__(self, d):
+            self._d = d
+
+        def __getitem__(self, key):
+            return self._d[key]
+
+        def __iter__(self):
+            return iter(self._d)
+
+        def __len__(self):
+            return len(self._d)
+
+    class Model(BaseModel):
+        payload: Dict[Any, Any] = {}
+
+    # Opened -> a bad key inside is repairable.
+    openable = [{"a": 1}, [1], (1,), {1}, frozenset([1]), Mapped({"a": 1}), Model()]
+    for value in openable:
+        assert _unwrap_container(value) is not _UNWRAP_MISS, value
+
+    # NOT opened -> str/bytes must stay scalar, or they'd become char lists.
+    for value in ("hi", b"ab", bytearray(b"ab"), 1, None, object()):
+        assert _unwrap_container(value) is _UNWRAP_MISS, value
+
+    # The contract that matters: for every openable container holding a bad key,
+    # siblings survive and the key is coerced.
+    for wrap in (
+        lambda bad: {"v": bad},
+        lambda bad: [bad],
+        lambda bad: Mapped({"v": bad}),
+        lambda bad: Model(payload=bad),
+    ):
+        out = json_dumps({"keep": "me", "c": wrap({(0, 1): "x"})})
+        assert '"keep":"me"' in out.replace(", ", ",")
+        assert "(0, 1)" in out

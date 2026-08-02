@@ -349,3 +349,30 @@ def test_an_unserializable_tool_value_does_not_drop_the_conversation():
     assert messages[1]["parts"][0]["function_response"]["response"] == {
         "raw": {"temp": 20}
     }
+
+
+def test_a_model_nested_in_a_dict_part_does_not_discard_the_conversation():
+    # `part_to_dict`'s dict branch leaves a nested pydantic model un-dumped, so
+    # a bad key underneath it reaches `json_dumps` still wrapped in the model.
+    # `default_json` opens the model, exposing the key — the retry walker has to
+    # open it too or the whole attribute collapses to "{}".
+    result = content_union_to_dict(
+        {
+            "role": "user",
+            "parts": [
+                {"text": "describe this"},
+                {
+                    "function_response": types.FunctionResponse(
+                        name="lookup", response={"grid": {(0, 1): "hit"}}
+                    )
+                },
+            ],
+        }
+    )
+
+    parsed = _roundtrip(result)
+
+    assert parsed["parts"][0] == {"text": "describe this"}
+    assert parsed["parts"][1]["function_response"]["response"] == {
+        "grid": {"(0, 1)": "hit"}
+    }

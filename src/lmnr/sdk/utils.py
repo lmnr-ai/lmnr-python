@@ -261,32 +261,51 @@ def format_id(id_value: str | int | uuid.UUID) -> str:
 DEFAULT_PLACEHOLDER = {}
 
 
+_UNWRAP_MISS = object()
+
+
+def _unwrap_container(o: typing.Any) -> typing.Any:
+    """Open a container into a plain dict/list, or return `_UNWRAP_MISS`.
+
+    Single source of truth for "what counts as a container", shared by
+    `default_json` and `_stringify_dict_keys`. Those two MUST agree: the retry
+    walker can only repair a bad mapping key if it recurses into every container
+    `default_json` is willing to open, and every past divergence here (plain
+    dict/list only, then missing `Mapping`, then missing `BaseModel`) silently
+    collapsed a whole span attribute to "{}". Add new container types here, once.
+
+    Note `str`/`bytes`/`bytearray` are `Sequence`s and must NOT be opened — that
+    would explode them into per-character lists.
+    """
+    if isinstance(o, pydantic.BaseModel):
+        return o.model_dump()
+    if isinstance(o, collections.abc.Mapping):
+        return dict(o)
+    if isinstance(o, (set, frozenset)):
+        return list(o)
+    if isinstance(o, collections.abc.Sequence) and not isinstance(
+        o, (str, bytes, bytearray)
+    ):
+        return list(o)
+    return _UNWRAP_MISS
+
+
 def default_json(o):
     # STANDARD base64 (`+`/`/`), not pydantic's URL-safe `ser_json_bytes`
     # alphabet: consumers decode with `base64.b64decode`, which defaults to
     # `validate=False` and silently DROPS out-of-alphabet characters instead of
     # raising, shifting every following byte. Without this branch bytes fall
     # through to `str(o)` and serialize as the useless repr "b'\\xfb\\xef'".
+    # Must precede the container check — bytes are Sequences.
     if isinstance(o, (bytes, bytearray)):
         return base64.b64encode(o).decode("utf-8")
 
-    if isinstance(o, pydantic.BaseModel):
-        return o.model_dump()
-
-    # Handle various sequence types, but not strings or bytes
-    if isinstance(o, (list, tuple, set, frozenset)):
-        return list(o)
-
-    # Structural fallbacks BEFORE str(): a dict-like or list-like that isn't a
-    # builtin (a Mapping, a memoryview, a custom Sequence) would otherwise
-    # stringify to a Python repr with SINGLE quotes — "{'a': 1}" — which is not
-    # JSON and is unparseable by any consumer.
-    if isinstance(o, collections.abc.Mapping):
-        return dict(o)
-    if isinstance(o, collections.abc.Sequence) and not isinstance(
-        o, (str, bytes, bytearray)
-    ):
-        return list(o)
+    # Opening a dict-like / list-like BEFORE the str() fallback matters: a
+    # Mapping or custom Sequence would otherwise stringify to a Python repr with
+    # SINGLE quotes — "{'a': 1}" — which is not JSON and no consumer can parse.
+    unwrapped = _unwrap_container(o)
+    if unwrapped is not _UNWRAP_MISS:
+        return unwrapped
 
     try:
         return str(o)
@@ -349,12 +368,20 @@ def _stringify_dict_keys(value: typing.Any) -> typing.Any:
     collapse the whole payload to "{}". Only called on the retry path, so the
     common case pays nothing.
 
-    Recurses through the same container types `default_json` unwraps, not just
-    the builtins: a bad key nested inside a `Mapping` or a custom `Sequence`
-    would otherwise survive the retry and fail the second dump too, losing every
-    sibling field with it.
+    Recurses through EVERY container `_unwrap_container` opens — pydantic models
+    and Mappings included, not just the builtins. A bad key nested inside one
+    `default_json` would open but this walker skips survives the retry, fails the
+    second dump too, and loses every sibling field with it.
     """
-    if isinstance(value, collections.abc.Mapping):
+    # bytes are a Sequence, so check them before unwrapping.
+    if isinstance(value, (bytes, bytearray)):
+        return value
+
+    opened = _unwrap_container(value)
+    if opened is _UNWRAP_MISS:
+        return value
+
+    if isinstance(opened, dict):
         return {
             (
                 key
@@ -365,15 +392,9 @@ def _stringify_dict_keys(value: typing.Any) -> typing.Any:
                     else str(key)
                 )
             ): _stringify_dict_keys(inner)
-            for key, inner in value.items()
+            for key, inner in opened.items()
         }
-    if isinstance(value, (set, frozenset)):
-        return [_stringify_dict_keys(item) for item in value]
-    if isinstance(value, collections.abc.Sequence) and not isinstance(
-        value, (str, bytes, bytearray)
-    ):
-        return [_stringify_dict_keys(item) for item in value]
-    return value
+    return [_stringify_dict_keys(item) for item in opened]
 
 
 def json_dumps(data: dict | list) -> str:
