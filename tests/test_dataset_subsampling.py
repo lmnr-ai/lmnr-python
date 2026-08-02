@@ -68,6 +68,37 @@ def test_take_returns_new_dataset_original_unchanged():
     assert taken is not ds
 
 
+def test_take_non_integer_raises():
+    ds = InMemoryDataset([make_dp(i) for i in range(5)])
+    for bad in (2.5, 2.0, "2", True, None):
+        with pytest.raises(TypeError) as exc:
+            len(ds.take(bad))  # pyright: ignore[reportArgumentType]
+        assert "not an integer" in str(exc.value)
+
+
+def test_take_resolves_once_and_caches():
+    ds = InMemoryDataset([make_dp(i) for i in range(6)])
+    calls = {"n": 0}
+
+    class CountingDataset(EvaluationDataset):
+        def __init__(self, base):
+            self._base = base
+
+        def __len__(self) -> int:
+            calls["n"] += 1
+            return len(self._base)
+
+        def __getitem__(self, idx) -> Datapoint:
+            return self._base[idx]
+
+    taken = CountingDataset(ds).take(4)
+    # Multiple accesses must not re-resolve the index list.
+    _ = len(taken)
+    _ = taken[0]
+    _ = values(taken)
+    assert calls["n"] == 1  # exactly one size read of the base
+
+
 # --- select -----------------------------------------------------------------
 
 
@@ -89,34 +120,12 @@ def test_select_negative_raises():
         len(ds.select([-1]))
 
 
-# --- filter -----------------------------------------------------------------
-
-
-def test_filter_predicate():
-    ds = InMemoryDataset([make_dp(i) for i in range(6)])
-    even = ds.filter(lambda dp: dp.data % 2 == 0)
-    assert values(even) == [0, 2, 4]
-
-
-def test_filter_then_take():
-    ds = InMemoryDataset([make_dp(i) for i in range(10)])
-    assert values(ds.filter(lambda dp: dp.data % 2 == 1).take(2)) == [1, 3]
-
-
-def test_filter_scans_once_and_caches():
-    ds = InMemoryDataset([make_dp(i) for i in range(6)])
-    calls = {"n": 0}
-
-    def pred(dp):
-        calls["n"] += 1
-        return True
-
-    filtered = ds.filter(pred)
-    # Multiple accesses must not re-scan.
-    _ = len(filtered)
-    _ = filtered[0]
-    _ = values(filtered)
-    assert calls["n"] == 6  # exactly one scan of the base
+def test_select_non_integer_raises():
+    ds = InMemoryDataset([make_dp(i) for i in range(3)])
+    for bad in (1.5, 1.0, "1", True, None):
+        with pytest.raises(TypeError) as exc:
+            len(ds.select([bad]))  # pyright: ignore[reportArgumentType]
+        assert "not an integer" in str(exc.value)
 
 
 # --- shuffle ----------------------------------------------------------------
@@ -165,10 +174,10 @@ def test_chain_take_then_select_indexes_into_subset():
     assert values(ds.take(5).select([4, 0])) == [4, 0]
 
 
-def test_filter_then_shuffle_then_take():
+def test_chain_select_then_shuffle_then_take():
     ds = InMemoryDataset([make_dp(i) for i in range(20)])
     evens = list(range(0, 20, 2))  # [0,2,...,18], 10 elements
-    chained = ds.filter(lambda dp: dp.data % 2 == 0).shuffle(seed=3).take(4)
+    chained = ds.select(evens).shuffle(seed=3).take(4)
     expected = [evens[i] for i in seeded_perm(10, 3)[:4]]
     assert values(chained) == expected
 

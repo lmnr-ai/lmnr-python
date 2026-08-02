@@ -13,21 +13,16 @@ from lmnr.sdk.types import Datapoint
 DEFAULT_FETCH_SIZE = 25
 LOG = get_default_logger(__name__, verbose=False)
 
-# `filter` has no way to honor the by-index contract without testing every
-# datapoint, so it fetches the whole dataset (all pages) into memory. Warn once
-# per process so callers on large remote datasets aren't surprised by the cost.
-_filter_materialize_warned = False
 
+def _require_integer(value: object, message: str) -> None:
+    """Raise ``TypeError`` unless ``value`` is a plain ``int``.
 
-def _warn_filter_materializes_once() -> None:
-    global _filter_materialize_warned
-    if _filter_materialize_warned:
-        return
-    _filter_materialize_warned = True
-    LOG.warning(
-        "EvaluationDataset.filter scans every datapoint to evaluate the "
-        "predicate, fetching the whole dataset (all pages) into memory."
-    )
+    ``bool`` is a subclass of ``int``, but ``True`` / ``False`` are never a
+    meaningful count or index, so they are rejected too instead of being
+    silently read as 1 / 0.
+    """
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(message)
 
 
 class EvaluationDataset(ABC):
@@ -67,9 +62,13 @@ class EvaluationDataset(ABC):
 
     def take(self, n: int) -> "EvaluationDataset":
         """Return a new dataset with the first ``n`` datapoints (or all if ``n``
-        exceeds the size)."""
+        exceeds the size).
+
+        Raises ``TypeError`` at resolve time when ``n`` is not an integer (no
+        silent coercion)."""
 
         def resolver() -> list[int]:
+            _require_integer(n, f"take count {n} is not an integer")
             return list(range(min(max(n, 0), len(self))))
 
         return _SubsetDataset(self, resolver=resolver)
@@ -77,34 +76,21 @@ class EvaluationDataset(ABC):
     def select(self, indices: list[int]) -> "EvaluationDataset":
         """Return a new dataset with exactly ``indices``, in that order.
 
-        Raises ``IndexError`` at resolve time on any out-of-range index (no
-        clamping, no negative indices)."""
+        Raises ``TypeError`` at resolve time on any non-integer index, and
+        ``IndexError`` on any out-of-range index (no clamping, no negative
+        indices)."""
         requested = list(indices)
 
         def resolver() -> list[int]:
             size = len(self)
             for i in requested:
+                _require_integer(i, f"select index {i} is not an integer")
                 if i < 0 or i >= size:
                     raise IndexError(
                         f"select index {i} is out of range for dataset of size "
                         f"{size}"
                     )
             return requested
-
-        return _SubsetDataset(self, resolver=resolver)
-
-    def filter(
-        self, predicate: Callable[[Datapoint], bool]
-    ) -> "EvaluationDataset":
-        """Return a new dataset keeping only datapoints where ``predicate`` is
-        truthy, order preserved.
-
-        Scans the whole dataset once (in pages, reusing the page-cached fetch),
-        holding only surviving indices in memory. The predicate is synchronous."""
-
-        def resolver() -> list[int]:
-            _warn_filter_materializes_once()
-            return [i for i in range(len(self)) if predicate(self[i])]
 
         return _SubsetDataset(self, resolver=resolver)
 
