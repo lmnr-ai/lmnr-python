@@ -92,6 +92,25 @@ def _load_settings_file(path: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def effective_setting_sources(options: Any) -> list[str] | None:
+    """
+    Resolve which settings layers the CLI will actually load for these options.
+
+    Mirrors the Claude Agent SDK's own ``_apply_skills_defaults``: when
+    ``options.skills`` is set but ``setting_sources`` is not, the SDK passes
+    ``--setting-sources=user,project`` so the CLI can discover installed skills —
+    which EXCLUDES ``local``. Treating that case as "all layers" would let a
+    gateway in ``.claude/settings.local.json`` become our upstream even though the
+    CLI never reads it, pointing the proxy at a host it does not use.
+    """
+    setting_sources = getattr(options, "setting_sources", None)
+    if setting_sources is not None:
+        return list(setting_sources)
+    if getattr(options, "skills", None) is not None:
+        return ["user", "project"]
+    return None
+
+
 def _settings_env_block(data: dict[str, Any]) -> dict[str, str]:
     """Normalize a settings object's ``env`` block to a str -> str mapping."""
     env = data.get("env")
