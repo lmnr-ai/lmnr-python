@@ -56,7 +56,7 @@ from lmnr.sdk.utils import (
     json_dumps,
 )
 
-from .log import VerboseColorfulFormatter, get_level_from_env
+from .log import get_default_logger
 from .types import (
     LaminarSpanContext,
     LaminarSpanType,
@@ -791,11 +791,11 @@ class Laminar:
 
     @classmethod
     def _initialize_logger(cls):
-        cls.__logger = logging.getLogger(__name__)
-        cls.__logger.setLevel(get_level_from_env())
-        console_log_handler = logging.StreamHandler()
-        console_log_handler.setFormatter(VerboseColorfulFormatter())
-        cls.__logger.addHandler(console_log_handler)
+        # Delegate so the handler is attached at most once — this runs on every
+        # initialize(), and a hand-rolled addHandler duplicated every log line
+        # across init/shutdown cycles. `propagate=True` keeps the prior behavior
+        # (the hand-rolled version never set it, so it kept logging's default).
+        cls.__logger = get_default_logger(__name__, propagate=True)
 
     @classmethod
     def event(

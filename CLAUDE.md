@@ -87,6 +87,12 @@ lmnr datasets pull <id>       # Pull dataset
 - The limit only guards the MANUAL API. Auto-instrumentation attributes (`gen_ai.input.messages`, the daytona/langfuse `SPAN_INPUT` writers) are not truncated — they set the attribute directly rather than going through the mixin.
 - **The SDK limit (10MB) is larger than app-server's default `HTTP_PAYLOAD_LIMIT` (5MB)**, so a payload can pass truncation and still 413 on export. Truncating is not a guarantee of ingestion; it only stops one span from being unboundedly large.
 
+## Logging (`sdk/log.py`)
+
+- **`get_default_logger` attaches AT MOST ONE handler per logger name.** `logging.getLogger(name)` returns the same logger object on every call, so the previous unconditional `addHandler` stacked a handler per call and emitted each message once per handler. Callers legitimately call it repeatedly — most importantly `LaminarSpan.__init__`, so the duplicate count grew with the number of spans a run created (a 5-span run logged one warning 5×). The guard marks its own handler with the `_lmnr_default_handler` attribute and skips if one is already present; a user's own handler is never touched or removed. Pinned by `tests/test_logger_handlers.py`.
+- **Never hand-roll `logging.getLogger(...) + addHandler` — route through `get_default_logger`.** Both `Laminar._initialize_logger` and `TracerWrapper._initialize_logger` did, which duplicated every log line across `initialize()`/`shutdown()` cycles. Those two pass `propagate=True` because the hand-rolled versions never set `propagate` and so kept logging's default; `get_default_logger` defaults it to `False`, and silently flipping it broke a `caplog`-based debug-runtime test (caplog only sees records that propagate to the root).
+- **The TS SDK does NOT have this bug and needs no equivalent guard**: `initializeLogger()` returns a fresh independent pino instance per call rather than mutating a shared registry, so per-instance/per-call construction (`processor.ts`, `v7-integration`, temporal interceptors) is harmless there.
+
 ## HTTP error reporting
 
 - **Never assume an error body is JSON.** app-server returns PLAIN TEXT for payload-limit (413) rejections and its own `ResponseError` bodies, and proxies can return HTML — so `response.json()` raises on the error path. Route every non-2xx body through `describe_response` (`sdk/utils.py`), which renders `[<status>] <body>`, handles `None`, labels an empty body, and truncates at `MAX_ERROR_BODY_CHARS` so a large body can't flood logs.

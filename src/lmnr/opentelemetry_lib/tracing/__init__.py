@@ -31,7 +31,7 @@ from lmnr.opentelemetry_lib.tracing.instruments import (
 )
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
-from lmnr.sdk.log import VerboseColorfulFormatter, get_default_logger
+from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import SessionRecordingOptions
 
 # instead of importing from opentelemetry.instrumentation.threading,
@@ -207,10 +207,9 @@ class TracerWrapper(object):
         self.flush()
 
     def _initialize_logger(self):
-        self._logger = logging.getLogger(__name__)
-        console_log_handler = logging.StreamHandler()
-        console_log_handler.setFormatter(VerboseColorfulFormatter())
-        self._logger.addHandler(console_log_handler)
+        # Delegate so the handler is attached at most once; see get_default_logger.
+        # `propagate=True` preserves the prior behavior of this hand-rolled setup.
+        self._logger = get_default_logger(__name__, propagate=True)
 
     def get_isolated_context(self) -> Context:
         """Get the current isolated context."""
