@@ -348,8 +348,13 @@ def _stringify_dict_keys(value: typing.Any) -> typing.Any:
     raises on the rest (tuples, bytes, Decimal, arbitrary objects) — which would
     collapse the whole payload to "{}". Only called on the retry path, so the
     common case pays nothing.
+
+    Recurses through the same container types `default_json` unwraps, not just
+    the builtins: a bad key nested inside a `Mapping` or a custom `Sequence`
+    would otherwise survive the retry and fail the second dump too, losing every
+    sibling field with it.
     """
-    if isinstance(value, dict):
+    if isinstance(value, collections.abc.Mapping):
         return {
             (
                 key
@@ -362,7 +367,11 @@ def _stringify_dict_keys(value: typing.Any) -> typing.Any:
             ): _stringify_dict_keys(inner)
             for key, inner in value.items()
         }
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, (set, frozenset)):
+        return [_stringify_dict_keys(item) for item in value]
+    if isinstance(value, collections.abc.Sequence) and not isinstance(
+        value, (str, bytes, bytearray)
+    ):
         return [_stringify_dict_keys(item) for item in value]
     return value
 

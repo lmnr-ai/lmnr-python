@@ -1223,3 +1223,65 @@ def test_json_dumps_dict_like_objects_do_not_stringify_to_python_reprs():
     # dict subclasses were already fine; pin them so the new branches can't
     # accidentally reorder or lose them.
     assert json.loads(json_dumps({"d": collections.OrderedDict(a=1)}))["d"] == {"a": 1}
+
+
+def test_json_dumps_recovers_bad_keys_nested_in_non_builtin_containers():
+    """The retry must walk every container `default_json` unwraps.
+
+    A bad key inside a `Mapping` or a custom `Sequence` — rather than a plain
+    dict/list — otherwise survives the retry, fails the second dump too, and
+    takes every sibling field down with it. Reachable via google-genai's
+    `FunctionResponse.response`, typed `dict[str, Any]`.
+    """
+    import collections.abc
+
+    class ReadOnlyMapping(collections.abc.Mapping):
+        def __init__(self, data):
+            self._data = data
+
+        def __getitem__(self, key):
+            return self._data[key]
+
+        def __iter__(self):
+            return iter(self._data)
+
+        def __len__(self):
+            return len(self._data)
+
+    class CustomSequence(collections.abc.Sequence):
+        def __init__(self, items):
+            self._items = items
+
+        def __getitem__(self, index):
+            return self._items[index]
+
+        def __len__(self):
+            return len(self._items)
+
+    # Bad key directly inside a Mapping.
+    parsed = json.loads(json_dumps({"keep": "me", "v": ReadOnlyMapping({(0, 1): "x"})}))
+    assert parsed["keep"] == "me"
+    assert parsed["v"] == {"(0, 1)": "x"}
+
+    # Bad key in a dict nested inside a Mapping, and vice versa.
+    nested = ReadOnlyMapping({"inner": {(0, 1): "x"}})
+    assert json.loads(json_dumps({"keep": "me", "v": nested}))["keep"] == "me"
+    assert json.loads(json_dumps({"keep": "me", "v": {"i": nested}}))["keep"] == "me"
+
+    # Bad key inside a custom Sequence.
+    sequence = CustomSequence([{(0, 1): "x"}])
+    parsed = json.loads(json_dumps({"keep": "me", "v": sequence}))
+    assert parsed["keep"] == "me"
+    assert parsed["v"] == [{"(0, 1)": "x"}]
+
+    # A bytes key inside a Mapping still becomes standard base64.
+    by_hash = ReadOnlyMapping({b"\xfb\xef\xbe\xff\xff\xff": 1})
+    parsed = json.loads(json_dumps({"keep": "me", "v": by_hash}))
+    assert parsed["v"] == {"++++////": 1}
+
+    # str/bytes are Sequences but must not explode into char lists on the retry.
+    parsed = json.loads(
+        json_dumps({"t": "hello", "b": b"\xfb\xef\xbe\xff\xff\xff", "bad": {(0, 1): 1}})
+    )
+    assert parsed["t"] == "hello"
+    assert parsed["b"] == "++++////"
