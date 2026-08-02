@@ -291,3 +291,61 @@ def test_unserializable_raw_response_is_skipped_not_stamped_empty():
         _set_raw_response_attribute(empty, _image_response(), record_raw_response=True)
 
     assert "lmnr.sdk.raw.response" not in empty.attributes
+
+
+def test_an_unserializable_tool_value_does_not_drop_the_conversation():
+    """One exotic value must degrade to itself, not take the attribute with it.
+
+    `function_call.args` / `function_response.response` are typed
+    `dict[str, Any]`, so they can hold arbitrary Python objects. `mode="json"`
+    raises `PydanticSerializationError` on those, and since the callers are
+    `@dont_throw` that dropped the ENTIRE `gen_ai.input.messages` attribute —
+    every message in the conversation. `mode="python"` hands the value to
+    `json_dumps`, which degrades only that leaf.
+    """
+    import collections.abc
+
+    class ReadOnlyMapping(collections.abc.Mapping):
+        def __init__(self, data):
+            self._data = data
+
+        def __getitem__(self, key):
+            return self._data[key]
+
+        def __iter__(self):
+            return iter(self._data)
+
+        def __len__(self):
+            return len(self._data)
+
+    span = _RecordingSpan()
+
+    _set_request_attributes(
+        span,
+        (),
+        {
+            "model": "gemini-2.5-flash",
+            "contents": [
+                types.Content(role="user", parts=[types.Part(text="weather?")]),
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part(
+                            function_response=types.FunctionResponse(
+                                name="get_weather",
+                                response={"raw": ReadOnlyMapping({"temp": 20})},
+                            )
+                        )
+                    ],
+                ),
+            ],
+        },
+    )
+
+    messages = json.loads(span.attributes["gen_ai.input.messages"])
+    assert len(messages) == 2
+    assert messages[0]["parts"][0] == {"text": "weather?"}
+    # The exotic value survives structurally rather than as a Python repr.
+    assert messages[1]["parts"][0]["function_response"]["response"] == {
+        "raw": {"temp": 20}
+    }

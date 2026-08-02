@@ -1166,3 +1166,60 @@ def test_json_dumps_key_names_do_not_depend_on_the_retry_path():
     assert "null" in first_pass and "true" in first_pass
     assert "2026-01-01T00:00:00Z" in first_pass
     assert "red" in first_pass
+
+
+def test_json_dumps_dict_like_objects_do_not_stringify_to_python_reprs():
+    """A Mapping / non-builtin Sequence must serialize structurally.
+
+    Falling through to `str(o)` yields a Python repr with SINGLE quotes —
+    "{'a': 1}" — which is not JSON and no consumer can parse it.
+    """
+    import collections
+    import collections.abc
+
+    class ReadOnlyMapping(collections.abc.Mapping):
+        def __init__(self, data):
+            self._data = data
+
+        def __getitem__(self, key):
+            return self._data[key]
+
+        def __iter__(self):
+            return iter(self._data)
+
+        def __len__(self):
+            return len(self._data)
+
+    class CustomSequence(collections.abc.Sequence):
+        def __init__(self, items):
+            self._items = items
+
+        def __getitem__(self, index):
+            return self._items[index]
+
+        def __len__(self):
+            return len(self._items)
+
+    mapping = ReadOnlyMapping({"a": 1, "b": [1, {"c": 2}]})
+    assert json.loads(json_dumps({"m": mapping}))["m"] == {"a": 1, "b": [1, {"c": 2}]}
+
+    parsed = json.loads(json_dumps({"s": CustomSequence([{"a": 1}, 2])}))
+    assert parsed["s"] == [{"a": 1}, 2]
+
+    # No Python repr anywhere in the output.
+    assert "'" not in json_dumps({"m": ReadOnlyMapping({"a": 1})})
+
+    # str/bytes are Sequences too — they must NOT be exploded into char lists.
+    assert json.loads(json_dumps({"t": "hi"}))["t"] == "hi"
+    assert json.loads(json_dumps({"b": b"\xfb\xef\xbe\xff\xff\xff"}))["b"] == "++++////"
+
+    # A genuinely opaque object still degrades to its repr, as before.
+    class Opaque:
+        def __repr__(self):
+            return "Opaque()"
+
+    assert json.loads(json_dumps({"o": Opaque()}))["o"] == "Opaque()"
+
+    # dict subclasses were already fine; pin them so the new branches can't
+    # accidentally reorder or lose them.
+    assert json.loads(json_dumps({"d": collections.OrderedDict(a=1)}))["d"] == {"a": 1}

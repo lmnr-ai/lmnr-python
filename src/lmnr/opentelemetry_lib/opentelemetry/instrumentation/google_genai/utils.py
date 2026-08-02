@@ -207,6 +207,21 @@ def model_to_json_safe_dict(model: pydantic.BaseModel, **kwargs) -> dict[str, An
     of raising — every following byte shifts and an image decodes to garbage.
     Python mode keeps `bytes` intact so `json_dumps` encodes them as standard
     base64 on the way out.
+
+    `mode="json"` cannot be kept here, and the alternatives were checked:
+    pydantic offers no standard-base64 setting (`ser_json_bytes` takes only
+    `"base64"` (URL-safe) / `"hex"` / `"utf8"`, and `utf8` raises on binary), a
+    per-call `context=` does not reach it, `TypeAdapter(config=...)` is rejected
+    for BaseModel types, and repairing the alphabet after the fact would have to
+    guess which strings came from bytes — a blind `-`/`_` swap corrupts ordinary
+    text like "well-known B-tree".
+
+    Python mode is also strictly MORE robust than json mode for the `Any`-typed
+    `function_call.args` / `function_response.response` fields: json mode RAISES
+    `PydanticSerializationError` on a value it doesn't recognise, and since the
+    callers are `@dont_throw`, that dropped the entire `gen_ai.input.messages`
+    attribute — every message in the conversation, not just the odd value.
+    Python mode hands the value to `json_dumps`, which degrades just that leaf.
     """
     return model.model_dump(mode="python", **kwargs)
 

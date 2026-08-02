@@ -1,4 +1,5 @@
 import base64
+import collections.abc
 import datetime
 import dataclasses
 import dotenv
@@ -274,6 +275,17 @@ def default_json(o):
 
     # Handle various sequence types, but not strings or bytes
     if isinstance(o, (list, tuple, set, frozenset)):
+        return list(o)
+
+    # Structural fallbacks BEFORE str(): a dict-like or list-like that isn't a
+    # builtin (a Mapping, a memoryview, a custom Sequence) would otherwise
+    # stringify to a Python repr with SINGLE quotes — "{'a': 1}" — which is not
+    # JSON and is unparseable by any consumer.
+    if isinstance(o, collections.abc.Mapping):
+        return dict(o)
+    if isinstance(o, collections.abc.Sequence) and not isinstance(
+        o, (str, bytes, bytearray)
+    ):
         return list(o)
 
     try:
