@@ -14,7 +14,7 @@ DEFAULT_FETCH_SIZE = 25
 LOG = get_default_logger(__name__, verbose=False)
 
 
-def _require_integer(value: object, message: str) -> None:
+def _require_dataset_integer(value: object, message: str) -> None:
     """Raise ``TypeError`` unless ``value`` is a plain ``int``.
 
     ``bool`` is a subclass of ``int``, but ``True`` / ``False`` are never a
@@ -68,7 +68,7 @@ class EvaluationDataset(ABC):
         silent coercion)."""
 
         def resolver() -> list[int]:
-            _require_integer(n, f"take count {n} is not an integer")
+            _require_dataset_integer(n, f"take count {n} is not an integer")
             return list(range(min(max(n, 0), len(self))))
 
         return _SubsetDataset(self, resolver=resolver)
@@ -84,7 +84,7 @@ class EvaluationDataset(ABC):
         def resolver() -> list[int]:
             size = len(self)
             for i in requested:
-                _require_integer(i, f"select index {i} is not an integer")
+                _require_dataset_integer(i, f"select index {i} is not an integer")
                 if i < 0 or i >= size:
                     raise IndexError(
                         f"select index {i} is out of range for dataset of size "
