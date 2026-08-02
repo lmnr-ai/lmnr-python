@@ -87,16 +87,25 @@ def get_level_from_env() -> int:
     return logging.INFO
 
 
+_LMNR_HANDLER_FLAG = "_lmnr_default_handler"
+
+
 def get_default_logger(
     name: str, level: int | None = None, propagate: bool = False, verbose: bool = True
 ) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(level or get_level_from_env())
-    console_log_handler = logging.StreamHandler()
-    if verbose:
-        console_log_handler.setFormatter(VerboseColorfulFormatter())
-    else:
-        console_log_handler.setFormatter(ColorfulFormatter())
-    logger.addHandler(console_log_handler)
+    # `logging.getLogger(name)` returns the SAME logger every call, so adding a handler
+    # unconditionally stacks one per call and emits the message once per handler. Callers
+    # legitimately call this repeatedly (module import, per-span in LaminarSpan.__init__,
+    # inside helpers), so attach at most one handler of our own per logger.
+    if not any(getattr(h, _LMNR_HANDLER_FLAG, False) for h in logger.handlers):
+        console_log_handler = logging.StreamHandler()
+        if verbose:
+            console_log_handler.setFormatter(VerboseColorfulFormatter())
+        else:
+            console_log_handler.setFormatter(ColorfulFormatter())
+        setattr(console_log_handler, _LMNR_HANDLER_FLAG, True)
+        logger.addHandler(console_log_handler)
     logger.propagate = propagate
     return logger

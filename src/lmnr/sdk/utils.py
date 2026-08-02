@@ -275,6 +275,26 @@ def default_json(o):
     return DEFAULT_PLACEHOLDER
 
 
+MAX_ERROR_BODY_CHARS = 2000
+
+
+def describe_response(response) -> str:
+    """Render an HTTP error response as a readable one-liner.
+
+    Error bodies are not always JSON — app-server returns plain text for
+    payload-limit (413) rejections and some proxies return HTML — so this never
+    assumes a shape, and truncates so a large body can't flood the caller's logs.
+    """
+    if response is None:
+        return "no response received"
+    body = (response.text or "").strip()
+    if len(body) > MAX_ERROR_BODY_CHARS:
+        body = body[:MAX_ERROR_BODY_CHARS] + "... (truncated)"
+    if not body:
+        body = "<empty body>"
+    return f"[{response.status_code}] {body}"
+
+
 def json_dumps(data: dict | list) -> str:
     try:
         return orjson.dumps(
