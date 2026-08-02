@@ -92,15 +92,6 @@ def _load_settings_file(path: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
-def _read_settings_file(path: Path) -> dict[str, Any]:
-    """Load a Claude settings JSON file; empty dict when missing or invalid.
-
-    For the on-disk settings LAYERS, where an unreadable file just means we
-    cannot see that layer and must carry on.
-    """
-    return _load_settings_file(path) or {}
-
-
 def _settings_env_block(data: dict[str, Any]) -> dict[str, str]:
     """Normalize a settings object's ``env`` block to a str -> str mapping."""
     env = data.get("env")
@@ -144,7 +135,8 @@ def read_claude_settings_env(
     for source, path in layers:
         if setting_sources is not None and source not in setting_sources:
             continue
-        merged.update(_settings_env_block(_read_settings_file(path)))
+        # An unreadable layer just means we cannot see it; carry on.
+        merged.update(_settings_env_block(_load_settings_file(path) or {}))
     return merged
 
 
