@@ -534,16 +534,9 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
 class GoogleGenAiSdkInstrumentor(BaseInstrumentor):
     """An instrumentor for Google GenAI's client library."""
 
-    def __init__(
-        self,
-        exception_logger=None,
-        upload_base64_image=None,
-        convert_image_to_openai_format=True,
-    ):
+    def __init__(self, exception_logger=None):
         super().__init__()
         Config.exception_logger = exception_logger
-        Config.upload_base64_image = upload_base64_image
-        Config.convert_image_to_openai_format = convert_image_to_openai_format
 
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
