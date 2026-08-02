@@ -7,7 +7,9 @@ flush trigger from the count- and time-based ones.
 """
 
 import threading
+import time
 
+import pytest
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
     SimpleSpanProcessor,
@@ -54,19 +56,53 @@ class RecordingExporter(SpanExporter):
             return sum(len(batch) for batch in self.batches)
 
 
+_built_processors: list = []
+
+
+@pytest.fixture(autouse=True)
+def _shutdown_processors():
+    """Shut down every processor a test builds.
+
+    Every batch processor starts a daemon worker thread that lives until
+    shutdown. Without this, each test leaks one and a dozen threads keep
+    exporting on their own schedules for the rest of the session. Only this
+    module builds processors directly, so the fixture stays here rather than in
+    `conftest.py`.
+    """
+    yield
+    while _built_processors:
+        try:
+            _built_processors.pop().shutdown()
+        except Exception:
+            pass
+
+
+def _make_laminar_processor(**kwargs) -> LaminarSpanProcessor:
+    """A `LaminarSpanProcessor` registered for shutdown; it wraps a batch
+    processor and so owns a worker thread of its own.
+    """
+    processor = LaminarSpanProcessor(**kwargs)
+    _built_processors.append(processor)
+    return processor
+
+
 def _make_processor(
     max_export_batch_size_bytes: int,
     max_export_batch_size: int = 1000,
+    schedule_delay_millis: float = _NEVER_MILLIS,
 ):
-    """A processor whose ONLY reachable flush trigger is the byte limit."""
+    """A processor whose only reachable flush trigger is the byte limit, unless
+    a caller deliberately lowers the item count or the schedule delay.
+    """
     exporter = RecordingExporter()
     processor = SizeLimitedBatchSpanProcessor(
         exporter,
         max_export_batch_size=max_export_batch_size,
         max_queue_size=2048,
-        schedule_delay_millis=_NEVER_MILLIS,
+        schedule_delay_millis=schedule_delay_millis,
         max_export_batch_size_bytes=max_export_batch_size_bytes,
     )
+    _built_processors.append(processor)
     provider = TracerProvider()
     provider.add_span_processor(processor)
     return exporter, processor, provider.get_tracer(__name__)
@@ -78,6 +114,18 @@ def _emit(tracer, name: str, payload_size: int = 0):
             span.set_attribute("gen_ai.input.messages", "x" * payload_size)
 
 
+def _wait_for(predicate, timeout: float = 10.0) -> bool:
+    """Poll until the upstream worker thread has exported. Its flushes are
+    asynchronous, so the count- and time-limit tests cannot assert immediately.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.01)
+    return False
+
+
 def test_byte_limit_flushes_before_count_and_time_limits():
     # 4 KiB-ish spans against a 10 KB limit: every third span trips it.
     exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=10_000)
@@ -86,11 +134,53 @@ def test_byte_limit_flushes_before_count_and_time_limits():
         _emit(tracer, f"span-{i}", payload_size=4000)
 
     # Without the byte limit nothing would have been exported yet: the item
-    # limit is 1000 and the schedule delay is 10 minutes.
-    assert exporter.batch_sizes == [2, 2, 2, 2]
-
+    # limit is 1000 and the schedule delay is 10 minutes. Four batches went out
+    # on the byte trigger; the trailing two spans need the explicit flush.
     processor.force_flush()
-    assert exporter.span_count == 10
+    assert exporter.batch_sizes == [2, 2, 2, 2, 2]
+
+
+def test_count_limit_flushes_and_resets_the_running_size():
+    # The byte limit is out of reach, so only the item count can fire. The
+    # upstream worker drains the queue without telling us, so the running total
+    # is stale until the next span observes the empty queue and resyncs it —
+    # otherwise that stale total would flush a nearly-empty buffer early.
+    exporter, processor, tracer = _make_processor(
+        max_export_batch_size_bytes=10**9,
+        max_export_batch_size=3,
+    )
+
+    for i in range(3):
+        _emit(tracer, f"span-{i}", payload_size=1000)
+
+    assert _wait_for(lambda: exporter.batch_sizes == [3]), (
+        f"count limit did not flush: {exporter.batch_sizes}"
+    )
+
+    _emit(tracer, "after-flush", payload_size=500)
+
+    # Resynced to just the new span, not carrying the exported three.
+    assert processor._pending_size_bytes < 1000
+    assert exporter.batch_sizes == [3], "resync should not have caused a flush"
+
+
+def test_time_limit_flushes_and_resets_the_running_size():
+    # Same invariant, reached via the schedule delay instead of the item count.
+    exporter, processor, tracer = _make_processor(
+        max_export_batch_size_bytes=10**9,
+        schedule_delay_millis=100,
+    )
+
+    for i in range(2):
+        _emit(tracer, f"span-{i}", payload_size=1000)
+
+    assert _wait_for(lambda: exporter.batch_sizes == [2]), (
+        f"schedule delay did not flush: {exporter.batch_sizes}"
+    )
+
+    _emit(tracer, "after-flush", payload_size=500)
+
+    assert processor._pending_size_bytes < 1000
 
 
 def test_small_spans_never_trip_the_byte_limit():
@@ -209,7 +299,7 @@ def test_approximate_span_size_includes_events_and_status_description():
 
 
 def test_laminar_span_processor_uses_the_size_limited_batch_processor():
-    processor = LaminarSpanProcessor(
+    processor = _make_laminar_processor(
         base_url="https://api.lmnr.ai",
         api_key="test",
         exporter=RecordingExporter(),
@@ -229,7 +319,7 @@ def test_laminar_span_processor_uses_the_size_limited_batch_processor():
 
 
 def test_laminar_span_processor_forwards_both_limits():
-    processor = LaminarSpanProcessor(
+    processor = _make_laminar_processor(
         base_url="https://api.lmnr.ai",
         api_key="test",
         exporter=RecordingExporter(),
@@ -242,7 +332,7 @@ def test_laminar_span_processor_forwards_both_limits():
 
 
 def test_disable_batch_still_uses_the_simple_processor():
-    processor = LaminarSpanProcessor(
+    processor = _make_laminar_processor(
         base_url="https://api.lmnr.ai",
         api_key="test",
         exporter=RecordingExporter(),
@@ -253,7 +343,7 @@ def test_disable_batch_still_uses_the_simple_processor():
 
 
 def test_force_reinit_preserves_both_limits():
-    processor = LaminarSpanProcessor(
+    processor = _make_laminar_processor(
         base_url="https://api.lmnr.ai",
         api_key="test",
         max_export_batch_size=7,
