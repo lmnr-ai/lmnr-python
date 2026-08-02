@@ -333,9 +333,10 @@ class Evaluation:
         if isinstance(self.data, EvaluationDataset):
             source = self.data.source_dataset()
             if source is not None:
-                # set_client forwards through any subsampling wrappers to the
-                # source.
-                self.data.set_client(
+                # source_dataset() already resolved the remote source through
+                # any subsampling wrappers, so inject the client into it
+                # directly.
+                source.set_client(
                     LaminarClient(
                         base_url=self.base_http_url,
                         project_api_key=self.project_api_key,

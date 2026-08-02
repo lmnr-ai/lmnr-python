@@ -182,7 +182,7 @@ def test_chain_select_then_shuffle_then_take():
     assert values(chained) == expected
 
 
-# --- base hooks: source_dataset + set_client forwarding ---------------------
+# --- base hooks: source_dataset resolution ----------------------------------
 
 
 def test_source_dataset_none_for_in_memory():
@@ -197,11 +197,21 @@ def test_source_dataset_through_chain():
     assert chained.source_dataset() is base
 
 
-def test_set_client_forwards_through_chain():
+def test_set_client_lives_only_on_laminar_dataset():
+    # `set_client` is not part of the abstract base or the subsampling
+    # wrappers: client injection goes through the resolved source.
+    assert not hasattr(InMemoryDataset([make_dp(0)]), "set_client")
+    assert not hasattr(LaminarDataset(id=uuid.uuid4()).take(1), "set_client")
+
+
+def test_set_client_through_resolved_source():
     base = LaminarDataset(id=uuid.uuid4())
     chained = base.shuffle(seed=1).take(2)
     client = MagicMock()
-    chained.set_client(client)
+    source = chained.source_dataset()
+    assert source is base
+    assert source is not None
+    source.set_client(client)
     assert base.client is client
 
 

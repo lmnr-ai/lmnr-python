@@ -43,13 +43,6 @@ class EvaluationDataset(ABC):
 
     # --- base hooks forwarded by wrappers -------------------------------------
 
-    def set_client(self, client: LaminarClient):
-        """Inject the client into the underlying source (no-op by default).
-
-        In-memory datasets need no client; ``LaminarDataset`` overrides this and
-        subsampling wrappers forward it down to their base.
-        """
-
     def source_dataset(self) -> "LaminarDataset | None":
         """Return the underlying remote ``LaminarDataset`` if any, else ``None``.
 
@@ -134,9 +127,6 @@ class _SubsetDataset(EvaluationDataset):
     def __getitem__(self, idx) -> Datapoint:
         indices = self._resolve()
         return self._base[indices[idx]]
-
-    def set_client(self, client: LaminarClient):
-        self._base.set_client(client)
 
     def source_dataset(self) -> "LaminarDataset | None":
         return self._base.source_dataset()
