@@ -1,3 +1,5 @@
+import base64
+import collections.abc
 import datetime
 import dataclasses
 import dotenv
@@ -259,13 +261,51 @@ def format_id(id_value: str | int | uuid.UUID) -> str:
 DEFAULT_PLACEHOLDER = {}
 
 
-def default_json(o):
+_UNWRAP_MISS = object()
+
+
+def _unwrap_container(o: typing.Any) -> typing.Any:
+    """Open a container into a plain dict/list, or return `_UNWRAP_MISS`.
+
+    Single source of truth for "what counts as a container", shared by
+    `default_json` and `_stringify_dict_keys`. Those two MUST agree: the retry
+    walker can only repair a bad mapping key if it recurses into every container
+    `default_json` is willing to open, and every past divergence here (plain
+    dict/list only, then missing `Mapping`, then missing `BaseModel`) silently
+    collapsed a whole span attribute to "{}". Add new container types here, once.
+
+    Note `str`/`bytes`/`bytearray` are `Sequence`s and must NOT be opened — that
+    would explode them into per-character lists.
+    """
     if isinstance(o, pydantic.BaseModel):
         return o.model_dump()
-
-    # Handle various sequence types, but not strings or bytes
-    if isinstance(o, (list, tuple, set, frozenset)):
+    if isinstance(o, collections.abc.Mapping):
+        return dict(o)
+    if isinstance(o, (set, frozenset)):
         return list(o)
+    if isinstance(o, collections.abc.Sequence) and not isinstance(
+        o, (str, bytes, bytearray)
+    ):
+        return list(o)
+    return _UNWRAP_MISS
+
+
+def default_json(o):
+    # STANDARD base64 (`+`/`/`), not pydantic's URL-safe `ser_json_bytes`
+    # alphabet: consumers decode with `base64.b64decode`, which defaults to
+    # `validate=False` and silently DROPS out-of-alphabet characters instead of
+    # raising, shifting every following byte. Without this branch bytes fall
+    # through to `str(o)` and serialize as the useless repr "b'\\xfb\\xef'".
+    # Must precede the container check — bytes are Sequences.
+    if isinstance(o, (bytes, bytearray)):
+        return base64.b64encode(o).decode("utf-8")
+
+    # Opening a dict-like / list-like BEFORE the str() fallback matters: a
+    # Mapping or custom Sequence would otherwise stringify to a Python repr with
+    # SINGLE quotes — "{'a': 1}" — which is not JSON and no consumer can parse.
+    unwrapped = _unwrap_container(o)
+    if unwrapped is not _UNWRAP_MISS:
+        return unwrapped
 
     try:
         return str(o)
@@ -295,15 +335,84 @@ def describe_response(response) -> str:
     return f"[{response.status_code}] {body}"
 
 
+_JSON_DUMPS_OPTIONS = (
+    orjson.OPT_SERIALIZE_DATACLASS
+    | orjson.OPT_SERIALIZE_UUID
+    | orjson.OPT_UTC_Z
+    | orjson.OPT_NON_STR_KEYS
+)
+
+
+#: Key types `OPT_NON_STR_KEYS` encodes itself. Left untouched on the retry path
+#: so a key's name never depends on whether some unrelated sibling key forced
+#: the retry — orjson renders these differently from `str()` (`None` -> "null",
+#: `True` -> "true", datetimes -> RFC 3339, enums -> their value).
+_ORJSON_NATIVE_KEY_TYPES = (
+    str,
+    int,  # covers bool and IntEnum
+    float,
+    type(None),
+    uuid.UUID,
+    datetime.datetime,
+    datetime.date,
+    datetime.time,
+    enum.Enum,
+)
+
+
+def _stringify_dict_keys(value: typing.Any) -> typing.Any:
+    """Coerce the mapping keys orjson cannot encode into strings.
+
+    `OPT_NON_STR_KEYS` only covers a fixed set of scalar key types, and orjson
+    raises on the rest (tuples, bytes, Decimal, arbitrary objects) — which would
+    collapse the whole payload to "{}". Only called on the retry path, so the
+    common case pays nothing.
+
+    Recurses through EVERY container `_unwrap_container` opens — pydantic models
+    and Mappings included, not just the builtins. A bad key nested inside one
+    `default_json` would open but this walker skips survives the retry, fails the
+    second dump too, and loses every sibling field with it.
+    """
+    # bytes are a Sequence, so check them before unwrapping.
+    if isinstance(value, (bytes, bytearray)):
+        return value
+
+    opened = _unwrap_container(value)
+    if opened is _UNWRAP_MISS:
+        return value
+
+    if isinstance(opened, dict):
+        return {
+            (
+                key
+                if isinstance(key, _ORJSON_NATIVE_KEY_TYPES)
+                else (
+                    base64.b64encode(key).decode("utf-8")
+                    if isinstance(key, (bytes, bytearray))
+                    else str(key)
+                )
+            ): _stringify_dict_keys(inner)
+            for key, inner in opened.items()
+        }
+    return [_stringify_dict_keys(item) for item in opened]
+
+
 def json_dumps(data: dict | list) -> str:
     try:
         return orjson.dumps(
             data,
             default=default_json,
-            option=orjson.OPT_SERIALIZE_DATACLASS
-            | orjson.OPT_SERIALIZE_UUID
-            | orjson.OPT_UTC_Z
-            | orjson.OPT_NON_STR_KEYS,
+            option=_JSON_DUMPS_OPTIONS,
+        ).decode("utf-8")
+    except Exception:
+        pass
+    try:
+        # An unencodable mapping key is the one failure worth retrying — it
+        # aborts the whole document, losing every sibling value with it.
+        return orjson.dumps(
+            _stringify_dict_keys(data),
+            default=default_json,
+            option=_JSON_DUMPS_OPTIONS,
         ).decode("utf-8")
     except Exception:
         # Log the exception and return a placeholder if serialization completely fails

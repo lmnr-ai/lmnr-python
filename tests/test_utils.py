@@ -1,3 +1,4 @@
+import base64
 import dataclasses
 import json
 import pytest
@@ -1072,3 +1073,297 @@ def test_merge_text_parts_leading_non_text():
     assert len(result) == 2
     assert result[0].inline_data is not None
     assert result[1].text == "Text1 Text2"
+
+
+def test_json_dumps_bytes_use_standard_base64():
+    """Bytes must serialize as STANDARD base64, not a Python repr.
+
+    Without a bytes branch they fall through to `str(o)` and land in the span
+    as the useless literal "b'\\xfb\\xef'". Standard rather than URL-safe
+    because consumers decode with `base64.b64decode`, which defaults to
+    `validate=False` and silently DROPS `-`/`_` instead of raising, shifting
+    every following byte.
+    """
+    raw = bytes([0xFB, 0xEF, 0xBE, 0xFF, 0xFF, 0xFF])
+
+    parsed = json.loads(json_dumps({"data": raw}))
+
+    assert parsed["data"] == "++++////"
+    assert base64.b64decode(parsed["data"]) == raw
+
+    # bytearray takes the same path
+    parsed = json.loads(json_dumps({"data": bytearray(raw)}))
+    assert parsed["data"] == "++++////"
+
+    # and nested inside containers the orjson hook has to recurse through
+    parsed = json.loads(json_dumps({"outer": [{"inner": raw}, {raw}]}))
+    assert parsed["outer"][0]["inner"] == "++++////"
+    assert parsed["outer"][1] == ["++++////"]
+
+
+def test_json_dumps_non_string_dict_keys_do_not_discard_the_payload():
+    """An unencodable mapping key must not collapse the whole document.
+
+    orjson's `OPT_NON_STR_KEYS` covers only a fixed set of scalar key types and
+    raises on the rest, which would drop every sibling value with it.
+    """
+    raw = bytes([0xFB, 0xEF, 0xBE, 0xFF, 0xFF, 0xFF])
+
+    parsed = json.loads(json_dumps({"keep": "me", "grid": {(0, 1): "hit"}}))
+    assert parsed["keep"] == "me"
+    assert parsed["grid"] == {"(0, 1)": "hit"}
+
+    # bytes keys become standard base64 rather than a repr
+    parsed = json.loads(json_dumps({"keep": "me", "by_hash": {raw: "hit"}}))
+    assert parsed["keep"] == "me"
+    assert parsed["by_hash"] == {"++++////": "hit"}
+
+    # nested under a list, too
+    parsed = json.loads(json_dumps({"rows": [{"keep": 1, "k": {(2, 3): "v"}}]}))
+    assert parsed["rows"][0]["keep"] == 1
+
+    # keys orjson already handles natively are left exactly as they were
+    parsed = json.loads(json_dumps({1: "a", "b": 2, None: "c"}))
+    assert parsed == {"1": "a", "b": 2, "null": "c"}
+
+
+def test_json_dumps_key_names_do_not_depend_on_the_retry_path():
+    """The retry must not rename keys orjson already encodes itself.
+
+    `OPT_NON_STR_KEYS` renders these differently from `str()` (`None` -> "null",
+    `True` -> "true", datetimes -> RFC 3339, enums -> their value), so coercing
+    them would make a key's name depend on whether some unrelated sibling key
+    happened to force the retry.
+    """
+    import datetime
+    import enum
+    import uuid
+
+    class Color(enum.Enum):
+        RED = "red"
+
+    native_keys = {
+        None: 1,
+        True: 2,
+        False: 3,
+        7: 4,
+        2.5: 5,
+        uuid.UUID(int=1): 6,
+        datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc): 7,
+        datetime.date(2026, 1, 1): 8,
+        datetime.time(1, 2, 3): 9,
+        Color.RED: 10,
+        "plain": 11,
+    }
+
+    first_pass = json.loads(json_dumps({"m": dict(native_keys)}))["m"]
+    # A tuple key elsewhere in the document forces the retry.
+    retry_pass = json.loads(
+        json_dumps({"m": dict(native_keys), "other": {(0, 1): "x"}})
+    )["m"]
+
+    assert first_pass == retry_pass
+    assert "null" in first_pass and "true" in first_pass
+    assert "2026-01-01T00:00:00Z" in first_pass
+    assert "red" in first_pass
+
+
+def test_json_dumps_dict_like_objects_do_not_stringify_to_python_reprs():
+    """A Mapping / non-builtin Sequence must serialize structurally.
+
+    Falling through to `str(o)` yields a Python repr with SINGLE quotes —
+    "{'a': 1}" — which is not JSON and no consumer can parse it.
+    """
+    import collections
+    import collections.abc
+
+    class ReadOnlyMapping(collections.abc.Mapping):
+        def __init__(self, data):
+            self._data = data
+
+        def __getitem__(self, key):
+            return self._data[key]
+
+        def __iter__(self):
+            return iter(self._data)
+
+        def __len__(self):
+            return len(self._data)
+
+    class CustomSequence(collections.abc.Sequence):
+        def __init__(self, items):
+            self._items = items
+
+        def __getitem__(self, index):
+            return self._items[index]
+
+        def __len__(self):
+            return len(self._items)
+
+    mapping = ReadOnlyMapping({"a": 1, "b": [1, {"c": 2}]})
+    assert json.loads(json_dumps({"m": mapping}))["m"] == {"a": 1, "b": [1, {"c": 2}]}
+
+    parsed = json.loads(json_dumps({"s": CustomSequence([{"a": 1}, 2])}))
+    assert parsed["s"] == [{"a": 1}, 2]
+
+    # No Python repr anywhere in the output.
+    assert "'" not in json_dumps({"m": ReadOnlyMapping({"a": 1})})
+
+    # str/bytes are Sequences too — they must NOT be exploded into char lists.
+    assert json.loads(json_dumps({"t": "hi"}))["t"] == "hi"
+    assert json.loads(json_dumps({"b": b"\xfb\xef\xbe\xff\xff\xff"}))["b"] == "++++////"
+
+    # A genuinely opaque object still degrades to its repr, as before.
+    class Opaque:
+        def __repr__(self):
+            return "Opaque()"
+
+    assert json.loads(json_dumps({"o": Opaque()}))["o"] == "Opaque()"
+
+    # dict subclasses were already fine; pin them so the new branches can't
+    # accidentally reorder or lose them.
+    assert json.loads(json_dumps({"d": collections.OrderedDict(a=1)}))["d"] == {"a": 1}
+
+
+def test_json_dumps_recovers_bad_keys_nested_in_non_builtin_containers():
+    """The retry must walk every container `default_json` unwraps.
+
+    A bad key inside a `Mapping` or a custom `Sequence` — rather than a plain
+    dict/list — otherwise survives the retry, fails the second dump too, and
+    takes every sibling field down with it. Reachable via google-genai's
+    `FunctionResponse.response`, typed `dict[str, Any]`.
+    """
+    import collections.abc
+
+    class ReadOnlyMapping(collections.abc.Mapping):
+        def __init__(self, data):
+            self._data = data
+
+        def __getitem__(self, key):
+            return self._data[key]
+
+        def __iter__(self):
+            return iter(self._data)
+
+        def __len__(self):
+            return len(self._data)
+
+    class CustomSequence(collections.abc.Sequence):
+        def __init__(self, items):
+            self._items = items
+
+        def __getitem__(self, index):
+            return self._items[index]
+
+        def __len__(self):
+            return len(self._items)
+
+    # Bad key directly inside a Mapping.
+    parsed = json.loads(json_dumps({"keep": "me", "v": ReadOnlyMapping({(0, 1): "x"})}))
+    assert parsed["keep"] == "me"
+    assert parsed["v"] == {"(0, 1)": "x"}
+
+    # Bad key in a dict nested inside a Mapping, and vice versa.
+    nested = ReadOnlyMapping({"inner": {(0, 1): "x"}})
+    assert json.loads(json_dumps({"keep": "me", "v": nested}))["keep"] == "me"
+    assert json.loads(json_dumps({"keep": "me", "v": {"i": nested}}))["keep"] == "me"
+
+    # Bad key inside a custom Sequence.
+    sequence = CustomSequence([{(0, 1): "x"}])
+    parsed = json.loads(json_dumps({"keep": "me", "v": sequence}))
+    assert parsed["keep"] == "me"
+    assert parsed["v"] == [{"(0, 1)": "x"}]
+
+    # A bytes key inside a Mapping still becomes standard base64.
+    by_hash = ReadOnlyMapping({b"\xfb\xef\xbe\xff\xff\xff": 1})
+    parsed = json.loads(json_dumps({"keep": "me", "v": by_hash}))
+    assert parsed["v"] == {"++++////": 1}
+
+    # str/bytes are Sequences but must not explode into char lists on the retry.
+    parsed = json.loads(
+        json_dumps({"t": "hello", "b": b"\xfb\xef\xbe\xff\xff\xff", "bad": {(0, 1): 1}})
+    )
+    assert parsed["t"] == "hello"
+    assert parsed["b"] == "++++////"
+
+
+def test_json_dumps_recovers_bad_keys_nested_in_pydantic_models():
+    """`default_json` opens pydantic models, so the retry walker must too.
+
+    `part_to_dict` deliberately leaves a nested model un-dumped inside a dict
+    part, so a bad key under e.g. a `FunctionResponse` reaches `json_dumps`
+    still wrapped in the model.
+    """
+
+    class Inner(BaseModel):
+        payload: Dict[Any, Any] = {}
+
+    bad = {(0, 1): "hit"}
+
+    # Model directly, and nested under each container kind.
+    for value in (
+        Inner(payload=bad),
+        {"k": Inner(payload=bad)},
+        [Inner(payload=bad)],
+        (Inner(payload=bad),),
+        Inner(payload={"inner": Inner(payload=bad)}),
+    ):
+        parsed = json.loads(json_dumps({"keep": "me", "v": value}))
+        assert parsed["keep"] == "me", value
+        assert "(0, 1)" in json_dumps(parsed), value
+
+    # A model on the happy path (no retry) is unchanged.
+    assert json.loads(json_dumps({"m": Inner(payload={"a": 1})})) == {
+        "m": {"payload": {"a": 1}}
+    }
+
+
+def test_unwrap_container_is_the_single_source_of_truth_for_containers():
+    """`default_json` and `_stringify_dict_keys` must not diverge.
+
+    Both route through `_unwrap_container`; every past divergence (builtins only,
+    then a missing `Mapping` branch, then a missing `BaseModel` branch) silently
+    collapsed a whole span attribute to "{}". This pins the contract rather than
+    re-testing each type: anything the unwrapper opens must survive a retry with
+    its bad keys repaired.
+    """
+    import collections.abc
+
+    from lmnr.sdk.utils import _UNWRAP_MISS, _unwrap_container
+
+    class Mapped(collections.abc.Mapping):
+        def __init__(self, d):
+            self._d = d
+
+        def __getitem__(self, key):
+            return self._d[key]
+
+        def __iter__(self):
+            return iter(self._d)
+
+        def __len__(self):
+            return len(self._d)
+
+    class Model(BaseModel):
+        payload: Dict[Any, Any] = {}
+
+    # Opened -> a bad key inside is repairable.
+    openable = [{"a": 1}, [1], (1,), {1}, frozenset([1]), Mapped({"a": 1}), Model()]
+    for value in openable:
+        assert _unwrap_container(value) is not _UNWRAP_MISS, value
+
+    # NOT opened -> str/bytes must stay scalar, or they'd become char lists.
+    for value in ("hi", b"ab", bytearray(b"ab"), 1, None, object()):
+        assert _unwrap_container(value) is _UNWRAP_MISS, value
+
+    # The contract that matters: for every openable container holding a bad key,
+    # siblings survive and the key is coerced.
+    for wrap in (
+        lambda bad: {"v": bad},
+        lambda bad: [bad],
+        lambda bad: Mapped({"v": bad}),
+        lambda bad: Model(payload=bad),
+    ):
+        out = json_dumps({"keep": "me", "c": wrap({(0, 1): "x"})})
+        assert '"keep":"me"' in out.replace(", ", ",")
+        assert "(0, 1)" in out

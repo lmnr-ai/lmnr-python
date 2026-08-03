@@ -31,9 +31,8 @@ from .schema_utils import SchemaJSONEncoder, process_schema
 from .utils import (
     content_union_to_dict,
     dont_throw,
-    get_content,
     merge_text_parts,
-    process_content_union,
+    model_to_json_safe_dict,
     process_stream_chunk,
     set_span_attribute,
     to_dict,
@@ -245,18 +244,26 @@ def _set_raw_response_attribute(
         "gen_ai.output.messages",
         json_dumps(
             [
-                candidate.model_dump(mode="json", exclude_unset=True, exclude_none=True)
+                model_to_json_safe_dict(
+                    candidate, exclude_unset=True, exclude_none=True
+                )
                 for candidate in (response.candidates or [])
             ]
         ),
     )
     if record_raw_response:
         try:
-            set_span_attribute(
-                span,
-                "lmnr.sdk.raw.response",
-                response.model_dump_json(),
-            )
+            raw_response = json_dumps(model_to_json_safe_dict(response))
+            # json_dumps swallows its own failures and returns "{}". Stamping
+            # that would be worse than stamping nothing: the replay cache
+            # PREFERS a non-empty raw response over reconstructing from
+            # gen_ai.output.messages, so an empty object would shadow the
+            # usable fallback and every cache hit would rebuild an empty
+            # response.
+            if raw_response and raw_response != "{}":
+                set_span_attribute(span, "lmnr.sdk.raw.response", raw_response)
+            else:
+                logger.debug("Skipping empty lmnr.sdk.raw.response attribute")
         except Exception:
             logger.debug("Failed to set lmnr.sdk.raw.response attribute", exc_info=True)
 
@@ -527,16 +534,9 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
 class GoogleGenAiSdkInstrumentor(BaseInstrumentor):
     """An instrumentor for Google GenAI's client library."""
 
-    def __init__(
-        self,
-        exception_logger=None,
-        upload_base64_image=None,
-        convert_image_to_openai_format=True,
-    ):
+    def __init__(self, exception_logger=None):
         super().__init__()
         Config.exception_logger = exception_logger
-        Config.upload_base64_image = upload_base64_image
-        Config.convert_image_to_openai_format = convert_image_to_openai_format
 
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments

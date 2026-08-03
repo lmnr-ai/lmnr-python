@@ -1,6 +1,4 @@
-import base64
 from collections import defaultdict
-import json
 import traceback
 from typing_extensions import TypedDict
 
@@ -11,39 +9,11 @@ from google.genai import types
 from google.genai._common import BaseModel
 import pydantic
 from opentelemetry.trace import Span
-from typing import Any, Literal
+from typing import Any
 
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
-
-
-class ToolCall(pydantic.BaseModel):
-    name: str | None = pydantic.Field(default=None)
-    id: str | None = pydantic.Field(default=None)
-    arguments: dict[str, Any] = pydantic.Field(default={})
-
-
-class ImageUrlInner(pydantic.BaseModel):
-    url: str = pydantic.Field(default="")
-
-
-class ImageUrl(pydantic.BaseModel):
-    type: Literal["image_url"] = pydantic.Field(default="image_url")
-    image_url: ImageUrlInner = pydantic.Field(default=ImageUrlInner())
-
-
-class ToolResult(pydantic.BaseModel):
-    name: str | None = pydantic.Field(default=None)
-    # {"output": "result"} or {"error": "error message"}
-    response: dict[str, Any] = pydantic.Field(default={})
-
-
-class ProcessedContentPart(pydantic.BaseModel):
-    content: str | None = pydantic.Field(default=None)
-    function_call: ToolCall | None = pydantic.Field(default=None)
-    image_url: ImageUrl | None = pydantic.Field(default=None)
-    function_response: ToolResult | None = pydantic.Field(default=None)
 
 
 class ProcessChunkResult(TypedDict):
@@ -151,124 +121,6 @@ def to_dict(
         return dict(obj)
 
 
-def get_content(
-    content: (
-        ProcessedContentPart | dict | list[ProcessedContentPart | dict] | str | None
-    ),
-) -> dict | list[dict] | None:
-    if isinstance(content, dict):
-        return content.get("content") or content.get("image_url")
-    if isinstance(content, ProcessedContentPart):
-        if content.content and isinstance(content.content, str):
-            return {
-                "type": "text",
-                "text": content.content,
-            }
-        elif content.image_url:
-            return content.image_url.model_dump()
-        elif content.function_response:
-            return {
-                "function_response": {
-                    "name": content.function_response.name,
-                    "response": content.function_response.response,
-                }
-            }
-        else:
-            return None
-    elif isinstance(content, list):
-        contents_list = [get_content(item) for item in content]
-        return [item for item in contents_list if item is not None]
-    elif isinstance(content, str):
-        return {
-            "type": "text",
-            "text": content,
-        }
-    else:
-        return None
-
-
-def process_content_union(
-    content: types.ContentUnion | types.ContentUnionDict,
-) -> ProcessedContentPart | dict | list[ProcessedContentPart | dict] | None:
-    if isinstance(content, types.Content):
-        parts = to_dict(content).get("parts", [])
-        return [_process_part(part) for part in parts]
-    elif isinstance(content, list):
-        return [_process_part_union(item) for item in content]
-    elif isinstance(content, (types.Part, types.File, str)):
-        return _process_part_union(content)
-    elif isinstance(content, dict):
-        if "parts" in content:
-            return [_process_part_union(item) for item in content.get("parts", [])]
-        else:
-            # Assume it's PartDict
-            return _process_part_union(content)
-    else:
-        return None
-
-
-def _process_part_union(
-    content: types.PartDict | types.File | types.Part | str,
-) -> ProcessedContentPart | dict | None:
-    if isinstance(content, str):
-        return ProcessedContentPart(content=content)
-    elif isinstance(content, types.File):
-        content_dict = to_dict(content)
-        name = (
-            content_dict.get("name")
-            or content_dict.get("display_name")
-            or content_dict.get("uri")
-        )
-        return ProcessedContentPart(content=f"files/{name}")
-    elif isinstance(content, (types.Part, dict)):
-        return _process_part(content)
-    else:
-        return None
-
-
-def _process_part(
-    content: types.Part,
-) -> ProcessedContentPart | dict | None:
-    part_dict = to_dict(content)
-    if part_dict.get("inline_data"):
-        blob = to_dict(part_dict.get("inline_data"))
-        if blob.get("mime_type", "").startswith("image/"):
-            return _process_image_item(blob)
-        else:
-            # currently, only images are supported
-            return ProcessedContentPart(
-                content=blob.get("mime_type") or "unknown_media"
-            )
-    elif function_call := part_dict.get("function_call"):
-        function_call_dict = to_dict(function_call)
-        return ProcessedContentPart(
-            function_call=ToolCall(
-                name=function_call_dict.get("name"),
-                id=function_call_dict.get("id"),
-                arguments=function_call_dict.get("args", {}),
-            )
-        )
-    elif part_dict.get("function_response"):
-        function_response_dict = to_dict(part_dict.get("function_response"))
-        return ProcessedContentPart(
-            function_response=ToolResult(
-                name=function_response_dict.get("name"),
-                response=function_response_dict.get("response", {}),
-            )
-        )
-    elif part_dict.get("text") is not None:
-        return ProcessedContentPart(content=part_dict.get("text"))
-    else:
-        try:
-            return ProcessedContentPart(content=json.dumps(part_dict))
-        except Exception:
-            pass
-        try:
-            return ProcessedContentPart(content=json.dumps(part_dict))
-        except Exception:
-            return None
-
-
 def with_tracer_wrapper(func):
     """Helper for providing tracer for wrapper functions."""
 
@@ -279,28 +131,6 @@ def with_tracer_wrapper(func):
         return wrapper
 
     return _with_tracer
-
-
-def _process_image_item(blob: dict[str, Any]) -> ProcessedContentPart | dict | None:
-    # Convert to openai format, so backends can handle it
-    data = blob.get("data")
-    encoded_data = (
-        base64.b64encode(data).decode("utf-8") if isinstance(data, bytes) else data
-    )
-    mime_type = blob.get("mime_type", "image/unknown")
-    image_type = mime_type.split("/")[1] if "/" in mime_type else "unknown"
-
-    return (
-        ProcessedContentPart(
-            image_url=ImageUrl(
-                image_url=ImageUrlInner(
-                    url=f"data:image/{image_type};base64,{encoded_data}",
-                )
-            )
-        )
-        if Config.convert_image_to_openai_format
-        else blob
-    )
 
 
 @dont_throw
@@ -367,6 +197,35 @@ def strip_none_values(obj: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def model_to_json_safe_dict(model: pydantic.BaseModel, **kwargs) -> dict[str, Any]:
+    """Dump a pydantic model to a dict safe to hand to `json_dumps`.
+
+    Deliberately `mode="python"` rather than `mode="json"`: google-genai's models
+    set `ser_json_bytes="base64"`, which is pydantic's URL-SAFE alphabet, so json
+    mode emits `-`/`_`. Consumers decode with `base64.b64decode`, which defaults
+    to `validate=False` and silently DROPS the out-of-alphabet characters instead
+    of raising — every following byte shifts and an image decodes to garbage.
+    Python mode keeps `bytes` intact so `json_dumps` encodes them as standard
+    base64 on the way out.
+
+    `mode="json"` cannot be kept here, and the alternatives were checked:
+    pydantic offers no standard-base64 setting (`ser_json_bytes` takes only
+    `"base64"` (URL-safe) / `"hex"` / `"utf8"`, and `utf8` raises on binary), a
+    per-call `context=` does not reach it, `TypeAdapter(config=...)` is rejected
+    for BaseModel types, and repairing the alphabet after the fact would have to
+    guess which strings came from bytes — a blind `-`/`_` swap corrupts ordinary
+    text like "well-known B-tree".
+
+    Python mode is also strictly MORE robust than json mode for the `Any`-typed
+    `function_call.args` / `function_response.response` fields: json mode RAISES
+    `PydanticSerializationError` on a value it doesn't recognise, and since the
+    callers are `@dont_throw`, that dropped the entire `gen_ai.input.messages`
+    attribute — every message in the conversation, not just the odd value.
+    Python mode hands the value to `json_dumps`, which degrades just that leaf.
+    """
+    return model.model_dump(mode="python", **kwargs)
+
+
 def part_to_dict(part) -> dict[str, Any]:
     """Convert a Part-like object to a serializable dict."""
     if isinstance(part, str):
@@ -374,7 +233,7 @@ def part_to_dict(part) -> dict[str, Any]:
     if isinstance(part, dict):
         return strip_none_values(part)
     if hasattr(part, "model_dump"):
-        return part.model_dump(mode="json", exclude_unset=True, exclude_none=True)
+        return model_to_json_safe_dict(part, exclude_unset=True, exclude_none=True)
     return strip_none_values(to_dict(part))
 
 
@@ -384,7 +243,7 @@ def content_union_to_dict(
 ) -> dict[str, Any]:
     """Convert a ContentUnion to a Gemini Content dict with 'parts' and 'role'."""
     if isinstance(content, types.Content):
-        result = content.model_dump(mode="json", exclude_unset=True, exclude_none=True)
+        result = model_to_json_safe_dict(content, exclude_unset=True, exclude_none=True)
         if "role" not in result:
             result["role"] = default_role
         return result
@@ -398,7 +257,7 @@ def content_union_to_dict(
                 result["role"] = default_role
             return result
         else:
-            return {"role": default_role, "parts": [strip_none_values(content)]}
+            return {"role": default_role, "parts": [part_to_dict(content)]}
     elif isinstance(content, list):
         return {"role": default_role, "parts": [part_to_dict(p) for p in content]}
     else:
