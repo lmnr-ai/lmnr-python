@@ -152,6 +152,11 @@ LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
 
 - `_evaluate_datapoint` in `evaluations.py` must set `trace_type=TraceType.EVALUATION` on the isolated context (via `set_association_prop_context`) **before** starting the root evaluation span. Without it, the `LaminarSpanProcessor.on_start()` handler has no `CONTEXT_TRACE_TYPE_KEY` in `parent_context` for child spans (executor, evaluator), so they export without `lmnr.association.properties.trace_type` and the app-server classifies the trace as `DEFAULT`.
 
+## Pointing `evaluate()` at a local / self-hosted backend
+
+- `Evaluation.__init__` builds `self.base_http_url = f"{base_http_url or base_url}:{http_port or 443}"`, so **`base_url` / `base_http_url` must be PORTLESS and the port must go in `http_port`**. A `LMNR_BASE_URL=http://localhost:8000` gets `:443` appended (`http://localhost:443/v1/evals` → `ConnectError`), and passing `base_http_url="http://localhost:8000"` alongside `http_port=8000` yields `httpx.InvalidURL: Invalid port: '8000:8000'`. Correct local invocation is `evaluate(..., base_url="http://localhost", http_port=8000, grpc_port=8001)`.
+- **Do NOT call `Laminar.initialize()` before `evaluate()` when overriding the URL** — `Evaluation.__init__` prefers `L.get_base_http_url()` whenever Laminar is already initialized, silently discarding the explicit host/port and sending the request wherever the env vars point. Let `evaluate()` do the initializing.
+
 ## deepagents instrument
 
 - `Instruments.DEEPAGENTS` is auto-enabled when `deepagents` is installed. When auto-enabled, `LANGCHAIN` and `LANGGRAPH` are auto-removed from the default instrument set (see `_DEEPAGENTS_NOISE_CONFLICTS` in `tracing/instruments.py`) — the LangSmith-style node-level spans they emit add no signal on top of what `LaminarMiddleware` already captures, and clutter the transcript view.
