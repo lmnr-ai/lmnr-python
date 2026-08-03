@@ -22,7 +22,6 @@ from .utils import (
     resolve_target_url_from_env,
     is_truthy_env,
     build_proxy_flag_settings,
-    effective_setting_sources,
     read_claude_settings_env,
     PROXY_BASE_URL_ENV_KEYS,
     PROXY_ENV_KEYS,
@@ -196,7 +195,12 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
         options = getattr(instance, "_options", None)
         env_dict = options.env if options is not None else {}
         session_cwd = getattr(options, "cwd", None)
-        setting_sources = effective_setting_sources(options)
+        # Read the DOCUMENTED options.setting_sources only. Do not try to infer
+        # the SDK's private skills-based default (_apply_skills_defaults narrows
+        # this to user,project) — that is an internal we must not track. Reading
+        # a layer the CLI ignored is a safe over-read for upstream resolution:
+        # the flag layer still forces every base URL to the proxy.
+        setting_sources = getattr(options, "setting_sources", None)
         target_url = resolve_target_url_from_env(
             env_dict,
             cwd=session_cwd,
@@ -421,7 +425,7 @@ def apply_settings_proxy_override(options, proxy_url: str) -> tuple[str | None] 
         return None
 
     session_cwd = getattr(options, "cwd", None)
-    setting_sources = effective_setting_sources(options)
+    setting_sources = getattr(options, "setting_sources", None)
 
     original = options.settings
     updated = build_proxy_flag_settings(
@@ -482,7 +486,7 @@ def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> No
     """
 
     settings_env = read_claude_settings_env(
-        getattr(options, "cwd", None), effective_setting_sources(options)
+        getattr(options, "cwd", None), getattr(options, "setting_sources", None)
     )
 
     def get_env_value(key: str) -> str | None:

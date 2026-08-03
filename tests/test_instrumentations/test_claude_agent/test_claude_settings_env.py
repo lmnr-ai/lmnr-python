@@ -12,7 +12,6 @@ import pytest
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.utils import (
     build_proxy_flag_settings,
-    effective_setting_sources,
     is_truthy_env,
     read_claude_settings_env,
     PROXY_ENV_KEYS,
@@ -126,46 +125,31 @@ def test_setting_sources_gates_which_layers_are_read(isolated_settings):
     )
 
 
-def test_skills_defaults_setting_sources_to_user_and_project():
-    """The SDK's own _apply_skills_defaults excludes ``local``.
+def test_a_skills_run_still_forces_the_proxy_via_the_flag_layer():
+    """We deliberately do NOT infer the SDK's private skills-based default.
 
-    When ``skills`` is set but ``setting_sources`` is not, the SDK passes
-    ``--setting-sources=user,project``. Treating that as "all layers" would let a
-    gateway in ``.claude/settings.local.json`` become our upstream even though the
-    CLI never reads it.
+    With ``skills`` set and ``setting_sources`` unset, the SDK narrows the CLI to
+    ``user,project`` inside a PRIVATE method. Tracking that would couple us to an
+    internal, so we read the documented field only and may over-read the ``local``
+    layer. That is safe: the flag layer still pins every base URL to the proxy, so
+    the CLI cannot reach a local-only gateway regardless of what we resolved.
     """
-    assert effective_setting_sources(MockOptions(skills="all")) == ["user", "project"]
-    assert effective_setting_sources(MockOptions(skills=["a"])) == ["user", "project"]
+    config_dir_env = json.loads(build_proxy_flag_settings(None, PROXY_URL))["env"]
+
+    assert config_dir_env["ANTHROPIC_BASE_URL"] == PROXY_URL
 
 
-def test_explicit_setting_sources_win_over_the_skills_default():
-    options = MockOptions(skills="all", setting_sources=["local"])
-
-    assert effective_setting_sources(options) == ["local"]
-
-
-def test_no_skills_leaves_setting_sources_unset():
-    assert effective_setting_sources(MockOptions()) is None
-    # An options object predating the `skills` field must not crash.
-    assert effective_setting_sources(object()) is None
-
-
-def test_skills_run_ignores_a_local_only_gateway(isolated_settings):
-    """End-to-end: a local-only gateway must be invisible to a skills run."""
+def test_setting_sources_is_read_from_the_documented_field_only(isolated_settings):
+    """``skills`` must not change which layers we read."""
     _, session_dir = isolated_settings
     write_settings(
         session_dir / ".claude" / "settings.local.json",
         {"ANTHROPIC_BASE_URL": UPSTREAM},
     )
-    options = MockOptions(skills="all", cwd=str(session_dir))
 
-    url = resolve_target_url_from_env(
-        {},
-        cwd=options.cwd,
-        setting_sources=effective_setting_sources(options),
-    )
-
-    assert url == "https://api.anthropic.com"
+    # No setting_sources => all layers, exactly as the field is documented,
+    # whether or not `skills` happens to be set.
+    assert resolve_target_url_from_env({}, cwd=str(session_dir)) == UPSTREAM
 
 
 def test_empty_setting_sources_disables_on_disk_settings(isolated_settings):
