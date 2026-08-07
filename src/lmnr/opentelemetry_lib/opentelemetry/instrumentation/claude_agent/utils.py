@@ -487,7 +487,9 @@ def build_proxy_flag_settings(
     return json.dumps(settings_obj)
 
 
-def setup_proxy_env(proxy_url: str) -> dict[str, str | None]:
+def setup_proxy_env(
+    proxy_url: str, cwd: str | Path | None = None
+) -> dict[str, str | None]:
     """
     Configure global environment to use proxy for custom transports.
 
@@ -498,12 +500,26 @@ def setup_proxy_env(proxy_url: str) -> dict[str, str | None]:
     Also removes HTTP_PROXY and HTTPS_PROXY from global env
     since our proxy will handle forwarding to them.
 
+    Provider config is read from ``os.environ`` AND Claude Code's settings layers:
+    a user who keeps ``CLAUDE_CODE_USE_BEDROCK`` (plus its credentials, e.g.
+    ``AWS_BEARER_TOKEN_BEDROCK``) in ``~/.claude/settings.json`` has nothing in
+    ``os.environ``, so gating on the process env alone left the provider base URL
+    unpinned and its traffic bypassed the proxy entirely.
+
     Args:
         proxy_url: Proxy base URL (e.g., "http://127.0.0.1:45667")
+        cwd: Session root used to locate project settings
 
     Returns:
         Dictionary of original env values for restoration
     """
+    settings_env = read_claude_settings_env(cwd)
+
+    def provider_enabled(use_key: str) -> bool:
+        return is_truthy_env(os.environ.get(use_key)) or is_truthy_env(
+            settings_env.get(use_key)
+        )
+
     # Snapshot every key the pops below touch — PROXY_ENV_KEYS covers both the
     # upper and lower case spellings, and a key popped but not snapshotted is
     # lost from the process for good.
@@ -516,7 +532,7 @@ def setup_proxy_env(proxy_url: str) -> dict[str, str | None]:
     # Store original target URL in ANTHROPIC_ORIGINAL_BASE_URL if not already set
     # This is used by the proxy to know where to forward requests
     if "ANTHROPIC_ORIGINAL_BASE_URL" not in os.environ:
-        target = resolve_target_url_from_env({})  # Check only os.environ
+        target = resolve_target_url_from_env({}, cwd=cwd)
         if target:
             os.environ["ANTHROPIC_ORIGINAL_BASE_URL"] = target
             snapshot["ANTHROPIC_ORIGINAL_BASE_URL"] = None  # Was not set
@@ -529,7 +545,7 @@ def setup_proxy_env(proxy_url: str) -> dict[str, str | None]:
         os.environ.pop(proxy_var, None)
 
     # Handle Foundry-specific env vars
-    if is_truthy_env(os.environ.get(FOUNDRY_USE_ENV)):
+    if provider_enabled(FOUNDRY_USE_ENV):
         snapshot[FOUNDRY_BASE_URL_ENV] = os.environ.get(FOUNDRY_BASE_URL_ENV)
         snapshot[FOUNDRY_RESOURCE_ENV] = os.environ.get(FOUNDRY_RESOURCE_ENV)
 
@@ -537,12 +553,12 @@ def setup_proxy_env(proxy_url: str) -> dict[str, str | None]:
         os.environ.pop(FOUNDRY_RESOURCE_ENV, None)
 
     # Handle Bedrock-specific env vars
-    if is_truthy_env(os.environ.get(BEDROCK_USE_ENV)):
+    if provider_enabled(BEDROCK_USE_ENV):
         snapshot[BEDROCK_BASE_URL_ENV] = os.environ.get(BEDROCK_BASE_URL_ENV)
         os.environ[BEDROCK_BASE_URL_ENV] = proxy_url
 
     # Handle Vertex AI-specific env vars
-    if is_truthy_env(os.environ.get(VERTEX_USE_ENV)):
+    if provider_enabled(VERTEX_USE_ENV):
         snapshot[VERTEX_BASE_URL_ENV] = os.environ.get(VERTEX_BASE_URL_ENV)
         os.environ[VERTEX_BASE_URL_ENV] = proxy_url
 

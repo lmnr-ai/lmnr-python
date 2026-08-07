@@ -223,7 +223,7 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
         original_settings: Any = None
         settings_overridden = False
         if is_custom:
-            original_env = setup_proxy_env(proxy_url)
+            original_env = setup_proxy_env(proxy_url, session_cwd)
             env_set_keys = {k for k, v in original_env.items() if v is not None}
         else:
             if options is not None:

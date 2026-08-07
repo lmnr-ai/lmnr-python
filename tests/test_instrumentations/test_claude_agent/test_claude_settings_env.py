@@ -65,6 +65,12 @@ def isolated_settings(tmp_path, monkeypatch):
         "CLAUDE_CODE_USE_FOUNDRY",
         "CLAUDE_CODE_USE_BEDROCK",
         "CLAUDE_CODE_USE_VERTEX",
+        # Provider credentials / region hints. This sandbox exports
+        # AWS_BEARER_TOKEN_BEDROCK, which would mask assertions about what we do
+        # (and do not) copy into the process env.
+        "AWS_BEARER_TOKEN_BEDROCK",
+        "AWS_REGION",
+        "AWS_PROFILE",
         # Both spellings: the resolver reads the lowercase pair too, and those
         # outrank every base URL, so a host that exports them would otherwise
         # make upstream assertions resolve the corporate proxy.
@@ -231,6 +237,53 @@ def test_unreadable_options_settings_does_not_break_resolution(isolated_settings
 
     assert resolve_target_url_from_env({}, settings="{not json}") == UPSTREAM
     assert resolve_target_url_from_env({}, settings="/nonexistent.json") == UPSTREAM
+
+
+def test_setup_proxy_env_pins_a_provider_enabled_only_in_settings(isolated_settings):
+    """Custom transports gate on the process env, but users put provider config —
+    and its credentials, e.g. AWS_BEARER_TOKEN_BEDROCK — in settings.json.
+
+    Reading os.environ alone left ANTHROPIC_BEDROCK_BASE_URL unpinned, so the CLI
+    talked to Bedrock directly and the proxy saw nothing.
+    """
+    config_dir, session_dir = isolated_settings
+    write_settings(
+        config_dir / "settings.json",
+        {
+            "CLAUDE_CODE_USE_BEDROCK": "1",
+            "AWS_BEARER_TOKEN_BEDROCK": "secret-token",
+            "AWS_REGION": "us-east-1",
+        },
+    )
+
+    setup_proxy_env(PROXY_URL, str(session_dir))
+
+    assert os.environ["ANTHROPIC_BEDROCK_BASE_URL"] == PROXY_URL
+    # The proxy must forward to the region-derived Bedrock endpoint, not the default.
+    assert "bedrock-runtime.us-east-1" in os.environ["ANTHROPIC_ORIGINAL_BASE_URL"]
+
+
+def test_setup_proxy_env_does_not_pin_a_provider_nobody_enabled(isolated_settings):
+    _, session_dir = isolated_settings
+
+    setup_proxy_env(PROXY_URL, str(session_dir))
+
+    assert "ANTHROPIC_BEDROCK_BASE_URL" not in os.environ
+    assert "ANTHROPIC_VERTEX_BASE_URL" not in os.environ
+
+
+def test_setup_proxy_env_never_copies_credentials(isolated_settings):
+    """We pin base URLs; we must not lift secrets out of settings into the env."""
+    config_dir, session_dir = isolated_settings
+    write_settings(
+        config_dir / "settings.json",
+        {"CLAUDE_CODE_USE_BEDROCK": "1", "AWS_BEARER_TOKEN_BEDROCK": "secret-token"},
+    )
+
+    setup_proxy_env(PROXY_URL, str(session_dir))
+
+    # The CLI reads it from its own settings layer; we neither need nor want a copy.
+    assert "AWS_BEARER_TOKEN_BEDROCK" not in os.environ
 
 
 def test_settings_base_url_becomes_proxy_upstream(isolated_settings):
