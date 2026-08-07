@@ -28,6 +28,7 @@ from lmnr.opentelemetry_lib.tracing.batch_processor import (
     DEFAULT_MAX_EXPORT_BATCH_SIZE_BYTES,
     SizeLimitedBatchSpanProcessor,
     approximate_span_size,
+    utf8_size,
 )
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 
@@ -302,6 +303,77 @@ def test_approximate_span_size_includes_events_and_status_description():
 
     # "s"(1) + "boom"(4) + "detail"(6) + 50
     assert approximate_span_size(readable) == 61
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param("Hello, how can I help you today? " * 40, id="ascii"),
+        pytest.param("Café naïve façade Zürich " * 50, id="latin1"),
+        pytest.param("Привет, как я могу помочь? " * 50, id="cyrillic"),
+        pytest.param("مرحبا كيف يمكنني مساعدتك " * 50, id="arabic"),
+        pytest.param("你好，我今天能为您做些什么？" * 90, id="cjk"),
+        pytest.param("Nice 👍🏽 great 🎉 done ✅ " * 50, id="emoji"),
+        pytest.param('{"role":"user","content":"分析 and почему"}' * 40, id="mixed"),
+        # gen_ai.input.messages opens with ASCII JSON scaffolding before any
+        # non-ASCII content, so a prefix-only sample would read this as ASCII.
+        pytest.param('[{"role":"system","content":"' + "你好" * 5000, id="ascii-prefix"),
+        pytest.param("你好" * 5000 + "a" * 2000, id="non-ascii-prefix"),
+    ],
+)
+def test_utf8_size_is_within_five_percent_of_the_real_encoding(text: str):
+    actual = len(text.encode("utf-8"))
+    estimate = utf8_size(text)
+
+    assert abs(estimate - actual) / actual < 0.05, (
+        f"estimated {estimate}, actual {actual}"
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["", "a", "ascii only", "Hello, world! " * 500],
+)
+def test_utf8_size_is_exact_for_ascii(text: str):
+    # str.isascii() is O(1), so the common case is exact rather than sampled.
+    assert utf8_size(text) == len(text.encode("utf-8")) == len(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["你好世界", "Привет мир", "👍🏽🎉✅"],
+)
+def test_utf8_size_is_exact_for_short_non_ascii(text: str):
+    # Below the sampling budget the whole string is encoded, so no estimation.
+    assert utf8_size(text) == len(text.encode("utf-8"))
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "hello \ud800 world",
+        "\ud800" * 20,
+        "你好" * 5000 + "\ud800",
+    ],
+)
+def test_utf8_size_survives_lone_surrogates(text: str):
+    # Bad JSON decoding upstream can put lone surrogates in a span attribute. A
+    # strict encode raises UnicodeEncodeError, and this runs inside on_end, so
+    # raising would break span export entirely.
+    assert utf8_size(text) > 0
+
+
+def test_span_size_counts_multibyte_attributes_above_their_character_count():
+    _, _, tracer = _make_processor(max_export_batch_size_bytes=10**9)
+
+    with tracer.start_as_current_span("s") as span:
+        span.set_attribute("gen_ai.input.messages", "你好" * 2000)
+        readable = span._readable_span()
+
+    size = approximate_span_size(readable)
+    # 4000 CJK characters are 12000 UTF-8 bytes; counting code points would
+    # report ~4000 and let the batch grow to ~3x the configured limit.
+    assert size > 11_000
 
 
 def test_default_is_the_plain_upstream_batch_processor():
