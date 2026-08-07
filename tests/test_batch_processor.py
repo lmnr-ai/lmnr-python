@@ -36,7 +36,7 @@ from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 _NEVER_MILLIS = 600_000
 
 # Byte limit and span size used by the flush-behaviour tests. The ratio matters:
-# a span at or above a quarter of the limit takes the inline path (see
+# a span at or above half the limit takes the inline path (see
 # `SizeLimitedBatchSpanProcessor.on_end`), so a test that wants to exercise the
 # asynchronous handoff needs spans well under that. 4 KB against 100 KB is a
 # 4% span, which mirrors the real shape — a ~500 KB GenAI span against the
@@ -303,6 +303,62 @@ def test_span_larger_than_the_whole_limit_is_exported_alone():
 
     processor.force_flush()
     assert exporter.batch_sizes == [1, 1, 1]
+
+
+def test_spans_at_half_the_limit_do_not_pair_up():
+    """A span at least half the limit must be exported alone, not batched.
+
+    The asynchronous flush cannot exclude the span that triggered it, so without
+    this two spans just over half the limit would land in one export of ~1.5x the
+    limit and keep growing with the threshold. This is what bounds the worst-case
+    export size, and the loopback suite caught it the hard way: with the guard set
+    at the whole limit instead, 10-30 MiB spans against a 16 MiB limit paired into
+    34 MiB exports and tripled the 413 count.
+    """
+    # Spans at ~60% of the limit: over half, comfortably under the whole thing.
+    exporter, processor, tracer = _make_processor(
+        max_export_batch_size_bytes=_BYTE_LIMIT
+    )
+    payload = int(_BYTE_LIMIT * 0.6)
+
+    for i in range(6):
+        _emit(tracer, f"big-{i}", payload_size=payload)
+
+    processor.force_flush()
+    assert exporter.batch_sizes == [1, 1, 1, 1, 1, 1]
+    assert exporter.span_count == 6
+
+
+def test_spans_below_half_the_limit_are_handed_off():
+    """The converse: the threshold must not drag ordinary spans onto the inline
+    path.
+
+    Asserted on *where* the export runs, not on batch size — the inline path
+    batches identically, it just charges the producer for the network. A span at
+    30% of the limit is under the threshold, so `on_end` must return without
+    exporting.
+    """
+    exporter, processor, tracer = _make_processor(
+        max_export_batch_size_bytes=_BYTE_LIMIT
+    )
+    exporter.export_delay_s = 0.4
+    payload = int(_BYTE_LIMIT * 0.3)
+
+    latencies = []
+    for i in range(6):
+        span = tracer.start_span(f"mid-{i}")
+        span.set_attribute("gen_ai.input.messages", "x" * payload)
+        started = time.perf_counter()
+        span.end()
+        latencies.append(time.perf_counter() - started)
+        assert _wait_for(lambda: not processor._flush_requested.is_set())
+
+    # The byte limit fired, but on the flush thread: no `end()` saw the 400 ms.
+    assert _wait_for(lambda: exporter.batch_count >= 1)
+    assert max(latencies) < 0.1, f"on_end blocked: {max(latencies):.3f}s"
+
+    processor.force_flush()
+    assert exporter.span_count == 6
 
 
 def test_pending_size_resyncs_after_an_external_flush():

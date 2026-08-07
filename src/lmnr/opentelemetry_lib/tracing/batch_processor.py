@@ -21,9 +21,6 @@ DEFAULT_MAX_EXPORT_BATCH_SIZE_BYTES = 16 * 1024 * 1024
 # bytes instead of being measured — they never dominate a GenAI payload.
 _FIXED_ATTRIBUTE_VALUE_SIZE = 8
 
-# Strings longer than this are measured by sampling rather than encoded whole.
-# 1 KiB of samples keeps the worst observed error near 2% while costing ~3us
-# even on a 200 KB value; encoding such a value outright costs ~125us.
 _UTF8_SAMPLE_BUDGET = 1024
 
 
@@ -110,18 +107,6 @@ class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
     thread does nothing but wait for a trigger and call the public
     `force_flush()`.
 
-    Why not hand the work to the upstream worker thread instead? Because there
-    is no public way to ask it for one. `BatchProcessor.worker` picks its export
-    strategy from whether its sleep was interrupted, and the only lever a
-    subclass has — setting `_worker_awaken` — selects
-    `EXPORT_WHILE_BATCH_EXCEEDS_THRESHOLD`, which explicitly declines to export
-    a queue shorter than `max_export_batch_size`. That is precisely the case the
-    byte limit creates. The strategy that *would* work,
-    `EXPORT_AT_LEAST_ONE_BATCH`, lives in `opentelemetry.sdk._shared_internal`
-    and is not reachable without either importing a private module or
-    reimplementing `worker()`. One extra mostly-idle thread is a better trade
-    than depending on private control flow.
-
     An asynchronous flush alone would turn the byte limit from a bound into a
     hint: a producer in a tight loop enqueues faster than the flush thread can
     drain, so the export that eventually goes out is sized by
@@ -132,15 +117,11 @@ class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
     So the handoff is conditional: `on_end` exports on its own thread when the
     previous request has not been picked up yet (the producer is outrunning the
     network, and backpressure is the only thing keeping the buffer bounded), or
-    when the span alone exceeds the limit and is therefore its own export
-    regardless. Everything else is handed off. Steady-state workloads only ever
-    take the handoff path.
-
-    Load testing (see `loadtest/RESULTS.md`) measured the fully synchronous
-    implementation at a p99 `on_end` of 664 ms on a realistic GenAI mix, versus
-    0.2 ms for the plain upstream processor. Keeping the common case off the
-    calling thread is what makes the byte limit cheap enough to consider
-    enabling by default.
+    when the span is at least half the limit on its own, since an asynchronous
+    flush cannot exclude the span that triggered it and a span that large would
+    materially overshoot by riding along. Everything else is handed off, which
+    bounds an export at 1.5x the limit. Steady-state workloads of ordinary spans
+    only ever take the handoff path.
     """
 
     def __init__(
@@ -252,13 +233,20 @@ class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
             #    count limit.
             # 2. This span is a large fraction of the whole limit, so letting it
             #    ride along in the batch it triggered would materially overshoot.
-            #    A span at 3/4 of the limit pairing with another like it is 1.5x
-            #    the limit; measured on 10-30 MiB spans against 16 MiB, async
-            #    pairing produced 34 MiB exports and tripled the 413 count in the
-            #    loopback suite. Below the fraction, riding along costs at most a
-            #    small overshoot on a limit that is an estimate anyway, and the
-            #    handoff is worth more.
-            oversized = size * 4 >= self._max_export_batch_size_bytes
+            #    Measured on 10-30 MiB spans against 16 MiB, async pairing
+            #    produced 34 MiB exports and tripled the 413 count in the
+            #    loopback suite.
+            #
+            #    The threshold sets the worst-case export size. The buffer is at
+            #    most `limit` before this span (or it would already have
+            #    flushed), so a batch is under `limit * (1 + threshold)`: 1.5x at
+            #    one half, 1.25x at one quarter. One half keeps the asynchronous
+            #    path for more spans, at 24 MiB worst case for the 16 MiB
+            #    default -- fine after gzip for any real payload (the least
+            #    compressible measured, base64, is 1.3x, so ~19 MB on the wire)
+            #    but only just inside a 25 MB body limit if a payload were
+            #    literally incompressible.
+            oversized = size * 2 >= self._max_export_batch_size_bytes
             if self._flush_requested.is_set() or oversized:
                 self.force_flush()
             else:
