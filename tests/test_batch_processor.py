@@ -1,9 +1,14 @@
 """Tests for the size-limited batch span processor.
 
-These build their own `TracerProvider` + recording exporter rather than using
-the session-scoped `span_exporter` fixture, because they need to control
-`max_export_batch_size` / `schedule_delay_millis` to isolate the byte-based
-flush trigger from the count- and time-based ones.
+The size trigger is opt-in (`Laminar.initialize(flush_by_size=True)`), so the
+`LaminarSpanProcessor` wiring tests below cover both transports: the plain
+upstream `BatchSpanProcessor` by default and `SizeLimitedBatchSpanProcessor`
+when the flag is set.
+
+The behavioral tests build their own `TracerProvider` + recording exporter
+rather than using the session-scoped `span_exporter` fixture, because they need
+to control `max_export_batch_size` / `schedule_delay_millis` to isolate the
+byte-based flush trigger from the count- and time-based ones.
 """
 
 import threading
@@ -12,6 +17,7 @@ import time
 import pytest
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
     SimpleSpanProcessor,
     SpanExporter,
     SpanExportResult,
@@ -298,11 +304,31 @@ def test_approximate_span_size_includes_events_and_status_description():
     assert approximate_span_size(readable) == 61
 
 
-def test_laminar_span_processor_uses_the_size_limited_batch_processor():
+def test_default_is_the_plain_upstream_batch_processor():
+    # flush_by_size is opt-in: by default the size trigger must not be wired in
+    # at all, so no user thread can ever block on an export.
     processor = _make_laminar_processor(
         base_url="https://api.lmnr.ai",
         api_key="test",
         exporter=RecordingExporter(),
+    )
+
+    assert isinstance(processor.instance, BatchSpanProcessor)
+    assert not isinstance(processor.instance, SizeLimitedBatchSpanProcessor)
+    # The 64-span default is Laminar's, applied here rather than left to OTel's
+    # own default of 512 — and it must hold on the default path too.
+    assert (
+        processor.instance._batch_processor._max_export_batch_size
+        == DEFAULT_MAX_EXPORT_BATCH_SIZE
+    )
+
+
+def test_flush_by_size_opts_into_the_size_limited_batch_processor():
+    processor = _make_laminar_processor(
+        base_url="https://api.lmnr.ai",
+        api_key="test",
+        exporter=RecordingExporter(),
+        flush_by_size=True,
     )
 
     assert isinstance(processor.instance, SizeLimitedBatchSpanProcessor)
@@ -310,8 +336,6 @@ def test_laminar_span_processor_uses_the_size_limited_batch_processor():
         processor.instance._max_export_batch_size_bytes
         == DEFAULT_MAX_EXPORT_BATCH_SIZE_BYTES
     )
-    # The 64-span default is Laminar's, applied here rather than left to OTel's
-    # own default of 512.
     assert (
         processor.instance._batch_processor._max_export_batch_size
         == DEFAULT_MAX_EXPORT_BATCH_SIZE
@@ -325,10 +349,23 @@ def test_laminar_span_processor_forwards_both_limits():
         exporter=RecordingExporter(),
         max_export_batch_size=7,
         max_export_batch_size_bytes=1234,
+        flush_by_size=True,
     )
 
     assert processor.instance._max_export_batch_size_bytes == 1234
     assert processor.instance._batch_processor._max_export_batch_size == 7
+
+
+def test_size_limit_is_ignored_without_the_flag():
+    # Passing a byte limit without opting in must not silently switch transports.
+    processor = _make_laminar_processor(
+        base_url="https://api.lmnr.ai",
+        api_key="test",
+        exporter=RecordingExporter(),
+        max_export_batch_size_bytes=1234,
+    )
+
+    assert not isinstance(processor.instance, SizeLimitedBatchSpanProcessor)
 
 
 def test_disable_batch_still_uses_the_simple_processor():
@@ -342,16 +379,42 @@ def test_disable_batch_still_uses_the_simple_processor():
     assert isinstance(processor.instance, SimpleSpanProcessor)
 
 
+def test_disable_batch_wins_over_flush_by_size():
+    processor = _make_laminar_processor(
+        base_url="https://api.lmnr.ai",
+        api_key="test",
+        exporter=RecordingExporter(),
+        disable_batch=True,
+        flush_by_size=True,
+    )
+
+    assert isinstance(processor.instance, SimpleSpanProcessor)
+
+
 def test_force_reinit_preserves_both_limits():
     processor = _make_laminar_processor(
         base_url="https://api.lmnr.ai",
         api_key="test",
         max_export_batch_size=7,
         max_export_batch_size_bytes=1234,
+        flush_by_size=True,
     )
 
     processor.force_reinit()
 
     assert isinstance(processor.instance, SizeLimitedBatchSpanProcessor)
     assert processor.instance._max_export_batch_size_bytes == 1234
+    assert processor.instance._batch_processor._max_export_batch_size == 7
+
+
+def test_force_reinit_preserves_the_default_transport():
+    processor = _make_laminar_processor(
+        base_url="https://api.lmnr.ai",
+        api_key="test",
+        max_export_batch_size=7,
+    )
+
+    processor.force_reinit()
+
+    assert not isinstance(processor.instance, SizeLimitedBatchSpanProcessor)
     assert processor.instance._batch_processor._max_export_batch_size == 7

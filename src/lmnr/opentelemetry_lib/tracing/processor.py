@@ -5,6 +5,7 @@ import uuid
 from opentelemetry.context import Context, get_value
 from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor
 from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
     SimpleSpanProcessor,
     SpanExporter,
 )
@@ -54,12 +55,13 @@ def _replay_active() -> bool:
 
 
 class LaminarSpanProcessor(SpanProcessor):
-    instance: SizeLimitedBatchSpanProcessor | SimpleSpanProcessor
+    instance: BatchSpanProcessor | SimpleSpanProcessor
     logger: logging.Logger
     __span_id_to_path: dict[int, list[str]] = {}
     __span_id_lists: dict[int, list[str]] = {}
     max_export_batch_size: int
     max_export_batch_size_bytes: int
+    flush_by_size: bool
     _instance_lock: threading.RLock
     _paths_lock: threading.RLock
 
@@ -73,6 +75,7 @@ class LaminarSpanProcessor(SpanProcessor):
         force_http: bool = False,
         max_export_batch_size: int | None = None,
         max_export_batch_size_bytes: int | None = None,
+        flush_by_size: bool = False,
         disable_batch: bool = False,
         exporter: SpanExporter | None = None,
     ):
@@ -85,6 +88,7 @@ class LaminarSpanProcessor(SpanProcessor):
         self.max_export_batch_size_bytes = (
             max_export_batch_size_bytes or DEFAULT_MAX_EXPORT_BATCH_SIZE_BYTES
         )
+        self.flush_by_size = flush_by_size
         port = http_port if force_http else grpc_port
         self.exporter = exporter or LaminarSpanExporter(
             base_url=base_url,
@@ -99,11 +103,15 @@ class LaminarSpanProcessor(SpanProcessor):
             else self._new_batch_processor()
         )
 
-    def _new_batch_processor(self) -> SizeLimitedBatchSpanProcessor:
-        return SizeLimitedBatchSpanProcessor(
-            self.exporter,
-            max_export_batch_size=self.max_export_batch_size,
-            max_export_batch_size_bytes=self.max_export_batch_size_bytes,
+    def _new_batch_processor(self) -> BatchSpanProcessor:
+        if self.flush_by_size:
+            return SizeLimitedBatchSpanProcessor(
+                self.exporter,
+                max_export_batch_size=self.max_export_batch_size,
+                max_export_batch_size_bytes=self.max_export_batch_size_bytes,
+            )
+        return BatchSpanProcessor(
+            self.exporter, max_export_batch_size=self.max_export_batch_size
         )
 
     def on_start(self, span: Span, parent_context: Context | None = None):

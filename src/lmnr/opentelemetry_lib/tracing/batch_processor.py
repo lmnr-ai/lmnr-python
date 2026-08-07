@@ -56,6 +56,9 @@ def approximate_span_size(span: ReadableSpan) -> int:
 class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
     """`BatchSpanProcessor` with a third, size-based flush trigger.
 
+    Opt-in via `Laminar.initialize(flush_by_size=True)`; the default transport
+    is the plain upstream `BatchSpanProcessor`.
+
     Upstream flushes on whichever comes first: `max_export_batch_size` spans
     buffered, or `schedule_delay_millis` elapsed. Neither bounds the *payload*,
     so a handful of large GenAI spans can produce an export big enough for the
@@ -66,9 +69,10 @@ class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
     That flush is synchronous on the ending thread — the upstream worker thread
     cannot be asked to export a buffer shorter than `max_export_batch_size`
     (see `BatchExportStrategy.EXPORT_WHILE_BATCH_EXCEEDS_THRESHOLD`), and
-    spawning a second worker is not worth the complexity. The cost is bounded:
-    it happens once per `max_export_batch_size_bytes` of span data, and only
-    for workloads large enough that the alternative is a rejected export.
+    spawning a second worker is not worth the complexity. Blocking a user's
+    thread on an export is the reason this is opt-in rather than the default.
+    The cost is bounded: it happens once per `max_export_batch_size_bytes` of
+    span data.
     """
 
     def __init__(
