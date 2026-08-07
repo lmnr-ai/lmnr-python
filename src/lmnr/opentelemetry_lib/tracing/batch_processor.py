@@ -1,8 +1,12 @@
+import logging
+import os
 import threading
 
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter
 from opentelemetry.util.types import AttributeValue
+
+logger = logging.getLogger(__name__)
 
 # Lower than OTel's own default of 512: GenAI spans are far heavier than the
 # spans that default was chosen for.
@@ -101,13 +105,42 @@ class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
     being ended would push the buffer past the limit, the buffer is flushed
     first and the span then starts a fresh batch.
 
-    That flush is synchronous on the ending thread — the upstream worker thread
-    cannot be asked to export a buffer shorter than `max_export_batch_size`
-    (see `BatchExportStrategy.EXPORT_WHILE_BATCH_EXCEEDS_THRESHOLD`), and
-    spawning a second worker is not worth the complexity. Blocking a user's
-    thread on an export is the reason this is opt-in rather than the default.
-    The cost is bounded: it happens once per `max_export_batch_size_bytes` of
-    span data.
+    The flush normally runs on a dedicated background thread owned by this
+    processor, so `on_end` does not block the thread that ended the span. That
+    thread does nothing but wait for a trigger and call the public
+    `force_flush()`.
+
+    Why not hand the work to the upstream worker thread instead? Because there
+    is no public way to ask it for one. `BatchProcessor.worker` picks its export
+    strategy from whether its sleep was interrupted, and the only lever a
+    subclass has — setting `_worker_awaken` — selects
+    `EXPORT_WHILE_BATCH_EXCEEDS_THRESHOLD`, which explicitly declines to export
+    a queue shorter than `max_export_batch_size`. That is precisely the case the
+    byte limit creates. The strategy that *would* work,
+    `EXPORT_AT_LEAST_ONE_BATCH`, lives in `opentelemetry.sdk._shared_internal`
+    and is not reachable without either importing a private module or
+    reimplementing `worker()`. One extra mostly-idle thread is a better trade
+    than depending on private control flow.
+
+    An asynchronous flush alone would turn the byte limit from a bound into a
+    hint: a producer in a tight loop enqueues faster than the flush thread can
+    drain, so the export that eventually goes out is sized by
+    `max_export_batch_size`, not by the byte limit. Measured, with 500 KB spans
+    against a 16 MiB limit: 95 MiB exports at a 512-span count limit — worse
+    than the problem this class exists to solve.
+
+    So the handoff is conditional: `on_end` exports on its own thread when the
+    previous request has not been picked up yet (the producer is outrunning the
+    network, and backpressure is the only thing keeping the buffer bounded), or
+    when the span alone exceeds the limit and is therefore its own export
+    regardless. Everything else is handed off. Steady-state workloads only ever
+    take the handoff path.
+
+    Load testing (see `loadtest/RESULTS.md`) measured the fully synchronous
+    implementation at a p99 `on_end` of 664 ms on a realistic GenAI mix, versus
+    0.2 ms for the plain upstream processor. Keeping the common case off the
+    calling thread is what makes the byte limit cheap enough to consider
+    enabling by default.
     """
 
     def __init__(
@@ -122,6 +155,58 @@ class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
         )
         self._pending_size_bytes = 0
         self._pending_size_lock = threading.Lock()
+
+        # Set by on_end to request a flush; cleared by the flush thread once it
+        # has one in progress. An Event rather than a queue because requests
+        # coalesce: two triggers arriving before the thread wakes need one
+        # flush, not two.
+        self._flush_requested = threading.Event()
+        self._flush_shutdown = False
+        self._flush_thread: threading.Thread | None = None
+        self._flush_thread_lock = threading.Lock()
+        self._flush_thread_pid: int | None = None
+        self._start_flush_thread()
+
+    def _start_flush_thread(self) -> None:
+        """Start the flush thread, or restart it after a fork.
+
+        A forked child inherits no threads, so `_flush_thread` would name a
+        thread that does not exist there and flushes would silently stop. The
+        pid is recorded so `on_end` can detect that and respawn. Upstream
+        handles the same problem for its own worker via `os.register_at_fork`.
+        """
+        with self._flush_thread_lock:
+            if self._flush_shutdown:
+                return
+            pid = os.getpid()
+            if self._flush_thread is not None and self._flush_thread_pid == pid:
+                return
+            # After a fork the inherited Event may be set with no thread to
+            # service it, and the lock state is undefined. Start clean.
+            self._flush_requested = threading.Event()
+            self._flush_thread = threading.Thread(
+                name="LmnrSizeLimitedSpanFlush",
+                target=self._flush_loop,
+                daemon=True,
+            )
+            self._flush_thread_pid = pid
+            self._flush_thread.start()
+
+    def _flush_loop(self) -> None:
+        while True:
+            self._flush_requested.wait()
+            if self._flush_shutdown:
+                return
+            # Clear before flushing, not after: a span ended *during* the export
+            # belongs to the next batch and must be able to request its own
+            # flush. Clearing afterwards would swallow that request.
+            self._flush_requested.clear()
+            try:
+                self.force_flush()
+            except Exception:
+                # A failed export must not kill the thread — that would silently
+                # disable the byte limit for the rest of the process.
+                logger.debug("Size-triggered span flush failed", exc_info=True)
 
     def on_end(self, span: ReadableSpan) -> None:
         if not (span.context and span.context.trace_flags.sampled):
@@ -150,6 +235,49 @@ class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
             )
 
         if should_flush:
-            self.force_flush()
+            if self._flush_thread_pid != os.getpid():
+                self._start_flush_thread()
+            # Two cases have to be exported on this thread rather than handed
+            # off, because an asynchronous flush cannot exclude the span that
+            # triggered it: `on_end` returns and enqueues before the flush thread
+            # runs, so the triggering span rides along in the batch it caused.
+            # Overshooting by one ordinary span is fine — the limit is an
+            # estimate anyway — but not in these two cases.
+            #
+            # 1. A request is still pending from last time, so the flush thread
+            #    has not even picked it up. The producer is outrunning the
+            #    network, and without backpressure the byte limit degrades into a
+            #    hint: the export size ends up bounded by `max_export_batch_size`
+            #    instead, measured at 95 MiB against a 16 MiB limit at a 512-span
+            #    count limit.
+            # 2. This span alone is at or over the limit. It will be its own
+            #    export no matter what, so there is no batching to win, and
+            #    letting it pair with another oversized span would double the
+            #    largest export in the workload that can least afford it.
+            oversized = size >= self._max_export_batch_size_bytes
+            if self._flush_requested.is_set() or oversized:
+                self.force_flush()
+            else:
+                self._flush_requested.set()
 
         super().on_end(span)
+
+    def shutdown(self) -> None:
+        """Stop the flush thread, then hand off to upstream's shutdown.
+
+        Order matters. Upstream's `shutdown` sets a flag that makes
+        `force_flush` a no-op and joins its own worker, so a flush thread still
+        running at that point would either race the exporter's teardown or
+        silently drop the spans it was asked to ship. Stopping first, then
+        letting upstream drain the queue itself, means nothing is lost: its
+        shutdown exports whatever is buffered.
+        """
+        self._flush_shutdown = True
+        self._flush_requested.set()
+        thread = self._flush_thread
+        is_self = thread is threading.current_thread()
+        if thread is not None and thread.is_alive() and not is_self:
+            # Bounded: the thread only ever waits on the Event or sits in one
+            # export, and upstream's shutdown will drain anything left over.
+            thread.join(timeout=30)
+        super().shutdown()

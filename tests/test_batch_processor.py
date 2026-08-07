@@ -39,11 +39,17 @@ _NEVER_MILLIS = 600_000
 class RecordingExporter(SpanExporter):
     def __init__(self):
         self.batches: list[list] = []
+        # Stands in for network time. Tests that assert on *where* an export
+        # runs need it to take long enough to be observable.
+        self.export_delay_s = 0.0
         self._lock = threading.Lock()
 
     def export(self, spans) -> SpanExportResult:
+        spans = list(spans)
+        if self.export_delay_s:
+            time.sleep(self.export_delay_s)
         with self._lock:
-            self.batches.append(list(spans))
+            self.batches.append(spans)
         return SpanExportResult.SUCCESS
 
     def shutdown(self) -> None:
@@ -56,6 +62,11 @@ class RecordingExporter(SpanExporter):
     def batch_sizes(self) -> list[int]:
         with self._lock:
             return [len(batch) for batch in self.batches]
+
+    @property
+    def batch_count(self) -> int:
+        with self._lock:
+            return len(self.batches)
 
     @property
     def span_count(self) -> int:
@@ -139,12 +150,70 @@ def test_byte_limit_flushes_before_count_and_time_limits():
 
     for i in range(10):
         _emit(tracer, f"span-{i}", payload_size=4000)
+        # The soft trigger hands the export to a background thread, so a tight
+        # loop would outrun it and land everything in one batch. Real producers
+        # do work between spans; this stands in for that. The hard-limit test
+        # below covers the tight-loop case explicitly.
+        assert _wait_for(lambda: not processor._flush_requested.is_set())
 
     # Without the byte limit nothing would have been exported yet: the item
-    # limit is 1000 and the schedule delay is 10 minutes. Four batches went out
-    # on the byte trigger; the trailing two spans need the explicit flush.
+    # limit is 1000 and the schedule delay is 10 minutes. Three batches went out
+    # on the byte trigger; the trailing span needs the explicit flush.
+    #
+    # Three spans per batch, not two: the flush is asynchronous, so the span
+    # that trips the limit has already been enqueued by the time the flush
+    # thread runs and rides along in the batch it triggered. 3 x 4023 B against
+    # a 10 KB limit is a 1.2x overshoot, which an estimated limit tolerates.
+    assert _wait_for(lambda: exporter.batch_count >= 3)
     processor.force_flush()
-    assert exporter.batch_sizes == [2, 2, 2, 2, 2]
+    assert exporter.batch_sizes == [3, 3, 3, 1]
+
+
+def test_byte_limit_flush_does_not_block_the_ending_thread():
+    """The soft trigger must hand the export off, not run it inline.
+
+    This is the property that makes the byte limit cheap enough to enable by
+    default: the previous implementation called `force_flush()` from `on_end`,
+    which the load tests measured at a p99 of 664 ms.
+    """
+    exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=10_000)
+    exporter.export_delay_s = 0.5
+
+    latencies = []
+    for i in range(6):
+        span = tracer.start_span(f"span-{i}")
+        span.set_attribute("gen_ai.input.messages", "x" * 4000)
+        started = time.perf_counter()
+        span.end()
+        latencies.append(time.perf_counter() - started)
+        assert _wait_for(lambda: not processor._flush_requested.is_set())
+
+    # Every span tripped a 500 ms export, yet no `end()` waited on one.
+    assert exporter.batch_count >= 2
+    assert max(latencies) < 0.1, f"on_end blocked: {max(latencies):.3f}s"
+
+
+def test_hard_limit_flushes_inline_when_the_async_flush_falls_behind():
+    """A producer outrunning the flush thread must be back-pressured.
+
+    Without this, the byte limit is only a hint: the async flush never gets a
+    chance to run, so the export is bounded by `max_export_batch_size` instead.
+    Measured before the hard tier existed: 95 MiB exports against a 16 MiB
+    limit.
+    """
+    exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=10_000)
+    exporter.export_delay_s = 0.2
+
+    # A tight loop with no pause: the flush thread cannot keep up.
+    for i in range(20):
+        _emit(tracer, f"span-{i}", payload_size=4000)
+
+    processor.force_flush()
+
+    # 2x the limit is 20 KB, i.e. 5 spans of 4 KB. Allow a little slack for the
+    # span that trips the limit riding along in the batch it triggered.
+    assert max(exporter.batch_sizes) <= 7, exporter.batch_sizes
+    assert exporter.span_count == 20
 
 
 def test_count_limit_flushes_and_resets_the_running_size():
@@ -261,6 +330,55 @@ def test_shutdown_exports_everything_buffered():
 
     processor.shutdown()
     assert exporter.span_count == 5
+
+
+def test_shutdown_stops_the_flush_thread():
+    """The flush thread must not outlive shutdown.
+
+    It calls `force_flush()`, which upstream turns into a no-op once shut down —
+    so a surviving thread would spin on a dead processor and, being a daemon,
+    keep a reference to the exporter alive for the rest of the process.
+    """
+    _, processor, tracer = _make_processor(max_export_batch_size_bytes=10_000)
+    for i in range(5):
+        _emit(tracer, f"span-{i}", payload_size=4000)
+
+    thread = processor._flush_thread
+    assert thread is not None and thread.is_alive()
+
+    processor.shutdown()
+
+    assert _wait_for(lambda: not thread.is_alive()), "flush thread outlived shutdown"
+
+
+def test_shutdown_is_idempotent():
+    # TracerProvider.shutdown and an explicit call both land here; the second
+    # must not raise on an already-joined thread.
+    _, processor, tracer = _make_processor(max_export_batch_size_bytes=10_000)
+    _emit(tracer, "span", payload_size=4000)
+    processor.shutdown()
+    processor.shutdown()
+
+
+def test_spans_ending_during_an_export_are_not_lost():
+    """A span ended while the flush thread is mid-export must still be exported.
+
+    The flush request is cleared *before* the export, so a span arriving during
+    it can set the request again and get its own flush. Clearing afterwards
+    would swallow that request and leave the span buffered until the schedule
+    delay — which the tests set to 10 minutes.
+    """
+    exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=10_000)
+    exporter.export_delay_s = 0.3
+
+    # Trip the limit, then keep emitting while that export is in flight.
+    for i in range(9):
+        _emit(tracer, f"span-{i}", payload_size=4000)
+        time.sleep(0.05)
+
+    assert _wait_for(lambda: exporter.span_count >= 6)
+    processor.force_flush()
+    assert exporter.span_count == 9
 
 
 def test_concurrent_emitters_lose_no_spans():
