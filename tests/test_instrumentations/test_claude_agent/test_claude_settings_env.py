@@ -561,32 +561,37 @@ def test_valid_empty_settings_file_still_gets_the_proxy(isolated_settings, tmp_p
 def test_apply_override_leaves_unreadable_path_in_place(isolated_settings):
     options = MockOptions(settings="/nonexistent/settings.json")
 
-    assert apply_settings_proxy_override(options, PROXY_URL) is None
+    assert apply_settings_proxy_override(options, PROXY_URL) is False
     assert options.settings == "/nonexistent/settings.json"
 
 
-def test_apply_override_returns_snapshot_for_restoration(isolated_settings):
+def test_apply_override_reports_that_it_rewrote_settings(isolated_settings):
     original = json.dumps({"model": "sonnet"})
     options = MockOptions(settings=original)
 
-    snapshot = apply_settings_proxy_override(options, PROXY_URL)
-
-    assert snapshot == (original,)
+    assert apply_settings_proxy_override(options, PROXY_URL) is True
     assert json.loads(options.settings)["env"]["ANTHROPIC_BASE_URL"] == PROXY_URL
 
-    options.settings = snapshot[0]
+    # The caller holds the original itself and restores it on error.
+    options.settings = original
     assert options.settings == original
 
 
-def test_apply_override_restores_none_settings(isolated_settings):
-    """A previously-unset settings field must go back to None, not an empty blob."""
+def test_apply_override_reports_a_rewrite_of_unset_settings(isolated_settings):
+    """A previously-unset field is still a rewrite, so it can go back to None."""
     options = MockOptions()
 
-    snapshot = apply_settings_proxy_override(options, PROXY_URL)
+    assert apply_settings_proxy_override(options, PROXY_URL) is True
+    assert options.settings is not None
 
-    assert snapshot == (None,)
-    options.settings = snapshot[0]
-    assert options.settings is None
+
+def test_apply_override_reports_no_rewrite_without_a_settings_field(isolated_settings):
+    class NoSettings:
+        env = {}
+        cwd = None
+        setting_sources = None
+
+    assert apply_settings_proxy_override(NoSettings(), PROXY_URL) is False
 
 
 def test_on_disk_settings_are_never_modified(isolated_settings):

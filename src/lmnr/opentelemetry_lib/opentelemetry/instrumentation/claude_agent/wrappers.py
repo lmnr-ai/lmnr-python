@@ -220,7 +220,8 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
         is_custom = not isinstance(instance, SubprocessCLITransport)
 
         options_env_snapshot = {}
-        settings_snapshot: tuple[str | None] | None = None
+        original_settings: Any = None
+        settings_overridden = False
         if is_custom:
             original_env = setup_proxy_env(proxy_url)
             env_set_keys = {k for k, v in original_env.items() if v is not None}
@@ -228,9 +229,10 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
             if options is not None:
                 options_env_snapshot = snapshot_options_env_for_proxy(options)
                 update_options_env_for_proxy(options, proxy_url, target_url)
-                # A one-tuple so an original value of None is distinguishable
-                # from "we never touched settings".
-                settings_snapshot = apply_settings_proxy_override(options, proxy_url)
+                original_settings = getattr(options, "settings", None)
+                settings_overridden = apply_settings_proxy_override(
+                    options, proxy_url
+                )
 
             original_env = {}
             env_set_keys = set()
@@ -255,7 +257,8 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
             "original_env": original_env,
             "env_set_keys": env_set_keys,
             "options_env_snapshot": options_env_snapshot,
-            "settings_snapshot": settings_snapshot,
+            "original_settings": original_settings,
+            "settings_overridden": settings_overridden,
         }
 
         instance.__lmnr_context = context
@@ -274,8 +277,8 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
             if options_env_snapshot and options is not None:
                 restore_options_env_from_snapshot(options, options_env_snapshot)
 
-            if settings_snapshot is not None and options is not None:
-                options.settings = settings_snapshot[0]
+            if settings_overridden and options is not None:
+                options.settings = original_settings
 
             try:
                 delattr(instance, "__lmnr_context")
@@ -317,10 +320,9 @@ async def _cleanup_transport_context(instance) -> None:
                     context.get("env_set_keys", set()),
                 )
 
-            settings_snapshot = context.get("settings_snapshot")
             options = getattr(instance, "_options", None)
-            if settings_snapshot is not None and options is not None:
-                options.settings = settings_snapshot[0]
+            if context.get("settings_overridden") and options is not None:
+                options.settings = context.get("original_settings")
 
             # Release port immediately to prevent leaks
             # Must happen before background cleanup in case event loop shuts down
@@ -409,7 +411,7 @@ def restore_options_env_from_snapshot(options, snapshot: dict[str, str | None]) 
             options.env[key] = value
 
 
-def apply_settings_proxy_override(options, proxy_url: str) -> tuple[str | None] | None:
+def apply_settings_proxy_override(options, proxy_url: str) -> bool:
     """
     Point ``options.settings`` at the proxy so settings.json can't bypass it.
 
@@ -418,11 +420,12 @@ def apply_settings_proxy_override(options, proxy_url: str) -> tuple[str | None] 
     ``~/.claude/settings.json`` (lmnr#2167). ``--settings`` is the highest
     user-controlled layer; the user's files on disk are never modified.
 
-    Returns a one-tuple holding the previous value for restoration, or ``None``
-    when nothing was changed.
+    Returns whether ``options.settings`` was rewritten. The caller snapshots the
+    previous value itself, so restoring on error does not have to distinguish
+    "the original was ``None``" from "we never touched it".
     """
     if not hasattr(options, "settings"):
-        return None
+        return False
 
     session_cwd = getattr(options, "cwd", None)
     setting_sources = getattr(options, "setting_sources", None)
@@ -437,7 +440,7 @@ def apply_settings_proxy_override(options, proxy_url: str) -> tuple[str | None] 
             "a base URL will bypass the Laminar proxy and produce no LLM spans.",
             original,
         )
-        return None
+        return False
 
     options.settings = updated
 
@@ -457,7 +460,7 @@ def apply_settings_proxy_override(options, proxy_url: str) -> tuple[str | None] 
             proxy_url,
         )
 
-    return (original,)
+    return True
 
 
 def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> None:
