@@ -250,11 +250,15 @@ class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
             #    hint: the export size ends up bounded by `max_export_batch_size`
             #    instead, measured at 95 MiB against a 16 MiB limit at a 512-span
             #    count limit.
-            # 2. This span alone is at or over the limit. It will be its own
-            #    export no matter what, so there is no batching to win, and
-            #    letting it pair with another oversized span would double the
-            #    largest export in the workload that can least afford it.
-            oversized = size >= self._max_export_batch_size_bytes
+            # 2. This span is a large fraction of the whole limit, so letting it
+            #    ride along in the batch it triggered would materially overshoot.
+            #    A span at 3/4 of the limit pairing with another like it is 1.5x
+            #    the limit; measured on 10-30 MiB spans against 16 MiB, async
+            #    pairing produced 34 MiB exports and tripled the 413 count in the
+            #    loopback suite. Below the fraction, riding along costs at most a
+            #    small overshoot on a limit that is an estimate anyway, and the
+            #    handoff is worth more.
+            oversized = size * 4 >= self._max_export_batch_size_bytes
             if self._flush_requested.is_set() or oversized:
                 self.force_flush()
             else:

@@ -35,6 +35,21 @@ from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 # Long enough that the schedule-delay trigger can never fire during a test.
 _NEVER_MILLIS = 600_000
 
+# Byte limit and span size used by the flush-behaviour tests. The ratio matters:
+# a span at or above a quarter of the limit takes the inline path (see
+# `SizeLimitedBatchSpanProcessor.on_end`), so a test that wants to exercise the
+# asynchronous handoff needs spans well under that. 4 KB against 100 KB is a
+# 4% span, which mirrors the real shape — a ~500 KB GenAI span against the
+# 16 MiB default is 3%.
+_BYTE_LIMIT = 100_000
+_SPAN_BYTES = 4000
+# Spans per batch once the limit trips. A span measures slightly more than its
+# payload (name, attribute key, the ids the processor stamps), so this is
+# floor(limit / measured size) = 24 that fit under the limit, plus the one that
+# trips it -- which the asynchronous flush cannot exclude, because `on_end`
+# enqueues it before the flush thread runs.
+_SPANS_PER_BATCH = 25
+
 
 class RecordingExporter(SpanExporter):
     def __init__(self):
@@ -145,28 +160,25 @@ def _wait_for(predicate, timeout: float = 10.0) -> bool:
 
 
 def test_byte_limit_flushes_before_count_and_time_limits():
-    # 4 KiB-ish spans against a 10 KB limit: every third span trips it.
-    exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=10_000)
+    exporter, processor, tracer = _make_processor(
+        max_export_batch_size_bytes=_BYTE_LIMIT
+    )
 
-    for i in range(10):
-        _emit(tracer, f"span-{i}", payload_size=4000)
-        # The soft trigger hands the export to a background thread, so a tight
-        # loop would outrun it and land everything in one batch. Real producers
-        # do work between spans; this stands in for that. The hard-limit test
-        # below covers the tight-loop case explicitly.
+    n_spans = _SPANS_PER_BATCH * 2 + 1
+    for i in range(n_spans):
+        _emit(tracer, f"span-{i}", payload_size=_SPAN_BYTES)
+        # The trigger hands the export to a background thread, so a tight loop
+        # would outrun it and land everything in one batch. Real producers do
+        # work between spans; waiting for the request to be picked up stands in
+        # for that. The backpressure test below covers the tight-loop case.
         assert _wait_for(lambda: not processor._flush_requested.is_set())
 
     # Without the byte limit nothing would have been exported yet: the item
-    # limit is 1000 and the schedule delay is 10 minutes. Three batches went out
-    # on the byte trigger; the trailing span needs the explicit flush.
-    #
-    # Three spans per batch, not two: the flush is asynchronous, so the span
-    # that trips the limit has already been enqueued by the time the flush
-    # thread runs and rides along in the batch it triggered. 3 x 4023 B against
-    # a 10 KB limit is a 1.2x overshoot, which an estimated limit tolerates.
-    assert _wait_for(lambda: exporter.batch_count >= 3)
+    # limit is 1000 and the schedule delay is 10 minutes.
+    assert _wait_for(lambda: exporter.batch_count >= 2)
     processor.force_flush()
-    assert exporter.batch_sizes == [3, 3, 3, 1]
+    assert exporter.batch_sizes == [_SPANS_PER_BATCH, _SPANS_PER_BATCH, 1]
+    assert exporter.span_count == n_spans
 
 
 def test_byte_limit_flush_does_not_block_the_ending_thread():
@@ -176,44 +188,52 @@ def test_byte_limit_flush_does_not_block_the_ending_thread():
     default: the previous implementation called `force_flush()` from `on_end`,
     which the load tests measured at a p99 of 664 ms.
     """
-    exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=10_000)
+    exporter, processor, tracer = _make_processor(
+        max_export_batch_size_bytes=_BYTE_LIMIT
+    )
     exporter.export_delay_s = 0.5
 
     latencies = []
-    for i in range(6):
+    for i in range(_SPANS_PER_BATCH * 2 + 1):
         span = tracer.start_span(f"span-{i}")
-        span.set_attribute("gen_ai.input.messages", "x" * 4000)
+        span.set_attribute("gen_ai.input.messages", "x" * _SPAN_BYTES)
         started = time.perf_counter()
         span.end()
         latencies.append(time.perf_counter() - started)
         assert _wait_for(lambda: not processor._flush_requested.is_set())
 
-    # Every span tripped a 500 ms export, yet no `end()` waited on one.
+    # Exports of 500 ms each fired, yet no `end()` waited on one.
     assert exporter.batch_count >= 2
     assert max(latencies) < 0.1, f"on_end blocked: {max(latencies):.3f}s"
 
 
-def test_hard_limit_flushes_inline_when_the_async_flush_falls_behind():
-    """A producer outrunning the flush thread must be back-pressured.
+def test_a_producer_outrunning_the_flush_thread_is_back_pressured():
+    """A tight loop must not let the buffer grow without bound.
 
-    Without this, the byte limit is only a hint: the async flush never gets a
-    chance to run, so the export is bounded by `max_export_batch_size` instead.
-    Measured before the hard tier existed: 95 MiB exports against a 16 MiB
-    limit.
+    An unconditional handoff makes the byte limit only a hint: the flush thread
+    never gets scheduled, so the export ends up bounded by
+    `max_export_batch_size` instead. Measured before the inline fallback existed:
+    95 MiB exports against a 16 MiB limit at a 512-span count limit.
     """
-    exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=10_000)
+    exporter, processor, tracer = _make_processor(
+        max_export_batch_size_bytes=_BYTE_LIMIT
+    )
     exporter.export_delay_s = 0.2
 
-    # A tight loop with no pause: the flush thread cannot keep up.
-    for i in range(20):
-        _emit(tracer, f"span-{i}", payload_size=4000)
+    # No pause between spans: the flush thread cannot keep up, so `on_end` has
+    # to export inline to keep the batch bounded.
+    n_spans = _SPANS_PER_BATCH * 4
+    for i in range(n_spans):
+        _emit(tracer, f"span-{i}", payload_size=_SPAN_BYTES)
 
     processor.force_flush()
 
-    # 2x the limit is 20 KB, i.e. 5 spans of 4 KB. Allow a little slack for the
-    # span that trips the limit riding along in the batch it triggered.
-    assert max(exporter.batch_sizes) <= 7, exporter.batch_sizes
-    assert exporter.span_count == 20
+    # Without backpressure this is one batch of every span emitted. The bound is
+    # not exact -- spans keep arriving during the inline export -- so this
+    # asserts the order of magnitude, not a precise count.
+    assert max(exporter.batch_sizes) < n_spans, exporter.batch_sizes
+    assert max(exporter.batch_sizes) <= _SPANS_PER_BATCH * 2, exporter.batch_sizes
+    assert exporter.span_count == n_spans
 
 
 def test_count_limit_flushes_and_resets_the_running_size():
@@ -289,7 +309,7 @@ def test_pending_size_resyncs_after_an_external_flush():
     # The worker thread and force_flush() both drain the queue without telling
     # us. An emptied queue must reset the running total, or a stale total would
     # flush a nearly-empty buffer on the very next span.
-    exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=10_000)
+    exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=_BYTE_LIMIT)
 
     _emit(tracer, "first", payload_size=9000)
     processor.force_flush()
@@ -323,10 +343,10 @@ def test_unsampled_spans_are_not_counted():
 
 
 def test_shutdown_exports_everything_buffered():
-    exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=10_000)
+    exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=_BYTE_LIMIT)
 
     for i in range(5):
-        _emit(tracer, f"span-{i}", payload_size=4000)
+        _emit(tracer, f"span-{i}", payload_size=_SPAN_BYTES)
 
     processor.shutdown()
     assert exporter.span_count == 5
@@ -339,9 +359,9 @@ def test_shutdown_stops_the_flush_thread():
     so a surviving thread would spin on a dead processor and, being a daemon,
     keep a reference to the exporter alive for the rest of the process.
     """
-    _, processor, tracer = _make_processor(max_export_batch_size_bytes=10_000)
+    _, processor, tracer = _make_processor(max_export_batch_size_bytes=_BYTE_LIMIT)
     for i in range(5):
-        _emit(tracer, f"span-{i}", payload_size=4000)
+        _emit(tracer, f"span-{i}", payload_size=_SPAN_BYTES)
 
     thread = processor._flush_thread
     assert thread is not None and thread.is_alive()
@@ -354,8 +374,8 @@ def test_shutdown_stops_the_flush_thread():
 def test_shutdown_is_idempotent():
     # TracerProvider.shutdown and an explicit call both land here; the second
     # must not raise on an already-joined thread.
-    _, processor, tracer = _make_processor(max_export_batch_size_bytes=10_000)
-    _emit(tracer, "span", payload_size=4000)
+    _, processor, tracer = _make_processor(max_export_batch_size_bytes=_BYTE_LIMIT)
+    _emit(tracer, "span", payload_size=_SPAN_BYTES)
     processor.shutdown()
     processor.shutdown()
 
@@ -368,17 +388,21 @@ def test_spans_ending_during_an_export_are_not_lost():
     would swallow that request and leave the span buffered until the schedule
     delay — which the tests set to 10 minutes.
     """
-    exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=10_000)
+    exporter, processor, tracer = _make_processor(
+        max_export_batch_size_bytes=_BYTE_LIMIT
+    )
     exporter.export_delay_s = 0.3
 
-    # Trip the limit, then keep emitting while that export is in flight.
-    for i in range(9):
-        _emit(tracer, f"span-{i}", payload_size=4000)
-        time.sleep(0.05)
+    # Enough spans to trip the limit twice, paced so later spans arrive while the
+    # first export is still in flight.
+    n_spans = _SPANS_PER_BATCH * 2
+    for i in range(n_spans):
+        _emit(tracer, f"span-{i}", payload_size=_SPAN_BYTES)
+        time.sleep(0.01)
 
-    assert _wait_for(lambda: exporter.span_count >= 6)
+    assert _wait_for(lambda: exporter.span_count >= _SPANS_PER_BATCH)
     processor.force_flush()
-    assert exporter.span_count == 9
+    assert exporter.span_count == n_spans
 
 
 def test_concurrent_emitters_lose_no_spans():
