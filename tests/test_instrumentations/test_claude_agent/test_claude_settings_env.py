@@ -46,7 +46,13 @@ class MockOptions:
 
 @pytest.fixture
 def isolated_settings(tmp_path, monkeypatch):
-    """Point Claude's user config dir and session cwd at empty temp dirs."""
+    """Point Claude's user config dir and session cwd at empty temp dirs.
+
+    Package-level ``isolate_claude_settings`` already redirects
+    ``CLAUDE_CONFIG_DIR`` away from ``~/.claude``; this fixture overlays a
+    per-test config dir (so tests can write settings.json) and a clean session
+    cwd for project/local layers.
+    """
     config_dir = tmp_path / "config"
     config_dir.mkdir()
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
@@ -76,7 +82,14 @@ def isolated_settings(tmp_path, monkeypatch):
         # make upstream assertions resolve the corporate proxy.
         *PROXY_ENV_KEYS,
     ):
-        monkeypatch.delenv(key, raising=False)
+        # monkeypatch.delenv(raising=False) is a no-op when the key is absent, so
+        # a later setup_proxy_env set would leak into the next test. Force an undo
+        # that deletes the key when it started unset (setenv "" then delenv).
+        if key in os.environ:
+            monkeypatch.delenv(key)
+        else:
+            monkeypatch.setenv(key, "")
+            monkeypatch.delenv(key)
 
     return config_dir, session_dir
 
@@ -256,20 +269,24 @@ def test_setup_proxy_env_pins_a_provider_enabled_only_in_settings(isolated_setti
         },
     )
 
-    setup_proxy_env(PROXY_URL, str(session_dir))
-
-    assert os.environ["ANTHROPIC_BEDROCK_BASE_URL"] == PROXY_URL
-    # The proxy must forward to the region-derived Bedrock endpoint, not the default.
-    assert "bedrock-runtime.us-east-1" in os.environ["ANTHROPIC_ORIGINAL_BASE_URL"]
+    snapshot = setup_proxy_env(PROXY_URL, str(session_dir))
+    try:
+        assert os.environ["ANTHROPIC_BEDROCK_BASE_URL"] == PROXY_URL
+        # The proxy must forward to the region-derived Bedrock endpoint, not the default.
+        assert "bedrock-runtime.us-east-1" in os.environ["ANTHROPIC_ORIGINAL_BASE_URL"]
+    finally:
+        restore_env(snapshot, {k for k, v in snapshot.items() if v is not None})
 
 
 def test_setup_proxy_env_does_not_pin_a_provider_nobody_enabled(isolated_settings):
     _, session_dir = isolated_settings
 
-    setup_proxy_env(PROXY_URL, str(session_dir))
-
-    assert "ANTHROPIC_BEDROCK_BASE_URL" not in os.environ
-    assert "ANTHROPIC_VERTEX_BASE_URL" not in os.environ
+    snapshot = setup_proxy_env(PROXY_URL, str(session_dir))
+    try:
+        assert "ANTHROPIC_BEDROCK_BASE_URL" not in os.environ
+        assert "ANTHROPIC_VERTEX_BASE_URL" not in os.environ
+    finally:
+        restore_env(snapshot, {k for k, v in snapshot.items() if v is not None})
 
 
 def test_setup_proxy_env_never_copies_credentials(isolated_settings):
@@ -280,10 +297,12 @@ def test_setup_proxy_env_never_copies_credentials(isolated_settings):
         {"CLAUDE_CODE_USE_BEDROCK": "1", "AWS_BEARER_TOKEN_BEDROCK": "secret-token"},
     )
 
-    setup_proxy_env(PROXY_URL, str(session_dir))
-
-    # The CLI reads it from its own settings layer; we neither need nor want a copy.
-    assert "AWS_BEARER_TOKEN_BEDROCK" not in os.environ
+    snapshot = setup_proxy_env(PROXY_URL, str(session_dir))
+    try:
+        # The CLI reads it from its own settings layer; we neither need nor want a copy.
+        assert "AWS_BEARER_TOKEN_BEDROCK" not in os.environ
+    finally:
+        restore_env(snapshot, {k for k, v in snapshot.items() if v is not None})
 
 
 def test_settings_base_url_becomes_proxy_upstream(isolated_settings):
