@@ -21,6 +21,10 @@ from .utils import (
     restore_env,
     resolve_target_url_from_env,
     is_truthy_env,
+    build_proxy_flag_settings,
+    read_claude_settings_env,
+    PROXY_BASE_URL_ENV_KEYS,
+    PROXY_ENV_KEYS,
     FOUNDRY_BASE_URL_ENV,
     FOUNDRY_RESOURCE_ENV,
     FOUNDRY_USE_ENV,
@@ -188,8 +192,23 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
             return await wrapped(*args, **kwargs)
 
         # Read options.env BEFORE modifying to avoid circular proxy config
-        env_dict = instance._options.env if hasattr(instance, "_options") else {}
-        target_url = resolve_target_url_from_env(env_dict)
+        options = getattr(instance, "_options", None)
+        env_dict = options.env if options is not None else {}
+        session_cwd = getattr(options, "cwd", None)
+        # Read the DOCUMENTED options.setting_sources only. Do not try to infer
+        # the SDK's private skills-based default (_apply_skills_defaults narrows
+        # this to user,project) — that is an internal we must not track. Reading
+        # a layer the CLI ignored is a safe over-read for upstream resolution:
+        # the flag layer still forces every base URL to the proxy.
+        setting_sources = getattr(options, "setting_sources", None)
+        target_url = resolve_target_url_from_env(
+            env_dict,
+            cwd=session_cwd,
+            setting_sources=setting_sources,
+            # options.settings is the highest layer the CLI reads and
+            # apply_settings_proxy_override rewrites its base URLs to the proxy.
+            settings=getattr(options, "settings", None),
+        )
 
         if target_url is None:
             raise RuntimeError("Invalid provider configuration")
@@ -201,13 +220,19 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
         is_custom = not isinstance(instance, SubprocessCLITransport)
 
         options_env_snapshot = {}
+        original_settings: Any = None
+        settings_overridden = False
         if is_custom:
-            original_env = setup_proxy_env(proxy_url)
+            original_env = setup_proxy_env(proxy_url, session_cwd)
             env_set_keys = {k for k, v in original_env.items() if v is not None}
         else:
-            if hasattr(instance, "_options"):
-                options_env_snapshot = snapshot_options_env_for_proxy(instance._options)
-                update_options_env_for_proxy(instance._options, proxy_url, target_url)
+            if options is not None:
+                options_env_snapshot = snapshot_options_env_for_proxy(options)
+                update_options_env_for_proxy(options, proxy_url, target_url)
+                original_settings = getattr(options, "settings", None)
+                settings_overridden = apply_settings_proxy_override(
+                    options, proxy_url
+                )
 
             original_env = {}
             env_set_keys = set()
@@ -219,7 +244,7 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
                 os.environ.pop(FOUNDRY_RESOURCE_ENV)
 
             # Prevent subprocess from routing through corporate proxy
-            for proxy_var in ["HTTP_PROXY", "HTTPS_PROXY"]:
+            for proxy_var in PROXY_ENV_KEYS:
                 if proxy_var in os.environ:
                     original_env[proxy_var] = os.environ[proxy_var]
                     env_set_keys.add(proxy_var)
@@ -232,6 +257,8 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
             "original_env": original_env,
             "env_set_keys": env_set_keys,
             "options_env_snapshot": options_env_snapshot,
+            "original_settings": original_settings,
+            "settings_overridden": settings_overridden,
         }
 
         instance.__lmnr_context = context
@@ -247,10 +274,11 @@ def wrap_transport_connect(to_wrap: dict[str, Any]):
             if original_env:
                 restore_env(original_env, env_set_keys or set())
 
-            if options_env_snapshot and hasattr(instance, "_options"):
-                restore_options_env_from_snapshot(
-                    instance._options, options_env_snapshot
-                )
+            if options_env_snapshot and options is not None:
+                restore_options_env_from_snapshot(options, options_env_snapshot)
+
+            if settings_overridden and options is not None:
+                options.settings = original_settings
 
             try:
                 delattr(instance, "__lmnr_context")
@@ -291,6 +319,10 @@ async def _cleanup_transport_context(instance) -> None:
                     context.get("original_env", {}),
                     context.get("env_set_keys", set()),
                 )
+
+            options = getattr(instance, "_options", None)
+            if context.get("settings_overridden") and options is not None:
+                options.settings = context.get("original_settings")
 
             # Release port immediately to prevent leaks
             # Must happen before background cleanup in case event loop shuts down
@@ -339,11 +371,13 @@ def snapshot_options_env_for_proxy(options) -> dict[str, str | None]:
     Returns:
         Dictionary mapping keys to their original values (or None if not present)
     """
+    # PROXY_ENV_KEYS covers both the upper and lower case spellings that
+    # update_options_env_for_proxy pops; a key popped but not snapshotted is lost
+    # from options.env when a failed connect restores.
     keys_to_snapshot = [
         "ANTHROPIC_BASE_URL",
         "ANTHROPIC_ORIGINAL_BASE_URL",
-        "HTTP_PROXY",
-        "HTTPS_PROXY",
+        *PROXY_ENV_KEYS,
         FOUNDRY_BASE_URL_ENV,
         FOUNDRY_RESOURCE_ENV,
         FOUNDRY_USE_ENV,
@@ -377,6 +411,58 @@ def restore_options_env_from_snapshot(options, snapshot: dict[str, str | None]) 
             options.env[key] = value
 
 
+def apply_settings_proxy_override(options, proxy_url: str) -> bool:
+    """
+    Point ``options.settings`` at the proxy so settings.json can't bypass it.
+
+    Claude Code's settings ``env`` block outranks the subprocess environment, so
+    ``options.env`` alone does not redirect a user whose base URL lives in
+    ``~/.claude/settings.json`` (lmnr#2167). ``--settings`` is the highest
+    user-controlled layer; the user's files on disk are never modified.
+
+    Returns whether ``options.settings`` was rewritten. The caller snapshots the
+    previous value itself, so restoring on error does not have to distinguish
+    "the original was ``None``" from "we never touched it".
+    """
+    if not hasattr(options, "settings"):
+        return False
+
+    session_cwd = getattr(options, "cwd", None)
+    setting_sources = getattr(options, "setting_sources", None)
+
+    original = options.settings
+    updated = build_proxy_flag_settings(
+        original, proxy_url, cwd=session_cwd, setting_sources=setting_sources
+    )
+    if updated is None:
+        logger.warning(
+            "Could not read options.settings %r; Claude Code settings that define "
+            "a base URL will bypass the Laminar proxy and produce no LLM spans.",
+            original,
+        )
+        return False
+
+    options.settings = updated
+
+    conflicting = [
+        key
+        for key, value in read_claude_settings_env(
+            session_cwd, setting_sources
+        ).items()
+        if key in PROXY_BASE_URL_ENV_KEYS and value not in ("", proxy_url)
+    ]
+    if conflicting:
+        logger.info(
+            "Claude Code settings define %s, which outranks the subprocess "
+            "environment. Injected --settings so the Laminar proxy at %s still "
+            "intercepts API traffic; your settings files were not modified.",
+            ", ".join(sorted(conflicting)),
+            proxy_url,
+        )
+
+    return True
+
+
 def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> None:
     """
     Update options.env to point subprocess to proxy.
@@ -402,15 +488,19 @@ def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> No
         target_url: Original target URL to forward to (e.g., "https://api.anthropic.com")
     """
 
+    settings_env = read_claude_settings_env(
+        getattr(options, "cwd", None), getattr(options, "setting_sources", None)
+    )
+
     def get_env_value(key: str) -> str | None:
-        return options.env.get(key) or os.environ.get(key)
+        return options.env.get(key) or os.environ.get(key) or settings_env.get(key)
 
     foundry_enabled = is_truthy_env(get_env_value("CLAUDE_CODE_USE_FOUNDRY"))
 
     options.env["ANTHROPIC_BASE_URL"] = proxy_url
     options.env["ANTHROPIC_ORIGINAL_BASE_URL"] = target_url
 
-    for proxy_var in ["HTTP_PROXY", "HTTPS_PROXY"]:
+    for proxy_var in PROXY_ENV_KEYS:
         options.env.pop(proxy_var, None)
 
     if FOUNDRY_RESOURCE_ENV in options.env:

@@ -118,7 +118,7 @@ all = [
 dev = [
   "anthropic[bedrock]==0.95.0",
   "autopep8==2.3.2",
-  "claude-agent-sdk==0.1.50",
+  "claude-agent-sdk==0.2.128",
   "flake8==7.3.0",
   "google-genai==1.68.0",
   "groq==1.1.2",

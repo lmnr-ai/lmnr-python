@@ -43,10 +43,19 @@ def reset_port_allocation():
 
 
 def test_is_truthy_env():
-    """Test is_truthy_env function."""
+    """Test is_truthy_env function.
+
+    Claude Code enables a provider on 1/true/yes/on (case-insensitive) — verified
+    against the bundled CLI, which reports a Foundry error for each of those and
+    makes a plain Anthropic call for the falsy ones.
+    """
     assert claude_utils.is_truthy_env("1") is True
+    assert claude_utils.is_truthy_env("true") is True
+    assert claude_utils.is_truthy_env("True") is True
+    assert claude_utils.is_truthy_env("yes") is True
+    assert claude_utils.is_truthy_env("on") is True
     assert claude_utils.is_truthy_env("0") is False
-    assert claude_utils.is_truthy_env("true") is False
+    assert claude_utils.is_truthy_env("false") is False
     assert claude_utils.is_truthy_env("") is False
     assert claude_utils.is_truthy_env(None) is False
 
