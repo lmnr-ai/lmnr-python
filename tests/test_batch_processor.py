@@ -12,6 +12,8 @@ byte-based flush trigger from the count- and time-based ones.
 """
 
 import os
+import select
+import signal
 import threading
 import time
 
@@ -484,12 +486,19 @@ _fork_required = pytest.mark.skipif(
 )
 
 
-def _run_in_fork(child) -> str:
+def _run_in_fork(child, timeout: float = 30.0) -> str:
     """Run `child(write_result)` in a forked process and return what it reported.
 
     The child cannot assert — a failed assertion there would exit non-zero
     without telling the parent why, and pytest only sees the parent. So it
     reports a string over a pipe and the parent asserts on that.
+
+    The parent enforces `timeout` itself and SIGKILLs a child that overruns.
+    That is essential rather than tidy: the failure these tests exist to catch
+    is a child deadlocked on an inherited lock, which never writes to the pipe
+    and never exits, so a bare blocking `os.read`/`os.waitpid` would hang the
+    whole suite instead of failing it. Returns a `TIMEOUT` sentinel so the
+    caller's assertion reports something legible.
     """
     read_fd, write_fd = os.pipe()
     pid = os.fork()
@@ -503,19 +512,39 @@ def _run_in_fork(child) -> str:
             os.close(write_fd)
             os._exit(0)
     os.close(write_fd)
+    chunks: list[bytes] = []
+    timed_out = False
+    deadline = time.monotonic() + timeout
     try:
-        # The child is on a 10s internal budget; this bounds a hung child so the
-        # suite fails rather than hangs.
-        chunks = []
         while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                timed_out = True
+                break
+            # select, not a blocking read: a deadlocked child holds the write
+            # end open forever, so the read would never return on its own.
+            readable, _, _ = select.select([read_fd], [], [], remaining)
+            if not readable:
+                timed_out = True
+                break
             chunk = os.read(read_fd, 4096)
             if not chunk:
                 break
             chunks.append(chunk)
-        return b"".join(chunks).decode()
     finally:
         os.close(read_fd)
+        if timed_out:
+            # SIGKILL, not SIGTERM: the child may be blocked on a lock that will
+            # never be released, where a handler would never run.
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
         os.waitpid(pid, 0)
+    if timed_out:
+        partial = b"".join(chunks).decode(errors="replace")
+        return f"TIMEOUT after {timeout}s (child killed); partial output: {partial!r}"
+    return b"".join(chunks).decode()
 
 
 @_fork_required
