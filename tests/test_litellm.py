@@ -223,16 +223,22 @@ def test_litellm_completion_activates_span_for_otel_callbacks(
     `@observe` root) happens to be current, which would mis-mark that span as an
     LLM call and suppress litellm's own request span.
     """
+    import threading
+
     from litellm.integrations.custom_logger import CustomLogger
     from opentelemetry import trace
 
     captured: dict[str, object] = {}
+    called = threading.Event()
 
     class _SpanCapturingCallback(CustomLogger):
         def log_success_event(self, kwargs, response_obj, start_time, end_time):
+            # litellm dispatches success callbacks on a background thread, so
+            # the main thread must wait for this to run before asserting.
             captured["span_id"] = (
                 trace.get_current_span().get_span_context().span_id
             )
+            called.set()
 
     litellm.callbacks = [_SpanCapturingCallback()]
     try:
@@ -241,6 +247,7 @@ def test_litellm_completion_activates_span_for_otel_callbacks(
             messages=[{"role": "user", "content": "say hi"}],
             mock_response="Hello there!",
         )
+        assert called.wait(timeout=5), "litellm callback did not fire in time"
     finally:
         litellm.callbacks = []
 
