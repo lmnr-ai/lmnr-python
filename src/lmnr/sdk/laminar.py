@@ -9,8 +9,9 @@ import subprocess
 import sys
 import uuid
 import warnings
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
-from typing import Any, Callable, Generator, Literal
+from typing import Any, Literal
 
 from opentelemetry import context as context_api
 from opentelemetry import trace
@@ -277,9 +278,8 @@ class Laminar:
                 push it past `max_export_batch_size_bytes`, so a few large spans\
                 are exported without waiting for `max_export_batch_size` spans\
                 to accumulate. Useful when spans carry large prompts or\
-                completions and exports get rejected for being too big. Note\
-                that the flush happens synchronously on the thread ending the\
-                span. Defaults to False.
+                completions and exports get rejected for being too big.\
+                Defaults to False.
             export_timeout_seconds (int | None, optional): Timeout for the OTLP\
                 exporter. Defaults to 30 seconds (unlike the OpenTelemetry\
                 default of 10 seconds). Defaults to None.

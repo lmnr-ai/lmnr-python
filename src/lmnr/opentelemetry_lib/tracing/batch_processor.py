@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_EXPORT_BATCH_SIZE = 64
 
 # GenAI spans carry whole prompts and completions as string attributes, so a
-# batch of only a few dozen of them can be tens of megabytes. 16 MiB keeps a
+# batch of only a few dozen of them can be tens of megabytes. 32 MiB keeps a
 # single export comfortably under the ingest limits while still batching.
-DEFAULT_MAX_EXPORT_BATCH_SIZE_BYTES = 16 * 1024 * 1024
+DEFAULT_MAX_EXPORT_BATCH_SIZE_BYTES = 32 * 1024 * 1024
 
 # Non-string attribute values (ints, floats, bools) are counted as a flat 8
 # bytes instead of being measured — they never dominate a GenAI payload.
@@ -110,9 +110,7 @@ class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
     An asynchronous flush alone would turn the byte limit from a bound into a
     hint: a producer in a tight loop enqueues faster than the flush thread can
     drain, so the export that eventually goes out is sized by
-    `max_export_batch_size`, not by the byte limit. Measured, with 500 KB spans
-    against a 16 MiB limit: 95 MiB exports at a 512-span count limit — worse
-    than the problem this class exists to solve.
+    `max_export_batch_size`, not by the byte limit.
 
     So the handoff is conditional: `on_end` exports on its own thread when the
     previous request has not been picked up yet (the producer is outrunning the

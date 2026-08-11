@@ -86,7 +86,7 @@ class TracerWrapper(object):
         with cls._lock:
             if not hasattr(cls, "instance"):
                 cls._initialize_logger(cls)
-                obj = super(TracerWrapper, cls).__new__(cls)
+                obj = super().__new__(cls)
 
                 # Store session recording options
                 cls.session_recording_options = session_recording_options or {}
