@@ -1,12 +1,25 @@
 import logging
 import os
 import threading
+import weakref
 
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter
 from opentelemetry.util.types import AttributeValue
 
 logger = logging.getLogger(__name__)
+
+
+def _call_if_alive(weak_method: weakref.WeakMethod) -> None:
+    """Call a weakly-referenced bound method if its object still exists.
+
+    `os.register_at_fork` handlers cannot be unregistered, so they must not keep
+    a dead processor alive — nor raise in the child when one has been collected.
+    """
+    method = weak_method()
+    if method is not None:
+        method()
+
 
 # Lower than OTel's own default of 512: GenAI spans are far heavier than the
 # spans that default was chosen for.
@@ -29,9 +42,9 @@ def utf8_size(value: str) -> int:
     `_UTF8_SAMPLE_BUDGET` characters.
 
     `len()` alone counts code points, which undercounts CJK by ~3x and
-    Cyrillic/Arabic/emoji by ~2x. On GenAI payloads that put a CJK user's real
-    16 MiB batch at ~41 MiB — the exact oversized-export case this limit exists
-    to prevent.
+    Cyrillic/Arabic/emoji by ~2x. On GenAI payloads that made a CJK user's real
+    batch ~2.5x the configured limit — the exact oversized-export case this
+    limit exists to prevent.
 
     `str.isascii()` is O(1) (CPython caches the flag on the string), so the
     common case is both exact and free. Beyond that we encode a *strided*
@@ -145,14 +158,39 @@ class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
         self._flush_thread_lock = threading.Lock()
         self._flush_thread_pid: int | None = None
         self._start_flush_thread()
+        if hasattr(os, "register_at_fork"):
+            # Rebuild in the child rather than lazily from `on_end`. `fork` only
+            # clones the calling thread, so any lock another thread held at fork
+            # time is inherited permanently locked; `on_end` takes
+            # `_pending_size_lock` before it could ever notice the pid changed,
+            # so a lazy check deadlocks instead of recovering. Upstream's
+            # `BatchProcessor` reinitializes its own state the same way.
+            weak_reinit = weakref.WeakMethod(self._at_fork_reinit)
+            os.register_at_fork(after_in_child=lambda: _call_if_alive(weak_reinit))
+
+    def _at_fork_reinit(self) -> None:
+        """Rebuild thread state in a forked child.
+
+        Every lock and Event here is replaced, not reused: the child inherits
+        them in whatever state the parent's threads left them, and those threads
+        do not exist to release them. The flush thread is then restarted, since
+        the child inherited none.
+        """
+        self._pending_size_lock = threading.Lock()
+        self._flush_thread_lock = threading.Lock()
+        self._flush_requested = threading.Event()
+        # The inherited queue is drained by upstream's own fork handler, so the
+        # running total it was tracking no longer describes anything.
+        self._pending_size_bytes = 0
+        self._flush_thread = None
+        self._flush_thread_pid = None
+        self._start_flush_thread()
 
     def _start_flush_thread(self) -> None:
         """Start the flush thread, or restart it after a fork.
 
-        A forked child inherits no threads, so `_flush_thread` would name a
-        thread that does not exist there and flushes would silently stop. The
-        pid is recorded so `on_end` can detect that and respawn. Upstream
-        handles the same problem for its own worker via `os.register_at_fork`.
+        A forked child inherits no threads, so `_flush_thread` would otherwise
+        name a thread that does not exist there and flushes would silently stop.
         """
         with self._flush_thread_lock:
             if self._flush_shutdown:
@@ -160,9 +198,6 @@ class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
             pid = os.getpid()
             if self._flush_thread is not None and self._flush_thread_pid == pid:
                 return
-            # After a fork the inherited Event may be set with no thread to
-            # service it, and the lock state is undefined. Start clean.
-            self._flush_requested = threading.Event()
             self._flush_thread = threading.Thread(
                 name="LmnrSizeLimitedSpanFlush",
                 target=self._flush_loop,
@@ -214,8 +249,6 @@ class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
             )
 
         if should_flush:
-            if self._flush_thread_pid != os.getpid():
-                self._start_flush_thread()
             # Two cases have to be exported on this thread rather than handed
             # off, because an asynchronous flush cannot exclude the span that
             # triggered it: `on_end` returns and enqueues before the flush thread
@@ -239,10 +272,10 @@ class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
             #    most `limit` before this span (or it would already have
             #    flushed), so a batch is under `limit * (1 + threshold)`: 1.5x at
             #    one half, 1.25x at one quarter. One half keeps the asynchronous
-            #    path for more spans, at 24 MiB worst case for the 16 MiB
+            #    path for more spans, at 48 MiB worst case for the 32 MiB
             #    default -- fine after gzip for any real payload (the least
-            #    compressible measured, base64, is 1.3x, so ~19 MB on the wire)
-            #    but only just inside a 25 MB body limit if a payload were
+            #    compressible measured, base64, is 1.3x, so ~39 MB on the wire)
+            #    but only just inside a 50 MB body limit if a payload were
             #    literally incompressible.
             oversized = size * 2 >= self._max_export_batch_size_bytes
             if self._flush_requested.is_set() or oversized:

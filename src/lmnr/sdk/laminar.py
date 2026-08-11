@@ -271,7 +271,7 @@ class Laminar:
             max_export_batch_size_bytes (int | None, optional): Approximate\
                 maximum size, in bytes, of the spans buffered in a single batch.\
                 Only used when `flush_by_size` is True. If not specified,\
-                defaults to 16 MiB.
+                defaults to 32 MiB.
             flush_by_size (bool, optional): If set to True, batches are also\
                 flushed by approximate payload size, not just by span count and\
                 schedule delay. The batch is flushed when the next span would\

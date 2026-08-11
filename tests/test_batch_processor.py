@@ -11,6 +11,7 @@ to control `max_export_batch_size` / `schedule_delay_millis` to isolate the
 byte-based flush trigger from the count- and time-based ones.
 """
 
+import os
 import threading
 import time
 
@@ -476,6 +477,130 @@ def test_concurrent_emitters_lose_no_spans():
 
     processor.force_flush()
     assert exporter.span_count == 8 * 50
+
+
+_fork_required = pytest.mark.skipif(
+    not hasattr(os, "fork"), reason="os.fork is unavailable on this platform"
+)
+
+
+def _run_in_fork(child) -> str:
+    """Run `child(write_result)` in a forked process and return what it reported.
+
+    The child cannot assert — a failed assertion there would exit non-zero
+    without telling the parent why, and pytest only sees the parent. So it
+    reports a string over a pipe and the parent asserts on that.
+    """
+    read_fd, write_fd = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        os.close(read_fd)
+        try:
+            child(lambda text: os.write(write_fd, text.encode()))
+        except BaseException as exc:  # noqa: BLE001 - reported, not swallowed
+            os.write(write_fd, f"EXCEPTION {type(exc).__name__}: {exc}".encode())
+        finally:
+            os.close(write_fd)
+            os._exit(0)
+    os.close(write_fd)
+    try:
+        # The child is on a 10s internal budget; this bounds a hung child so the
+        # suite fails rather than hangs.
+        chunks = []
+        while True:
+            chunk = os.read(read_fd, 4096)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        return b"".join(chunks).decode()
+    finally:
+        os.close(read_fd)
+        os.waitpid(pid, 0)
+
+
+@_fork_required
+def test_forked_child_can_still_flush_with_locks_held_at_fork():
+    """A fork while another thread holds the processor's locks must not wedge it.
+
+    `fork` clones only the calling thread, so a lock another thread held at fork
+    time is inherited permanently locked and there is nobody left to release it.
+    `on_end` takes `_pending_size_lock` on every span, so without a fork handler
+    the child deadlocks on its very first span — and it cannot recover lazily,
+    because it blocks before reaching any pid check.
+    """
+    exporter, processor, tracer = _make_processor(
+        max_export_batch_size_bytes=_BYTE_LIMIT,
+        max_export_batch_size=2000,
+    )
+
+    holding = threading.Event()
+    release = threading.Event()
+
+    def hold_both_locks():
+        with processor._pending_size_lock:
+            with processor._flush_thread_lock:
+                holding.set()
+                release.wait(30)
+
+    holder = threading.Thread(target=hold_both_locks, daemon=True)
+    holder.start()
+    assert holding.wait(5), "helper never acquired the locks"
+
+    def child(report):
+        for i in range(_SPANS_PER_BATCH + 5):
+            _emit(tracer, f"child-{i}", payload_size=_SPAN_BYTES)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and exporter.span_count == 0:
+            time.sleep(0.05)
+        alive = any(
+            t.name == "LmnrSizeLimitedSpanFlush" for t in threading.enumerate()
+        )
+        report(f"exported={exporter.span_count} flush_thread_alive={alive}")
+
+    try:
+        result = _run_in_fork(child)
+    finally:
+        release.set()
+        holder.join(timeout=5)
+
+    assert result.startswith("exported="), result
+    exported = int(result.split("exported=")[1].split()[0])
+    # The byte trigger fired in the child and the flush thread serviced it, so
+    # the size limit is still enforced there rather than silently disabled.
+    assert exported > 0, result
+    assert "flush_thread_alive=True" in result, result
+
+
+@_fork_required
+def test_fork_reinit_replaces_inherited_locks_and_resets_state():
+    exporter, processor, tracer = _make_processor(
+        max_export_batch_size_bytes=_BYTE_LIMIT
+    )
+    _emit(tracer, "before-fork", payload_size=_SPAN_BYTES)
+    assert processor._pending_size_bytes > 0
+
+    before = (
+        id(processor._pending_size_lock),
+        id(processor._flush_thread_lock),
+        id(processor._flush_requested),
+    )
+
+    processor._at_fork_reinit()
+
+    after = (
+        id(processor._pending_size_lock),
+        id(processor._flush_thread_lock),
+        id(processor._flush_requested),
+    )
+    # Every synchronization primitive is a fresh object, not the inherited one.
+    assert all(b != a for b, a in zip(before, after))
+    # The inherited queue is drained by upstream's fork handler, so the running
+    # total no longer describes anything.
+    assert processor._pending_size_bytes == 0
+    assert processor._flush_thread is not None
+    assert processor._flush_thread.is_alive()
+    assert processor._flush_thread_pid == os.getpid()
+    del exporter
 
 
 def test_approximate_span_size_counts_attribute_keys_and_values():
