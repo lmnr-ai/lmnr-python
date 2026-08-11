@@ -9,8 +9,9 @@ import subprocess
 import sys
 import uuid
 import warnings
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
-from typing import Any, Callable, Generator, Literal
+from typing import Any, Literal
 
 from opentelemetry import context as context_api
 from opentelemetry import trace
@@ -224,6 +225,8 @@ class Laminar:
         ) = None,
         disable_batch: bool = False,
         max_export_batch_size: int | None = None,
+        max_export_batch_size_bytes: int | None = None,
+        flush_by_size: bool = False,
         export_timeout_seconds: int | None = None,
         set_global_tracer_provider: bool = True,
         otel_logger_level: int = logging.ERROR,
@@ -265,6 +268,18 @@ class Laminar:
                 to export in a single batch. If not specified, defaults to 64\
                 (lower than the OpenTelemetry default of 512). If you see\
                 `DEADLINE_EXCEEDED` errors, try reducing this value.
+            max_export_batch_size_bytes (int | None, optional): Approximate\
+                maximum size, in bytes, of the spans buffered in a single batch.\
+                Only used when `flush_by_size` is True. If not specified,\
+                defaults to 32 MiB.
+            flush_by_size (bool, optional): If set to True, batches are also\
+                flushed by approximate payload size, not just by span count and\
+                schedule delay. The batch is flushed when the next span would\
+                push it past `max_export_batch_size_bytes`, so a few large spans\
+                are exported without waiting for `max_export_batch_size` spans\
+                to accumulate. Useful when spans carry large prompts or\
+                completions and exports get rejected for being too big.\
+                Defaults to False.
             export_timeout_seconds (int | None, optional): Timeout for the OTLP\
                 exporter. Defaults to 30 seconds (unlike the OpenTelemetry\
                 default of 10 seconds). Defaults to None.
@@ -377,6 +392,8 @@ class Laminar:
             ),
             disable_batch=disable_batch_resolved,
             max_export_batch_size=max_export_batch_size,
+            max_export_batch_size_bytes=max_export_batch_size_bytes,
+            flush_by_size=flush_by_size,
             timeout_seconds=export_timeout_seconds,
             set_global_tracer_provider=set_global_tracer_provider,
             otel_logger_level=otel_logger_level,

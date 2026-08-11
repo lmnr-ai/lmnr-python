@@ -71,6 +71,8 @@ class TracerWrapper(object):
         http_port: int = 443,
         project_api_key: str | None = None,
         max_export_batch_size: int | None = None,
+        max_export_batch_size_bytes: int | None = None,
+        flush_by_size: bool = False,
         force_http: bool = False,
         timeout_seconds: int = 30,
         set_global_tracer_provider: bool = True,
@@ -84,7 +86,7 @@ class TracerWrapper(object):
         with cls._lock:
             if not hasattr(cls, "instance"):
                 cls._initialize_logger(cls)
-                obj = super(TracerWrapper, cls).__new__(cls)
+                obj = super().__new__(cls)
 
                 # Store session recording options
                 cls.session_recording_options = session_recording_options or {}
@@ -106,6 +108,8 @@ class TracerWrapper(object):
                     grpc_port=port,
                     exporter=exporter,
                     max_export_batch_size=max_export_batch_size,
+                    max_export_batch_size_bytes=max_export_batch_size_bytes,
+                    flush_by_size=flush_by_size,
                     timeout_seconds=timeout_seconds,
                     force_http=force_http,
                     disable_batch=disable_batch,
