@@ -6,7 +6,11 @@ import openai
 import pytest
 from opentelemetry.trace import StatusCode
 
-from .utils import assert_request_contains_tracecontext, spy_decorator
+from .utils import (
+    assert_request_contains_tracecontext,
+    single_request_to_path,
+    spy_decorator,
+)
 
 
 @pytest.mark.vcr
@@ -105,8 +109,7 @@ def test_embeddings_context_propagation(
         "openai.embeddings",
     ]
     open_ai_span = spans[0]
-    args, kwargs = send_spy.mock.call_args
-    request = args[0]
+    request = single_request_to_path(send_spy.mock, "/v1/embeddings")
 
     assert_request_contains_tracecontext(request, open_ai_span)
 
@@ -128,8 +131,7 @@ async def test_async_embeddings_context_propagation(
         "openai.embeddings",
     ]
     open_ai_span = spans[0]
-    args, kwargs = send_spy.mock.call_args
-    request = args[0]
+    request = single_request_to_path(send_spy.mock, "/v1/embeddings")
 
     assert_request_contains_tracecontext(request, open_ai_span)
 

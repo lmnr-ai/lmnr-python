@@ -258,6 +258,9 @@ def test_subprocess_transport_removes_proxy_vars_from_os_environ(monkeypatch):
         SubprocessCLITransport,
     )
 
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (
+        wrappers,
+    )
     from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.wrappers import (
         wrap_transport_connect,
     )
@@ -297,10 +300,14 @@ def test_subprocess_transport_removes_proxy_vars_from_os_environ(monkeypatch):
     from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (
         span_utils,
     )
-    
+
+    # Patch on `wrappers`, NOT `claude_proxy`: wrappers.py does
+    # `from .proxy import create_proxy_for_transport, start_proxy`, so patching
+    # proxy.py's namespace leaves the name the wrapper calls untouched and starts
+    # a REAL proxy whose 1s health-check thread outlives the test.
     with (
-        patch.object(claude_proxy, "create_proxy_for_transport") as mock_create,
-        patch.object(claude_proxy, "start_proxy") as mock_start,
+        patch.object(wrappers, "create_proxy_for_transport") as mock_create,
+        patch.object(wrappers, "start_proxy") as mock_start,
         patch.object(
             span_utils, "publish_span_context_for_transport"
         ) as mock_publish,
