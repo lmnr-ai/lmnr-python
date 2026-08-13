@@ -6,7 +6,11 @@ import httpx
 import pytest
 from opentelemetry.trace import StatusCode
 
-from .utils import assert_request_contains_tracecontext, spy_decorator
+from .utils import (
+    assert_request_contains_tracecontext,
+    single_request_to_path,
+    spy_decorator,
+)
 
 
 @pytest.mark.vcr
@@ -174,7 +178,6 @@ def test_completion_context_propagation(
             model="meta-llama/Llama-3.2-1B-Instruct",
             prompt="Tell me a joke about opentelemetry",
         )
-    send_spy.mock.assert_called_once()
 
     spans = span_exporter.get_finished_spans()
     assert [span.name for span in spans] == [
@@ -182,8 +185,7 @@ def test_completion_context_propagation(
     ]
     openai_span = spans[0]
 
-    args, kwargs = send_spy.mock.call_args
-    request = args[0]
+    request = single_request_to_path(send_spy.mock, "/v1/completions")
 
     assert_request_contains_tracecontext(request, openai_span)
     assert (
@@ -203,7 +205,6 @@ async def test_async_completion_context_propagation(
             model="meta-llama/Llama-3.2-1B-Instruct",
             prompt="Tell me a joke about opentelemetry",
         )
-    send_spy.mock.assert_called_once()
 
     spans = span_exporter.get_finished_spans()
     assert [span.name for span in spans] == [
@@ -211,8 +212,7 @@ async def test_async_completion_context_propagation(
     ]
     openai_span = spans[0]
 
-    args, kwargs = send_spy.mock.call_args
-    request = args[0]
+    request = single_request_to_path(send_spy.mock, "/v1/completions")
 
     assert_request_contains_tracecontext(request, openai_span)
     assert (

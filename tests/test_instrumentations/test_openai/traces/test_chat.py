@@ -13,7 +13,11 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
     is_reasoning_supported,
 )
 
-from .utils import assert_request_contains_tracecontext, spy_decorator
+from .utils import (
+    assert_request_contains_tracecontext,
+    single_request_to_path,
+    spy_decorator,
+)
 
 
 @pytest.mark.vcr
@@ -268,7 +272,6 @@ def test_chat_context_propagation(instrument_legacy, span_exporter, vllm_openai_
                 {"role": "user", "content": "Tell me a joke about opentelemetry"}
             ],
         )
-    send_spy.mock.assert_called_once()
 
     spans = span_exporter.get_finished_spans()
     assert [span.name for span in spans] == [
@@ -279,8 +282,7 @@ def test_chat_context_propagation(instrument_legacy, span_exporter, vllm_openai_
         open_ai_span.attributes.get("gen_ai.response.id")
         == "chat-43f4347c3299481e9704ab77439fbdb8"
     )
-    args, kwargs = send_spy.mock.call_args
-    request = args[0]
+    request = single_request_to_path(send_spy.mock, "/v1/chat/completions")
 
     assert_request_contains_tracecontext(request, open_ai_span)
 
@@ -298,7 +300,6 @@ async def test_chat_async_context_propagation(
                 {"role": "user", "content": "Tell me a joke about opentelemetry"}
             ],
         )
-    send_spy.mock.assert_called_once()
 
     spans = span_exporter.get_finished_spans()
     assert [span.name for span in spans] == [
@@ -309,8 +310,7 @@ async def test_chat_async_context_propagation(
         open_ai_span.attributes.get("gen_ai.response.id")
         == "chat-4db07f02ecae49cbafe1d359db1650df"
     )
-    args, kwargs = send_spy.mock.call_args
-    request = args[0]
+    request = single_request_to_path(send_spy.mock, "/v1/chat/completions")
 
     assert_request_contains_tracecontext(request, open_ai_span)
 

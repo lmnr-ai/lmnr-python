@@ -1,10 +1,14 @@
 import os
+import threading
 
 import pytest
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.utils import (
     PROXY_ENV_KEYS,
 )
+
+# ProxyServer names its health-check thread f"proxy-monitor-{port}".
+_MONITOR_PREFIX = "proxy-monitor-"
 
 
 def _force_delenv(monkeypatch, key: str) -> None:
@@ -65,6 +69,34 @@ def cleanup_claude_proxy():
     yield
     # Clean up after test
     _cleanup_proxy()
+
+
+@pytest.fixture(autouse=True)
+def no_leaked_proxy_monitor_threads():
+    """Fail the test that leaves a live proxy health-monitor thread behind.
+
+    ``ProxyServer.run_server`` spawns a daemon ``proxy-monitor-<port>`` thread that
+    GETs ``/lmnr-internal/health`` every second forever. ``_cleanup_proxy`` only stops
+    the module-level singleton, so a per-transport instance started by mistake — e.g.
+    by patching ``proxy.create_proxy_for_transport`` instead of the name
+    ``wrappers`` actually calls — survives this whole session. Those stray requests
+    then land inside unrelated tests that spy on ``httpx.Client.send`` globally
+    (``test_openai/traces/test_chat.py`` and friends), which fail roughly whenever a
+    1s tick hits their few-millisecond window. Catch the leak at its source instead.
+    """
+    before = {t.name for t in threading.enumerate() if _MONITOR_PREFIX in t.name}
+    yield
+    leaked = sorted(
+        t.name
+        for t in threading.enumerate()
+        if _MONITOR_PREFIX in t.name and t.name not in before
+    )
+    assert not leaked, (
+        f"test leaked live proxy health-monitor thread(s): {leaked}. A real proxy "
+        "server was started and never stopped — patch "
+        "`wrappers.create_proxy_for_transport` / `wrappers.start_proxy` (where the "
+        "names are looked up), or stop the proxy you started."
+    )
 
 
 def start_claude_proxy():
