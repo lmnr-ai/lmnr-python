@@ -1,14 +1,19 @@
 from collections import defaultdict
-from typing import Any, AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Generator
+from typing import Any
 
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
+)
 from opentelemetry.trace import Span, Status, StatusCode
 
-from lmnr.sdk.utils import json_dumps
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     set_span_attribute,
     to_dict,
 )
+from lmnr.sdk.utils import json_dumps
 
 
 @dont_throw
@@ -18,6 +23,8 @@ def _accumulate_chunk(accumulated: dict, chunk: dict):
         accumulated["id"] = chunk_dict.get("id")
     if accumulated["model"] is None and chunk_dict.get("model"):
         accumulated["model"] = chunk_dict.get("model")
+    if chunk_dict.get("usage") is not None:
+        accumulated["usage"] = to_dict(chunk_dict["usage"])
     for i, choice in enumerate(chunk_dict.get("choices", [])):
         idx = choice.get("index", i)
         accumulated["choices"][idx]["content"] += choice.get("content", "")
@@ -84,6 +91,33 @@ def _set_accumulated_attributes(
             span, "gen_ai.output.messages", json_dumps(formatted_choices)
         )
 
+        if usage := accumulated.get("usage"):
+            input_tokens = usage.get("prompt_tokens", usage.get("input_tokens", 0))
+            output_tokens = usage.get(
+                "completion_tokens", usage.get("output_tokens", 0)
+            )
+            total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
+            set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, input_tokens)
+            set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, output_tokens)
+            set_span_attribute(span, "llm.usage.total_tokens", total_tokens)
+
+            input_details = to_dict(usage.get("prompt_tokens_details", {}))
+            cache_read_tokens = input_details.get(
+                "cached_tokens", usage.get("cache_read_input_tokens", 0)
+            )
+            cache_creation_tokens = input_details.get(
+                "cache_creation_tokens",
+                usage.get("cache_creation_input_tokens", 0),
+            )
+            set_span_attribute(
+                span, "gen_ai.usage.cache_read_input_tokens", cache_read_tokens
+            )
+            set_span_attribute(
+                span,
+                "gen_ai.usage.cache_creation_input_tokens",
+                cache_creation_tokens,
+            )
+
         # Record raw response in rollout mode
         if record_raw_response:
             # Reconstruct full response from accumulated data
@@ -92,6 +126,7 @@ def _set_accumulated_attributes(
                 "model": accumulated["model"],
                 "object": "chat.completion",
                 "choices": [],
+                "usage": accumulated.get("usage"),
             }
             for choice in accumulated["choices"].values():
                 raw_response["choices"].append(
@@ -128,14 +163,15 @@ def process_completion_streaming_response(
     accumulated = {
         "id": None,
         "model": None,
+        "usage": None,
         "choices": defaultdict(
             lambda: {
                 "index": None,
                 "content": "",
                 "role": "assistant",
-                    "finish_reason": None,
-                    "tool_calls": {},
-                }
+                "finish_reason": None,
+                "tool_calls": {},
+            }
         ),
     }
     try:
@@ -158,6 +194,7 @@ async def process_completion_async_streaming_response(
     accumulated = {
         "id": None,
         "model": None,
+        "usage": None,
         "choices": defaultdict(
             lambda: {
                 "index": None,
