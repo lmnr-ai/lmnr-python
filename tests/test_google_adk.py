@@ -1,14 +1,8 @@
 """Tests for the Google ADK instrumentation.
 
-ADK emits its spans itself through the global tracer provider, so the
-instrumentor's job is enrichment: type the tool spans, copy their
-content-gated input/output, map the ADK session/user onto Laminar
-association properties, and make ADK's external-genai detection recognize
-Laminar's google-genai instrumentation (so LLM calls aren't double-spanned).
-
 The end-to-end tests drive a real `InMemoryRunner` with a stub model that
-requests one tool call and then answers, so the spans under test are the ones
-ADK actually produces, not hand-built ones.
+requests tool calls and then answers, so the asserted spans are the ones ADK
+actually produces.
 """
 
 import asyncio
@@ -122,9 +116,8 @@ def test_agent_span_carries_session_association(span_exporter):
 
 
 def test_tool_content_respects_adk_content_toggle(span_exporter, monkeypatch):
-    # ADK's legacy content knob defaults on; turning it off makes ADK stamp
-    # "{}" for tool args/response, and the instrumentor must not copy that
-    # onto the Laminar input/output attributes.
+    # With the content knob off, ADK stamps "{}" for tool args/response;
+    # that must not leak into the Laminar input/output attributes.
     monkeypatch.setenv("ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS", "0")
     run_stub_agent()
 
@@ -135,10 +128,9 @@ def test_tool_content_respects_adk_content_toggle(span_exporter, monkeypatch):
 
 
 def test_adk_recognizes_laminar_genai_instrumentation(span_exporter):
-    # ADK skips its own `generate_content` span when it detects an external
-    # google-genai instrumentation. Its detector only knows the otel-contrib
-    # package; the instrumentor extends it to report Laminar's, which is
-    # active in this test session.
+    # ADK's detector only knows the otel-contrib package by filename; the
+    # instrumentor teaches it about Laminar's wrapper, active in this
+    # session.
     from google.adk.telemetry import tracing
 
     detected = (
@@ -148,13 +140,11 @@ def test_adk_recognizes_laminar_genai_instrumentation(span_exporter):
 
 
 def test_merged_parallel_tool_span_typed(span_exporter):
-    # Two function calls in one model turn make ADK create an
-    # `execute_tool (merged)` span via `trace_merged_tool_calls`. That
-    # function is bound by name in `flows.llm_flows.functions` at import
-    # time — and this module imports ADK at collection, before
-    # `Laminar.initialize()` runs — so this test fails unless the
-    # instrumentor patches the flow module's binding, not just the
-    # `telemetry.tracing` attribute.
+    # Two function calls in one turn produce an `execute_tool (merged)`
+    # span via trace_merged_tool_calls, which flows.llm_flows.functions
+    # binds by name at import time. This module imports ADK at collection,
+    # before Laminar.initialize() runs, so this fails unless the
+    # instrumentor patches the flow module's binding too.
     run_stub_agent(
         calls=[
             ("get_weather", {"city": "Almaty"}),
@@ -168,9 +158,8 @@ def test_merged_parallel_tool_span_typed(span_exporter):
 
 
 def test_empty_args_tool_is_not_mistaken_for_redaction(span_exporter):
-    # ADK stamps "{}" both for redacted content and for a genuinely empty
-    # args dict; with the content toggle on, a niladic tool must still get
-    # its (empty) input recorded.
+    # A niladic tool's args serialize to "{}", same as ADK's redaction
+    # sentinel; the (empty) input must still be recorded.
     run_stub_agent(calls=[("get_default_city", {})])
 
     (tool_span,) = spans_by_name(
