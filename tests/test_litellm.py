@@ -11,7 +11,11 @@ from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from pydantic import BaseModel
 
-from lmnr import LaminarLiteLLMCallback
+from lmnr import Laminar, LaminarLiteLLMCallback
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.litellm.wrappers.completions.streaming import (
+    process_completion_async_streaming_response,
+    process_completion_streaming_response,
+)
 from lmnr.version import __version__
 
 
@@ -235,9 +239,7 @@ def test_litellm_completion_activates_span_for_otel_callbacks(
         def log_success_event(self, kwargs, response_obj, start_time, end_time):
             # litellm dispatches success callbacks on a background thread, so
             # the main thread must wait for this to run before asserting.
-            captured["span_id"] = (
-                trace.get_current_span().get_span_context().span_id
-            )
+            captured["span_id"] = trace.get_current_span().get_span_context().span_id
             called.set()
 
     litellm.callbacks = [_SpanCapturingCallback()]
@@ -309,6 +311,7 @@ def test_litellm_completion_streaming(span_exporter: InMemorySpanExporter):
             "role": "assistant",
             "content": "The capital of France is **Paris**.",
             "tool_calls": None,
+            "reasoning_content": None,
             "finish_reason": "stop",
             "index": 0,
         }
@@ -324,6 +327,206 @@ def test_litellm_completion_streaming(span_exporter: InMemorySpanExporter):
         str(uuid.UUID(int=spans[0].get_span_context().span_id)),
     )
     check_span_has_basic_attributes(spans[0])
+
+
+def test_litellm_completion_streaming_records_usage_only_chunk(
+    span_exporter: InMemorySpanExporter,
+):
+    """Usage from the final empty-choice stream chunk must reach the span."""
+    span = Laminar.start_span("litellm.completion", span_type="LLM")
+    chunks = [
+        {
+            "id": "chatcmpl-test",
+            "model": "kimi-k3",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"role": "assistant", "content": "Hello"},
+                    "finish_reason": None,
+                }
+            ],
+        },
+        {
+            "id": "chatcmpl-test",
+            "model": "kimi-k3",
+            "choices": [],
+            "usage": {
+                "prompt_tokens": 5000,
+                "completion_tokens": 100,
+                "total_tokens": 5100,
+                "prompt_tokens_details": {"cached_tokens": 4000},
+            },
+        },
+    ]
+
+    assert list(process_completion_streaming_response(span, iter(chunks))) == chunks
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    attributes = spans[0].attributes
+    assert attributes["gen_ai.usage.input_tokens"] == 5000
+    assert attributes["gen_ai.usage.output_tokens"] == 100
+    assert attributes["llm.usage.total_tokens"] == 5100
+    assert attributes["gen_ai.usage.cache_read_input_tokens"] == 4000
+
+
+def test_litellm_completion_streaming_preserves_reasoning_deltas(
+    span_exporter: InMemorySpanExporter,
+):
+    """Reasoning deltas must be accumulated into the output message."""
+    span = Laminar.start_span("litellm.completion", span_type="LLM")
+    chunks = [
+        {
+            "id": "chatcmpl-test",
+            "model": "kimi-k3",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "role": "assistant",
+                        "reasoning_content": "I should inspect ",
+                    },
+                }
+            ],
+        },
+        {
+            "id": "chatcmpl-test",
+            "model": "kimi-k3",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "reasoning_content": "the repository.",
+                        "content": "I'll inspect it.",
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+        },
+    ]
+
+    assert list(process_completion_streaming_response(span, iter(chunks))) == chunks
+
+    output = json.loads(
+        span_exporter.get_finished_spans()[0].attributes["gen_ai.output.messages"]
+    )
+    assert output[0]["reasoning_content"] == "I should inspect the repository."
+    assert output[0]["content"] == "I'll inspect it."
+
+
+def test_litellm_completion_streaming_omits_unknown_cache_usage(
+    span_exporter: InMemorySpanExporter,
+):
+    """Missing cache details must not be reported as confirmed zero usage."""
+    span = Laminar.start_span("litellm.completion", span_type="LLM")
+    chunks = [
+        {
+            "id": "chatcmpl-test",
+            "model": "kimi-k3",
+            "choices": [],
+            "usage": {
+                "prompt_tokens": 5000,
+                "completion_tokens": 100,
+                "total_tokens": 5100,
+            },
+        }
+    ]
+
+    list(process_completion_streaming_response(span, iter(chunks)))
+
+    attributes = span_exporter.get_finished_spans()[0].attributes
+    assert "gen_ai.usage.cache_read_input_tokens" not in attributes
+    assert "gen_ai.usage.cache_creation_input_tokens" not in attributes
+
+
+@pytest.mark.asyncio
+async def test_litellm_completion_async_streaming_records_usage_only_chunk(
+    span_exporter: InMemorySpanExporter,
+):
+    """The async stream wrapper must preserve a final usage-only chunk."""
+    span = Laminar.start_span("litellm.completion", span_type="LLM")
+    chunks = [
+        {
+            "id": "chatcmpl-test",
+            "model": "kimi-k3",
+            "choices": [{"index": 0, "delta": {"content": "Hello"}}],
+        },
+        {
+            "id": "chatcmpl-test",
+            "model": "kimi-k3",
+            "choices": [],
+            "usage": {
+                "prompt_tokens": 5000,
+                "completion_tokens": 100,
+                "total_tokens": 5100,
+                "prompt_tokens_details": {"cached_tokens": 4000},
+            },
+        },
+    ]
+
+    async def stream():
+        for chunk in chunks:
+            yield chunk
+
+    received = [
+        chunk
+        async for chunk in process_completion_async_streaming_response(span, stream())
+    ]
+    assert received == chunks
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    attributes = spans[0].attributes
+    assert attributes["gen_ai.usage.input_tokens"] == 5000
+    assert attributes["gen_ai.usage.output_tokens"] == 100
+    assert attributes["llm.usage.total_tokens"] == 5100
+    assert attributes["gen_ai.usage.cache_read_input_tokens"] == 4000
+
+
+@pytest.mark.asyncio
+async def test_litellm_completion_async_streaming_preserves_reasoning_deltas(
+    span_exporter: InMemorySpanExporter,
+):
+    """The async stream wrapper must accumulate reasoning deltas."""
+    span = Laminar.start_span("litellm.completion", span_type="LLM")
+    chunks = [
+        {
+            "id": "chatcmpl-test",
+            "model": "kimi-k3",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"reasoning_content": "Think ", "content": ""},
+                }
+            ],
+        },
+        {
+            "id": "chatcmpl-test",
+            "model": "kimi-k3",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"reasoning_content": "carefully.", "content": "Done"},
+                    "finish_reason": "stop",
+                }
+            ],
+        },
+    ]
+
+    async def stream():
+        for chunk in chunks:
+            yield chunk
+
+    received = [
+        chunk
+        async for chunk in process_completion_async_streaming_response(span, stream())
+    ]
+    assert received == chunks
+    output = json.loads(
+        span_exporter.get_finished_spans()[0].attributes["gen_ai.output.messages"]
+    )
+    assert output[0]["reasoning_content"] == "Think carefully."
+    assert output[0]["content"] == "Done"
 
 
 @pytest.mark.vcr(record_mode="once")
@@ -357,6 +560,7 @@ def test_litellm_completion_streaming_openai(span_exporter: InMemorySpanExporter
             "content": "The capital of France is Paris.",
             "tool_calls": None,
             "finish_reason": "stop",
+            "reasoning_content": None,
             "index": 0,
         }
     ]
@@ -761,6 +965,7 @@ def test_litellm_completion_streaming_with_tool_call(
             "role": "assistant",
             "content": None,
             "finish_reason": "tool_calls",
+            "reasoning_content": None,
             "index": 0,
             "tool_calls": [
                 {
@@ -830,6 +1035,7 @@ def test_litellm_completion_streaming_with_tool_call_openai(
             "content": None,
             "finish_reason": "tool_calls",
             "index": 0,
+            "reasoning_content": None,
             "tool_calls": [
                 {
                     "id": tool_call_id,
@@ -929,6 +1135,7 @@ async def test_litellm_completion_streaming_async(span_exporter: InMemorySpanExp
             "role": "assistant",
             "content": "The capital of France is **Paris**.",
             "tool_calls": None,
+            "reasoning_content": None,
             "finish_reason": "stop",
             "index": 0,
         }
@@ -980,6 +1187,7 @@ async def test_litellm_completion_streaming_async_openai(
             "role": "assistant",
             "content": "The capital of France is Paris.",
             "tool_calls": None,
+            "reasoning_content": None,
             "finish_reason": "stop",
             "index": 0,
         }
@@ -1285,6 +1493,7 @@ async def test_litellm_completion_streaming_with_tool_call_async(
             "content": None,
             "finish_reason": "tool_calls",
             "index": 0,
+            "reasoning_content": None,
             "tool_calls": [
                 {
                     "id": tool_call_id,
