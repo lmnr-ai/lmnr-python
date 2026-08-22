@@ -203,6 +203,18 @@ class DeepagentsInstrumentorInitializer(InstrumentorInitializer):
         return DeepagentsInstrumentor()
 
 
+class GoogleADKInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("google-adk"):
+            return None
+
+        from ..opentelemetry.instrumentation.google_adk import (
+            GoogleAdkInstrumentor,
+        )
+
+        return GoogleAdkInstrumentor()
+
+
 class GoogleGenAIInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("google-genai"):
