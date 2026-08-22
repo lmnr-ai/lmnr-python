@@ -30,14 +30,25 @@ def get_weather(city: str) -> dict:
     return {"city": city, "forecast": "sunny"}
 
 
+def get_time(city: str) -> dict:
+    """Returns the local time for a city."""
+    return {"city": city, "time": "12:00"}
+
+
+def get_default_city() -> dict:
+    """Returns the default city."""
+    return {"city": "Almaty"}
+
+
 class StubLlm(BaseLlm):
-    """Requests a `get_weather` call, then answers once the result is back.
+    """Requests the configured tool calls, then answers once results are back.
 
     Stateless on purpose: the branch is decided from the request contents, so
     the same instance can be reused across runs and tests.
     """
 
     model: str = "stub-model"
+    calls: list[tuple[str, dict]] = [("get_weather", {"city": "Almaty"})]
 
     async def generate_content_async(self, llm_request, stream=False):
         has_tool_result = any(
@@ -46,22 +57,24 @@ class StubLlm(BaseLlm):
             for part in content.parts or []
         )
         if has_tool_result:
-            part = types.Part(text="It is sunny in Almaty.")
+            parts = [types.Part(text="It is sunny in Almaty.")]
         else:
-            part = types.Part(
-                function_call=types.FunctionCall(
-                    name="get_weather", args={"city": "Almaty"}
+            parts = [
+                types.Part(
+                    function_call=types.FunctionCall(name=name, args=args)
                 )
-            )
-        yield LlmResponse(content=types.Content(role="model", parts=[part]))
+                for name, args in self.calls
+            ]
+        yield LlmResponse(content=types.Content(role="model", parts=parts))
 
 
-def run_stub_agent(user_id: str = "test-user"):
+def run_stub_agent(user_id: str = "test-user", calls=None):
+    model = StubLlm(calls=calls) if calls else StubLlm()
     agent = Agent(
         name="weather_agent",
-        model=StubLlm(),
-        instruction="Answer with the get_weather tool.",
-        tools=[get_weather],
+        model=model,
+        instruction="Answer with the tools.",
+        tools=[get_weather, get_time, get_default_city],
     )
     runner = InMemoryRunner(agent=agent, app_name="test-app")
     session = asyncio.run(
@@ -132,3 +145,39 @@ def test_adk_recognizes_laminar_genai_instrumentation(span_exporter):
         tracing._instrumented_with_opentelemetry_instrumentation_google_genai()
     )
     assert detected is True
+
+
+def test_merged_parallel_tool_span_typed(span_exporter):
+    # Two function calls in one model turn make ADK create an
+    # `execute_tool (merged)` span via `trace_merged_tool_calls`. That
+    # function is bound by name in `flows.llm_flows.functions` at import
+    # time — and this module imports ADK at collection, before
+    # `Laminar.initialize()` runs — so this test fails unless the
+    # instrumentor patches the flow module's binding, not just the
+    # `telemetry.tracing` attribute.
+    run_stub_agent(
+        calls=[
+            ("get_weather", {"city": "Almaty"}),
+            ("get_time", {"city": "Almaty"}),
+        ]
+    )
+
+    (merged_span,) = spans_by_name(span_exporter, "execute_tool (merged)")
+    assert merged_span.attributes["lmnr.span.type"] == "TOOL"
+    assert "lmnr.span.output" in merged_span.attributes
+
+
+def test_empty_args_tool_is_not_mistaken_for_redaction(span_exporter):
+    # ADK stamps "{}" both for redacted content and for a genuinely empty
+    # args dict; with the content toggle on, a niladic tool must still get
+    # its (empty) input recorded.
+    run_stub_agent(calls=[("get_default_city", {})])
+
+    (tool_span,) = spans_by_name(
+        span_exporter, "execute_tool get_default_city"
+    )
+    assert tool_span.attributes["lmnr.span.type"] == "TOOL"
+    assert tool_span.attributes["lmnr.span.input"] == "{}"
+    assert json.loads(tool_span.attributes["lmnr.span.output"]) == {
+        "city": "Almaty"
+    }
