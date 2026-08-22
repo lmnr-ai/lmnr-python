@@ -1,28 +1,18 @@
 """OpenTelemetry Google ADK instrumentation.
 
-Google ADK instruments itself with OpenTelemetry: its module-level tracer
-(``gcp.vertex.agent``) is a ``ProxyTracer``, so once ``Laminar.initialize()``
-registers the global tracer provider, every ADK span (``invocation``,
-``invoke_agent {name}``, ``call_llm``, ``execute_tool {name}``) already lands
-in Laminar. What this instrumentor adds on top of that raw wiring:
+ADK instruments itself: its module-level tracer (``gcp.vertex.agent``) is a
+``ProxyTracer``, so every ADK span already lands in Laminar once
+``initialize()`` registers the global tracer provider. This instrumentor only
+enriches that wiring. Tool spans get ``lmnr.span.type = TOOL`` and their
+input/output, copied from the attributes ADK itself stamps so that ADK's
+content toggle keeps working. Agent spans get the ADK session/user ids as
+association properties. ADK's detection of an external google-genai
+instrumentation is extended to recognize this SDK's wrapper, which makes ADK
+skip its own ``generate_content`` span; without that, every LLM call is
+spanned twice (lmnr-ai/lmnr#2234).
 
-- ``execute_tool`` spans get ``lmnr.span.type = TOOL`` plus span input/output,
-  so they render as tool calls instead of ``Default`` spans. Input and output
-  are copied from the ``gcp.vertex.agent.tool_call_args`` /
-  ``gcp.vertex.agent.tool_response`` attributes ADK just stamped, which means
-  ADK's own content toggle (``run_config.telemetry`` / env var) is inherited:
-  when ADK redacts content to ``"{}"``, we don't set input/output at all.
-- ``invoke_agent`` spans carry the ADK session id and user id as Laminar
-  association properties, so traces group by ADK session out of the box.
-- ADK skips its own ``generate_content {model}`` span when it detects an
-  external google-genai instrumentation, but its detector walks
-  ``__wrapped__`` chains looking for the otel-contrib package's filename and
-  doesn't recognize Laminar's google-genai wrapper. We extend the detector to
-  also report Laminar's instrumentation, so each LLM call is covered by a
-  single span (Laminar's, with token counts and cost) instead of two.
-
-All wraps are defensive: a hook that is missing in the installed ADK version
-is skipped, and a failure inside a wrapper never breaks the traced call.
+Wraps are defensive: hooks missing from the installed ADK version are
+skipped, and a wrapper failure never breaks the traced call.
 """
 
 import contextlib
@@ -58,8 +48,7 @@ _GENAI_DETECTOR = (
 def _resolve_span(
     args: tuple, kwargs: dict, position: int
 ) -> trace.Span | None:
-    """The ADK trace_* functions accept the target span as an optional
-    argument and fall back to the current span, mirror that resolution."""
+    """Mirrors ADK's own resolution: explicit span argument, else current."""
     span = kwargs.get("span")
     if span is None and len(args) > position:
         span = args[position]
@@ -73,12 +62,11 @@ def _resolve_span(
 def _copy_content_attribute(
     span: trace.Span, source: str, target: str, actual_is_empty: bool = False
 ) -> None:
-    """Copies an ADK content attribute onto a Laminar one, unless ADK's
-    content toggle redacted it, which ADK signals by stamping ``"{}"``.
-    That sentinel collides with a genuinely empty dict serialized under an
-    enabled toggle, so the caller passes ``actual_is_empty`` computed from
-    the real value: a ``"{}"`` for an actually-empty payload is content,
-    not redaction."""
+    """Copies an ADK content attribute onto a Laminar one.
+
+    ADK stamps ``"{}"`` when its content toggle redacts a payload, but an
+    actually empty dict serializes to ``"{}"`` too, so the caller tells the
+    two apart via ``actual_is_empty``."""
     attributes = getattr(span, "attributes", None)
     if not attributes:
         return
@@ -191,13 +179,12 @@ def _noop_context():
 def _wrap_use_extra_generate_content_attributes(
     wrapped, instance, args, kwargs
 ):
-    """When ADK delegates the LLM span to an external genai instrumentation,
-    it forwards agent/session attributes through a context key imported from
-    the otel-contrib google-genai package. If that package isn't installed,
-    ADK warns that it is "installed but has insufficient version" — misleading
-    when the active instrumentation is Laminar's, and repeated on every LLM
-    call. Skip the forwarding quietly in that case; without the contrib
-    context key the attributes have nowhere to go anyway."""
+    """ADK forwards agent/session attributes to a delegated genai span
+    through a context key imported from the otel-contrib package, and logs a
+    bogus "insufficient version" warning on every LLM call when that package
+    is missing. If Laminar's genai instrumentation is the active one, skip
+    the forwarding instead of warning; without the contrib key the
+    attributes have nowhere to go anyway."""
     try:
         from opentelemetry.instrumentation.google_genai import (  # noqa: F401
             GENERATE_CONTENT_EXTRA_ATTRIBUTES_CONTEXT_KEY,
@@ -220,20 +207,19 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
         self._wrapped_functions: list[tuple[str, str]] = []
 
     def instrumentation_dependencies(self) -> Collection[str]:
-        # The wrapped functions (trace_tool_call, trace_agent_invocation,
-        # trace_merged_tool_calls, the genai detector) all exist with
-        # compatible signatures since 2.0.0; validated against 2.7.1. The
-        # upper bound guards against a 3.x rework of the telemetry module.
+        # All wrapped hooks exist with compatible signatures since 2.0.0;
+        # validated against 2.7.1. The upper bound guards against a 3.x
+        # rework of the telemetry module.
         return ("google-adk >= 2.0.0, < 3.0.0",)
 
     def _instrument(self, **kwargs: Any):
-        # `trace_merged_tool_calls` is bound by name at import time in
-        # `flows.llm_flows.functions` (and re-exported from the `telemetry`
-        # package), so patching only the `tracing` module attribute would
-        # miss the call site whenever ADK's flow modules were imported before
-        # `initialize()` — the usual ordering. Patch every module that holds
-        # a binding; a call routed through two patched bindings just runs the
-        # idempotent enrichment twice.
+        # trace_merged_tool_calls is bound by name at import time in
+        # flows.llm_flows.functions (and re-exported from the telemetry
+        # package), so patching only the tracing module misses that call
+        # site whenever ADK gets imported before initialize(), which is the
+        # usual ordering. Patch every module holding a binding; a call that
+        # goes through two patched bindings repeats the idempotent
+        # enrichment, which is harmless.
         for module_name, function_name, wrapper in (
             (_TRACING_MODULE, "trace_tool_call", _wrap_trace_tool_call),
             (
