@@ -46,6 +46,8 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
 logger = logging.getLogger(__name__)
 
 _TRACING_MODULE = "google.adk.telemetry.tracing"
+_TELEMETRY_PACKAGE = "google.adk.telemetry"
+_FLOW_FUNCTIONS_MODULE = "google.adk.flows.llm_flows.functions"
 _TOOL_ARGS_ATTRIBUTE = "gcp.vertex.agent.tool_call_args"
 _TOOL_RESPONSE_ATTRIBUTE = "gcp.vertex.agent.tool_response"
 _GENAI_DETECTOR = (
@@ -69,16 +71,43 @@ def _resolve_span(
 
 
 def _copy_content_attribute(
-    span: trace.Span, source: str, target: str
+    span: trace.Span, source: str, target: str, actual_is_empty: bool = False
 ) -> None:
     """Copies an ADK content attribute onto a Laminar one, unless ADK's
-    content toggle redacted it (in which case ADK stamps ``"{}"``)."""
+    content toggle redacted it, which ADK signals by stamping ``"{}"``.
+    That sentinel collides with a genuinely empty dict serialized under an
+    enabled toggle, so the caller passes ``actual_is_empty`` computed from
+    the real value: a ``"{}"`` for an actually-empty payload is content,
+    not redaction."""
     attributes = getattr(span, "attributes", None)
     if not attributes:
         return
     value = attributes.get(source)
-    if isinstance(value, str) and value not in ("", "{}"):
-        span.set_attribute(target, value)
+    if not isinstance(value, str) or not value:
+        return
+    if value == "{}" and not actual_is_empty:
+        return
+    span.set_attribute(target, value)
+
+
+def _tool_call_args(args: tuple, kwargs: dict):
+    if "args" in kwargs:
+        return kwargs["args"]
+    if len(args) > 1:
+        return args[1]
+    return None
+
+
+def _tool_response(args: tuple, kwargs: dict):
+    """Extracts the tool response the same way trace_tool_call does:
+    ``function_response_event.content.parts[0].function_response.response``."""
+    event = kwargs.get("function_response_event")
+    if event is None and len(args) > 2:
+        event = args[2]
+    try:
+        return event.content.parts[0].function_response.response
+    except (AttributeError, IndexError, TypeError):
+        return None
 
 
 def _wrap_trace_tool_call(wrapped, instance, args, kwargs):
@@ -89,8 +118,18 @@ def _wrap_trace_tool_call(wrapped, instance, args, kwargs):
         if span is None:
             return result
         span.set_attribute(SPAN_TYPE, "TOOL")
-        _copy_content_attribute(span, _TOOL_ARGS_ATTRIBUTE, SPAN_INPUT)
-        _copy_content_attribute(span, _TOOL_RESPONSE_ATTRIBUTE, SPAN_OUTPUT)
+        _copy_content_attribute(
+            span,
+            _TOOL_ARGS_ATTRIBUTE,
+            SPAN_INPUT,
+            actual_is_empty=_tool_call_args(args, kwargs) == {},
+        )
+        _copy_content_attribute(
+            span,
+            _TOOL_RESPONSE_ATTRIBUTE,
+            SPAN_OUTPUT,
+            actual_is_empty=_tool_response(args, kwargs) == {},
+        )
     except Exception:
         logger.debug("Failed to enrich ADK tool span", exc_info=True)
     return result
@@ -178,7 +217,7 @@ def _wrap_genai_detection(wrapped, instance, args, kwargs):
 class GoogleAdkInstrumentor(BaseInstrumentor):
     def __init__(self):
         super().__init__()
-        self._wrapped_functions: list[str] = []
+        self._wrapped_functions: list[tuple[str, str]] = []
 
     def instrumentation_dependencies(self) -> Collection[str]:
         # The wrapped functions (trace_tool_call, trace_agent_invocation,
@@ -188,30 +227,58 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
         return ("google-adk >= 2.0.0, < 3.0.0",)
 
     def _instrument(self, **kwargs: Any):
-        for function_name, wrapper in (
-            ("trace_tool_call", _wrap_trace_tool_call),
-            ("trace_merged_tool_calls", _wrap_trace_merged_tool_calls),
-            ("trace_agent_invocation", _wrap_trace_agent_invocation),
-            (_GENAI_DETECTOR, _wrap_genai_detection),
+        # `trace_merged_tool_calls` is bound by name at import time in
+        # `flows.llm_flows.functions` (and re-exported from the `telemetry`
+        # package), so patching only the `tracing` module attribute would
+        # miss the call site whenever ADK's flow modules were imported before
+        # `initialize()` — the usual ordering. Patch every module that holds
+        # a binding; a call routed through two patched bindings just runs the
+        # idempotent enrichment twice.
+        for module_name, function_name, wrapper in (
+            (_TRACING_MODULE, "trace_tool_call", _wrap_trace_tool_call),
             (
+                _TRACING_MODULE,
+                "trace_merged_tool_calls",
+                _wrap_trace_merged_tool_calls,
+            ),
+            (
+                _FLOW_FUNCTIONS_MODULE,
+                "trace_merged_tool_calls",
+                _wrap_trace_merged_tool_calls,
+            ),
+            (
+                _TELEMETRY_PACKAGE,
+                "trace_merged_tool_calls",
+                _wrap_trace_merged_tool_calls,
+            ),
+            (
+                _TRACING_MODULE,
+                "trace_agent_invocation",
+                _wrap_trace_agent_invocation,
+            ),
+            (_TRACING_MODULE, _GENAI_DETECTOR, _wrap_genai_detection),
+            (
+                _TRACING_MODULE,
                 "_use_extra_generate_content_attributes",
                 _wrap_use_extra_generate_content_attributes,
             ),
         ):
             try:
-                wrap_function_wrapper(_TRACING_MODULE, function_name, wrapper)
-                self._wrapped_functions.append(function_name)
+                wrap_function_wrapper(module_name, function_name, wrapper)
+                self._wrapped_functions.append((module_name, function_name))
             except (AttributeError, ModuleNotFoundError):
                 logger.debug(
-                    "ADK telemetry hook %s not found, skipping", function_name
+                    "ADK telemetry hook %s.%s not found, skipping",
+                    module_name,
+                    function_name,
                 )
 
     def _uninstrument(self, **kwargs: Any):
-        import google.adk.telemetry.tracing as tracing_module
+        import importlib
 
-        for function_name in self._wrapped_functions:
+        for module_name, function_name in self._wrapped_functions:
             try:
-                unwrap(tracing_module, function_name)
+                unwrap(importlib.import_module(module_name), function_name)
             except Exception:
                 pass
         self._wrapped_functions = []
