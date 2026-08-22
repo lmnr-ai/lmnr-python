@@ -170,3 +170,19 @@ def test_empty_args_tool_is_not_mistaken_for_redaction(span_exporter):
     assert json.loads(tool_span.attributes["lmnr.span.output"]) == {
         "city": "Almaty"
     }
+
+
+def test_wrap_tracking_survives_reconstruction(span_exporter):
+    # BaseInstrumentor is a singleton whose __init__ reruns on every
+    # construction; the wrap bookkeeping must not live there, or a second
+    # GoogleAdkInstrumentor() would clear it and uninstrument would leave
+    # the wraps behind.
+    from google.adk.telemetry import tracing
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation import (
+        google_adk,
+    )
+
+    instrumentor = google_adk.GoogleAdkInstrumentor()
+    assert instrumentor.is_instrumented_by_opentelemetry
+    assert hasattr(tracing.trace_tool_call, "__wrapped__")
+    assert instrumentor._wrapped_functions

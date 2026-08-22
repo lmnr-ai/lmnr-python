@@ -202,9 +202,10 @@ def _wrap_genai_detection(wrapped, instance, args, kwargs):
 
 
 class GoogleAdkInstrumentor(BaseInstrumentor):
-    def __init__(self):
-        super().__init__()
-        self._wrapped_functions: list[tuple[str, str]] = []
+    # Not set in __init__: BaseInstrumentor is a singleton whose __init__
+    # runs again on every construction, which would clear the tracking while
+    # the wraps stay applied and leave _uninstrument with nothing to unwrap.
+    _wrapped_functions: list[tuple[str, str]] = []
 
     def instrumentation_dependencies(self) -> Collection[str]:
         # All wrapped hooks exist with compatible signatures since 2.0.0;
@@ -213,6 +214,7 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
         return ("google-adk >= 2.0.0, < 3.0.0",)
 
     def _instrument(self, **kwargs: Any):
+        self._wrapped_functions = []
         # trace_merged_tool_calls is bound by name at import time in
         # flows.llm_flows.functions (and re-exported from the telemetry
         # package), so patching only the tracing module misses that call
