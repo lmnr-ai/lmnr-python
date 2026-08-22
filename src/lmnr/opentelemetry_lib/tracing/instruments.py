@@ -35,6 +35,11 @@ class Instruments(Enum):
     CUA_COMPUTER = "cua_computer"
     DAYTONA_SDK = "daytona_sdk"
     DEEPAGENTS = "deepagents"
+    # Pairs with GOOGLE_GENAI: while the genai instrumentation is active, ADK
+    # is told to skip its own `generate_content` span so each LLM call is
+    # covered once (by Laminar's span, which carries tokens and cost). With
+    # GOOGLE_GENAI blocked, ADK's native span comes back.
+    GOOGLE_ADK = "google_adk"
     GOOGLE_GENAI = "google_genai"
     GROQ = "groq"
     HAYSTACK = "haystack"
@@ -106,6 +111,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.CUA_COMPUTER: initializers.CuaComputerInstrumentorInitializer(),
     Instruments.DAYTONA_SDK: initializers.DaytonaSDKInstrumentorInitializer(),
     Instruments.DEEPAGENTS: initializers.DeepagentsInstrumentorInitializer(),
+    Instruments.GOOGLE_ADK: initializers.GoogleADKInstrumentorInitializer(),
     Instruments.GOOGLE_GENAI: initializers.GoogleGenAIInstrumentorInitializer(),
     Instruments.GROQ: initializers.GroqInstrumentorInitializer(),
     Instruments.HAYSTACK: initializers.HaystackInstrumentorInitializer(),
