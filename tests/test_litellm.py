@@ -311,6 +311,7 @@ def test_litellm_completion_streaming(span_exporter: InMemorySpanExporter):
             "role": "assistant",
             "content": "The capital of France is **Paris**.",
             "tool_calls": None,
+            "reasoning_content": None,
             "finish_reason": "stop",
             "index": 0,
         }
@@ -559,6 +560,7 @@ def test_litellm_completion_streaming_openai(span_exporter: InMemorySpanExporter
             "content": "The capital of France is Paris.",
             "tool_calls": None,
             "finish_reason": "stop",
+            "reasoning_content": None,
             "index": 0,
         }
     ]
@@ -963,6 +965,7 @@ def test_litellm_completion_streaming_with_tool_call(
             "role": "assistant",
             "content": None,
             "finish_reason": "tool_calls",
+            "reasoning_content": None,
             "index": 0,
             "tool_calls": [
                 {
@@ -1032,6 +1035,7 @@ def test_litellm_completion_streaming_with_tool_call_openai(
             "content": None,
             "finish_reason": "tool_calls",
             "index": 0,
+            "reasoning_content": None,
             "tool_calls": [
                 {
                     "id": tool_call_id,
@@ -1131,6 +1135,7 @@ async def test_litellm_completion_streaming_async(span_exporter: InMemorySpanExp
             "role": "assistant",
             "content": "The capital of France is **Paris**.",
             "tool_calls": None,
+            "reasoning_content": None,
             "finish_reason": "stop",
             "index": 0,
         }
@@ -1182,6 +1187,7 @@ async def test_litellm_completion_streaming_async_openai(
             "role": "assistant",
             "content": "The capital of France is Paris.",
             "tool_calls": None,
+            "reasoning_content": None,
             "finish_reason": "stop",
             "index": 0,
         }
@@ -1487,6 +1493,7 @@ async def test_litellm_completion_streaming_with_tool_call_async(
             "content": None,
             "finish_reason": "tool_calls",
             "index": 0,
+            "reasoning_content": None,
             "tool_calls": [
                 {
                     "id": tool_call_id,
