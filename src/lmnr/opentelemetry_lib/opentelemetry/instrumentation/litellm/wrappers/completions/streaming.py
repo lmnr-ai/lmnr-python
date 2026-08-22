@@ -36,6 +36,16 @@ def _accumulate_chunk(accumulated: dict, chunk: dict):
             accumulated["choices"][idx]["role"] = delta.get("role")
         if delta.get("content"):
             accumulated["choices"][idx]["content"] += delta.get("content")
+        reasoning = next(
+            (
+                delta.get(key)
+                for key in ("reasoning_content", "reasoning", "thinking")
+                if delta.get(key)
+            ),
+            None,
+        )
+        if reasoning:
+            accumulated["choices"][idx]["reasoning_content"] += reasoning
         if delta.get("tool_calls"):
             tool_calls_acc = accumulated["choices"][idx]["tool_calls"]
             for tc_chunk in delta.get("tool_calls"):
@@ -76,6 +86,7 @@ def _set_accumulated_attributes(
                         choice["content"] if len(choice["content"]) > 0 else None
                     ),
                     "role": choice["role"],
+                    "reasoning_content": choice["reasoning_content"] or None,
                     "finish_reason": (
                         choice["finish_reason"] if choice["finish_reason"] else None
                     ),
@@ -102,21 +113,30 @@ def _set_accumulated_attributes(
             set_span_attribute(span, "llm.usage.total_tokens", total_tokens)
 
             input_details = to_dict(usage.get("prompt_tokens_details", {}))
-            cache_read_tokens = input_details.get(
-                "cached_tokens", usage.get("cache_read_input_tokens", 0)
-            )
-            cache_creation_tokens = input_details.get(
-                "cache_creation_tokens",
-                usage.get("cache_creation_input_tokens", 0),
-            )
-            set_span_attribute(
-                span, "gen_ai.usage.cache_read_input_tokens", cache_read_tokens
-            )
-            set_span_attribute(
-                span,
-                "gen_ai.usage.cache_creation_input_tokens",
-                cache_creation_tokens,
-            )
+            if "cached_tokens" in input_details:
+                set_span_attribute(
+                    span,
+                    "gen_ai.usage.cache_read_input_tokens",
+                    input_details["cached_tokens"],
+                )
+            elif "cache_read_input_tokens" in usage:
+                set_span_attribute(
+                    span,
+                    "gen_ai.usage.cache_read_input_tokens",
+                    usage["cache_read_input_tokens"],
+                )
+            if "cache_creation_tokens" in input_details:
+                set_span_attribute(
+                    span,
+                    "gen_ai.usage.cache_creation_input_tokens",
+                    input_details["cache_creation_tokens"],
+                )
+            elif "cache_creation_input_tokens" in usage:
+                set_span_attribute(
+                    span,
+                    "gen_ai.usage.cache_creation_input_tokens",
+                    usage["cache_creation_input_tokens"],
+                )
 
         # Record raw response in rollout mode
         if record_raw_response:
@@ -139,6 +159,7 @@ def _set_accumulated_attributes(
                                 if len(choice["content"]) > 0
                                 else None
                             ),
+                            "reasoning_content": (choice["reasoning_content"] or None),
                             "tool_calls": (
                                 list(choice["tool_calls"].values())
                                 if choice["tool_calls"]
@@ -169,6 +190,7 @@ def process_completion_streaming_response(
                 "index": None,
                 "content": "",
                 "role": "assistant",
+                "reasoning_content": "",
                 "finish_reason": None,
                 "tool_calls": {},
             }
@@ -200,6 +222,7 @@ async def process_completion_async_streaming_response(
                 "index": None,
                 "content": "",
                 "role": "assistant",
+                "reasoning_content": "",
                 "finish_reason": None,
                 "tool_calls": {},
             }

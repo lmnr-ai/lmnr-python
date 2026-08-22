@@ -369,6 +369,75 @@ def test_litellm_completion_streaming_records_usage_only_chunk(
     assert attributes["gen_ai.usage.cache_read_input_tokens"] == 4000
 
 
+def test_litellm_completion_streaming_preserves_reasoning_deltas(
+    span_exporter: InMemorySpanExporter,
+):
+    """Reasoning deltas must be accumulated into the output message."""
+    span = Laminar.start_span("litellm.completion", span_type="LLM")
+    chunks = [
+        {
+            "id": "chatcmpl-test",
+            "model": "kimi-k3",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "role": "assistant",
+                        "reasoning_content": "I should inspect ",
+                    },
+                }
+            ],
+        },
+        {
+            "id": "chatcmpl-test",
+            "model": "kimi-k3",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "reasoning_content": "the repository.",
+                        "content": "I'll inspect it.",
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+        },
+    ]
+
+    assert list(process_completion_streaming_response(span, iter(chunks))) == chunks
+
+    output = json.loads(
+        span_exporter.get_finished_spans()[0].attributes["gen_ai.output.messages"]
+    )
+    assert output[0]["reasoning_content"] == "I should inspect the repository."
+    assert output[0]["content"] == "I'll inspect it."
+
+
+def test_litellm_completion_streaming_omits_unknown_cache_usage(
+    span_exporter: InMemorySpanExporter,
+):
+    """Missing cache details must not be reported as confirmed zero usage."""
+    span = Laminar.start_span("litellm.completion", span_type="LLM")
+    chunks = [
+        {
+            "id": "chatcmpl-test",
+            "model": "kimi-k3",
+            "choices": [],
+            "usage": {
+                "prompt_tokens": 5000,
+                "completion_tokens": 100,
+                "total_tokens": 5100,
+            },
+        }
+    ]
+
+    list(process_completion_streaming_response(span, iter(chunks)))
+
+    attributes = span_exporter.get_finished_spans()[0].attributes
+    assert "gen_ai.usage.cache_read_input_tokens" not in attributes
+    assert "gen_ai.usage.cache_creation_input_tokens" not in attributes
+
+
 @pytest.mark.asyncio
 async def test_litellm_completion_async_streaming_records_usage_only_chunk(
     span_exporter: InMemorySpanExporter,
@@ -411,6 +480,52 @@ async def test_litellm_completion_async_streaming_records_usage_only_chunk(
     assert attributes["gen_ai.usage.output_tokens"] == 100
     assert attributes["llm.usage.total_tokens"] == 5100
     assert attributes["gen_ai.usage.cache_read_input_tokens"] == 4000
+
+
+@pytest.mark.asyncio
+async def test_litellm_completion_async_streaming_preserves_reasoning_deltas(
+    span_exporter: InMemorySpanExporter,
+):
+    """The async stream wrapper must accumulate reasoning deltas."""
+    span = Laminar.start_span("litellm.completion", span_type="LLM")
+    chunks = [
+        {
+            "id": "chatcmpl-test",
+            "model": "kimi-k3",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"reasoning_content": "Think ", "content": ""},
+                }
+            ],
+        },
+        {
+            "id": "chatcmpl-test",
+            "model": "kimi-k3",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"reasoning_content": "carefully.", "content": "Done"},
+                    "finish_reason": "stop",
+                }
+            ],
+        },
+    ]
+
+    async def stream():
+        for chunk in chunks:
+            yield chunk
+
+    received = [
+        chunk
+        async for chunk in process_completion_async_streaming_response(span, stream())
+    ]
+    assert received == chunks
+    output = json.loads(
+        span_exporter.get_finished_spans()[0].attributes["gen_ai.output.messages"]
+    )
+    assert output[0]["reasoning_content"] == "Think carefully."
+    assert output[0]["content"] == "Done"
 
 
 @pytest.mark.vcr(record_mode="once")
