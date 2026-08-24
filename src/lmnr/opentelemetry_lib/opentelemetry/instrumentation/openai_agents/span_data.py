@@ -40,8 +40,27 @@ def apply_span_error(lmnr_span: LaminarSpan, span: AgentsSpan[Any]) -> None:
     if not error:
         return
     try:
-        message = getattr(error, "message", None) or str(error)
-        lmnr_span.set_status(Status(StatusCode.ERROR, message))
+        # `SpanError` is a TypedDict, so at runtime the fields are dict keys,
+        # not attributes. `message` is a short label ("Error running tool
+        # (non-fatal)"), `data` carries the specifics.
+        if isinstance(error, dict):
+            label = error.get("message")
+            data = error.get("data")
+        else:
+            label = getattr(error, "message", None)
+            data = getattr(error, "data", None)
+        label = label or str(error)
+        details = json_dumps(data) if data else label
+
+        lmnr_span.set_status(Status(StatusCode.ERROR, label))
+        # app-server derives a span's error status from the presence of an
+        # `exception` event, never from the OTel status code, so the status
+        # above is invisible on its own. These two attributes are what the
+        # trace view's error card renders.
+        lmnr_span.add_event(
+            "exception",
+            {"exception.type": label, "exception.message": details},
+        )
     except Exception:
         pass
 
