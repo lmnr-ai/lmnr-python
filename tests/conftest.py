@@ -1,3 +1,4 @@
+import os
 from typing import Generator
 import pytest
 from unittest.mock import patch
@@ -13,6 +14,14 @@ from opentelemetry.context import Context
 from lmnr.opentelemetry_lib.litellm import LaminarLiteLLMCallback
 
 pytest_plugins = ("pytest_asyncio",)
+
+# Git collection is disabled for the WHOLE test session (not just the
+# session-scoped initialize below): many tests re-run Laminar.initialize()
+# themselves, and each such call would otherwise stamp the SDK repo's real
+# git state (commit, branch, dirty flag) into the global metadata, breaking
+# tests that assert on exact metadata contents. `tests/test_git_metadata.py`
+# removes this env var in its fixtures to exercise the collection path.
+os.environ["LMNR_DISABLE_GIT_METADATA"] = "true"
 
 
 @pytest.fixture(scope="session")
