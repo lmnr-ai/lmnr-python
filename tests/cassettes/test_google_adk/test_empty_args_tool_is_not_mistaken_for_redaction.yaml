@@ -24,28 +24,26 @@ interactions:
     body:
       string: "{\n  \"candidates\": [\n    {\n      \"content\": {\n        \"parts\":
         [\n          {\n            \"functionCall\": {\n              \"name\": \"get_default_city\",\n
-        \             \"args\": {},\n              \"id\": \"call_441061\"\n            },\n
-        \           \"thoughtSignature\": \"El4KXAERTTIPzCyPtoxxTKc5YgplIK5MzvjMgzw87b2YtGN48QOVNLFs5NtJPs7XJ7MwNhvdSq+ClRmX7eb3JySumSFbSU65MPmPRGcOCKwh3CrQcK6RDfGMZlLH2KTH\"\n
+        \             \"args\": {},\n              \"id\": \"call_290118\"\n            },\n
+        \           \"thoughtSignature\": \"El4KXAERTTIPyunttAIsPfudFIvavBA+mYuVkSslA7v742Z6CLi/KaKg3NHyKjV9RkMmkyWzvkZO6aIKrxiy1Dk+IxF4Clxdn4ABA74eV0FjiYTD+MupL40serdvWsOb\"\n
         \         }\n        ],\n        \"role\": \"model\"\n      },\n      \"finishReason\":
         \"STOP\",\n      \"index\": 0,\n      \"finishMessage\": \"Model generated
         function call(s).\"\n    }\n  ],\n  \"usageMetadata\": {\n    \"promptTokenCount\":
         177,\n    \"candidatesTokenCount\": 12,\n    \"totalTokenCount\": 189,\n    \"promptTokensDetails\":
         [\n      {\n        \"modality\": \"TEXT\",\n        \"tokenCount\": 177\n
         \     }\n    ],\n    \"serviceTier\": \"standard\"\n  },\n  \"modelVersion\":
-        \"gemini-3.5-flash-lite\",\n  \"responseId\": \"OayNap-LCqbYvdIP_9Hy-AY\"\n}\n"
+        \"gemini-3.5-flash-lite\",\n  \"responseId\": \"qq-NaoqnJqGqkdUPt9CxgQk\"\n}\n"
     headers:
       Alt-Svc:
       - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-      Content-Encoding:
-      - gzip
       Content-Type:
       - application/json; charset=UTF-8
       Date:
-      - Tue, 25 Aug 2026 14:52:41 GMT
+      - Tue, 25 Aug 2026 15:07:23 GMT
       Server:
       - scaffolding on HTTPServer2
       Server-Timing:
-      - gfet4t7; dur=660
+      - gfet4t7; dur=1028
       Transfer-Encoding:
       - chunked
       Vary:
@@ -60,14 +58,16 @@ interactions:
       - standard
       X-XSS-Protection:
       - '0'
+      content-length:
+      - '898'
     status:
       code: 200
       message: OK
 - request:
     body: '{"contents": [{"parts": [{"text": "Which city am I in?"}], "role": "user"},
-      {"parts": [{"functionCall": {"id": "call_441061", "args": {}, "name": "get_default_city"},
-      "thoughtSignature": "El4KXAERTTIPzCyPtoxxTKc5YgplIK5MzvjMgzw87b2YtGN48QOVNLFs5NtJPs7XJ7MwNhvdSq-ClRmX7eb3JySumSFbSU65MPmPRGcOCKwh3CrQcK6RDfGMZlLH2KTH"}],
-      "role": "model"}, {"parts": [{"functionResponse": {"id": "call_441061", "name":
+      {"parts": [{"functionCall": {"id": "call_290118", "args": {}, "name": "get_default_city"},
+      "thoughtSignature": "El4KXAERTTIPyunttAIsPfudFIvavBA-mYuVkSslA7v742Z6CLi_KaKg3NHyKjV9RkMmkyWzvkZO6aIKrxiy1Dk-IxF4Clxdn4ABA74eV0FjiYTD-MupL40serdvWsOb"}],
+      "role": "model"}, {"parts": [{"functionResponse": {"id": "call_290118", "name":
       "get_default_city", "response": {"city": "Almaty"}}}], "role": "user"}], "systemInstruction":
       {"parts": [{"text": "Call get_default_city, then answer with just the city name.\n\nYou
       are an agent. Your internal name is \"weather_agent\"."}], "role": "user"},
@@ -92,26 +92,24 @@ interactions:
     body:
       string: "{\n  \"candidates\": [\n    {\n      \"content\": {\n        \"parts\":
         [\n          {\n            \"text\": \"Almaty\",\n            \"thoughtSignature\":
-        \"El4KXAERTTIPyQ/4cShCEbEjf93cXwYdUZsoIP1JTGFuu1KlSxbwkK8mD7sMBadRr4KCnOf0XsQ2wEQtq3yTgalieFlPHvvSHY1piP6sfa9U2BtWHnzUtGvNor58qrVI\"\n
+        \"El4KXAERTTIPqtB4MLs3uLrMQbkRkZrHdspklwGv2CZ1bbytWXFZly+weIc8y8iZLcJr90aB+gg1Gm4CmUicG09znjVebTIL3bVV6Pm0dkPcVE6FEcxjYbBbllBqRkzz\"\n
         \         }\n        ],\n        \"role\": \"model\"\n      },\n      \"finishReason\":
         \"STOP\",\n      \"index\": 0\n    }\n  ],\n  \"usageMetadata\": {\n    \"promptTokenCount\":
         206,\n    \"candidatesTokenCount\": 2,\n    \"totalTokenCount\": 208,\n    \"promptTokensDetails\":
         [\n      {\n        \"modality\": \"TEXT\",\n        \"tokenCount\": 206\n
         \     }\n    ],\n    \"serviceTier\": \"standard\"\n  },\n  \"modelVersion\":
-        \"gemini-3.5-flash-lite\",\n  \"responseId\": \"OayNaovwOsulvdIPpf-TwAs\"\n}\n"
+        \"gemini-3.5-flash-lite\",\n  \"responseId\": \"q6-Naqr0Lpj5nsEPkaGF-A4\"\n}\n"
     headers:
       Alt-Svc:
       - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-      Content-Encoding:
-      - gzip
       Content-Type:
       - application/json; charset=UTF-8
       Date:
-      - Tue, 25 Aug 2026 14:52:42 GMT
+      - Tue, 25 Aug 2026 15:07:24 GMT
       Server:
       - scaffolding on HTTPServer2
       Server-Timing:
-      - gfet4t7; dur=631
+      - gfet4t7; dur=717
       Transfer-Encoding:
       - chunked
       Vary:
@@ -126,6 +124,8 @@ interactions:
       - standard
       X-XSS-Protection:
       - '0'
+      content-length:
+      - '720'
     status:
       code: 200
       message: OK

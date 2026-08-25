@@ -34,6 +34,25 @@ def get_default_city() -> dict:
     return {"city": "Almaty"}
 
 
+@pytest.fixture(scope="module")
+def vcr_config():
+    # Same filters as the shared config in conftest, plus decompression:
+    # ADK talks to Gemini through aiohttp, and vcrpy records that path with
+    # a decoded body while keeping the Content-Encoding: gzip header, which
+    # breaks replay through httpx. Decoding at record time stores plain
+    # bodies with matching headers.
+    return {
+        "filter_headers": [
+            "authorization",
+            "api-key",
+            "x-goog-api-key",
+            "x-api-key",
+        ],
+        "filter_query_parameters": ["key"],
+        "decode_compressed_response": True,
+    }
+
+
 @pytest.fixture(autouse=True)
 def gemini_env(monkeypatch):
     # Real key from the environment while recording; the placeholder is

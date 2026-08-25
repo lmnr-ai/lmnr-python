@@ -26,31 +26,29 @@ interactions:
       string: "{\n  \"candidates\": [\n    {\n      \"content\": {\n        \"parts\":
         [\n          {\n            \"functionCall\": {\n              \"name\": \"get_weather\",\n
         \             \"args\": {\n                \"city\": \"Almaty\"\n              },\n
-        \             \"id\": \"call_469405\"\n            },\n            \"thoughtSignature\":
-        \"El4KXAERTTIPlQoX9KOg0J1CFvLitewAVAwTW7g0QfNBbyG5klAQa9gfSrWB+H8Dtq3iI1+KkJzCL8AxYhzK9BPjGOs7gx2DMOgZLoyFNrxgafpw8oA23JhpLCjp9lYb\"\n
+        \             \"id\": \"call_608362\"\n            },\n            \"thoughtSignature\":
+        \"El4KXAERTTIPkAVVPJ10j9NxewtCtcRmcrP2kjH+kq+3AhNz0HPRPcO3E0w0oZiuie9+FM1NmkXHw8NRqA14Mq2d5SqL8EZlrh/Bad5A10ygM5LIOjXub506wobG6946\"\n
         \         },\n          {\n            \"functionCall\": {\n              \"name\":
         \"get_time\",\n              \"args\": {\n                \"city\": \"Almaty\"\n
-        \             },\n              \"id\": \"call_469406\"\n            }\n          }\n
+        \             },\n              \"id\": \"call_608363\"\n            }\n          }\n
         \       ],\n        \"role\": \"model\"\n      },\n      \"finishReason\":
         \"STOP\",\n      \"index\": 0,\n      \"finishMessage\": \"Model generated
         function call(s).\"\n    }\n  ],\n  \"usageMetadata\": {\n    \"promptTokenCount\":
         185,\n    \"candidatesTokenCount\": 34,\n    \"totalTokenCount\": 219,\n    \"promptTokensDetails\":
         [\n      {\n        \"modality\": \"TEXT\",\n        \"tokenCount\": 185\n
         \     }\n    ],\n    \"serviceTier\": \"standard\"\n  },\n  \"modelVersion\":
-        \"gemini-3.5-flash-lite\",\n  \"responseId\": \"N6yNatKcFpLnnsEP5Pn9-AU\"\n}\n"
+        \"gemini-3.5-flash-lite\",\n  \"responseId\": \"qK-NarK2Lf-lvdIP_8mu8Aw\"\n}\n"
     headers:
       Alt-Svc:
       - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-      Content-Encoding:
-      - gzip
       Content-Type:
       - application/json; charset=UTF-8
       Date:
-      - Tue, 25 Aug 2026 14:52:39 GMT
+      - Tue, 25 Aug 2026 15:07:21 GMT
       Server:
       - scaffolding on HTTPServer2
       Server-Timing:
-      - gfet4t7; dur=625
+      - gfet4t7; dur=640
       Transfer-Encoding:
       - chunked
       Vary:
@@ -65,17 +63,19 @@ interactions:
       - standard
       X-XSS-Protection:
       - '0'
+      content-length:
+      - '1152'
     status:
       code: 200
       message: OK
 - request:
     body: '{"contents": [{"parts": [{"text": "Weather and local time in Almaty?"}],
-      "role": "user"}, {"parts": [{"functionCall": {"id": "call_469405", "args": {"city":
-      "Almaty"}, "name": "get_weather"}, "thoughtSignature": "El4KXAERTTIPlQoX9KOg0J1CFvLitewAVAwTW7g0QfNBbyG5klAQa9gfSrWB-H8Dtq3iI1-KkJzCL8AxYhzK9BPjGOs7gx2DMOgZLoyFNrxgafpw8oA23JhpLCjp9lYb"},
-      {"functionCall": {"id": "call_469406", "args": {"city": "Almaty"}, "name": "get_time"}}],
-      "role": "model"}, {"parts": [{"functionResponse": {"id": "call_469405", "name":
+      "role": "user"}, {"parts": [{"functionCall": {"id": "call_608362", "args": {"city":
+      "Almaty"}, "name": "get_weather"}, "thoughtSignature": "El4KXAERTTIPkAVVPJ10j9NxewtCtcRmcrP2kjH-kq-3AhNz0HPRPcO3E0w0oZiuie9-FM1NmkXHw8NRqA14Mq2d5SqL8EZlrh_Bad5A10ygM5LIOjXub506wobG6946"},
+      {"functionCall": {"id": "call_608363", "args": {"city": "Almaty"}, "name": "get_time"}}],
+      "role": "model"}, {"parts": [{"functionResponse": {"id": "call_608362", "name":
       "get_weather", "response": {"city": "Almaty", "forecast": "sunny"}}}, {"functionResponse":
-      {"id": "call_469406", "name": "get_time", "response": {"city": "Almaty", "time":
+      {"id": "call_608363", "name": "get_time", "response": {"city": "Almaty", "time":
       "12:00"}}}], "role": "user"}], "systemInstruction": {"parts": [{"text": "Call
       get_weather and get_time together in the same turn, then answer in one short
       sentence.\n\nYou are an agent. Your internal name is \"weather_agent\"."}],
@@ -99,27 +99,25 @@ interactions:
   response:
     body:
       string: "{\n  \"candidates\": [\n    {\n      \"content\": {\n        \"parts\":
-        [\n          {\n            \"text\": \"The current weather in Almaty is sunny,
-        and the local time is 12:00.\",\n            \"thoughtSignature\": \"El4KXAERTTIPQzKZmFwiUZ4Is868x9svwP0mAFKi0qeSa6/DcRlcmcAVpnr+D6o/nF2RRIVMmhlac+JByUnglUtiSUa4+RXcLcWg3cTZqfbRSDPIszfxvV0rEQSB2PFe\"\n
+        [\n          {\n            \"text\": \"The weather in Almaty is sunny and
+        the local time is 12:00.\",\n            \"thoughtSignature\": \"El4KXAERTTIPAyk9yO7BEkvfZbqsDp6p2Bu0MqQWmf0ODlkFMzKWYHVXo3gSP4KPpE/T8wxdA1bEIiOiXS0rBYuzWJKHXPeHsJTI1hB7N84s5fOhm7i4sK4SRpfss1l2\"\n
         \         }\n        ],\n        \"role\": \"model\"\n      },\n      \"finishReason\":
         \"STOP\",\n      \"index\": 0\n    }\n  ],\n  \"usageMetadata\": {\n    \"promptTokenCount\":
-        263,\n    \"candidatesTokenCount\": 21,\n    \"totalTokenCount\": 284,\n    \"promptTokensDetails\":
+        263,\n    \"candidatesTokenCount\": 19,\n    \"totalTokenCount\": 282,\n    \"promptTokensDetails\":
         [\n      {\n        \"modality\": \"TEXT\",\n        \"tokenCount\": 263\n
         \     }\n    ],\n    \"serviceTier\": \"standard\"\n  },\n  \"modelVersion\":
-        \"gemini-3.5-flash-lite\",\n  \"responseId\": \"OKyNapnuCemD7M8P0qqE2Qs\"\n}\n"
+        \"gemini-3.5-flash-lite\",\n  \"responseId\": \"qa-NaoHCHIqlvdIPw5zmgAY\"\n}\n"
     headers:
       Alt-Svc:
       - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-      Content-Encoding:
-      - gzip
       Content-Type:
       - application/json; charset=UTF-8
       Date:
-      - Tue, 25 Aug 2026 14:52:40 GMT
+      - Tue, 25 Aug 2026 15:07:22 GMT
       Server:
       - scaffolding on HTTPServer2
       Server-Timing:
-      - gfet4t7; dur=639
+      - gfet4t7; dur=717
       Transfer-Encoding:
       - chunked
       Vary:
@@ -134,6 +132,8 @@ interactions:
       - standard
       X-XSS-Protection:
       - '0'
+      content-length:
+      - '774'
     status:
       code: 200
       message: OK

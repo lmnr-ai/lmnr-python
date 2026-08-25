@@ -25,28 +25,26 @@ interactions:
       string: "{\n  \"candidates\": [\n    {\n      \"content\": {\n        \"parts\":
         [\n          {\n            \"functionCall\": {\n              \"name\": \"get_weather\",\n
         \             \"args\": {\n                \"city\": \"Almaty\"\n              },\n
-        \             \"id\": \"call_239574\"\n            },\n            \"thoughtSignature\":
-        \"El4KXAERTTIP5t0sxQsWin3S5e5oQ2BSjUZyN/THu2FvboC/4YUoP29BWt9WIzNfmhzvroM0MSzZDOc52QcPKRHoyBt8gPGjxFVjU34zpUDr2R/7C/5tkGUyUb1IFFBt\"\n
+        \             \"id\": \"call_395009\"\n            },\n            \"thoughtSignature\":
+        \"El4KXAERTTIPfxmssxsFUvEHbKnbJnhM1T+DlCLb8cCnwbDfUccKiThZWeBUHbVsAex5gRnFcq+QQCISA7FXbtJgNI2efComKlnfQceZOq2hEG7N9o14OlA9mBLd5epL\"\n
         \         }\n        ],\n        \"role\": \"model\"\n      },\n      \"finishReason\":
         \"STOP\",\n      \"index\": 0,\n      \"finishMessage\": \"Model generated
         function call(s).\"\n    }\n  ],\n  \"usageMetadata\": {\n    \"promptTokenCount\":
         180,\n    \"candidatesTokenCount\": 17,\n    \"totalTokenCount\": 197,\n    \"promptTokensDetails\":
         [\n      {\n        \"modality\": \"TEXT\",\n        \"tokenCount\": 180\n
         \     }\n    ],\n    \"serviceTier\": \"standard\"\n  },\n  \"modelVersion\":
-        \"gemini-3.5-flash-lite\",\n  \"responseId\": \"NayNaqW7J5uc28oPqbOiyAg\"\n}\n"
+        \"gemini-3.5-flash-lite\",\n  \"responseId\": \"pq-Nav3eOe_U7M8Pl_6CkQE\"\n}\n"
     headers:
       Alt-Svc:
       - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-      Content-Encoding:
-      - gzip
       Content-Type:
       - application/json; charset=UTF-8
       Date:
-      - Tue, 25 Aug 2026 14:52:38 GMT
+      - Tue, 25 Aug 2026 15:07:19 GMT
       Server:
       - scaffolding on HTTPServer2
       Server-Timing:
-      - gfet4t7; dur=559
+      - gfet4t7; dur=541
       Transfer-Encoding:
       - chunked
       Vary:
@@ -61,14 +59,16 @@ interactions:
       - standard
       X-XSS-Protection:
       - '0'
+      content-length:
+      - '941'
     status:
       code: 200
       message: OK
 - request:
     body: '{"contents": [{"parts": [{"text": "Weather in Almaty?"}], "role": "user"},
-      {"parts": [{"functionCall": {"id": "call_239574", "args": {"city": "Almaty"},
-      "name": "get_weather"}, "thoughtSignature": "El4KXAERTTIP5t0sxQsWin3S5e5oQ2BSjUZyN_THu2FvboC_4YUoP29BWt9WIzNfmhzvroM0MSzZDOc52QcPKRHoyBt8gPGjxFVjU34zpUDr2R_7C_5tkGUyUb1IFFBt"}],
-      "role": "model"}, {"parts": [{"functionResponse": {"id": "call_239574", "name":
+      {"parts": [{"functionCall": {"id": "call_395009", "args": {"city": "Almaty"},
+      "name": "get_weather"}, "thoughtSignature": "El4KXAERTTIPfxmssxsFUvEHbKnbJnhM1T-DlCLb8cCnwbDfUccKiThZWeBUHbVsAex5gRnFcq-QQCISA7FXbtJgNI2efComKlnfQceZOq2hEG7N9o14OlA9mBLd5epL"}],
+      "role": "model"}, {"parts": [{"functionResponse": {"id": "call_395009", "name":
       "get_weather", "response": {"city": "Almaty", "forecast": "sunny"}}}], "role":
       "user"}], "systemInstruction": {"parts": [{"text": "Call get_weather for the
       city the user asks about, then answer in one short sentence.\n\nYou are an agent.
@@ -92,27 +92,25 @@ interactions:
   response:
     body:
       string: "{\n  \"candidates\": [\n    {\n      \"content\": {\n        \"parts\":
-        [\n          {\n            \"text\": \"The weather in Almaty is sunny.\",\n
-        \           \"thoughtSignature\": \"El4KXAERTTIPuBNRMQY4CKEr9vgZXudDVC/fzwtQtmS0mqu8sdGDznVF45hr546Y7TWiEii7ULRqB9sPHchpU4SUCdwSO8eLF4zEZl1LcsIokWi0y/3wGQGA8Pmua5Rh\"\n
+        [\n          {\n            \"text\": \"The weather in Almaty is currently
+        sunny.\",\n            \"thoughtSignature\": \"El4KXAERTTIPmJ158BYLwLOykMGXdTEweZXwk150qFcTLXeVqhuIYWLxdLan6h0K0ATAfHjvDy1xj6B9zLNaQYngTV0hHHRL3szmKsM7N4Ag2Vyr3odRB/FwYk33HDCv\"\n
         \         }\n        ],\n        \"role\": \"model\"\n      },\n      \"finishReason\":
         \"STOP\",\n      \"index\": 0\n    }\n  ],\n  \"usageMetadata\": {\n    \"promptTokenCount\":
-        218,\n    \"candidatesTokenCount\": 8,\n    \"totalTokenCount\": 226,\n    \"promptTokensDetails\":
+        218,\n    \"candidatesTokenCount\": 9,\n    \"totalTokenCount\": 227,\n    \"promptTokensDetails\":
         [\n      {\n        \"modality\": \"TEXT\",\n        \"tokenCount\": 218\n
         \     }\n    ],\n    \"serviceTier\": \"standard\"\n  },\n  \"modelVersion\":
-        \"gemini-3.5-flash-lite\",\n  \"responseId\": \"NqyNaqzxEv7dxs0Pm-qL-Ag\"\n}\n"
+        \"gemini-3.5-flash-lite\",\n  \"responseId\": \"p6-NaqrOJMbMnsEP9u2c6Qc\"\n}\n"
     headers:
       Alt-Svc:
       - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
-      Content-Encoding:
-      - gzip
       Content-Type:
       - application/json; charset=UTF-8
       Date:
-      - Tue, 25 Aug 2026 14:52:38 GMT
+      - Tue, 25 Aug 2026 15:07:20 GMT
       Server:
       - scaffolding on HTTPServer2
       Server-Timing:
-      - gfet4t7; dur=622
+      - gfet4t7; dur=560
       Transfer-Encoding:
       - chunked
       Vary:
@@ -127,6 +125,8 @@ interactions:
       - standard
       X-XSS-Protection:
       - '0'
+      content-length:
+      - '755'
     status:
       code: 200
       message: OK
