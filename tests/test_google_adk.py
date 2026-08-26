@@ -1,9 +1,9 @@
 """Tests for the Google ADK instrumentation.
 
-The end-to-end tests drive a real `InMemoryRunner` against gemini-3.5-flash-lite.
-The actual key was used during recording and the requests/responses were
-saved to the VCR cassettes, so the asserted spans are the ones ADK produces
-for real model turns.
+The end-to-end tests drive a real `InMemoryRunner` against
+gemini-3.5-flash-lite. The actual key was used during recording and the
+requests/responses were saved to the VCR cassettes, so the asserted spans
+are the ones ADK produces for real model turns.
 """
 
 import asyncio
@@ -211,6 +211,106 @@ def test_empty_args_tool_is_not_mistaken_for_redaction(span_exporter):
     assert json.loads(tool_span.attributes["lmnr.span.output"]) == {
         "city": "Almaty"
     }
+
+
+def test_agent_enrichment_keeps_explicit_session_id():
+    # An id already on the span was set explicitly through Laminar (the
+    # processor stamps context values at span start); the derived ADK id
+    # must not overwrite it.
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation import (
+        google_adk,
+    )
+
+    class FakeSession:
+        id = "adk-session-uuid"
+        user_id = "adk-user"
+
+    class FakeCtx:
+        session = FakeSession()
+
+    class FakeSpan:
+        def __init__(self, attributes):
+            self.attributes = dict(attributes)
+
+        def is_recording(self):
+            return True
+
+        def set_attribute(self, key, value):
+            self.attributes[key] = value
+
+    span = FakeSpan({"lmnr.association.properties.session_id": "checkout-42"})
+    google_adk._wrap_trace_agent_invocation(
+        lambda *a, **k: None, None, (span, object(), FakeCtx()), {}
+    )
+    assert (
+        span.attributes["lmnr.association.properties.session_id"]
+        == "checkout-42"
+    )
+    assert (
+        span.attributes["lmnr.association.properties.user_id"] == "adk-user"
+    )
+
+
+def test_genai_probe_keeps_exception_logger():
+    # _laminar_genai_instrumented runs on every LLM call; constructing
+    # GoogleGenAiSdkInstrumentor there would rerun the singleton's __init__
+    # and reset a user-provided exception logger.
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation import (
+        google_adk,
+    )
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.config import (  # noqa: E501
+        Config,
+    )
+
+    def sentinel(e):
+        pass
+
+    Config.exception_logger = sentinel
+    try:
+        assert google_adk._laminar_genai_instrumented() is True
+        assert Config.exception_logger is sentinel
+    finally:
+        Config.exception_logger = None
+
+
+def test_uninstrument_unwraps_lazily_imported_binding():
+    # initialize() before any ADK import means the flow module is first
+    # imported by the instrumentor itself, mid wrap-loop; its by-name
+    # binding of trace_merged_tool_calls must come out single-wrapped, and
+    # uninstrument must leave no live layer on any binding.
+    import sys
+
+    import wrapt
+    from google.adk.flows import llm_flows
+    from google.adk.telemetry import tracing
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation import (
+        google_adk,
+    )
+
+    module_name = "google.adk.flows.llm_flows.functions"
+    original_module = sys.modules[module_name]
+    instrumentor = google_adk.GoogleAdkInstrumentor()
+    instrumentor.uninstrument()
+    sys.modules.pop(module_name)
+    try:
+        instrumentor.instrument()
+        fresh = sys.modules[module_name]
+        assert isinstance(fresh.trace_merged_tool_calls, wrapt.ObjectProxy)
+        assert not isinstance(
+            fresh.trace_merged_tool_calls.__wrapped__, wrapt.ObjectProxy
+        )
+        instrumentor.uninstrument()
+        assert not isinstance(
+            fresh.trace_merged_tool_calls, wrapt.ObjectProxy
+        )
+        assert not isinstance(
+            tracing.trace_merged_tool_calls, wrapt.ObjectProxy
+        )
+    finally:
+        sys.modules[module_name] = original_module
+        llm_flows.functions = original_module
+        if not instrumentor.is_instrumented_by_opentelemetry:
+            instrumentor.instrument()
 
 
 def test_wrap_tracking_survives_reconstruction(span_exporter):

@@ -147,16 +147,18 @@ def _wrap_trace_agent_invocation(wrapped, instance, args, kwargs):
         if ctx is None and len(args) > 2:
             ctx = args[2]
         session = getattr(ctx, "session", None)
+        # An id already on the span was set explicitly through Laminar;
+        # the derived ADK id must not override it (context < parent <
+        # explicit, per laminar.py).
+        existing = getattr(span, "attributes", None) or {}
+        session_key = f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}"
         session_id = getattr(session, "id", None)
-        if session_id:
-            span.set_attribute(
-                f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}", str(session_id)
-            )
+        if session_id and session_key not in existing:
+            span.set_attribute(session_key, str(session_id))
+        user_key = f"{ASSOCIATION_PROPERTIES}.{USER_ID}"
         user_id = getattr(session, "user_id", None)
-        if user_id:
-            span.set_attribute(
-                f"{ASSOCIATION_PROPERTIES}.{USER_ID}", str(user_id)
-            )
+        if user_id and user_key not in existing:
+            span.set_attribute(user_key, str(user_id))
     except Exception:
         logger.debug("Failed to enrich ADK agent span", exc_info=True)
     return result
@@ -166,7 +168,10 @@ def _laminar_genai_instrumented() -> bool:
     try:
         from ..google_genai import GoogleGenAiSdkInstrumentor
 
-        return GoogleGenAiSdkInstrumentor().is_instrumented_by_opentelemetry
+        # Constructing the singleton here would rerun its __init__ on
+        # every LLM call, resetting a user-provided Config.exception_logger.
+        instance = GoogleGenAiSdkInstrumentor._instance
+        return bool(instance and instance.is_instrumented_by_opentelemetry)
     except Exception:
         return False
 
@@ -205,7 +210,7 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
     # Not set in __init__: BaseInstrumentor is a singleton whose __init__
     # runs again on every construction, which would clear the tracking while
     # the wraps stay applied and leave _uninstrument with nothing to unwrap.
-    _wrapped_functions: list[tuple[str, str]] = []
+    _wrapped_functions: list[tuple[str, str, Any]] = []
 
     def instrumentation_dependencies(self) -> Collection[str]:
         # All wrapped hooks exist with compatible signatures since 2.0.0;
@@ -221,14 +226,11 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
         # site whenever ADK gets imported before initialize(), which is the
         # usual ordering. Patch every module holding a binding; a call that
         # goes through two patched bindings repeats the idempotent
-        # enrichment, which is harmless.
+        # enrichment, which is harmless. Order matters: the tracing module
+        # goes last, otherwise a lazy import of the other modules would
+        # bind the already-wrapped function and come out nested.
         for module_name, function_name, wrapper in (
             (_TRACING_MODULE, "trace_tool_call", _wrap_trace_tool_call),
-            (
-                _TRACING_MODULE,
-                "trace_merged_tool_calls",
-                _wrap_trace_merged_tool_calls,
-            ),
             (
                 _FLOW_FUNCTIONS_MODULE,
                 "trace_merged_tool_calls",
@@ -236,6 +238,11 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
             ),
             (
                 _TELEMETRY_PACKAGE,
+                "trace_merged_tool_calls",
+                _wrap_trace_merged_tool_calls,
+            ),
+            (
+                _TRACING_MODULE,
                 "trace_merged_tool_calls",
                 _wrap_trace_merged_tool_calls,
             ),
@@ -253,7 +260,9 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
         ):
             try:
                 wrap_function_wrapper(module_name, function_name, wrapper)
-                self._wrapped_functions.append((module_name, function_name))
+                self._wrapped_functions.append(
+                    (module_name, function_name, wrapper)
+                )
             except (AttributeError, ModuleNotFoundError):
                 logger.debug(
                     "ADK telemetry hook %s.%s not found, skipping",
@@ -264,9 +273,20 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
     def _uninstrument(self, **kwargs: Any):
         import importlib
 
-        for module_name, function_name in self._wrapped_functions:
+        for module_name, function_name, wrapper in self._wrapped_functions:
             try:
-                unwrap(importlib.import_module(module_name), function_name)
+                module = importlib.import_module(module_name)
+                # Not a plain unwrap: a binding created from an
+                # already-wrapped name can be nested.
+                while (
+                    getattr(
+                        getattr(module, function_name, None),
+                        "_self_wrapper",
+                        None,
+                    )
+                    is wrapper
+                ):
+                    unwrap(module, function_name)
             except Exception:
                 pass
         self._wrapped_functions = []
