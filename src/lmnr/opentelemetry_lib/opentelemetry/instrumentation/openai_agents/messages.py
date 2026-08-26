@@ -151,6 +151,21 @@ def set_tool_definitions_from_response(
 # ---------------------------------------------------------------------------
 
 
+def provider_from_model(model: Any) -> str:
+    """Derive gen_ai.system from a model name.
+
+    `LitellmModel` routes through the Agents SDK with a litellm model string,
+    which is `<provider>/<model>` (`anthropic/claude-sonnet-5`,
+    `gemini/gemini-3-pro`, `azure/gpt-4o`). Hardcoding "openai" mislabels every
+    one of those. A bare name has no prefix to read and is an OpenAI model.
+    """
+    if isinstance(model, str) and "/" in model:
+        provider = model.split("/", 1)[0].strip()
+        if provider:
+            return provider
+    return "openai"
+
+
 def apply_llm_attributes(
     lmnr_span: LaminarSpan,
     data: dict[str, Any],
@@ -162,7 +177,7 @@ def apply_llm_attributes(
     if model:
         lmnr_span.set_attribute(Attributes.REQUEST_MODEL.value, model)
         lmnr_span.set_attribute(Attributes.RESPONSE_MODEL.value, model)
-        lmnr_span.set_attribute(Attributes.PROVIDER.value, "openai")
+        lmnr_span.set_attribute(Attributes.PROVIDER.value, provider_from_model(model))
 
     usage = data.get("usage")
     if usage is not None:
