@@ -42,7 +42,7 @@ tiktoken_encodings = {}
 logger = logging.getLogger(__name__)
 
 
-def _set_span_attribute(span, name, value):
+def set_span_attribute(span, name, value):
     if value is None or value == "":
         return
 
@@ -61,9 +61,9 @@ def _set_client_attributes(span, instance):
 
     client = instance._client  # pylint: disable=protected-access
     if isinstance(client, (openai.AsyncOpenAI, openai.OpenAI)):
-        _set_span_attribute(span, "gen_ai.request.base_url", str(client.base_url))
+        set_span_attribute(span, "gen_ai.request.base_url", str(client.base_url))
     if isinstance(client, (openai.AsyncAzureOpenAI, openai.AzureOpenAI)):
-        _set_span_attribute(span, "gen_ai.openai.api_version", client._api_version)  # pylint: disable=protected-access
+        set_span_attribute(span, "gen_ai.openai.api_version", client._api_version)  # pylint: disable=protected-access
 
 
 def _set_api_attributes(span):
@@ -75,9 +75,9 @@ def _set_api_attributes(span):
 
     base_url = openai.base_url if hasattr(openai, "base_url") else openai.api_base
 
-    _set_span_attribute(span, "gen_ai.request.base_url", base_url)
-    _set_span_attribute(span, "gen_ai.request.api_type", openai.api_type)
-    _set_span_attribute(span, "gen_ai.request.api_version", openai.api_version)
+    set_span_attribute(span, "gen_ai.request.base_url", base_url)
+    set_span_attribute(span, "gen_ai.request.api_type", openai.api_type)
+    set_span_attribute(span, "gen_ai.request.api_version", openai.api_version)
 
     return
 
@@ -86,7 +86,7 @@ def set_tools_attributes(span, tools):
     if not tools:
         return
 
-    _set_span_attribute(
+    set_span_attribute(
         span,
         "gen_ai.tool.definitions",
         json_dumps(tools),
@@ -101,34 +101,34 @@ def _set_request_attributes(span, kwargs, instance=None):
 
     base_url = _get_openai_base_url(instance) if instance else ""
     vendor = _get_vendor_from_url(base_url)
-    _set_span_attribute(span, GEN_AI_SYSTEM, vendor)
+    set_span_attribute(span, GEN_AI_SYSTEM, vendor)
 
     model = kwargs.get("model")
     if vendor == "AWS" and model and "." in model:
         model = _cross_region_check(model)
 
-    _set_span_attribute(span, GEN_AI_REQUEST_MODEL, model)
-    _set_span_attribute(span, GEN_AI_REQUEST_MAX_TOKENS, kwargs.get("max_tokens"))
-    _set_span_attribute(span, GEN_AI_REQUEST_TEMPERATURE, kwargs.get("temperature"))
-    _set_span_attribute(span, GEN_AI_REQUEST_TOP_P, kwargs.get("top_p"))
-    _set_span_attribute(
+    set_span_attribute(span, GEN_AI_REQUEST_MODEL, model)
+    set_span_attribute(span, GEN_AI_REQUEST_MAX_TOKENS, kwargs.get("max_tokens"))
+    set_span_attribute(span, GEN_AI_REQUEST_TEMPERATURE, kwargs.get("temperature"))
+    set_span_attribute(span, GEN_AI_REQUEST_TOP_P, kwargs.get("top_p"))
+    set_span_attribute(
         span, GEN_AI_REQUEST_FREQUENCY_PENALTY, kwargs.get("frequency_penalty")
     )
-    _set_span_attribute(
+    set_span_attribute(
         span, GEN_AI_REQUEST_PRESENCE_PENALTY, kwargs.get("presence_penalty")
     )
-    _set_span_attribute(span, "llm.user", kwargs.get("user"))
-    _set_span_attribute(span, "llm.headers", str(kwargs.get("headers")))
+    set_span_attribute(span, "llm.user", kwargs.get("user"))
+    set_span_attribute(span, "llm.headers", str(kwargs.get("headers")))
     # The new OpenAI SDK removed the `headers` and create new field called `extra_headers`
     if kwargs.get("extra_headers") is not None:
-        _set_span_attribute(span, "llm.headers", str(kwargs.get("extra_headers")))
-    _set_span_attribute(span, "llm.is_streaming", kwargs.get("stream") or False)
-    _set_span_attribute(
+        set_span_attribute(span, "llm.headers", str(kwargs.get("extra_headers")))
+    set_span_attribute(span, "llm.is_streaming", kwargs.get("stream") or False)
+    set_span_attribute(
         span,
         "gen_ai.request.reasoning_effort",
         kwargs.get("reasoning_effort"),
     )
-    _set_span_attribute(
+    set_span_attribute(
         span,
         "openai.request.service_tier",
         kwargs.get("service_tier"),
@@ -143,7 +143,7 @@ def _set_request_attributes(span, kwargs, instance=None):
         ):
             schema = dict(response_format.get("json_schema")).get("schema")
             if schema:
-                _set_span_attribute(
+                set_span_attribute(
                     span,
                     "gen_ai.request.structured_output_schema",
                     json.dumps(schema),
@@ -158,7 +158,7 @@ def _set_request_attributes(span, kwargs, instance=None):
                 if response_format_param.get("type") == "json_schema":
                     schema = response_format_param.get("json_schema").get("schema")
                     if schema:
-                        _set_span_attribute(
+                        set_span_attribute(
                             span,
                             "gen_ai.request.structured_output_schema",
                             json.dumps(schema),
@@ -170,7 +170,7 @@ def _set_request_attributes(span, kwargs, instance=None):
                     hasattr(response_format, "model_json_schema")
                     and callable(response_format.model_json_schema)
                 ):
-                    _set_span_attribute(
+                    set_span_attribute(
                         span,
                         "gen_ai.request.structured_output_schema",
                         json.dumps(response_format.model_json_schema()),
@@ -188,7 +188,7 @@ def _set_request_attributes(span, kwargs, instance=None):
                             pass
 
                     if schema:
-                        _set_span_attribute(
+                        set_span_attribute(
                             span,
                             "gen_ai.request.structured_output_schema",
                             schema,
@@ -201,7 +201,7 @@ def _set_response_attributes(span, response):
         return
 
     if "error" in response:
-        _set_span_attribute(
+        set_span_attribute(
             span,
             f"gen_ai.prompt.{PROMPT_ERROR}",
             json.dumps(response.get("error")),
@@ -209,17 +209,17 @@ def _set_response_attributes(span, response):
         return
 
     response_model = response.get("model")
-    _set_span_attribute(span, GEN_AI_RESPONSE_MODEL, response_model)
-    _set_span_attribute(span, GEN_AI_RESPONSE_ID, response.get("id"))
+    set_span_attribute(span, GEN_AI_RESPONSE_MODEL, response_model)
+    set_span_attribute(span, GEN_AI_RESPONSE_ID, response.get("id"))
 
-    _set_span_attribute(
+    set_span_attribute(
         span,
         OPENAI_RESPONSE_SYSTEM_FINGERPRINT,
         response.get("system_fingerprint"),
     )
     _log_prompt_filter(span, response)
     usage = response.get("usage")
-    _set_span_attribute(
+    set_span_attribute(
         span,
         "openai.response.service_tier",
         response.get("service_tier"),
@@ -230,15 +230,15 @@ def _set_response_attributes(span, response):
     if is_openai_v1() and not isinstance(usage, dict):
         usage = usage.__dict__
 
-    _set_span_attribute(span, "llm.usage.total_tokens", usage.get("total_tokens"))
-    _set_span_attribute(
+    set_span_attribute(span, "llm.usage.total_tokens", usage.get("total_tokens"))
+    set_span_attribute(
         span,
         GEN_AI_USAGE_OUTPUT_TOKENS,
         usage.get("completion_tokens"),
     )
-    _set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, usage.get("prompt_tokens"))
+    set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, usage.get("prompt_tokens"))
     prompt_tokens_details = dict(usage.get("prompt_tokens_details", {}))
-    _set_span_attribute(
+    set_span_attribute(
         span,
         "gen_ai.usage.cache_read_input_tokens",
         prompt_tokens_details.get("cached_tokens", 0),
@@ -246,7 +246,7 @@ def _set_response_attributes(span, response):
 
     if completion_token_details := dict(usage.get("completion_tokens_details", {})):
         reasoning_tokens = completion_token_details.get("reasoning_tokens")
-        _set_span_attribute(
+        set_span_attribute(
             span,
             "gen_ai.usage.reasoning_tokens",
             reasoning_tokens or 0,
@@ -257,7 +257,7 @@ def _set_response_attributes(span, response):
 
 def _log_prompt_filter(span, response_dict):
     if response_dict.get("prompt_filter_results"):
-        _set_span_attribute(
+        set_span_attribute(
             span,
             f"gen_ai.prompt.{PROMPT_FILTER_KEY}",
             json.dumps(response_dict.get("prompt_filter_results")),
@@ -270,17 +270,17 @@ def _set_span_stream_usage(span, prompt_tokens, completion_tokens):
         return
 
     if isinstance(completion_tokens, int) and completion_tokens >= 0:
-        _set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, completion_tokens)
+        set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, completion_tokens)
 
     if isinstance(prompt_tokens, int) and prompt_tokens >= 0:
-        _set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, prompt_tokens)
+        set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, prompt_tokens)
 
     if (
         isinstance(prompt_tokens, int)
         and isinstance(completion_tokens, int)
         and completion_tokens + prompt_tokens >= 0
     ):
-        _set_span_attribute(
+        set_span_attribute(
             span,
             "llm.usage.total_tokens",
             completion_tokens + prompt_tokens,

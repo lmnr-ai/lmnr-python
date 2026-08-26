@@ -6,7 +6,7 @@ from ..shared import (
     _set_client_attributes,
     _set_request_attributes,
     _set_response_attributes,
-    _set_span_attribute,
+    set_span_attribute,
     is_streaming_response,
     model_as_dict,
     propagate_trace_context,
@@ -251,11 +251,11 @@ def _handle_response(
     if record_raw_response:
         try:
             if hasattr(response, "model_dump_json"):
-                _set_span_attribute(
+                set_span_attribute(
                     span, "lmnr.sdk.raw.response", response.model_dump_json()
                 )
             else:
-                _set_span_attribute(
+                set_span_attribute(
                     span, "lmnr.sdk.raw.response", json_dumps(response_dict)
                 )
         except Exception:
@@ -292,14 +292,14 @@ def _set_prompts(span, messages):
 
         processed_messages.append(processed_msg)
 
-    _set_span_attribute(span, "gen_ai.input.messages", json_dumps(processed_messages))
+    set_span_attribute(span, "gen_ai.input.messages", json_dumps(processed_messages))
 
 
 def _set_completions(span, choices):
     if choices is None:
         return
 
-    _set_span_attribute(span, "gen_ai.output.messages", json_dumps(choices))
+    set_span_attribute(span, "gen_ai.output.messages", json_dumps(choices))
 
 
 class ChatStream(ObjectProxy):
@@ -428,7 +428,7 @@ class ChatStream(ObjectProxy):
 
         if self._record_raw_response:
             try:
-                _set_span_attribute(
+                set_span_attribute(
                     self._span,
                     "lmnr.sdk.raw.response",
                     json_dumps(self._complete_response),
