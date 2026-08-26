@@ -1,13 +1,18 @@
 from inspect import iscoroutine
 from typing import Any, Callable, Sequence
 
+from opentelemetry.context import get_value
 from opentelemetry.trace import Status, StatusCode
 
 from lmnr import Laminar
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.helpers import (
+    DISABLE_LITELLM_INSTRUMENTATION_CONTEXT_KEY,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     set_span_attribute,
 )
 from lmnr.opentelemetry_lib.tracing.context import (
+    get_current_context,
     in_litellm_context,
     _in_litellm_context,
 )
@@ -35,6 +40,48 @@ from .responses.streaming import (
 )
 
 logger = get_default_logger(__name__)
+
+
+def _instrumentation_disabled() -> bool:
+    """Whether an enclosing instrumentation already owns this model call.
+
+    The openai-agents processor sets this around the `generation` span it opens
+    for a `LitellmModel` call. That span already records the request, the
+    response and the usage, so opening `litellm.completion` underneath it emits
+    a second LLM span for the same call - the tokens and the cost of every turn
+    end up counted twice in the trace.
+    """
+    return bool(
+        get_value(DISABLE_LITELLM_INSTRUMENTATION_CONTEXT_KEY, get_current_context())
+    )
+
+
+def _call_uninstrumented(
+    wrapped: Callable, args: Sequence[Any], kwargs: dict[str, Any]
+) -> Any:
+    """Run the wrapped call without opening a span for it.
+
+    The litellm context flag still has to be set: it is what stops the OpenAI
+    instrumentation from opening its own span for the request litellm makes
+    underneath. Without it, suppressing `litellm.completion` would only move the
+    duplicate one level down. Async calls return a coroutine here, so the flag
+    is re-set for the duration of the await, the same way the instrumented path
+    does it.
+    """
+    with in_litellm_context():
+        result = wrapped(*args, **kwargs)
+
+    if not iscoroutine(result):
+        return result
+
+    async def await_in_litellm_context():
+        token = _in_litellm_context.set(True)
+        try:
+            return await result
+        finally:
+            _in_litellm_context.reset(token)
+
+    return await_in_litellm_context()
 
 
 def _get_rollout_wrapper():
@@ -67,6 +114,8 @@ def wrap_completion(
         kwargs = {}
     if args is None:
         args = []
+    if _instrumentation_disabled():
+        return _call_uninstrumented(wrapped, args, kwargs)
     span = Laminar.start_span(
         name=to_wrap["span_name"],
         span_type=to_wrap["span_type"],
@@ -232,6 +281,8 @@ def wrap_responses(
         kwargs = {}
     if args is None:
         args = []
+    if _instrumentation_disabled():
+        return _call_uninstrumented(wrapped, args, kwargs)
     span = Laminar.start_span(
         name=to_wrap["span_name"],
         span_type=to_wrap["span_type"],
