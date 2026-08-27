@@ -38,6 +38,7 @@ dependencies = [
   "python-dotenv (>=1.0,<2.0)",
   "tqdm (>=4.0,<5.0)",
   "tenacity (>=8.0,<10.0)",
+  "wrapt (>=1.14,<2.0.0)",
 ]
 # poetry would auto-generate these based on requires-python, but other build
 # systems don't, so we need to specify them manually.

@@ -100,22 +100,22 @@ class LanggraphInstrumentor(BaseInstrumentor):
         tracer = get_tracer(__name__, "0.0.1a0", tracer_provider)
 
         wrap_function_wrapper(
-            module="langgraph.pregel",
-            name="Pregel.stream",
-            wrapper=wrap_pregel_stream(tracer, "Pregel.stream"),
+            "langgraph.pregel",
+            "Pregel.stream",
+            wrap_pregel_stream(tracer, "Pregel.stream"),
         )
         wrap_function_wrapper(
-            module="langgraph.pregel",
-            name="Pregel.astream",
-            wrapper=async_wrap_pregel_stream(tracer, "Pregel.astream"),
+            "langgraph.pregel",
+            "Pregel.astream",
+            async_wrap_pregel_stream(tracer, "Pregel.astream"),
         )
 
     def _uninstrument(self, **kwargs):
         unwrap(
-            module="langgraph.pregel",
-            name="Pregel.stream",
+            "langgraph.pregel",
+            "Pregel.stream",
         )
         unwrap(
-            module="langgraph.pregel",
-            name="Pregel.astream",
+            "langgraph.pregel",
+            "Pregel.astream",
         )
