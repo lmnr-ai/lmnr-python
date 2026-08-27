@@ -7,7 +7,7 @@ from ..shared import (
     _set_client_attributes,
     _set_request_attributes,
     _set_response_attributes,
-    _set_span_attribute,
+    set_span_attribute,
     model_as_dict,
     propagate_trace_context,
 )
@@ -140,4 +140,4 @@ def _set_prompts(span, prompt):
         messages = [{"content": p} for p in prompt]
     else:
         messages = [{"content": prompt}]
-    _set_span_attribute(span, "gen_ai.input.messages", json_dumps(messages))
+    set_span_attribute(span, "gen_ai.input.messages", json_dumps(messages))

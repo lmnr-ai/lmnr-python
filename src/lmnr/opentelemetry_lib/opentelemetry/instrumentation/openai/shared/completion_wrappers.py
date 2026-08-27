@@ -6,7 +6,7 @@ from ..shared import (
     set_tools_attributes,
     _set_request_attributes,
     _set_response_attributes,
-    _set_span_attribute,
+    set_span_attribute,
     _set_span_stream_usage,
     get_token_count_from_string,
     is_streaming_response,
@@ -16,7 +16,7 @@ from ..shared import (
 )
 from ..shared.config import Config
 from ..utils import (
-    _with_tracer_wrapper,
+    with_tracer_wrapper,
     dont_throw,
     is_openai_v1,
     should_send_prompts,
@@ -37,7 +37,7 @@ SPAN_NAME = "openai.completion"
 logger = logging.getLogger(__name__)
 
 
-@_with_tracer_wrapper
+@with_tracer_wrapper
 def completion_wrapper(tracer, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
@@ -71,7 +71,7 @@ def completion_wrapper(tracer, wrapped, instance, args, kwargs):
     return response
 
 
-@_with_tracer_wrapper
+@with_tracer_wrapper
 async def acompletion_wrapper(tracer, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
@@ -135,7 +135,7 @@ def _set_prompts(span, prompt):
         messages = [{"role": "user", "content": p} for p in prompt]
     else:
         messages = [{"role": "user", "content": prompt}]
-    _set_span_attribute(span, "gen_ai.input.messages", json_dumps(messages))
+    set_span_attribute(span, "gen_ai.input.messages", json_dumps(messages))
 
 
 @dont_throw
@@ -143,7 +143,7 @@ def _set_completions(span, choices):
     if not span.is_recording() or not choices:
         return
 
-    _set_span_attribute(span, "gen_ai.output.messages", json_dumps(choices))
+    set_span_attribute(span, "gen_ai.output.messages", json_dumps(choices))
 
 
 @dont_throw

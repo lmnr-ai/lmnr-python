@@ -1,6 +1,5 @@
 from typing import Collection
 
-from opentelemetry._events import get_event_logger
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from ..shared.chat_wrappers import (
     achat_wrapper,
@@ -30,12 +29,6 @@ class OpenAIV0Instrumentor(BaseInstrumentor):
     def _instrument(self, **kwargs):
         tracer_provider = kwargs.get("tracer_provider")
         tracer = get_tracer(__name__, __version__, tracer_provider)
-
-        if not Config.use_legacy_attributes:
-            event_logger_provider = kwargs.get("event_logger_provider")
-            Config.event_logger = get_event_logger(
-                __name__, __version__, event_logger_provider=event_logger_provider
-            )
 
         wrap_function_wrapper(
             "openai",

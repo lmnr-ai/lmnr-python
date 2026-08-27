@@ -4,33 +4,12 @@ import os
 
 import pytest
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
-from opentelemetry._events import get_event_logger
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import (
     OpenAIInstrumentor,
 )
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.shared.config import (
-    Config,
-)
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
-    LMNR_TRACE_CONTENT,
-)
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.version import (
-    __version__,
-)
-from opentelemetry.sdk._events import EventLoggerProvider
-from opentelemetry.sdk._logs import LoggerProvider
-from opentelemetry.sdk._logs.export import (
-    InMemoryLogExporter,
-    SimpleLogRecordProcessor,
-)
-from opentelemetry.sdk.metrics import Counter, Histogram, MeterProvider
-from opentelemetry.sdk.metrics.export import (
-    AggregationTemporality,
-    InMemoryMetricReader,
-)
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
 
 @pytest.fixture(autouse=True)

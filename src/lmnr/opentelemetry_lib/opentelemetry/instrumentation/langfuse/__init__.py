@@ -39,7 +39,8 @@ Two operations are performed:
 from __future__ import annotations
 
 import json
-from typing import Any, Callable, Collection
+from collections.abc import Callable, Collection
+from typing import Any
 
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor
@@ -819,11 +820,46 @@ class LangfuseAttributeTranslator(SpanProcessor):
         target = getattr(span, "_attributes", None)
         if target is None:
             return
-        for k, v in new_attrs.items():
-            try:
-                target[k] = v
-            except Exception:  # pylint: disable=broad-exception-caught
-                pass
+        # `Span.end()` marks `BoundedAttributes._immutable = True` before
+        # `on_end` runs (opentelemetry-sdk >= 1.4x), so `target[k] = v` now
+        # raises `TypeError` here. Flip the flag off for the duration of the
+        # write — this is the same private flag `end()` sets, so toggling it
+        # is safe and is a no-op on older SDKs where the attribute is absent.
+        #
+        # The flag toggle (not the writes) is guarded by `target._lock` — the
+        # same lock `BoundedAttributes.__setitem__` takes internally to
+        # serialize `_dict` mutations. We must NOT hold it across the
+        # `target[k] = v` calls below: that lock is a plain (non-reentrant)
+        # `threading.Lock`, and `__setitem__` acquires it again itself, so
+        # holding it here too would deadlock. This only protects the flag
+        # flip itself from a concurrent `_write_attrs` call on the same span
+        # (possible if a `TracerProvider` were ever built with
+        # `ConcurrentMultiSpanProcessor`, which dispatches every processor's
+        # `on_end` for a span to a thread pool concurrently — not what this
+        # codebase constructs today). It does not make the whole multi-key
+        # write atomic with a concurrent reader; that would require locking
+        # inside `BoundedAttributes` itself, upstream of this code.
+        lock = getattr(target, "_lock", None)
+
+        def _set_immutable(value: bool) -> None:
+            if lock is not None:
+                with lock:
+                    target._immutable = value
+            else:
+                target._immutable = value
+
+        was_immutable = getattr(target, "_immutable", False)
+        if was_immutable:
+            _set_immutable(False)
+        try:
+            for k, v in new_attrs.items():
+                try:
+                    target[k] = v
+                except Exception:  # pylint: disable=broad-exception-caught
+                    pass
+        finally:
+            if was_immutable:
+                _set_immutable(True)
 
     @staticmethod
     def _translate_openinference(span: ReadableSpan) -> None:

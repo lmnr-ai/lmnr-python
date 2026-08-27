@@ -1,18 +1,17 @@
 import asyncio
-import logging
 import inspect
+import logging
 import os
 import threading
 import traceback
 from importlib.metadata import version
-from packaging.version import parse
 
 from opentelemetry import context as context_api
-from opentelemetry._events import EventLogger
-from .shared.config import Config
+from packaging.version import parse
 
 import openai
 
+from .shared.config import Config
 
 _OPENAI_VERSION = version("openai")
 
@@ -82,7 +81,7 @@ def _with_chat_telemetry_wrapper(func):
     return _with_chat_telemetry
 
 
-def _with_tracer_wrapper(func):
+def with_tracer_wrapper(func):
     def _with_tracer(tracer):
         def wrapper(wrapped, instance, args, kwargs):
             return func(tracer, wrapped, instance, args, kwargs)
@@ -141,13 +140,3 @@ def should_send_prompts():
     return (
         os.getenv(LMNR_TRACE_CONTENT) or "true"
     ).lower() == "true" or context_api.get_value("override_enable_content_tracing")
-
-
-def should_emit_events() -> bool:
-    """
-    Checks if the instrumentation isn't using the legacy attributes
-    and if the event logger is not None.
-    """
-    return not Config.use_legacy_attributes and isinstance(
-        Config.event_logger, EventLogger
-    )

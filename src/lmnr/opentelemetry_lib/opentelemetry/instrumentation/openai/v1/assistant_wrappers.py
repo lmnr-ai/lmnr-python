@@ -4,11 +4,11 @@ import time
 from opentelemetry import context as context_api
 from opentelemetry.trace import Span, Tracer
 from ..shared import (
-    _set_span_attribute,
+    set_span_attribute,
     model_as_dict,
 )
 from ..utils import (
-    _with_tracer_wrapper,
+    with_tracer_wrapper,
     dont_throw,
 )
 from lmnr.opentelemetry_lib.tracing.context import (
@@ -57,7 +57,7 @@ def _safe_start_span(
         return None
 
 
-@_with_tracer_wrapper
+@with_tracer_wrapper
 def assistants_create_wrapper(tracer, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
@@ -72,7 +72,7 @@ def assistants_create_wrapper(tracer, wrapped, instance, args, kwargs):
     return response
 
 
-@_with_tracer_wrapper
+@with_tracer_wrapper
 def runs_create_wrapper(tracer, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
@@ -100,7 +100,7 @@ def runs_create_wrapper(tracer, wrapped, instance, args, kwargs):
         raise
 
 
-@_with_tracer_wrapper
+@with_tracer_wrapper
 def runs_retrieve_wrapper(tracer, wrapped, instance, args, kwargs):
     @dont_throw
     def process_response(response):
@@ -131,7 +131,7 @@ def runs_retrieve_wrapper(tracer, wrapped, instance, args, kwargs):
         raise
 
 
-@_with_tracer_wrapper
+@with_tracer_wrapper
 def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
@@ -167,30 +167,30 @@ def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
     if assistants.get(run["assistant_id"]) is not None:
         assistant = assistants[run["assistant_id"]]
 
-        _set_span_attribute(
+        set_span_attribute(
             span,
             "gen_ai.system",
             "openai",
         )
-        _set_span_attribute(
+        set_span_attribute(
             span,
             GEN_AI_REQUEST_MODEL,
             assistant["model"],
         )
-        _set_span_attribute(
+        set_span_attribute(
             span,
             GEN_AI_RESPONSE_MODEL,
             assistant["model"],
         )
-        _set_span_attribute(span, f"gen_ai.prompt.{prompt_index}.role", "system")
-        _set_span_attribute(
+        set_span_attribute(span, f"gen_ai.prompt.{prompt_index}.role", "system")
+        set_span_attribute(
             span,
             f"gen_ai.prompt.{prompt_index}.content",
             assistant["instructions"],
         )
         prompt_index += 1
-    _set_span_attribute(span, f"gen_ai.prompt.{prompt_index}.role", "system")
-    _set_span_attribute(
+    set_span_attribute(span, f"gen_ai.prompt.{prompt_index}.role", "system")
+    set_span_attribute(
         span,
         f"gen_ai.prompt.{prompt_index}.content",
         run["instructions"],
@@ -205,12 +205,12 @@ def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
         message_content = content[0].get("text").get("value")
         message_role = msg.get("role")
         if message_role in ["user", "system"]:
-            _set_span_attribute(
+            set_span_attribute(
                 span,
                 f"gen_ai.prompt.{prompt_index}.role",
                 message_role,
             )
-            _set_span_attribute(
+            set_span_attribute(
                 span,
                 f"gen_ai.prompt.{prompt_index}.content",
                 message_content,
@@ -218,21 +218,21 @@ def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
             prompt_index += 1
         else:
 
-            _set_span_attribute(span, f"{prefix}.role", msg.get("role"))
-            _set_span_attribute(span, f"{prefix}.content", message_content)
-            _set_span_attribute(
+            set_span_attribute(span, f"{prefix}.role", msg.get("role"))
+            set_span_attribute(span, f"{prefix}.content", message_content)
+            set_span_attribute(
                 span, f"gen_ai.response.{completion_index}.id", msg.get("id")
             )
             completion_index += 1
 
     if run.get("usage"):
         usage_dict = model_as_dict(run.get("usage"))
-        _set_span_attribute(
+        set_span_attribute(
             span,
             GEN_AI_USAGE_OUTPUT_TOKENS,
             usage_dict.get("completion_tokens"),
         )
-        _set_span_attribute(
+        set_span_attribute(
             span,
             GEN_AI_USAGE_INPUT_TOKENS,
             usage_dict.get("prompt_tokens"),
@@ -243,7 +243,7 @@ def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
     return response
 
 
-@_with_tracer_wrapper
+@with_tracer_wrapper
 def runs_create_and_stream_wrapper(tracer, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
@@ -260,28 +260,28 @@ def runs_create_and_stream_wrapper(tracer, wrapped, instance, args, kwargs):
 
     i = 0
     if assistants.get(assistant_id) is not None:
-        _set_span_attribute(
+        set_span_attribute(
             span, GEN_AI_REQUEST_MODEL, assistants[assistant_id]["model"]
         )
-        _set_span_attribute(
+        set_span_attribute(
             span,
             "gen_ai.system",
             "openai",
         )
-        _set_span_attribute(
+        set_span_attribute(
             span,
             GEN_AI_RESPONSE_MODEL,
             assistants[assistant_id]["model"],
         )
-        _set_span_attribute(span, f"gen_ai.prompt.{i}.role", "system")
-        _set_span_attribute(
+        set_span_attribute(span, f"gen_ai.prompt.{i}.role", "system")
+        set_span_attribute(
             span,
             f"gen_ai.prompt.{i}.content",
             assistants[assistant_id]["instructions"],
         )
         i += 1
-    _set_span_attribute(span, f"gen_ai.prompt.{i}.role", "system")
-    _set_span_attribute(span, f"gen_ai.prompt.{i}.content", instructions)
+    set_span_attribute(span, f"gen_ai.prompt.{i}.role", "system")
+    set_span_attribute(span, f"gen_ai.prompt.{i}.content", instructions)
 
     from ..v1.event_handler_wrapper import (
         EventHandlerWrapper,
