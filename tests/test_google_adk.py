@@ -197,6 +197,26 @@ def test_tool_span_is_sibling_of_call_llm_not_child(span_exporter):
 
 
 @pytest.mark.vcr
+def test_call_llm_span_ends_before_tool_execution(span_exporter):
+    # Regression: call_llm's recorded duration must not stretch across the
+    # tool-execution/callback postprocessing that follows inside ADK's
+    # still-open start_as_current_span block — it should end as soon as the
+    # model's last token arrives, not whenever ADK's own `with` block
+    # eventually unwinds.
+    run_agent()
+
+    call_llm_spans = spans_by_name(span_exporter, "call_llm")
+    (tool_span,) = spans_by_name(span_exporter, "execute_tool get_weather")
+
+    # Both call_llm spans (tool-call turn, final-answer turn) share the same
+    # invoke_agent parent, so pick the one that produced the function call by
+    # timing: it's the turn that ran first.
+    call_llm_span = min(call_llm_spans, key=lambda s: s.start_time)
+    assert call_llm_span.end_time is not None
+    assert call_llm_span.end_time <= tool_span.start_time
+
+
+@pytest.mark.vcr
 def test_call_llm_content_respects_adk_content_toggle(
     span_exporter, monkeypatch
 ):

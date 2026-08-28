@@ -1,0 +1,133 @@
+interactions:
+- request:
+    body: '{"contents": [{"parts": [{"text": "Weather in Almaty?"}], "role": "user"}],
+      "systemInstruction": {"parts": [{"text": "Call get_weather for the city the
+      user asks about, then answer in one short sentence.\n\nYou are an agent. Your
+      internal name is \"weather_agent\"."}], "role": "user"}, "tools": [{"functionDeclarations":
+      [{"description": "Returns the weather for a city.", "name": "get_weather", "parameters_json_schema":
+      {"properties": {"city": {"title": "City", "type": "string"}}, "required": ["city"],
+      "title": "get_weatherParams", "type": "object"}}, {"description": "Returns the
+      local time for a city.", "name": "get_time", "parameters_json_schema": {"properties":
+      {"city": {"title": "City", "type": "string"}}, "required": ["city"], "title":
+      "get_timeParams", "type": "object"}}, {"description": "Returns the default city.",
+      "name": "get_default_city"}]}], "generationConfig": {"temperature": 0.0}}'
+    headers:
+      Content-Type:
+      - application/json
+      user-agent:
+      - google-genai-sdk/2.19.0 gl-python/3.13.13 google-adk/2.7.1 gl-python/3.13.13
+      x-goog-api-client:
+      - google-genai-sdk/2.19.0 gl-python/3.13.13 google-adk/2.7.1 gl-python/3.13.13
+    method: post
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent
+  response:
+    body:
+      string: "{\n  \"candidates\": [\n    {\n      \"content\": {\n        \"parts\":
+        [\n          {\n            \"functionCall\": {\n              \"name\": \"get_weather\",\n
+        \             \"args\": {\n                \"city\": \"Almaty\"\n              },\n
+        \             \"id\": \"call_685907\"\n            },\n            \"thoughtSignature\":
+        \"El4KXAERTTIPLZziFjIOtJlG3uPCjbxkocje4/tpiiNSmcxtw8147LRALXPCDmMSn6Yb9ka/HEOlT6CYREWx5NYE5hHwRa3WcmiJF2LFo5NuJTT9UyWlWm0Vvm+nMOhD\"\n
+        \         }\n        ],\n        \"role\": \"model\"\n      },\n      \"finishReason\":
+        \"STOP\",\n      \"index\": 0,\n      \"finishMessage\": \"Model generated
+        function call(s).\"\n    }\n  ],\n  \"usageMetadata\": {\n    \"promptTokenCount\":
+        180,\n    \"candidatesTokenCount\": 17,\n    \"totalTokenCount\": 197,\n    \"promptTokensDetails\":
+        [\n      {\n        \"modality\": \"TEXT\",\n        \"tokenCount\": 180\n
+        \     }\n    ],\n    \"serviceTier\": \"standard\"\n  },\n  \"modelVersion\":
+        \"gemini-3.5-flash-lite\",\n  \"responseId\": \"o6-Narn4EemD7M8P0qqE2Qs\"\n}\n"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Tue, 25 Aug 2026 15:07:15 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=630
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-Gemini-Service-Tier:
+      - standard
+      X-XSS-Protection:
+      - '0'
+      content-length:
+      - '941'
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"contents": [{"parts": [{"text": "Weather in Almaty?"}], "role": "user"},
+      {"parts": [{"functionCall": {"id": "call_685907", "args": {"city": "Almaty"},
+      "name": "get_weather"}, "thoughtSignature": "El4KXAERTTIPLZziFjIOtJlG3uPCjbxkocje4_tpiiNSmcxtw8147LRALXPCDmMSn6Yb9ka_HEOlT6CYREWx5NYE5hHwRa3WcmiJF2LFo5NuJTT9UyWlWm0Vvm-nMOhD"}],
+      "role": "model"}, {"parts": [{"functionResponse": {"id": "call_685907", "name":
+      "get_weather", "response": {"city": "Almaty", "forecast": "sunny"}}}], "role":
+      "user"}], "systemInstruction": {"parts": [{"text": "Call get_weather for the
+      city the user asks about, then answer in one short sentence.\n\nYou are an agent.
+      Your internal name is \"weather_agent\"."}], "role": "user"}, "tools": [{"functionDeclarations":
+      [{"description": "Returns the weather for a city.", "name": "get_weather", "parameters_json_schema":
+      {"properties": {"city": {"title": "City", "type": "string"}}, "required": ["city"],
+      "title": "get_weatherParams", "type": "object"}}, {"description": "Returns the
+      local time for a city.", "name": "get_time", "parameters_json_schema": {"properties":
+      {"city": {"title": "City", "type": "string"}}, "required": ["city"], "title":
+      "get_timeParams", "type": "object"}}, {"description": "Returns the default city.",
+      "name": "get_default_city"}]}], "generationConfig": {"temperature": 0.0}}'
+    headers:
+      Content-Type:
+      - application/json
+      user-agent:
+      - google-genai-sdk/2.19.0 gl-python/3.13.13 google-adk/2.7.1 gl-python/3.13.13
+      x-goog-api-client:
+      - google-genai-sdk/2.19.0 gl-python/3.13.13 google-adk/2.7.1 gl-python/3.13.13
+    method: post
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent
+  response:
+    body:
+      string: "{\n  \"candidates\": [\n    {\n      \"content\": {\n        \"parts\":
+        [\n          {\n            \"text\": \"The weather in Almaty is currently
+        sunny.\",\n            \"thoughtSignature\": \"El4KXAERTTIPkFVAuY3zZzO07AEOa8Qj4IHNf9iLrS6mEHPli1ACv6aNdRF57Q1LgXTFcRAkzegVunthWQVi0lCw8P6xYBycOycTlvdpe1rqE0X/Q9O8oK3vkMh5ynx4\"\n
+        \         }\n        ],\n        \"role\": \"model\"\n      },\n      \"finishReason\":
+        \"STOP\",\n      \"index\": 0\n    }\n  ],\n  \"usageMetadata\": {\n    \"promptTokenCount\":
+        218,\n    \"candidatesTokenCount\": 9,\n    \"totalTokenCount\": 227,\n    \"promptTokensDetails\":
+        [\n      {\n        \"modality\": \"TEXT\",\n        \"tokenCount\": 218\n
+        \     }\n    ],\n    \"serviceTier\": \"standard\"\n  },\n  \"modelVersion\":
+        \"gemini-3.5-flash-lite\",\n  \"responseId\": \"pK-NatZF_IWR1Q_3yIToCA\"\n}\n"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Tue, 25 Aug 2026 15:07:16 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=730
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-Gemini-Service-Tier:
+      - standard
+      X-XSS-Protection:
+      - '0'
+      content-length:
+      - '754'
+    status:
+      code: 200
+      message: OK
+version: 1

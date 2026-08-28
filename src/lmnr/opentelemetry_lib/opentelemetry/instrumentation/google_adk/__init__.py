@@ -27,7 +27,12 @@ after stamping it, so that immediately-following tool execution attaches as
 a sibling instead of nesting under ``call_llm`` (contextvars persist across
 an async generator's ``yield`` within the same task, so without this ADK's
 own ``with`` block keeps ``call_llm`` "current" through the postprocessing
-that runs tools). ADK's own detection of an external genai instrumentation
+that runs tools). For the same reason, the wrap also ends ``call_llm`` as
+soon as the model's last token arrives (a non-partial ``LlmResponse``)
+rather than letting its recorded duration stretch across the tool
+execution/callback postprocessing that follows before ADK's own ``with``
+block naturally unwinds; ADK's later call to ``span.end()`` is a harmless
+no-op. ADK's own detection of an external genai instrumentation
 is unconditionally forced to report one present, so ADK always skips its
 native ``generate_content <model>`` span — it would otherwise double-cover
 the call, either against our own ``call_llm`` enrichment (the default) or
@@ -285,6 +290,27 @@ def _detach_from_current_context(span: trace.Span) -> None:
     context_api.attach(new_context)
 
 
+def _end_call_llm_span_if_complete(span: trace.Span, llm_response) -> None:
+    """Ends `call_llm` as soon as the model's last token arrives, instead of
+    letting its recorded duration bleed into the tool-execution and
+    after-model-callback postprocessing that follows inside ADK's still-open
+    `with tracer.start_as_current_span('call_llm')` block.
+
+    Streaming turns run this same hook once per chunk with `llm_response`
+    marked ``partial=True`` for every fragment but the last (see
+    `StreamingResponseAggregator` in `google/adk/models/google_llm.py`); only
+    a non-partial response means the call actually finished.
+
+    Ending here is safe even though ADK's own `with` block will call
+    `span.end()` again later when it finally unwinds: `Span.end()` is
+    idempotent — a second call just logs "Calling end() on an ended span."
+    and returns, without re-exporting the span.
+    """
+    if getattr(llm_response, "partial", False):
+        return
+    span.end()
+
+
 def _wrap_trace_call_llm(wrapped, instance, args, kwargs):
     result = wrapped(*args, **kwargs)
     # trace_call_llm(invocation_context, event_id, llm_request, llm_response,
@@ -292,13 +318,13 @@ def _wrap_trace_call_llm(wrapped, instance, args, kwargs):
     span = _resolve_span(args, kwargs, position=4)
     if span is None:
         return result
+    llm_request = kwargs.get("llm_request")
+    if llm_request is None and len(args) > 2:
+        llm_request = args[2]
+    llm_response = kwargs.get("llm_response")
+    if llm_response is None and len(args) > 3:
+        llm_response = args[3]
     try:
-        llm_request = kwargs.get("llm_request")
-        if llm_request is None and len(args) > 2:
-            llm_request = args[2]
-        llm_response = kwargs.get("llm_response")
-        if llm_response is None and len(args) > 3:
-            llm_response = args[3]
         _enrich_call_llm_span(span, llm_request, llm_response)
     except Exception:
         logger.debug("Failed to enrich ADK call_llm span", exc_info=True)
@@ -307,6 +333,12 @@ def _wrap_trace_call_llm(wrapped, instance, args, kwargs):
     except Exception:
         logger.debug(
             "Failed to detach ADK call_llm span from context", exc_info=True
+        )
+    try:
+        _end_call_llm_span_if_complete(span, llm_response)
+    except Exception:
+        logger.debug(
+            "Failed to end ADK call_llm span early", exc_info=True
         )
     return result
 
