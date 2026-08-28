@@ -39,11 +39,20 @@ def span_exporter() -> SpanExporter:
         # needs blocking — the bridge is opt-in and is never in the default
         # set — but it's listed for symmetry/intent. Tests that target those
         # instrumentors directly install them themselves (see
-        # `tests/test_langfuse.py`).
+        # `tests/test_langfuse.py`). Block GOOGLE_ADK too: `google-adk` is
+        # also a pinned dev dependency, and its presence would otherwise
+        # auto-remove GOOGLE_GENAI from this session-wide default set,
+        # breaking `test_google_genai*.py`'s raw-SDK tests. ADK's own tests
+        # (`tests/test_google_adk.py`) re-enable GOOGLE_ADK and disable
+        # GOOGLE_GENAI for their own module.
         Laminar.initialize(
             project_api_key="test_key",
             disable_batch=True,
-            disabled_instruments={Instruments.PYDANTIC_AI, Instruments.LANGFUSE},
+            disabled_instruments={
+                Instruments.PYDANTIC_AI,
+                Instruments.LANGFUSE,
+                Instruments.GOOGLE_ADK,
+            },
         )
 
     return exporter

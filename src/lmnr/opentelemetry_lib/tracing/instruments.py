@@ -35,6 +35,13 @@ class Instruments(Enum):
     CUA_COMPUTER = "cua_computer"
     DAYTONA_SDK = "daytona_sdk"
     DEEPAGENTS = "deepagents"
+    # When google-adk is installed, GOOGLE_GENAI is auto-removed from the
+    # default set (see _GOOGLE_ADK_GENAI_CONFLICTS): ADK self-instruments its
+    # own `call_llm` span, which this instrumentor enriches directly from the
+    # real request/response objects, so wrapping the genai SDK's own
+    # `generate_content` on top would both double-cover the call and produce
+    # a span whose parent depends on ADK's fragile generator-scoped context.
+    GOOGLE_ADK = "google_adk"
     GOOGLE_GENAI = "google_genai"
     GROQ = "groq"
     HAYSTACK = "haystack"
@@ -106,6 +113,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.CUA_COMPUTER: initializers.CuaComputerInstrumentorInitializer(),
     Instruments.DAYTONA_SDK: initializers.DaytonaSDKInstrumentorInitializer(),
     Instruments.DEEPAGENTS: initializers.DeepagentsInstrumentorInitializer(),
+    Instruments.GOOGLE_ADK: initializers.GoogleADKInstrumentorInitializer(),
     Instruments.GOOGLE_GENAI: initializers.GoogleGenAIInstrumentorInitializer(),
     Instruments.GROQ: initializers.GroqInstrumentorInitializer(),
     Instruments.HAYSTACK: initializers.HaystackInstrumentorInitializer(),
@@ -170,6 +178,19 @@ _DEEPAGENTS_NOISE_CONFLICTS: set[Instruments] = {
 }
 
 
+#: When google-adk is installed, ADK self-instruments its own `call_llm`
+#: span and the `GoogleAdkInstrumentor` enriches it directly from the real
+#: request/response objects. Wrapping the genai SDK's own `generate_content`
+#: on top of that would both double-cover the call and produce a span whose
+#: parent depends on ADK's fragile generator-scoped context (its span can
+#: outlive the `yield` that hands control back to the caller). Auto-remove
+#: GOOGLE_GENAI from the default set in that case; callers who want the raw
+#: genai spans alongside ADK can pass an explicit `instruments` set.
+_GOOGLE_ADK_GENAI_CONFLICTS: set[Instruments] = {
+    Instruments.GOOGLE_GENAI,
+}
+
+
 def _pydantic_ai_installed() -> bool:
     return is_package_installed("pydantic-ai-slim") or is_package_installed(
         "pydantic-ai"
@@ -178,6 +199,10 @@ def _pydantic_ai_installed() -> bool:
 
 def _deepagents_installed() -> bool:
     return is_package_installed("deepagents")
+
+
+def _google_adk_installed() -> bool:
+    return is_package_installed("google-adk")
 
 
 def _langfuse_installed() -> bool:
@@ -257,6 +282,20 @@ def init_instrumentations(
             instruments = instruments - _DEEPAGENTS_NOISE_CONFLICTS
         else:
             instruments = instruments - {Instruments.DEEPAGENTS}
+        # Only auto-remove GOOGLE_GENAI if google-adk is actually installed
+        # (mirrors the pydantic_ai handling above).
+        if (
+            _google_adk_installed()
+            and Instruments.GOOGLE_ADK not in block_instruments
+        ):
+            module_logger.warning(
+                "Not enabling the default Google GenAI SDK instrumentation to "
+                + "avoid double instrumentation with Google ADK. To opt-in, pass "
+                + "an explicit instruments set to Laminar.initialize() that "
+                + "includes both Instruments.GOOGLE_ADK and "
+                + "Instruments.GOOGLE_GENAI."
+            )
+            instruments = instruments - _GOOGLE_ADK_GENAI_CONFLICTS
     if not isinstance(instruments, set):
         instruments = set(instruments)
 

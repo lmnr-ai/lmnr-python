@@ -132,6 +132,15 @@ def langfuse_not_installed(monkeypatch):
     monkeypatch.setattr(instruments_mod, "_langfuse_installed", lambda: False)
 
 
+@pytest.fixture(autouse=True)
+def google_adk_not_installed(monkeypatch):
+    """These tests aren't about google-adk; `google-adk` is a pinned dev
+    dependency, and leaving its real installedness in place would trip the
+    GOOGLE_GENAI auto-removal these tests don't expect (see
+    tests/test_google_adk.py for ADK-specific coverage)."""
+    monkeypatch.setattr(instruments_mod, "_google_adk_installed", lambda: False)
+
+
 @pytest.fixture
 def deepagents_installed(monkeypatch):
     monkeypatch.setattr(instruments_mod, "_deepagents_installed", lambda: True)

@@ -1,0 +1,132 @@
+interactions:
+- request:
+    body: '{"contents": [{"parts": [{"text": "Which city am I in?"}], "role": "user"}],
+      "systemInstruction": {"parts": [{"text": "Call get_default_city, then answer
+      with just the city name.\n\nYou are an agent. Your internal name is \"weather_agent\"."}],
+      "role": "user"}, "tools": [{"functionDeclarations": [{"description": "Returns
+      the weather for a city.", "name": "get_weather", "parameters_json_schema": {"properties":
+      {"city": {"title": "City", "type": "string"}}, "required": ["city"], "title":
+      "get_weatherParams", "type": "object"}}, {"description": "Returns the local
+      time for a city.", "name": "get_time", "parameters_json_schema": {"properties":
+      {"city": {"title": "City", "type": "string"}}, "required": ["city"], "title":
+      "get_timeParams", "type": "object"}}, {"description": "Returns the default city.",
+      "name": "get_default_city"}]}], "generationConfig": {"temperature": 0.0}}'
+    headers:
+      Content-Type:
+      - application/json
+      user-agent:
+      - google-genai-sdk/2.19.0 gl-python/3.13.13 google-adk/2.7.1 gl-python/3.13.13
+      x-goog-api-client:
+      - google-genai-sdk/2.19.0 gl-python/3.13.13 google-adk/2.7.1 gl-python/3.13.13
+    method: post
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent
+  response:
+    body:
+      string: "{\n  \"candidates\": [\n    {\n      \"content\": {\n        \"parts\":
+        [\n          {\n            \"functionCall\": {\n              \"name\": \"get_default_city\",\n
+        \             \"args\": {},\n              \"id\": \"call_290118\"\n            },\n
+        \           \"thoughtSignature\": \"El4KXAERTTIPyunttAIsPfudFIvavBA+mYuVkSslA7v742Z6CLi/KaKg3NHyKjV9RkMmkyWzvkZO6aIKrxiy1Dk+IxF4Clxdn4ABA74eV0FjiYTD+MupL40serdvWsOb\"\n
+        \         }\n        ],\n        \"role\": \"model\"\n      },\n      \"finishReason\":
+        \"STOP\",\n      \"index\": 0,\n      \"finishMessage\": \"Model generated
+        function call(s).\"\n    }\n  ],\n  \"usageMetadata\": {\n    \"promptTokenCount\":
+        177,\n    \"candidatesTokenCount\": 12,\n    \"totalTokenCount\": 189,\n    \"promptTokensDetails\":
+        [\n      {\n        \"modality\": \"TEXT\",\n        \"tokenCount\": 177\n
+        \     }\n    ],\n    \"serviceTier\": \"standard\"\n  },\n  \"modelVersion\":
+        \"gemini-3.5-flash-lite\",\n  \"responseId\": \"qq-NaoqnJqGqkdUPt9CxgQk\"\n}\n"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Tue, 25 Aug 2026 15:07:23 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=1028
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-Gemini-Service-Tier:
+      - standard
+      X-XSS-Protection:
+      - '0'
+      content-length:
+      - '898'
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"contents": [{"parts": [{"text": "Which city am I in?"}], "role": "user"},
+      {"parts": [{"functionCall": {"id": "call_290118", "args": {}, "name": "get_default_city"},
+      "thoughtSignature": "El4KXAERTTIPyunttAIsPfudFIvavBA-mYuVkSslA7v742Z6CLi_KaKg3NHyKjV9RkMmkyWzvkZO6aIKrxiy1Dk-IxF4Clxdn4ABA74eV0FjiYTD-MupL40serdvWsOb"}],
+      "role": "model"}, {"parts": [{"functionResponse": {"id": "call_290118", "name":
+      "get_default_city", "response": {"city": "Almaty"}}}], "role": "user"}], "systemInstruction":
+      {"parts": [{"text": "Call get_default_city, then answer with just the city name.\n\nYou
+      are an agent. Your internal name is \"weather_agent\"."}], "role": "user"},
+      "tools": [{"functionDeclarations": [{"description": "Returns the weather for
+      a city.", "name": "get_weather", "parameters_json_schema": {"properties": {"city":
+      {"title": "City", "type": "string"}}, "required": ["city"], "title": "get_weatherParams",
+      "type": "object"}}, {"description": "Returns the local time for a city.", "name":
+      "get_time", "parameters_json_schema": {"properties": {"city": {"title": "City",
+      "type": "string"}}, "required": ["city"], "title": "get_timeParams", "type":
+      "object"}}, {"description": "Returns the default city.", "name": "get_default_city"}]}],
+      "generationConfig": {"temperature": 0.0}}'
+    headers:
+      Content-Type:
+      - application/json
+      user-agent:
+      - google-genai-sdk/2.19.0 gl-python/3.13.13 google-adk/2.7.1 gl-python/3.13.13
+      x-goog-api-client:
+      - google-genai-sdk/2.19.0 gl-python/3.13.13 google-adk/2.7.1 gl-python/3.13.13
+    method: post
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent
+  response:
+    body:
+      string: "{\n  \"candidates\": [\n    {\n      \"content\": {\n        \"parts\":
+        [\n          {\n            \"text\": \"Almaty\",\n            \"thoughtSignature\":
+        \"El4KXAERTTIPqtB4MLs3uLrMQbkRkZrHdspklwGv2CZ1bbytWXFZly+weIc8y8iZLcJr90aB+gg1Gm4CmUicG09znjVebTIL3bVV6Pm0dkPcVE6FEcxjYbBbllBqRkzz\"\n
+        \         }\n        ],\n        \"role\": \"model\"\n      },\n      \"finishReason\":
+        \"STOP\",\n      \"index\": 0\n    }\n  ],\n  \"usageMetadata\": {\n    \"promptTokenCount\":
+        206,\n    \"candidatesTokenCount\": 2,\n    \"totalTokenCount\": 208,\n    \"promptTokensDetails\":
+        [\n      {\n        \"modality\": \"TEXT\",\n        \"tokenCount\": 206\n
+        \     }\n    ],\n    \"serviceTier\": \"standard\"\n  },\n  \"modelVersion\":
+        \"gemini-3.5-flash-lite\",\n  \"responseId\": \"q6-Naqr0Lpj5nsEPkaGF-A4\"\n}\n"
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Tue, 25 Aug 2026 15:07:24 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=717
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-Gemini-Service-Tier:
+      - standard
+      X-XSS-Protection:
+      - '0'
+      content-length:
+      - '720'
+    status:
+      code: 200
+      message: OK
+version: 1
