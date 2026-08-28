@@ -30,7 +30,7 @@ dependencies = [
   "opentelemetry-exporter-otlp-proto-grpc (>=1.39.0, <2.0.0)",
   "opentelemetry-instrumentation (>=0.54b0, <1.0.0)",
   "opentelemetry-instrumentation-threading (>=0.54b0, <1.0.0)",
-  "opentelemetry-semantic-conventions (==0.65b0)",
+  "opentelemetry-semantic-conventions (>=0.62b1, <1.0.0)",
   "opentelemetry-semantic-conventions-ai (==0.4.13)",
   "orjson (>=3.0.0,<4.0.0)",
   "packaging (>=22.0,<27.0)",
