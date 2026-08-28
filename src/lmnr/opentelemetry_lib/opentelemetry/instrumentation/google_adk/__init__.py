@@ -220,6 +220,7 @@ def _enrich_call_llm_span(span: trace.Span, llm_request, llm_response) -> None:
     shape the frontend already parses for every other provider, instead of
     the raw `gcp.vertex.agent.llm_request`/`llm_response` JSON blobs ADK
     stamps for its own legacy UI."""
+    span.set_attribute(SPAN_TYPE, "LLM")
     attributes = getattr(span, "attributes", None) or {}
     if attributes.get(_LLM_REQUEST_ATTRIBUTE) == "{}":
         # ADK's own content toggle redacted the request/response (see
@@ -290,27 +291,6 @@ def _detach_from_current_context(span: trace.Span) -> None:
     context_api.attach(new_context)
 
 
-def _end_call_llm_span_if_complete(span: trace.Span, llm_response) -> None:
-    """Ends `call_llm` as soon as the model's last token arrives, instead of
-    letting its recorded duration bleed into the tool-execution and
-    after-model-callback postprocessing that follows inside ADK's still-open
-    `with tracer.start_as_current_span('call_llm')` block.
-
-    Streaming turns run this same hook once per chunk with `llm_response`
-    marked ``partial=True`` for every fragment but the last (see
-    `StreamingResponseAggregator` in `google/adk/models/google_llm.py`); only
-    a non-partial response means the call actually finished.
-
-    Ending here is safe even though ADK's own `with` block will call
-    `span.end()` again later when it finally unwinds: `Span.end()` is
-    idempotent — a second call just logs "Calling end() on an ended span."
-    and returns, without re-exporting the span.
-    """
-    if getattr(llm_response, "partial", False):
-        return
-    span.end()
-
-
 def _wrap_trace_call_llm(wrapped, instance, args, kwargs):
     result = wrapped(*args, **kwargs)
     # trace_call_llm(invocation_context, event_id, llm_request, llm_response,
@@ -328,6 +308,19 @@ def _wrap_trace_call_llm(wrapped, instance, args, kwargs):
         _enrich_call_llm_span(span, llm_request, llm_response)
     except Exception:
         logger.debug("Failed to enrich ADK call_llm span", exc_info=True)
+
+    # Streaming turns run this hook once per chunk with `llm_response`
+    # marked `partial=True` for every fragment but the last (see
+    # `StreamingResponseAggregator` in `google/adk/models/google_llm.py`).
+    # Detaching or ending call_llm on a partial chunk would be premature:
+    # the call hasn't actually finished, so a later `trace_call_llm` call
+    # for the same turn — falling back to `trace.get_current_span()` in
+    # `_resolve_span` if ADK ever omits the explicit span argument — would
+    # resolve to call_llm's parent instead, and enrich/end that span rather
+    # than call_llm.
+    if getattr(llm_response, "partial", False):
+        return result
+
     try:
         _detach_from_current_context(span)
     except Exception:
@@ -335,7 +328,15 @@ def _wrap_trace_call_llm(wrapped, instance, args, kwargs):
             "Failed to detach ADK call_llm span from context", exc_info=True
         )
     try:
-        _end_call_llm_span_if_complete(span, llm_response)
+        # Ends call_llm as soon as the model's last token arrives, instead
+        # of letting its recorded duration bleed into the tool-execution
+        # and after-model-callback postprocessing that follows inside
+        # ADK's still-open `with tracer.start_as_current_span('call_llm')`
+        # block. Safe even though that block will call `span.end()` again
+        # later when it finally unwinds: `Span.end()` is idempotent — a
+        # second call just logs "Calling end() on an ended span." and
+        # returns, without re-exporting the span.
+        span.end()
     except Exception:
         logger.debug(
             "Failed to end ADK call_llm span early", exc_info=True

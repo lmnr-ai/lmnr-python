@@ -157,6 +157,7 @@ def test_call_llm_span_carries_gen_ai_attributes(span_exporter):
     call_llm_spans = spans_by_name(span_exporter, "call_llm")
     assert len(call_llm_spans) == 2
     for span in call_llm_spans:
+        assert span.attributes["lmnr.span.type"] == "LLM"
         assert (
             span.attributes["gen_ai.request.model"] == "gemini-3.5-flash-lite"
         )
@@ -227,6 +228,7 @@ def test_call_llm_content_respects_adk_content_toggle(
     run_agent()
 
     for span in spans_by_name(span_exporter, "call_llm"):
+        assert span.attributes["lmnr.span.type"] == "LLM"
         assert "gen_ai.input.messages" not in span.attributes
         assert "gen_ai.tool.definitions" not in span.attributes
         assert "gen_ai.output.messages" not in span.attributes
@@ -349,6 +351,65 @@ def test_agent_enrichment_keeps_explicit_session_id():
         span.attributes["lmnr.association.properties.user_id"] == "adk-user"
     )
 
+
+def test_partial_call_llm_response_does_not_detach_or_end_span():
+    # Streaming turns run trace_call_llm once per chunk with partial=True
+    # for every fragment but the last. Detaching/ending call_llm on a
+    # partial chunk would be premature: the call hasn't actually finished,
+    # so a later trace_call_llm call for the same turn would enrich/end (or,
+    # via _resolve_span's current-span fallback, attach a tool span onto)
+    # call_llm's parent instead of call_llm itself.
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation import (
+        google_adk,
+    )
+
+    class FakeSpan:
+        def __init__(self):
+            self.attributes = {}
+            self.parent = None
+            self.ended = False
+
+        def is_recording(self):
+            return not self.ended
+
+        def set_attribute(self, key, value):
+            self.attributes[key] = value
+
+        def end(self):
+            self.ended = True
+
+    class FakeConfig:
+        system_instruction = None
+        tools = None
+
+    class FakeLlmRequest:
+        model = "gemini-3.5-flash-lite"
+        config = FakeConfig()
+        contents = []
+
+    class FakeLlmResponse:
+        partial = True
+        content = None
+        model_version = "gemini-3.5-flash-lite"
+
+    span = FakeSpan()
+    detach_calls = []
+    original_detach = google_adk._detach_from_current_context
+    google_adk._detach_from_current_context = detach_calls.append
+    try:
+        google_adk._wrap_trace_call_llm(
+            lambda *a, **k: None,
+            None,
+            (object(), "event-1", FakeLlmRequest(), FakeLlmResponse(), span),
+            {},
+        )
+    finally:
+        google_adk._detach_from_current_context = original_detach
+
+    assert detach_calls == []
+    assert span.ended is False
+    # Enrichment (including the span type) still runs on every chunk.
+    assert span.attributes["lmnr.span.type"] == "LLM"
 
 
 
