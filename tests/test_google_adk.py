@@ -62,6 +62,40 @@ def gemini_env(monkeypatch):
     )
 
 
+@pytest.fixture(scope="module", autouse=True)
+def adk_instrumentation(span_exporter):
+    # conftest.py's session fixture blocks GOOGLE_ADK: with `google-adk` a
+    # pinned dev dependency, leaving it enabled would auto-remove
+    # GOOGLE_GENAI from the session-wide default set (see
+    # _GOOGLE_ADK_GENAI_CONFLICTS in tracing/instruments.py) and break every
+    # other module's raw google_genai tests. This module instruments ADK and
+    # uninstruments google_genai for its own tests, mirroring what a real
+    # ADK-only application gets by default in production.
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_adk import (
+        GoogleAdkInstrumentor,
+    )
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai import (
+        GoogleGenAiSdkInstrumentor,
+    )
+
+    adk_instrumentor = GoogleAdkInstrumentor()
+    genai_instrumentor = GoogleGenAiSdkInstrumentor()
+    adk_was_instrumented = adk_instrumentor.is_instrumented_by_opentelemetry
+    genai_was_instrumented = genai_instrumentor.is_instrumented_by_opentelemetry
+
+    if genai_was_instrumented:
+        genai_instrumentor.uninstrument()
+    if not adk_was_instrumented:
+        adk_instrumentor.instrument()
+
+    yield
+
+    if not adk_was_instrumented:
+        adk_instrumentor.uninstrument()
+    if genai_was_instrumented:
+        genai_instrumentor.instrument()
+
+
 def run_agent(
     user_id: str = "test-user",
     instruction: str = (
@@ -111,28 +145,71 @@ def test_tool_span_typed_with_input_and_output(span_exporter):
 
 
 @pytest.mark.vcr
-def test_llm_call_spanned_once(span_exporter):
-    # The point of the integration: with Laminar's genai instrumentation
-    # active, ADK skips its own model span, so each model turn produces
-    # exactly one gemini.generate_content span (two turns here: the tool
-    # call and the final answer).
+def test_call_llm_span_carries_gen_ai_attributes(span_exporter):
+    # With GOOGLE_GENAI excluded by default (google-adk installed), ADK's own
+    # `call_llm` span is the sole LLM span per turn (two turns here: the
+    # tool call and the final answer), enriched directly from the real
+    # LlmRequest/LlmResponse objects instead of relying on a separate
+    # google_genai span or ADK's raw gcp.vertex.agent.llm_request/response
+    # JSON blobs.
     run_agent()
 
-    llm_spans = spans_by_name(span_exporter, "gemini.generate_content")
-    assert len(llm_spans) == 2
-    for span in llm_spans:
+    call_llm_spans = spans_by_name(span_exporter, "call_llm")
+    assert len(call_llm_spans) == 2
+    for span in call_llm_spans:
         assert (
             span.attributes["gen_ai.request.model"] == "gemini-3.5-flash-lite"
         )
-    # ADK's native span is named "generate_content <model>"; if the
-    # detection patch stops working it comes back alongside the Laminar
-    # one, so its absence is the actual regression check.
+        assert span.attributes["gen_ai.response.model"]
+        assert json.loads(span.attributes["gen_ai.input.messages"])
+        assert json.loads(span.attributes["gen_ai.output.messages"])
+    assert json.loads(call_llm_spans[0].attributes["gen_ai.tool.definitions"])
+
+    # Neither a separate Laminar google_genai span nor ADK's own native
+    # "generate_content <model>" span should exist.
+    assert spans_by_name(span_exporter, "gemini.generate_content") == []
     native = [
         s
         for s in span_exporter.get_finished_spans()
         if s.name.startswith("generate_content ")
     ]
     assert native == []
+
+
+@pytest.mark.vcr
+def test_tool_span_is_sibling_of_call_llm_not_child(span_exporter):
+    # Regression: ADK's own `call_llm` span stays the ambient "current span"
+    # (via its still-open start_as_current_span block) through the tool
+    # postprocessing that immediately follows, unless the call_llm wrap
+    # detaches it first. Confirm the tool span shares call_llm's parent
+    # instead of nesting under call_llm itself.
+    run_agent()
+
+    call_llm_spans = spans_by_name(span_exporter, "call_llm")
+    (tool_span,) = spans_by_name(span_exporter, "execute_tool get_weather")
+
+    call_llm_span_ids = {s.context.span_id for s in call_llm_spans}
+    assert tool_span.parent is not None
+    assert tool_span.parent.span_id not in call_llm_span_ids
+    assert tool_span.parent.span_id in {
+        s.parent.span_id for s in call_llm_spans if s.parent is not None
+    }
+
+
+@pytest.mark.vcr
+def test_call_llm_content_respects_adk_content_toggle(
+    span_exporter, monkeypatch
+):
+    # With the content knob off, ADK stamps "{}" for the legacy
+    # gcp.vertex.agent.llm_request/response attributes; the new gen_ai.*
+    # attributes must not leak content through a side door.
+    monkeypatch.setenv("ADK_CAPTURE_MESSAGE_CONTENT_IN_SPANS", "0")
+    run_agent()
+
+    for span in spans_by_name(span_exporter, "call_llm"):
+        assert "gen_ai.input.messages" not in span.attributes
+        assert "gen_ai.tool.definitions" not in span.attributes
+        assert "gen_ai.output.messages" not in span.attributes
 
 
 @pytest.mark.vcr
@@ -161,9 +238,11 @@ def test_tool_content_respects_adk_content_toggle(span_exporter, monkeypatch):
 
 
 def test_adk_recognizes_laminar_genai_instrumentation(span_exporter):
-    # ADK's detector only knows the otel-contrib package by filename; the
-    # instrumentor teaches it about Laminar's wrapper, active in this
-    # session.
+    # ADK's own native inner LLM span is always redundant while this
+    # instrumentor is active — call_llm enrichment (or, in the explicit
+    # opt-in case, Laminar's own google_genai span) already covers the
+    # call — so the detection patch unconditionally reports an external
+    # genai instrumentation, regardless of GOOGLE_GENAI's own state.
     from google.adk.telemetry import tracing
 
     detected = (
@@ -251,26 +330,6 @@ def test_agent_enrichment_keeps_explicit_session_id():
     )
 
 
-def test_genai_probe_keeps_exception_logger():
-    # _laminar_genai_instrumented runs on every LLM call; constructing
-    # GoogleGenAiSdkInstrumentor there would rerun the singleton's __init__
-    # and reset a user-provided exception logger.
-    from lmnr.opentelemetry_lib.opentelemetry.instrumentation import (
-        google_adk,
-    )
-    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.config import (  # noqa: E501
-        Config,
-    )
-
-    def sentinel(e):
-        pass
-
-    Config.exception_logger = sentinel
-    try:
-        assert google_adk._laminar_genai_instrumented() is True
-        assert Config.exception_logger is sentinel
-    finally:
-        Config.exception_logger = None
 
 
 def test_uninstrument_unwraps_lazily_imported_binding():

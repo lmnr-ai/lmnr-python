@@ -6,10 +6,33 @@ ADK instruments itself: its module-level tracer (``gcp.vertex.agent``) is a
 enriches that wiring. Tool spans get ``lmnr.span.type = TOOL`` and their
 input/output, copied from the attributes ADK itself stamps so that ADK's
 content toggle keeps working. Agent spans get the ADK session/user ids as
-association properties. ADK's detection of an external google-genai
-instrumentation is extended to recognize this SDK's wrapper, which makes ADK
-skip its own ``generate_content`` span; without that, every LLM call is
-spanned twice (lmnr-ai/lmnr#2234).
+association properties.
+
+ADK's own ``call_llm`` span is enriched directly from the real
+``LlmRequest``/``LlmResponse`` objects into ``gen_ai.input.messages`` /
+``gen_ai.tool.definitions`` / ``gen_ai.output.messages`` /
+``gen_ai.response.model`` — the shape the frontend already parses for every
+other provider — instead of ADK's own JSON-blob
+``gcp.vertex.agent.llm_request``/``llm_response`` attributes. Because of
+this, ``Instruments.GOOGLE_GENAI`` is auto-removed from the default set
+whenever ``google-adk`` is installed (see ``_GOOGLE_ADK_GENAI_CONFLICTS`` in
+``tracing/instruments.py``): wrapping the genai SDK's own
+``generate_content`` on top would double-cover the same call with a span
+whose parent depends on ADK's fragile generator-scoped context (its
+``call_llm`` span can outlive the ``yield`` that hands control back to the
+caller, so whether it's still "current" by the time the SDK issues the HTTP
+call depends on task/thread hops inside the SDK's own transport). The
+``call_llm`` wrap also detaches the span from the ambient OTel context right
+after stamping it, so that immediately-following tool execution attaches as
+a sibling instead of nesting under ``call_llm`` (contextvars persist across
+an async generator's ``yield`` within the same task, so without this ADK's
+own ``with`` block keeps ``call_llm`` "current" through the postprocessing
+that runs tools). ADK's own detection of an external genai instrumentation
+is unconditionally forced to report one present, so ADK always skips its
+native ``generate_content <model>`` span — it would otherwise double-cover
+the call, either against our own ``call_llm`` enrichment (the default) or
+against Laminar's ``google_genai`` span (the explicit-opt-in case where a
+caller re-enables ``GOOGLE_GENAI`` alongside ADK) (lmnr-ai/lmnr#2234).
 
 Wraps are defensive: hooks missing from the installed ADK version are
 skipped, and a wrapper failure never breaks the traced call.
@@ -19,6 +42,7 @@ import contextlib
 import logging
 from typing import Any, Collection
 
+from opentelemetry import context as context_api
 from opentelemetry import trace
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
@@ -32,14 +56,17 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
     SPAN_TYPE,
     USER_ID,
 )
+from lmnr.sdk.utils import json_dumps
 
 logger = logging.getLogger(__name__)
 
 _TRACING_MODULE = "google.adk.telemetry.tracing"
 _TELEMETRY_PACKAGE = "google.adk.telemetry"
 _FLOW_FUNCTIONS_MODULE = "google.adk.flows.llm_flows.functions"
+_BASE_LLM_FLOW_MODULE = "google.adk.flows.llm_flows.base_llm_flow"
 _TOOL_ARGS_ATTRIBUTE = "gcp.vertex.agent.tool_call_args"
 _TOOL_RESPONSE_ATTRIBUTE = "gcp.vertex.agent.tool_response"
+_LLM_REQUEST_ATTRIBUTE = "gcp.vertex.agent.llm_request"
 _GENAI_DETECTOR = (
     "_instrumented_with_opentelemetry_instrumentation_google_genai"
 )
@@ -164,16 +191,124 @@ def _wrap_trace_agent_invocation(wrapped, instance, args, kwargs):
     return result
 
 
-def _laminar_genai_instrumented() -> bool:
-    try:
-        from ..google_genai import GoogleGenAiSdkInstrumentor
+def _tool_declarations_from_config(config) -> list:
+    """Flattens `config.tools` (a list of `types.Tool` and/or dicts shaped
+    like `{"function_declarations": [...]}`) into a flat list of function
+    declarations, mirroring the flattening the google_genai instrumentor does
+    for its own `gen_ai.tool.definitions` attribute."""
+    from google.genai import types
 
-        # Constructing the singleton here would rerun its __init__ on
-        # every LLM call, resetting a user-provided Config.exception_logger.
-        instance = GoogleGenAiSdkInstrumentor._instance
-        return bool(instance and instance.is_instrumented_by_opentelemetry)
+    declarations = []
+    for tool in getattr(config, "tools", None) or []:
+        if isinstance(tool, types.Tool):
+            declarations.extend(tool.function_declarations or [])
+        elif isinstance(tool, dict) and isinstance(
+            tool.get("function_declarations"), list
+        ):
+            declarations.extend(tool.get("function_declarations", []))
+    return declarations
+
+
+def _enrich_call_llm_span(span: trace.Span, llm_request, llm_response) -> None:
+    """Stamps `gen_ai.*` attributes onto ADK's own `call_llm` span from the
+    real `LlmRequest`/`LlmResponse` objects, so the span carries the same
+    shape the frontend already parses for every other provider, instead of
+    the raw `gcp.vertex.agent.llm_request`/`llm_response` JSON blobs ADK
+    stamps for its own legacy UI."""
+    attributes = getattr(span, "attributes", None) or {}
+    if attributes.get(_LLM_REQUEST_ATTRIBUTE) == "{}":
+        # ADK's own content toggle redacted the request/response (see
+        # trace_call_llm's should_add_content_to_legacy_spans branch); keep
+        # the new gen_ai.* attributes redacted too rather than leaking
+        # message content through a side door.
+        return
+
+    from ..google_genai.utils import content_union_to_dict, to_dict
+
+    config = getattr(llm_request, "config", None)
+
+    messages = []
+    system_instruction = getattr(config, "system_instruction", None)
+    if system_instruction:
+        msg = content_union_to_dict(system_instruction, default_role="system")
+        msg["role"] = "system"
+        messages.append(msg)
+    for content in getattr(llm_request, "contents", None) or []:
+        messages.append(content_union_to_dict(content))
+    if messages:
+        span.set_attribute("gen_ai.input.messages", json_dumps(messages))
+
+    declarations = _tool_declarations_from_config(config)
+    if declarations:
+        span.set_attribute(
+            "gen_ai.tool.definitions",
+            json_dumps([to_dict(declaration) for declaration in declarations]),
+        )
+
+    response_content = getattr(llm_response, "content", None)
+    output_messages = (
+        [content_union_to_dict(response_content, default_role="model")]
+        if response_content is not None
+        else []
+    )
+    span.set_attribute("gen_ai.output.messages", json_dumps(output_messages))
+
+    model_version = getattr(llm_response, "model_version", None)
+    if model_version:
+        span.set_attribute("gen_ai.response.model", model_version)
+
+
+def _detach_from_current_context(span: trace.Span) -> None:
+    """Ends `call_llm`'s reign as the ambient "current span" the moment its
+    attributes are stamped, instead of letting it stay attached — via ADK's
+    still-open `start_as_current_span` block — through the tool-execution
+    postprocessing that immediately follows. Without this, every tool span
+    nests under `call_llm` instead of following it as a sibling.
+
+    Deliberately an unbalanced `attach()` with no matching `detach()`: when
+    ADK's own `with tracer.start_as_current_span('call_llm')` block
+    eventually exits, its token-based detach restores the context to
+    whatever was current when call_llm was attached, regardless of what
+    happened to the context in between — contextvars.Token.reset() restores
+    the exact value captured at attach time, not "whatever is current now".
+    """
+    parent = getattr(span, "parent", None)
+    new_span = (
+        trace.NonRecordingSpan(parent)
+        if parent is not None
+        else trace.INVALID_SPAN
+    )
+    # Pass the current context explicitly rather than None: omitting it
+    # would build a brand new empty Context, discarding Laminar's own
+    # association-properties/debug-context state carried in context vars.
+    new_context = trace.set_span_in_context(new_span, context_api.get_current())
+    context_api.attach(new_context)
+
+
+def _wrap_trace_call_llm(wrapped, instance, args, kwargs):
+    result = wrapped(*args, **kwargs)
+    # trace_call_llm(invocation_context, event_id, llm_request, llm_response,
+    # span=None) — span is the 5th positional parameter.
+    span = _resolve_span(args, kwargs, position=4)
+    if span is None:
+        return result
+    try:
+        llm_request = kwargs.get("llm_request")
+        if llm_request is None and len(args) > 2:
+            llm_request = args[2]
+        llm_response = kwargs.get("llm_response")
+        if llm_response is None and len(args) > 3:
+            llm_response = args[3]
+        _enrich_call_llm_span(span, llm_request, llm_response)
     except Exception:
-        return False
+        logger.debug("Failed to enrich ADK call_llm span", exc_info=True)
+    try:
+        _detach_from_current_context(span)
+    except Exception:
+        logger.debug(
+            "Failed to detach ADK call_llm span from context", exc_info=True
+        )
+    return result
 
 
 @contextlib.contextmanager
@@ -187,23 +322,31 @@ def _wrap_use_extra_generate_content_attributes(
     """ADK forwards agent/session attributes to a delegated genai span
     through a context key imported from the otel-contrib package, and logs a
     bogus "insufficient version" warning on every LLM call when that package
-    is missing. If Laminar's genai instrumentation is the active one, skip
-    the forwarding instead of warning; without the contrib key the
-    attributes have nowhere to go anyway."""
+    is missing. This wrap only ever runs on the branch where ADK's own
+    native span is already suppressed (`_wrap_genai_detection` below always
+    reports an external genai instrumentation while this instrumentor is
+    active), so there is never a delegated span for the forwarded attributes
+    to reach — skip the forwarding instead of warning unconditionally,
+    rather than gating it on whether Laminar's own google_genai
+    instrumentor happens to be instrumented too."""
     try:
         from opentelemetry.instrumentation.google_genai import (  # noqa: F401
             GENERATE_CONTENT_EXTRA_ATTRIBUTES_CONTEXT_KEY,
         )
     except (ImportError, AttributeError):
-        if _laminar_genai_instrumented():
-            return _noop_context()
+        return _noop_context()
     return wrapped(*args, **kwargs)
 
 
 def _wrap_genai_detection(wrapped, instance, args, kwargs):
-    if wrapped(*args, **kwargs):
-        return True
-    return _laminar_genai_instrumented()
+    """ADK's own native `generate_content <model>` span is always redundant
+    while this instrumentor is active: by default `call_llm` is enriched
+    directly (GOOGLE_GENAI is auto-removed from the default set — see
+    `_GOOGLE_ADK_GENAI_CONFLICTS`), and if a caller explicitly opts
+    GOOGLE_GENAI back in alongside ADK, Laminar's own google_genai span
+    already covers the call. Either way, tell ADK an external genai
+    instrumentation is present so it skips its native span."""
+    return True
 
 
 class GoogleAdkInstrumentor(BaseInstrumentor):
@@ -256,6 +399,25 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
                 _TRACING_MODULE,
                 "_use_extra_generate_content_attributes",
                 _wrap_use_extra_generate_content_attributes,
+            ),
+            # trace_call_llm is bound by name at import time in
+            # base_llm_flow (and re-exported from the telemetry package),
+            # same reasoning as trace_merged_tool_calls above: patch every
+            # module holding a binding, tracing module last.
+            (
+                _BASE_LLM_FLOW_MODULE,
+                "trace_call_llm",
+                _wrap_trace_call_llm,
+            ),
+            (
+                _TELEMETRY_PACKAGE,
+                "trace_call_llm",
+                _wrap_trace_call_llm,
+            ),
+            (
+                _TRACING_MODULE,
+                "trace_call_llm",
+                _wrap_trace_call_llm,
             ),
         ):
             try:
