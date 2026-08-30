@@ -1,8 +1,8 @@
 import tempfile
+import uuid
 from argparse import Namespace
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
-import uuid
 
 import pytest
 
@@ -17,6 +17,7 @@ def mock_args():
         file=[],
         continue_on_error=False,
         output_file=None,
+        frontend_port=None,
     )
 
 

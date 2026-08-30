@@ -222,7 +222,7 @@ async def handle_datasets_list(args: DatasetsArgs) -> None:
     for dataset in datasets:
         created_at_str = dataset.created_at.strftime("%Y-%m-%d %H:%M:%S")
         print(
-            f"{str(dataset.id):<{id_width}}  {created_at_str:<{created_at_width}}  {dataset.name}"
+            f"{dataset.id!s:<{id_width}}  {created_at_str:<{created_at_width}}  {dataset.name}"
         )
 
     print(f"\nTotal: {len(datasets)} dataset(s)\n")

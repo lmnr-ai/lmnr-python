@@ -13,7 +13,13 @@ from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.datasets import EvaluationDataset
-from lmnr.sdk.evaluations.consts import DEFAULT_BATCH_SIZE, MAX_EXPORT_BATCH_SIZE
+from lmnr.sdk.evaluations.models import (
+    DEFAULT_BATCH_SIZE,
+    MAX_EXPORT_BATCH_SIZE,
+    EvaluationRunResult,
+)
+from lmnr.sdk.evaluations.reporter import EvaluationReporter
+from lmnr.sdk.evaluations.utils import get_average_scores, get_evaluation_url
 from lmnr.sdk.laminar import Laminar as L
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import (
@@ -29,6 +35,37 @@ from lmnr.sdk.types import (
     TraceType,
 )
 from lmnr.sdk.utils import from_env, is_async, json_dumps
+
+# Evaluation-metadata key that links an eval run to its debug session. Kept as
+# `rollout.session_id` (matching the trace-metadata key the debugger stamps) so
+# the eval and its debug session cross-reference under one identifier.
+SESSION_METADATA_KEY = "rollout.session_id"
+
+def _with_debugger_session_metadata(
+    metadata: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Stamp the debug session id into eval metadata when running under debug.
+
+    When this eval runs under a debug session, auto-stamp the session id into
+    the evaluation metadata so the created evaluation links back to it with no
+    extra step. The session id is resolved by the debug runtime EXACTLY like
+    traces — `LMNR_DEBUG_SESSION_ID` env → `.lmnr/debug-session.json` → freshly
+    minted — so a plain `LMNR_DEBUG=1 <run-your-eval>` groups the eval under the
+    current debug session (no CLI wrapper needed). `get_runtime()` is None when
+    debug mode is off, so the metadata is returned unchanged.
+
+    The backend writes the `evaluation` block from this key at eval creation;
+    notes are attached separately as `text` blocks keyed by the same session id
+    (`lmnr-cli debug session add-note`). Called after `Laminar.initialize()`, so
+    the runtime (and its resolved session id) already exist.
+    """
+    from lmnr.sdk.debug import get_runtime
+
+    runtime = get_runtime()
+    session_id = runtime.session_id if runtime is not None else None
+    if session_id is None:
+        return metadata
+    return {**(metadata or {}), SESSION_METADATA_KEY: session_id}
 
 
 class Evaluation:
@@ -127,8 +164,8 @@ class Evaluation:
         for evaluator_name in evaluators:
             if not evaluator_name_regex.match(evaluator_name):
                 raise ValueError(
-                    f'Invalid evaluator key: "{evaluator_name}". '
-                    "Keys must only contain letters, digits, hyphens,"
+                    f'Invalid evaluator key: "{evaluator_name}". ' +
+                    "Keys must only contain letters, digits, hyphens," +
                     "underscores, or spaces."
                 )
 

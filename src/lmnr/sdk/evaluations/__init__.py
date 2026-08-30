@@ -2,147 +2,23 @@ import asyncio
 import uuid
 from typing import Any
 
-from tqdm import tqdm
 from typing_extensions import TypedDict
 
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.sdk.datasets import EvaluationDataset
-from lmnr.sdk.evaluations.consts import DEFAULT_BATCH_SIZE, MAX_EXPORT_BATCH_SIZE
 from lmnr.sdk.evaluations.control_vars import EVALUATION_INSTANCES, PREPARE_ONLY
 from lmnr.sdk.evaluations.evaluation import Evaluation
+from lmnr.sdk.evaluations.models import (
+    DEFAULT_BATCH_SIZE,
+    MAX_EXPORT_BATCH_SIZE,
+    EvaluationRunResult,
+)
 from lmnr.sdk.types import (
     Datapoint,
-    EvaluationResultDatapoint,
     EvaluatorFunction,
     ExecutorFunction,
     HumanEvaluator,
-    Numeric,
 )
-from lmnr.sdk.utils import from_env, get_frontend_url
-
-
-class EvaluationRunResult(TypedDict):
-    average_scores: dict[str, Numeric]
-    evaluation_id: uuid.UUID
-    project_id: uuid.UUID
-    url: str
-    error_message: str | None
-
-
-def get_evaluation_url(
-    project_id: str,
-    evaluation_id: str,
-    base_url: str | None = None,
-    frontend_port: int | None = None,
-):
-    """
-    Get the frontend URL for an evaluation.
-
-    Args:
-        project_id: Project ID
-        evaluation_id: Evaluation ID
-        base_url: Base API URL
-        frontend_port: Optional frontend port for localhost (defaults to 5667)
-
-    Returns:
-        Full URL to the evaluation in the frontend
-    """
-
-    # Check environment variable if frontend_port not explicitly provided
-    if frontend_port is None:
-        port_str = from_env("LMNR_FRONTEND_PORT")
-        if port_str:
-            try:
-                frontend_port = int(port_str)
-            except ValueError:
-                pass
-
-    frontend_url = get_frontend_url(base_url, frontend_port)
-    return f"{frontend_url}/project/{project_id}/evaluations/{evaluation_id}"
-
-
-# Evaluation-metadata key that links an eval run to its debug session. Kept as
-# `rollout.session_id` (matching the trace-metadata key the debugger stamps) so
-# the eval and its debug session cross-reference under one identifier.
-SESSION_METADATA_KEY = "rollout.session_id"
-
-
-def _with_debugger_session_metadata(
-    metadata: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    """Stamp the debug session id into eval metadata when running under debug.
-
-    When this eval runs under a debug session, auto-stamp the session id into
-    the evaluation metadata so the created evaluation links back to it with no
-    extra step. The session id is resolved by the debug runtime EXACTLY like
-    traces — `LMNR_DEBUG_SESSION_ID` env → `.lmnr/debug-session.json` → freshly
-    minted — so a plain `LMNR_DEBUG=1 <run-your-eval>` groups the eval under the
-    current debug session (no CLI wrapper needed). `get_runtime()` is None when
-    debug mode is off, so the metadata is returned unchanged.
-
-    The backend writes the `evaluation` block from this key at eval creation;
-    notes are attached separately as `text` blocks keyed by the same session id
-    (`lmnr-cli debug session add-note`). Called after `Laminar.initialize()`, so
-    the runtime (and its resolved session id) already exist.
-    """
-    from lmnr.sdk.debug import get_runtime
-
-    runtime = get_runtime()
-    session_id = runtime.session_id if runtime is not None else None
-    if session_id is None:
-        return metadata
-    return {**(metadata or {}), SESSION_METADATA_KEY: session_id}
-
-
-def get_average_scores(results: list[EvaluationResultDatapoint]) -> dict[str, Numeric]:
-    per_score_values = {}
-    for result in results:
-        for key, value in result.scores.items():
-            if key not in per_score_values:
-                per_score_values[key] = []
-            per_score_values[key].append(value)
-
-    average_scores = {}
-    for key, values in per_score_values.items():
-        scores = [v for v in values if v is not None]
-
-        # If there are no scores, we don't want to include the key in the average scores
-        if len(scores) > 0:
-            average_scores[key] = sum(scores) / len(scores)
-
-    return average_scores
-
-
-class EvaluationReporter:
-    def __init__(self, base_url, frontend_port: int | None = None):
-        self.base_url = base_url
-        self.frontend_port = frontend_port
-
-    def start(self, length: int):
-        self.cli_progress = tqdm(
-            total=length,
-            bar_format="{bar} {percentage:3.0f}% | ETA: {remaining}s | {n_fmt}/{total_fmt}",
-            ncols=60,
-        )
-
-    def update(self, batch_length: int):
-        self.cli_progress.update(batch_length)
-
-    def stop_with_error(self, error: Exception):
-        if hasattr(self, "cli_progress"):
-            self.cli_progress.close()
-        raise error
-
-    def stop(
-        self, average_scores: dict[str, Numeric], project_id: str, evaluation_id: str
-    ):
-        self.cli_progress.close()
-        print("Average scores:")
-        for name, score in average_scores.items():
-            print(f"{name}: {score}")
-        print(
-            f"Check the results at {get_evaluation_url(project_id, evaluation_id, self.base_url, self.frontend_port)}\n"
-        )
 
 
 def evaluate(
