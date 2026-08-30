@@ -1,8 +1,9 @@
-from pathlib import Path
-import urllib.request
-import urllib.error
 import sys
-
+import urllib.error
+import urllib.request
+from http.client import HTTPResponse
+from pathlib import Path
+from typing import cast
 
 from lmnr.sdk.log import get_default_logger
 
@@ -24,13 +25,14 @@ def add_cursor_rules() -> None:
     try:
         LOG.info(f"Downloading laminar.mdc from {url}")
 
-        # Download the file
-        with urllib.request.urlopen(url) as response:
+        # `urlopen`'s return type is `Any` in typeshed (it varies by URL scheme
+        # handler); for http(s) URLs it's always `HTTPResponse`.
+        with cast(HTTPResponse, urllib.request.urlopen(url)) as response:
             content = response.read()
 
         # Write the content to the target file (this will overwrite if it exists)
         with open(target_file, "wb") as f:
-            f.write(content)
+            _bytes_written = f.write(content)
 
         LOG.info(f"Successfully downloaded laminar.mdc to {target_file}")
 

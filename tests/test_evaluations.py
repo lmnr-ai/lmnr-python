@@ -1,13 +1,15 @@
 import json
-import pytest
-from unittest.mock import patch, MagicMock
+import uuid
 from datetime import datetime
+from unittest.mock import MagicMock, patch
+
+import pytest
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from lmnr import Laminar
-from lmnr.sdk.evaluations import evaluate, get_average_scores
-from lmnr.sdk.types import HumanEvaluator, EvaluationResultDatapoint, Datapoint
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-import uuid
+from lmnr.sdk.evaluations import evaluate
+from lmnr.sdk.evaluations.utils import get_average_scores
+from lmnr.sdk.types import Datapoint, EvaluationResultDatapoint, HumanEvaluator
 
 
 # Fixtures for common mock objects

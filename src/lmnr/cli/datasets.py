@@ -1,9 +1,8 @@
-from argparse import Namespace
-from pathlib import Path
-from typing import Any
-
 import csv
 import sys
+import uuid
+from argparse import Namespace
+from pathlib import Path
 
 import orjson
 
@@ -17,7 +16,34 @@ DEFAULT_DATASET_PULL_BATCH_SIZE = 100
 DEFAULT_DATASET_PUSH_BATCH_SIZE = 100
 
 
-def _dump_json(data: Any, do_indent: bool = True) -> str:
+class DatasetsArgs(Namespace):
+    """Namespace fields populated by the CLI's `datasets` subcommand and its children."""
+
+    command: str | None = None
+    project_api_key: str | None = None
+    base_url: str = ""
+    port: int | None = None
+    name: str | None = None
+    id: str | None = None
+    paths: list[str]
+    recursive: bool = False
+    batch_size: int | None = None
+    output_path: str | None = None
+    output_format: str | None = None
+    limit: int | None = None
+    offset: int | None = None
+    output_file: str | None = None
+
+    def __init__(self, **kwargs: object) -> None:
+        super().__init__(**kwargs)
+        self.paths = []
+
+
+def _resolve_dataset_id(id: str | None) -> uuid.UUID | None:
+    return uuid.UUID(id) if id else None
+
+
+def _dump_json(data: object, do_indent: bool = True) -> str:
     return orjson.dumps(
         data,
         option=(orjson.OPT_INDENT_2 if do_indent else 0)
@@ -30,7 +56,8 @@ def _dump_json(data: Any, do_indent: bool = True) -> str:
 
 async def _pull_all_data(
     client: AsyncLaminarClient,
-    identifier: dict,
+    name: str | None,
+    id: uuid.UUID | None,
     batch_size: int,
     offset: int = 0,
     limit: int | None = None,
@@ -40,7 +67,8 @@ async def _pull_all_data(
 
     Args:
         client: The AsyncLaminarClient instance
-        identifier: Dict with either 'name' or 'id' key
+        name: Name of the dataset to pull from (mutually exclusive with `id`)
+        id: ID of the dataset to pull from (mutually exclusive with `name`)
         batch_size: Size of batches to pull
         offset: Starting offset for pulling data
         limit: Maximum number of items to pull (None for all)
@@ -55,17 +83,13 @@ async def _pull_all_data(
     result: list[Datapoint] = []
     while has_more and (stop_at is None or current_offset < stop_at):
         data = await client.datasets.pull(
-            **identifier,
+            name=name,
+            id=id,
             offset=current_offset,
             limit=batch_size,
         )
         result.extend(data.items)
-        if stop_at is not None and current_offset + batch_size >= stop_at:
-            has_more = False
-        elif (
-            data.total_count is not None
-            and current_offset + batch_size >= data.total_count
-        ):
+        if stop_at is not None and current_offset + batch_size >= stop_at or current_offset + batch_size >= data.total_count:
             has_more = False
         current_offset += batch_size
 
@@ -110,7 +134,7 @@ def _write_data_to_file(
 
     # Write output file
     if format == "json":
-        output_path.write_text(_dump_json([item.model_dump() for item in data]))
+        _bytes_written = output_path.write_text(_dump_json([item.model_dump() for item in data]))
     elif format == "csv":
         if not data:
             LOG.error("No data to write to CSV")
@@ -124,7 +148,7 @@ def _write_data_to_file(
     elif format == "jsonl":
         with output_path.open("w") as f:
             for item in data:
-                f.write(_dump_json(item.model_dump(), do_indent=False) + "\n")
+                _bytes_written = f.write(_dump_json(item.model_dump(), do_indent=False) + "\n")
 
     return True
 
@@ -163,7 +187,7 @@ def _print_data_to_console(data: list[Datapoint], output_format: str = "json") -
     return True
 
 
-async def handle_datasets_list(args: Namespace) -> None:
+async def handle_datasets_list(args: DatasetsArgs) -> None:
     """
     Handle datasets list command.
 
@@ -198,13 +222,13 @@ async def handle_datasets_list(args: Namespace) -> None:
     for dataset in datasets:
         created_at_str = dataset.created_at.strftime("%Y-%m-%d %H:%M:%S")
         print(
-            f"{str(dataset.id):<{id_width}}  {created_at_str:<{created_at_width}}  {dataset.name}"
+            f"{dataset.id!s:<{id_width}}  {created_at_str:<{created_at_width}}  {dataset.name}"
         )
 
     print(f"\nTotal: {len(datasets)} dataset(s)\n")
 
 
-async def handle_datasets_push(args: Namespace) -> None:
+async def handle_datasets_push(args: DatasetsArgs) -> None:
     """
     Handle datasets push command.
 
@@ -216,30 +240,35 @@ async def handle_datasets_push(args: Namespace) -> None:
     if args.name and args.id:
         LOG.error("Only one of name or id must be provided")
         return
-    identifier = {"name": args.name} if args.name else {"id": args.id}
+    dataset_id = _resolve_dataset_id(args.id)
     client = AsyncLaminarClient(
         project_api_key=args.project_api_key,
         base_url=args.base_url,
         port=args.port,
     )
-    data = load_from_paths(parse_paths(args.paths), recursive=args.recursive)
-    if len(data) == 0:
+    raw_data = load_from_paths(parse_paths(args.paths), recursive=args.recursive)
+    if len(raw_data) == 0:
         LOG.warning("No data to push. Skipping")
+        await client.close()
         return
     try:
-        await client.datasets.push(
-            data,
-            **identifier,
+        datapoints = [Datapoint.model_validate(item) for item in raw_data]
+        _ = await client.datasets.push(
+            datapoints,
+            name=args.name,
+            id=dataset_id,
             batch_size=args.batch_size or DEFAULT_DATASET_PUSH_BATCH_SIZE,
         )
-        LOG.info(f"Pushed {len(data)} data points to dataset {args.name or args.id}")
+        LOG.info(
+            f"Pushed {len(datapoints)} data points to dataset {args.name or args.id}"
+        )
     except Exception as e:
         LOG.error(f"Failed to push dataset: {e}")
     finally:
         await client.close()
 
 
-async def handle_datasets_pull(args: Namespace) -> None:
+async def handle_datasets_pull(args: DatasetsArgs) -> None:
     """
     Handle datasets pull command.
 
@@ -251,7 +280,7 @@ async def handle_datasets_pull(args: Namespace) -> None:
     if args.name and args.id:
         LOG.error("Only one of name or id must be provided")
         return
-    identifier = {"name": args.name} if args.name else {"id": args.id}
+    dataset_id = _resolve_dataset_id(args.id)
     client = AsyncLaminarClient(
         project_api_key=args.project_api_key,
         base_url=args.base_url,
@@ -262,7 +291,8 @@ async def handle_datasets_pull(args: Namespace) -> None:
     try:
         result = await _pull_all_data(
             client=client,
-            identifier=identifier,
+            name=args.name,
+            id=dataset_id,
             batch_size=args.batch_size or DEFAULT_DATASET_PULL_BATCH_SIZE,
             offset=args.offset or 0,
             limit=args.limit,
@@ -289,13 +319,17 @@ async def handle_datasets_pull(args: Namespace) -> None:
             return
 
 
-async def handle_datasets_create(args: Namespace) -> None:
+async def handle_datasets_create(args: DatasetsArgs) -> None:
     """
     Handle datasets create command.
 
     Creates a dataset from input files, pushes the data to it, and then pulls it back
     in Laminar format to save to the output file.
     """
+    if not args.output_file:
+        LOG.error("Output file is required")
+        return
+    output_file = args.output_file
     client = AsyncLaminarClient(
         project_api_key=args.project_api_key,
         base_url=args.base_url,
@@ -303,25 +337,28 @@ async def handle_datasets_create(args: Namespace) -> None:
     )
 
     # Load data from input files
-    data = load_from_paths(parse_paths(args.paths), recursive=args.recursive)
-    if len(data) == 0:
+    raw_data = load_from_paths(parse_paths(args.paths), recursive=args.recursive)
+    if len(raw_data) == 0:
         LOG.warning("No data to push. Skipping")
+        await client.close()
         return
+    datapoints = [Datapoint.model_validate(item) for item in raw_data]
 
     # Push data to create/populate the dataset
-    LOG.info(f"Pushing {len(data)} data points to dataset '{args.name}'...")
+    LOG.info(f"Pushing {len(datapoints)} data points to dataset '{args.name}'...")
     try:
-        await client.datasets.push(
-            data,
+        _ = await client.datasets.push(
+            datapoints,
             name=args.name,
             batch_size=args.batch_size or DEFAULT_DATASET_PUSH_BATCH_SIZE,
             create_dataset=True,
         )
         LOG.info(
-            f"Successfully pushed {len(data)} data points to dataset '{args.name}'"
+            f"Successfully pushed {len(datapoints)} data points to dataset '{args.name}'"
         )
     except Exception as e:
         LOG.error(f"Failed to create dataset: {e}")
+        await client.close()
         return
 
     # Pull data back from the dataset
@@ -329,7 +366,8 @@ async def handle_datasets_create(args: Namespace) -> None:
     try:
         result = await _pull_all_data(
             client=client,
-            identifier={"name": args.name},
+            name=args.name,
+            id=None,
             batch_size=args.batch_size or DEFAULT_DATASET_PULL_BATCH_SIZE,
             offset=0,
             limit=None,
@@ -343,17 +381,17 @@ async def handle_datasets_create(args: Namespace) -> None:
     # Save to output file
     if not _write_data_to_file(
         data=result,
-        output_path=Path(args.output_file),
+        output_path=Path(output_file),
         output_format=args.output_format,
     ):
         return
 
     LOG.info(
-        f"Successfully created dataset '{args.name}' and saved {len(result)} data points to {args.output_file}"
+        f"Successfully created dataset '{args.name}' and saved {len(result)} data points to {output_file}"
     )
 
 
-async def handle_datasets_command(args: Namespace) -> None:
+async def handle_datasets_command(args: DatasetsArgs) -> None:
     """
     Handle datasets subcommand dispatching.
 

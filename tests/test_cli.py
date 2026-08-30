@@ -1,12 +1,12 @@
 import tempfile
+import uuid
 from argparse import Namespace
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
-import uuid
 
 import pytest
 
-from lmnr.cli import run_evaluation
+from lmnr.cli.evals import run_evaluation
 from lmnr.sdk.evaluations import Evaluation
 
 
@@ -17,6 +17,7 @@ def mock_args():
         file=[],
         continue_on_error=False,
         output_file=None,
+        frontend_port=None,
     )
 
 

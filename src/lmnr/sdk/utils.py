@@ -78,7 +78,7 @@ def serialize(obj: typing.Any) -> str | dict[str, typing.Any]:
         elif isinstance(o, bytes):
             return o.decode("utf-8")
         elif isinstance(o, pydantic.BaseModel):
-            return o.model_dump()
+            return serialize(o.model_dump())
         elif isinstance(o, (tuple, set, frozenset)):
             return [serialize_inner(item) for item in o]
         elif isinstance(o, list):

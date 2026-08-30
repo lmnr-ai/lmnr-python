@@ -68,11 +68,9 @@ class AsyncDatasets(BaseAsyncResource):
 
         identifier = {"name": name} if name is not None else {"datasetId": id}
 
-        batch_num = 0
         total_batches = math.ceil(len(points) / batch_size)
         response = None
-        for i in range(0, len(points), batch_size):
-            batch_num += 1
+        for (batch_num, i) in enumerate(range(0, len(points), batch_size)):
             logger.debug(f"Pushing batch {batch_num} of {total_batches}")
             batch = points[i : i + batch_size]
             response = await self._client.post(
@@ -112,7 +110,7 @@ class AsyncDatasets(BaseAsyncResource):
         if name is not None and id is not None:
             raise ValueError("Only one of name or id must be provided")
 
-        identifier = {"name": name} if name is not None else {"datasetId": id}
+        identifier = {"name": name} if name is not None else {"datasetId": str(id) if id is not None else id}
 
         params = {
             **identifier,
