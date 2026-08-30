@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from lmnr.cli import run_evaluation
+from lmnr.cli.evals import run_evaluation
 from lmnr.sdk.evaluations import Evaluation
 
 
