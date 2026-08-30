@@ -1,21 +1,21 @@
 import asyncio
 import os
 import time
+from typing import cast
 
 import orjson
-
 from opentelemetry import trace
 
-from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
-from lmnr.sdk.decorators import observe
-from lmnr.sdk.browser.utils import retry_sync, retry_async
 from lmnr.sdk.browser.background_send_events import (
     get_background_loop,
     track_async_send,
 )
+from lmnr.sdk.browser.utils import retry_async, retry_sync
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
+from lmnr.sdk.decorators import observe
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import MaskInputOptions
 
@@ -28,14 +28,14 @@ try:
         from patchright.sync_api import Page as SyncPage
     else:
         raise ImportError(
-            "Attempted to import lmnr.sdk.browser.pw_utils, but neither "
-            "playwright nor patchright is installed. Use `pip install playwright` "
+            "Attempted to import lmnr.sdk.browser.pw_utils, but neither " +
+            "playwright nor patchright is installed. Use `pip install playwright` " +
             "or `pip install patchright` to install one of the supported browsers."
         )
 except ImportError as e:
     raise ImportError(
-        "Attempted to import lmnr.sdk.browser.pw_utils, but neither "
-        "playwright nor patchright is installed. Use `pip install playwright` "
+        "Attempted to import lmnr.sdk.browser.pw_utils, but neither " +
+        "playwright nor patchright is installed. Use `pip install playwright` " +
         "or `pip install patchright` to install one of the supported browsers."
     ) from e
 
@@ -163,9 +163,9 @@ def get_mask_input_setting() -> MaskInputOptions:
 def inject_session_recorder_sync(page: SyncPage):
     try:
         try:
-            is_loaded = page.evaluate(
+            is_loaded = cast(bool, page.evaluate(
                 """() => typeof window.lmnrRrweb !== 'undefined'"""
-            )
+            ))
         except Exception as e:
             logger.debug(f"Failed to check if session recorder is loaded: {e}")
             is_loaded = False
@@ -204,9 +204,9 @@ def inject_session_recorder_sync(page: SyncPage):
 async def inject_session_recorder_async(page: Page):
     try:
         try:
-            is_loaded = await page.evaluate(
+            is_loaded = cast(bool, await page.evaluate(
                 """() => typeof window.lmnrRrweb !== 'undefined'"""
-            )
+            ))
         except Exception as e:
             logger.debug(f"Failed to check if session recorder is loaded: {e}")
             is_loaded = False
@@ -329,8 +329,8 @@ async def start_recording_events_async(
     page.on("domcontentloaded", on_load)
 
 
-def take_full_snapshot(page: Page):
-    return page.evaluate(
+def take_full_snapshot(page: SyncPage) -> bool:
+    return cast(bool, page.evaluate(
         """() => {
         if (window.lmnrRrweb) {
             try {
@@ -343,11 +343,11 @@ def take_full_snapshot(page: Page):
         }
         return false;
     }"""
-    )
+    ))
 
 
-async def take_full_snapshot_async(page: Page):
-    return await page.evaluate(
+async def take_full_snapshot_async(page: Page) -> bool:
+    return cast(bool, await page.evaluate(
         """() => {
         if (window.lmnrRrweb) {
             try {
@@ -360,4 +360,4 @@ async def take_full_snapshot_async(page: Page):
         }
         return false;
     }"""
-    )
+    ))

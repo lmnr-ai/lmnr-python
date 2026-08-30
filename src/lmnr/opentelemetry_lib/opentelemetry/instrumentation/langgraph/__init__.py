@@ -4,10 +4,6 @@ import json
 import logging
 from typing import Collection
 
-from .utils import (
-    with_tracer_wrapper,
-)
-
 from langchain_core.runnables.graph import Graph
 from opentelemetry.trace import Tracer
 from wrapt import wrap_function_wrapper
@@ -16,6 +12,8 @@ from opentelemetry.context import get_value, attach, set_value
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
+
+from lmnr.sdk.utils import with_tracer_wrapper
 
 
 logger = logging.getLogger(__name__)

@@ -1,5 +1,5 @@
 from lmnr import Laminar
-from lmnr.sdk.browser.utils import with_tracer_wrapper
+from lmnr.sdk.utils import with_tracer_wrapper
 from lmnr.sdk.utils import get_input_from_func_args, json_dumps
 from lmnr.version import __version__
 

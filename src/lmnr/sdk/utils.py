@@ -1,24 +1,92 @@
 import base64
 import collections.abc
-import datetime
 import dataclasses
-import dotenv
+import datetime
 import enum
+import functools
 import inspect
 import os
-import orjson
-import pydantic
 import queue
 import re
 import typing
 import uuid
 
+import dotenv
+import orjson
+import pydantic
+from opentelemetry.trace import Tracer
+
 from lmnr.sdk.log import get_default_logger
+
+if typing.TYPE_CHECKING:
+    from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
+    from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 
 logger = get_default_logger(__name__)
 
+WrappedFunction = typing.Callable[..., typing.Any]
+InstrumentedWrapper = typing.Callable[
+    [WrappedFunction, typing.Any, tuple, dict[str, typing.Any]], typing.Any
+]
 
-def is_method(func: typing.Callable) -> bool:
+
+def with_tracer_wrapper(
+    func: typing.Callable[..., typing.Any],
+) -> typing.Callable[[Tracer, typing.Any], InstrumentedWrapper]:
+    """Bind a tracer (and an optional per-instrumented-method config, `to_wrap`)
+    into an instrumentation function, producing the wrapper factory that
+    `wrapt.wrap_function_wrapper` expects.
+
+    `func` must accept `(tracer, to_wrap, wrapped, instance, args, kwargs)`.
+    Usage: `wrap_function_wrapper(module, "method", with_tracer_wrapper(func)(tracer, to_wrap))`.
+    """
+
+    def _with_tracer(tracer: Tracer, to_wrap: typing.Any = None) -> InstrumentedWrapper:
+        @functools.wraps(func)
+        def wrapper(
+            wrapped: WrappedFunction,
+            instance: typing.Any,
+            args: tuple,
+            kwargs: dict[str, typing.Any],
+        ) -> typing.Any:
+            return func(tracer, to_wrap, wrapped, instance, args, kwargs)
+
+        return wrapper
+
+    return _with_tracer
+
+
+def with_tracer_and_client_wrapper(
+    func: typing.Callable[..., typing.Any],
+) -> typing.Callable[
+    [Tracer, "LaminarClient | AsyncLaminarClient", typing.Any], InstrumentedWrapper
+]:
+    """Same as `with_tracer_wrapper`, but also binds a Laminar client.
+
+    `func` must accept
+    `(tracer, client, to_wrap, wrapped, instance, args, kwargs)`.
+    """
+
+    def _with_tracer_and_client(
+        tracer: Tracer,
+        client: "LaminarClient | AsyncLaminarClient",
+        to_wrap: typing.Any = None,
+    ) -> InstrumentedWrapper:
+        @functools.wraps(func)
+        def wrapper(
+            wrapped: WrappedFunction,
+            instance: typing.Any,
+            args: tuple,
+            kwargs: dict[str, typing.Any],
+        ) -> typing.Any:
+            return func(tracer, client, to_wrap, wrapped, instance, args, kwargs)
+
+        return wrapper
+
+    return _with_tracer_and_client
+
+
+def is_method(func: typing.Callable[..., typing.Any]) -> bool:
     # inspect.ismethod is True for bound methods only, but in the decorator,
     # the method is not bound yet, so we need to check if the first parameter
     # is either 'self' or 'cls'. This only relies on naming conventions
@@ -29,7 +97,7 @@ def is_method(func: typing.Callable) -> bool:
     return len(params) > 0 and params[0] in ["self", "cls"]
 
 
-def is_async(func: typing.Callable) -> bool:
+def is_async(func: typing.Callable[..., typing.Any]) -> bool:
     # `__wrapped__` is set automatically by `functools.wraps` and
     # `functools.update_wrapper`
     # so we can use it to get the original function
@@ -79,9 +147,7 @@ def serialize(obj: typing.Any) -> str | dict[str, typing.Any]:
             return o.decode("utf-8")
         elif isinstance(o, pydantic.BaseModel):
             return serialize(o.model_dump())
-        elif isinstance(o, (tuple, set, frozenset)):
-            return [serialize_inner(item) for item in o]
-        elif isinstance(o, list):
+        elif isinstance(o, (tuple, set, frozenset, list)):
             return [serialize_inner(item) for item in o]
         elif isinstance(o, dict):
             return {serialize_inner(k): serialize_inner(v) for k, v in o.items()}

@@ -1,14 +1,13 @@
 from typing import Collection
 
-from lmnr import Laminar
-from lmnr.opentelemetry_lib.tracing.context import get_current_context
-from lmnr.sdk.log import get_default_logger
-
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
 from opentelemetry.trace import NonRecordingSpan, get_current_span
 from wrapt import wrap_function_wrapper
 
+from lmnr import Laminar
+from lmnr.opentelemetry_lib.tracing.context import get_current_context
+from lmnr.sdk.log import get_default_logger
 
 _instruments = ("bubus >= 1.3.0",)
 event_id_to_span_context = {}

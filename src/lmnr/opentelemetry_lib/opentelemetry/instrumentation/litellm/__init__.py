@@ -1,35 +1,44 @@
+from collections.abc import Collection
 from importlib.metadata import version
-from typing import Collection
 
+from typing_extensions import override
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.litellm.wrappers import (
+    wrap_completion,
+    wrap_responses,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     LaminarInstrumentationScopeAttributes,
 )
-from .wrappers import wrap_completion, wrap_responses
+from lmnr.sdk.log import get_default_logger
 
-
-_instruments = ("litellm >= 1.0.0",)
+instruments = ("litellm >= 1.0.0",)
+logger = get_default_logger(__name__)
 
 
 class LitellmInstrumentor(BaseLaminarInstrumentor):
     _scope: LaminarInstrumentationScopeAttributes | None = None
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
-        return _instruments
+        return instruments
 
     def _instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         litellm_version = "unknown"
         try:
             litellm_version = version("litellm")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to get litellm version {e}")
+
         return LaminarInstrumentationScopeAttributes(
             name="litellm",
             version=litellm_version,
         )
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is not None:
             return self._scope

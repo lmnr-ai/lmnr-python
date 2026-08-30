@@ -22,7 +22,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
     get_event_attributes_from_context,
 )
 from lmnr.sdk.laminar import Laminar
-from lmnr.sdk.utils import json_dumps
+from lmnr.sdk.utils import json_dumps, with_tracer_wrapper
 
 from .config import (
     Config,
@@ -36,7 +36,6 @@ from .utils import (
     process_stream_chunk,
     set_span_attribute,
     to_dict,
-    with_tracer_wrapper,
 )
 
 logger = logging.getLogger(__name__)

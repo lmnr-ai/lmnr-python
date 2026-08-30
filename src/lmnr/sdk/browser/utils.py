@@ -1,40 +1,20 @@
 import asyncio
 import logging
 import time
-
-from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
-from lmnr.sdk.client.synchronous.sync_client import LaminarClient
+from collections.abc import Awaitable, Callable
+from typing import TypeVar
 
 logger = logging.getLogger(__name__)
 
-
-def with_tracer_wrapper(func):
-    """Helper for providing tracer for wrapper functions."""
-
-    def _with_tracer(tracer, to_wrap):
-        def wrapper(wrapped, instance, args, kwargs):
-            return func(tracer, to_wrap, wrapped, instance, args, kwargs)
-
-        return wrapper
-
-    return _with_tracer
+T = TypeVar("T")
 
 
-def with_tracer_and_client_wrapper(func):
-    """Helper for providing tracer and client for wrapper functions."""
-
-    def _with_tracer_and_client(
-        tracer, client: LaminarClient | AsyncLaminarClient, to_wrap
-    ):
-        def wrapper(wrapped, instance, args, kwargs):
-            return func(tracer, client, to_wrap, wrapped, instance, args, kwargs)
-
-        return wrapper
-
-    return _with_tracer_and_client
-
-
-def retry_sync(func, retries=5, delay=0.5, error_message="Operation failed"):
+def retry_sync(
+    func: Callable[[], T],
+    retries: int = 5,
+    delay: float = 0.5,
+    error_message: str = "Operation failed"
+) -> T | None:
     """Utility function for retry logic in synchronous operations"""
     for attempt in range(retries):
         try:
@@ -52,7 +32,12 @@ def retry_sync(func, retries=5, delay=0.5, error_message="Operation failed"):
     return None
 
 
-async def retry_async(func, retries=5, delay=0.5, error_message="Operation failed"):
+async def retry_async(
+    func: Callable[[], Awaitable[T]],
+    retries: int = 5,
+    delay: float = 0.5,
+    error_message: str = "Operation failed"
+) -> T | None:
     """Utility function for retry logic in asynchronous operations"""
     for attempt in range(retries):
         try:

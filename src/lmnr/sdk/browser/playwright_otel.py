@@ -8,7 +8,7 @@ from lmnr.sdk.browser.pw_utils import (
     take_full_snapshot,
     take_full_snapshot_async,
 )
-from lmnr.sdk.browser.utils import with_tracer_and_client_wrapper
+from lmnr.sdk.utils import with_tracer_and_client_wrapper
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.version import __version__
 

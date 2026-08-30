@@ -1,17 +1,18 @@
 from __future__ import annotations  # For "Self" | str | ... type hint
 
+import datetime
 import json
 import logging
-import datetime
-from pydantic import BaseModel, Field
 import uuid
-
+from collections.abc import Awaitable, Callable
 from enum import Enum
-from opentelemetry.trace import SpanContext, TraceFlags
-from typing import Any, Awaitable, Callable, Literal, Optional, Union
-from typing_extensions import TypedDict  # compatibility with python < 3.12
+from typing import Any, Literal
 
-from .utils import serialize, json_dumps
+from opentelemetry.trace import SpanContext, TraceFlags
+from pydantic import BaseModel, Field
+from typing_extensions import TypedDict, override  # compatibility with python < 3.12
+
+from .utils import json_dumps, serialize
 
 DEFAULT_DATAPOINT_MAX_DATA_LENGTH = 16_000_000  # 16MB
 
@@ -149,7 +150,7 @@ class EvaluationResultDatapoint(BaseModel):
     data: EvaluationDatapointData
     target: EvaluationDatapointTarget
     executor_output: ExecutorFunctionReturnType
-    scores: dict[str, Optional[Numeric]]
+    scores: dict[str, Numeric | None]
     trace_id: uuid.UUID
     executor_span_id: uuid.UUID
     metadata: EvaluationDatapointMetadata = Field(default=None)
@@ -225,7 +226,7 @@ class TraceBlockContent(TypedDict, total=False):
 
     traceId: str
     # Legacy note folded onto the trace block at ingest, if any.
-    note: Optional[str]
+    note: str | None
 
 
 class EvaluationBlockContent(TypedDict, total=False):
@@ -233,7 +234,7 @@ class EvaluationBlockContent(TypedDict, total=False):
 
     evaluationId: str
     # Legacy note folded onto the evaluation block at ingest, if any.
-    note: Optional[str]
+    note: str | None
 
 
 class TextBlockContent(TypedDict):
@@ -248,9 +249,7 @@ class TextBlockContent(TypedDict):
 SessionBlockType = Literal["trace", "evaluation", "text"]
 
 # Union of the known block content shapes.
-SessionBlockContent = Union[
-    TraceBlockContent, EvaluationBlockContent, TextBlockContent
-]
+SessionBlockContent = TraceBlockContent | EvaluationBlockContent | TextBlockContent
 
 
 class SessionBlock(TypedDict):
@@ -354,6 +353,7 @@ class LaminarSpanContext(BaseModel):
     metadata: dict[str, Any] | None = Field(default=None)
     debug: DebugContext | None = Field(default=None)
 
+    @override
     def __str__(self) -> str:
         return self.model_dump_json()
 
@@ -378,8 +378,8 @@ class LaminarSpanContext(BaseModel):
             and isinstance(getattr(span_context, "span_id", None), int)
         ):
             logger.warning(
-                "span_context provided"
-                " is likely a raw OpenTelemetry span context. Will try to use it. "
+                "span_context provided" +
+                " is likely a raw OpenTelemetry span context. Will try to use it. " +
                 "Please use `LaminarSpanContext` instead."
             )
             return span_context

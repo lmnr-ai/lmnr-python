@@ -81,16 +81,6 @@ def _with_chat_telemetry_wrapper(func):
     return _with_chat_telemetry
 
 
-def with_tracer_wrapper(func):
-    def _with_tracer(tracer):
-        def wrapper(wrapped, instance, args, kwargs):
-            return func(tracer, wrapped, instance, args, kwargs)
-
-        return wrapper
-
-    return _with_tracer
-
-
 def dont_throw(func):
     """
     A decorator that wraps the passed in function and logs exceptions instead of throwing them.
