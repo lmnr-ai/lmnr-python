@@ -1,15 +1,18 @@
-from argparse import Namespace
-
+import asyncio
 import glob
 import importlib.util
 import json
 import os
 import re
 import sys
+import uuid
+from argparse import Namespace
+from typing import TypedDict, cast
 
-from lmnr.sdk.evaluations import Evaluation
-from lmnr.sdk.eval_control import PREPARE_ONLY, EVALUATION_INSTANCES
+from lmnr.sdk.evaluations.control_vars import EVALUATION_INSTANCES, PREPARE_ONLY
+from lmnr.sdk.evaluations.evaluation import Evaluation
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.types import Numeric
 
 LOG = get_default_logger(__name__)
 EVAL_DIR = "evals"
@@ -17,21 +20,55 @@ DEFAULT_DATASET_PULL_BATCH_SIZE = 100
 DEFAULT_DATASET_PUSH_BATCH_SIZE = 100
 
 
+class EvalArgs(Namespace):
+    """Namespace fields populated by the CLI's `eval` subcommand."""
+
+    file: list[str]
+    continue_on_error: bool = False
+    output_file: str | None = None
+    frontend_port: int | None = None
+
+    def __init__(self, **kwargs: object) -> None:
+        super().__init__(**kwargs)
+        self.file = []
+
+
+class _EvaluationRunResult(TypedDict):
+    """Subset of fields this CLI reads off `Evaluation.run()`'s result."""
+
+    average_scores: dict[str, Numeric]
+    evaluation_id: uuid.UUID
+    url: str
+
+
+class _Score(TypedDict):
+    file: str
+    scores: dict[str, Numeric]
+    evaluation_id: str
+    url: str
+
+
 def log_evaluation_instance_not_found() -> None:
     LOG.warning(
-        "Evaluation instance not found. "
-        "`evaluate` must be called at the top level of the file, "
+        "Evaluation instance not found. " +
+        "`evaluate` must be called at the top level of the file, " +
         "not inside a function when running evaluations from the CLI."
     )
 
 
-async def run_evaluation(args: Namespace) -> None:
+def _write_scores(output_file: str, scores: list[_Score]) -> None:
+    with open(output_file, "w") as f:
+        json.dump(scores, f, indent=2)
+
+
+async def run_evaluation(args: EvalArgs) -> None:
     sys.path.append(os.getcwd())
 
     # Set frontend port in environment if specified
-    if hasattr(args, "frontend_port") and args.frontend_port:
+    if args.frontend_port:
         os.environ["LMNR_FRONTEND_PORT"] = str(args.frontend_port)
 
+    files: list[str]
     if len(args.file) == 0:
         files = [
             os.path.join(EVAL_DIR, f)
@@ -58,11 +95,11 @@ async def run_evaluation(args: Namespace) -> None:
                 files.append(pattern)
 
     prep_token = PREPARE_ONLY.set(True)
-    scores = []
+    scores: list[_Score] = []
     try:
         for file in files:
             # Reset EVALUATION_INSTANCES before loading each file
-            EVALUATION_INSTANCES.set([])
+            _ = EVALUATION_INSTANCES.set([])
 
             LOG.info(f"Running evaluation from {file}")
             file = os.path.abspath(file)
@@ -78,7 +115,6 @@ async def run_evaluation(args: Namespace) -> None:
             sys.modules[name] = mod
 
             spec.loader.exec_module(mod)
-            evaluations = []
             try:
                 evaluations: list[Evaluation] | None = EVALUATION_INSTANCES.get()
                 if evaluations is None:
@@ -109,7 +145,7 @@ async def run_evaluation(args: Namespace) -> None:
                         raise
 
         if args.output_file:
-            with open(args.output_file, "w") as f:
-                json.dump(scores, f, indent=2)
+            # `open()` is a blocking call; run it off the event loop thread.
+            await asyncio.to_thread(_write_scores, args.output_file, scores)
     finally:
         PREPARE_ONLY.reset(prep_token)

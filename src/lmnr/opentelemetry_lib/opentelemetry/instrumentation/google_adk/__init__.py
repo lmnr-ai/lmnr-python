@@ -45,7 +45,8 @@ skipped, and a wrapper failure never breaks the traced call.
 
 import contextlib
 import logging
-from typing import Any, Collection
+from collections.abc import Collection
+from typing import Any
 
 from opentelemetry import context as context_api
 from opentelemetry import trace

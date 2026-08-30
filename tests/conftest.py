@@ -1,16 +1,17 @@
 from typing import Generator
-import pytest
 from unittest.mock import patch
-from lmnr import Laminar
-from lmnr.opentelemetry_lib import TracerManager
-from lmnr.opentelemetry_lib.tracing import TracerWrapper
-from lmnr.opentelemetry_lib.tracing.instruments import Instruments
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from opentelemetry.sdk.trace.export import SpanExporter
+
+import pytest
 from opentelemetry import context as context_api
 from opentelemetry.context import Context
+from opentelemetry.sdk.trace.export import SpanExporter
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
+from lmnr import Laminar
+from lmnr.opentelemetry_lib import TracerManager
 from lmnr.opentelemetry_lib.litellm import LaminarLiteLLMCallback
+from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 
 pytest_plugins = ("pytest_asyncio",)
 
