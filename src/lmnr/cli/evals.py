@@ -5,9 +5,8 @@ import json
 import os
 import re
 import sys
-import uuid
 from argparse import Namespace
-from typing import TypedDict, cast
+from typing import TypedDict
 
 from lmnr.sdk.evaluations.control_vars import EVALUATION_INSTANCES, PREPARE_ONLY
 from lmnr.sdk.evaluations.evaluation import Evaluation
@@ -31,14 +30,6 @@ class EvalArgs(Namespace):
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self.file = []
-
-
-class _EvaluationRunResult(TypedDict):
-    """Subset of fields this CLI reads off `Evaluation.run()`'s result."""
-
-    average_scores: dict[str, Numeric]
-    evaluation_id: uuid.UUID
-    url: str
 
 
 class _Score(TypedDict):
