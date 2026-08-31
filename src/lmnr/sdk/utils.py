@@ -18,10 +18,6 @@ from opentelemetry.trace import Tracer
 
 from lmnr.sdk.log import get_default_logger
 
-if typing.TYPE_CHECKING:
-    from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
-    from lmnr.sdk.client.synchronous.sync_client import LaminarClient
-
 logger = get_default_logger(__name__)
 
 WrappedFunction = typing.Callable[..., typing.Any]
@@ -112,47 +108,6 @@ def with_tracer_only_wrapper(
         return wrapper
 
     return _with_tracer
-
-
-def with_tracer_and_client_wrapper(
-    func: typing.Callable[
-        [
-            Tracer,
-            "LaminarClient | AsyncLaminarClient",
-            ToWrapT,
-            WrappedFunction,
-            typing.Any,
-            tuple[typing.Any, ...],
-            dict[str, typing.Any],
-        ],
-        typing.Any,
-    ],
-) -> typing.Callable[
-    [Tracer, "LaminarClient | AsyncLaminarClient", ToWrapT], InstrumentedWrapper
-]:
-    """Same as `with_tracer_wrapper`, but also binds a Laminar client.
-
-    `func` must accept
-    `(tracer, client, to_wrap, wrapped, instance, args, kwargs)`.
-    """
-
-    def _with_tracer_and_client(
-        tracer: Tracer,
-        client: "LaminarClient | AsyncLaminarClient",
-        to_wrap: ToWrapT,
-    ) -> InstrumentedWrapper:
-        @functools.wraps(func)
-        def wrapper(
-            wrapped: WrappedFunction,
-            instance: typing.Any,
-            args: tuple[typing.Any, ...],
-            kwargs: dict[str, typing.Any],
-        ) -> typing.Any:
-            return func(tracer, client, to_wrap, wrapped, instance, args, kwargs)
-
-        return wrapper
-
-    return _with_tracer_and_client
 
 
 def is_method(func: typing.Callable[..., typing.Any]) -> bool:

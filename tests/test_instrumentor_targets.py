@@ -225,6 +225,107 @@ def test_claude_agent_alias_replacement_reaches_prior_from_imports():
 
 
 # ---------------------------------------------------------------------------
+# Browser group
+# ---------------------------------------------------------------------------
+
+
+def test_playwright_wraps_and_restores_every_target():
+    """playwright is installed here, so this is a real round trip. It also needs
+    a client, which reaches the wrappers through `wrapper_kwargs()` rather than
+    through the per-method spec."""
+    from lmnr.sdk.browser.playwright_otel import (
+        PlaywrightInstrumentor,
+        WRAPPED_FUNCTIONS,
+    )
+
+    targets = _reachable(
+        {
+            (r["package_name"], f"{r['object_name']}.{r['method_name']}")
+            for r in WRAPPED_FUNCTIONS
+        }
+    )
+    assert targets, "expected at least one playwright target to be importable"
+
+    instrumentor = PlaywrightInstrumentor(object())
+    was_instrumented = instrumentor.is_instrumented_by_opentelemetry
+    try:
+        if was_instrumented:
+            instrumentor.uninstrument()
+        originals = {}
+        for module_name, target in targets:
+            holder, attr = _resolve(module_name, target)
+            originals[(module_name, target)] = getattr(holder, attr)
+
+        instrumentor.instrument()
+        for module_name, target in targets:
+            assert _is_wrapped(module_name, target), f"missed {module_name}.{target}"
+
+        instrumentor.uninstrument()
+        for (module_name, target), original in originals.items():
+            holder, attr = _resolve(module_name, target)
+            assert getattr(holder, attr) is original, (
+                f"did not restore {module_name}.{target}"
+            )
+    finally:
+        if instrumentor.is_instrumented_by_opentelemetry:
+            instrumentor.uninstrument()
+        if was_instrumented:
+            instrumentor.instrument()
+
+
+def test_wrapper_kwargs_delivers_the_client_to_a_browser_wrapper():
+    """The client is instrumentor-level state, not per-method config, so it rides
+    the base's handler-kwargs channel. If that link broke, every browser wrapper
+    would raise TypeError on its keyword-only `client` argument."""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+        add_spec_wrapper,
+    )
+    from lmnr.sdk.browser.playwright_otel import PlaywrightInstrumentor
+
+    sentinel = object()
+    instrumentor = PlaywrightInstrumentor(sentinel)
+    assert instrumentor.wrapper_kwargs() == {"client": sentinel}
+
+    seen = {}
+
+    def handler(to_wrap, wrapped, instance, args, kwargs, *, client):
+        seen["client"] = client
+        return wrapped(*args, **kwargs)
+
+    wrapper = add_spec_wrapper(handler, {}, **instrumentor.wrapper_kwargs())
+    assert wrapper(lambda: "ok", None, (), {}) == "ok"
+    assert seen["client"] is sentinel
+
+
+def test_patchright_table_is_derived_from_playwright_and_covers_new_page():
+    """patchright's table used to be a hand-maintained copy of playwright's and
+    had drifted: both `Browser.new_page` rows were missing, so pages opened that
+    way silently lost session recording. It is now derived, so it cannot drift.
+    """
+    from lmnr.sdk.browser.patchright_otel import WRAPPED_FUNCTIONS as PATCHRIGHT
+    from lmnr.sdk.browser.playwright_otel import WRAPPED_FUNCTIONS as PLAYWRIGHT
+
+    assert len(PATCHRIGHT) == len(PLAYWRIGHT) == 14
+
+    # identical except for the package they target
+    assert {
+        (r["object_name"], r["method_name"], r["is_async"], r["wrapper_function"])
+        for r in PATCHRIGHT
+    } == {
+        (r["object_name"], r["method_name"], r["is_async"], r["wrapper_function"])
+        for r in PLAYWRIGHT
+    }
+    assert {r["package_name"] for r in PATCHRIGHT} == {
+        "patchright.sync_api",
+        "patchright.async_api",
+    }
+
+    # the rows that were missing before
+    new_page = [r for r in PATCHRIGHT if r["method_name"] == "new_page"]
+    assert {r["is_async"] for r in new_page} == {False, True}
+
+
+# ---------------------------------------------------------------------------
 # The unwrap() calling convention
 # ---------------------------------------------------------------------------
 
