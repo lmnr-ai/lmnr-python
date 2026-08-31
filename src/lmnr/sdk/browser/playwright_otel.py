@@ -8,18 +8,18 @@ from lmnr.sdk.browser.pw_utils import (
     take_full_snapshot,
     take_full_snapshot_async,
 )
-from lmnr.sdk.utils import with_tracer_and_client_wrapper
-from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
-from lmnr.version import __version__
+from importlib.metadata import version
+from typing import Any, Collection, Sequence
 
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry.instrumentation.utils import unwrap
-from opentelemetry.trace import (
-    get_tracer,
-    Tracer,
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
+    BaseLaminarInstrumentor,
 )
-from typing import Collection
-from wrapt import wrap_function_wrapper
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WrappedFunctionSpec,
+)
+from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 
 try:
     if is_package_installed("playwright"):
@@ -52,9 +52,14 @@ _instruments = ("playwright >= 1.9.0",)
 logger = logging.getLogger(__name__)
 
 
-@with_tracer_and_client_wrapper
 def _wrap_new_browser_sync(
-    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
+    to_wrap: WrappedFunctionSpec,
+    wrapped,
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+    *,
+    client: AsyncLaminarClient,
 ):
     browser: SyncBrowser = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
@@ -74,9 +79,14 @@ def _wrap_new_browser_sync(
     return browser
 
 
-@with_tracer_and_client_wrapper
 async def _wrap_new_browser_async(
-    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
+    to_wrap: WrappedFunctionSpec,
+    wrapped,
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+    *,
+    client: AsyncLaminarClient,
 ):
     browser: Browser = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
@@ -95,9 +105,14 @@ async def _wrap_new_browser_async(
     return browser
 
 
-@with_tracer_and_client_wrapper
 def _wrap_new_context_sync(
-    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
+    to_wrap: WrappedFunctionSpec,
+    wrapped,
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+    *,
+    client: AsyncLaminarClient,
 ):
     context: SyncBrowserContext = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
@@ -116,9 +131,14 @@ def _wrap_new_context_sync(
     return context
 
 
-@with_tracer_and_client_wrapper
 async def _wrap_new_context_async(
-    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
+    to_wrap: WrappedFunctionSpec,
+    wrapped,
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+    *,
+    client: AsyncLaminarClient,
 ):
     context: BrowserContext = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
@@ -137,25 +157,40 @@ async def _wrap_new_context_async(
     return context
 
 
-@with_tracer_and_client_wrapper
 def _wrap_bring_to_front_sync(
-    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
+    to_wrap: WrappedFunctionSpec,
+    wrapped,
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+    *,
+    client: AsyncLaminarClient,
 ):
     wrapped(*args, **kwargs)
     take_full_snapshot(instance)
 
 
-@with_tracer_and_client_wrapper
 async def _wrap_bring_to_front_async(
-    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
+    to_wrap: WrappedFunctionSpec,
+    wrapped,
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+    *,
+    client: AsyncLaminarClient,
 ):
     await wrapped(*args, **kwargs)
     await take_full_snapshot_async(instance)
 
 
-@with_tracer_and_client_wrapper
 def _wrap_browser_new_page_sync(
-    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
+    to_wrap: WrappedFunctionSpec,
+    wrapped,
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+    *,
+    client: AsyncLaminarClient,
 ):
     page = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
@@ -163,9 +198,14 @@ def _wrap_browser_new_page_sync(
     return page
 
 
-@with_tracer_and_client_wrapper
 async def _wrap_browser_new_page_async(
-    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
+    to_wrap: WrappedFunctionSpec,
+    wrapped,
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+    *,
+    client: AsyncLaminarClient,
 ):
     page = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
@@ -173,154 +213,140 @@ async def _wrap_browser_new_page_async(
     return page
 
 
-WRAPPED_METHODS = [
-    {
-        "package": "playwright.sync_api",
-        "object": "BrowserType",
-        "method": "launch",
-        "wrapper": _wrap_new_browser_sync,
-    },
-    {
-        "package": "playwright.sync_api",
-        "object": "BrowserType",
-        "method": "connect",
-        "wrapper": _wrap_new_browser_sync,
-    },
-    {
-        "package": "playwright.sync_api",
-        "object": "BrowserType",
-        "method": "connect_over_cdp",
-        "wrapper": _wrap_new_browser_sync,
-    },
-    {
-        "package": "playwright.sync_api",
-        "object": "Browser",
-        "method": "new_context",
-        "wrapper": _wrap_new_context_sync,
-    },
-    {
-        "package": "playwright.sync_api",
-        "object": "BrowserType",
-        "method": "launch_persistent_context",
-        "wrapper": _wrap_new_context_sync,
-    },
-    {
-        "package": "playwright.sync_api",
-        "object": "Page",
-        "method": "bring_to_front",
-        "wrapper": _wrap_bring_to_front_sync,
-    },
-    {
-        "package": "playwright.sync_api",
-        "object": "Browser",
-        "method": "new_page",
-        "wrapper": _wrap_browser_new_page_sync,
-    },
+
+
+WRAPPED_FUNCTIONS: list[WrappedFunctionSpec] = [
+    WrappedFunctionSpec(
+        package_name="playwright.sync_api",
+        object_name="BrowserType",
+        method_name="launch",
+        is_async=False,
+        wrapper_function=_wrap_new_browser_sync,
+    ),
+    WrappedFunctionSpec(
+        package_name="playwright.sync_api",
+        object_name="BrowserType",
+        method_name="connect",
+        is_async=False,
+        wrapper_function=_wrap_new_browser_sync,
+    ),
+    WrappedFunctionSpec(
+        package_name="playwright.sync_api",
+        object_name="BrowserType",
+        method_name="connect_over_cdp",
+        is_async=False,
+        wrapper_function=_wrap_new_browser_sync,
+    ),
+    WrappedFunctionSpec(
+        package_name="playwright.sync_api",
+        object_name="Browser",
+        method_name="new_context",
+        is_async=False,
+        wrapper_function=_wrap_new_context_sync,
+    ),
+    WrappedFunctionSpec(
+        package_name="playwright.sync_api",
+        object_name="BrowserType",
+        method_name="launch_persistent_context",
+        is_async=False,
+        wrapper_function=_wrap_new_context_sync,
+    ),
+    WrappedFunctionSpec(
+        package_name="playwright.sync_api",
+        object_name="Page",
+        method_name="bring_to_front",
+        is_async=False,
+        wrapper_function=_wrap_bring_to_front_sync,
+    ),
+    WrappedFunctionSpec(
+        package_name="playwright.sync_api",
+        object_name="Browser",
+        method_name="new_page",
+        is_async=False,
+        wrapper_function=_wrap_browser_new_page_sync,
+    ),
+    WrappedFunctionSpec(
+        package_name="playwright.async_api",
+        object_name="BrowserType",
+        method_name="launch",
+        is_async=True,
+        wrapper_function=_wrap_new_browser_async,
+    ),
+    WrappedFunctionSpec(
+        package_name="playwright.async_api",
+        object_name="BrowserType",
+        method_name="connect",
+        is_async=True,
+        wrapper_function=_wrap_new_browser_async,
+    ),
+    WrappedFunctionSpec(
+        package_name="playwright.async_api",
+        object_name="BrowserType",
+        method_name="connect_over_cdp",
+        is_async=True,
+        wrapper_function=_wrap_new_browser_async,
+    ),
+    WrappedFunctionSpec(
+        package_name="playwright.async_api",
+        object_name="Browser",
+        method_name="new_context",
+        is_async=True,
+        wrapper_function=_wrap_new_context_async,
+    ),
+    WrappedFunctionSpec(
+        package_name="playwright.async_api",
+        object_name="BrowserType",
+        method_name="launch_persistent_context",
+        is_async=True,
+        wrapper_function=_wrap_new_context_async,
+    ),
+    WrappedFunctionSpec(
+        package_name="playwright.async_api",
+        object_name="Page",
+        method_name="bring_to_front",
+        is_async=True,
+        wrapper_function=_wrap_bring_to_front_async,
+    ),
+    WrappedFunctionSpec(
+        package_name="playwright.async_api",
+        object_name="Browser",
+        method_name="new_page",
+        is_async=True,
+        wrapper_function=_wrap_browser_new_page_async,
+    ),
 ]
 
-WRAPPED_METHODS_ASYNC = [
-    {
-        "package": "playwright.async_api",
-        "object": "BrowserType",
-        "method": "launch",
-        "wrapper": _wrap_new_browser_async,
-    },
-    {
-        "package": "playwright.async_api",
-        "object": "BrowserType",
-        "method": "connect",
-        "wrapper": _wrap_new_browser_async,
-    },
-    {
-        "package": "playwright.async_api",
-        "object": "BrowserType",
-        "method": "connect_over_cdp",
-        "wrapper": _wrap_new_browser_async,
-    },
-    {
-        "package": "playwright.async_api",
-        "object": "Browser",
-        "method": "new_context",
-        "wrapper": _wrap_new_context_async,
-    },
-    {
-        "package": "playwright.async_api",
-        "object": "BrowserType",
-        "method": "launch_persistent_context",
-        "wrapper": _wrap_new_context_async,
-    },
-    {
-        "package": "playwright.async_api",
-        "object": "Page",
-        "method": "bring_to_front",
-        "wrapper": _wrap_bring_to_front_async,
-    },
-    {
-        "package": "playwright.async_api",
-        "object": "Browser",
-        "method": "new_page",
-        "wrapper": _wrap_browser_new_page_async,
-    },
-]
 
+class PlaywrightInstrumentor(BaseLaminarInstrumentor):
+    _scope: LaminarInstrumentationScopeAttributes | None = None
 
-class PlaywrightInstrumentor(BaseInstrumentor):
     def __init__(self, async_client: AsyncLaminarClient):
         super().__init__()
         self.async_client = async_client
+        self.instrumentor_config = LaminarInstrumentorConfig(
+            wrapped_functions=[
+                {**spec, "instrumentation_scope": self.instrumentation_scope()}
+                for spec in WRAPPED_FUNCTIONS
+            ]
+        )
 
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
-    def _instrument(self, **kwargs):
-        tracer_provider = kwargs.get("tracer_provider")
-        tracer = get_tracer(__name__, __version__, tracer_provider)
-
-        # Both sync and async methods use async_client because we are using
-        # a background asyncio loop for async sends
-        for wrapped_method in WRAPPED_METHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            wrap_method = wrapped_method.get("method")
+    def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
+        if self._scope is None:
             try:
-                wrap_function_wrapper(
-                    wrap_package,
-                    f"{wrap_object}.{wrap_method}",
-                    wrapped_method.get("wrapper")(
-                        tracer,
-                        self.async_client,
-                        wrapped_method,
-                    ),
-                )
-            except ModuleNotFoundError:
-                pass  # that's ok, we don't want to fail if some module is missing
+                pw_version = version("playwright")
+            except Exception as e:
+                logger.debug(f"Failed to get playwright version {e}")
+                pw_version = "unknown"
+            self._scope = LaminarInstrumentationScopeAttributes(
+                name="playwright",
+                version=pw_version,
+            )
+        return self._scope
 
-        # Wrap async methods
-        for wrapped_method in WRAPPED_METHODS_ASYNC:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            wrap_method = wrapped_method.get("method")
-            try:
-                wrap_function_wrapper(
-                    wrap_package,
-                    f"{wrap_object}.{wrap_method}",
-                    wrapped_method.get("wrapper")(
-                        tracer,
-                        self.async_client,
-                        wrapped_method,
-                    ),
-                )
-            except ModuleNotFoundError:
-                pass  # that's ok, we don't want to fail if some module is missing
-
-    def _uninstrument(self, **kwargs):
-        # Unwrap methods
-        for wrapped_method in WRAPPED_METHODS + WRAPPED_METHODS_ASYNC:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            wrap_method = wrapped_method.get("method")
-            # `unwrap` takes (holder, "attr"), not wrapt's
-            # (module, "Object.method") split used in `_instrument`. The
-            # wrapt split makes it getattr an attribute literally named
-            # "Object.method", find nothing, and silently no-op.
-            unwrap(f"{wrap_package}.{wrap_object}", wrap_method)
+    def wrapper_kwargs(self) -> dict[str, Any]:
+        # Both sync and async wrappers get the ASYNC client on purpose: sends go
+        # through a background asyncio loop either way.
+        return {"client": self.async_client}
