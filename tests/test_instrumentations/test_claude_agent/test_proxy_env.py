@@ -3,6 +3,9 @@
 import os
 from unittest.mock import patch
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    add_spec_wrapper,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (
     proxy as claude_proxy,
     utils as claude_utils,
@@ -293,8 +296,8 @@ def test_subprocess_transport_removes_proxy_vars_from_os_environ(monkeypatch):
     original_connect = AsyncMock(side_effect=mock_connect)
 
     # Create wrapper
-    to_wrap = {"original": original_connect}
-    wrapper = wrap_transport_connect(to_wrap)
+    to_wrap = {"method_name": "connect", "original": original_connect}
+    wrapper = add_spec_wrapper(wrap_transport_connect, to_wrap)
 
     # Mock proxy functions
     from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (

@@ -11,6 +11,7 @@ the migration actually moves.
 """
 
 import importlib
+import sys
 
 import pytest
 
@@ -32,6 +33,30 @@ INSTRUMENTOR_TARGETS: dict[str, tuple[str, str, set[tuple[str, str]]]] = {
         {
             ("langgraph.pregel", "Pregel.stream"),
             ("langgraph.pregel", "Pregel.astream"),
+        },
+    ),
+    "claude_agent": (
+        "lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent",
+        "ClaudeAgentInstrumentor",
+        {
+            (
+                "claude_agent_sdk._internal.transport.subprocess_cli",
+                "SubprocessCLITransport.connect",
+            ),
+            (
+                "claude_agent_sdk._internal.transport.subprocess_cli",
+                "SubprocessCLITransport.close",
+            ),
+            ("claude_agent_sdk.client", "ClaudeSDKClient.__init__"),
+            ("claude_agent_sdk.client", "ClaudeSDKClient.connect"),
+            ("claude_agent_sdk.client", "ClaudeSDKClient.query"),
+            ("claude_agent_sdk.client", "ClaudeSDKClient.receive_messages"),
+            ("claude_agent_sdk.client", "ClaudeSDKClient.receive_response"),
+            ("claude_agent_sdk.client", "ClaudeSDKClient.interrupt"),
+            ("claude_agent_sdk.client", "ClaudeSDKClient.disconnect"),
+            # the two module-level functions, wrapped via alias replacement
+            ("claude_agent_sdk", "query"),
+            ("claude_agent_sdk", "create_sdk_mcp_server"),
         },
     ),
     # NOTE: skyvern is deliberately absent. It is also migrated, but its
@@ -152,6 +177,51 @@ def test_uninstrument_restores_the_original_attribute(reinstrumented):
             f"did not restore {module_name}.{target} to the original function"
         )
 
+
+
+def test_claude_agent_alias_replacement_reaches_prior_from_imports():
+    """claude_agent carried its own private copy of the alias-replacement
+    machinery; it now uses `BaseLaminarInstrumentor`'s. The behaviour that copy
+    existed for: a caller who did `from claude_agent_sdk import query` BEFORE
+    instrumentation still ends up with the wrapped function, and gets the
+    original back on uninstrument.
+    """
+    import claude_agent_sdk
+
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (
+        ClaudeAgentInstrumentor,
+    )
+
+    instrumentor = ClaudeAgentInstrumentor()
+    was_instrumented = instrumentor.is_instrumented_by_opentelemetry
+    try:
+        if was_instrumented:
+            instrumentor.uninstrument()
+
+        # a module that grabbed its own reference before we instrumented
+        import types
+
+        consumer = types.ModuleType("_lmnr_claude_consumer")
+        consumer.query = claude_agent_sdk.query
+        sys.modules["_lmnr_claude_consumer"] = consumer
+        original = consumer.query
+
+        instrumentor.instrument()
+        assert consumer.query is not original, (
+            "alias replacement did not reach a pre-existing `from ... import query`"
+        )
+        assert hasattr(consumer.query, "__wrapped__")
+
+        instrumentor.uninstrument()
+        assert consumer.query is original, (
+            "alias replacement did not restore the pre-existing reference"
+        )
+    finally:
+        sys.modules.pop("_lmnr_claude_consumer", None)
+        if instrumentor.is_instrumented_by_opentelemetry:
+            instrumentor.uninstrument()
+        if was_instrumented:
+            instrumentor.instrument()
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 """Span utilities for Claude Agent instrumentation."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from lmnr import Laminar
 from lmnr.opentelemetry_lib.tracing import get_current_context
@@ -11,13 +11,16 @@ from lmnr.sdk.utils import get_input_from_func_args, is_method, json_dumps
 from opentelemetry import trace
 from opentelemetry.sdk.trace import ReadableSpan
 
+if TYPE_CHECKING:
+    from .types import ClaudeAgentSpec
+
 logger = get_default_logger(__name__)
 
 
-def span_name(to_wrap: dict[str, str]) -> str:
+def span_name(to_wrap: "ClaudeAgentSpec") -> str:
     """Generate span name from method metadata."""
     class_name = to_wrap.get("class_name")
-    method = to_wrap.get("method")
+    method = to_wrap["method_name"]
     return f"{class_name}.{method}" if class_name else method
 
 

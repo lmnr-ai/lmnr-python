@@ -9,6 +9,9 @@ from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    add_spec_wrapper,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (
     proxy as claude_proxy,
     utils as claude_utils,
@@ -516,8 +519,13 @@ def test_wrap_query_does_not_double_wrap_subprocess_transport():
 
     wrapped_query = AsyncMock(side_effect=mock_query)
 
-    # Create the wrapper
-    wrapper = wrappers_module.wrap_query({"method": "query", "span_type": "DEFAULT"})
+    # Create the wrapper. The wrappers are no longer closure factories; they are
+    # spec-first handlers adapted by `add_spec_wrapper`, exactly as the
+    # instrumentor does it.
+    wrapper = add_spec_wrapper(
+        wrappers_module.wrap_query,
+        {"method_name": "query", "span_type": "DEFAULT"},
+    )
 
     # Call the wrapper with a SubprocessCLITransport
     kwargs = {"prompt": "test", "transport": mock_transport}
@@ -563,7 +571,10 @@ def test_wrap_client_init_does_not_double_wrap_subprocess_transport():
     mock_init = MagicMock()
 
     # Create the wrapper
-    wrapper = wrap_client_init({"method": "__init__", "class_name": "ClaudeSDKClient"})
+    wrapper = add_spec_wrapper(
+        wrap_client_init,
+        {"method_name": "__init__", "class_name": "ClaudeSDKClient"},
+    )
 
     # Call the wrapper with a SubprocessCLITransport
     kwargs = {"transport": mock_transport}
