@@ -34,6 +34,10 @@ INSTRUMENTOR_TARGETS: dict[str, tuple[str, str, set[tuple[str, str]]]] = {
             ("langgraph.pregel", "Pregel.astream"),
         },
     ),
+    # NOTE: skyvern is deliberately absent. It is also migrated, but its
+    # instrumentor module hard-imports `skyvern` at module level, and skyvern
+    # requires Python 3.11+ while this SDK supports 3.10 — so it cannot be a dev
+    # dependency and none of its targets are importable here.
 }
 
 
@@ -50,6 +54,24 @@ def _resolve(module_name: str, target: str):
 def _is_wrapped(module_name: str, target: str) -> bool:
     holder, attr = _resolve(module_name, target)
     return hasattr(getattr(holder, attr), "__wrapped__")
+
+
+def _reachable(targets: set[tuple[str, str]]) -> set[tuple[str, str]]:
+    """Drop targets whose module cannot be imported in this environment.
+
+    Every `_instrument` here swallows ModuleNotFoundError per wrap, so an
+    unreachable target is legitimately left unwrapped rather than being a
+    failure. Asserting on them anyway would make the suite depend on the target
+    library's own optional extras.
+    """
+    ok = set()
+    for module_name, target in targets:
+        try:
+            _resolve(module_name, target)
+        except (ImportError, AttributeError):
+            continue
+        ok.add((module_name, target))
+    return ok
 
 
 def _instrumentor(key: str):
@@ -69,11 +91,17 @@ def reinstrumented(request):
     session loses its spans.
     """
     instrumentor, targets = _instrumentor(request.param)
+    was_instrumented = instrumentor.is_instrumented_by_opentelemetry
     try:
         yield instrumentor, targets
     finally:
-        if not instrumentor.is_instrumented_by_opentelemetry:
+        # Restore whatever we found, not a fixed state: some of these are
+        # auto-enabled by the conftest session fixture and some are not, and
+        # leaving either one flipped would leak into the rest of the session.
+        if was_instrumented and not instrumentor.is_instrumented_by_opentelemetry:
             instrumentor.instrument()
+        elif not was_instrumented and instrumentor.is_instrumented_by_opentelemetry:
+            instrumentor.uninstrument()
 
 
 @pytest.mark.parametrize(
@@ -81,6 +109,9 @@ def reinstrumented(request):
 )
 def test_instrument_wraps_exactly_the_declared_targets(reinstrumented):
     instrumentor, targets = reinstrumented
+    targets = _reachable(targets)
+    if not targets:
+        pytest.skip("no declared target is importable in this environment")
 
     instrumentor.uninstrument()
     for module_name, target in targets:
@@ -102,6 +133,9 @@ def test_uninstrument_restores_the_original_attribute(reinstrumented):
     """A migration that wraps correctly but leaks on teardown would still break
     any host that re-initializes Laminar (test suites, notebooks)."""
     instrumentor, targets = reinstrumented
+    targets = _reachable(targets)
+    if not targets:
+        pytest.skip("no declared target is importable in this environment")
 
     instrumentor.uninstrument()
     originals = {}
@@ -117,6 +151,7 @@ def test_uninstrument_restores_the_original_attribute(reinstrumented):
         assert getattr(holder, attr) is original, (
             f"did not restore {module_name}.{target} to the original function"
         )
+
 
 
 # ---------------------------------------------------------------------------
@@ -182,43 +217,90 @@ def test_unwrap_silently_no_ops_on_the_wrapt_argument_split():
 # ---------------------------------------------------------------------------
 
 
-def _target_set(rows) -> set[tuple[str, str, str]]:
-    return {
-        (r["package"], r.get("object") or "", r["method"]) for r in rows
-    }
-
-
-def test_kernel_declares_its_full_target_set():
-    """kernel iterates its table twice, synthesizing `Async{object}` on the
-    second pass, and wraps `KernelApp.action` outside the table entirely. The
-    migration turns all three into explicit rows, so the union must match."""
+def test_kernel_table_covers_the_sync_async_and_app_action_wraps():
+    """kernel used to iterate its 20-row table twice — synthesizing
+    `Async{object}` on the second pass — and wrap `KernelApp.action` outside the
+    table entirely. All three are now explicit rows; the totals must still match.
+    """
     from lmnr.opentelemetry_lib.opentelemetry.instrumentation.kernel import (
-        WRAPPED_METHODS,
+        WRAPPED_FUNCTIONS,
     )
 
-    sync = _target_set(WRAPPED_METHODS)
+    assert len(WRAPPED_FUNCTIONS) == 41
+
+    sync = [
+        r
+        for r in WRAPPED_FUNCTIONS
+        if not r["is_async"] and r["object_name"] != "KernelApp"
+    ]
+    async_ = [r for r in WRAPPED_FUNCTIONS if r["is_async"]]
     assert len(sync) == 20
+    assert len(async_) == 20
 
-    # every sync row has an async twin synthesized at instrument time
-    expected_async = {(pkg, f"Async{obj}", meth) for pkg, obj, meth in sync}
-    assert len(expected_async) == 20
+    # each async row is the `Async`-prefixed twin of a sync row, on the same
+    # package and method — that is exactly what the second pass used to build.
+    assert {
+        (r["package_name"], f"Async{r['object_name']}", r["method_name"])
+        for r in sync
+    } == {(r["package_name"], r["object_name"], r["method_name"]) for r in async_}
 
-    # ...plus the one out-of-table wrap
-    full = sync | expected_async | {("kernel.app_framework", "KernelApp", "action")}
-    assert len(full) == 41
+    app_action = [r for r in WRAPPED_FUNCTIONS if r["object_name"] == "KernelApp"]
+    assert [r["method_name"] for r in app_action] == ["action"]
 
 
-def test_cua_computer_declares_both_sync_and_async_tables():
-    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.cua_computer import (
-        WRAPPED_METHODS,
-        WRAPPED_AMETHODS,
+def test_kernel_wraps_and_restores_a_real_target():
+    """kernel is actually installed here, so unlike the other tables this one can
+    be verified end to end rather than only declaratively."""
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.kernel import (
+        KernelInstrumentor,
     )
 
-    sync = _target_set(WRAPPED_METHODS)
-    async_ = _target_set(WRAPPED_AMETHODS)
+    target = ("kernel.resources.browsers", "BrowsersResource.create")
+    instrumentor = KernelInstrumentor()
+    was_instrumented = instrumentor.is_instrumented_by_opentelemetry
+    try:
+        if was_instrumented:
+            instrumentor.uninstrument()
+        original = getattr(*_resolve(*target)[:1], _resolve(*target)[1])
 
-    assert sync, "sync table must not be empty"
-    assert async_, "async table must not be empty"
-    # The two tables target distinct methods; a migration collapsing them into
-    # one list with an `is_async` column must not lose or merge any row.
-    assert len(sync | async_) == len(sync) + len(async_)
+        instrumentor.instrument()
+        assert _is_wrapped(*target)
+
+        instrumentor.uninstrument()
+        holder, attr = _resolve(*target)
+        assert getattr(holder, attr) is original
+    finally:
+        if instrumentor.is_instrumented_by_opentelemetry:
+            instrumentor.uninstrument()
+        if was_instrumented:
+            instrumentor.instrument()
+
+
+def test_cua_computer_merged_table_preserves_every_row():
+    """cua_computer's two tables (sync + async) were collapsed into one list with
+    an `is_async` column. Pin the resulting counts and the per-method extras, so
+    a row cannot be dropped or silently flipped to the wrong wrapper.
+    """
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.cua_computer import (
+        WRAPPED_FUNCTIONS,
+    )
+
+    assert len(WRAPPED_FUNCTIONS) == 41
+    assert sum(1 for r in WRAPPED_FUNCTIONS if not r["is_async"]) == 2
+    assert sum(1 for r in WRAPPED_FUNCTIONS if r["is_async"]) == 39
+
+    # every row targets a distinct (package, object, method)
+    targets = {
+        (r["package_name"], r["object_name"], r["method_name"])
+        for r in WRAPPED_FUNCTIONS
+    }
+    assert len(targets) == len(WRAPPED_FUNCTIONS)
+
+    # the two lifecycle rows that open/close the parent `computer.run` span
+    assert {r.get("action") for r in WRAPPED_FUNCTIONS if r.get("action")} == {
+        "start_parent_span",
+        "end_parent_span",
+    }
+    # screenshot is the one row whose payload is swapped for a placeholder
+    formatters = [r for r in WRAPPED_FUNCTIONS if r.get("output_formatter")]
+    assert [r["method_name"] for r in formatters] == ["screenshot"]

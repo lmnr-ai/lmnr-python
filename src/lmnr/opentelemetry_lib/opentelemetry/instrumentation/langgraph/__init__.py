@@ -4,16 +4,20 @@ import json
 import logging
 from typing import Collection
 
+from importlib.metadata import version
+from typing import Any, Sequence
+
 from langchain_core.runnables.graph import Graph
-from opentelemetry.trace import Tracer
-from wrapt import wrap_function_wrapper
-from opentelemetry.trace import get_tracer
 from opentelemetry.context import get_value, attach, set_value
 
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry.instrumentation.utils import unwrap
-
-from lmnr.sdk.utils import with_tracer_wrapper
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
+    BaseLaminarInstrumentor,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WrappedFunctionSpec,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -21,8 +25,13 @@ logger = logging.getLogger(__name__)
 _instruments = ("langgraph >= 0.1.0",)
 
 
-@with_tracer_wrapper
-def wrap_pregel_stream(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
+def wrap_pregel_stream(
+    to_wrap: WrappedFunctionSpec,
+    wrapped,
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+):
     graph: Graph = instance.get_graph()
     nodes = [
         {
@@ -50,9 +59,12 @@ def wrap_pregel_stream(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs)
     return wrapped(*args, **kwargs)
 
 
-@with_tracer_wrapper
 async def async_wrap_pregel_stream(
-    tracer: Tracer, to_wrap, wrapped, instance, args, kwargs
+    to_wrap: WrappedFunctionSpec,
+    wrapped,
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ):
     graph: Graph = await instance.aget_graph()
     nodes = [
@@ -84,34 +96,55 @@ async def async_wrap_pregel_stream(
         yield item
 
 
-class LanggraphInstrumentor(BaseInstrumentor):
+class LanggraphInstrumentor(BaseLaminarInstrumentor):
     """An instrumentor for Langgraph."""
 
-    def __init__(self):
-        super().__init__()
+    _scope: LaminarInstrumentationScopeAttributes | None = None
 
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
-    def _instrument(self, **kwargs):
-        tracer_provider = kwargs.get("tracer_provider")
-        tracer = get_tracer(__name__, "0.0.1a0", tracer_provider)
+    def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
+        if self._scope is None:
+            try:
+                langgraph_version = version("langgraph")
+            except Exception as e:
+                logger.debug(f"Failed to get langgraph version {e}")
+                langgraph_version = "unknown"
+            self._scope = LaminarInstrumentationScopeAttributes(
+                name="langgraph",
+                version=langgraph_version,
+            )
+        return self._scope
 
-        wrap_function_wrapper(
-            "langgraph.pregel",
-            "Pregel.stream",
-            wrap_pregel_stream(tracer, "Pregel.stream"),
+    def __init__(self):
+        super().__init__()
+        self.instrumentor_config = LaminarInstrumentorConfig(
+            wrapped_functions=[
+                WrappedFunctionSpec(
+                    package_name="langgraph.pregel",
+                    object_name="Pregel",
+                    method_name="stream",
+                    is_async=False,
+                    is_streaming=True,
+                    # These wrappers only attach graph topology onto the OTel
+                    # context for downstream spans to pick up; they open no span
+                    # of their own, so there is no span_name/span_type to read.
+                    span_name=None,
+                    span_type=None,
+                    instrumentation_scope=self.instrumentation_scope(),
+                    wrapper_function=wrap_pregel_stream,
+                ),
+                WrappedFunctionSpec(
+                    package_name="langgraph.pregel",
+                    object_name="Pregel",
+                    method_name="astream",
+                    is_async=True,
+                    is_streaming=True,
+                    span_name=None,
+                    span_type=None,
+                    instrumentation_scope=self.instrumentation_scope(),
+                    wrapper_function=async_wrap_pregel_stream,
+                ),
+            ]
         )
-        wrap_function_wrapper(
-            "langgraph.pregel",
-            "Pregel.astream",
-            async_wrap_pregel_stream(tracer, "Pregel.astream"),
-        )
-
-    def _uninstrument(self, **kwargs):
-        # `unwrap` takes (holder, "attr") — NOT wrapt's (module, "Object.method")
-        # split used in `_instrument`. With the wrapt split it looks for an
-        # attribute literally named "Pregel.stream", finds nothing, and returns
-        # silently, leaving both methods wrapped forever.
-        unwrap("langgraph.pregel.Pregel", "stream")
-        unwrap("langgraph.pregel.Pregel", "astream")

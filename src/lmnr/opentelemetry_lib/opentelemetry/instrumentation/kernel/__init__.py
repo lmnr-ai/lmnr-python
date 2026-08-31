@@ -1,198 +1,56 @@
 """OpenTelemetry Kernel instrumentation"""
 
 import functools
-from typing import Collection
+import logging
+from importlib.metadata import version
+from typing import Any, Callable, Collection, Sequence
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.kernel.utils import (
     process_tool_output_formatter,
     screenshot_tool_output_formatter,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
+    BaseLaminarInstrumentor,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WrappedFunctionSpec,
+)
 from lmnr.sdk.decorators import observe
 from lmnr.sdk.utils import get_input_from_func_args, is_async, json_dumps
 from lmnr import Laminar
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry.instrumentation.utils import unwrap
 
 from opentelemetry.trace.status import Status, StatusCode
-from wrapt import wrap_function_wrapper
+
+logger = logging.getLogger(__name__)
 
 _instruments = ("kernel >= 0.2.0",)
 
 
-WRAPPED_METHODS = [
-    {
-        "package": "kernel.resources.browsers",
-        "object": "BrowsersResource",
-        "method": "create",
-        "class_name": "Browser",
-    },
-    {
-        "package": "kernel.resources.browsers",
-        "object": "BrowsersResource",
-        "method": "retrieve",
-        "class_name": "Browser",
-    },
-    {
-        "package": "kernel.resources.browsers",
-        "object": "BrowsersResource",
-        "method": "list",
-        "class_name": "Browser",
-    },
-    {
-        "package": "kernel.resources.browsers",
-        "object": "BrowsersResource",
-        "method": "delete",
-        "class_name": "Browser",
-    },
-    {
-        "package": "kernel.resources.browsers",
-        "object": "BrowsersResource",
-        "method": "delete_by_id",
-        "class_name": "Browser",
-    },
-    {
-        "package": "kernel.resources.browsers",
-        "object": "BrowsersResource",
-        "method": "load_extensions",
-        "class_name": "Browser",
-    },
-    {
-        "package": "kernel.resources.browsers.computer",
-        "object": "ComputerResource",
-        "method": "capture_screenshot",
-        "class_name": "Computer",
-        "span_type": "TOOL",
-        "output_formatter": screenshot_tool_output_formatter,
-    },
-    {
-        "package": "kernel.resources.browsers.computer",
-        "object": "ComputerResource",
-        "method": "click_mouse",
-        "class_name": "Computer",
-        "span_type": "TOOL",
-    },
-    {
-        "package": "kernel.resources.browsers.computer",
-        "object": "ComputerResource",
-        "method": "drag_mouse",
-        "class_name": "Computer",
-        "span_type": "TOOL",
-    },
-    {
-        "package": "kernel.resources.browsers.computer",
-        "object": "ComputerResource",
-        "method": "move_mouse",
-        "class_name": "Computer",
-        "span_type": "TOOL",
-    },
-    {
-        "package": "kernel.resources.browsers.computer",
-        "object": "ComputerResource",
-        "method": "press_key",
-        "class_name": "Computer",
-        "span_type": "TOOL",
-    },
-    {
-        "package": "kernel.resources.browsers.computer",
-        "object": "ComputerResource",
-        "method": "scroll",
-        "class_name": "Computer",
-        "span_type": "TOOL",
-    },
-    {
-        "package": "kernel.resources.browsers.computer",
-        "object": "ComputerResource",
-        "method": "type_text",
-        "class_name": "Computer",
-        "span_type": "TOOL",
-    },
-    {
-        "package": "kernel.resources.browsers.playwright",
-        "object": "PlaywrightResource",
-        "method": "execute",
-        "class_name": "Playwright",
-    },
-    {
-        "package": "kernel.resources.browsers.process",
-        "object": "ProcessResource",
-        "method": "exec",
-        "class_name": "Process",
-        "span_type": "TOOL",
-        "output_formatter": process_tool_output_formatter,
-    },
-    {
-        "package": "kernel.resources.browsers.process",
-        "object": "ProcessResource",
-        "method": "kill",
-        "class_name": "Process",
-        "span_type": "TOOL",
-        "output_formatter": process_tool_output_formatter,
-    },
-    {
-        "package": "kernel.resources.browsers.process",
-        "object": "ProcessResource",
-        "method": "spawn",
-        "class_name": "Process",
-        "span_type": "TOOL",
-        "output_formatter": process_tool_output_formatter,
-    },
-    {
-        "package": "kernel.resources.browsers.process",
-        "object": "ProcessResource",
-        "method": "status",
-        "class_name": "Process",
-        "span_type": "TOOL",
-        "output_formatter": process_tool_output_formatter,
-    },
-    {
-        "package": "kernel.resources.browsers.process",
-        "object": "ProcessResource",
-        "method": "stdin",
-        "class_name": "Process",
-        "span_type": "TOOL",
-        "output_formatter": process_tool_output_formatter,
-    },
-    {
-        "package": "kernel.resources.browsers.process",
-        "object": "ProcessResource",
-        "method": "stdout_stream",
-        "class_name": "Process",
-        "span_type": "TOOL",
-        "output_formatter": process_tool_output_formatter,
-    },
-]
+class KernelSpec(WrappedFunctionSpec, total=False):
+    """kernel's per-method extras.
+
+    `class_name` names the span after the user-facing resource (e.g. "Browser")
+    rather than the SDK class; `output_formatter` condenses a large tool result
+    (a screenshot, a process payload) before it is recorded.
+    """
+
+    class_name: str
+    output_formatter: Callable[[Any], Any]
 
 
-def _with_wrapper(func):
-    """Helper for providing tracer for wrapper functions. Includes metric collectors."""
-
-    def wrapper(
-        to_wrap,
-    ):
-        def wrapper(wrapped, instance, args, kwargs):
-            return func(
-                to_wrap,
-                wrapped,
-                instance,
-                args,
-                kwargs,
-            )
-
-        return wrapper
-
-    return wrapper
 
 
-@_with_wrapper
 def _wrap(
-    to_wrap,
+    to_wrap: KernelSpec,
     wrapped,
-    instance,
-    args,
-    kwargs,
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ):
     with Laminar.start_as_current_span(
-        f"{to_wrap.get('class_name')}.{to_wrap.get('method')}",
+        f"{to_wrap.get('class_name')}.{to_wrap['method_name']}",
         span_type=to_wrap.get("span_type", "DEFAULT"),
     ) as span:
         input_kv = get_input_from_func_args(wrapped, True, args, kwargs)
@@ -214,16 +72,15 @@ def _wrap(
         return result
 
 
-@_with_wrapper
 async def _wrap_async(
-    to_wrap,
+    to_wrap: KernelSpec,
     wrapped,
-    instance,
-    args,
-    kwargs,
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ):
     with Laminar.start_as_current_span(
-        f"{to_wrap.get('class_name')}.{to_wrap.get('method')}",
+        f"{to_wrap.get('class_name')}.{to_wrap['method_name']}",
         span_type=to_wrap.get("span_type", "DEFAULT"),
     ) as span:
         input_kv = get_input_from_func_args(wrapped, True, args, kwargs)
@@ -245,13 +102,12 @@ async def _wrap_async(
         return result
 
 
-@_with_wrapper
 def _wrap_app_action(
-    to_wrap,
+    to_wrap: KernelSpec,
     wrapped,
-    instance,
-    args,
-    kwargs,
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ):
     """
     Wraps app.action() decorator factory to add tracing to action handlers.
@@ -308,74 +164,401 @@ def _wrap_app_action(
     return tracing_decorator
 
 
-class KernelInstrumentor(BaseInstrumentor):
-    def __init__(self):
-        super().__init__()
+WRAPPED_FUNCTIONS: list[KernelSpec] = [
+    KernelSpec(
+        package_name="kernel.resources.browsers",
+        object_name="BrowsersResource",
+        method_name="create",
+        is_async=False,
+        class_name="Browser",
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers",
+        object_name="BrowsersResource",
+        method_name="retrieve",
+        is_async=False,
+        class_name="Browser",
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers",
+        object_name="BrowsersResource",
+        method_name="list",
+        is_async=False,
+        class_name="Browser",
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers",
+        object_name="BrowsersResource",
+        method_name="delete",
+        is_async=False,
+        class_name="Browser",
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers",
+        object_name="BrowsersResource",
+        method_name="delete_by_id",
+        is_async=False,
+        class_name="Browser",
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers",
+        object_name="BrowsersResource",
+        method_name="load_extensions",
+        is_async=False,
+        class_name="Browser",
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.computer",
+        object_name="ComputerResource",
+        method_name="capture_screenshot",
+        is_async=False,
+        class_name="Computer",
+        span_type="TOOL",
+        output_formatter=screenshot_tool_output_formatter,
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.computer",
+        object_name="ComputerResource",
+        method_name="click_mouse",
+        is_async=False,
+        class_name="Computer",
+        span_type="TOOL",
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.computer",
+        object_name="ComputerResource",
+        method_name="drag_mouse",
+        is_async=False,
+        class_name="Computer",
+        span_type="TOOL",
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.computer",
+        object_name="ComputerResource",
+        method_name="move_mouse",
+        is_async=False,
+        class_name="Computer",
+        span_type="TOOL",
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.computer",
+        object_name="ComputerResource",
+        method_name="press_key",
+        is_async=False,
+        class_name="Computer",
+        span_type="TOOL",
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.computer",
+        object_name="ComputerResource",
+        method_name="scroll",
+        is_async=False,
+        class_name="Computer",
+        span_type="TOOL",
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.computer",
+        object_name="ComputerResource",
+        method_name="type_text",
+        is_async=False,
+        class_name="Computer",
+        span_type="TOOL",
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.playwright",
+        object_name="PlaywrightResource",
+        method_name="execute",
+        is_async=False,
+        class_name="Playwright",
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.process",
+        object_name="ProcessResource",
+        method_name="exec",
+        is_async=False,
+        class_name="Process",
+        span_type="TOOL",
+        output_formatter=process_tool_output_formatter,
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.process",
+        object_name="ProcessResource",
+        method_name="kill",
+        is_async=False,
+        class_name="Process",
+        span_type="TOOL",
+        output_formatter=process_tool_output_formatter,
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.process",
+        object_name="ProcessResource",
+        method_name="spawn",
+        is_async=False,
+        class_name="Process",
+        span_type="TOOL",
+        output_formatter=process_tool_output_formatter,
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.process",
+        object_name="ProcessResource",
+        method_name="status",
+        is_async=False,
+        class_name="Process",
+        span_type="TOOL",
+        output_formatter=process_tool_output_formatter,
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.process",
+        object_name="ProcessResource",
+        method_name="stdin",
+        is_async=False,
+        class_name="Process",
+        span_type="TOOL",
+        output_formatter=process_tool_output_formatter,
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.process",
+        object_name="ProcessResource",
+        method_name="stdout_stream",
+        is_async=False,
+        class_name="Process",
+        span_type="TOOL",
+        output_formatter=process_tool_output_formatter,
+        wrapper_function=_wrap,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers",
+        object_name="AsyncBrowsersResource",
+        method_name="create",
+        is_async=True,
+        class_name="Browser",
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers",
+        object_name="AsyncBrowsersResource",
+        method_name="retrieve",
+        is_async=True,
+        class_name="Browser",
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers",
+        object_name="AsyncBrowsersResource",
+        method_name="list",
+        is_async=True,
+        class_name="Browser",
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers",
+        object_name="AsyncBrowsersResource",
+        method_name="delete",
+        is_async=True,
+        class_name="Browser",
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers",
+        object_name="AsyncBrowsersResource",
+        method_name="delete_by_id",
+        is_async=True,
+        class_name="Browser",
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers",
+        object_name="AsyncBrowsersResource",
+        method_name="load_extensions",
+        is_async=True,
+        class_name="Browser",
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.computer",
+        object_name="AsyncComputerResource",
+        method_name="capture_screenshot",
+        is_async=True,
+        class_name="Computer",
+        span_type="TOOL",
+        output_formatter=screenshot_tool_output_formatter,
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.computer",
+        object_name="AsyncComputerResource",
+        method_name="click_mouse",
+        is_async=True,
+        class_name="Computer",
+        span_type="TOOL",
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.computer",
+        object_name="AsyncComputerResource",
+        method_name="drag_mouse",
+        is_async=True,
+        class_name="Computer",
+        span_type="TOOL",
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.computer",
+        object_name="AsyncComputerResource",
+        method_name="move_mouse",
+        is_async=True,
+        class_name="Computer",
+        span_type="TOOL",
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.computer",
+        object_name="AsyncComputerResource",
+        method_name="press_key",
+        is_async=True,
+        class_name="Computer",
+        span_type="TOOL",
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.computer",
+        object_name="AsyncComputerResource",
+        method_name="scroll",
+        is_async=True,
+        class_name="Computer",
+        span_type="TOOL",
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.computer",
+        object_name="AsyncComputerResource",
+        method_name="type_text",
+        is_async=True,
+        class_name="Computer",
+        span_type="TOOL",
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.playwright",
+        object_name="AsyncPlaywrightResource",
+        method_name="execute",
+        is_async=True,
+        class_name="Playwright",
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.process",
+        object_name="AsyncProcessResource",
+        method_name="exec",
+        is_async=True,
+        class_name="Process",
+        span_type="TOOL",
+        output_formatter=process_tool_output_formatter,
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.process",
+        object_name="AsyncProcessResource",
+        method_name="kill",
+        is_async=True,
+        class_name="Process",
+        span_type="TOOL",
+        output_formatter=process_tool_output_formatter,
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.process",
+        object_name="AsyncProcessResource",
+        method_name="spawn",
+        is_async=True,
+        class_name="Process",
+        span_type="TOOL",
+        output_formatter=process_tool_output_formatter,
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.process",
+        object_name="AsyncProcessResource",
+        method_name="status",
+        is_async=True,
+        class_name="Process",
+        span_type="TOOL",
+        output_formatter=process_tool_output_formatter,
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.process",
+        object_name="AsyncProcessResource",
+        method_name="stdin",
+        is_async=True,
+        class_name="Process",
+        span_type="TOOL",
+        output_formatter=process_tool_output_formatter,
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.resources.browsers.process",
+        object_name="AsyncProcessResource",
+        method_name="stdout_stream",
+        is_async=True,
+        class_name="Process",
+        span_type="TOOL",
+        output_formatter=process_tool_output_formatter,
+        wrapper_function=_wrap_async,
+    ),
+    KernelSpec(
+        package_name="kernel.app_framework",
+        object_name="KernelApp",
+        method_name="action",
+        is_async=False,
+        wrapper_function=_wrap_app_action,
+    ),
+]
+
+
+class KernelInstrumentor(BaseLaminarInstrumentor):
+    _scope: LaminarInstrumentationScopeAttributes | None = None
 
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
-    def _instrument(self, **kwargs):
-        for wrapped_method in WRAPPED_METHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            wrap_method = wrapped_method.get("method")
-
+    def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
+        if self._scope is None:
             try:
-                wrap_function_wrapper(
-                    wrap_package,
-                    f"{wrap_object}.{wrap_method}",
-                    _wrap(wrapped_method),
-                )
-            except (ModuleNotFoundError, AttributeError):
-                pass  # that's ok, we don't want to fail if some methods do not exist
-
-        for wrapped_method in WRAPPED_METHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = f"Async{wrapped_method.get('object')}"
-            wrap_method = wrapped_method.get("method")
-            try:
-                wrap_function_wrapper(
-                    wrap_package,
-                    f"{wrap_object}.{wrap_method}",
-                    _wrap_async(wrapped_method),
-                )
-            except (ModuleNotFoundError, AttributeError):
-                pass  # that's ok, we don't want to fail if some methods do not exist
-
-        try:
-            wrap_function_wrapper(
-                "kernel.app_framework",
-                "KernelApp.action",
-                _wrap_app_action({}),
+                kernel_version = version("kernel")
+            except Exception as e:
+                logger.debug(f"Failed to get kernel version {e}")
+                kernel_version = "unknown"
+            self._scope = LaminarInstrumentationScopeAttributes(
+                name="kernel",
+                version=kernel_version,
             )
-        except (ModuleNotFoundError, AttributeError):
-            pass
+        return self._scope
 
-    def _uninstrument(self, **kwargs):
-        for wrapped_method in WRAPPED_METHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            try:
-                unwrap(
-                    f"{wrap_package}.{wrap_object}",
-                    wrapped_method.get("method"),
-                )
-            except (ModuleNotFoundError, AttributeError):
-                pass  # that's ok, we don't want to fail if some methods do not exist
-
-        for wrapped_method in WRAPPED_METHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = f"Async{wrapped_method.get('object')}"
-            try:
-                unwrap(
-                    f"{wrap_package}.{wrap_object}",
-                    wrapped_method.get("method"),
-                )
-            except (ModuleNotFoundError, AttributeError):
-                pass  # that's ok, we don't want to fail if some methods do not exist
-
-        try:
-            unwrap("kernel.app_framework.KernelApp", "action")
-        except (ModuleNotFoundError, AttributeError):
-            pass
+    def __init__(self):
+        super().__init__()
+        self.instrumentor_config = LaminarInstrumentorConfig(
+            wrapped_functions=[
+                {**spec, "instrumentation_scope": self.instrumentation_scope()}
+                for spec in WRAPPED_FUNCTIONS
+            ]
+        )
