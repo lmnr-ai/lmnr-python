@@ -14,7 +14,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
     get_current_context,
     get_event_attributes_from_context,
 )
-from lmnr.sdk.utils import with_tracer_wrapper
+from lmnr.sdk.utils import with_tracer_only_wrapper
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
@@ -57,8 +57,8 @@ def _safe_start_span(
         return None
 
 
-@with_tracer_wrapper
-def assistants_create_wrapper(tracer, to_wrap, wrapped, instance, args, kwargs):
+@with_tracer_only_wrapper
+def assistants_create_wrapper(tracer, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
@@ -72,8 +72,8 @@ def assistants_create_wrapper(tracer, to_wrap, wrapped, instance, args, kwargs):
     return response
 
 
-@with_tracer_wrapper
-def runs_create_wrapper(tracer, to_wrap, wrapped, instance, args, kwargs):
+@with_tracer_only_wrapper
+def runs_create_wrapper(tracer, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
@@ -100,8 +100,8 @@ def runs_create_wrapper(tracer, to_wrap, wrapped, instance, args, kwargs):
         raise
 
 
-@with_tracer_wrapper
-def runs_retrieve_wrapper(tracer, to_wrap, wrapped, instance, args, kwargs):
+@with_tracer_only_wrapper
+def runs_retrieve_wrapper(tracer, wrapped, instance, args, kwargs):
     @dont_throw
     def process_response(response):
         if type(response) is LegacyAPIResponse:
@@ -131,8 +131,8 @@ def runs_retrieve_wrapper(tracer, to_wrap, wrapped, instance, args, kwargs):
         raise
 
 
-@with_tracer_wrapper
-def messages_list_wrapper(tracer, to_wrap, wrapped, instance, args, kwargs):
+@with_tracer_only_wrapper
+def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
@@ -243,8 +243,8 @@ def messages_list_wrapper(tracer, to_wrap, wrapped, instance, args, kwargs):
     return response
 
 
-@with_tracer_wrapper
-def runs_create_and_stream_wrapper(tracer, to_wrap, wrapped, instance, args, kwargs):
+@with_tracer_only_wrapper
+def runs_create_and_stream_wrapper(tracer, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 

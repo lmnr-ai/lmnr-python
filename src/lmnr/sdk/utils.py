@@ -25,28 +25,52 @@ if typing.TYPE_CHECKING:
 logger = get_default_logger(__name__)
 
 WrappedFunction = typing.Callable[..., typing.Any]
+
+#: The shape wrapt's `wrap_function_wrapper` expects.
 InstrumentedWrapper = typing.Callable[
-    [WrappedFunction, typing.Any, tuple, dict[str, typing.Any]], typing.Any
+    [WrappedFunction, typing.Any, tuple[typing.Any, ...], dict[str, typing.Any]],
+    typing.Any,
 ]
+
+#: Deliberately UNBOUND. `to_wrap` has no single shape across the legacy
+#: instrumentations — most pass a `dict`, but langgraph passes a bare `str`
+#: method path. Binding this to a spec type would break that caller. The
+#: instrumentations already on `BaseLaminarInstrumentor` use the typed
+#: `WrappedFunctionSpec` contract instead of these helpers.
+ToWrapT = typing.TypeVar("ToWrapT")
 
 
 def with_tracer_wrapper(
-    func: typing.Callable[..., typing.Any],
-) -> typing.Callable[[Tracer, typing.Any], InstrumentedWrapper]:
-    """Bind a tracer (and an optional per-instrumented-method config, `to_wrap`)
-    into an instrumentation function, producing the wrapper factory that
-    `wrapt.wrap_function_wrapper` expects.
+    func: typing.Callable[
+        [
+            Tracer,
+            ToWrapT,
+            WrappedFunction,
+            typing.Any,
+            tuple[typing.Any, ...],
+            dict[str, typing.Any],
+        ],
+        typing.Any,
+    ],
+) -> typing.Callable[[Tracer, ToWrapT], InstrumentedWrapper]:
+    """Bind a tracer and a per-instrumented-method config into an instrumentation
+    function, producing the wrapper factory `wrapt.wrap_function_wrapper` expects.
 
-    `func` must accept `(tracer, to_wrap, wrapped, instance, args, kwargs)`.
-    Usage: `wrap_function_wrapper(module, "method", with_tracer_wrapper(func)(tracer, to_wrap))`.
+    `func` must accept `(tracer, to_wrap, wrapped, instance, args, kwargs)`; the
+    type of `to_wrap` flows through, so a wrapper annotating it as its own spec
+    type gets that type checked at the `wrap_function_wrapper` call site.
+
+    Usage:
+    `wrap_function_wrapper(mod, "method", with_tracer_wrapper(f)(tracer, to_wrap))`.
+    Use `with_tracer_only_wrapper` when there is no per-method config.
     """
 
-    def _with_tracer(tracer: Tracer, to_wrap: typing.Any = None) -> InstrumentedWrapper:
+    def _with_tracer(tracer: Tracer, to_wrap: ToWrapT) -> InstrumentedWrapper:
         @functools.wraps(func)
         def wrapper(
             wrapped: WrappedFunction,
             instance: typing.Any,
-            args: tuple,
+            args: tuple[typing.Any, ...],
             kwargs: dict[str, typing.Any],
         ) -> typing.Any:
             return func(tracer, to_wrap, wrapped, instance, args, kwargs)
@@ -56,10 +80,55 @@ def with_tracer_wrapper(
     return _with_tracer
 
 
+def with_tracer_only_wrapper(
+    func: typing.Callable[
+        [
+            Tracer,
+            WrappedFunction,
+            typing.Any,
+            tuple[typing.Any, ...],
+            dict[str, typing.Any],
+        ],
+        typing.Any,
+    ],
+) -> typing.Callable[[Tracer], InstrumentedWrapper]:
+    """`with_tracer_wrapper` for instrumentations with no per-method config.
+
+    `func` must accept `(tracer, wrapped, instance, args, kwargs)`. Every wrapper
+    in the openai tree is of this shape — it wraps a fixed set of hand-written
+    targets, so there is nothing per-method to thread through.
+    """
+
+    def _with_tracer(tracer: Tracer) -> InstrumentedWrapper:
+        @functools.wraps(func)
+        def wrapper(
+            wrapped: WrappedFunction,
+            instance: typing.Any,
+            args: tuple[typing.Any, ...],
+            kwargs: dict[str, typing.Any],
+        ) -> typing.Any:
+            return func(tracer, wrapped, instance, args, kwargs)
+
+        return wrapper
+
+    return _with_tracer
+
+
 def with_tracer_and_client_wrapper(
-    func: typing.Callable[..., typing.Any],
+    func: typing.Callable[
+        [
+            Tracer,
+            "LaminarClient | AsyncLaminarClient",
+            ToWrapT,
+            WrappedFunction,
+            typing.Any,
+            tuple[typing.Any, ...],
+            dict[str, typing.Any],
+        ],
+        typing.Any,
+    ],
 ) -> typing.Callable[
-    [Tracer, "LaminarClient | AsyncLaminarClient", typing.Any], InstrumentedWrapper
+    [Tracer, "LaminarClient | AsyncLaminarClient", ToWrapT], InstrumentedWrapper
 ]:
     """Same as `with_tracer_wrapper`, but also binds a Laminar client.
 
@@ -70,13 +139,13 @@ def with_tracer_and_client_wrapper(
     def _with_tracer_and_client(
         tracer: Tracer,
         client: "LaminarClient | AsyncLaminarClient",
-        to_wrap: typing.Any = None,
+        to_wrap: ToWrapT,
     ) -> InstrumentedWrapper:
         @functools.wraps(func)
         def wrapper(
             wrapped: WrappedFunction,
             instance: typing.Any,
-            args: tuple,
+            args: tuple[typing.Any, ...],
             kwargs: dict[str, typing.Any],
         ) -> typing.Any:
             return func(tracer, client, to_wrap, wrapped, instance, args, kwargs)

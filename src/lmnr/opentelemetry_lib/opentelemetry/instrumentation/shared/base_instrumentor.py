@@ -1,4 +1,4 @@
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from logging import Logger
 from typing import Any
 
@@ -14,7 +14,7 @@ from .wrapper_helpers import add_spec_wrapper
 from lmnr.sdk.log import get_default_logger
 
 
-class BaseLaminarInstrumentor(BaseInstrumentor):
+class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
     instrumentor_config: LaminarInstrumentorConfig
     logger: Logger = get_default_logger(__name__)
 
@@ -24,6 +24,17 @@ class BaseLaminarInstrumentor(BaseInstrumentor):
     @abstractmethod
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         pass
+
+    def wrapper_kwargs(self) -> dict[str, Any]:
+        """Extra keyword arguments handed to every wrapper on every call.
+
+        Override when a wrapper needs an instrumentor-level collaborator that is
+        not per-method config and so does not belong in the spec — the browser
+        instrumentors use this to pass their `AsyncLaminarClient`. Returned
+        values are forwarded by `add_spec_wrapper`, so a wrapper receives them as
+        keyword-only arguments after `(to_wrap, wrapped, instance, args, kwargs)`.
+        """
+        return {}
 
     @staticmethod
     def _replace_function_aliases(original, wrapped):
@@ -119,6 +130,7 @@ class BaseLaminarInstrumentor(BaseInstrumentor):
 
     # default implementation, can be overridden by subclasses
     def _instrument(self, **kwargs):
+        handler_kwargs = self.wrapper_kwargs()
         for wrapped_function_spec in self.instrumentor_config["wrapped_functions"]:
             package_name = wrapped_function_spec["package_name"]
             object_name = wrapped_function_spec.get("object_name")
@@ -130,7 +142,9 @@ class BaseLaminarInstrumentor(BaseInstrumentor):
 
             target = f"{object_name}.{method_name}" if object_name else method_name
 
-            wrapper = add_spec_wrapper(wrapper_function, wrapped_function_spec)
+            wrapper = add_spec_wrapper(
+                wrapper_function, wrapped_function_spec, **handler_kwargs
+            )
 
             try:
                 if replace_aliases and not object_name:
@@ -176,8 +190,20 @@ class BaseLaminarInstrumentor(BaseInstrumentor):
                         package_name, method_name
                     )
                 else:
-                    # Standard unwrap
-                    unwrap(package_name, target)
+                    # NOTE the split differs from `wrap_function_wrapper` above.
+                    # wrapt takes (module, "Object.method") and resolves the
+                    # dotted attribute path itself; `unwrap` takes
+                    # (holder, "attr") and does a single `getattr`. Passing
+                    # wrapt's split here makes `unwrap` look up an attribute
+                    # literally named "Object.method", find nothing, and return
+                    # silently — so uninstrument becomes a no-op that leaves
+                    # every method wrapped. Pinned by
+                    # tests/test_instrumentor_targets.py.
+                    holder = (
+                        f"{package_name}.{object_name}" if object_name
+                        else package_name
+                    )
+                    unwrap(holder, method_name)
             except Exception as e:
                 self.logger.debug(
                     f"Failed to uninstrument {package_name}.{target}: {e}"

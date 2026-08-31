@@ -66,4 +66,7 @@ class OpentelemetryInstrumentor(BaseInstrumentor):
             logging.debug(f"Error wrapping SpanContext: {e}")
 
     def _uninstrument(self, **kwargs):
-        unwrap("opentelemetry.trace.span", "NonRecordingSpan.get_span_context")
+        # `unwrap` takes (holder, "attr"), not wrapt's (module, "Object.method")
+        # split used in `_instrument` — see the note in langgraph's
+        # `_uninstrument`. The wrapt split silently no-ops here.
+        unwrap("opentelemetry.trace.span.NonRecordingSpan", "get_span_context")

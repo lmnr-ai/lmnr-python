@@ -12,6 +12,8 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrument
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WrappedFunctionSpec,
 )
 from lmnr.sdk.log import get_default_logger
 
@@ -47,33 +49,35 @@ class LitellmInstrumentor(BaseLaminarInstrumentor):
 
     def __init__(self):
         super().__init__()
-        self.instrumentor_config = {
-            "wrapped_functions": [
+        self.instrumentor_config = LaminarInstrumentorConfig(
+            wrapped_functions=[
                 # we are not wrapping `acompletion`, and `aresponses`,
                 # because they call `completion` and `responses` internally respectively
-                {
-                    "package_name": "litellm",
-                    "object_name": None,
-                    "method_name": "completion",
-                    "is_async": False,
-                    "is_streaming": False,
-                    "span_name": "litellm.completion",
-                    "span_type": "LLM",
-                    "wrapper_function": wrap_completion,
-                    "replace_aliases": True,  # Enable alias replacement for module-level function
-                    "instrumentation_scope": self.instrumentation_scope(),
-                },
-                {
-                    "package_name": "litellm",
-                    "object_name": None,
-                    "method_name": "responses",
-                    "is_async": False,
-                    "is_streaming": True,
-                    "span_name": "litellm.responses",
-                    "span_type": "LLM",
-                    "wrapper_function": wrap_responses,
-                    "replace_aliases": True,  # Enable alias replacement for module-level function
-                    "instrumentation_scope": self.instrumentation_scope(),
-                },
+                WrappedFunctionSpec(
+                    package_name="litellm",
+                    object_name=None,
+                    method_name="completion",
+                    is_async=False,
+                    is_streaming=False,
+                    span_name="litellm.completion",
+                    span_type="LLM",
+                    wrapper_function=wrap_completion,
+                    # Enable alias replacement for module-level function
+                    replace_aliases=True,
+                    instrumentation_scope=self.instrumentation_scope(),
+                ),
+                WrappedFunctionSpec(
+                    package_name="litellm",
+                    object_name=None,
+                    method_name="responses",
+                    is_async=False,
+                    is_streaming=True,
+                    span_name="litellm.responses",
+                    span_type="LLM",
+                    wrapper_function=wrap_responses,
+                    # Enable alias replacement for module-level function
+                    replace_aliases=True,
+                    instrumentation_scope=self.instrumentation_scope(),
+                ),
             ],
-        }
+        )

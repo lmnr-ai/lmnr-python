@@ -4,8 +4,8 @@ from typing import Any, Callable, Sequence
 from opentelemetry.trace import Status, StatusCode
 
 from lmnr import Laminar
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
-    set_span_attribute,
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    stamp_instrumentation_scope,
 )
 from lmnr.opentelemetry_lib.tracing.context import (
     in_litellm_context,
@@ -75,16 +75,7 @@ def wrap_completion(
         tags=(kwargs.get("metadata") or {}).get("tags", []),
         metadata=(kwargs.get("metadata") or {}),
     )
-    set_span_attribute(
-        span,
-        "lmnr.span.instrumentation_scope.name",
-        to_wrap.get("instrumentation_scope", {}).get("name"),
-    )
-    set_span_attribute(
-        span,
-        "lmnr.span.instrumentation_scope.version",
-        to_wrap.get("instrumentation_scope", {}).get("version"),
-    )
+    stamp_instrumentation_scope(span, to_wrap)
     messages = args[1] if len(args) > 1 else kwargs.get("messages", [])
     process_completion_inputs(span, messages, kwargs.get("tools", []))
     process_completion_kwargs(span, args, kwargs)
@@ -240,16 +231,7 @@ def wrap_responses(
         tags=(kwargs.get("metadata") or {}).get("tags", []),
         metadata=(kwargs.get("metadata") or {}),
     )
-    set_span_attribute(
-        span,
-        "lmnr.span.instrumentation_scope.name",
-        to_wrap.get("instrumentation_scope", {}).get("name"),
-    )
-    set_span_attribute(
-        span,
-        "lmnr.span.instrumentation_scope.version",
-        to_wrap.get("instrumentation_scope", {}).get("version"),
-    )
+    stamp_instrumentation_scope(span, to_wrap)
     # responses() has input as first arg
     input_param = args[0] if args else kwargs.get("input")
     process_responses_inputs(span, input_param, kwargs.get("tools", []))

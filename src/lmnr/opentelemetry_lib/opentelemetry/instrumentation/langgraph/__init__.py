@@ -109,11 +109,9 @@ class LanggraphInstrumentor(BaseInstrumentor):
         )
 
     def _uninstrument(self, **kwargs):
-        unwrap(
-            "langgraph.pregel",
-            "Pregel.stream",
-        )
-        unwrap(
-            "langgraph.pregel",
-            "Pregel.astream",
-        )
+        # `unwrap` takes (holder, "attr") — NOT wrapt's (module, "Object.method")
+        # split used in `_instrument`. With the wrapt split it looks for an
+        # attribute literally named "Pregel.stream", finds nothing, and returns
+        # silently, leaving both methods wrapped forever.
+        unwrap("langgraph.pregel.Pregel", "stream")
+        unwrap("langgraph.pregel.Pregel", "astream")

@@ -12,10 +12,9 @@ from ..shared import (
     propagate_trace_context,
     set_tools_attributes,
 )
-from lmnr.sdk.utils import json_dumps
+from lmnr.sdk.utils import json_dumps, with_tracer_only_wrapper
 from ..shared.config import Config
 from ..utils import (
-    _with_chat_telemetry_wrapper,
     dont_throw,
     is_openai_v1,
     should_send_prompts,
@@ -38,7 +37,7 @@ SPAN_NAME = "openai.chat"
 logger = logging.getLogger(__name__)
 
 
-@_with_chat_telemetry_wrapper
+@with_tracer_only_wrapper
 def chat_wrapper(
     tracer: Tracer,
     wrapped,
@@ -126,7 +125,7 @@ def chat_wrapper(
     return response
 
 
-@_with_chat_telemetry_wrapper
+@with_tracer_only_wrapper
 async def achat_wrapper(
     tracer: Tracer,
     wrapped,

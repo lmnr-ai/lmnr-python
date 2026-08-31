@@ -18,6 +18,7 @@ from anthropic._streaming import AsyncStream, Stream
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     safe_start_span,
 )
+from lmnr.sdk.utils import with_tracer_wrapper
 
 from .config import Config
 from .rollout import get_anthropic_rollout_wrapper
@@ -312,28 +313,6 @@ def _set_token_usage(
     )
 
 
-def _with_chat_telemetry_wrapper(func):
-    """Helper for providing tracer for wrapper functions. Includes metric collectors."""
-
-    def _with_chat_telemetry(
-        tracer,
-        to_wrap,
-    ):
-        def wrapper(wrapped, instance, args, kwargs):
-            return func(
-                tracer,
-                to_wrap,
-                wrapped,
-                instance,
-                args,
-                kwargs,
-            )
-
-        return wrapper
-
-    return _with_chat_telemetry
-
-
 @dont_throw
 def _handle_input(span: Span, kwargs):
     if not span.is_recording():
@@ -386,7 +365,7 @@ async def _ahandle_response(span: Span, response, record_raw_response=False):
             pass
 
 
-@_with_chat_telemetry_wrapper
+@with_tracer_wrapper
 def _wrap(
     tracer: Tracer,
     to_wrap,
@@ -477,7 +456,7 @@ def _wrap(
     return response
 
 
-@_with_chat_telemetry_wrapper
+@with_tracer_wrapper
 async def _awrap(
     tracer,
     to_wrap,

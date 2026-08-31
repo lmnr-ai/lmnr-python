@@ -60,11 +60,11 @@ class BubusInstrumentor(BaseInstrumentor):
 
     def _uninstrument(self, **kwargs):
         try:
-            unwrap("bubus.service", "EventBus.dispatch")
+            unwrap("bubus.service.EventBus", "dispatch")
         except (ModuleNotFoundError, ImportError):
             pass
         try:
-            unwrap("bubus.service", "EventBus.process_event")
+            unwrap("bubus.service.EventBus", "process_event")
         except (ModuleNotFoundError, ImportError):
             pass
         event_id_to_span_context.clear()

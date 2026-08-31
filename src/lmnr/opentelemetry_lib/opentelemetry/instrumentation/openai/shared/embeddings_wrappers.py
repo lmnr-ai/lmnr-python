@@ -13,7 +13,6 @@ from ..shared import (
 )
 from ..shared.config import Config
 from ..utils import (
-    _with_embeddings_telemetry_wrapper,
     dont_throw,
     is_openai_v1,
     should_send_prompts,
@@ -21,7 +20,7 @@ from ..utils import (
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     safe_start_span,
 )
-from lmnr.sdk.utils import json_dumps
+from lmnr.sdk.utils import json_dumps, with_tracer_only_wrapper
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.trace import Status, StatusCode
@@ -30,7 +29,7 @@ SPAN_NAME = "openai.embeddings"
 logger = logging.getLogger(__name__)
 
 
-@_with_embeddings_telemetry_wrapper
+@with_tracer_only_wrapper
 def embeddings_wrapper(
     tracer,
     wrapped,
@@ -67,7 +66,7 @@ def embeddings_wrapper(
         span.end()
 
 
-@_with_embeddings_telemetry_wrapper
+@with_tracer_only_wrapper
 async def aembeddings_wrapper(
     tracer,
     wrapped,
