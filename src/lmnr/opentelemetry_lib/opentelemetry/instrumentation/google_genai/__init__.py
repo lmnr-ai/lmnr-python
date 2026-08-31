@@ -4,25 +4,35 @@ import json
 import logging
 import os
 from collections import defaultdict
-from typing import AsyncGenerator, Callable, Collection, Generator
+from importlib.metadata import version
+from typing import Any, AsyncGenerator, Callable, Collection, Generator, Sequence
 
 from google.genai import types
 from opentelemetry import context as context_api
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
+from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv._incubating.attributes import gen_ai_attributes
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
-from opentelemetry.trace import Span, Status, StatusCode, Tracer, get_tracer
-from wrapt import wrap_function_wrapper
+from opentelemetry.trace import Span, Status, StatusCode
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
+    BaseLaminarInstrumentor,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WrappedFunctionSpec,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     safe_start_span,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    stamp_instrumentation_scope,
 )
 from lmnr.opentelemetry_lib.tracing.context import (
     get_event_attributes_from_context,
 )
 from lmnr.sdk.laminar import Laminar
-from lmnr.sdk.utils import json_dumps, with_tracer_wrapper
+from lmnr.sdk.utils import json_dumps
 
 from .config import (
     Config,
@@ -41,42 +51,6 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 _instruments = ("google-genai >= 1.0.0",)
-
-WRAPPED_METHODS = [
-    {
-        "package": "google.genai.models",
-        "object": "Models",
-        "method": "generate_content",
-        "span_name": "gemini.generate_content",
-        "is_streaming": False,
-        "is_async": False,
-    },
-    {
-        "package": "google.genai.models",
-        "object": "AsyncModels",
-        "method": "generate_content",
-        "span_name": "gemini.generate_content",
-        "is_streaming": False,
-        "is_async": True,
-    },
-    {
-        "package": "google.genai.models",
-        "object": "Models",
-        "method": "generate_content_stream",
-        "span_name": "gemini.generate_content_stream",
-        "is_streaming": True,
-        "is_async": False,
-    },
-    {
-        "package": "google.genai.models",
-        "object": "AsyncModels",
-        "method": "generate_content_stream",
-        "span_name": "gemini.generate_content_stream",
-        "is_streaming": True,
-        "is_async": True,
-    },
-]
-
 
 def should_send_prompts():
     return (
@@ -385,13 +359,18 @@ async def _abuild_from_streaming_response(
             span.end()
 
 
-@with_tracer_wrapper
-def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
+def _wrap(
+    to_wrap: WrappedFunctionSpec,
+    wrapped,
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
     span = safe_start_span(
-        name=to_wrap.get("span_name"),
+        name=to_wrap.get("span_name") or "gemini.generate_content",
         attributes={"gen_ai.system": "gemini"},
         span_type="LLM",
     )
@@ -399,6 +378,7 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         logger.warning("Failed to start span for google genai")
         return wrapped(*args, **kwargs)
 
+    stamp_instrumentation_scope(span, to_wrap)
     _set_request_attributes(span, args, kwargs)
 
     try:
@@ -423,7 +403,7 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
                         instance,
                         args,
                         kwargs,
-                        is_streaming=to_wrap.get("is_streaming", False),
+                        is_streaming=bool(to_wrap.get("is_streaming")),
                         is_async=False,
                     )
             else:
@@ -449,13 +429,18 @@ def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         raise
 
 
-@with_tracer_wrapper
-async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
+async def _awrap(
+    to_wrap: WrappedFunctionSpec,
+    wrapped,
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
     span = safe_start_span(
-        name=to_wrap.get("span_name"),
+        name=to_wrap.get("span_name") or "gemini.generate_content",
         attributes={"gen_ai.system": "gemini"},
         span_type="LLM",
     )
@@ -463,6 +448,7 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         logger.warning("Failed to start span for async google genai")
         return await wrapped(*args, **kwargs)
 
+    stamp_instrumentation_scope(span, to_wrap)
     _set_request_attributes(span, args, kwargs)
 
     try:
@@ -489,7 +475,7 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
                         instance,
                         args,
                         kwargs,
-                        is_streaming=to_wrap.get("is_streaming", False),
+                        is_streaming=bool(to_wrap.get("is_streaming")),
                         is_async=True,
                     )
                 # If result is a coroutine or async generator, await/iterate it
@@ -530,34 +516,73 @@ async def _awrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
         raise
 
 
-class GoogleGenAiSdkInstrumentor(BaseInstrumentor):
+WRAPPED_FUNCTIONS: list[WrappedFunctionSpec] = [
+    WrappedFunctionSpec(
+        package_name="google.genai.models",
+        object_name="Models",
+        method_name="generate_content",
+        span_name="gemini.generate_content",
+        is_streaming=False,
+        is_async=False,
+        wrapper_function=_wrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="google.genai.models",
+        object_name="AsyncModels",
+        method_name="generate_content",
+        span_name="gemini.generate_content",
+        is_streaming=False,
+        is_async=True,
+        wrapper_function=_awrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="google.genai.models",
+        object_name="Models",
+        method_name="generate_content_stream",
+        span_name="gemini.generate_content_stream",
+        is_streaming=True,
+        is_async=False,
+        wrapper_function=_wrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="google.genai.models",
+        object_name="AsyncModels",
+        method_name="generate_content_stream",
+        span_name="gemini.generate_content_stream",
+        is_streaming=True,
+        is_async=True,
+        wrapper_function=_awrap,
+    ),
+]
+
+
+class GoogleGenAiSdkInstrumentor(BaseLaminarInstrumentor):
     """An instrumentor for Google GenAI's client library."""
+
+    _scope: LaminarInstrumentationScopeAttributes | None = None
 
     def __init__(self, exception_logger=None):
         super().__init__()
         Config.exception_logger = exception_logger
+        self.instrumentor_config = LaminarInstrumentorConfig(
+            wrapped_functions=[
+                {**spec, "instrumentation_scope": self.instrumentation_scope()}
+                for spec in WRAPPED_FUNCTIONS
+            ]
+        )
 
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
-    def _instrument(self, **kwargs):
-        tracer_provider = kwargs.get("tracer_provider")
-        tracer = get_tracer(__name__, "0.0.1a1", tracer_provider)
-
-        for wrapped_method in WRAPPED_METHODS:
-            wrap_function_wrapper(
-                wrapped_method.get("package"),
-                f"{wrapped_method.get('object')}.{wrapped_method.get('method')}",
-                (
-                    _awrap(tracer, wrapped_method)
-                    if wrapped_method.get("is_async")
-                    else _wrap(tracer, wrapped_method)
-                ),
+    def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
+        if self._scope is None:
+            try:
+                google_genai_version = version("google-genai")
+            except Exception as e:
+                logger.debug(f"Failed to get google-genai version {e}")
+                google_genai_version = "unknown"
+            self._scope = LaminarInstrumentationScopeAttributes(
+                name="google-genai",
+                version=google_genai_version,
             )
-
-    def _uninstrument(self, **kwargs):
-        for wrapped_method in WRAPPED_METHODS:
-            unwrap(
-                f"{wrapped_method.get('package')}.{wrapped_method.get('object')}",
-                wrapped_method.get("method"),
-            )
+        return self._scope

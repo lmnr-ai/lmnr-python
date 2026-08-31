@@ -1,7 +1,14 @@
+from importlib.metadata import version
 from typing import Collection
 
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
+    BaseLaminarInstrumentor,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WrappedFunctionSpec,
+)
 from lmnr.sdk.log import get_default_logger
 from ..shared.chat_wrappers import (
     achat_wrapper,
@@ -30,198 +37,208 @@ from .responses_wrappers import (
     responses_get_or_create_wrapper,
 )
 
-from ..version import __version__
-from opentelemetry.instrumentation.utils import unwrap
-from opentelemetry.trace import get_tracer
-from wrapt import wrap_function_wrapper
-
 
 _instruments = ("openai >= 1.0.0",)
 logger = get_default_logger(__name__)
 
 
-class OpenAIV1Instrumentor(BaseInstrumentor):
+WRAPPED_FUNCTIONS: list[WrappedFunctionSpec] = [
+    WrappedFunctionSpec(
+        package_name="openai.resources.chat.completions",
+        object_name="Completions",
+        method_name="create",
+        span_name="openai.chat",
+        is_async=False,
+        wrapper_function=chat_wrapper,
+    ),
+    WrappedFunctionSpec(
+        package_name="openai.resources.completions",
+        object_name="Completions",
+        method_name="create",
+        span_name="openai.completion",
+        is_async=False,
+        wrapper_function=completion_wrapper,
+    ),
+    WrappedFunctionSpec(
+        package_name="openai.resources.embeddings",
+        object_name="Embeddings",
+        method_name="create",
+        span_name="openai.embeddings",
+        is_async=False,
+        wrapper_function=embeddings_wrapper,
+    ),
+    WrappedFunctionSpec(
+        package_name="openai.resources.chat.completions",
+        object_name="AsyncCompletions",
+        method_name="create",
+        span_name="openai.chat",
+        is_async=True,
+        wrapper_function=achat_wrapper,
+    ),
+    WrappedFunctionSpec(
+        package_name="openai.resources.completions",
+        object_name="AsyncCompletions",
+        method_name="create",
+        span_name="openai.completion",
+        is_async=True,
+        wrapper_function=acompletion_wrapper,
+    ),
+    WrappedFunctionSpec(
+        package_name="openai.resources.embeddings",
+        object_name="AsyncEmbeddings",
+        method_name="create",
+        span_name="openai.embeddings",
+        is_async=True,
+        wrapper_function=aembeddings_wrapper,
+    ),
+    # in newer versions, Completions.parse are out of beta
+    WrappedFunctionSpec(
+        package_name="openai.resources.chat.completions",
+        object_name="Completions",
+        method_name="parse",
+        span_name="openai.chat",
+        is_async=False,
+        wrapper_function=chat_wrapper,
+    ),
+    WrappedFunctionSpec(
+        package_name="openai.resources.chat.completions",
+        object_name="AsyncCompletions",
+        method_name="parse",
+        span_name="openai.chat",
+        is_async=True,
+        wrapper_function=achat_wrapper,
+    ),
+    # Beta APIs may not be available consistently in all versions. The base
+    # instrumentor swallows AttributeError / ModuleNotFoundError / ImportError
+    # per row, which is what the old `_try_wrap` helper did by hand.
+    WrappedFunctionSpec(
+        package_name="openai.resources.beta.assistants",
+        object_name="Assistants",
+        method_name="create",
+        is_async=False,
+        wrapper_function=assistants_create_wrapper,
+    ),
+    WrappedFunctionSpec(
+        package_name="openai.resources.beta.chat.completions",
+        object_name="Completions",
+        method_name="parse",
+        span_name="openai.chat",
+        is_async=False,
+        wrapper_function=chat_wrapper,
+    ),
+    WrappedFunctionSpec(
+        package_name="openai.resources.beta.chat.completions",
+        object_name="AsyncCompletions",
+        method_name="parse",
+        span_name="openai.chat",
+        is_async=True,
+        wrapper_function=achat_wrapper,
+    ),
+    WrappedFunctionSpec(
+        package_name="openai.resources.beta.threads.runs",
+        object_name="Runs",
+        method_name="create",
+        is_async=False,
+        wrapper_function=runs_create_wrapper,
+    ),
+    WrappedFunctionSpec(
+        package_name="openai.resources.beta.threads.runs",
+        object_name="Runs",
+        method_name="retrieve",
+        is_async=False,
+        wrapper_function=runs_retrieve_wrapper,
+    ),
+    WrappedFunctionSpec(
+        package_name="openai.resources.beta.threads.runs",
+        object_name="Runs",
+        method_name="create_and_stream",
+        span_name="openai.assistant.run_stream",
+        is_async=False,
+        wrapper_function=runs_create_and_stream_wrapper,
+    ),
+    WrappedFunctionSpec(
+        package_name="openai.resources.beta.threads.messages",
+        object_name="Messages",
+        method_name="list",
+        span_name="openai.assistant.run",
+        is_async=False,
+        wrapper_function=messages_list_wrapper,
+    ),
+    WrappedFunctionSpec(
+        package_name="openai.resources.responses",
+        object_name="Responses",
+        method_name="create",
+        span_name="openai.response",
+        is_async=False,
+        wrapper_function=responses_get_or_create_wrapper,
+    ),
+    WrappedFunctionSpec(
+        package_name="openai.resources.responses",
+        object_name="Responses",
+        method_name="retrieve",
+        span_name="openai.response",
+        is_async=False,
+        wrapper_function=responses_get_or_create_wrapper,
+    ),
+    WrappedFunctionSpec(
+        package_name="openai.resources.responses",
+        object_name="Responses",
+        method_name="cancel",
+        span_name="openai.response",
+        is_async=False,
+        wrapper_function=responses_cancel_wrapper,
+    ),
+    WrappedFunctionSpec(
+        package_name="openai.resources.responses",
+        object_name="AsyncResponses",
+        method_name="create",
+        span_name="openai.response",
+        is_async=True,
+        wrapper_function=async_responses_get_or_create_wrapper,
+    ),
+    WrappedFunctionSpec(
+        package_name="openai.resources.responses",
+        object_name="AsyncResponses",
+        method_name="retrieve",
+        span_name="openai.response",
+        is_async=True,
+        wrapper_function=async_responses_get_or_create_wrapper,
+    ),
+    WrappedFunctionSpec(
+        package_name="openai.resources.responses",
+        object_name="AsyncResponses",
+        method_name="cancel",
+        span_name="openai.response",
+        is_async=True,
+        wrapper_function=async_responses_cancel_wrapper,
+    ),
+]
+
+
+class OpenAIV1Instrumentor(BaseLaminarInstrumentor):
+    _scope: LaminarInstrumentationScopeAttributes | None = None
+
+    def __init__(self):
+        super().__init__()
+        self.instrumentor_config = LaminarInstrumentorConfig(
+            wrapped_functions=[
+                {**spec, "instrumentation_scope": self.instrumentation_scope()}
+                for spec in WRAPPED_FUNCTIONS
+            ]
+        )
+
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
-    def _try_wrap(self, module, function, wrapper):
-        """
-        Wrap a function if it exists, otherwise do nothing.
-        This is useful for handling cases where the function is not available in
-        the older versions of the library.
-
-        Args:
-            module (str): The module to wrap, e.g. "openai.resources.chat.completions"
-            function (str): "Object.function" to wrap, e.g. "Completions.parse"
-            wrapper (callable): The wrapper to apply to the function.
-        """
-        try:
-            wrap_function_wrapper(module, function, wrapper)
-        except (AttributeError, ModuleNotFoundError, ImportError):
-            logger.debug(f"Failed to wrap {module}.{function}")
-            pass
-
-    def _instrument(self, **kwargs):
-        tracer_provider = kwargs.get("tracer_provider")
-        tracer = get_tracer(__name__, __version__, tracer_provider)
-
-        wrap_function_wrapper(
-            "openai.resources.chat.completions",
-            "Completions.create",
-            chat_wrapper(
-                tracer,
-            ),
-        )
-
-        wrap_function_wrapper(
-            "openai.resources.completions",
-            "Completions.create",
-            completion_wrapper(tracer),
-        )
-
-        wrap_function_wrapper(
-            "openai.resources.embeddings",
-            "Embeddings.create",
-            embeddings_wrapper(
-                tracer,
-            ),
-        )
-
-        wrap_function_wrapper(
-            "openai.resources.chat.completions",
-            "AsyncCompletions.create",
-            achat_wrapper(
-                tracer,
-            ),
-        )
-        wrap_function_wrapper(
-            "openai.resources.completions",
-            "AsyncCompletions.create",
-            acompletion_wrapper(tracer),
-        )
-        wrap_function_wrapper(
-            "openai.resources.embeddings",
-            "AsyncEmbeddings.create",
-            aembeddings_wrapper(
-                tracer,
-            ),
-        )
-        # in newer versions, Completions.parse are out of beta
-        self._try_wrap(
-            "openai.resources.chat.completions",
-            "Completions.parse",
-            chat_wrapper(
-                tracer,
-            ),
-        )
-        self._try_wrap(
-            "openai.resources.chat.completions",
-            "AsyncCompletions.parse",
-            achat_wrapper(
-                tracer,
-            ),
-        )
-
-        # Beta APIs may not be available consistently in all versions
-        self._try_wrap(
-            "openai.resources.beta.assistants",
-            "Assistants.create",
-            assistants_create_wrapper(tracer),
-        )
-        self._try_wrap(
-            "openai.resources.beta.chat.completions",
-            "Completions.parse",
-            chat_wrapper(
-                tracer,
-            ),
-        )
-        self._try_wrap(
-            "openai.resources.beta.chat.completions",
-            "AsyncCompletions.parse",
-            achat_wrapper(
-                tracer,
-            ),
-        )
-        self._try_wrap(
-            "openai.resources.beta.threads.runs",
-            "Runs.create",
-            runs_create_wrapper(tracer),
-        )
-        self._try_wrap(
-            "openai.resources.beta.threads.runs",
-            "Runs.retrieve",
-            runs_retrieve_wrapper(tracer),
-        )
-        self._try_wrap(
-            "openai.resources.beta.threads.runs",
-            "Runs.create_and_stream",
-            runs_create_and_stream_wrapper(tracer),
-        )
-        self._try_wrap(
-            "openai.resources.beta.threads.messages",
-            "Messages.list",
-            messages_list_wrapper(tracer),
-        )
-        self._try_wrap(
-            "openai.resources.responses",
-            "Responses.create",
-            responses_get_or_create_wrapper(tracer),
-        )
-        self._try_wrap(
-            "openai.resources.responses",
-            "Responses.retrieve",
-            responses_get_or_create_wrapper(tracer),
-        )
-        self._try_wrap(
-            "openai.resources.responses",
-            "Responses.cancel",
-            responses_cancel_wrapper(tracer),
-        )
-        self._try_wrap(
-            "openai.resources.responses",
-            "AsyncResponses.create",
-            async_responses_get_or_create_wrapper(tracer),
-        )
-        self._try_wrap(
-            "openai.resources.responses",
-            "AsyncResponses.retrieve",
-            async_responses_get_or_create_wrapper(tracer),
-        )
-        self._try_wrap(
-            "openai.resources.responses",
-            "AsyncResponses.cancel",
-            async_responses_cancel_wrapper(tracer),
-        )
-
-    def _uninstrument(self, **kwargs):
-        self.try_unwrap("openai.resources.chat.completions.Completions", "create")
-        self.try_unwrap("openai.resources.completions.Completions", "create")
-        self.try_unwrap("openai.resources.embeddings.Embeddings", "create")
-        self.try_unwrap("openai.resources.chat.completions.AsyncCompletions", "create")
-        self.try_unwrap("openai.resources.completions.AsyncCompletions", "create")
-        self.try_unwrap("openai.resources.embeddings.AsyncEmbeddings", "create")
-        self.try_unwrap("openai.resources.images.Images", "generate")
-        self.try_unwrap("openai.resources.chat.completions.Completions", "parse")
-        self.try_unwrap("openai.resources.chat.completions.AsyncCompletions", "parse")
-        self.try_unwrap("openai.resources.beta.assistants.Assistants", "create")
-        self.try_unwrap("openai.resources.beta.chat.completions.Completions", "parse")
-        self.try_unwrap(
-            "openai.resources.beta.chat.completions.AsyncCompletions", "parse"
-        )
-        self.try_unwrap("openai.resources.beta.threads.runs.Runs", "create")
-        self.try_unwrap("openai.resources.beta.threads.runs.Runs", "retrieve")
-        self.try_unwrap("openai.resources.beta.threads.runs.Runs", "create_and_stream")
-        self.try_unwrap("openai.resources.beta.threads.messages.Messages", "list")
-        self.try_unwrap("openai.resources.responses.Responses", "create")
-        self.try_unwrap("openai.resources.responses.Responses", "retrieve")
-        self.try_unwrap("openai.resources.responses.Responses", "cancel")
-        self.try_unwrap("openai.resources.responses.AsyncResponses", "create")
-        self.try_unwrap("openai.resources.responses.AsyncResponses", "retrieve")
-        self.try_unwrap("openai.resources.responses.AsyncResponses", "cancel")
-
-    def try_unwrap(self, module, function):
-        try:
-            unwrap(module, function)
-        except (AttributeError, ModuleNotFoundError, ImportError):
-            logger.debug(f"Failed to unwrap {module}.{function}")
-            pass
+    def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
+        if self._scope is None:
+            try:
+                openai_version = version("openai")
+            except Exception as e:
+                logger.debug(f"Failed to get openai version {e}")
+                openai_version = "unknown"
+            self._scope = LaminarInstrumentationScopeAttributes(
+                name="openai",
+                version=openai_version,
+            )
+        return self._scope

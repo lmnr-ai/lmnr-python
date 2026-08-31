@@ -52,14 +52,23 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
-from opentelemetry.trace import Span, SpanKind, StatusCode, Tracer
+from opentelemetry.trace import Span, SpanKind, StatusCode
 from typing_extensions import NotRequired
 
 from lmnr.opentelemetry_lib.tracing.context import (
     get_current_context,
     get_event_attributes_from_context,
 )
-from lmnr.sdk.utils import json_dumps, with_tracer_only_wrapper
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    WrappedFunctionSpec,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    safe_start_span,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    stamp_instrumentation_scope,
+)
+from lmnr.sdk.utils import json_dumps
 from openai._legacy_response import LegacyAPIResponse
 
 from ..shared import (
@@ -519,9 +528,8 @@ def set_data_attributes(traced_response: TracedData, span: Span):
 
 
 @dont_throw
-@with_tracer_only_wrapper
 def responses_get_or_create_wrapper(
-    tracer: Tracer, wrapped, instance, args, kwargs
+    to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs
 ):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
@@ -534,22 +542,21 @@ def responses_get_or_create_wrapper(
     # Debugger replay (non-streaming only): probe the server-side cache before
     # the live call. Streaming responses fall through to the live path below.
     if _replay_enabled() and not kwargs.get("stream", False):
-        return _replay_response_sync(tracer, start_time, wrapped, args, kwargs)
+        return _replay_response_sync(to_wrap, start_time, wrapped, args, kwargs)
 
     try:
         response = wrapped(*args, **kwargs)
         if isinstance(response, Stream):
             return response
     except Exception as e:
-        _process_exception(tracer, start_time, kwargs, e)
+        _process_exception(to_wrap, start_time, kwargs, e)
         raise
-    return _process_response(tracer, start_time, response, kwargs)
+    return _process_response(to_wrap, start_time, response, kwargs)
 
 
 @dont_throw
-@with_tracer_only_wrapper
 async def async_responses_get_or_create_wrapper(
-    tracer: Tracer, wrapped, instance, args, kwargs
+    to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs
 ):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
@@ -560,19 +567,21 @@ async def async_responses_get_or_create_wrapper(
     start_time = time.time_ns()
 
     if _replay_enabled() and not kwargs.get("stream", False):
-        return await _replay_response_async(tracer, start_time, wrapped, args, kwargs)
+        return await _replay_response_async(to_wrap, start_time, wrapped, args, kwargs)
 
     try:
         response = await wrapped(*args, **kwargs)
         if isinstance(response, (Stream, AsyncStream)):
             return response
     except Exception as e:
-        _process_exception(tracer, start_time, kwargs, e)
+        _process_exception(to_wrap, start_time, kwargs, e)
         raise
-    return _process_response(tracer, start_time, response, kwargs)
+    return _process_response(to_wrap, start_time, response, kwargs)
 
 
-def _open_replay_span(tracer: Tracer, start_time: int, kwargs) -> Span:
+def _open_replay_span(
+    to_wrap: WrappedFunctionSpec, start_time: int, kwargs
+) -> Span | None:
     """Open the Responses-API span up front (before the live call) and stamp
     `gen_ai.input.messages` so the replay cache can hash the input.
 
@@ -580,12 +589,16 @@ def _open_replay_span(tracer: Tracer, start_time: int, kwargs) -> Span:
     or the source-trace hash and the replay-run hash diverge. Both go through
     `build_genai_input_messages(process_input(kwargs["input"]))`.
     """
-    span = tracer.start_span(
-        SPAN_NAME,
+    span = safe_start_span(
+        name=to_wrap.get("span_name") or SPAN_NAME,
         kind=SpanKind.CLIENT,
         start_time=start_time,
         context=get_current_context(),
+        span_type="LLM",
     )
+    if span is None:
+        return None
+    stamp_instrumentation_scope(span, to_wrap)
     if should_send_prompts():
         processed_input = process_input(kwargs.get("input"))
         input_messages = build_genai_input_messages(processed_input)
@@ -608,7 +621,7 @@ def _record_raw_response(span: Span, response) -> None:
         pass
 
 
-def _finish_live_replay(tracer: Tracer, start_time: int, span: Span, response, kwargs):
+def _finish_live_replay(start_time: int, span: Span, response, kwargs):
     """Process a live response onto the pre-opened replay span and end it."""
     parsed_response = parse_response(response)
     traced_data = _build_traced_data(start_time, parsed_response, kwargs)
@@ -641,10 +654,12 @@ def _serve_cached_response(start_time: int, span: Span, outcome, kwargs):
     return cached
 
 
-def _replay_response_sync(tracer: Tracer, start_time, wrapped, args, kwargs):
+def _replay_response_sync(to_wrap: WrappedFunctionSpec, start_time, wrapped, args, kwargs):
     from lmnr.sdk.debug.replay import cache_outcome_for
 
-    span = _open_replay_span(tracer, start_time, kwargs)
+    span = _open_replay_span(to_wrap, start_time, kwargs)
+    if span is None:
+        return wrapped(*args, **kwargs)
     outcome = cache_outcome_for(span)
     if outcome is not None and outcome.kind == "hit":
         served = _serve_cached_response(start_time, span, outcome, kwargs)
@@ -662,13 +677,17 @@ def _replay_response_sync(tracer: Tracer, start_time, wrapped, args, kwargs):
         span.set_status(StatusCode.ERROR, str(e))
         span.end()
         raise
-    return _finish_live_replay(tracer, start_time, span, response, kwargs)
+    return _finish_live_replay(start_time, span, response, kwargs)
 
 
-async def _replay_response_async(tracer: Tracer, start_time, wrapped, args, kwargs):
+async def _replay_response_async(
+    to_wrap: WrappedFunctionSpec, start_time, wrapped, args, kwargs
+):
     from lmnr.sdk.debug.replay import acache_outcome_for
 
-    span = _open_replay_span(tracer, start_time, kwargs)
+    span = _open_replay_span(to_wrap, start_time, kwargs)
+    if span is None:
+        return await wrapped(*args, **kwargs)
     outcome = await acache_outcome_for(span)
     if outcome is not None and outcome.kind == "hit":
         served = _serve_cached_response(start_time, span, outcome, kwargs)
@@ -686,11 +705,11 @@ async def _replay_response_async(tracer: Tracer, start_time, wrapped, args, kwar
         span.set_status(StatusCode.ERROR, str(e))
         span.end()
         raise
-    return _finish_live_replay(tracer, start_time, span, response, kwargs)
+    return _finish_live_replay(start_time, span, response, kwargs)
 
 
 @dont_throw
-def _process_exception(tracer: Tracer, start_time, kwargs, e):
+def _process_exception(to_wrap: WrappedFunctionSpec, start_time, kwargs, e):
     response_id = kwargs.get("response_id")
     existing_data = {}
     if response_id and response_id in responses:
@@ -730,12 +749,16 @@ def _process_exception(tracer: Tracer, start_time, kwargs, e):
     except Exception:
         traced_data = None
 
-    span = tracer.start_span(
-        SPAN_NAME,
+    span = safe_start_span(
+        name=to_wrap.get("span_name") or SPAN_NAME,
         kind=SpanKind.CLIENT,
         start_time=(start_time if traced_data is None else int(traced_data.start_time)),
         context=get_current_context(),
+        span_type="LLM",
     )
+    if span is None:
+        return
+    stamp_instrumentation_scope(span, to_wrap)
     span.set_attribute(ERROR_TYPE, e.__class__.__name__)
     span.record_exception(e, attributes=get_event_attributes_from_context())
     span.set_status(StatusCode.ERROR, str(e))
@@ -809,7 +832,7 @@ def _build_traced_data(start_time, parsed_response, kwargs) -> Optional[TracedDa
 
 
 @dont_throw
-def _process_response(tracer: Tracer, start_time, response, kwargs):
+def _process_response(to_wrap: WrappedFunctionSpec, start_time, response, kwargs):
     parsed_response = parse_response(response)
 
     response_id = getattr(parsed_response, "id", None)
@@ -821,21 +844,25 @@ def _process_response(tracer: Tracer, start_time, response, kwargs):
         return response
 
     if parsed_response.status == "completed":
-        span = tracer.start_span(
-            SPAN_NAME,
+        span = safe_start_span(
+            name=to_wrap.get("span_name") or SPAN_NAME,
             kind=SpanKind.CLIENT,
             start_time=int(traced_data.start_time),
             context=get_current_context(),
+            span_type="LLM",
         )
-        set_data_attributes(traced_data, span)
-        span.end()
+        if span is not None:
+            stamp_instrumentation_scope(span, to_wrap)
+            set_data_attributes(traced_data, span)
+            span.end()
 
     return response
 
 
 @dont_throw
-@with_tracer_only_wrapper
-def responses_cancel_wrapper(tracer: Tracer, wrapped, instance, args, kwargs):
+def responses_cancel_wrapper(
+    to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs
+):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
@@ -853,26 +880,27 @@ def responses_cancel_wrapper(tracer: Tracer, wrapped, instance, args, kwargs):
         return response
     existing_data = responses.pop(response_id, None)
     if existing_data is not None:
-        span = tracer.start_span(
-            SPAN_NAME,
+        span = safe_start_span(
+            name=to_wrap.get("span_name") or SPAN_NAME,
             kind=SpanKind.CLIENT,
             start_time=int(existing_data.start_time),
-            record_exception=True,
             context=get_current_context(),
+            span_type="LLM",
         )
-        span.record_exception(
-            Exception("Response cancelled"),
-            attributes=get_event_attributes_from_context(),
-        )
-        set_data_attributes(existing_data, span)
-        span.end()
+        if span is not None:
+            stamp_instrumentation_scope(span, to_wrap)
+            span.record_exception(
+                Exception("Response cancelled"),
+                attributes=get_event_attributes_from_context(),
+            )
+            set_data_attributes(existing_data, span)
+            span.end()
     return response
 
 
 @dont_throw
-@with_tracer_only_wrapper
 async def async_responses_cancel_wrapper(
-    tracer: Tracer, wrapped, instance, args, kwargs
+    to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs
 ):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
@@ -891,19 +919,21 @@ async def async_responses_cancel_wrapper(
         return response
     existing_data = responses.pop(response_id, None)
     if existing_data is not None:
-        span = tracer.start_span(
-            SPAN_NAME,
+        span = safe_start_span(
+            name=to_wrap.get("span_name") or SPAN_NAME,
             kind=SpanKind.CLIENT,
             start_time=int(existing_data.start_time),
-            record_exception=True,
             context=get_current_context(),
+            span_type="LLM",
         )
-        span.record_exception(
-            Exception("Response cancelled"),
-            attributes=get_event_attributes_from_context(),
-        )
-        set_data_attributes(existing_data, span)
-        span.end()
+        if span is not None:
+            stamp_instrumentation_scope(span, to_wrap)
+            span.record_exception(
+                Exception("Response cancelled"),
+                attributes=get_event_attributes_from_context(),
+            )
+            set_data_attributes(existing_data, span)
+            span.end()
     return response
 
 

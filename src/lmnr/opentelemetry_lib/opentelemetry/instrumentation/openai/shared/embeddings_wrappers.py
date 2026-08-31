@@ -17,10 +17,16 @@ from ..utils import (
     is_openai_v1,
     should_send_prompts,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    WrappedFunctionSpec,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     safe_start_span,
 )
-from lmnr.sdk.utils import json_dumps, with_tracer_only_wrapper
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    stamp_instrumentation_scope,
+)
+from lmnr.sdk.utils import json_dumps
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.trace import Status, StatusCode
@@ -29,9 +35,8 @@ SPAN_NAME = "openai.embeddings"
 logger = logging.getLogger(__name__)
 
 
-@with_tracer_only_wrapper
 def embeddings_wrapper(
-    tracer,
+    to_wrap: WrappedFunctionSpec,
     wrapped,
     instance,
     args,
@@ -41,13 +46,14 @@ def embeddings_wrapper(
         return wrapped(*args, **kwargs)
 
     span = safe_start_span(
-        name=SPAN_NAME,
+        name=to_wrap.get("span_name") or SPAN_NAME,
         attributes={"gen_ai.system": "openai"},
         span_type="LLM",
     )
     if span is None:
         return wrapped(*args, **kwargs)
 
+    stamp_instrumentation_scope(span, to_wrap)
     _handle_request(span, kwargs, instance)
 
     try:
@@ -66,9 +72,8 @@ def embeddings_wrapper(
         span.end()
 
 
-@with_tracer_only_wrapper
 async def aembeddings_wrapper(
-    tracer,
+    to_wrap: WrappedFunctionSpec,
     wrapped,
     instance,
     args,
@@ -78,13 +83,14 @@ async def aembeddings_wrapper(
         return await wrapped(*args, **kwargs)
 
     span = safe_start_span(
-        name=SPAN_NAME,
+        name=to_wrap.get("span_name") or SPAN_NAME,
         attributes={"gen_ai.system": "openai"},
         span_type="LLM",
     )
     if span is None:
         return await wrapped(*args, **kwargs)
 
+    stamp_instrumentation_scope(span, to_wrap)
     _handle_request(span, kwargs, instance)
 
     try:

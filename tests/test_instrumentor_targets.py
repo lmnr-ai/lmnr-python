@@ -14,6 +14,7 @@ import importlib
 import sys
 
 import pytest
+from wrapt import ObjectProxy
 
 # (instrumentor import path, class name, {(module, "Object.method" | "func"), ...})
 #
@@ -59,6 +60,82 @@ INSTRUMENTOR_TARGETS: dict[str, tuple[str, str, set[tuple[str, str]]]] = {
             ("claude_agent_sdk", "create_sdk_mcp_server"),
         },
     ),
+    "groq": (
+        "lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq",
+        "GroqInstrumentor",
+        {
+            ("groq.resources.chat.completions", "Completions.create"),
+            ("groq.resources.chat.completions", "AsyncCompletions.create"),
+        },
+    ),
+    "anthropic": (
+        "lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic",
+        "AnthropicInstrumentor",
+        {
+            ("anthropic.resources.completions", "Completions.create"),
+            ("anthropic.resources.completions", "AsyncCompletions.create"),
+            ("anthropic.resources.messages", "Messages.create"),
+            ("anthropic.resources.messages", "Messages.parse"),
+            ("anthropic.resources.messages", "Messages.stream"),
+            ("anthropic.resources.messages", "AsyncMessages.create"),
+            ("anthropic.resources.messages", "AsyncMessages.parse"),
+            ("anthropic.resources.messages", "AsyncMessages.stream"),
+            ("anthropic.resources.beta.messages.messages", "Messages.create"),
+            ("anthropic.resources.beta.messages.messages", "Messages.parse"),
+            ("anthropic.resources.beta.messages.messages", "Messages.stream"),
+            ("anthropic.resources.beta.messages.messages", "AsyncMessages.create"),
+            ("anthropic.resources.beta.messages.messages", "AsyncMessages.parse"),
+            ("anthropic.resources.beta.messages.messages", "AsyncMessages.stream"),
+            ("anthropic.lib.bedrock._beta_messages", "Messages.create"),
+            ("anthropic.lib.bedrock._beta_messages", "Messages.stream"),
+            ("anthropic.lib.bedrock._beta_messages", "AsyncMessages.create"),
+            ("anthropic.lib.bedrock._beta_messages", "AsyncMessages.stream"),
+        },
+    ),
+    "google_genai": (
+        "lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai",
+        "GoogleGenAiSdkInstrumentor",
+        {
+            ("google.genai.models", "Models.generate_content"),
+            ("google.genai.models", "Models.generate_content_stream"),
+            ("google.genai.models", "AsyncModels.generate_content"),
+            ("google.genai.models", "AsyncModels.generate_content_stream"),
+        },
+    ),
+    # Driven through the version-gate dispatcher rather than `OpenAIV1Instrumentor`
+    # directly, because that is what actually gets instrumented in production and
+    # what the conftest session fixture flipped on.
+    #
+    # `openai.resources.images.Images.generate` is deliberately absent: it appears
+    # only in the pre-migration `_uninstrument` list, never in `_instrument` — an
+    # orphan unwrap of something nothing ever wrapped.
+    "openai": (
+        "lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai",
+        "OpenAIInstrumentor",
+        {
+            ("openai.resources.chat.completions", "Completions.create"),
+            ("openai.resources.chat.completions", "AsyncCompletions.create"),
+            ("openai.resources.chat.completions", "Completions.parse"),
+            ("openai.resources.chat.completions", "AsyncCompletions.parse"),
+            ("openai.resources.completions", "Completions.create"),
+            ("openai.resources.completions", "AsyncCompletions.create"),
+            ("openai.resources.embeddings", "Embeddings.create"),
+            ("openai.resources.embeddings", "AsyncEmbeddings.create"),
+            ("openai.resources.beta.assistants", "Assistants.create"),
+            ("openai.resources.beta.chat.completions", "Completions.parse"),
+            ("openai.resources.beta.chat.completions", "AsyncCompletions.parse"),
+            ("openai.resources.beta.threads.runs", "Runs.create"),
+            ("openai.resources.beta.threads.runs", "Runs.retrieve"),
+            ("openai.resources.beta.threads.runs", "Runs.create_and_stream"),
+            ("openai.resources.beta.threads.messages", "Messages.list"),
+            ("openai.resources.responses", "Responses.create"),
+            ("openai.resources.responses", "Responses.retrieve"),
+            ("openai.resources.responses", "Responses.cancel"),
+            ("openai.resources.responses", "AsyncResponses.create"),
+            ("openai.resources.responses", "AsyncResponses.retrieve"),
+            ("openai.resources.responses", "AsyncResponses.cancel"),
+        },
+    ),
     # NOTE: skyvern is deliberately absent. It is also migrated, but its
     # instrumentor module hard-imports `skyvern` at module level, and skyvern
     # requires Python 3.11+ while this SDK supports 3.10 — so it cannot be a dev
@@ -77,23 +154,39 @@ def _resolve(module_name: str, target: str):
 
 
 def _is_wrapped(module_name: str, target: str) -> bool:
+    """True when *we* wrapped the target, i.e. it is a wrapt proxy.
+
+    Deliberately not `hasattr(..., "__wrapped__")`: `functools.wraps` sets that
+    too, and the anthropic/openai/groq SDKs decorate their own generated
+    `create` methods with `@required_args`, which uses `functools.wraps`. Those
+    targets therefore look "wrapped" straight out of the box, so the weaker
+    probe reports an uninstrumented method as still-instrumented. Every
+    instrumentor here wraps through wrapt, which produces an `ObjectProxy`.
+    """
     holder, attr = _resolve(module_name, target)
-    return hasattr(getattr(holder, attr), "__wrapped__")
+    return isinstance(getattr(holder, attr), ObjectProxy)
 
 
 def _reachable(targets: set[tuple[str, str]]) -> set[tuple[str, str]]:
     """Drop targets whose module cannot be imported in this environment.
 
-    Every `_instrument` here swallows ModuleNotFoundError per wrap, so an
-    unreachable target is legitimately left unwrapped rather than being a
-    failure. Asserting on them anyway would make the suite depend on the target
-    library's own optional extras.
+    Every `_instrument` here swallows ModuleNotFoundError / AttributeError per
+    wrap, so an unreachable target is legitimately left unwrapped rather than
+    being a failure. Asserting on them anyway would make the suite depend on the
+    target library's own optional extras.
+
+    The final attribute is checked too, not just the holder path: some methods
+    exist on one resource class and not its sibling — e.g.
+    `anthropic.lib.bedrock._beta_messages.Messages` has no `stream` or `parse`
+    even though the regular and beta `Messages` do.
     """
     ok = set()
     for module_name, target in targets:
         try:
-            _resolve(module_name, target)
+            holder, attr = _resolve(module_name, target)
         except (ImportError, AttributeError):
+            continue
+        if not hasattr(holder, attr):
             continue
         ok.add((module_name, target))
     return ok
