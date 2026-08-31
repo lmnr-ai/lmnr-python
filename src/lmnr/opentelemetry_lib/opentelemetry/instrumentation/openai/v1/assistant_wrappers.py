@@ -2,7 +2,6 @@ import logging
 import time
 
 from opentelemetry import context as context_api
-from opentelemetry.trace import Span, Tracer
 from ..shared import (
     set_span_attribute,
     model_as_dict,
@@ -11,10 +10,17 @@ from ..utils import (
     dont_throw,
 )
 from lmnr.opentelemetry_lib.tracing.context import (
-    get_current_context,
     get_event_attributes_from_context,
 )
-from lmnr.sdk.utils import with_tracer_only_wrapper
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    WrappedFunctionSpec,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    safe_start_span,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    stamp_instrumentation_scope,
+)
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
@@ -34,31 +40,7 @@ assistants = {}
 runs = {}
 
 
-# We are not reusing the safe_start_span from shared utils because we need to pass the
-# start_time parameter, which we don't want to expose on Laminar.start_span.
-# Assistants API is deprecated anyway, so it's not risky to leave old `tracer` path here.
-def _safe_start_span(
-    tracer: Tracer,
-    name: str,
-    start_time: int | None = None,
-) -> Span | None:
-    try:
-        return tracer.start_span(
-            name,
-            start_time=start_time,
-            context=get_current_context(),
-            attributes={
-                "gen_ai.system": "openai",
-                "lmnr.span.type": "LLM",
-            },
-        )
-    except Exception:
-        logger.debug(f"[openai assistants] Failed to start span: {name}", exc_info=True)
-        return None
-
-
-@with_tracer_only_wrapper
-def assistants_create_wrapper(tracer, wrapped, instance, args, kwargs):
+def assistants_create_wrapper(to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
@@ -72,8 +54,7 @@ def assistants_create_wrapper(tracer, wrapped, instance, args, kwargs):
     return response
 
 
-@with_tracer_only_wrapper
-def runs_create_wrapper(tracer, wrapped, instance, args, kwargs):
+def runs_create_wrapper(to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
@@ -100,8 +81,7 @@ def runs_create_wrapper(tracer, wrapped, instance, args, kwargs):
         raise
 
 
-@with_tracer_only_wrapper
-def runs_retrieve_wrapper(tracer, wrapped, instance, args, kwargs):
+def runs_retrieve_wrapper(to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs):
     @dont_throw
     def process_response(response):
         if type(response) is LegacyAPIResponse:
@@ -131,8 +111,7 @@ def runs_retrieve_wrapper(tracer, wrapped, instance, args, kwargs):
         raise
 
 
-@with_tracer_only_wrapper
-def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
+def messages_list_wrapper(to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
@@ -149,13 +128,16 @@ def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
         response_dict.get("data", []), key=lambda x: x.get("created_at", 0)
     )
 
-    span = _safe_start_span(
-        tracer,
-        "openai.assistant.run",
+    span = safe_start_span(
+        name=to_wrap.get("span_name") or "openai.assistant.run",
+        attributes={"gen_ai.system": "openai"},
+        span_type="LLM",
         start_time=run.get("start_time"),
     )
     if span is None:
         return response
+
+    stamp_instrumentation_scope(span, to_wrap)
 
     if exception := run.get("exception"):
         span.set_attribute(ERROR_TYPE, exception.__class__.__name__)
@@ -243,20 +225,22 @@ def messages_list_wrapper(tracer, wrapped, instance, args, kwargs):
     return response
 
 
-@with_tracer_only_wrapper
-def runs_create_and_stream_wrapper(tracer, wrapped, instance, args, kwargs):
+def runs_create_and_stream_wrapper(to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
     assistant_id = kwargs.get("assistant_id")
     instructions = kwargs.get("instructions")
 
-    span = _safe_start_span(
-        tracer,
-        "openai.assistant.run_stream",
+    span = safe_start_span(
+        name=to_wrap.get("span_name") or "openai.assistant.run_stream",
+        attributes={"gen_ai.system": "openai"},
+        span_type="LLM",
     )
     if span is None:
         return wrapped(*args, **kwargs)
+
+    stamp_instrumentation_scope(span, to_wrap)
 
     i = 0
     if assistants.get(assistant_id) is not None:

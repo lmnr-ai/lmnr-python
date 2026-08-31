@@ -1,7 +1,8 @@
 """OpenTelemetry Groq instrumentation"""
 
 import logging
-from typing import Collection
+from importlib.metadata import version
+from typing import Any, Collection, Sequence
 
 from opentelemetry import context as context_api
 from .config import Config
@@ -13,42 +14,30 @@ from .span_utils import (
     set_response_attributes,
     set_streaming_response_attributes,
 )
-from .version import __version__
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
+    BaseLaminarInstrumentor,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WrappedFunctionSpec,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     safe_start_span,
 )
-from lmnr.sdk.utils import with_tracer_wrapper
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
-from opentelemetry.trace import Tracer, get_tracer
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    stamp_instrumentation_scope,
+)
+from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.trace.status import Status, StatusCode
-from wrapt import wrap_function_wrapper
 
 from groq._streaming import AsyncStream, Stream
 
 logger = logging.getLogger(__name__)
 
 _instruments = ("groq >= 0.9.0",)
-
-
-WRAPPED_METHODS = [
-    {
-        "package": "groq.resources.chat.completions",
-        "object": "Completions",
-        "method": "create",
-        "span_name": "groq.chat",
-    },
-]
-WRAPPED_AMETHODS = [
-    {
-        "package": "groq.resources.chat.completions",
-        "object": "AsyncCompletions",
-        "method": "create",
-        "span_name": "groq.chat",
-    },
-]
 
 
 def is_streaming_response(response):
@@ -153,20 +142,18 @@ def _handle_response(span, response):
     set_response_attributes(span, response)
 
 
-@with_tracer_wrapper
 def _wrap(
-    tracer: Tracer,
-    to_wrap,
+    to_wrap: WrappedFunctionSpec,
     wrapped,
-    instance,
-    args,
-    kwargs,
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ):
-    """Instruments and calls every function defined in TO_WRAP."""
+    """Instruments and calls every function defined in WRAPPED_FUNCTIONS."""
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
-    name = to_wrap.get("span_name")
+    name = to_wrap.get("span_name") or "groq.chat"
     span = safe_start_span(
         name=name, attributes={"gen_ai.system": "groq"}, span_type="LLM"
     )
@@ -174,6 +161,7 @@ def _wrap(
         logger.warning("Failed to start span for groq chat")
         return wrapped(*args, **kwargs)
 
+    stamp_instrumentation_scope(span, to_wrap)
     _handle_input(span, kwargs)
 
     try:
@@ -208,20 +196,18 @@ def _wrap(
     return response
 
 
-@with_tracer_wrapper
 async def _awrap(
-    tracer,
-    to_wrap,
+    to_wrap: WrappedFunctionSpec,
     wrapped,
-    instance,
-    args,
-    kwargs,
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ):
-    """Instruments and calls every function defined in TO_WRAP."""
+    """Instruments and calls every function defined in WRAPPED_FUNCTIONS."""
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
-    name = to_wrap.get("span_name")
+    name = to_wrap.get("span_name") or "groq.chat"
     span = safe_start_span(
         name=name, attributes={"gen_ai.system": "groq"}, span_type="LLM"
     )
@@ -229,6 +215,7 @@ async def _awrap(
         logger.warning("Failed to start span for groq chat")
         return await wrapped(*args, **kwargs)
 
+    stamp_instrumentation_scope(span, to_wrap)
     _handle_input(span, kwargs)
 
     try:
@@ -256,8 +243,30 @@ async def _awrap(
     return response
 
 
-class GroqInstrumentor(BaseInstrumentor):
+WRAPPED_FUNCTIONS: list[WrappedFunctionSpec] = [
+    WrappedFunctionSpec(
+        package_name="groq.resources.chat.completions",
+        object_name="Completions",
+        method_name="create",
+        span_name="groq.chat",
+        is_async=False,
+        wrapper_function=_wrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="groq.resources.chat.completions",
+        object_name="AsyncCompletions",
+        method_name="create",
+        span_name="groq.chat",
+        is_async=True,
+        wrapper_function=_awrap,
+    ),
+]
+
+
+class GroqInstrumentor(BaseLaminarInstrumentor):
     """An instrumentor for Groq's client library."""
+
+    _scope: LaminarInstrumentationScopeAttributes | None = None
 
     def __init__(
         self,
@@ -267,59 +276,25 @@ class GroqInstrumentor(BaseInstrumentor):
         super().__init__()
         Config.enrich_token_usage = enrich_token_usage
         Config.use_legacy_attributes = use_legacy_attributes
+        self.instrumentor_config = LaminarInstrumentorConfig(
+            wrapped_functions=[
+                {**spec, "instrumentation_scope": self.instrumentation_scope()}
+                for spec in WRAPPED_FUNCTIONS
+            ]
+        )
 
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
-    def _instrument(self, **kwargs):
-        tracer_provider = kwargs.get("tracer_provider")
-        tracer = get_tracer(__name__, __version__, tracer_provider)
-
-        for wrapped_method in WRAPPED_METHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            wrap_method = wrapped_method.get("method")
-
+    def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
+        if self._scope is None:
             try:
-                wrap_function_wrapper(
-                    wrap_package,
-                    f"{wrap_object}.{wrap_method}",
-                    _wrap(
-                        tracer,
-                        wrapped_method,
-                    ),
-                )
-            except ModuleNotFoundError:
-                pass  # that's ok, we don't want to fail if some methods do not exist
-
-        for wrapped_method in WRAPPED_AMETHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            wrap_method = wrapped_method.get("method")
-            try:
-                wrap_function_wrapper(
-                    wrap_package,
-                    f"{wrap_object}.{wrap_method}",
-                    _awrap(
-                        tracer,
-                        wrapped_method,
-                    ),
-                )
-            except ModuleNotFoundError:
-                pass  # that's ok, we don't want to fail if some methods do not exist
-
-    def _uninstrument(self, **kwargs):
-        for wrapped_method in WRAPPED_METHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            unwrap(
-                f"{wrap_package}.{wrap_object}",
-                wrapped_method.get("method"),
+                groq_version = version("groq")
+            except Exception as e:
+                logger.debug(f"Failed to get groq version {e}")
+                groq_version = "unknown"
+            self._scope = LaminarInstrumentationScopeAttributes(
+                name="groq",
+                version=groq_version,
             )
-        for wrapped_method in WRAPPED_AMETHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            unwrap(
-                f"{wrap_package}.{wrap_object}",
-                wrapped_method.get("method"),
-            )
+        return self._scope

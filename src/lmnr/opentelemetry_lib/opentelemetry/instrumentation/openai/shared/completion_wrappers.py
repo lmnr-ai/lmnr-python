@@ -20,12 +20,18 @@ from ..utils import (
     is_openai_v1,
     should_send_prompts,
 )
-from lmnr.sdk.utils import json_dumps, with_tracer_only_wrapper
+from lmnr.sdk.utils import json_dumps
 from lmnr.opentelemetry_lib.tracing.context import (
     get_event_attributes_from_context,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    WrappedFunctionSpec,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     safe_start_span,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    stamp_instrumentation_scope,
 )
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
@@ -36,18 +42,20 @@ SPAN_NAME = "openai.completion"
 logger = logging.getLogger(__name__)
 
 
-@with_tracer_only_wrapper
-def completion_wrapper(tracer, wrapped, instance, args, kwargs):
+def completion_wrapper(to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
     # span needs to be opened and closed manually because the response is a generator
     span = safe_start_span(
-        name=SPAN_NAME, attributes={"gen_ai.system": "openai"}, span_type="LLM"
+        name=to_wrap.get("span_name") or SPAN_NAME,
+        attributes={"gen_ai.system": "openai"},
+        span_type="LLM",
     )
     if span is None:
         return wrapped(*args, **kwargs)
 
+    stamp_instrumentation_scope(span, to_wrap)
     _handle_request(span, kwargs, instance)
 
     try:
@@ -70,17 +78,21 @@ def completion_wrapper(tracer, wrapped, instance, args, kwargs):
     return response
 
 
-@with_tracer_only_wrapper
-async def acompletion_wrapper(tracer, wrapped, instance, args, kwargs):
+async def acompletion_wrapper(
+    to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs
+):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
     span = safe_start_span(
-        name=SPAN_NAME, attributes={"gen_ai.system": "openai"}, span_type="LLM"
+        name=to_wrap.get("span_name") or SPAN_NAME,
+        attributes={"gen_ai.system": "openai"},
+        span_type="LLM",
     )
     if span is None:
         return await wrapped(*args, **kwargs)
 
+    stamp_instrumentation_scope(span, to_wrap)
     _handle_request(span, kwargs, instance)
 
     try:
