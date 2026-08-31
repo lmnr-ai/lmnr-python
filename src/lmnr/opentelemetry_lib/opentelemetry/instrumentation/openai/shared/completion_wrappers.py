@@ -16,12 +16,11 @@ from ..shared import (
 )
 from ..shared.config import Config
 from ..utils import (
-    with_tracer_wrapper,
     dont_throw,
     is_openai_v1,
     should_send_prompts,
 )
-from lmnr.sdk.utils import json_dumps
+from lmnr.sdk.utils import json_dumps, with_tracer_only_wrapper
 from lmnr.opentelemetry_lib.tracing.context import (
     get_event_attributes_from_context,
 )
@@ -37,7 +36,7 @@ SPAN_NAME = "openai.completion"
 logger = logging.getLogger(__name__)
 
 
-@with_tracer_wrapper
+@with_tracer_only_wrapper
 def completion_wrapper(tracer, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
@@ -71,7 +70,7 @@ def completion_wrapper(tracer, wrapped, instance, args, kwargs):
     return response
 
 
-@with_tracer_wrapper
+@with_tracer_only_wrapper
 async def acompletion_wrapper(tracer, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)

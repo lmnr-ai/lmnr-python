@@ -1,4 +1,5 @@
 import sys
+from typing import TypedDict, cast
 
 import httpx
 from packaging import version
@@ -6,6 +7,14 @@ from packaging import version
 __version__ = "0.7.62"
 PYTHON_VERSION = f"{sys.version_info.major}.{sys.version_info.minor}"
 
+class ReleaseInfo(TypedDict):
+    yanked: bool
+    # other fields
+
+class PyPIJSONAPIResponse(TypedDict):
+    last_serial: int
+    releases: dict[str, list[ReleaseInfo]]
+    # other fields
 
 def is_latest_version() -> bool:
     try:
@@ -21,12 +30,12 @@ def get_latest_pypi_version() -> str:
     """
     try:
         response = httpx.get("https://pypi.org/pypi/lmnr/json")
-        response.raise_for_status()
+        response = response.raise_for_status()
 
-        releases = response.json()["releases"]
+        releases: dict[str, list[ReleaseInfo]] = cast(PyPIJSONAPIResponse, response.json())["releases"]
         stable_versions = [
             ver
-            for ver in releases.keys()
+            for ver in releases
             if not version.parse(ver).is_prerelease
             and not version.parse(ver).is_devrelease
             and not any(release.get("yanked", False) for release in releases[ver])

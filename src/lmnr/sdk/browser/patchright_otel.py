@@ -148,4 +148,8 @@ class PatchrightInstrumentor(BaseInstrumentor):
             wrap_package = wrapped_method.get("package")
             wrap_object = wrapped_method.get("object")
             wrap_method = wrapped_method.get("method")
-            unwrap(wrap_package, f"{wrap_object}.{wrap_method}")
+            # `unwrap` takes (holder, "attr"), not wrapt's
+            # (module, "Object.method") split used in `_instrument`. The
+            # wrapt split makes it getattr an attribute literally named
+            # "Object.method", find nothing, and silently no-op.
+            unwrap(f"{wrap_package}.{wrap_object}", wrap_method)

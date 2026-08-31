@@ -59,7 +59,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
     get_current_context,
     get_event_attributes_from_context,
 )
-from lmnr.sdk.utils import json_dumps
+from lmnr.sdk.utils import json_dumps, with_tracer_only_wrapper
 from openai._legacy_response import LegacyAPIResponse
 
 from ..shared import (
@@ -69,7 +69,6 @@ from ..shared import (
 from ..utils import (
     dont_throw,
     should_send_prompts,
-    with_tracer_wrapper,
 )
 
 SPAN_NAME = "openai.response"
@@ -520,8 +519,10 @@ def set_data_attributes(traced_response: TracedData, span: Span):
 
 
 @dont_throw
-@with_tracer_wrapper
-def responses_get_or_create_wrapper(tracer: Tracer, wrapped, instance, args, kwargs):
+@with_tracer_only_wrapper
+def responses_get_or_create_wrapper(
+    tracer: Tracer, wrapped, instance, args, kwargs
+):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
     if context_api.get_value(
@@ -546,7 +547,7 @@ def responses_get_or_create_wrapper(tracer: Tracer, wrapped, instance, args, kwa
 
 
 @dont_throw
-@with_tracer_wrapper
+@with_tracer_only_wrapper
 async def async_responses_get_or_create_wrapper(
     tracer: Tracer, wrapped, instance, args, kwargs
 ):
@@ -833,7 +834,7 @@ def _process_response(tracer: Tracer, start_time, response, kwargs):
 
 
 @dont_throw
-@with_tracer_wrapper
+@with_tracer_only_wrapper
 def responses_cancel_wrapper(tracer: Tracer, wrapped, instance, args, kwargs):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
@@ -869,7 +870,7 @@ def responses_cancel_wrapper(tracer: Tracer, wrapped, instance, args, kwargs):
 
 
 @dont_throw
-@with_tracer_wrapper
+@with_tracer_only_wrapper
 async def async_responses_cancel_wrapper(
     tracer: Tracer, wrapped, instance, args, kwargs
 ):

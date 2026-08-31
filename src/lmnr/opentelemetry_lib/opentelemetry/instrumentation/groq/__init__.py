@@ -19,6 +19,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     safe_start_span,
 )
+from lmnr.sdk.utils import with_tracer_wrapper
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
 from opentelemetry.trace import Tracer, get_tracer
@@ -52,28 +53,6 @@ WRAPPED_AMETHODS = [
 
 def is_streaming_response(response):
     return isinstance(response, Stream) or isinstance(response, AsyncStream)
-
-
-def _with_chat_telemetry_wrapper(func):
-    """Helper for providing tracer for wrapper functions. Includes metric collectors."""
-
-    def _with_chat_telemetry(
-        tracer,
-        to_wrap,
-    ):
-        def wrapper(wrapped, instance, args, kwargs):
-            return func(
-                tracer,
-                to_wrap,
-                wrapped,
-                instance,
-                args,
-                kwargs,
-            )
-
-        return wrapper
-
-    return _with_chat_telemetry
 
 
 def _process_streaming_chunk(chunk):
@@ -174,7 +153,7 @@ def _handle_response(span, response):
     set_response_attributes(span, response)
 
 
-@_with_chat_telemetry_wrapper
+@with_tracer_wrapper
 def _wrap(
     tracer: Tracer,
     to_wrap,
@@ -229,7 +208,7 @@ def _wrap(
     return response
 
 
-@_with_chat_telemetry_wrapper
+@with_tracer_wrapper
 async def _awrap(
     tracer,
     to_wrap,

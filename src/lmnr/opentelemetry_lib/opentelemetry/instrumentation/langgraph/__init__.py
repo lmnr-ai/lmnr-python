@@ -4,10 +4,6 @@ import json
 import logging
 from typing import Collection
 
-from .utils import (
-    with_tracer_wrapper,
-)
-
 from langchain_core.runnables.graph import Graph
 from opentelemetry.trace import Tracer
 from wrapt import wrap_function_wrapper
@@ -16,6 +12,8 @@ from opentelemetry.context import get_value, attach, set_value
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
+
+from lmnr.sdk.utils import with_tracer_wrapper
 
 
 logger = logging.getLogger(__name__)
@@ -111,11 +109,9 @@ class LanggraphInstrumentor(BaseInstrumentor):
         )
 
     def _uninstrument(self, **kwargs):
-        unwrap(
-            "langgraph.pregel",
-            "Pregel.stream",
-        )
-        unwrap(
-            "langgraph.pregel",
-            "Pregel.astream",
-        )
+        # `unwrap` takes (holder, "attr") — NOT wrapt's (module, "Object.method")
+        # split used in `_instrument`. With the wrapt split it looks for an
+        # attribute literally named "Pregel.stream", finds nothing, and returns
+        # silently, leaving both methods wrapped forever.
+        unwrap("langgraph.pregel.Pregel", "stream")
+        unwrap("langgraph.pregel.Pregel", "astream")

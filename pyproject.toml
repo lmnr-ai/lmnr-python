@@ -119,6 +119,7 @@ all = [
 dev = [
   "anthropic[bedrock]==0.95.0",
   "autopep8==2.3.2",
+  "basedpyright>=1.39.10",
   "claude-agent-sdk==0.2.128",
   "flake8==7.3.0",
   "google-adk==2.7.1",

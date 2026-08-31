@@ -1,15 +1,22 @@
 from typing import Any, Callable, Sequence
 
-from .types import WrappedFunctionSpec
+from opentelemetry.trace import Span
+
+from .types import (
+    LaminarInstrumentationScopeAttributes,
+    SpecT,
+    WrappedFunctionSpec,
+    WraptWrapper,
+    WrapperHandler,
+)
+from .utils import set_span_attribute
 
 
 def add_spec_wrapper(
-    wrapt_handler: Callable[
-        [WrappedFunctionSpec, Callable, Any, Sequence[Any], dict[str, Any]], Any
-    ],
-    wrapped_spec: WrappedFunctionSpec,
-    **handler_kwargs,
-) -> Callable[[Callable, Any, Sequence[Any], dict[str, Any]], Any]:
+    wrapt_handler: WrapperHandler[SpecT],
+    wrapped_spec: SpecT,
+    **handler_kwargs: Any,
+) -> WraptWrapper:
     """Creates a wrapt-compatible wrapper function.
 
     This may be difficult to reason about because we wrap a wrapper. In simplest
@@ -18,7 +25,7 @@ def add_spec_wrapper(
 
     Example usage:
     ```python
-    # This functions signature expects a WrappedFunctionSpec as the first argument.
+    # This function's signature expects a WrappedFunctionSpec as the first argument.
     # This is because we need the spec to determine the span name, etc.
 
     def handler(wrapped_spec: WrappedFunctionSpec, wrapped: Callable, instance: Any, args, kwargs):
@@ -38,23 +45,54 @@ def add_spec_wrapper(
     )
     ```
 
+    `handler_kwargs` are forwarded to the handler as keyword arguments on every
+    call. This is how instrumentor-level (rather than per-method) collaborators
+    reach a wrapper — see `BaseLaminarInstrumentor.wrapper_kwargs`.
+
     Args:
-        wrapt_handler (Callable): actual handler that will wrap the function.
+        wrapt_handler (WrapperHandler): actual handler that will wrap the function.
         wrapped_spec (WrappedFunctionSpec): specification of the function to wrap.
 
     Returns:
-        Callable[[Callable, Any, Sequence[Any], dict[str, Any]], Any]: function that
-        can be passed into wrapt.wrap_function_wrapper.
+        WraptWrapper: function that can be passed into wrapt.wrap_function_wrapper.
     """
 
     def wrapper(
-        wrapped: Callable,
+        wrapped: Callable[..., Any],
         instance: Any,
         args: Sequence[Any] | None = None,
         kwargs: dict[str, Any] | None = None,
     ):
+        # wrapt always passes args/kwargs, but the parameters are declared
+        # optional for direct callers; normalize so the handler's signature does
+        # not have to admit None.
         return wrapt_handler(
-            wrapped_spec, wrapped, instance, args, kwargs, **handler_kwargs
+            wrapped_spec, wrapped, instance, args or (), kwargs or {}, **handler_kwargs
         )
 
     return wrapper
+
+
+def stamp_instrumentation_scope(
+    span: Span | None, to_wrap: WrappedFunctionSpec
+) -> None:
+    """Record which instrumentation produced this span.
+
+    Instrumentors on this shape create spans through `Laminar.start_span`, which
+    resolves the single `lmnr.tracer` OTel tracer — so the real OTel
+    InstrumentationScope is the same for all of them and cannot identify the
+    source library. These attributes carry that information instead.
+    """
+    if span is None:
+        return
+    scope: LaminarInstrumentationScopeAttributes | None = to_wrap.get(
+        "instrumentation_scope"
+    )
+    if not scope:
+        return
+    set_span_attribute(
+        span, "lmnr.span.instrumentation_scope.name", scope.get("name")
+    )
+    set_span_attribute(
+        span, "lmnr.span.instrumentation_scope.version", scope.get("version")
+    )
