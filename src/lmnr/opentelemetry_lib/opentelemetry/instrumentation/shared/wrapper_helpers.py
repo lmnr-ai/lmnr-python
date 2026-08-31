@@ -73,8 +73,8 @@ def add_spec_wrapper(
     return wrapper
 
 
-def stamp_instrumentation_scope(
-    span: Span | None, to_wrap: WrappedFunctionSpec
+def set_instrumentation_scope_attributes(
+    span: Span | None, scope: LaminarInstrumentationScopeAttributes | None
 ) -> None:
     """Record which instrumentation produced this span.
 
@@ -82,17 +82,30 @@ def stamp_instrumentation_scope(
     resolves the single `lmnr.tracer` OTel tracer — so the real OTel
     InstrumentationScope is the same for all of them and cannot identify the
     source library. These attributes carry that information instead.
+
+    Prefer `stamp_instrumentation_scope`, which reads the scope off the spec.
+    This lower-level entry point exists for the handful of span-creating code
+    paths that are not spec wrappers and so have no `to_wrap` to read (e.g.
+    skyvern's global `LLM_API_HANDLER` swap), which take the scope from their
+    instrumentor directly.
     """
-    if span is None:
-        return
-    scope: LaminarInstrumentationScopeAttributes | None = to_wrap.get(
-        "instrumentation_scope"
-    )
-    if not scope:
+    if span is None or not scope:
         return
     set_span_attribute(
         span, "lmnr.span.instrumentation_scope.name", scope.get("name")
     )
     set_span_attribute(
         span, "lmnr.span.instrumentation_scope.version", scope.get("version")
+    )
+
+
+def stamp_instrumentation_scope(
+    span: Span | None, to_wrap: WrappedFunctionSpec
+) -> None:
+    """Record which instrumentation produced this span, reading the spec.
+
+    See `set_instrumentation_scope_attributes` for why these attributes exist.
+    """
+    set_instrumentation_scope_attributes(
+        span, to_wrap.get("instrumentation_scope")
     )

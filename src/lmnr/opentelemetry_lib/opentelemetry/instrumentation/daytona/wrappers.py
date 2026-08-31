@@ -16,6 +16,9 @@ from lmnr import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    stamp_instrumentation_scope,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     set_span_attribute,
     dont_throw,
@@ -312,6 +315,7 @@ def _wrap(
         tags=(kwargs.get("metadata") or {}).get("tags", []),
         metadata=(kwargs.get("metadata") or {}),
     )
+    stamp_instrumentation_scope(span, to_wrap)
 
     # Extract session_id and request from args/kwargs
     # execute_session_command(session_id, request)
@@ -382,6 +386,7 @@ async def _awrap(
         tags=(kwargs.get("metadata") or {}).get("tags", []),
         metadata=(kwargs.get("metadata") or {}),
     )
+    stamp_instrumentation_scope(span, to_wrap)
 
     # Extract session_id and request from args/kwargs
     # execute_session_command(session_id, request)
@@ -488,6 +493,7 @@ def _wrap_exec(
         tags=(kwargs.get("metadata") or {}).get("tags", []),
         metadata=(kwargs.get("metadata") or {}),
     )
+    stamp_instrumentation_scope(span, to_wrap)
 
     # Extract command and cwd from args/kwargs
     # exec(command, cwd=None, env=None, timeout=None)
@@ -553,6 +559,7 @@ async def _awrap_exec(
         tags=(kwargs.get("metadata") or {}).get("tags", []),
         metadata=(kwargs.get("metadata") or {}),
     )
+    stamp_instrumentation_scope(span, to_wrap)
 
     # Extract command and cwd from args/kwargs
     # exec(command, cwd=None, env=None, timeout=None)

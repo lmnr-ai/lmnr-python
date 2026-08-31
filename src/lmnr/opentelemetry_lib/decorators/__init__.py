@@ -1,7 +1,8 @@
 import asyncio
 import types
+from collections.abc import AsyncGenerator, Callable, Generator
 from functools import wraps
-from typing import Any, AsyncGenerator, Callable, Generator, Literal, TypeVar
+from typing import Any, Literal, TypeVar
 
 from opentelemetry import context as context_api
 from opentelemetry.trace import Span, Status, StatusCode

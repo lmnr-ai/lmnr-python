@@ -220,3 +220,62 @@ def test_wrapper_kwargs_defaults_to_empty_and_reaches_the_wrapper():
         lambda: None, None, (), {}
     )
     assert seen["extra"] == {"client": "sentinel"}
+
+
+# ---------------------------------------------------------------------------
+# Every span-creating instrumentor stamps its scope
+# ---------------------------------------------------------------------------
+
+#: Migrated instrumentors that mint spans of their own. Since they all resolve
+#: the single `lmnr.tracer` OTel tracer, the real OTel InstrumentationScope
+#: cannot identify the source library — `lmnr.span.instrumentation_scope.*` is
+#: the only thing that can, so a package that creates spans without stamping
+#: emits unattributable spans. `langgraph` and `opentelemetry` are deliberately
+#: absent: they create no spans (langgraph only attaches context values,
+#: opentelemetry patches a DataDog `SpanContext` bug).
+_SPAN_CREATING_INSTRUMENTATION_PACKAGES = [
+    "anthropic",
+    "claude_agent",
+    "cua_agent",
+    "cua_computer",
+    "daytona",
+    "google_genai",
+    "groq",
+    "kernel",
+    "litellm",
+    "openai",
+    "skyvern",
+]
+
+
+@pytest.mark.parametrize("package", _SPAN_CREATING_INSTRUMENTATION_PACKAGES)
+def test_span_creating_instrumentors_stamp_their_scope(package):
+    """Source-level guard, because most of these packages need their third-party
+    SDK installed to exercise at runtime. It catches the failure mode that
+    actually happened: a wrapper migrated to the shared contract, receiving the
+    scope on its spec, but never stamping it onto the span it creates."""
+    import pathlib
+
+    import lmnr.opentelemetry_lib.opentelemetry.instrumentation as instrumentation
+
+    # A namespace package (no `__init__.py`), so `__file__` is None.
+    root = pathlib.Path(list(instrumentation.__path__)[0]) / package
+    sources = [p.read_text() for p in root.rglob("*.py")]
+
+    creates_spans = any(
+        marker in src
+        for src in sources
+        for marker in (
+            "safe_start_span(",
+            "Laminar.start_span(",
+            "Laminar.start_active_span(",
+            "Laminar.start_as_current_span(",
+        )
+    )
+    assert creates_spans, f"{package} no longer creates spans; update this list"
+
+    assert any(
+        "stamp_instrumentation_scope(" in src
+        or "set_instrumentation_scope_attributes(" in src
+        for src in sources
+    ), f"{package} creates spans but never stamps lmnr.span.instrumentation_scope.*"

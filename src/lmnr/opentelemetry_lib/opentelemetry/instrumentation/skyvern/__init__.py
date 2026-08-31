@@ -12,6 +12,10 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     LaminarInstrumentorConfig,
     WrappedFunctionSpec,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    set_instrumentation_scope_attributes,
+    stamp_instrumentation_scope,
+)
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import get_input_from_func_args, json_dumps
 
@@ -50,6 +54,7 @@ async def _wrap(
     # instrumentor no longer receives one. The attributes are passed through
     # verbatim so the emitted span is unchanged.
     with Laminar.start_as_current_span(span_name, attributes=attributes) as span:
+        stamp_instrumentation_scope(span, to_wrap)
         try:
             result = await wrapped(*args, **kwargs)
 
@@ -67,7 +72,9 @@ async def _wrap(
             raise
 
 
-def instrument_llm_handler():
+def instrument_llm_handler(
+    scope: LaminarInstrumentationScopeAttributes | None = None,
+):
     """Wrap skyvern's global LLM handler, returning the original for restoration.
 
     Reading `app.LLM_API_HANDLER` raises `RuntimeError` until skyvern's forge app
@@ -93,6 +100,7 @@ def instrument_llm_handler():
         }
 
         with Laminar.start_as_current_span(span_name, attributes=attributes) as span:
+            set_instrumentation_scope_attributes(span, scope)
             try:
                 result = await original_handler(*args, **kwargs)
 
@@ -216,7 +224,9 @@ class SkyvernInstrumentor(BaseLaminarInstrumentor):
         # `_instrument` before any method was wrapped, so a single uninitialized
         # global left ALL seven unwrapped — skyvern tracing silently did nothing.
         try:
-            self._original_llm_handler = instrument_llm_handler()
+            self._original_llm_handler = instrument_llm_handler(
+                self.instrumentation_scope()
+            )
         except Exception as e:
             logger.debug(f"Failed to instrument skyvern LLM_API_HANDLER: {e}")
 
