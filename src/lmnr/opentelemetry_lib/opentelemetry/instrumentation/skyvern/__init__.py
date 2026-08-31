@@ -1,6 +1,9 @@
+from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import with_tracer_wrapper
 from lmnr.sdk.utils import get_input_from_func_args, json_dumps
 from lmnr.version import __version__
+
+logger = get_default_logger(__name__)
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
@@ -100,6 +103,12 @@ async def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
 
 
 def instrument_llm_handler(tracer: Tracer):
+    """Wrap skyvern's global LLM handler, returning the original for restoration.
+
+    Reading `app.LLM_API_HANDLER` raises `RuntimeError` until skyvern's forge app
+    has been started, which is the normal state at `Laminar.initialize()` time —
+    hence the guard at the call site.
+    """
     from skyvern.forge import app
 
     # Store the original handler
@@ -136,11 +145,13 @@ def instrument_llm_handler(tracer: Tracer):
 
     # Replace the global handler
     app.LLM_API_HANDLER = wrapped_llm_handler
+    return original_handler
 
 
 class SkyvernInstrumentor(BaseInstrumentor):
     def __init__(self):
         super().__init__()
+        self._original_llm_handler = None
 
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
@@ -150,7 +161,16 @@ class SkyvernInstrumentor(BaseInstrumentor):
         tracer_provider = kwargs.get("tracer_provider")
         tracer = get_tracer(__name__, __version__, tracer_provider)
 
-        instrument_llm_handler(tracer)
+        # Guarded, and deliberately BEFORE nothing: `app.LLM_API_HANDLER` raises
+        # RuntimeError until skyvern's forge app is started, which is the normal
+        # state during `Laminar.initialize()`. Unguarded, that exception
+        # propagated out of `_instrument` before the loop below ran, so a single
+        # uninitialized global left ALL seven methods unwrapped — i.e. skyvern
+        # tracing silently did nothing.
+        try:
+            self._original_llm_handler = instrument_llm_handler(tracer)
+        except Exception as e:
+            logger.debug(f"Failed to instrument skyvern LLM_API_HANDLER: {e}")
 
         for wrapped_method in WRAPPED_METHODS:
             wrap_package = wrapped_method.get("package")
@@ -177,6 +197,18 @@ class SkyvernInstrumentor(BaseInstrumentor):
 
     def _uninstrument(self, **kwargs):
 
+        # `instrument_llm_handler` swaps a module-level global, which `unwrap`
+        # below cannot undo — without this the handler stayed wrapped forever
+        # and each instrument/uninstrument cycle layered another wrapper on it.
+        if self._original_llm_handler is not None:
+            try:
+                from skyvern.forge import app
+
+                app.LLM_API_HANDLER = self._original_llm_handler
+            except Exception as e:
+                logger.debug(f"Failed to restore skyvern LLM_API_HANDLER: {e}")
+            self._original_llm_handler = None
+
         for wrapped_method in WRAPPED_METHODS:
             wrap_package = wrapped_method.get("package")
             wrap_object = wrapped_method.get("object")
@@ -188,4 +220,13 @@ class SkyvernInstrumentor(BaseInstrumentor):
             else:
                 module_path = wrap_package
 
-            unwrap(module_path, wrap_method)
+            try:
+                unwrap(module_path, wrap_method)
+            except (ImportError, AttributeError, ModuleNotFoundError) as e:
+                # Mirrors the per-wrap tolerance in `_instrument`. Several of
+                # these targets live behind skyvern's own optional extras (the
+                # scraper needs PIL, task_v2_service needs sqlalchemy), and
+                # `unwrap` RAISES ImportError when it cannot resolve the holder
+                # — so without this an install missing any one of them made
+                # `uninstrument()` blow up rather than skip that target.
+                logger.debug(f"Failed to uninstrument {module_path}.{wrap_method}: {e}")
