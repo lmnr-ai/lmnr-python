@@ -9,17 +9,18 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from lmnr import Laminar
 from lmnr.sdk.evaluations import evaluate
 from lmnr.sdk.evaluations.utils import get_average_scores
-from lmnr.sdk.types import Datapoint, EvaluationResultDatapoint, HumanEvaluator
+from lmnr.sdk.evaluations.models import EvaluationResultDatapoint, HumanEvaluator
+from lmnr.sdk.types import Datapoint
 
 
 # Fixtures for common mock objects
 @pytest.fixture
 def mock_eval_response():
     """Create a mock evaluation response."""
-    response = MagicMock()
-    response.id = "00000000-0000-0000-0000-000000000000"
-    response.projectId = "mock-project-id"
-    return response
+    return {
+        "id": "00000000-0000-0000-0000-000000000000",
+        "projectId": "mock-project-id",
+    }
 
 
 @pytest.fixture
@@ -31,25 +32,23 @@ def mock_datapoints_response():
 @pytest.fixture
 def mock_dataset_push_response():
     """Create a mock dataset push response."""
-    response = MagicMock()
-    response.dataset_id = "00000000-0000-0000-0000-000000000001"
-    return response
+    return {"dataset_id": "00000000-0000-0000-0000-000000000001"}
 
 
 @pytest.fixture
 def mock_dataset_pull_response():
     """Create a mock dataset pull response."""
-    response = MagicMock()
-    response.items = [
-        Datapoint(
-            id=uuid.uuid4(),
-            data="test",
-            target="test",
-            createdAt=datetime.now(),
-        )
-    ]
-    response.total_count = 1
-    return response
+    return {
+        "items": [
+            Datapoint(
+                id=uuid.uuid4(),
+                data="test",
+                target="test",
+                createdAt=datetime.now(),
+            )
+        ],
+        "total_count": 1,
+    }
 
 
 # Helper functions for common test logic
@@ -568,7 +567,7 @@ async def test_evaluate_propagates_evaluation_id_to_all_spans(
     # 2 datapoints * (evaluation + executor + inner_user_span + 1 evaluator) = 8
     assert len(spans) == 8
 
-    expected_eval_id = mock_eval_response.id
+    expected_eval_id = mock_eval_response["id"]
     for span in spans:
         actual = span.attributes.get(
             "lmnr.association.properties.metadata.evaluation_id"

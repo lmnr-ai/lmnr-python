@@ -1,19 +1,32 @@
 """Evals resource for interacting with Laminar evaluations API."""
 
+from __future__ import annotations
+
 import uuid
 import warnings
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from lmnr.sdk.client.synchronous.resources.base import BaseResource
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import (
     GetDatapointsResponse,
-    EvaluationResultDatapoint,
-    InitEvaluationResponse,
-    PartialEvaluationDatapoint,
+    parse_get_datapoints_response,
 )
 from lmnr.sdk.utils import describe_response, serialize, json_dumps
+
+# `lmnr.sdk.evaluations` (a package) transitively imports this client package
+# (via `lmnr.sdk.datasets` -> `LaminarClient`), so importing
+# `lmnr.sdk.evaluations.models` at module level here would be circular.
+# Annotation-only uses are deferred via `TYPE_CHECKING` (safe under
+# `from __future__ import annotations`); actual constructors/functions are
+# imported lazily inside the methods that call them.
+if TYPE_CHECKING:
+    from lmnr.sdk.evaluations.models import (
+        EvaluationResultDatapoint,
+        InitEvaluationResponse,
+        PartialEvaluationDatapoint,
+    )
 
 INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH = 16_000_000  # 16MB
 logger = get_default_logger(__name__)
@@ -38,6 +51,8 @@ class Evals(BaseResource):
         Returns:
             InitEvaluationResponse: The response from the initialization request.
         """
+        from lmnr.sdk.evaluations.models import parse_init_evaluation_response
+
         response = self._client.post(
             self._base_url + "/v1/evals",
             json={
@@ -54,7 +69,7 @@ class Evals(BaseResource):
                 f"Error initializing evaluation: {describe_response(response)}"
             )
         resp_json = response.json()
-        return InitEvaluationResponse.model_validate(resp_json)
+        return parse_init_evaluation_response(resp_json)
 
     def create_evaluation(
         self,
@@ -74,7 +89,7 @@ class Evals(BaseResource):
             uuid.UUID: The evaluation ID.
         """
         evaluation = self.init(name=name, group_name=group_name, metadata=metadata)
-        return evaluation.id
+        return evaluation["id"]
 
     def update_evaluation(
         self,
@@ -95,6 +110,8 @@ class Evals(BaseResource):
         Returns:
             InitEvaluationResponse: The updated evaluation.
         """
+        from lmnr.sdk.evaluations.models import parse_init_evaluation_response
+
         response = self._client.post(
             self._base_url + f"/v1/evals/{eval_id}",
             json={
@@ -111,7 +128,7 @@ class Evals(BaseResource):
             raise ValueError(
                 f"Error updating evaluation: {describe_response(response)}"
             )
-        return InitEvaluationResponse.model_validate(response.json())
+        return parse_init_evaluation_response(response.json())
 
     def create_datapoint(
         self,
@@ -136,6 +153,7 @@ class Evals(BaseResource):
         Returns:
             uuid.UUID: The datapoint ID.
         """
+        from lmnr.sdk.evaluations.models import PartialEvaluationDatapoint
 
         datapoint_id = uuid.uuid4()
 
@@ -260,7 +278,7 @@ class Evals(BaseResource):
         )
         if response.status_code != 200:
             raise ValueError(f"Error fetching datapoints: {describe_response(response)}")
-        return GetDatapointsResponse.model_validate(response.json())
+        return parse_get_datapoints_response(response.json())
 
     def _retry_save_datapoints(
         self,

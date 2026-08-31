@@ -10,6 +10,9 @@ from lmnr.sdk.types import (
     Dataset,
     GetDatapointsResponse,
     PushDatapointsResponse,
+    parse_dataset,
+    parse_get_datapoints_response,
+    parse_push_datapoints_response,
 )
 from lmnr.sdk.utils import serialize
 
@@ -32,7 +35,7 @@ class AsyncDatasets(BaseAsyncResource):
             raise ValueError(
                 f"Error listing datasets: [{response.status_code}] {response.text}"
             )
-        return [Dataset.model_validate(dataset) for dataset in response.json()]
+        return [parse_dataset(dataset) for dataset in response.json()]
 
     async def get_dataset_by_name(self, name: str) -> list[Dataset]:
         """Get a dataset by name."""
@@ -45,7 +48,7 @@ class AsyncDatasets(BaseAsyncResource):
             raise ValueError(
                 f"Error getting dataset: [{response.status_code}] {response.text}"
             )
-        return [Dataset.model_validate(dataset) for dataset in response.json()]
+        return [parse_dataset(dataset) for dataset in response.json()]
 
     async def push(
         self,
@@ -89,7 +92,7 @@ class AsyncDatasets(BaseAsyncResource):
                     f"Error pushing data to dataset: [{response.status_code}] {response.text}"
                 )
 
-            response = PushDatapointsResponse.model_validate(response.json())
+            response = parse_push_datapoints_response(response.json())
         # Currently, the response only contains the dataset ID,
         # so it's safe to return the last response only.
         return response
@@ -126,4 +129,4 @@ class AsyncDatasets(BaseAsyncResource):
             raise ValueError(
                 f"Error pulling data from dataset: [{response.status_code}] {response.text}"
             )
-        return GetDatapointsResponse.model_validate(response.json())
+        return parse_get_datapoints_response(response.json())

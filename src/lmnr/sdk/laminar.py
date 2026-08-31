@@ -59,6 +59,7 @@ from lmnr.sdk.utils import (
 
 from .log import get_default_logger
 from .types import (
+    DebugContext,
     LaminarSpanContext,
     LaminarSpanType,
     SessionRecordingOptions,
@@ -78,7 +79,7 @@ class ParsedParentSpanContext(TypedDict):
     metadata: dict[str, Any] | None
     # The propagated debugger block, if any (used to arm the debug runtime on a
     # downstream run). None when the context carried no debug block.
-    debug: Any | None
+    debug: DebugContext | None
 
 
 def _parse_parent_span_context(
@@ -643,7 +644,7 @@ class Laminar:
             cls.__logger.warning("Failed to initialize debug runtime: %s", exc)
 
     @classmethod
-    def _arm_debug_runtime_from_context(cls, debug: Any) -> None:
+    def _arm_debug_runtime_from_context(cls, debug: DebugContext | None) -> None:
         """Arm OR refresh the debug runtime from a propagated `DebugContext`.
 
         Called from the span-creation funnels when a parent `LaminarSpanContext`
@@ -674,8 +675,8 @@ class Laminar:
             # no / an unarmed debug block costs nothing.
             if (
                 debug is None
-                or not getattr(debug, "enabled", False)
-                or not getattr(debug, "session_id", None)
+                or not debug.get("enabled", False)
+                or not debug.get("session_id", None)
             ):
                 return
 

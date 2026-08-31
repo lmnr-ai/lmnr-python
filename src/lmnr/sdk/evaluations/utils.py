@@ -1,6 +1,7 @@
 from uuid import UUID
 
-from lmnr.sdk.types import EvaluationResultDatapoint, Numeric
+from lmnr.sdk.evaluations.models import EvaluationResultDatapoint
+from lmnr.sdk.types import Numeric
 from lmnr.sdk.utils import from_env, get_frontend_url
 
 

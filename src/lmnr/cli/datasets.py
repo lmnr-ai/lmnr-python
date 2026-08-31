@@ -88,8 +88,8 @@ async def _pull_all_data(
             offset=current_offset,
             limit=batch_size,
         )
-        result.extend(data.items)
-        if stop_at is not None and current_offset + batch_size >= stop_at or current_offset + batch_size >= data.total_count:
+        result.extend(data["items"])
+        if stop_at is not None and current_offset + batch_size >= stop_at or current_offset + batch_size >= data["total_count"]:
             has_more = False
         current_offset += batch_size
 
@@ -220,9 +220,9 @@ async def handle_datasets_list(args: DatasetsArgs) -> None:
 
     # Print each dataset row
     for dataset in datasets:
-        created_at_str = dataset.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        created_at_str = dataset["created_at"].strftime("%Y-%m-%d %H:%M:%S")
         print(
-            f"{dataset.id!s:<{id_width}}  {created_at_str:<{created_at_width}}  {dataset.name}"
+            f"{dataset['id']!s:<{id_width}}  {created_at_str:<{created_at_width}}  {dataset['name']}"
         )
 
     print(f"\nTotal: {len(datasets)} dataset(s)\n")

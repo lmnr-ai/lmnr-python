@@ -10,8 +10,8 @@ import os
 import re
 import uuid
 from dataclasses import dataclass
-from typing import Any
 
+from lmnr.sdk.types import DebugContext
 from lmnr.sdk.debug.debug_session_file import (
     read_debug_session_file,
     resolve_debug_session_dir,
@@ -181,7 +181,7 @@ def build_debug_config() -> DebugConfig | None:
     )
 
 
-def build_debug_config_from_context(debug: Any) -> DebugConfig | None:
+def build_debug_config_from_context(debug: DebugContext | None) -> DebugConfig | None:
     """Build a debug config from a propagated `DebugContext` (the inherited path).
 
     Unlike `build_debug_config` (which reads `LMNR_DEBUG*`), this consumes the
@@ -200,16 +200,16 @@ def build_debug_config_from_context(debug: Any) -> DebugConfig | None:
     """
     if debug is None:
         return None
-    enabled = getattr(debug, "enabled", None)
-    session_id = getattr(debug, "session_id", None)
+    enabled = debug.get("enabled", None)
+    session_id = debug.get("session_id", None)
     if not enabled or not session_id:
         return None
 
-    replay_trace_id = getattr(debug, "replay_trace_id", None) or None
+    replay_trace_id = debug.get("replay_trace_id", None) or None
     # The needle is propagated verbatim; re-run it through the same normalizer
     # the env path uses so a downstream config holds an identical needle form.
     cache_until_span_id = _parse_cache_until_span_id(
-        getattr(debug, "cache_until", None)
+        debug.get("cache_until", None)
     )
 
     return DebugConfig(

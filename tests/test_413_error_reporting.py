@@ -10,7 +10,7 @@ import pytest
 from lmnr.sdk.client.asynchronous.resources import evals as async_evals
 from lmnr.sdk.client.synchronous.resources import evals as sync_evals
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
-from lmnr.sdk.types import PartialEvaluationDatapoint
+from lmnr.sdk.evaluations.models import PartialEvaluationDatapoint
 from lmnr.sdk.utils import MAX_ERROR_BODY_CHARS, describe_response
 
 

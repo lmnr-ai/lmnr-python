@@ -9,9 +9,9 @@ from .sdk.client.synchronous.sync_client import LaminarClient
 from .sdk.datasets import EvaluationDataset, LaminarDataset
 from .sdk.decorators import observe
 from .sdk.evaluations import evaluate
+from .sdk.evaluations.models import HumanEvaluator
 from .sdk.laminar import Laminar
 from .sdk.types import (
-    HumanEvaluator,
     LaminarSpanContext,
     MaskInputOptions,
     SessionRecordingOptions,

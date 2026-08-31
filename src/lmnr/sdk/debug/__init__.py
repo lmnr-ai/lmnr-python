@@ -27,6 +27,7 @@ from lmnr.sdk.debug.config import (
 )
 from lmnr.sdk.debug.pointer import build_debug_session_file, emit_pointer
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.types import DebugContext
 
 logger = get_default_logger(__name__)
 
@@ -278,7 +279,7 @@ def init_debug_runtime(
 
 
 def init_debug_runtime_from_context(
-    debug: Any,
+    debug: DebugContext | None,
     client: Any,
     async_client: Any,
     debugger_url: str | None = None,
