@@ -219,14 +219,14 @@ def get_input_from_func_args(
     func_kwargs: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
     ignore_inputs: list[str] | None = None,
 ) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
-    func_args = func_args if func_args is not None else []
-    func_kwargs = func_kwargs if func_kwargs is not None else {}
+    normalized_args = func_args if func_args is not None else []
+    normalized_kwargs = func_kwargs if func_kwargs is not None else {}
     # Remove implicitly passed "self" or "cls" argument for
     # instance or class methods
     try:
         res = {
             k: v
-            for k, v in func_kwargs.items()  # pyright: ignore[reportAny]
+            for k, v in normalized_kwargs.items()  # pyright: ignore[reportAny]
             if not (ignore_inputs and k in ignore_inputs)
         }
         for i, k in enumerate(inspect.signature(func).parameters.keys()):
@@ -235,8 +235,8 @@ def get_input_from_func_args(
             if ignore_inputs and k in ignore_inputs:
                 continue
             # If param has default value, then it's not present in func args
-            if i < len(func_args):
-                res[k] = func_args[i]
+            if i < len(normalized_args):
+                res[k] = normalized_args[i]
         return res
     except Exception:
         logger.warning("Failed to get input from func args")

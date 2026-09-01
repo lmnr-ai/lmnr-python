@@ -223,6 +223,8 @@ def deserialize_debug_context(data: dict[str, Any]) -> DebugContext:  # pyright:
 SpanContextDict = dict[
     str, str | bool | int | float | list[str] | dict[str, str | bool | int | float]
 ]
+MetadataMemberType = str | int | float | bool | None
+MetadataType = dict[str, MetadataMemberType | list[MetadataMemberType] | dict[str, MetadataMemberType | list[MetadataMemberType]]]
 
 
 class LaminarSpanContext(BaseModel):
@@ -245,7 +247,7 @@ class LaminarSpanContext(BaseModel):
     user_id: str | None = Field(default=None)
     session_id: str | None = Field(default=None)
     trace_type: TraceType | None = Field(default=None)
-    metadata: dict[str, dict[str, str | int | float | bool]] | None = Field(default=None)
+    metadata: MetadataType | None = Field(default=None)
     debug: DebugContext | None = Field(default=None)
 
     @override
