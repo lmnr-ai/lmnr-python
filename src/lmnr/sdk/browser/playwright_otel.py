@@ -1,15 +1,10 @@
 import logging
 import uuid
-
-from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
-from lmnr.sdk.browser.pw_utils import (
-    start_recording_events_async,
-    start_recording_events_sync,
-    take_full_snapshot,
-    take_full_snapshot_async,
-)
+from collections.abc import Callable, Collection, Coroutine, Sequence
 from importlib.metadata import version
-from typing import Any, Collection, Sequence
+from typing import Any
+
+from typing_extensions import override
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
@@ -19,31 +14,48 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     LaminarInstrumentorConfig,
     WrappedFunctionSpec,
 )
+from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
+from lmnr.sdk.browser.pw_utils import (
+    start_recording_events_async,
+    start_recording_events_sync,
+    take_full_snapshot,
+    take_full_snapshot_async,
+)
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 
 try:
     if is_package_installed("playwright"):
-        from playwright.async_api import Browser, BrowserContext
+        from playwright.async_api import Browser, BrowserContext, Page
         from playwright.sync_api import (
             Browser as SyncBrowser,
+        )
+        from playwright.sync_api import (
             BrowserContext as SyncBrowserContext,
         )
+        from playwright.sync_api import (
+            Page as SyncPage,
+        )
     elif is_package_installed("patchright"):
-        from patchright.async_api import Browser, BrowserContext
+        from patchright.async_api import Browser, BrowserContext, Page
         from patchright.sync_api import (
             Browser as SyncBrowser,
+        )
+        from patchright.sync_api import (
             BrowserContext as SyncBrowserContext,
+        )
+        from patchright.sync_api import (
+            Page as SyncPage,
         )
     else:
         raise ImportError(
-            "Attempted to import lmnr.sdk.browser.playwright_otel, but neither "
-            "playwright nor patchright is installed. Use `pip install playwright` "
+            "Attempted to import lmnr.sdk.browser.playwright_otel, but neither " +
+            "playwright nor patchright is installed. Use `pip install playwright` " +
             "or `pip install patchright` to install one of the supported browsers."
         )
 except ImportError as e:
     raise ImportError(
-        f"Attempted to import {__file__}, but it is designed "
-        "to patch Playwright, which is not installed. Use `pip install playwright` "
+        f"Attempted to import {__file__}, but it is designed " +
+        "to patch Playwright, which is not installed. Use `pip install playwright` " +
         "or `pip install patchright` to install Playwright or remove this import."
     ) from e
 
@@ -64,15 +76,17 @@ def _wrap_new_browser_sync(
     browser: SyncBrowser = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
 
-    def create_page_handler(session_id, client):
-        def page_handler(page):
+    def create_page_handler(
+        session_id: str, client: AsyncLaminarClient
+    ) -> Callable[[SyncPage], None]:
+        def page_handler(page: SyncPage) -> None:
             start_recording_events_sync(page, session_id, client)
 
         return page_handler
 
     for context in browser.contexts:
         page_handler = create_page_handler(session_id, client)
-        context.on("page", page_handler)
+        _ = context.on("page", page_handler)
         for page in context.pages:
             start_recording_events_sync(page, session_id, client)
 
@@ -91,15 +105,17 @@ async def _wrap_new_browser_async(
     browser: Browser = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
 
-    def create_page_handler(session_id, client):
-        async def page_handler(page):
+    def create_page_handler(
+        session_id: str, client: AsyncLaminarClient
+    ) -> Callable[[Page], Coroutine[Any, Any, None]]:
+        async def page_handler(page: Page) -> None:
             await start_recording_events_async(page, session_id, client)
 
         return page_handler
 
     for context in browser.contexts:
         page_handler = create_page_handler(session_id, client)
-        context.on("page", page_handler)
+        _ = context.on("page", page_handler)
         for page in context.pages:
             await start_recording_events_async(page, session_id, client)
     return browser
@@ -117,14 +133,16 @@ def _wrap_new_context_sync(
     context: SyncBrowserContext = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
 
-    def create_page_handler(session_id, client):
-        def page_handler(page):
+    def create_page_handler(
+        session_id: str, client: AsyncLaminarClient
+    ) -> Callable[[SyncPage], None]:
+        def page_handler(page: SyncPage) -> None:
             start_recording_events_sync(page, session_id, client)
 
         return page_handler
 
     page_handler = create_page_handler(session_id, client)
-    context.on("page", page_handler)
+    _ = context.on("page", page_handler)
     for page in context.pages:
         start_recording_events_sync(page, session_id, client)
 
@@ -143,14 +161,16 @@ async def _wrap_new_context_async(
     context: BrowserContext = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
 
-    def create_page_handler(session_id, client):
-        async def page_handler(page):
+    def create_page_handler(
+        session_id: str, client: AsyncLaminarClient
+    ) -> Callable[[Page], Coroutine[Any, Any, None]]:
+        async def page_handler(page: Page) -> None:
             await start_recording_events_async(page, session_id, client)
 
         return page_handler
 
     page_handler = create_page_handler(session_id, client)
-    context.on("page", page_handler)
+    _ = context.on("page", page_handler)
     for page in context.pages:
         await start_recording_events_async(page, session_id, client)
 
@@ -167,7 +187,7 @@ def _wrap_bring_to_front_sync(
     client: AsyncLaminarClient,
 ):
     wrapped(*args, **kwargs)
-    take_full_snapshot(instance)
+    _ = take_full_snapshot(instance)
 
 
 async def _wrap_bring_to_front_async(
@@ -180,7 +200,7 @@ async def _wrap_bring_to_front_async(
     client: AsyncLaminarClient,
 ):
     await wrapped(*args, **kwargs)
-    await take_full_snapshot_async(instance)
+    _ = await take_full_snapshot_async(instance)
 
 
 def _wrap_browser_new_page_sync(
@@ -215,104 +235,108 @@ async def _wrap_browser_new_page_async(
 
 
 
+# Every wrapper below takes a keyword-only `client`, forwarded via
+# `wrapper_kwargs()` on `PlaywrightInstrumentor` (see
+# wrapper_helpers.add_spec_wrapper) — WrapperHandler can't express that extra
+# parameter, so the `reportArgumentType` ignores below are a known-safe mismatch.
 WRAPPED_FUNCTIONS: list[WrappedFunctionSpec] = [
     WrappedFunctionSpec(
         package_name="playwright.sync_api",
         object_name="BrowserType",
         method_name="launch",
         is_async=False,
-        wrapper_function=_wrap_new_browser_sync,
+        wrapper_function=_wrap_new_browser_sync,  # pyright: ignore[reportArgumentType]
     ),
     WrappedFunctionSpec(
         package_name="playwright.sync_api",
         object_name="BrowserType",
         method_name="connect",
         is_async=False,
-        wrapper_function=_wrap_new_browser_sync,
+        wrapper_function=_wrap_new_browser_sync,  # pyright: ignore[reportArgumentType]
     ),
     WrappedFunctionSpec(
         package_name="playwright.sync_api",
         object_name="BrowserType",
         method_name="connect_over_cdp",
         is_async=False,
-        wrapper_function=_wrap_new_browser_sync,
+        wrapper_function=_wrap_new_browser_sync,  # pyright: ignore[reportArgumentType]
     ),
     WrappedFunctionSpec(
         package_name="playwright.sync_api",
         object_name="Browser",
         method_name="new_context",
         is_async=False,
-        wrapper_function=_wrap_new_context_sync,
+        wrapper_function=_wrap_new_context_sync,  # pyright: ignore[reportArgumentType]
     ),
     WrappedFunctionSpec(
         package_name="playwright.sync_api",
         object_name="BrowserType",
         method_name="launch_persistent_context",
         is_async=False,
-        wrapper_function=_wrap_new_context_sync,
+        wrapper_function=_wrap_new_context_sync,  # pyright: ignore[reportArgumentType]
     ),
     WrappedFunctionSpec(
         package_name="playwright.sync_api",
         object_name="Page",
         method_name="bring_to_front",
         is_async=False,
-        wrapper_function=_wrap_bring_to_front_sync,
+        wrapper_function=_wrap_bring_to_front_sync,  # pyright: ignore[reportArgumentType]
     ),
     WrappedFunctionSpec(
         package_name="playwright.sync_api",
         object_name="Browser",
         method_name="new_page",
         is_async=False,
-        wrapper_function=_wrap_browser_new_page_sync,
+        wrapper_function=_wrap_browser_new_page_sync,  # pyright: ignore[reportArgumentType]
     ),
     WrappedFunctionSpec(
         package_name="playwright.async_api",
         object_name="BrowserType",
         method_name="launch",
         is_async=True,
-        wrapper_function=_wrap_new_browser_async,
+        wrapper_function=_wrap_new_browser_async,  # pyright: ignore[reportArgumentType]
     ),
     WrappedFunctionSpec(
         package_name="playwright.async_api",
         object_name="BrowserType",
         method_name="connect",
         is_async=True,
-        wrapper_function=_wrap_new_browser_async,
+        wrapper_function=_wrap_new_browser_async,  # pyright: ignore[reportArgumentType]
     ),
     WrappedFunctionSpec(
         package_name="playwright.async_api",
         object_name="BrowserType",
         method_name="connect_over_cdp",
         is_async=True,
-        wrapper_function=_wrap_new_browser_async,
+        wrapper_function=_wrap_new_browser_async,  # pyright: ignore[reportArgumentType]
     ),
     WrappedFunctionSpec(
         package_name="playwright.async_api",
         object_name="Browser",
         method_name="new_context",
         is_async=True,
-        wrapper_function=_wrap_new_context_async,
+        wrapper_function=_wrap_new_context_async,  # pyright: ignore[reportArgumentType]
     ),
     WrappedFunctionSpec(
         package_name="playwright.async_api",
         object_name="BrowserType",
         method_name="launch_persistent_context",
         is_async=True,
-        wrapper_function=_wrap_new_context_async,
+        wrapper_function=_wrap_new_context_async,  # pyright: ignore[reportArgumentType]
     ),
     WrappedFunctionSpec(
         package_name="playwright.async_api",
         object_name="Page",
         method_name="bring_to_front",
         is_async=True,
-        wrapper_function=_wrap_bring_to_front_async,
+        wrapper_function=_wrap_bring_to_front_async,  # pyright: ignore[reportArgumentType]
     ),
     WrappedFunctionSpec(
         package_name="playwright.async_api",
         object_name="Browser",
         method_name="new_page",
         is_async=True,
-        wrapper_function=_wrap_browser_new_page_async,
+        wrapper_function=_wrap_browser_new_page_async,  # pyright: ignore[reportArgumentType]
     ),
 ]
 
@@ -322,17 +346,19 @@ class PlaywrightInstrumentor(BaseLaminarInstrumentor):
 
     def __init__(self, async_client: AsyncLaminarClient):
         super().__init__()
-        self.async_client = async_client
-        self.instrumentor_config = LaminarInstrumentorConfig(
+        self.async_client: AsyncLaminarClient = async_client
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 {**spec, "instrumentation_scope": self.instrumentation_scope()}
                 for spec in WRAPPED_FUNCTIONS
             ]
         )
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is None:
             try:
@@ -346,6 +372,7 @@ class PlaywrightInstrumentor(BaseLaminarInstrumentor):
             )
         return self._scope
 
+    @override
     def wrapper_kwargs(self) -> dict[str, Any]:
         # Both sync and async wrappers get the ASYNC client on purpose: sends go
         # through a background asyncio loop either way.

@@ -1,7 +1,9 @@
+from collections.abc import Collection, Sequence
 from importlib.metadata import version
-from typing import Any, Collection, Sequence
+from typing import Any
 
-from opentelemetry.trace import NonRecordingSpan, get_current_span
+from opentelemetry.trace import NonRecordingSpan, SpanContext, get_current_span
+from typing_extensions import override
 
 from lmnr import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
@@ -16,7 +18,7 @@ from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.sdk.log import get_default_logger
 
 _instruments = ("bubus >= 1.3.0",)
-event_id_to_span_context = {}
+event_id_to_span_context: dict[Any, SpanContext] = {}
 logger = get_default_logger(__name__)
 
 
@@ -85,9 +87,11 @@ class BubusInstrumentor(BaseLaminarInstrumentor):
 
     _scope: LaminarInstrumentationScopeAttributes | None = None
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is None:
             try:
@@ -103,14 +107,15 @@ class BubusInstrumentor(BaseLaminarInstrumentor):
 
     def __init__(self):
         super().__init__()
-        self.instrumentor_config = LaminarInstrumentorConfig(
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 {**spec, "instrumentation_scope": self.instrumentation_scope()}
                 for spec in WRAPPED_FUNCTIONS
             ]
         )
 
-    def _uninstrument(self, **kwargs):
+    @override
+    def _uninstrument(self, **kwargs: Any):
         super()._uninstrument(**kwargs)
         # This map is the whole point of the instrumentation, so it must not
         # outlive it — a stale entry would re-parent a later event onto a span

@@ -1,22 +1,23 @@
 import asyncio
-import orjson
 import os
 import threading
 import time
-
+from collections.abc import Callable, Coroutine
+from typing import Any
 from weakref import WeakKeyDictionary
 
+import orjson
 from opentelemetry import trace
 
-from lmnr.sdk.decorators import observe
-from lmnr.sdk.browser.utils import retry_async
+from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.sdk.browser.background_send_events import (
     get_background_loop,
     track_async_send,
 )
+from lmnr.sdk.browser.utils import retry_async
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
-from lmnr.opentelemetry_lib.tracing.context import get_current_context
-from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.sdk.decorators import observe
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import MaskInputOptions
 
@@ -62,7 +63,7 @@ with open(os.path.join(current_dir, "inject_script.js"), "r") as f:
     INJECT_SCRIPT_CONTENT = f.read()
 
 
-async def should_skip_page(cdp_session):
+async def should_skip_page(cdp_session: Any):
     """Checks if the page url is an error page or an empty page.
     This function returns True in case of any error in our code, because
     it is safer to not record events than to try to inject the recorder
@@ -158,16 +159,13 @@ def get_mask_input_setting() -> MaskInputOptions:
     """Get the mask_input setting from session recording configuration."""
     try:
         config = TracerWrapper.get_session_recording_options()
-        return config.get(
-            "mask_input_options",
-            MaskInputOptions(
-                textarea=False,
-                text=False,
-                number=False,
-                select=False,
-                email=False,
-                tel=False,
-            ),
+        return config.get("mask_input_options") or MaskInputOptions(
+            textarea=False,
+            text=False,
+            number=False,
+            select=False,
+            email=False,
+            tel=False,
         )
     except (AttributeError, Exception):
         # Fallback to default configuration if TracerWrapper is not initialized
@@ -182,7 +180,7 @@ def get_mask_input_setting() -> MaskInputOptions:
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
-async def get_isolated_context_id(cdp_session) -> int | None:
+async def get_isolated_context_id(cdp_session: Any) -> int | None:
     async with get_lock():
         tree = {}
         try:
@@ -233,7 +231,7 @@ async def get_isolated_context_id(cdp_session) -> int | None:
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
-async def inject_session_recorder(cdp_session) -> int | None:
+async def inject_session_recorder(cdp_session: Any) -> int | None:
     """Injects the session recorder base as well as the recorder itself.
     Returns the isolated context id if successful.
     """
@@ -319,7 +317,7 @@ async def inject_session_recorder(cdp_session) -> int | None:
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 @observe(name="cdp_use.session", ignore_input=True, ignore_output=True)
 async def start_recording_events(
-    cdp_session,
+    cdp_session: Any,
     lmnr_session_id: str,
     client: AsyncLaminarClient,
 ):
@@ -334,9 +332,9 @@ async def start_recording_events(
     background_loop = get_background_loop()
 
     # Buffer for reassembling chunks
-    chunk_buffers = {}
+    chunk_buffers: dict[str, Any] = {}
 
-    async def send_events_from_browser(chunk: dict):
+    async def send_events_from_browser(chunk: dict[str, Any]):
         try:
             # Handle chunked data
             batch_id = chunk["batchId"]
@@ -393,7 +391,9 @@ async def start_recording_events(
     valid_context_ids: set[int] = set()
 
     # cdp_use.cdp.runtime.events.BindingCalledEvent
-    async def send_events_callback(event, cdp_session_id: str | None = None):
+    async def send_events_callback(
+        event: dict[str, Any], cdp_session_id: str | None = None
+    ):
         if event["name"] != "lmnrSendEvents":
             return
         if event["executionContextId"] not in valid_context_ids:
@@ -447,7 +447,7 @@ async def start_recording_events(
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
-async def enable_target_discovery(cdp_session):
+async def enable_target_discovery(cdp_session: Any):
     cdp_client = cdp_session.cdp_client
     await cdp_client.send.Target.setDiscoverTargets(
         {
@@ -459,13 +459,13 @@ async def enable_target_discovery(cdp_session):
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 def register_on_target_created(
-    cdp_session, lmnr_session_id: str, client: AsyncLaminarClient
+    cdp_session: Any, _lmnr_session_id: str, _client: AsyncLaminarClient
 ):
     # cdp_use.cdp.target.events.TargetCreatedEvent
-    def on_target_created(event, cdp_session_id: str | None = None):
+    def on_target_created(event: dict[str, Any], cdp_session_id: str | None = None):
         target_info = event["targetInfo"]
         if target_info["type"] == "page":
-            asyncio.create_task(inject_session_recorder(cdp_session=cdp_session))
+            _ = asyncio.create_task(inject_session_recorder(cdp_session=cdp_session))
 
     try:
         cdp_session.cdp_client.register.Target.targetCreated(on_target_created)
@@ -473,7 +473,9 @@ def register_on_target_created(
         logger.debug(f"Failed to register on target created: {e}")
 
 
-def register_on_frame_navigated(cdp_session, on_navigated):
+def register_on_frame_navigated(
+    cdp_session: Any, on_navigated: Callable[[], Coroutine[Any, Any, None]]
+):
     """Re-inject recorder after page navigation.
 
     When the main frame navigates, the execution context is destroyed.
@@ -481,7 +483,7 @@ def register_on_frame_navigated(cdp_session, on_navigated):
     for the new context.
     """
 
-    def on_frame_navigated(event, cdp_session_id: str | None = None):
+    def on_frame_navigated(event: dict[str, Any], cdp_session_id: str | None = None):
         frame = event.get("frame", {})
         # Only handle main frame navigation (parentId is absent for main frame)
         if frame.get("parentId"):
@@ -499,7 +501,7 @@ def register_on_frame_navigated(cdp_session, on_navigated):
             for k in keys_to_remove:
                 del frame_to_isolated_context_id[k]
 
-        asyncio.create_task(on_navigated())
+        _ = asyncio.create_task(on_navigated())
 
     try:
         cdp_session.cdp_client.register.Page.frameNavigated(on_frame_navigated)
@@ -509,7 +511,7 @@ def register_on_frame_navigated(cdp_session, on_navigated):
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 async def is_recorder_present(
-    cdp_session, isolated_context_id: int | None = None
+    cdp_session: Any, isolated_context_id: int | None = None
 ) -> bool:
     # This function returns True on any error, because it is safer to not record
     # events than to try to inject the recorder into a broken context.
@@ -542,7 +544,7 @@ async def is_recorder_present(
         return True
 
 
-async def take_full_snapshot(cdp_session):
+async def take_full_snapshot(cdp_session: Any):
     cdp_client = cdp_session.cdp_client
     isolated_context_id = await get_isolated_context_id(cdp_session)
     if isolated_context_id is None:

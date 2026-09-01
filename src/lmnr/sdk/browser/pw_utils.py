@@ -1,7 +1,7 @@
 import asyncio
 import os
 import time
-from typing import cast
+from typing import Any, cast
 
 import orjson
 from opentelemetry import trace
@@ -45,7 +45,7 @@ OLD_BUFFER_TIMEOUT = 60
 
 
 def create_send_events_handler(
-    chunk_buffers: dict,
+    chunk_buffers: dict[str, Any],
     session_id: str,
     trace_id: str,
     client: AsyncLaminarClient,
@@ -69,7 +69,7 @@ def create_send_events_handler(
         An async function that handles incoming event chunks from the browser
     """
 
-    async def send_events_from_browser(chunk):
+    async def send_events_from_browser(chunk: dict[str, Any]):
         try:
             # Handle chunked data
             batch_id = chunk["batchId"]
@@ -137,16 +137,13 @@ def get_mask_input_setting() -> MaskInputOptions:
     """Get the mask_input setting from session recording configuration."""
     try:
         config = TracerWrapper.get_session_recording_options()
-        return config.get(
-            "mask_input_options",
-            MaskInputOptions(
-                textarea=False,
-                text=False,
-                number=False,
-                select=False,
-                email=False,
-                tel=False,
-            ),
+        return config.get("mask_input_options") or MaskInputOptions(
+            textarea=False,
+            text=False,
+            number=False,
+            select=False,
+            email=False,
+            tel=False,
         )
     except (AttributeError, Exception):
         # Fallback to default configuration if TracerWrapper is not initialized
@@ -256,18 +253,18 @@ def start_recording_events_sync(
     background_loop = get_background_loop()
 
     # Buffer for reassembling chunks
-    chunk_buffers = {}
+    chunk_buffers: dict[str, Any] = {}
 
     # Create the async event handler (shared implementation)
     send_events_from_browser = create_send_events_handler(
         chunk_buffers, session_id, trace_id, client, background_loop
     )
 
-    def submit_event(chunk):
+    def submit_event(chunk: dict[str, Any]):
         """Sync wrapper that submits async handler to background loop."""
         try:
             # Submit async handler to background loop
-            asyncio.run_coroutine_threadsafe(
+            _ = asyncio.run_coroutine_threadsafe(
                 send_events_from_browser(chunk),
                 background_loop,
             )
@@ -281,7 +278,7 @@ def start_recording_events_sync(
 
     inject_session_recorder_sync(page)
 
-    def on_load(p):
+    def on_load(p: SyncPage):
         try:
             if not p.is_closed():
                 inject_session_recorder_sync(p)
@@ -304,7 +301,7 @@ async def start_recording_events_async(
     background_loop = get_background_loop()
 
     # Buffer for reassembling chunks
-    chunk_buffers = {}
+    chunk_buffers: dict[str, Any] = {}
 
     # Create the async event handler (shared implementation)
     send_events_from_browser = create_send_events_handler(
@@ -318,7 +315,7 @@ async def start_recording_events_async(
 
     await inject_session_recorder_async(page)
 
-    async def on_load(p):
+    async def on_load(p: Page):
         try:
             # Check if page is closed before attempting to inject
             if not p.is_closed():

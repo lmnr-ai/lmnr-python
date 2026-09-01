@@ -1,5 +1,7 @@
+from collections.abc import Collection
 from importlib.metadata import version
-from typing import Any, Collection
+
+from typing_extensions import override
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
@@ -43,17 +45,19 @@ class PatchrightInstrumentor(BaseLaminarInstrumentor):
 
     def __init__(self, async_client: AsyncLaminarClient):
         super().__init__()
-        self.async_client = async_client
-        self.instrumentor_config = LaminarInstrumentorConfig(
+        self.async_client: AsyncLaminarClient = async_client
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 {**spec, "instrumentation_scope": self.instrumentation_scope()}
                 for spec in WRAPPED_FUNCTIONS
             ]
         )
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is None:
             try:
@@ -67,6 +71,7 @@ class PatchrightInstrumentor(BaseLaminarInstrumentor):
             )
         return self._scope
 
-    def wrapper_kwargs(self) -> dict[str, Any]:
+    @override
+    def wrapper_kwargs(self) -> dict[str, AsyncLaminarClient]:
         # See PlaywrightInstrumentor: sync wrappers also get the async client.
         return {"client": self.async_client}

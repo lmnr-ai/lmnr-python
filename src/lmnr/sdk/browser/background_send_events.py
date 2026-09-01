@@ -27,7 +27,7 @@ while achieving cross-thread execution.
 import asyncio
 import atexit
 import threading
-from typing import Any
+from concurrent.futures import Future
 
 from lmnr.sdk.log import get_default_logger
 
@@ -51,7 +51,7 @@ _background_loop = None
 _background_loop_thread = None
 _background_loop_lock = threading.Lock()
 _background_loop_ready = threading.Event()
-_pending_async_futures: set[asyncio.Future[Any]] = set()
+_pending_async_futures: set[Future[None]] = set()
 
 
 def get_background_loop() -> asyncio.AbstractEventLoop:
@@ -64,7 +64,7 @@ def get_background_loop() -> asyncio.AbstractEventLoop:
     Returns:
         The background event loop running in a separate thread.
     """
-    global _background_loop, _background_loop_thread
+    global _background_loop_thread
 
     with _background_loop_lock:
         if _background_loop is None:
@@ -82,16 +82,19 @@ def get_background_loop() -> asyncio.AbstractEventLoop:
             _background_loop_thread.start()
 
             # Register cleanup handler
-            atexit.register(_cleanup_background_loop)
+            _cleanup_handler = atexit.register(_cleanup_background_loop)
 
     # Wait for loop to be created (outside the lock to avoid blocking other threads)
     if not _background_loop_ready.wait(timeout=LOOP_CREATION_TIMEOUT_SECONDS):
         raise RuntimeError("Background loop creation timed out")
 
+    if _background_loop is None:
+        raise RuntimeError("Background loop creation failed")
+
     return _background_loop
 
 
-def track_async_send(future: asyncio.Future) -> None:
+def track_async_send(future: Future[None]) -> None:
     """
     Track an async send future for cleanup at exit.
 
@@ -104,7 +107,7 @@ def track_async_send(future: asyncio.Future) -> None:
     with _background_loop_lock:
         _pending_async_futures.add(future)
 
-    def remove_on_done(f):
+    def remove_on_done(f: Future[None]) -> None:
         """Remove the future from tracking when it completes."""
         with _background_loop_lock:
             _pending_async_futures.discard(f)
@@ -119,8 +122,6 @@ def _cleanup_background_loop():
     Called automatically at program exit via atexit. Waits for each pending send
     to complete with a timeout, then stops the background loop gracefully.
     """
-    global _background_loop
-
     # Create a snapshot of pending futures to avoid holding the lock during waits
     with _background_loop_lock:
         futures_to_wait = list(_pending_async_futures)
@@ -130,7 +131,7 @@ def _cleanup_background_loop():
     if pending_count > 0:
         logger.info(
             f"Finishing sending {pending_count} browser events... "
-            "Ctrl+C to cancel (may result in incomplete session recording)."
+            + "Ctrl+C to cancel (may result in incomplete session recording)."
         )
 
         # Wait for all pending futures to complete
@@ -142,7 +143,7 @@ def _cleanup_background_loop():
             except KeyboardInterrupt:
                 logger.debug("Interrupted, cancelling pending async sends")
                 for f in futures_to_wait:
-                    f.cancel()
+                    _ = f.cancel()
                 raise
             except Exception as e:
                 logger.debug(f"Error in async send: {e}")
@@ -150,7 +151,7 @@ def _cleanup_background_loop():
     # Stop the background loop
     if _background_loop is not None and not _background_loop.is_closed():
         try:
-            _background_loop.call_soon_threadsafe(_background_loop.stop)
+            _ = _background_loop.call_soon_threadsafe(_background_loop.stop)
             # Wait for thread to finish
             if _background_loop_thread is not None:
                 _background_loop_thread.join(timeout=THREAD_JOIN_TIMEOUT_SECONDS)
