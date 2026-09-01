@@ -14,6 +14,9 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     LaminarInstrumentorConfig,
     WrappedFunctionSpec,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    stamp_instrumentation_scope,
+)
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
 
 from opentelemetry import trace
@@ -96,6 +99,7 @@ def _wrap(
 ):
     if to_wrap.get("action") == "start_parent_span":
         parent_span = Laminar.start_span("computer.run")
+        stamp_instrumentation_scope(parent_span, to_wrap)
         add_input_to_parent_span(parent_span, instance)
         result = wrapped(*args, **kwargs)
         try:
@@ -126,6 +130,7 @@ def _wrap(
         with Laminar.start_as_current_span(
             f"{instance_name}.{to_wrap['method_name']}", span_type="TOOL"
         ) as span:
+            stamp_instrumentation_scope(span, to_wrap)
             span.set_attribute(
                 "lmnr.span.input",
                 json_dumps(get_input_from_func_args(wrapped, True, args, kwargs)),
@@ -153,6 +158,7 @@ async def _wrap_async(
 ):
     if to_wrap.get("action") == "start_parent_span":
         parent_span = Laminar.start_span("computer.run")
+        stamp_instrumentation_scope(parent_span, to_wrap)
         add_input_to_parent_span(parent_span, instance)
         result = await wrapped(*args, **kwargs)
         try:
@@ -183,6 +189,7 @@ async def _wrap_async(
             f"{instance_name}.{to_wrap['method_name']}",
             span_type="TOOL",
         ) as span:
+            stamp_instrumentation_scope(span, to_wrap)
             span.set_attribute(
                 "lmnr.span.input",
                 json_dumps(get_input_from_func_args(wrapped, True, args, kwargs)),

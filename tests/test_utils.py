@@ -757,16 +757,16 @@ def test_format_id_with_invalid_string():
 
 def test_format_id_with_invalid_types():
     """Test format_id with invalid input types."""
-    with pytest.raises(ValueError, match="Invalid ID type"):
+    with pytest.raises(TypeError, match="Invalid ID type"):
         format_id(None)
 
-    with pytest.raises(ValueError, match="Invalid ID type"):
+    with pytest.raises(TypeError, match="Invalid ID type"):
         format_id([])
 
-    with pytest.raises(ValueError, match="Invalid ID type"):
+    with pytest.raises(TypeError, match="Invalid ID type"):
         format_id({})
 
-    with pytest.raises(ValueError, match="Invalid ID type"):
+    with pytest.raises(TypeError, match="Invalid ID type"):
         format_id(1.5)
 
 

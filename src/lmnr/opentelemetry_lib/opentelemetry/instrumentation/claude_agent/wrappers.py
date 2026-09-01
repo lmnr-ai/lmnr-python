@@ -7,6 +7,7 @@ from typing import Any, Sequence
 from lmnr import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     add_spec_wrapper,
+    stamp_instrumentation_scope,
 )
 from lmnr.sdk.log import get_default_logger
 
@@ -57,6 +58,7 @@ def wrap_sync(
         span_name(to_wrap),
         span_type=to_wrap.get("span_type", "DEFAULT"),
     ) as span:
+        stamp_instrumentation_scope(span, to_wrap)
         record_input(span, wrapped, args, kwargs)
 
         try:
@@ -83,6 +85,7 @@ async def wrap_async(
         span_name(to_wrap),
         span_type=to_wrap.get("span_type", "DEFAULT"),
     ) as span:
+        stamp_instrumentation_scope(span, to_wrap)
         record_input(span, wrapped, args, kwargs)
 
         if to_wrap.get("should_publish_span_context"):
@@ -116,6 +119,7 @@ def wrap_async_gen(
             span_name(to_wrap),
             span_type=to_wrap.get("span_type", "DEFAULT"),
         )
+        stamp_instrumentation_scope(span, to_wrap)
         collected = []
         async_iter = None
 
@@ -567,6 +571,7 @@ def wrap_query(
             span_name(to_wrap),
             span_type=to_wrap.get("span_type", "DEFAULT"),
         ) as span:
+            stamp_instrumentation_scope(span, to_wrap)
             record_input(span, wrapped, args, kwargs)
 
             collected = []

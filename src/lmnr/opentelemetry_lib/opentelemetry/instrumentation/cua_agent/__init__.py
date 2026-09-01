@@ -13,6 +13,9 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     LaminarInstrumentorConfig,
     WrappedFunctionSpec,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    stamp_instrumentation_scope,
+)
 from lmnr.sdk.utils import json_dumps
 
 from opentelemetry.trace import Span
@@ -31,11 +34,12 @@ def _wrap_run(
     kwargs: dict[str, Any],
 ):
     parent_span = Laminar.start_span(to_wrap.get("span_name") or "ComputerAgent.run")
+    stamp_instrumentation_scope(parent_span, to_wrap)
     instance._lmnr_parent_span = parent_span
 
     try:
         result: AsyncGenerator[dict[str, Any], None] = wrapped(*args, **kwargs)
-        return _abuild_from_streaming_response(parent_span, result)
+        return _abuild_from_streaming_response(to_wrap, parent_span, result)
     except Exception as e:
         if parent_span.is_recording():
             parent_span.set_status(Status(StatusCode.ERROR))
@@ -45,13 +49,16 @@ def _wrap_run(
 
 
 async def _abuild_from_streaming_response(
-    parent_span: Span, response: AsyncGenerator[dict[str, Any], None]
+    to_wrap: WrappedFunctionSpec,
+    parent_span: Span,
+    response: AsyncGenerator[dict[str, Any], None],
 ) -> AsyncGenerator[dict[str, Any], None]:
     with Laminar.use_span(parent_span, end_on_exit=True):
         response_iter = aiter(response)
         while True:
             step = None
             step_span = Laminar.start_span("ComputerAgent.step")
+            stamp_instrumentation_scope(step_span, to_wrap)
             with Laminar.use_span(step_span):
                 try:
                     step = await anext(response_iter)

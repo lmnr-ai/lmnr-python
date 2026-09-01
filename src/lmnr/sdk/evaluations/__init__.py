@@ -12,13 +12,11 @@ from lmnr.sdk.evaluations.models import (
     DEFAULT_BATCH_SIZE,
     MAX_EXPORT_BATCH_SIZE,
     EvaluationRunResult,
-)
-from lmnr.sdk.types import (
-    Datapoint,
     EvaluatorFunction,
     ExecutorFunction,
     HumanEvaluator,
 )
+from lmnr.sdk.types import Datapoint
 
 
 def evaluate(

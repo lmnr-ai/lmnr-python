@@ -167,10 +167,10 @@ class LaminarDataset(EvaluationDataset):
             offset=offset,
             limit=self._fetch_size,
         )
-        self._pages[page_index] = resp.items
+        self._pages[page_index] = resp["items"]
         if self._len is None:
-            self._len = resp.total_count
-        return resp.items
+            self._len = resp["total_count"]
+        return resp["items"]
 
     def __len__(self) -> int:
         if self._len is None:

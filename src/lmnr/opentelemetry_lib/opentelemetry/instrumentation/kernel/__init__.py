@@ -17,6 +17,9 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     LaminarInstrumentorConfig,
     WrappedFunctionSpec,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    stamp_instrumentation_scope,
+)
 from lmnr.sdk.decorators import observe
 from lmnr.sdk.utils import get_input_from_func_args, is_async, json_dumps
 from lmnr import Laminar
@@ -53,6 +56,7 @@ def _wrap(
         f"{to_wrap.get('class_name')}.{to_wrap['method_name']}",
         span_type=to_wrap.get("span_type", "DEFAULT"),
     ) as span:
+        stamp_instrumentation_scope(span, to_wrap)
         input_kv = get_input_from_func_args(wrapped, True, args, kwargs)
         if "id" in input_kv:
             input_kv["session_id"] = input_kv.get("id")
@@ -83,6 +87,7 @@ async def _wrap_async(
         f"{to_wrap.get('class_name')}.{to_wrap['method_name']}",
         span_type=to_wrap.get("span_type", "DEFAULT"),
     ) as span:
+        stamp_instrumentation_scope(span, to_wrap)
         input_kv = get_input_from_func_args(wrapped, True, args, kwargs)
         if "id" in input_kv:
             input_kv["session_id"] = input_kv.get("id")

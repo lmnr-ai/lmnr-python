@@ -16,7 +16,12 @@ from lmnr.sdk.datasets import EvaluationDataset
 from lmnr.sdk.evaluations.models import (
     DEFAULT_BATCH_SIZE,
     MAX_EXPORT_BATCH_SIZE,
+    EvaluationDatapointDatasetLink,
+    EvaluationResultDatapoint,
     EvaluationRunResult,
+    EvaluatorFunction,
+    HumanEvaluator,
+    PartialEvaluationDatapoint,
 )
 from lmnr.sdk.evaluations.reporter import EvaluationReporter
 from lmnr.sdk.evaluations.utils import get_average_scores, get_evaluation_url
@@ -24,13 +29,8 @@ from lmnr.sdk.laminar import Laminar as L
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import (
     Datapoint,
-    EvaluationDatapointDatasetLink,
-    EvaluationResultDatapoint,
-    EvaluatorFunction,
-    HumanEvaluator,
     Numeric,
     NumericTypes,
-    PartialEvaluationDatapoint,
     SpanType,
     TraceType,
 )
@@ -254,7 +254,7 @@ class Evaluation:
                         if len(datasets) == 0:
                             self._logger.warning(f"Dataset {source.name} not found")
                         else:
-                            source.id = datasets[0].id
+                            source.id = datasets[0]["id"]
                     except Exception as e:
                         # Backward compatibility with old Laminar API (self hosted)
                         self._logger.warning(
@@ -268,14 +268,14 @@ class Evaluation:
                 group_name=self.group_name,
                 metadata=_with_debugger_session_metadata(self.metadata),
             )
-            evaluation_id = evaluation.id
-            project_id = evaluation.projectId
+            evaluation_id = evaluation["id"]
+            project_id = evaluation["projectId"]
             url = get_evaluation_url(project_id, evaluation_id, self.reporter.base_url)
 
             print(f"Check the results at {url}")
 
             self.reporter.start(len(self.data))
-            result_datapoints = await self._evaluate_in_batches(evaluation.id)
+            result_datapoints = await self._evaluate_in_batches(evaluation["id"])
             # Wait for all background upload tasks to complete
             if self.upload_tasks:
                 self._logger.debug(
@@ -288,7 +288,7 @@ class Evaluation:
             self.reporter.stop_with_error(e)
 
         average_scores = get_average_scores(result_datapoints)
-        self.reporter.stop(average_scores, evaluation.projectId, evaluation.id)
+        self.reporter.stop(average_scores, evaluation["projectId"], evaluation["id"])
         await self._shutdown()
         return {
             "average_scores": average_scores,
@@ -402,7 +402,7 @@ class Evaluation:
                 scores: dict[str, Numeric] = {}
                 for evaluator_name, evaluator in self.evaluators.items():
                     # Check if evaluator is a HumanEvaluator instance
-                    if isinstance(evaluator, HumanEvaluator):
+                    if isinstance(evaluator, dict):  # HumanEvaluator is a TypedDict
                         # Create an empty span for human evaluators
                         with L.start_as_current_span(
                             evaluator_name,
@@ -411,10 +411,10 @@ class Evaluation:
                             human_evaluator_span.set_attribute(
                                 SPAN_TYPE, SpanType.HUMAN_EVALUATOR.value
                             )
-                            if evaluator.options:
+                            if evaluator.get("options"):
                                 human_evaluator_span.set_attribute(
                                     HUMAN_EVALUATOR_OPTIONS,
-                                    json_dumps(evaluator.options),
+                                    json_dumps(evaluator.get("options")),
                                 )
                             # Human evaluators don't execute automatically, just create the span
                             L.set_span_output(None)

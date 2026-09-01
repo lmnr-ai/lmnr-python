@@ -8,7 +8,7 @@ import uuid
 from unittest.mock import patch, MagicMock, AsyncMock
 
 from lmnr import LaminarClient, AsyncLaminarClient
-from lmnr.sdk.types import PartialEvaluationDatapoint
+from lmnr.sdk.evaluations.models import PartialEvaluationDatapoint
 
 
 class TestAsyncLaminarClientEvaluations:
@@ -99,8 +99,8 @@ class TestAsyncLaminarClientEvaluations:
             call_json = mock_post.call_args[1]["json"]
             assert call_json["name"] == "Renamed Evaluation"
             assert call_json["metadata"] == {"revision": 2}
-            assert result.id == eval_id
-            assert result.name == "Renamed Evaluation"
+            assert result["id"] == eval_id
+            assert result["name"] == "Renamed Evaluation"
 
     @pytest.mark.asyncio
     async def test_update_evaluation_error(self, async_client):
@@ -354,8 +354,8 @@ class TestLaminarClientEvaluations:
             call_json = mock_post.call_args[1]["json"]
             assert call_json["name"] == "Renamed Evaluation"
             assert call_json["metadata"] == {"revision": 2}
-            assert result.id == eval_id
-            assert result.name == "Renamed Evaluation"
+            assert result["id"] == eval_id
+            assert result["name"] == "Renamed Evaluation"
 
     def test_update_evaluation_error(self, sync_client):
         """Test evaluation update raises on non-200 responses."""

@@ -4,25 +4,33 @@ import datetime
 import json
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from opentelemetry.trace import SpanContext, TraceFlags
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict, override  # compatibility with python < 3.12
 
-from .utils import json_dumps, serialize
 
-DEFAULT_DATAPOINT_MAX_DATA_LENGTH = 16_000_000  # 16MB
+def parse_iso_datetime(value: str) -> datetime.datetime:
+    """Parse an ISO-8601 timestamp from the API, tolerating a trailing 'Z'.
+
+    `datetime.fromisoformat` only accepts a bare 'Z' suffix on Python >= 3.11;
+    this package supports 3.10, and the app-server emits UTC timestamps with
+    'Z'. Pydantic's own parser (speedate) handled this for us before these
+    responses were plain dicts; this is the manual equivalent.
+    """
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
+    return datetime.datetime.fromisoformat(value)
 
 
 Numeric = int | float
 NumericTypes = (int, float)  # for use with isinstance
 
-EvaluationDatapointData = Any  # non-null, must be JSON-serializable
-EvaluationDatapointTarget = Any | None  # must be JSON-serializable
-EvaluationDatapointMetadata = Any | None  # must be JSON-serializable
+EvaluationDatapointData = Any  # pyright: ignore[reportExplicitAny] non-null, must be JSON-serializable
+EvaluationDatapointTarget = Any | None  # pyright: ignore[reportExplicitAny] must be JSON-serializable
+EvaluationDatapointMetadata = Any | None  # pyright: ignore[reportExplicitAny] must be JSON-serializable
 LaminarSpanType = Literal[
     "DEFAULT",
     "LLM",
@@ -33,172 +41,37 @@ LaminarSpanType = Literal[
 # EvaluationDatapoint is a single data point in the evaluation
 class Datapoint(BaseModel):
     # input to the executor function.
-    data: EvaluationDatapointData
+    data: EvaluationDatapointData  # pyright: ignore[reportExplicitAny]
     # input to the evaluator function (alongside the executor output).
-    target: EvaluationDatapointTarget = Field(default_factory=dict)
-    metadata: EvaluationDatapointMetadata = Field(default_factory=dict)
+    target: EvaluationDatapointTarget = Field(default_factory=dict)  # pyright: ignore[reportAny]
+    metadata: EvaluationDatapointMetadata = Field(default_factory=dict)  # pyright: ignore[reportAny]
     id: uuid.UUID | None = Field(default=None)
     created_at: datetime.datetime | None = Field(default=None, alias="createdAt")
 
 
-class Dataset(BaseModel):
-    id: uuid.UUID = Field()
-    name: str = Field()
-    created_at: datetime.datetime = Field(alias="createdAt")
-
-
-class PushDatapointsResponse(BaseModel):
-    dataset_id: uuid.UUID = Field(alias="datasetId")
-
-
-ExecutorFunctionReturnType = Any
-EvaluatorFunctionReturnType = Numeric | dict[str, Numeric]
-
-ExecutorFunction = Callable[
-    [EvaluationDatapointData, Any],
-    ExecutorFunctionReturnType | Awaitable[ExecutorFunctionReturnType],
-]
-
-# EvaluatorFunction is a function that takes the output of the executor and the
-# target data, and returns a score. The score can be a single number or a
-# record of string keys and number values. The latter is useful for evaluating
-# multiple criteria in one go instead of running multiple evaluators.
-EvaluatorFunction = Callable[
-    [ExecutorFunctionReturnType, Any],
-    EvaluatorFunctionReturnType | Awaitable[EvaluatorFunctionReturnType],
-]
-
-
-class HumanEvaluatorOptionsEntry(TypedDict):
-    label: str
-    value: float
-
-
-class HumanEvaluator(BaseModel):
-    options: list[HumanEvaluatorOptionsEntry] = Field(default_factory=list)
-
-
-class InitEvaluationResponse(BaseModel):
+class Dataset(TypedDict):
     id: uuid.UUID
-    createdAt: datetime.datetime
-    groupId: str
     name: str
-    projectId: uuid.UUID
-
-
-class EvaluationDatapointDatasetLink(BaseModel):
-    dataset_id: uuid.UUID
-    datapoint_id: uuid.UUID
     created_at: datetime.datetime
 
-    def to_dict(self):
-        return {
-            "datasetId": str(self.dataset_id),
-            "datapointId": str(self.datapoint_id),
-            "createdAt": self.created_at.isoformat(),
-        }
+
+def parse_dataset(data: dict[str, str]) -> Dataset:
+    """Parse a `Dataset` from a `GET /v1/datasets` response entry."""
+    return Dataset(
+        id=uuid.UUID(str(data["id"])),
+        name=data["name"],
+        created_at=parse_iso_datetime(data["createdAt"]),
+    )
 
 
-class PartialEvaluationDatapoint(BaseModel):
-    id: uuid.UUID
-    data: EvaluationDatapointData
-    target: EvaluationDatapointTarget
-    index: int
-    trace_id: uuid.UUID
-    executor_span_id: uuid.UUID
-    metadata: EvaluationDatapointMetadata = Field(default=None)
-    dataset_link: EvaluationDatapointDatasetLink | None = Field(default=None)
-
-    # uuid is not serializable by default, so we need to convert it to a string
-    def to_dict(self, max_data_length: int = DEFAULT_DATAPOINT_MAX_DATA_LENGTH):
-        serialized_data = serialize(self.data)
-        serialized_target = serialize(self.target)
-        str_data = json_dumps(serialized_data)
-        str_target = json_dumps(serialized_target)
-        try:
-            return {
-                "id": str(self.id),
-                "data": (
-                    str_data[:max_data_length]
-                    if len(str_data) > max_data_length
-                    else serialized_data
-                ),
-                "target": (
-                    str_target[:max_data_length]
-                    if len(str_target) > max_data_length
-                    else serialized_target
-                ),
-                "index": self.index,
-                "traceId": str(self.trace_id),
-                "executorSpanId": str(self.executor_span_id),
-                "metadata": (
-                    serialize(self.metadata) if self.metadata is not None else {}
-                ),
-                "datasetLink": (
-                    self.dataset_link.to_dict()
-                    if self.dataset_link is not None
-                    else None
-                ),
-            }
-        except Exception as e:
-            raise ValueError(f"Error serializing PartialEvaluationDatapoint: {e}")
+class PushDatapointsResponse(TypedDict):
+    dataset_id: uuid.UUID
 
 
-class EvaluationResultDatapoint(BaseModel):
-    id: uuid.UUID
-    index: int
-    data: EvaluationDatapointData
-    target: EvaluationDatapointTarget
-    executor_output: ExecutorFunctionReturnType
-    scores: dict[str, Numeric | None]
-    trace_id: uuid.UUID
-    executor_span_id: uuid.UUID
-    metadata: EvaluationDatapointMetadata = Field(default=None)
-    dataset_link: EvaluationDatapointDatasetLink | None = Field(default=None)
-
-    # uuid is not serializable by default, so we need to convert it to a string
-    def to_dict(self, max_data_length: int = DEFAULT_DATAPOINT_MAX_DATA_LENGTH):
-        try:
-            serialized_data = serialize(self.data)
-            serialized_target = serialize(self.target)
-            serialized_executor_output = serialize(self.executor_output)
-            str_data = json.dumps(serialized_data)
-            str_target = json.dumps(serialized_target)
-            str_executor_output = json.dumps(serialized_executor_output)
-            return {
-                # preserve only preview of the data, target and executor output
-                # (full data is in trace)
-                "id": str(self.id),
-                "data": (
-                    str_data[:max_data_length]
-                    if len(str_data) > max_data_length
-                    else serialized_data
-                ),
-                "target": (
-                    str_target[:max_data_length]
-                    if len(str_target) > max_data_length
-                    else serialized_target
-                ),
-                "executorOutput": (
-                    str_executor_output[:max_data_length]
-                    if len(str_executor_output) > max_data_length
-                    else serialized_executor_output
-                ),
-                "scores": self.scores,
-                "traceId": str(self.trace_id),
-                "executorSpanId": str(self.executor_span_id),
-                "index": self.index,
-                "metadata": (
-                    serialize(self.metadata) if self.metadata is not None else {}
-                ),
-                "datasetLink": (
-                    self.dataset_link.to_dict()
-                    if self.dataset_link is not None
-                    else None
-                ),
-            }
-        except Exception as e:
-            raise ValueError(f"Error serializing EvaluationResultDatapoint: {e}")
+def parse_push_datapoints_response(data: dict[str, str]) -> PushDatapointsResponse:
+    """Parse a `PushDatapointsResponse` from a `POST /v1/datasets/datapoints`
+    response."""
+    return PushDatapointsResponse(dataset_id=uuid.UUID(str(data["datasetId"])))
 
 
 class SpanType(Enum):
@@ -209,6 +82,7 @@ class SpanType(Enum):
     EVALUATOR = "EVALUATOR"
     HUMAN_EVALUATOR = "HUMAN_EVALUATOR"
     EVALUATION = "EVALUATION"
+    TOOL = "TOOL"
 
 
 class TraceType(Enum):
@@ -216,9 +90,19 @@ class TraceType(Enum):
     EVALUATION = "EVALUATION"
 
 
-class GetDatapointsResponse(BaseModel):
+class GetDatapointsResponse(TypedDict):
     items: list[Datapoint]
-    total_count: int = Field(alias="totalCount")
+    total_count: int
+
+
+def parse_get_datapoints_response(data: dict[str, int | list[dict[str, Any]]]) -> GetDatapointsResponse:  # pyright: ignore[reportExplicitAny]
+    """Parse a `GetDatapointsResponse` from a `GET /v1/datasets/datapoints`
+    response. Each item still goes through `Datapoint.model_validate` for its
+    own uuid/datetime coercion."""
+    return GetDatapointsResponse(
+        items=[Datapoint.model_validate(item) for item in cast(list[dict[str, Any]], data["items"])],  # pyright: ignore[reportExplicitAny]
+        total_count=cast(int, data["totalCount"]),
+    )
 
 
 class TraceBlockContent(TypedDict, total=False):
@@ -280,10 +164,10 @@ class SessionBlock(TypedDict):
     # Block type; one of `SessionBlockType` for known blocks.
     type: str
     # Type-specific payload; narrow via the `*BlockContent` shapes.
-    content: dict[str, Any]
+    content: dict[str, Any]  # pyright: ignore[reportExplicitAny]
 
 
-class DebugContext(BaseModel):
+class DebugContext(TypedDict, total=False):
     """Debugger context propagated as ONE nested block of a LaminarSpanContext.
 
     Carries the debug-replay v2 coordinates a downstream run needs to consult
@@ -300,34 +184,47 @@ class DebugContext(BaseModel):
       sends it un-normalized as `replayTraceId` to the cache endpoint).
     - `cache_until`: the cache-window span-id needle, kept VERBATIM (hyphenated
       or not, full UUID or short suffix) — the server resolves it.
+
+    `total=False` so a producer/test can omit keys it doesn't care about; every
+    consumer reads via `.get(key, default)`, never attribute access.
     """
 
-    enabled: bool = Field(default=False)
-    session_id: str | None = Field(default=None)
-    replay_trace_id: str | None = Field(default=None)
-    cache_until: str | None = Field(default=None)
+    enabled: bool
+    session_id: str | None
+    replay_trace_id: str | None
+    cache_until: str | None
 
-    @classmethod
-    def deserialize(cls, data: dict[str, Any]) -> "DebugContext":
-        """Parse a debug block from a dict, accepting camelCase and snake_case.
 
-        All ids are kept VERBATIM: the producer emits the run's exact session /
-        replay-trace / cache-until strings (un-normalized), so the consumer must
-        round-trip them unchanged or a downstream run fails to join the run.
-        """
-        return cls(
-            # Strict `is True`, NOT bool(...): the producer always emits a real
-            # boolean, so anything else (e.g. the string "false", which is
-            # truthy) is a malformed/forged block and must NOT arm a downstream
-            # runtime.
-            enabled=data.get("enabled") is True,
-            session_id=(data.get("session_id") or data.get("sessionId")) or None,
-            replay_trace_id=(
-                data.get("replay_trace_id") or data.get("replayTraceId")
-            )
-            or None,
-            cache_until=(data.get("cache_until") or data.get("cacheUntil")) or None,
+def deserialize_debug_context(data: dict[str, Any]) -> DebugContext:  # pyright: ignore[reportExplicitAny]
+    """Parse a debug block from a dict, accepting camelCase and snake_case.
+
+    All ids are kept VERBATIM: the producer emits the run's exact session /
+    replay-trace / cache-until strings (un-normalized), so the consumer must
+    round-trip them unchanged or a downstream run fails to join the run.
+    """
+    return DebugContext(
+        # Strict `is True`, NOT bool(...): the producer always emits a real
+        # boolean, so anything else (e.g. the string "false", which is
+        # truthy) is a malformed/forged block and must NOT arm a downstream
+        # runtime.
+        enabled=data.get("enabled") is True,
+        session_id=(data.get("session_id") or data.get("sessionId")) or None,
+        replay_trace_id=(
+            data.get("replay_trace_id") or data.get("replayTraceId")
         )
+        or None,
+        cache_until=(data.get("cache_until") or data.get("cacheUntil")) or None,
+    )
+
+
+#: Shape of a plain (non-`LaminarSpanContext`, non-`SpanContext`) dict a
+#: caller can hand to `LaminarSpanContext.deserialize` /
+#: `try_to_otel_span_context` -- e.g. a JSON-decoded header or env var.
+SpanContextDict = dict[
+    str, str | bool | int | float | list[str] | dict[str, str | bool | int | float]
+]
+MetadataMemberType = str | int | float | bool | None
+MetadataType = dict[str, MetadataMemberType | list[MetadataMemberType] | dict[str, MetadataMemberType | list[MetadataMemberType]]]
 
 
 class LaminarSpanContext(BaseModel):
@@ -350,7 +247,7 @@ class LaminarSpanContext(BaseModel):
     user_id: str | None = Field(default=None)
     session_id: str | None = Field(default=None)
     trace_type: TraceType | None = Field(default=None)
-    metadata: dict[str, Any] | None = Field(default=None)
+    metadata: MetadataType | None = Field(default=None)
     debug: DebugContext | None = Field(default=None)
 
     @override
@@ -360,7 +257,7 @@ class LaminarSpanContext(BaseModel):
     @classmethod
     def try_to_otel_span_context(
         cls,
-        span_context: "LaminarSpanContext" | dict[str, Any] | str | SpanContext,
+        span_context: LaminarSpanContext | SpanContextDict | str | SpanContext,
         logger: logging.Logger | None = None,
     ) -> SpanContext:
         if logger is None:
@@ -373,17 +270,27 @@ class LaminarSpanContext(BaseModel):
                 is_remote=span_context.is_remote,
                 trace_flags=TraceFlags(TraceFlags.SAMPLED),
             )
-        elif isinstance(span_context, SpanContext) or (
-            isinstance(getattr(span_context, "trace_id", None), int)
-            and isinstance(getattr(span_context, "span_id", None), int)
-        ):
+        elif isinstance(span_context, SpanContext):
             logger.warning(
                 "span_context provided" +
                 " is likely a raw OpenTelemetry span context. Will try to use it. " +
                 "Please use `LaminarSpanContext` instead."
             )
             return span_context
-        elif isinstance(span_context, (dict, str)):
+        elif isinstance(getattr(span_context, "trace_id", None), int) and isinstance(
+            getattr(span_context, "span_id", None), int
+        ):
+            # Not an actual `SpanContext` instance (that's handled above), but
+            # duck-types as one (e.g. a `SpanContext` from a different otel
+            # version). The `getattr` checks are the only signal here, so this
+            # cast is trusting the same runtime check pyright can't itself see.
+            logger.warning(
+                "span_context provided" +
+                " is likely a raw OpenTelemetry span context. Will try to use it. " +
+                "Please use `LaminarSpanContext` instead."
+            )
+            return cast(SpanContext, cast(object, span_context))
+        elif isinstance(span_context, (dict, str)):  # pyright: ignore[reportUnnecessaryIsInstance]
             try:
                 laminar_span_context = cls.deserialize(span_context)
                 return SpanContext(
@@ -395,10 +302,10 @@ class LaminarSpanContext(BaseModel):
             except Exception:
                 raise ValueError("Invalid span_context provided")
         else:
-            raise ValueError("Invalid span_context provided")
+            raise TypeError("Invalid span_context provided")  # pyright: ignore[reportUnreachable]
 
     @classmethod
-    def deserialize(cls, data: dict[str, Any] | str) -> "LaminarSpanContext":
+    def deserialize(cls, data: SpanContextDict | str) -> LaminarSpanContext:
         if isinstance(data, dict):
             # Convert camelCase to snake_case for known fields
             debug_raw = data.get("debug")
@@ -414,16 +321,16 @@ class LaminarSpanContext(BaseModel):
                 "trace_type": data.get("trace_type") or data.get("traceType"),
                 "metadata": data.get("metadata") or data.get("metadata", {}),
                 "debug": (
-                    DebugContext.deserialize(debug_raw)
+                    deserialize_debug_context(debug_raw)
                     if isinstance(debug_raw, dict)
                     else None
                 ),
             }
             return cls.model_validate(converted_data)
-        elif isinstance(data, str):
-            return cls.deserialize(json.loads(data))
+        elif isinstance(data, str):  # pyright: ignore[reportUnnecessaryIsInstance]
+            return cls.deserialize(json.loads(data))  # pyright: ignore[reportAny]
         else:
-            raise ValueError("Invalid span_context provided")
+            raise TypeError("Invalid span_context provided")  # pyright: ignore[reportUnreachable]
 
 
 class ModelProvider(str, Enum):

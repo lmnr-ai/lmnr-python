@@ -8,7 +8,7 @@ from lmnr.sdk.debug.config import (
     build_debug_config,
     build_debug_config_from_context,
 )
-from lmnr.sdk.types import DebugContext, LaminarSpanContext
+from lmnr.sdk.types import DebugContext, LaminarSpanContext, deserialize_debug_context
 
 _DEBUG_ENV_KEYS = (
     "LMNR_DEBUG",
@@ -239,7 +239,7 @@ _REPLAY = "00000000-0000-0000-0000-0000000000bb"
 
 
 def test_debug_context_parse_camel_case():
-    ctx = DebugContext.deserialize(
+    ctx = deserialize_debug_context(
         {
             "enabled": True,
             "sessionId": _SESSION,
@@ -247,14 +247,14 @@ def test_debug_context_parse_camel_case():
             "cacheUntil": "0123-456789abcdef",
         }
     )
-    assert ctx.enabled is True
-    assert ctx.session_id == _SESSION
-    assert ctx.replay_trace_id == _REPLAY
-    assert ctx.cache_until == "0123-456789abcdef"
+    assert ctx["enabled"] is True
+    assert ctx["session_id"] == _SESSION
+    assert ctx["replay_trace_id"] == _REPLAY
+    assert ctx["cache_until"] == "0123-456789abcdef"
 
 
 def test_debug_context_parse_snake_case():
-    ctx = DebugContext.deserialize(
+    ctx = deserialize_debug_context(
         {
             "enabled": True,
             "session_id": _SESSION,
@@ -262,9 +262,9 @@ def test_debug_context_parse_snake_case():
             "cache_until": "abcdef",
         }
     )
-    assert ctx.session_id == _SESSION
-    assert ctx.replay_trace_id == _REPLAY
-    assert ctx.cache_until == "abcdef"
+    assert ctx["session_id"] == _SESSION
+    assert ctx["replay_trace_id"] == _REPLAY
+    assert ctx["cache_until"] == "abcdef"
 
 
 def test_debug_context_keeps_non_uuid_ids_verbatim():
@@ -272,23 +272,23 @@ def test_debug_context_keeps_non_uuid_ids_verbatim():
     # and propagates that exact value, so the consumer must round-trip it
     # unchanged. Dropping non-UUID ids to None would make the downstream treat
     # the block as session-less and never join the run.
-    ctx = DebugContext.deserialize(
+    ctx = deserialize_debug_context(
         {
             "enabled": True,
             "session_id": "my-session",
             "replay_trace_id": "my-replay",
         }
     )
-    assert ctx.session_id == "my-session"
-    assert ctx.replay_trace_id == "my-replay"
+    assert ctx["session_id"] == "my-session"
+    assert ctx["replay_trace_id"] == "my-replay"
 
 
 def test_debug_context_empty_ids_become_none():
-    ctx = DebugContext.deserialize(
+    ctx = deserialize_debug_context(
         {"enabled": True, "session_id": "", "replay_trace_id": ""}
     )
-    assert ctx.session_id is None
-    assert ctx.replay_trace_id is None
+    assert ctx["session_id"] is None
+    assert ctx["replay_trace_id"] is None
 
 
 def test_debug_context_non_boolean_enabled_never_arms():
@@ -296,10 +296,10 @@ def test_debug_context_non_boolean_enabled_never_arms():
     # the string "false", or 1) is a malformed/forged block and must parse to
     # enabled=False, never arming a downstream runtime.
     for enabled in ("false", "true", 1, {"x": 1}):
-        ctx = DebugContext.deserialize(
+        ctx = deserialize_debug_context(
             {"enabled": enabled, "session_id": "my-session"}
         )
-        assert ctx.enabled is False
+        assert ctx["enabled"] is False
 
 
 def test_laminar_span_context_parses_nested_debug():
@@ -311,8 +311,8 @@ def test_laminar_span_context_parses_nested_debug():
         }
     )
     assert sc.debug is not None
-    assert sc.debug.enabled is True
-    assert sc.debug.session_id == _SESSION
+    assert sc.debug["enabled"] is True
+    assert sc.debug["session_id"] == _SESSION
 
 
 def test_laminar_span_context_no_debug_is_none():

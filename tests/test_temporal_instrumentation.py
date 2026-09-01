@@ -196,8 +196,8 @@ def test_restore_preserves_debug_block():
     restored = restore_context_from_headers(headers)
     assert restored is not None
     assert restored.debug is not None
-    assert restored.debug.enabled is True
-    assert restored.debug.cache_until == "abcdef"
+    assert restored.debug["enabled"] is True
+    assert restored.debug["cache_until"] == "abcdef"
 
 
 def test_restore_falls_back_to_traceparent():

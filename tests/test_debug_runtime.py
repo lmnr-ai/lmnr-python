@@ -202,8 +202,8 @@ def test_env_context_arms_debug_runtime_from_block(monkeypatch):
 
     assert "debug" in armed_with
     assert armed_with["debug"] is not None
-    assert armed_with["debug"].enabled is True
-    assert armed_with["debug"].session_id == session_id
+    assert armed_with["debug"]["enabled"] is True
+    assert armed_with["debug"]["session_id"] == session_id
     _reset_runtime()
 
 

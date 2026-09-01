@@ -224,10 +224,10 @@ def _paged_laminar_dataset(total: int, fetch_size: int):
     client = MagicMock()
 
     def pull(name=None, id=None, offset=0, limit=fetch_size):
-        resp = MagicMock()
-        resp.items = all_items[offset : offset + limit]
-        resp.total_count = total
-        return resp
+        return {
+            "items": all_items[offset : offset + limit],
+            "total_count": total,
+        }
 
     client.datasets.pull.side_effect = pull
     ds.set_client(client)
@@ -301,16 +301,17 @@ async def test_eval_over_chained_dataset_has_dataset_link(
     dataset_id = uuid.uuid4()
     all_items = [make_dp(i) for i in range(5)]
 
-    eval_resp = MagicMock()
-    eval_resp.id = "00000000-0000-0000-0000-000000000000"
-    eval_resp.projectId = "mock-project-id"
+    eval_resp = {
+        "id": "00000000-0000-0000-0000-000000000000",
+        "projectId": "mock-project-id",
+    }
     mock_init.return_value = eval_resp
 
     def pull(name=None, id=None, offset=0, limit=25):
-        resp = MagicMock()
-        resp.items = all_items[offset : offset + limit]
-        resp.total_count = len(all_items)
-        return resp
+        return {
+            "items": all_items[offset : offset + limit],
+            "total_count": len(all_items),
+        }
 
     mock_pull.side_effect = pull
 
@@ -336,7 +337,7 @@ async def test_eval_over_chained_dataset_has_dataset_link(
 
     assert seen_links, "expected dataset_link on chained-dataset result datapoints"
     for link in seen_links:
-        assert link.dataset_id == dataset_id
+        assert link["dataset_id"] == dataset_id
     # shuffle(seed=1).take(2) over 5 datapoints -> 2 processed datapoints,
     # each saved twice (partial + final).
     assert processed == 4
