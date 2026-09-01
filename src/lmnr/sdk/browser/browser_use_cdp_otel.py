@@ -1,8 +1,8 @@
 import asyncio
 import uuid
-from collections.abc import Collection, Sequence
+from collections.abc import Callable, Collection, Coroutine, Sequence
 from importlib.metadata import version
-from typing import Any
+from typing import Any, TypeVar
 
 from typing_extensions import override
 
@@ -22,6 +22,11 @@ from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
+
+#: `_wrap` returns exactly what `wrapped` returns, whatever that is per
+#: call site — bounding it lets pyright track that identity instead of
+#: widening to `Any`.
+T = TypeVar("T")
 
 
 class BrowserUseCdpSpec(WrappedFunctionSpec, total=False):
@@ -43,13 +48,13 @@ _initialized_sessions: set[str] = set()
 
 
 async def process_wrapped_result(
-    result: Any,
-    instance: Any,
+    result: Any,  # pyright: ignore[reportExplicitAny, reportAny]
+    instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
     client: AsyncLaminarClient,
     to_wrap: BrowserUseCdpSpec,
 ):
     if to_wrap.get("action") == "inject_session_recorder":
-        session_id = result.session_id
+        session_id = str(result.session_id)
         if session_id in _initialized_sessions:
             return
         # Add eagerly to prevent parallel calls from double-initializing
@@ -67,20 +72,22 @@ async def process_wrapped_result(
         target_id = result
         if target_id:
             cdp_session = await instance.get_or_create_cdp_session(target_id)
-            _ = await take_full_snapshot(cdp_session)
+            _success = await take_full_snapshot(cdp_session)
 
 
 async def _wrap(
     to_wrap: BrowserUseCdpSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
+    wrapped: Callable[..., Coroutine[Any, Any, T]],  # pyright: ignore[reportExplicitAny]
+    instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
     *,
     client: AsyncLaminarClient,
-):
+) -> T:
     result = await wrapped(*args, **kwargs)
-    _ = asyncio.create_task(process_wrapped_result(result, instance, client, to_wrap))
+    _process_task = asyncio.create_task(
+        process_wrapped_result(result, instance, client, to_wrap)
+    )
 
     return result
 
@@ -140,13 +147,13 @@ class BrowserUseInstrumentor(BaseLaminarInstrumentor):
         return self._scope
 
     @override
-    def wrapper_kwargs(self) -> dict[str, Any]:
+    def wrapper_kwargs(self) -> dict[str, AsyncLaminarClient]:
         # The client is instrumentor-level, not per-method, so it rides the
         # base's handler-kwargs channel rather than being stuffed into each spec.
         return {"client": self.async_client}
 
     @override
-    def _uninstrument(self, **kwargs: Any):
+    def _uninstrument(self, **kwargs: dict[str, Any]):  # pyright: ignore[reportExplicitAny]
         super()._uninstrument(**kwargs)
         # Session ids must not outlive the instrumentation: a stale entry would
         # make a later run skip recorder injection for a reused session id.

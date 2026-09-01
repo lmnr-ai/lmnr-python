@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import asyncio
 import os
 import time
-from typing import Any, cast
+from collections.abc import Callable, Coroutine
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 import orjson
 from opentelemetry import trace
@@ -13,44 +16,61 @@ from lmnr.sdk.browser.background_send_events import (
     get_background_loop,
     track_async_send,
 )
+from lmnr.sdk.browser.chunk_types import ChunkBuffer, ChunkMessage
 from lmnr.sdk.browser.utils import retry_async, retry_sync
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.decorators import observe
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import MaskInputOptions
 
-try:
-    if is_package_installed("playwright"):
-        from playwright.async_api import Page
-        from playwright.sync_api import Page as SyncPage
-    elif is_package_installed("patchright"):
-        from patchright.async_api import Page
-        from patchright.sync_api import Page as SyncPage
-    else:
-        raise ImportError(
-            "Attempted to import lmnr.sdk.browser.pw_utils, but neither " +
-            "playwright nor patchright is installed. Use `pip install playwright` " +
-            "or `pip install patchright` to install one of the supported browsers."
-        )
-except ImportError as e:
+if TYPE_CHECKING:
+    from playwright.async_api import Page
+    from playwright.sync_api import Page as SyncPage
+
+if not (is_package_installed("playwright") or is_package_installed("patchright")):
     raise ImportError(
-        "Attempted to import lmnr.sdk.browser.pw_utils, but neither " +
-        "playwright nor patchright is installed. Use `pip install playwright` " +
-        "or `pip install patchright` to install one of the supported browsers."
-    ) from e
+        "Attempted to import lmnr.sdk.browser.pw_utils, but neither "
+        + "playwright nor patchright is installed. Use `pip install playwright` "
+        + "or `pip install patchright` to install one of the supported browsers."
+    )
 
 logger = get_default_logger(__name__)
 
 OLD_BUFFER_TIMEOUT = 60
 
 
+class _ExposesSyncEvents(Protocol):
+    """The slice of playwright's sync `Page`/`BrowserContext` API used to wire
+    up `lmnrSendEvents`, re-declared with a precise callback type.
+
+    Playwright's own stub declares `expose_function`'s `callback` as a bare
+    `typing.Callable` — no parameter/return types — which pyright renders as
+    `(...) -> Unknown` and flags on every call, regardless of what we pass.
+    Casting to this Protocol at the call site swaps in a signature we own.
+    """
+
+    def expose_function(
+        self, name: str, callback: Callable[[ChunkMessage], None]
+    ) -> None: ...
+
+
+class _ExposesAsyncEvents(Protocol):
+    """Async counterpart of `_ExposesSyncEvents`, see there for why this exists."""
+
+    async def expose_function(
+        self,
+        name: str,
+        callback: Callable[[ChunkMessage], Coroutine[Any, Any, None]],  # pyright: ignore[reportExplicitAny]
+    ) -> None: ...
+
+
 def create_send_events_handler(
-    chunk_buffers: dict[str, Any],
+    chunk_buffers: dict[str, ChunkBuffer],
     session_id: str,
     trace_id: str,
     client: AsyncLaminarClient,
     background_loop: asyncio.AbstractEventLoop,
-):
+) -> Callable[[ChunkMessage], Coroutine[Any, Any, None]]:  # pyright: ignore[reportExplicitAny]
     """
     Create an async event handler for sending browser events.
 
@@ -69,7 +89,7 @@ def create_send_events_handler(
         An async function that handles incoming event chunks from the browser
     """
 
-    async def send_events_from_browser(chunk: dict[str, Any]):
+    async def send_events_from_browser(chunk: ChunkMessage) -> None:
         try:
             # Handle chunked data
             batch_id = chunk["batchId"]
@@ -79,11 +99,11 @@ def create_send_events_handler(
 
             # Initialize buffer for this batch if needed
             if batch_id not in chunk_buffers:
-                chunk_buffers[batch_id] = {
-                    "chunks": {},
-                    "total": total_chunks,
-                    "timestamp": time.time(),
-                }
+                chunk_buffers[batch_id] = ChunkBuffer(
+                    chunks={},
+                    total=total_chunks,
+                    timestamp=time.time(),
+                )
 
             # Store chunk
             chunk_buffers[batch_id]["chunks"][chunk_index] = data
@@ -95,13 +115,18 @@ def create_send_events_handler(
                 for i in range(total_chunks):
                     full_data += chunk_buffers[batch_id]["chunks"][i]
 
-                # Parse the JSON
-                events = orjson.loads(full_data)
+                # Parse the JSON. The individual event shape is rrweb's, not
+                # ours, so `Any` here is a genuine external contract.
+                events = cast(list[dict[str, Any]], orjson.loads(full_data))  # pyright: ignore[reportExplicitAny]
 
                 # Send to server in background loop (independent of Playwright's loop)
                 if events and len(events) > 0:
                     future = asyncio.run_coroutine_threadsafe(
-                        client._browser_events.send(session_id, trace_id, events),
+                        # Internal client API, shared across the browser
+                        # instrumentation package.
+                        client._browser_events.send(  # pyright: ignore[reportPrivateUsage]
+                            session_id, trace_id, events
+                        ),
                         background_loop,
                     )
                     track_async_send(future)
@@ -111,7 +136,7 @@ def create_send_events_handler(
 
             # Clean up old incomplete buffers
             current_time = time.time()
-            to_delete = []
+            to_delete: list[str] = []
             for bid, buffer in chunk_buffers.items():
                 if current_time - buffer["timestamp"] > OLD_BUFFER_TIMEOUT:
                     to_delete.append(bid)
@@ -253,18 +278,18 @@ def start_recording_events_sync(
     background_loop = get_background_loop()
 
     # Buffer for reassembling chunks
-    chunk_buffers: dict[str, Any] = {}
+    chunk_buffers: dict[str, ChunkBuffer] = {}
 
     # Create the async event handler (shared implementation)
     send_events_from_browser = create_send_events_handler(
         chunk_buffers, session_id, trace_id, client, background_loop
     )
 
-    def submit_event(chunk: dict[str, Any]):
+    def submit_event(chunk: ChunkMessage) -> None:
         """Sync wrapper that submits async handler to background loop."""
         try:
             # Submit async handler to background loop
-            _ = asyncio.run_coroutine_threadsafe(
+            _future = asyncio.run_coroutine_threadsafe(
                 send_events_from_browser(chunk),
                 background_loop,
             )
@@ -272,13 +297,13 @@ def start_recording_events_sync(
             logger.debug(f"Error submitting event: {e}")
 
     try:
-        page.expose_function("lmnrSendEvents", submit_event)
+        cast(_ExposesSyncEvents, page).expose_function("lmnrSendEvents", submit_event)
     except Exception as e:
         logger.debug(f"Could not expose function: {e}")
 
     inject_session_recorder_sync(page)
 
-    def on_load(p: SyncPage):
+    def on_load(p: SyncPage) -> None:
         try:
             if not p.is_closed():
                 inject_session_recorder_sync(p)
@@ -301,7 +326,7 @@ async def start_recording_events_async(
     background_loop = get_background_loop()
 
     # Buffer for reassembling chunks
-    chunk_buffers: dict[str, Any] = {}
+    chunk_buffers: dict[str, ChunkBuffer] = {}
 
     # Create the async event handler (shared implementation)
     send_events_from_browser = create_send_events_handler(
@@ -309,13 +334,15 @@ async def start_recording_events_async(
     )
 
     try:
-        await page.expose_function("lmnrSendEvents", send_events_from_browser)
+        await cast(_ExposesAsyncEvents, page).expose_function(
+            "lmnrSendEvents", send_events_from_browser
+        )
     except Exception as e:
         logger.debug(f"Could not expose function: {e}")
 
     await inject_session_recorder_async(page)
 
-    async def on_load(p: Page):
+    async def on_load(p: Page) -> None:
         try:
             # Check if page is closed before attempting to inject
             if not p.is_closed():

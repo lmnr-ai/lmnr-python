@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import logging
 import uuid
 from collections.abc import Callable, Collection, Coroutine, Sequence
 from importlib.metadata import version
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from typing_extensions import override
 
@@ -23,41 +25,25 @@ from lmnr.sdk.browser.pw_utils import (
 )
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 
-try:
-    if is_package_installed("playwright"):
-        from playwright.async_api import Browser, BrowserContext, Page
-        from playwright.sync_api import (
-            Browser as SyncBrowser,
-        )
-        from playwright.sync_api import (
-            BrowserContext as SyncBrowserContext,
-        )
-        from playwright.sync_api import (
-            Page as SyncPage,
-        )
-    elif is_package_installed("patchright"):
-        from patchright.async_api import Browser, BrowserContext, Page
-        from patchright.sync_api import (
-            Browser as SyncBrowser,
-        )
-        from patchright.sync_api import (
-            BrowserContext as SyncBrowserContext,
-        )
-        from patchright.sync_api import (
-            Page as SyncPage,
-        )
-    else:
-        raise ImportError(
-            "Attempted to import lmnr.sdk.browser.playwright_otel, but neither " +
-            "playwright nor patchright is installed. Use `pip install playwright` " +
-            "or `pip install patchright` to install one of the supported browsers."
-        )
-except ImportError as e:
+if TYPE_CHECKING:
+    # `from __future__ import annotations` makes every annotation in this file a
+    # deferred string, so this import (unlike the patchright fallback below) is
+    # never evaluated at runtime — it exists purely so pyright can resolve the
+    # types below. playwright and patchright are drop-in forks of one another
+    # (same API shape), so typing against playwright's stubs is accurate
+    # regardless of which package the user actually has installed.
+    from playwright.async_api import Browser, BrowserContext, BrowserType, Page
+    from playwright.sync_api import Browser as SyncBrowser
+    from playwright.sync_api import BrowserContext as SyncBrowserContext
+    from playwright.sync_api import BrowserType as SyncBrowserType
+    from playwright.sync_api import Page as SyncPage
+
+if not (is_package_installed("playwright") or is_package_installed("patchright")):
     raise ImportError(
-        f"Attempted to import {__file__}, but it is designed " +
-        "to patch Playwright, which is not installed. Use `pip install playwright` " +
-        "or `pip install patchright` to install Playwright or remove this import."
-    ) from e
+        f"Attempted to import {__file__}, but it is designed "
+        + "to patch Playwright, which is not installed. Use `pip install playwright` "
+        + "or `pip install patchright` to install Playwright or remove this import."
+    )
 
 # all available versions at https://pypi.org/project/playwright/#history
 _instruments = ("playwright >= 1.9.0",)
@@ -65,15 +51,15 @@ logger = logging.getLogger(__name__)
 
 
 def _wrap_new_browser_sync(
-    to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., SyncBrowser],
+    _instance: SyncBrowserType,
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
     *,
     client: AsyncLaminarClient,
-):
-    browser: SyncBrowser = wrapped(*args, **kwargs)
+) -> SyncBrowser:
+    browser = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
 
     def create_page_handler(
@@ -86,7 +72,7 @@ def _wrap_new_browser_sync(
 
     for context in browser.contexts:
         page_handler = create_page_handler(session_id, client)
-        _ = context.on("page", page_handler)
+        _page_listener = context.on("page", page_handler)
         for page in context.pages:
             start_recording_events_sync(page, session_id, client)
 
@@ -94,20 +80,20 @@ def _wrap_new_browser_sync(
 
 
 async def _wrap_new_browser_async(
-    to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., Coroutine[Any, Any, Browser]],  # pyright: ignore[reportExplicitAny]
+    _instance: BrowserType,
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
     *,
     client: AsyncLaminarClient,
-):
-    browser: Browser = await wrapped(*args, **kwargs)
+) -> Browser:
+    browser = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
 
     def create_page_handler(
         session_id: str, client: AsyncLaminarClient
-    ) -> Callable[[Page], Coroutine[Any, Any, None]]:
+    ) -> Callable[[Page], Coroutine[Any, Any, None]]:  # pyright: ignore[reportExplicitAny]
         async def page_handler(page: Page) -> None:
             await start_recording_events_async(page, session_id, client)
 
@@ -115,22 +101,22 @@ async def _wrap_new_browser_async(
 
     for context in browser.contexts:
         page_handler = create_page_handler(session_id, client)
-        _ = context.on("page", page_handler)
+        _page_listener = context.on("page", page_handler)
         for page in context.pages:
             await start_recording_events_async(page, session_id, client)
     return browser
 
 
 def _wrap_new_context_sync(
-    to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., SyncBrowserContext],
+    _instance: SyncBrowser | SyncBrowserType,
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
     *,
     client: AsyncLaminarClient,
-):
-    context: SyncBrowserContext = wrapped(*args, **kwargs)
+) -> SyncBrowserContext:
+    context = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
 
     def create_page_handler(
@@ -142,7 +128,7 @@ def _wrap_new_context_sync(
         return page_handler
 
     page_handler = create_page_handler(session_id, client)
-    _ = context.on("page", page_handler)
+    _page_listener = context.on("page", page_handler)
     for page in context.pages:
         start_recording_events_sync(page, session_id, client)
 
@@ -150,27 +136,27 @@ def _wrap_new_context_sync(
 
 
 async def _wrap_new_context_async(
-    to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., Coroutine[Any, Any, BrowserContext]],  # pyright: ignore[reportExplicitAny]
+    _instance: Browser | BrowserType,
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
     *,
     client: AsyncLaminarClient,
-):
-    context: BrowserContext = await wrapped(*args, **kwargs)
+) -> BrowserContext:
+    context = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
 
     def create_page_handler(
         session_id: str, client: AsyncLaminarClient
-    ) -> Callable[[Page], Coroutine[Any, Any, None]]:
+    ) -> Callable[[Page], Coroutine[Any, Any, None]]:  # pyright: ignore[reportExplicitAny]
         async def page_handler(page: Page) -> None:
             await start_recording_events_async(page, session_id, client)
 
         return page_handler
 
     page_handler = create_page_handler(session_id, client)
-    _ = context.on("page", page_handler)
+    _page_listener = context.on("page", page_handler)
     for page in context.pages:
         await start_recording_events_async(page, session_id, client)
 
@@ -178,40 +164,40 @@ async def _wrap_new_context_async(
 
 
 def _wrap_bring_to_front_sync(
-    to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., None],
+    instance: SyncPage,
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
     *,
-    client: AsyncLaminarClient,
-):
+    _client: AsyncLaminarClient,
+) -> None:
     wrapped(*args, **kwargs)
-    _ = take_full_snapshot(instance)
+    _snapshot_taken = take_full_snapshot(instance)
 
 
 async def _wrap_bring_to_front_async(
-    to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., Coroutine[Any, Any, None]],  # pyright: ignore[reportExplicitAny]
+    instance: Page,
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
     *,
-    client: AsyncLaminarClient,
-):
+    _client: AsyncLaminarClient,
+) -> None:
     await wrapped(*args, **kwargs)
-    _ = await take_full_snapshot_async(instance)
+    _snapshot_taken = await take_full_snapshot_async(instance)
 
 
 def _wrap_browser_new_page_sync(
-    to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., SyncPage],
+    _instance: SyncBrowser,
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
     *,
     client: AsyncLaminarClient,
-):
+) -> SyncPage:
     page = wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
     start_recording_events_sync(page, session_id, client)
@@ -219,14 +205,14 @@ def _wrap_browser_new_page_sync(
 
 
 async def _wrap_browser_new_page_async(
-    to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., Coroutine[Any, Any, Page]],  # pyright: ignore[reportExplicitAny]
+    _instance: Browser,
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
     *,
     client: AsyncLaminarClient,
-):
+) -> Page:
     page = await wrapped(*args, **kwargs)
     session_id = str(uuid.uuid4().hex)
     await start_recording_events_async(page, session_id, client)
@@ -373,7 +359,7 @@ class PlaywrightInstrumentor(BaseLaminarInstrumentor):
         return self._scope
 
     @override
-    def wrapper_kwargs(self) -> dict[str, Any]:
+    def wrapper_kwargs(self) -> dict[str, AsyncLaminarClient]:
         # Both sync and async wrappers get the ASYNC client on purpose: sends go
         # through a background asyncio loop either way.
         return {"client": self.async_client}

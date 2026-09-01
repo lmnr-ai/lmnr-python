@@ -1,6 +1,6 @@
-from collections.abc import Collection, Sequence
+from collections.abc import Callable, Collection, Coroutine, Sequence
 from importlib.metadata import version
-from typing import Any
+from typing import Any, TypeVar
 
 import pydantic
 from typing_extensions import override
@@ -46,15 +46,19 @@ except ImportError as e:
 
 _instruments = ("browser-use < 0.5.0",)
 
+#: `_wrap` returns exactly what `wrapped` returns, whatever that is per call
+#: site — bounding it lets pyright track that identity instead of widening to
+#: `Any`.
+T = TypeVar("T")
 
 
 async def _wrap(
     to_wrap: BrowserUseSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
-):
+    wrapped: Callable[..., Coroutine[Any, Any, T]],  # pyright: ignore[reportExplicitAny]
+    instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+) -> T:
     span_name = to_wrap.get("span_name")
     attributes = {
         "lmnr.span.type": to_wrap.get("span_type"),
@@ -83,9 +87,13 @@ async def _wrap(
     with Laminar.start_as_current_span(str(span_name)) as span:
         result = await wrapped(*args, **kwargs)
         if not to_wrap.get("ignore_output"):
-            to_serialize = result
-            if isinstance(result, AgentHistoryList):
-                to_serialize = result.final_result()
+            # A fresh `Any`-typed alias, not `result` itself: `result` carries
+            # the bound `T` (so the function can return it unchanged below),
+            # but the isinstance narrowing here is only for serialization and
+            # must not leak back into `T`.
+            to_serialize: Any = result
+            if isinstance(to_serialize, AgentHistoryList):
+                to_serialize = to_serialize.final_result()
             serialized = (
                 to_serialize.model_dump_json()
                 if isinstance(to_serialize, pydantic.BaseModel)

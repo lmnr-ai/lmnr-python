@@ -143,7 +143,7 @@ def _cleanup_background_loop():
             except KeyboardInterrupt:
                 logger.debug("Interrupted, cancelling pending async sends")
                 for f in futures_to_wait:
-                    _ = f.cancel()
+                    _cancelled = f.cancel()
                 raise
             except Exception as e:
                 logger.debug(f"Error in async send: {e}")
@@ -151,7 +151,7 @@ def _cleanup_background_loop():
     # Stop the background loop
     if _background_loop is not None and not _background_loop.is_closed():
         try:
-            _ = _background_loop.call_soon_threadsafe(_background_loop.stop)
+            _stop_handle = _background_loop.call_soon_threadsafe(_background_loop.stop)
             # Wait for thread to finish
             if _background_loop_thread is not None:
                 _background_loop_thread.join(timeout=THREAD_JOIN_TIMEOUT_SECONDS)
