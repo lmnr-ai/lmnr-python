@@ -21,7 +21,7 @@ session has no trace yet).
 import datetime
 import json
 import os
-from typing import Any
+from typing import Any, cast
 
 # Directory the debug-session file lives in, relative to the working dir.
 DEBUG_SESSION_DIR = ".lmnr"
@@ -49,9 +49,10 @@ def read_debug_session_file(directory: str | None = None) -> dict[str, Any] | No
     try:
         path = os.path.join(directory, DEBUG_SESSION_DIR, DEBUG_SESSION_FILE)
         with open(path, "r", encoding="utf-8") as f:
-            r = json.load(f)
+            r = json.load(f)  # pyright: ignore[reportAny]
         if not isinstance(r, dict):
             return None
+        r = cast(dict[str, str], r)
         session_id = _str(r.get("session_id"))
         if not session_id:
             return None

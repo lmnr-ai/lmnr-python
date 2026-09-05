@@ -15,9 +15,9 @@ Part of the cross-language parity surface — keep line-comparable with the TS
 
 import datetime
 import json
-from typing import Any
 
 from lmnr.sdk.debug.debug_session_file import (
+    DebugSessionFile,
     read_debug_session_file,
     resolve_debug_session_dir,
     write_debug_session_file,
@@ -34,7 +34,7 @@ def build_debug_session_file(
     cache_until: str | None,
     debugger_url: str | None,
     started_at: str | None = None,
-) -> dict[str, Any]:
+) -> DebugSessionFile:
     """Build the persisted debug-session record. Key order matches the TS SDK.
 
     `started_at` is the run's start time, captured by `DebugRuntime` at SDK init
@@ -54,7 +54,7 @@ def build_debug_session_file(
 
 
 def emit_pointer(
-    file: dict[str, Any],
+    file: DebugSessionFile,
     directory: str | None = None,
     file_session_id_at_init: str | None = None,
 ) -> None:

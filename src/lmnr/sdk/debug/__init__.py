@@ -16,10 +16,15 @@ use `runtime.client` / `runtime.async_client` to call the cache endpoint. When
 debug mode is off, `get_runtime()` returns None and everything is inert.
 """
 
+from __future__ import annotations
+
 import datetime
 import threading
-from typing import Any
+from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
+    from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.debug.config import (
     DebugConfig,
     build_debug_config,
@@ -44,21 +49,21 @@ class DebugRuntime:
     def __init__(
         self,
         config: DebugConfig,
-        client: Any,
-        async_client: Any,
+        client: LaminarClient,
+        async_client: AsyncLaminarClient,
         debugger_url: str | None,
     ):
-        self._config = config
-        self._client = client
-        self._async_client = async_client
-        self._debugger_url = debugger_url
+        self._config: DebugConfig = config
+        self._client: LaminarClient = client
+        self._async_client: AsyncLaminarClient = async_client
+        self._debugger_url: str | None = debugger_url
         self._trace_id: str | None = None
         self._project_id: str | None = None
-        self._emitted = False
-        self._lock = threading.Lock()
+        self._emitted: bool = False
+        self._lock: threading.Lock = threading.Lock()
         # Captured at construction (SDK init) so the pointer's `started_at`
         # reflects when the run began, not when the pointer is emitted (shutdown).
-        self._started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        self._started_at: str = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     @property
     def session_id(self) -> str:
@@ -93,12 +98,12 @@ class DebugRuntime:
         return self._config.local_origin and self._config.session_minted
 
     @property
-    def client(self) -> Any:
+    def client(self) -> LaminarClient:
         """The retained synchronous `LaminarClient` for cache lookups."""
         return self._client
 
     @property
-    def async_client(self) -> Any:
+    def async_client(self) -> AsyncLaminarClient:
         """The retained asynchronous `AsyncLaminarClient` for cache lookups."""
         return self._async_client
 
@@ -245,8 +250,8 @@ def reset_debug_runtime() -> None:
 
 
 def init_debug_runtime(
-    client: Any,
-    async_client: Any,
+    client: LaminarClient,
+    async_client: AsyncLaminarClient,
     debugger_url: str | None = None,
 ) -> DebugRuntime | None:
     """Build the debug runtime once. Idempotent; safe to call from initialize().
@@ -280,8 +285,8 @@ def init_debug_runtime(
 
 def init_debug_runtime_from_context(
     debug: DebugContext | None,
-    client: Any,
-    async_client: Any,
+    client: LaminarClient,
+    async_client: AsyncLaminarClient,
     debugger_url: str | None = None,
 ) -> tuple[DebugRuntime | None, bool]:
     """Arm OR refresh the debug runtime from a propagated `DebugContext`.
