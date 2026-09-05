@@ -1,7 +1,9 @@
+from collections.abc import Callable, Collection, Coroutine, Sequence
 from importlib.metadata import version
-from typing import Any, Collection, Sequence
+from typing import Any, TypeVar
 
-from opentelemetry.trace import NonRecordingSpan, get_current_span
+from opentelemetry.trace import NonRecordingSpan, SpanContext, get_current_span
+from typing_extensions import override
 
 from lmnr import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
@@ -16,20 +18,25 @@ from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.sdk.log import get_default_logger
 
 _instruments = ("bubus >= 1.3.0",)
-event_id_to_span_context = {}
+event_id_to_span_context: dict[str, SpanContext] = {}
 logger = get_default_logger(__name__)
+
+#: Both wrappers below return exactly what `wrapped` returns, whatever that is
+#: per call site — bounding it lets pyright track that identity instead of
+#: widening to `Any`.
+T = TypeVar("T")
 
 
 def wrap_dispatch(
-    to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
-):
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., T],
+    _instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+) -> T:
     event = args[0] if args and len(args) > 0 else kwargs.get("event", None)
     if event and hasattr(event, "event_id"):
-        event_id = event.event_id
+        event_id = str(event.event_id)
         if event_id:
             span = get_current_span(get_current_context())
             event_id_to_span_context[event_id] = span.get_span_context()
@@ -37,16 +44,16 @@ def wrap_dispatch(
 
 
 async def wrap_process_event(
-    to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
-):
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., Coroutine[Any, Any, T]],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+) -> T:
     event = args[0] if args and len(args) > 0 else kwargs.get("event", None)
     span_context = None
     if event and hasattr(event, "event_id"):
-        event_id = event.event_id
+        event_id = str(event.event_id)
         if event_id:
             span_context = event_id_to_span_context.get(event_id)
     if not span_context:
@@ -85,9 +92,11 @@ class BubusInstrumentor(BaseLaminarInstrumentor):
 
     _scope: LaminarInstrumentationScopeAttributes | None = None
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is None:
             try:
@@ -103,14 +112,15 @@ class BubusInstrumentor(BaseLaminarInstrumentor):
 
     def __init__(self):
         super().__init__()
-        self.instrumentor_config = LaminarInstrumentorConfig(
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 {**spec, "instrumentation_scope": self.instrumentation_scope()}
                 for spec in WRAPPED_FUNCTIONS
             ]
         )
 
-    def _uninstrument(self, **kwargs):
+    @override
+    def _uninstrument(self, **kwargs: dict[str, Any]):  # pyright: ignore[reportExplicitAny]
         super()._uninstrument(**kwargs)
         # This map is the whole point of the instrumentation, so it must not
         # outlive it — a stale entry would re-parent a later event onto a span

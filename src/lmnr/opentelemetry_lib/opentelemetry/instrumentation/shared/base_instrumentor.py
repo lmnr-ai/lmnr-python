@@ -1,17 +1,18 @@
+import importlib
+import sys
 from abc import ABC, abstractmethod
 from logging import Logger
 from typing import Any
 
-import importlib
-import sys
-
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
-from wrapt import wrap_function_wrapper, FunctionWrapper
+from typing_extensions import override
+from wrapt import FunctionWrapper, wrap_function_wrapper
+
+from lmnr.sdk.log import get_default_logger
 
 from .types import LaminarInstrumentationScopeAttributes, LaminarInstrumentorConfig
 from .wrapper_helpers import add_spec_wrapper
-from lmnr.sdk.log import get_default_logger
 
 
 class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
@@ -129,7 +130,8 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
         del self._module_function_originals[key]
 
     # default implementation, can be overridden by subclasses
-    def _instrument(self, **kwargs):
+    @override
+    def _instrument(self, **kwargs: dict[str, Any]):  #pyright: ignore[reportExplicitAny]
         handler_kwargs = self.wrapper_kwargs()
         for wrapped_function_spec in self.instrumentor_config["wrapped_functions"]:
             package_name = wrapped_function_spec["package_name"]
@@ -174,7 +176,8 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
                 # don't re-raise, we don't want to fail the entire program
 
     # default implementation, can be overridden by subclasses
-    def _uninstrument(self, **kwargs):
+    @override
+    def _uninstrument(self, **kwargs: dict[str, Any]):  #pyright: ignore[reportExplicitAny]
         for wrapped_function_spec in self.instrumentor_config["wrapped_functions"]:
             package_name = wrapped_function_spec["package_name"]
             object_name = wrapped_function_spec.get("object_name")

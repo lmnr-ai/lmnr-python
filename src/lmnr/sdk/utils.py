@@ -215,11 +215,11 @@ def serialize(obj: Any) -> JsonValue:  # pyright: ignore[reportExplicitAny, repo
 def get_input_from_func_args(
     func: Callable[..., Any],  # pyright: ignore[reportExplicitAny]
     is_method: bool = False,
-    func_args: list[Any] | None = None,  # pyright: ignore[reportExplicitAny]
+    func_args: Sequence[Any] | None = None,  # pyright: ignore[reportExplicitAny]
     func_kwargs: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
     ignore_inputs: list[str] | None = None,
 ) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
-    normalized_args = func_args if func_args is not None else []
+    normalized_args = list(func_args if func_args is not None else [])
     normalized_kwargs = func_kwargs if func_kwargs is not None else {}
     # Remove implicitly passed "self" or "cls" argument for
     # instance or class methods
