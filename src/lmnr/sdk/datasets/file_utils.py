@@ -1,6 +1,7 @@
+import csv
 from pathlib import Path
 from typing import Any
-import csv
+
 import orjson
 
 from lmnr.sdk.log import get_default_logger
@@ -20,7 +21,7 @@ def _collect_files(paths: list[Path], recursive: bool = False) -> list[Path]:
     Handles both files and directories. If a path is a directory,
     collects all supported files within it (recursively if specified).
     """
-    collected_files = []
+    collected_files: list[Path] = []
 
     for path in paths:
         if path.is_file():
@@ -41,12 +42,12 @@ def _collect_files(paths: list[Path], recursive: bool = False) -> list[Path]:
     return collected_files
 
 
-def _read_file(file: Path) -> list[dict[str, Any]]:
+def _read_file(file: Path) -> list[dict[str, Any]]:  # pyright: ignore[reportExplicitAny]
     """Read data from a single file and return as a list of dictionaries."""
     if file.suffix == ".json":
-        result = orjson.loads(file.read_bytes())
+        result = orjson.loads(file.read_bytes())  # pyright: ignore[reportAny])
         if isinstance(result, list):
-            return result
+            return result  # pyright: ignore[reportUnknownVariableType])
         else:
             return [result]
     elif file.suffix == ".csv":
@@ -59,7 +60,7 @@ def _read_file(file: Path) -> list[dict[str, Any]]:
         raise ValueError(f"Unsupported file type: {file.suffix}")
 
 
-def load_from_paths(paths: list[Path], recursive: bool = False) -> list[dict[str, Any]]:
+def load_from_paths(paths: list[Path], recursive: bool = False) -> list[dict[str, Any]]:  # pyright:ignore[reportExplicitAny]
     """
     Load data from all files in the specified paths.
 
@@ -73,7 +74,7 @@ def load_from_paths(paths: list[Path], recursive: bool = False) -> list[dict[str
 
     LOG.info(f"Found {len(files)} file(s) to read")
 
-    result = []
+    result: list[dict[str, Any]] = []  # pyright:ignore[reportExplicitAny]
     for file in files:
         try:
             data = _read_file(file)

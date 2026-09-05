@@ -30,7 +30,7 @@ def get_latest_pypi_version() -> str:
     """
     try:
         response = httpx.get("https://pypi.org/pypi/lmnr/json")
-        response = response.raise_for_status()
+        response = response.raise_for_status() or response
 
         releases: dict[str, list[ReleaseInfo]] = cast(PyPIJSONAPIResponse, response.json())["releases"]
         stable_versions = [

@@ -17,7 +17,7 @@ class AsyncTags(BaseAsyncResource):
         self,
         trace_id: str | int | uuid.UUID,
         tags: list[str] | str,
-    ):
+    )-> list[str]:
         """Tag a trace with a list of tags. Note that the trace must be ended
         before tagging it. You may want to call `Laminar.flush()` after the
         trace that you want to tag.
@@ -80,4 +80,8 @@ class AsyncTags(BaseAsyncResource):
             raise ValueError(
                 f"Failed to tag trace: [{response.status_code}] {response.text}"
             )
-        return response.json()
+        # always return an empty list.
+        # The server used to return tags that were passed,
+        # but now returns a response with no body,
+        # so keeping for backwards-compatibility
+        return []

@@ -16,7 +16,7 @@ class Traces(BaseResource):
     def push_metadata(
         self,
         trace_id: str | int | uuid.UUID,
-        metadata: dict[str, Any],
+        metadata: dict[str, Any],  # pyright:ignore[reportExplicitAny],
     ) -> None:
         """Push a metadata patch to an existing trace.
 
@@ -84,7 +84,7 @@ class Traces(BaseResource):
 
         if response.status_code == 404:
             logger.warning(
-                f"Trace {formatted_trace_id} not found. The trace may not have "
+                f"Trace {formatted_trace_id} not found. The trace may not have " +
                 "been flushed yet — call Laminar.flush() and retry."
             )
             return

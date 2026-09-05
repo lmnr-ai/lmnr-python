@@ -12,10 +12,36 @@ provider wrappers branch on:
 """
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, cast
+
+from lmnr.sdk.log import get_default_logger
+
+logger = get_default_logger(__name__)
 
 
 @dataclass(frozen=True)
 class CacheOutcome:
     kind: Literal["hit", "miss", "live"]
-    cached: dict[str, Any] | None = None
+    cached: dict[str, Any] | None = None  # pyright: ignore[reportExplicitAny]
+
+
+def parse_cache_outcome(data: object) -> CacheOutcome:
+    """Map app-server's `{outcome: hit|miss|live, response?}` body to CacheOutcome.
+
+    Shared by the sync and async resources. Anything unrecognized degrades to `live` (safe).
+    """
+    outcome = data.get("outcome") if isinstance(data, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    if outcome == "hit":
+        # A HIT must carry a response envelope to be servable; the provider
+        # wrappers call cached_response_to_*(cached), which does cached.get().
+        # A response-less HIT (omitted/null `response`) is malformed — degrade
+        # to `live` so the call runs live (no latch) instead of raising.
+        data_dict = cast(dict[str, Any], data)  # pyright: ignore[reportExplicitAny]
+        response = data_dict.get("response")
+        if response is None:
+            logger.debug("Cache HIT without response body; running call live")
+            return CacheOutcome(kind="live")
+        return CacheOutcome(kind="hit", cached=response) # pyright: ignore[reportAny])
+    if outcome == "miss":
+        return CacheOutcome(kind="miss")
+    return CacheOutcome(kind="live")

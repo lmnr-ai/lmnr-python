@@ -3,17 +3,11 @@
 from __future__ import annotations
 
 import uuid
-import warnings
-
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from lmnr.sdk.client.asynchronous.resources.base import BaseAsyncResource
 from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.types import (
-    GetDatapointsResponse,
-    parse_get_datapoints_response,
-)
-from lmnr.sdk.utils import describe_response, serialize, json_dumps
+from lmnr.sdk.utils import describe_response, json_dumps, serialize
 
 # `lmnr.sdk.evaluations` (a package) transitively imports this client package
 # (via `lmnr.sdk.datasets` -> `LaminarClient`), so importing
@@ -39,7 +33,7 @@ class AsyncEvals(BaseAsyncResource):
         self,
         name: str | None = None,
         group_name: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,  # pyright:ignore[reportExplicitAny]
     ) -> InitEvaluationResponse:
         """Initialize a new evaluation.
 
@@ -68,14 +62,14 @@ class AsyncEvals(BaseAsyncResource):
             raise ValueError(
                 f"Error initializing evaluation: {describe_response(response)}"
             )
-        resp_json = response.json()
+        resp_json = cast(dict[str, str], response.json())
         return parse_init_evaluation_response(resp_json)
 
     async def create_evaluation(
         self,
         name: str | None = None,
         group_name: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
     ) -> uuid.UUID:
         """
         Create a new evaluation and return its ID.
@@ -97,7 +91,7 @@ class AsyncEvals(BaseAsyncResource):
         self,
         eval_id: uuid.UUID,
         name: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
     ) -> InitEvaluationResponse:
         """Update an evaluation's name and/or metadata. The group ID is
         immutable. Fields left as None are kept unchanged.
@@ -130,14 +124,14 @@ class AsyncEvals(BaseAsyncResource):
             raise ValueError(
                 f"Error updating evaluation: {describe_response(response)}"
             )
-        return parse_init_evaluation_response(response.json())
+        return parse_init_evaluation_response(cast(dict[str, str], response.json()))
 
     async def create_datapoint(
         self,
         eval_id: uuid.UUID,
-        data: Any,
-        target: Any = None,
-        metadata: dict[str, Any] | None = None,
+        data: Any,  # pyright: ignore[reportExplicitAny, reportAny]
+        target: Any = None,  # pyright: ignore[reportExplicitAny, reportAny]
+        metadata: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
         index: int | None = None,
         trace_id: uuid.UUID | None = None,
     ) -> uuid.UUID:
@@ -163,7 +157,7 @@ class AsyncEvals(BaseAsyncResource):
         partial_datapoint = PartialEvaluationDatapoint(
             id=datapoint_id,
             data=data,
-            target=target,
+            target=target,  # pyright: ignore[reportAny],
             index=index or 0,
             trace_id=trace_id or uuid.uuid4(),
             executor_span_id=uuid.uuid4(),  # Will be updated when executor runs
@@ -208,46 +202,13 @@ class AsyncEvals(BaseAsyncResource):
                 f"Error saving evaluation datapoints: {describe_response(response)}"
             )
 
-    async def get_datapoints(
-        self,
-        dataset_name: str,
-        offset: int,
-        limit: int,
-    ) -> GetDatapointsResponse:
-        """Get datapoints from a dataset.
-
-        Args:
-            dataset_name (str): The name of the dataset.
-            offset (int): The offset to start from.
-            limit (int): The maximum number of datapoints to return.
-
-        Returns:
-            GetDatapointsResponse: The response containing the datapoints.
-
-        Raises:
-            ValueError: If there's an error fetching the datapoints.
-        """
-        warnings.warn(
-            "Use client.datasets.pull instead",
-            DeprecationWarning,
-        )
-
-        params = {"name": dataset_name, "offset": offset, "limit": limit}
-        response = await self._client.get(
-            self._base_url + "/v1/datasets/datapoints",
-            params=params,
-            headers=self._headers(),
-        )
-        if response.status_code != 200:
-            raise ValueError(f"Error fetching datapoints: {describe_response(response)}")
-        return parse_get_datapoints_response(response.json())
 
     async def update_datapoint(
         self,
         eval_id: uuid.UUID,
         datapoint_id: uuid.UUID,
         scores: dict[str, float | int],
-        executor_output: Any | None = None,
+        executor_output: Any | None = None,  # pyright: ignore[reportExplicitAny]
         trace_id: uuid.UUID | None = None,
     ) -> None:
         """Update a datapoint with evaluation results.
@@ -300,8 +261,8 @@ class AsyncEvals(BaseAsyncResource):
             )
             if length == 0:
                 raise ValueError(
-                    "Error saving evaluation datapoints: the server rejected the payload as too "
-                    "large even after truncating datapoint data to nothing. "
+                    "Error saving evaluation datapoints: the server rejected the payload as too " +
+                    "large even after truncating datapoint data to nothing. " +
                     f"Last server response: {describe_response(response)}"
                 )
             points = [

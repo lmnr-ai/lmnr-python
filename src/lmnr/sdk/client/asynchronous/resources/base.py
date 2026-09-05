@@ -14,9 +14,9 @@ class BaseAsyncResource:
             base_url (str): Base URL for the API
             project_api_key (str): Project API key
         """
-        self._client = client
-        self._base_url = base_url
-        self._project_api_key = project_api_key
+        self._client: httpx.AsyncClient = client
+        self._base_url: str = base_url
+        self._project_api_key: str | None = project_api_key
 
     def _headers(self) -> dict[str, str]:
         """Generate request headers with authentication.

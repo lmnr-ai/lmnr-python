@@ -2,6 +2,7 @@
 
 import math
 import uuid
+from typing import Any, cast
 
 from lmnr.sdk.client.asynchronous.resources.base import BaseAsyncResource
 from lmnr.sdk.log import get_default_logger
@@ -35,7 +36,7 @@ class AsyncDatasets(BaseAsyncResource):
             raise ValueError(
                 f"Error listing datasets: [{response.status_code}] {response.text}"
             )
-        return [parse_dataset(dataset) for dataset in response.json()]
+        return [parse_dataset(dataset) for dataset in cast(list[dict[str,str]], response.json())]
 
     async def get_dataset_by_name(self, name: str) -> list[Dataset]:
         """Get a dataset by name."""
@@ -48,7 +49,7 @@ class AsyncDatasets(BaseAsyncResource):
             raise ValueError(
                 f"Error getting dataset: [{response.status_code}] {response.text}"
             )
-        return [parse_dataset(dataset) for dataset in response.json()]
+        return [parse_dataset(dataset) for dataset in cast(list[dict[str,str]], response.json())]
 
     async def push(
         self,
@@ -92,7 +93,7 @@ class AsyncDatasets(BaseAsyncResource):
                     f"Error pushing data to dataset: [{response.status_code}] {response.text}"
                 )
 
-            response = parse_push_datapoints_response(response.json())
+            response = parse_push_datapoints_response(cast(dict[str,str], response.json()))
         # Currently, the response only contains the dataset ID,
         # so it's safe to return the last response only.
         return response
@@ -129,4 +130,4 @@ class AsyncDatasets(BaseAsyncResource):
             raise ValueError(
                 f"Error pulling data from dataset: [{response.status_code}] {response.text}"
             )
-        return parse_get_datapoints_response(response.json())
+        return parse_get_datapoints_response(cast(dict[str, int | list[dict[str, Any]]], response.json()))  # pyright: ignore[reportExplicitAny]
