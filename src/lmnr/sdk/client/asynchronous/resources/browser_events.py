@@ -2,9 +2,9 @@
 
 import gzip
 import json
+from typing import Any
 
 from lmnr.sdk.client.asynchronous.resources.base import BaseAsyncResource
-
 from lmnr.version import PYTHON_VERSION, __version__
 
 
@@ -15,7 +15,7 @@ class AsyncBrowserEvents(BaseAsyncResource):
         self,
         session_id: str,
         trace_id: str,
-        events: list[dict],
+        events: list[dict[str, Any]],  # pyright:ignore[reportExplicitAny] rrweb event format
     ):
         url = self._base_url + "/v1/browser-sessions/events"
         payload = {

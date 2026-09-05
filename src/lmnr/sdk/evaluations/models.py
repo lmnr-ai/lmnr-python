@@ -63,7 +63,8 @@ class InitEvaluationResponse(TypedDict):
     projectId: uuid.UUID
 
 
-def parse_init_evaluation_response(data: dict[str, Any]) -> InitEvaluationResponse:
+# values are not necessarily str, but the ones we parse are
+def parse_init_evaluation_response(data: dict[str, str]) -> InitEvaluationResponse:
     """Parse an `InitEvaluationResponse` from a `POST /v1/evals` (or update)
     response. Field names already match the wire shape (no aliasing)."""
     return InitEvaluationResponse(

@@ -1,9 +1,10 @@
 """Debug (rollout) session registration resource for the synchronous client."""
 
 import uuid
+from typing import cast
 
 from lmnr.sdk.client.synchronous.resources.base import BaseResource
-from lmnr.sdk.debug.outcome import CacheOutcome
+from lmnr.sdk.debug.outcome import CacheOutcome, parse_cache_outcome
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import SessionBlock, SessionBlockContent, SessionBlockType
 
@@ -37,9 +38,10 @@ class RolloutSessions(BaseResource):
             headers=self._headers(),
             json={"name": name},
         )
-        response.raise_for_status()
+        response = response.raise_for_status()
         try:
-            return response.json().get("projectId")
+            response_dict = cast(dict[str, str | None], response.json())
+            return response_dict.get("projectId")
         except Exception:
             return None
 
@@ -53,7 +55,7 @@ class RolloutSessions(BaseResource):
             f"{self._base_url}/v1/rollouts/{session_id}",
             headers=self._headers(),
         )
-        response.raise_for_status()
+        response = response.raise_for_status()
 
     def add_block(
         self,
@@ -97,9 +99,10 @@ class RolloutSessions(BaseResource):
                 raise RuntimeError(message)
             logger.warning(message)
             return None
-        response.raise_for_status()
+        response = response.raise_for_status()
         try:
-            return response.json().get("id")
+            response_dict = cast(dict[str, str | None], response.json())
+            return response_dict.get("id")
         except Exception as e:
             logger.warning(f"Failed to parse add-block response: {e}")
             return None
@@ -118,9 +121,9 @@ class RolloutSessions(BaseResource):
             f"{self._base_url}/v1/rollouts/{session_id}/blocks",
             headers=self._headers(),
         )
-        response.raise_for_status()
+        response = response.raise_for_status()
         try:
-            body = response.json()
+            body = cast(list[SessionBlock] | dict[str, list[SessionBlock]], response.json())
             blocks = body if isinstance(body, list) else body.get("blocks")
             return blocks or []
         except Exception as e:
@@ -160,30 +163,8 @@ class RolloutSessions(BaseResource):
                     response.status_code,
                 )
                 return CacheOutcome(kind="live")
-            data = response.json()
+            data = cast(object, response.json())
         except Exception as exc:
             logger.debug("Cache lookup failed (%s); running this call live", exc)
             return CacheOutcome(kind="live")
-        return _parse_cache_outcome(data)
-
-
-def _parse_cache_outcome(data: object) -> CacheOutcome:
-    """Map app-server's `{outcome: hit|miss|live, response?}` body to CacheOutcome.
-
-    Shared by the sync and async resources (kept here to avoid duplicating the
-    parse). Anything unrecognized degrades to `live` (safe).
-    """
-    outcome = data.get("outcome") if isinstance(data, dict) else None
-    if outcome == "hit":
-        # A HIT must carry a response envelope to be servable; the provider
-        # wrappers call cached_response_to_*(cached), which does cached.get().
-        # A response-less HIT (omitted/null `response`) is malformed — degrade
-        # to `live` so the call runs live (no latch) instead of raising.
-        response = data.get("response")
-        if response is None:
-            logger.debug("Cache HIT without response body; running call live")
-            return CacheOutcome(kind="live")
-        return CacheOutcome(kind="hit", cached=response)
-    if outcome == "miss":
-        return CacheOutcome(kind="miss")
-    return CacheOutcome(kind="live")
+        return parse_cache_outcome(data)
