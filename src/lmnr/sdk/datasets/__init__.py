@@ -1,8 +1,11 @@
-from abc import ABC, abstractmethod
-from pathlib import Path
-from typing import Callable
-
 import uuid
+from abc import ABC, abstractmethod
+from collections.abc import Callable
+from logging import Logger
+from pathlib import Path
+from typing import Any, TypedDict, cast
+
+from typing_extensions import override
 
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.datasets.file_utils import load_from_paths
@@ -12,6 +15,19 @@ from lmnr.sdk.types import Datapoint
 
 DEFAULT_FETCH_SIZE = 25
 LOG = get_default_logger(__name__, verbose=False)
+
+
+class _ById(TypedDict):
+    id: uuid.UUID
+
+
+class _ByName(TypedDict):
+    name: str | None
+
+
+# A dataset is looked up by exactly one of id or name; this union lets
+# `**identifier` type-check against the `id`/`name` keyword params below.
+DatasetIdentifier = _ById | _ByName
 
 
 def _require_dataset_integer(value: object, message: str) -> None:
@@ -27,7 +43,7 @@ def _require_dataset_integer(value: object, message: str) -> None:
 
 class EvaluationDataset(ABC):
     @abstractmethod
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: list[Any], **kwargs: dict[str, Any]):  # pyright: ignore[reportExplicitAny]
         pass
 
     @abstractmethod
@@ -35,7 +51,7 @@ class EvaluationDataset(ABC):
         pass
 
     @abstractmethod
-    def __getitem__(self, idx) -> Datapoint:
+    def __getitem__(self, idx: int) -> Datapoint:
         pass
 
     def slice(self, start: int, end: int):
@@ -80,7 +96,7 @@ class EvaluationDataset(ABC):
                 _require_dataset_integer(i, f"select index {i} is not an integer")
                 if i < 0 or i >= size:
                     raise IndexError(
-                        f"select index {i} is out of range for dataset of size "
+                        f"select index {i} is out of range for dataset of size " +
                         f"{size}"
                     )
             return requested
@@ -112,8 +128,8 @@ class _SubsetDataset(EvaluationDataset):
         base: EvaluationDataset,
         resolver: Callable[[], list[int]],
     ):
-        self._base = base
-        self._resolver = resolver
+        self._base: EvaluationDataset = base
+        self._resolver: Callable[[], list[int]] = resolver
         self._indices: list[int] | None = None
 
     def _resolve(self) -> list[int]:
@@ -121,13 +137,16 @@ class _SubsetDataset(EvaluationDataset):
             self._indices = self._resolver()
         return self._indices
 
+    @override
     def __len__(self) -> int:
         return len(self._resolve())
 
-    def __getitem__(self, idx) -> Datapoint:
+    @override
+    def __getitem__(self, idx: int) -> Datapoint:
         indices = self._resolve()
         return self._base[indices[idx]]
 
+    @override
     def source_dataset(self) -> "LaminarDataset | None":
         return self._base.source_dataset()
 
@@ -142,7 +161,7 @@ class LaminarDataset(EvaluationDataset):
         id: uuid.UUID | None = None,
         fetch_size: int = DEFAULT_FETCH_SIZE,
     ):
-        self.name = name
+        self.name: str | None = name
         self.id = id
         if name is None and id is None:
             raise ValueError("Either name or id must be provided")
@@ -152,35 +171,43 @@ class LaminarDataset(EvaluationDataset):
         # page index -> list of datapoints on that page. Each page is fetched at
         # most once, so arbitrary-index (random) access is correct and cheap.
         self._pages: dict[int, list[Datapoint]] = {}
-        self._fetch_size = fetch_size
-        self._logger = get_default_logger(self.__class__.__name__)
+        self._fetch_size: int = fetch_size
+        self._logger: Logger = get_default_logger(self.__class__.__name__)
 
     def _fetch_page(self, page_index: int) -> list[Datapoint]:
         offset = page_index * self._fetch_size
         self._logger.debug(
-            f"dataset name: {self.name}, id: {self.id}. Fetching page "
+            f"dataset name: {self.name}, id: {self.id}. Fetching page " +
             f"{page_index} (offset {offset}, limit {self._fetch_size})"
         )
-        identifier = {"id": self.id} if self.id is not None else {"name": self.name}
-        resp = self.client.datasets.pull(
-            **identifier,
-            offset=offset,
-            limit=self._fetch_size,
-        )
+        if self.id is not None:
+            resp = self.client.datasets.pull(
+                id=self.id,
+                offset=offset,
+                limit=self._fetch_size,
+            )
+        else:
+            resp = self.client.datasets.pull(
+                name=self.name,
+                offset=offset,
+                limit=self._fetch_size,
+            )
         self._pages[page_index] = resp["items"]
         if self._len is None:
             self._len = resp["total_count"]
         return resp["items"]
 
+    @override
     def __len__(self) -> int:
         if self._len is None:
-            self._fetch_page(0)
+            _fetch_result = self._fetch_page(0)
         # _fetch_page always sets _len from the response's (non-optional)
         # total_count, so it is resolved to an int by this point.
         assert self._len is not None
         return self._len
 
-    def __getitem__(self, idx) -> Datapoint:
+    @override
+    def __getitem__(self, idx: int) -> Datapoint:
         size = len(self)
         if idx < 0 or idx >= size:
             raise IndexError(
@@ -188,7 +215,7 @@ class LaminarDataset(EvaluationDataset):
             )
         page_index = idx // self._fetch_size
         if page_index not in self._pages:
-            self._fetch_page(page_index)
+            _fetch_result = self._fetch_page(page_index)
         page = self._pages[page_index]
         offset_in_page = idx - page_index * self._fetch_size
         if offset_in_page >= len(page):
@@ -200,18 +227,24 @@ class LaminarDataset(EvaluationDataset):
     def set_client(self, client: LaminarClient):
         self.client = client
 
+    @override
     def source_dataset(self) -> "LaminarDataset | None":
         return self
 
     def push(self, paths: str | list[str], recursive: bool = False):
-        paths = [paths] if isinstance(paths, str) else paths
-        paths = [Path(path) for path in paths]
-        data = load_from_paths(paths, recursive)
+        path_strs= [paths] if isinstance(paths, str) else paths
+        path_objs = [Path(path) for path in path_strs]
+        data = cast(list[Datapoint], load_from_paths(path_objs, recursive))
         if len(data) == 0:
             LOG.warning("No data to push. Skipping")
             return
-        identifier = {"id": self.id} if self.id is not None else {"name": self.name}
-        self.client.datasets.push(data, **identifier)
+        identifier: DatasetIdentifier = (
+            {"id": self.id} if self.id is not None else {"name": self.name}
+        )
+        if self.id is not None:
+            _push_result = self.client.datasets.push(data, id=self.id)
+        else:
+            _push_result = self.client.datasets.push(data, name=self.name)
         LOG.info(
             f"Successfully pushed {len(data)} datapoints to dataset [{identifier}]"
         )

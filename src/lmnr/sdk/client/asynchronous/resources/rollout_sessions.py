@@ -1,12 +1,10 @@
 """Debug (rollout) session registration resource for the asynchronous client."""
 
 import uuid
+from typing import cast
 
 from lmnr.sdk.client.asynchronous.resources.base import BaseAsyncResource
-from lmnr.sdk.client.synchronous.resources.rollout_sessions import (
-    _parse_cache_outcome,
-)
-from lmnr.sdk.debug.outcome import CacheOutcome
+from lmnr.sdk.debug.outcome import CacheOutcome, parse_cache_outcome
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import SessionBlock, SessionBlockContent, SessionBlockType
 
@@ -40,9 +38,10 @@ class AsyncRolloutSessions(BaseAsyncResource):
             headers=self._headers(),
             json={"name": name},
         )
-        response.raise_for_status()
+        response = response.raise_for_status()
         try:
-            return response.json().get("projectId")
+            response_dict = cast(dict[str, str | None], response.json())
+            return response_dict.get("projectId")
         except Exception:
             return None
 
@@ -56,7 +55,7 @@ class AsyncRolloutSessions(BaseAsyncResource):
             f"{self._base_url}/v1/rollouts/{session_id}",
             headers=self._headers(),
         )
-        response.raise_for_status()
+        response = response.raise_for_status()
 
     async def add_block(
         self,
@@ -90,9 +89,10 @@ class AsyncRolloutSessions(BaseAsyncResource):
                 raise RuntimeError(message)
             logger.warning(message)
             return None
-        response.raise_for_status()
+        response = response.raise_for_status()
         try:
-            return response.json().get("id")
+            response_dict = cast(dict[str, str], response.json())
+            return response_dict.get("id")
         except Exception as e:
             logger.warning(f"Failed to parse add-block response: {e}")
             return None
@@ -110,9 +110,9 @@ class AsyncRolloutSessions(BaseAsyncResource):
             f"{self._base_url}/v1/rollouts/{session_id}/blocks",
             headers=self._headers(),
         )
-        response.raise_for_status()
+        response = response.raise_for_status()
         try:
-            body = response.json()
+            body = cast(list[SessionBlock] | dict[str, list[SessionBlock]], response.json())
             blocks = body if isinstance(body, list) else body.get("blocks")
             return blocks or []
         except Exception as e:
@@ -147,8 +147,8 @@ class AsyncRolloutSessions(BaseAsyncResource):
                     response.status_code,
                 )
                 return CacheOutcome(kind="live")
-            data = response.json()
+            data = cast(object, response.json())
         except Exception as exc:
             logger.debug("Cache lookup failed (%s); running this call live", exc)
             return CacheOutcome(kind="live")
-        return _parse_cache_outcome(data)
+        return parse_cache_outcome(data)

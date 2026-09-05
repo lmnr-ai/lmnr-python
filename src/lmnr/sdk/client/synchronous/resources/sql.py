@@ -1,6 +1,6 @@
 """SQL query resource for synchronous client."""
 
-from typing import Any
+from typing import Any, cast
 
 from lmnr.sdk.client.synchronous.resources.base import BaseResource
 from lmnr.sdk.log import get_default_logger
@@ -18,8 +18,8 @@ class Sql(BaseResource):
     def query(
         self,
         sql: str,
-        parameters: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
+        parameters: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
+    ) -> list[dict[str, Any]]:  # pyright: ignore[reportExplicitAny]
         """
         Execute a SQL query against the Laminar backend.
 
@@ -43,7 +43,7 @@ class Sql(BaseResource):
             headers=self._headers(),
             json=payload,
         )
-        response.raise_for_status()
+        response = response.raise_for_status()
 
-        result = response.json()
+        result = cast(dict[str, list[Any]], response.json())  # pyright: ignore[reportExplicitAny]
         return result.get("data", [])
