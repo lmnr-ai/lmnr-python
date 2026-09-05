@@ -170,7 +170,7 @@ def _wrap_bring_to_front_sync(
     args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
     kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
     *,
-    _client: AsyncLaminarClient,
+    client: AsyncLaminarClient,  #pyright: ignore[reportUnusedParameter] set for compatibility with common wrappers though unused
 ) -> None:
     wrapped(*args, **kwargs)
     _snapshot_taken = take_full_snapshot(instance)
@@ -183,7 +183,7 @@ async def _wrap_bring_to_front_async(
     args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
     kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
     *,
-    _client: AsyncLaminarClient,
+    client: AsyncLaminarClient,  #pyright: ignore[reportUnusedParameter] set for compatibility with common wrappers though unused
 ) -> None:
     await wrapped(*args, **kwargs)
     _snapshot_taken = await take_full_snapshot_async(instance)
