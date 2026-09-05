@@ -38,7 +38,7 @@ class RolloutSessions(BaseResource):
             headers=self._headers(),
             json={"name": name},
         )
-        response = response.raise_for_status()
+        response = response.raise_for_status() or response
         try:
             response_dict = cast(dict[str, str | None], response.json())
             return response_dict.get("projectId")
@@ -55,7 +55,7 @@ class RolloutSessions(BaseResource):
             f"{self._base_url}/v1/rollouts/{session_id}",
             headers=self._headers(),
         )
-        response = response.raise_for_status()
+        response = response.raise_for_status() or response
 
     def add_block(
         self,
@@ -99,7 +99,7 @@ class RolloutSessions(BaseResource):
                 raise RuntimeError(message)
             logger.warning(message)
             return None
-        response = response.raise_for_status()
+        response = response.raise_for_status() or response
         try:
             response_dict = cast(dict[str, str | None], response.json())
             return response_dict.get("id")
@@ -121,7 +121,7 @@ class RolloutSessions(BaseResource):
             f"{self._base_url}/v1/rollouts/{session_id}/blocks",
             headers=self._headers(),
         )
-        response = response.raise_for_status()
+        response = response.raise_for_status() or response
         try:
             body = cast(list[SessionBlock] | dict[str, list[SessionBlock]], response.json())
             blocks = body if isinstance(body, list) else body.get("blocks")

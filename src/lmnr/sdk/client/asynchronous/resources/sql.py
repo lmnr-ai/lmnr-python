@@ -43,7 +43,7 @@ class AsyncSql(BaseAsyncResource):
             headers=self._headers(),
             json=payload,
         )
-        response = response.raise_for_status()
+        response = response.raise_for_status() or response
 
         result = cast(dict[str, list[Any]], response.json())  # pyright: ignore[reportExplicitAny]
         return result.get("data", [])
