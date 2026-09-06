@@ -855,8 +855,8 @@ class LangfuseAttributeTranslator(SpanProcessor):
             for k, v in new_attrs.items():
                 try:
                     target[k] = v
-                except Exception:  # pylint: disable=broad-exception-caught
-                    pass
+                except Exception as e:
+                   logger.debug(f"Failed to set attribute to span: {e}")
         finally:
             if was_immutable:
                 _set_immutable(True)
@@ -1016,13 +1016,13 @@ class LangfuseInstrumentor:
     # State is class-level so repeated calls to `Laminar.connect_to_langfuse()`
     # (or repeated auto-install via `init_instrumentations`) don't re-attach
     # processors or re-wrap `LangfuseResourceManager._initialize_instance`.
-    _installed: bool = False
-    _handled_providers: set[int] = set()
+    installed: bool = False
+    _handled_providers: set[int] | None = None
     #: Providers we attached the translator / span processor to, keyed by id().
     #: `uninstrument` walks this map to detach what we added. The reference is
     #: only held for the duration of `instrument(...)`; `uninstrument` clears
     #: it immediately so the instrumentor never pins a provider long-term.
-    _attached_providers: "dict[int, Any]" = {}
+    _attached_providers: dict[int, Any] | None = None
     _lmnr_tracer_provider: Any = None
     _original_initialize_instance: Callable[..., Any] | None = None
     #: Saved reference to LiteLLM's
@@ -1057,7 +1057,7 @@ class LangfuseInstrumentor:
         lmnr_span_processor: SpanProcessor,
     ) -> None:
         cls = type(self)
-        if cls._installed:
+        if cls.installed:
             return
 
         # 1. Translator lives on Laminar's own provider so it sees every
@@ -1086,6 +1086,8 @@ class LangfuseInstrumentor:
         # identical to Laminar's would otherwise get the translator +
         # laminar span processor attached a second time. id()-based
         # short-circuit is independent of TracerWrapper lifecycle.
+        if cls._handled_providers is None:
+            cls._handled_providers = set()
         cls._handled_providers.add(id(lmnr_tracer_provider))
 
         # 2 & 3. Attach to already-initialized Langfuse clients and patch
@@ -1096,7 +1098,7 @@ class LangfuseInstrumentor:
         # the `_installed` guard and prepend a SECOND translator, causing
         # every Langfuse span to be translated twice. Roll back by walking
         # the half-applied state through `uninstrument()`.
-        cls._installed = True
+        cls.installed = True
         try:
             # For every already-initialized Langfuse client, attach our span
             # processor and our translator to its `TracerProvider`. If
@@ -1132,7 +1134,7 @@ class LangfuseInstrumentor:
         already-seen Langfuse providers instead of re-attaching.
         """
         cls = type(self)
-        if not cls._installed:
+        if not cls.installed:
             return
         self._unpatch_resource_manager()
         self._unpatch_litellm_logger_factory()
@@ -1148,7 +1150,7 @@ class LangfuseInstrumentor:
 
         # Detach translator + laminar span processor from every Langfuse
         # provider we attached them to.
-        for provider in list(cls._attached_providers.values()):
+        for provider in list((cls._attached_providers or {}).values()):
             if translator is not None:
                 _remove_span_processor(provider, translator)
             if lmnr_processor is not None:
@@ -1159,7 +1161,7 @@ class LangfuseInstrumentor:
         cls._translator = None
         cls._lmnr_span_processor = None
         cls._lmnr_tracer_provider = None
-        cls._installed = False
+        cls.installed = False
 
     def _unwrap_litellm_loggers(self) -> None:
         """Restore the original `_get_tracer_with_dynamic_headers` /
@@ -1201,9 +1203,10 @@ class LangfuseInstrumentor:
         if provider is None:
             return
         pid = id(provider)
-        if pid in self._handled_providers:
-            return
-        self._handled_providers.add(pid)
+        if self._handled_providers:
+            if pid in self._handled_providers:
+                return
+            self._handled_providers.add(pid)
 
         # Skip the Laminar provider itself — our processor and translator are
         # already attached there.
@@ -1211,7 +1214,7 @@ class LangfuseInstrumentor:
 
         if (
             TracerWrapper.verify_initialized()
-            and TracerWrapper.instance._tracer_provider is provider
+            and TracerWrapper.instance.tracer_provider is provider
         ):
             return
 
@@ -1230,14 +1233,16 @@ class LangfuseInstrumentor:
             # letting a reinstall stack a second one. `_remove_span_processor`
             # tolerates a processor that was never attached, so recording
             # eagerly is safe.
+            if self._attached_providers is None:
+                self._attached_providers = {}
             if self._translator is not None:
                 _prepend_span_processor(provider, self._translator)
-                type(self)._attached_providers[pid] = provider
+                self._attached_providers[pid] = provider
             if self._lmnr_span_processor is not None:
                 add = getattr(provider, "add_span_processor", None)
                 if callable(add):
                     add(self._lmnr_span_processor)
-                    type(self)._attached_providers[pid] = provider
+                    self._attached_providers[pid] = provider
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning(
                 "Failed to attach Laminar processor to Langfuse TracerProvider: %s",
@@ -1252,8 +1257,10 @@ class LangfuseInstrumentor:
                 _remove_span_processor(provider, self._translator)
             if self._lmnr_span_processor is not None:
                 _remove_span_processor(provider, self._lmnr_span_processor)
-            self._handled_providers.discard(pid)
-            type(self)._attached_providers.pop(pid, None)
+            if self._handled_providers is not None:
+                self._handled_providers.discard(pid)
+            if self._attached_providers is not None:
+                self._attached_providers.pop(pid, None)
 
     def _patch_resource_manager(self) -> None:
         try:

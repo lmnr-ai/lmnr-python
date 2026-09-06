@@ -10,6 +10,7 @@ from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.export import SpanExporter
+from typing_extensions import Self
 
 from lmnr.opentelemetry_lib.tracing.context import (
     attach_context,
@@ -46,19 +47,19 @@ MAX_EVENTS_OR_ATTRIBUTES_PER_SPAN = 5000
 LOG = get_default_logger(__name__)
 
 
-class TracerWrapper(object):
-    resource_attributes: dict = {}
+class TracerWrapper:
+    resource_attributes: dict | None = None
     enable_content_tracing: bool = True
-    session_recording_options: SessionRecordingOptions = {}
+    session_recording_options: SessionRecordingOptions | None = None
     _lock = threading.Lock()
-    _tracer_provider: TracerProvider | None = None
     _logger_provider: LoggerProvider | None = None
     _logger: logging.Logger
     _async_client: AsyncLaminarClient
     _resource: Resource
-    _span_processor: SpanProcessor
     _log_processor: BatchLogRecordProcessor | None = None
     _original_thread_init = None
+    tracer_provider: TracerProvider | None = None
+    span_processor: SpanProcessor
 
     def __new__(
         cls,
@@ -78,7 +79,7 @@ class TracerWrapper(object):
         set_global_tracer_provider: bool = True,
         otel_logger_level: int = logging.ERROR,
         session_recording_options: SessionRecordingOptions | None = None,
-    ) -> "TracerWrapper":
+    ) -> Self:
         # Silence some opentelemetry warnings
         logging.getLogger("opentelemetry.trace").setLevel(otel_logger_level)
 
@@ -101,7 +102,7 @@ class TracerWrapper(object):
 
                 obj._resource = Resource(attributes=TracerWrapper.resource_attributes)
 
-                obj._span_processor = LaminarSpanProcessor(
+                obj.span_processor = LaminarSpanProcessor(
                     base_url=base_url,
                     api_key=project_api_key,
                     http_port=http_port,
@@ -122,9 +123,9 @@ class TracerWrapper(object):
                 ):
                     trace.set_tracer_provider(lmnr_provider)
 
-                obj._tracer_provider = lmnr_provider
+                obj.tracer_provider = lmnr_provider
 
-                obj._tracer_provider.add_span_processor(obj._span_processor)
+                obj.tracer_provider.add_span_processor(obj.span_processor)
 
                 # Setup LoggerProvider for OTel logs
                 log_exporter = LaminarLogExporter(
@@ -153,12 +154,12 @@ class TracerWrapper(object):
                 ThreadingInstrumentor().instrument()
 
                 init_instrumentations(
-                    tracer_provider=obj._tracer_provider,
+                    tracer_provider=obj.tracer_provider,
                     logger_provider=obj._logger_provider,
                     instruments=instruments,
                     block_instruments=block_instruments,
                     async_client=obj._async_client,
-                    lmnr_span_processor=obj._span_processor,
+                    lmnr_span_processor=obj.span_processor,
                 )
 
                 cls.instance = obj
@@ -206,8 +207,8 @@ class TracerWrapper(object):
             threading.Thread.__init__ = patched_thread_init
 
     def exit_handler(self):
-        if isinstance(self._span_processor, LaminarSpanProcessor):
-            self._span_processor.clear()
+        if isinstance(self.span_processor, LaminarSpanProcessor):
+            self.span_processor.clear()
         self.flush()
 
     def _initialize_logger(self):
@@ -253,52 +254,54 @@ class TracerWrapper(object):
         # the decorator to return the original function. This is fine, at runtime,
         # the next import statement will re-evaluate the decorator, and Laminar will
         # have been initialized by that time.
-        return hasattr(cls, "instance") and hasattr(cls.instance, "_span_processor")
+        return hasattr(cls, "instance") and hasattr(cls.instance, "span_processor")
 
     @classmethod
     def clear(cls):
         if not cls.verify_initialized():
             return
         # Any state cleanup. Now used in between tests
-        if isinstance(cls.instance._span_processor, LaminarSpanProcessor):
-            cls.instance._span_processor.clear()
+        if isinstance(cls.instance.span_processor, LaminarSpanProcessor):
+            cls.instance.span_processor.clear()
         # Clear the isolated context state for clean test state
         clear_context()
 
     def shutdown(self):
-        if self._tracer_provider is not None:
-            self._tracer_provider.shutdown()
+        if self.tracer_provider is not None:
+            self.tracer_provider.shutdown()
         if self._logger_provider is not None:
             self._logger_provider.shutdown()
 
     def flush(self):
-        if not hasattr(self, "_span_processor"):
+        if not hasattr(self, "span_processor"):
             self._logger.warning("TracerWrapper not fully initialized, cannot flush")
             return False
-        span_result = self._span_processor.force_flush()
+        span_result = self.span_processor.force_flush()
         log_result = self._log_processor.force_flush() if self._log_processor else True
         return span_result and log_result
 
-    def force_reinit_processor(self):
-        if isinstance(self._span_processor, LaminarSpanProcessor):
-            self._span_processor.force_flush()
-            self._span_processor.force_reinit()
+    def force_reinit_processor(self) -> bool:
+        if isinstance(self.span_processor, LaminarSpanProcessor):
+            self.span_processor.force_flush()
+            self.span_processor.force_reinit()
             if self._log_processor:
                 self._log_processor.force_flush()
             # Clear the isolated context to prevent subsequent invocations
             # (e.g., in Lambda) from continuing traces from previous invocations
             clear_context()
+            return True
         else:
             self._logger.warning(
                 "Not using LaminarSpanProcessor, cannot force reinit processor"
             )
+            return False
 
     @classmethod
     def get_session_recording_options(cls) -> SessionRecordingOptions:
         """Get the session recording options set during initialization."""
-        return cls.session_recording_options
+        return cls.session_recording_options or {"mask_input_options": None}
 
     def get_tracer(self) -> trace.Tracer:
-        if self._tracer_provider is None:
+        if self.tracer_provider is None:
             return trace.get_tracer_provider().get_tracer(TRACER_NAME)
-        return self._tracer_provider.get_tracer(TRACER_NAME)
+        return self.tracer_provider.get_tracer(TRACER_NAME)

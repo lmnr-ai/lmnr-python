@@ -90,7 +90,7 @@ async def run_evaluation(args: EvalArgs) -> None:
     try:
         for file in files:
             # Reset EVALUATION_INSTANCES before loading each file
-            _ = EVALUATION_INSTANCES.set([])
+            _set_token = EVALUATION_INSTANCES.set([])
 
             LOG.info(f"Running evaluation from {file}")
             file = os.path.abspath(file)

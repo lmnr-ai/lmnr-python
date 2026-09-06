@@ -1,4 +1,4 @@
-from typing import Generator
+from collections.abc import Generator
 from unittest.mock import patch
 
 import pytest
@@ -81,7 +81,7 @@ def litellm_callback() -> Generator[LaminarLiteLLMCallback, None, None]:
 
         if hasattr(TracerWrapper, "instance") and TracerWrapper.instance is not None:
             instrumentor.instrument(
-                tracer_provider=TracerWrapper.instance._tracer_provider
+                tracer_provider=TracerWrapper.instance.tracer_provider
             )
 
 
@@ -107,7 +107,7 @@ def clear_span_exporter(span_exporter: InMemorySpanExporter):
     try:
         context_api.detach(token)
     except Exception:
-        pass
+        print("Test warning: failed to detach context token on clearing span exporter")
     fresh_context = Context()
     context_api.attach(fresh_context)
 

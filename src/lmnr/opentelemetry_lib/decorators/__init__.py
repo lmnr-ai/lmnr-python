@@ -1,10 +1,11 @@
 import asyncio
 import types
-from collections.abc import AsyncGenerator, Callable, Generator
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Literal, TypeVar
+from typing import Any, Literal, TypeVar, cast
 
 from opentelemetry import context as context_api
+from opentelemetry.sdk.trace import Span as SdkSpan
 from opentelemetry.trace import Span, Status, StatusCode
 
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
@@ -30,15 +31,15 @@ from lmnr.sdk.utils import (
 
 logger = get_default_logger(__name__)
 
-F = TypeVar("F", bound=Callable[..., Any])
+F = TypeVar("F", bound=Callable[..., Any])  # pyright: ignore[reportExplicitAny]
 
 
 def _setup_span(
     span_name: str,
     span_type: str,
-    association_properties: dict[str, Any] | None,
+    association_properties: dict[str, Any] | None,  # pyright: ignore[reportExplicitAny]
     preserve_global_context: bool = False,
-    metadata: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
 ) -> Span | None:
     """Set up a span with the given name, type, and association properties."""
     span = None
@@ -51,24 +52,24 @@ def _setup_span(
                 attributes={SPAN_TYPE: span_type},
             )
 
-            ctx_metadata = context_api.get_value(CONTEXT_METADATA_KEY, isolated_context)
+            ctx_metadata = cast(dict[str, Any], context_api.get_value(CONTEXT_METADATA_KEY, isolated_context))  # pyright: ignore[reportExplicitAny]
             merged_metadata = {
                 **(ctx_metadata or {}),
                 **(metadata or {}),
             }
-            for key, value in merged_metadata.items():
+            for key, value in merged_metadata.items():  # pyright: ignore[reportAny]
                 span.set_attribute(
                     f"{ASSOCIATION_PROPERTIES}.{METADATA}.{key}",
                     (
                         value
-                        if is_otel_attribute_value_type(value)
-                        else json_dumps(value)
+                        if is_otel_attribute_value_type(value)  # pyright: ignore[reportAny]
+                        else json_dumps(value)  # pyright: ignore[reportAny]
                     ),
                 )
 
             if association_properties is not None:
-                for key, value in association_properties.items():
-                    span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)
+                for key, value in association_properties.items():  # pyright: ignore[reportAny]
+                    span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)  # pyright: ignore[reportAny]
 
             return span
     except Exception:
@@ -78,9 +79,9 @@ def _setup_span(
 
 def _process_input(
     span: Span,
-    fn: Callable,
-    args: tuple,
-    kwargs: dict,
+    fn: Callable[..., Any],  # pyright: ignore[reportExplicitAny]
+    args: tuple[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
     ignore_input: bool,
     ignore_inputs: list[str] | None,
     input_formatter: Callable[..., str] | None,
@@ -102,7 +103,7 @@ def _process_input(
             )
 
         if not isinstance(span, LaminarSpan):
-            span = LaminarSpan(span)
+            span = LaminarSpan(cast(SdkSpan, span))
         span.set_input(inp)
     except Exception:
         msg = "Failed to process input, ignoring"
@@ -116,7 +117,7 @@ def _process_input(
 
 def _process_output(
     span: Span,
-    result: Any,
+    result: Any,  # pyright: ignore[reportExplicitAny, reportAny]
     ignore_output: bool,
     output_formatter: Callable[..., str] | None,
 ):
@@ -128,10 +129,10 @@ def _process_output(
         if output_formatter is not None:
             output = output_formatter(result)
         else:
-            output = result
+            output = result  # pyright: ignore[reportAny]
 
         if not isinstance(span, LaminarSpan):
-            span = LaminarSpan(span)
+            span = LaminarSpan(cast(SdkSpan, span))
         span.set_output(output)
     except Exception:
         msg = "Failed to process output, ignoring"
@@ -172,17 +173,17 @@ def observe_base(
         "HUMAN_EVALUATOR",
         "EVALUATION",
     ] = "DEFAULT",
-    metadata: dict[str, Any] | None = None,
-    association_properties: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
+    association_properties: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
     input_formatter: Callable[..., str] | None = None,
     output_formatter: Callable[..., str] | None = None,
     preserve_global_context: bool = False,
 ) -> Callable[[F], F]:
     def decorate(fn: F) -> F:
         @wraps(fn)
-        def wrap(*args, **kwargs):
+        def wrap(*args: Any, **kwargs: Any):   # pyright: ignore[reportExplicitAny, reportAny]:
             if not TracerWrapper.verify_initialized():
-                return fn(*args, **kwargs)
+                return fn(*args, **kwargs)  # pyright: ignore[reportAny]
 
             span_name = name or getattr(fn, "__name__", "unknown")
             wrapper = None
@@ -190,7 +191,7 @@ def observe_base(
                 wrapper = TracerWrapper()
             except Exception:
                 logger.debug("Failed to create tracer wrapper", exc_info=True)
-                return fn(*args, **kwargs)
+                return fn(*args, **kwargs)  # pyright: ignore[reportAny]
 
             span = _setup_span(
                 span_name,
@@ -201,13 +202,13 @@ def observe_base(
             )
 
             if span is None:
-                return fn(*args, **kwargs)
+                return fn(*args, **kwargs)  # pyright: ignore[reportAny])
 
             # Set association props in context before push_span_context
             # so child spans inherit them
             assoc_props_token = set_association_props_in_context(span)
             if assoc_props_token and isinstance(span, LaminarSpan):
-                span._lmnr_assoc_props_token = assoc_props_token
+                span.lmnr_assoc_props_token = assoc_props_token
 
             ctx_token = None
             current_task = None
@@ -234,7 +235,7 @@ def observe_base(
             )
 
             try:
-                res = fn(*args, **kwargs)
+                res = fn(*args, **kwargs)  # pyright: ignore[reportAny]
             except Exception as e:
                 _process_exception(span, e)
                 _cleanup_span(span, wrapper, did_push_context)
@@ -248,7 +249,8 @@ def observe_base(
                 # Always restore global context if we are in the same asyncio context
                 if id(current_task) == current_context_id:
                     try:
-                        context_api.detach(ctx_token)
+                        if ctx_token is not None:
+                            context_api.detach(ctx_token)
                     except Exception:
                         logger.debug("Failed to detach global context", exc_info=True)
                 else:
@@ -284,9 +286,9 @@ def observe_base(
 
             _process_output(span, res, ignore_output, output_formatter)
             _cleanup_span(span, wrapper, did_push_context)
-            return res
+            return res  # pyright: ignore[reportAny]
 
-        return wrap
+        return cast(F, wrap)
 
     return decorate
 
@@ -307,17 +309,17 @@ def async_observe_base(
         "HUMAN_EVALUATOR",
         "EVALUATION",
     ] = "DEFAULT",
-    metadata: dict[str, Any] | None = None,
-    association_properties: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
+    association_properties: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
     input_formatter: Callable[..., str] | None = None,
     output_formatter: Callable[..., str] | None = None,
     preserve_global_context: bool = False,
 ) -> Callable[[F], F]:
     def decorate(fn: F) -> F:
         @wraps(fn)
-        async def wrap(*args, **kwargs):
+        async def wrap(*args: Any, **kwargs: Any):  # pyright: ignore[reportExplicitAny, reportAny]
             if not TracerWrapper.verify_initialized():
-                return await fn(*args, **kwargs)
+                return await fn(*args, **kwargs)  # pyright: ignore[reportAny]
 
             span_name = name or getattr(fn, "__name__", "unknown")
             wrapper = None
@@ -325,7 +327,7 @@ def async_observe_base(
                 wrapper = TracerWrapper()
             except Exception:
                 logger.debug("Failed to create tracer wrapper", exc_info=True)
-                return await fn(*args, **kwargs)
+                return await fn(*args, **kwargs)  # pyright: ignore[reportAny]
 
             span = _setup_span(
                 span_name,
@@ -336,13 +338,13 @@ def async_observe_base(
             )
 
             if span is None:
-                return await fn(*args, **kwargs)
+                return await fn(*args, **kwargs)  # pyright: ignore[reportAny]
 
             # Set association props in context before push_span_context
             # so child spans inherit them
             assoc_props_token = set_association_props_in_context(span)
             if assoc_props_token and isinstance(span, LaminarSpan):
-                span._lmnr_assoc_props_token = assoc_props_token
+                span.lmnr_assoc_props_token = assoc_props_token
 
             ctx_token = None
             current_task = None
@@ -369,7 +371,7 @@ def async_observe_base(
             )
 
             try:
-                res = await fn(*args, **kwargs)
+                res = await fn(*args, **kwargs)   # pyright: ignore[reportAny]
             except Exception as e:
                 _process_exception(span, e)
                 _cleanup_span(span, wrapper, did_push_context)
@@ -383,7 +385,8 @@ def async_observe_base(
                     current_task = None
                 if id(current_task) == current_context_id:
                     try:
-                        context_api.detach(ctx_token)
+                        if ctx_token is not None:
+                            context_api.detach(ctx_token)
                     except Exception:
                         logger.debug("Failed to detach global context", exc_info=True)
                 else:
@@ -406,9 +409,9 @@ def async_observe_base(
 
             _process_output(span, res, ignore_output, output_formatter)
             _cleanup_span(span, wrapper, did_push_context)
-            return res
+            return res  # pyright: ignore[reportAny]
 
-        return wrap
+        return cast(F, wrap)
 
     return decorate
 
@@ -416,15 +419,15 @@ def async_observe_base(
 def _handle_generator(
     span: Span,
     wrapper: TracerWrapper,
-    res: Generator,
+    res: types.GeneratorType[Any, Any, Any],  # pyright: ignore[reportExplicitAny]
     ignore_output: bool = False,
     output_formatter: Callable[..., str] | None = None,
     did_push_context: bool = True,
 ):
     results = []
     try:
-        for part in res:
-            results.append(part)
+        for part in res:  # pyright: ignore[reportAny]
+            results.append(part)  # pyright: ignore[reportAny, reportUnknownMemberType]
             yield part
     except Exception as e:
         _process_exception(span, e)
@@ -437,15 +440,15 @@ def _handle_generator(
 async def _ahandle_generator(
     span: Span,
     wrapper: TracerWrapper,
-    res: AsyncGenerator,
+    res: types.AsyncGeneratorType[Any, Any],  # pyright: ignore[reportExplicitAny]
     ignore_output: bool = False,
     output_formatter: Callable[..., str] | None = None,
     did_push_context: bool = True,
 ):
     results = []
     try:
-        async for part in res:
-            results.append(part)
+        async for part in res:  # pyright: ignore[reportAny]
+            results.append(part)  # pyright: ignore[reportAny, reportUnknownMemberType]
             yield part
     except Exception as e:
         _process_exception(span, e)

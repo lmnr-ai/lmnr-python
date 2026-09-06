@@ -58,7 +58,7 @@ class AsyncRolloutSessions(BaseAsyncResource):
             headers=self._headers(),
             json={"name": name},
         )
-        response = response.raise_for_status() or response
+        _ = response.raise_for_status()
         try:
             response_dict = cast(dict[str, str | None], response.json())
             return response_dict.get("projectId")
@@ -75,7 +75,7 @@ class AsyncRolloutSessions(BaseAsyncResource):
             f"{self._base_url}/v1/rollouts/{session_id}",
             headers=self._headers(),
         )
-        response = response.raise_for_status() or response
+        _ = response.raise_for_status()
 
     async def add_block(
         self,
@@ -109,7 +109,7 @@ class AsyncRolloutSessions(BaseAsyncResource):
                 raise RuntimeError(message)
             logger.warning(message)
             return None
-        response = response.raise_for_status() or response
+        _ = response.raise_for_status()
         try:
             response_dict = cast(dict[str, str], response.json())
             return response_dict.get("id")
@@ -130,7 +130,7 @@ class AsyncRolloutSessions(BaseAsyncResource):
             f"{self._base_url}/v1/rollouts/{session_id}/blocks",
             headers=self._headers(),
         )
-        response = response.raise_for_status() or response
+        _ = response.raise_for_status()
         try:
             body = cast(list[SessionBlock] | dict[str, list[SessionBlock]], response.json())
             blocks = body if isinstance(body, list) else body.get("blocks")

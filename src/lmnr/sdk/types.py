@@ -4,6 +4,7 @@ import datetime
 import json
 import logging
 import uuid
+from collections.abc import Sequence
 from enum import Enum
 from typing import Any, Literal, cast
 
@@ -195,7 +196,7 @@ class DebugContext(TypedDict, total=False):
     cache_until: str | None
 
 
-def deserialize_debug_context(data: dict[str, Any]) -> DebugContext:  # pyright: ignore[reportExplicitAny]
+def deserialize_debug_context(data: dict[str, Any] | DebugContext) -> DebugContext:  # pyright: ignore[reportExplicitAny]
     """Parse a debug block from a dict, accepting camelCase and snake_case.
 
     All ids are kept VERBATIM: the producer emits the run's exact session /
@@ -223,8 +224,11 @@ def deserialize_debug_context(data: dict[str, Any]) -> DebugContext:  # pyright:
 SpanContextDict = dict[
     str, str | bool | int | float | list[str] | dict[str, str | bool | int | float]
 ]
-MetadataMemberType = str | int | float | bool | None
+MetadataMemberType = str | int | float | bool | Sequence[str] | Sequence[int] | Sequence[float] | Sequence[bool] | None
 MetadataType = dict[str, MetadataMemberType | list[MetadataMemberType] | dict[str, MetadataMemberType | list[MetadataMemberType]]]
+LaminarSpanContextDict = dict[
+    str, uuid.UUID | bool | list[str] | str | TraceType | MetadataType | DebugContext | None
+]
 
 
 class LaminarSpanContext(BaseModel):
@@ -257,7 +261,7 @@ class LaminarSpanContext(BaseModel):
     @classmethod
     def try_to_otel_span_context(
         cls,
-        span_context: LaminarSpanContext | SpanContextDict | str | SpanContext,
+        span_context: LaminarSpanContext | LaminarSpanContextDict | SpanContextDict | str | SpanContext,
         logger: logging.Logger | None = None,
     ) -> SpanContext:
         if logger is None:
@@ -305,7 +309,7 @@ class LaminarSpanContext(BaseModel):
             raise TypeError("Invalid span_context provided")  # pyright: ignore[reportUnreachable]
 
     @classmethod
-    def deserialize(cls, data: SpanContextDict | str) -> LaminarSpanContext:
+    def deserialize(cls, data: SpanContextDict | LaminarSpanContextDict | str) -> LaminarSpanContext:
         if isinstance(data, dict):
             # Convert camelCase to snake_case for known fields
             debug_raw = data.get("debug")

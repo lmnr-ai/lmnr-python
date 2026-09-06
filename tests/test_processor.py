@@ -6,7 +6,7 @@ from lmnr.sdk.decorators import observe
 
 
 def test_span_processor_cleanup(span_exporter: InMemorySpanExporter):
-    processor: LaminarSpanProcessor = TracerWrapper()._span_processor
+    processor: LaminarSpanProcessor = TracerWrapper().span_processor
 
     @observe()
     def foo():

@@ -28,7 +28,7 @@ _TRUTHY = {"true", "1", "yes", "on"}
 _HEX_RE = re.compile(r"^[0-9a-f]+$")
 
 
-def _is_truthy(value: str | None) -> bool:
+def is_truthy(value: str | None) -> bool:
     return value is not None and value.strip().lower() in _TRUTHY
 
 
@@ -137,7 +137,7 @@ def build_debug_config() -> DebugConfig | None:
       5. `cache_until_span_id`: parsed from LMNR_DEBUG_CACHE_UNTIL ??
          existing["cache_until"].
     """
-    if not _is_truthy(os.environ.get("LMNR_DEBUG")):
+    if not is_truthy(os.environ.get("LMNR_DEBUG")):
         return None
 
     # Nearest-ancestor resolution: a run started from a subdirectory of a
