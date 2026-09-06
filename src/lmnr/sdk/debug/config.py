@@ -11,12 +11,12 @@ import re
 import uuid
 from dataclasses import dataclass
 
-from lmnr.sdk.types import DebugContext
 from lmnr.sdk.debug.debug_session_file import (
     read_debug_session_file,
     resolve_debug_session_dir,
 )
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.types import DebugContext
 
 logger = get_default_logger(__name__)
 

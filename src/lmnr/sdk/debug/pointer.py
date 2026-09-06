@@ -15,13 +15,16 @@ Part of the cross-language parity surface — keep line-comparable with the TS
 
 import datetime
 import json
-from typing import Any
 
 from lmnr.sdk.debug.debug_session_file import (
+    DebugSessionFile,
     read_debug_session_file,
     resolve_debug_session_dir,
     write_debug_session_file,
 )
+from lmnr.sdk.log import get_default_logger
+
+logger = get_default_logger(__name__)
 
 # Console marker the orchestrating tooling greps for. Must match the TS SDK.
 CONSOLE_PREFIX = "LMNR_DEBUG_RUN "
@@ -34,7 +37,7 @@ def build_debug_session_file(
     cache_until: str | None,
     debugger_url: str | None,
     started_at: str | None = None,
-) -> dict[str, Any]:
+) -> DebugSessionFile:
     """Build the persisted debug-session record. Key order matches the TS SDK.
 
     `started_at` is the run's start time, captured by `DebugRuntime` at SDK init
@@ -54,7 +57,7 @@ def build_debug_session_file(
 
 
 def emit_pointer(
-    file: dict[str, Any],
+    file: DebugSessionFile,
     directory: str | None = None,
     file_session_id_at_init: str | None = None,
 ) -> None:
@@ -82,4 +85,5 @@ def emit_pointer(
         file_session_id_at_init,
     ):
         return
-    write_debug_session_file(file, directory)
+    if not write_debug_session_file(file, directory):
+        logger.debug("Failed to write debug session_file")

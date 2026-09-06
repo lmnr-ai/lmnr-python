@@ -1,9 +1,13 @@
 import asyncio
 import re
 import uuid
-from typing import Any
+from asyncio.tasks import Task
+from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
+from logging import Logger
+from typing import Any, cast
 
-from lmnr.opentelemetry_lib.tracing.attributes import HUMAN_EVALUATOR_OPTIONS, SPAN_TYPE
+from lmnr.opentelemetry_lib.tracing.attributes import SPAN_TYPE
 from lmnr.opentelemetry_lib.tracing.context import (
     attach_context,
     detach_context,
@@ -12,7 +16,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
-from lmnr.sdk.datasets import EvaluationDataset
+from lmnr.sdk.datasets import EvaluationDataset, LaminarDataset
 from lmnr.sdk.evaluations.models import (
     DEFAULT_BATCH_SIZE,
     MAX_EXPORT_BATCH_SIZE,
@@ -20,7 +24,7 @@ from lmnr.sdk.evaluations.models import (
     EvaluationResultDatapoint,
     EvaluationRunResult,
     EvaluatorFunction,
-    HumanEvaluator,
+    EvaluatorFunctionReturnType,
     PartialEvaluationDatapoint,
 )
 from lmnr.sdk.evaluations.reporter import EvaluationReporter
@@ -34,7 +38,7 @@ from lmnr.sdk.types import (
     SpanType,
     TraceType,
 )
-from lmnr.sdk.utils import from_env, is_async, json_dumps
+from lmnr.sdk.utils import from_env, is_async
 
 # Evaluation-metadata key that links an eval run to its debug session. Kept as
 # `rollout.session_id` (matching the trace-metadata key the debugger stamps) so
@@ -42,8 +46,8 @@ from lmnr.sdk.utils import from_env, is_async, json_dumps
 SESSION_METADATA_KEY = "rollout.session_id"
 
 def _with_debugger_session_metadata(
-    metadata: dict[str, Any] | None,
-) -> dict[str, Any] | None:
+    metadata: dict[str, Any] | None,  # pyright: ignore[reportExplicitAny]
+) -> dict[str, Any] | None:  # pyright: ignore[reportExplicitAny]
     """Stamp the debug session id into eval metadata when running under debug.
 
     When this eval runs under a debug session, auto-stamp the session id into
@@ -71,12 +75,12 @@ def _with_debugger_session_metadata(
 class Evaluation:
     def __init__(
         self,
-        data: EvaluationDataset | list[Datapoint | dict],
-        executor: Any,
-        evaluators: dict[str, EvaluatorFunction | HumanEvaluator],
+        data: EvaluationDataset | list[Datapoint | dict[Any, Any]],  # pyright: ignore[reportExplicitAny]
+        executor: Callable[..., Any],  # pyright: ignore[reportExplicitAny]
+        evaluators: dict[str, EvaluatorFunction],
         name: str | None = None,
         group_name: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
         concurrency_limit: int = DEFAULT_BATCH_SIZE,
         project_api_key: str | None = None,
         base_url: str | None = None,
@@ -171,9 +175,9 @@ class Evaluation:
 
         base_url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
 
-        self.reporter = EvaluationReporter(base_url, frontend_port)
+        self.reporter: EvaluationReporter = EvaluationReporter(base_url, frontend_port)
         if isinstance(data, list):
-            self.data = [
+            self.data: list[Datapoint] | EvaluationDataset = [
                 (Datapoint.model_validate(point) if isinstance(point, dict) else point)
                 for point in data
             ]
@@ -185,29 +189,29 @@ class Evaluation:
             raise ValueError("No data provided. Skipping evaluation")
         # The underlying remote source (through any depth of subsampling
         # chaining), resolved in _run. None for in-memory data.
-        self._source_dataset = None
-        self.executor = executor
-        self.evaluators = evaluators
-        self.group_name = group_name
-        self.name = name
-        self.metadata = metadata
-        self.concurrency_limit = concurrency_limit
-        self.batch_size = concurrency_limit
-        self._logger = get_default_logger(self.__class__.__name__)
-        self.upload_tasks = []
-        self.base_http_url = f"{base_http_url or base_url}:{http_port or 443}"
+        self._source_dataset: LaminarDataset | None = None
+        self.executor: Callable[..., Any] = executor  # pyright: ignore[reportExplicitAny]
+        self.evaluators: dict[str, EvaluatorFunction] = evaluators
+        self.group_name: str | None = group_name
+        self.name: str | None = name
+        self.metadata: dict[str, Any] | None = metadata  # pyright: ignore[reportExplicitAny]
+        self.concurrency_limit: int = concurrency_limit
+        self.batch_size: int = concurrency_limit
+        self._logger: Logger = get_default_logger(self.__class__.__name__)
+        self.upload_tasks: list[Task[None]] = []
+        self.base_http_url: str = f"{base_http_url or base_url}:{http_port or 443}"
 
         api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
         if not api_key and not L.is_initialized():
             raise ValueError(
-                "Please pass the project API key to `evaluate`"
-                " or set the LMNR_PROJECT_API_KEY environment variable"
+                "Please pass the project API key to `evaluate`" +
+                " or set the LMNR_PROJECT_API_KEY environment variable" +
                 " in your environment or .env file"
             )
-        self.project_api_key = api_key
+        self.project_api_key: str | None = api_key
 
         if L.is_initialized():
-            self.client = AsyncLaminarClient(
+            self.client: AsyncLaminarClient = AsyncLaminarClient(
                 base_url=L.get_base_http_url(),
                 project_api_key=L.get_project_api_key(),
             )
@@ -249,7 +253,7 @@ class Evaluation:
                 if not source.id:
                     try:
                         datasets = await self.client.datasets.get_dataset_by_name(
-                            source.name
+                            source.name or ""
                         )
                         if len(datasets) == 0:
                             self._logger.warning(f"Dataset {source.name} not found")
@@ -281,7 +285,7 @@ class Evaluation:
                 self._logger.debug(
                     f"Waiting for {len(self.upload_tasks)} upload tasks to complete"
                 )
-                await asyncio.gather(*self.upload_tasks)
+                _gathered_results = await asyncio.gather(*self.upload_tasks)
                 self._logger.debug("All upload tasks completed")
         except Exception as e:
             await self._shutdown()
@@ -303,7 +307,7 @@ class Evaluation:
         # can be run sequentially in the same process. `shutdown()` would
         # close the OTLP exporter and we wouldn't be able to export traces in
         # the next evaluation.
-        L.flush()
+        _flush_success = L.flush()
         await self.client.close()
         source = self._source_dataset
         if source is not None and getattr(source, "client", None):
@@ -314,10 +318,10 @@ class Evaluation:
     ) -> list[EvaluationResultDatapoint]:
 
         semaphore = asyncio.Semaphore(self.concurrency_limit)
-        tasks = []
+        tasks: list[Task[tuple[int, EvaluationResultDatapoint]]] = []
         data_iter = self.data if isinstance(self.data, list) else range(len(self.data))
 
-        async def evaluate_task(datapoint, index):
+        async def evaluate_task(datapoint: Datapoint, index: int):
             try:
                 result = await self._evaluate_datapoint(eval_id, datapoint, index)
                 self.reporter.update(1)
@@ -327,8 +331,8 @@ class Evaluation:
 
         # Create tasks only after acquiring semaphore
         for idx, item in enumerate(data_iter):
-            await semaphore.acquire()
-            datapoint = item if isinstance(self.data, list) else self.data[item]
+            _ = await semaphore.acquire()
+            datapoint = cast(Datapoint, item if isinstance(self.data, list) else self.data[cast(int, item)])
             task = asyncio.create_task(evaluate_task(datapoint, idx))
             tasks.append(task)
 
@@ -352,10 +356,10 @@ class Evaluation:
 
         try:
             with L.start_as_current_span("evaluation") as evaluation_span:
-                L._set_trace_type(trace_type=TraceType.EVALUATION)
+                L._set_trace_type(trace_type=TraceType.EVALUATION)  # pyright: ignore[reportPrivateUsage]
                 evaluation_span.set_attribute(SPAN_TYPE, SpanType.EVALUATION.value)
                 with L.start_as_current_span(
-                    "executor", input={"data": datapoint.data}
+                    "executor", input={"data": datapoint.data}  # pyright: ignore[reportAny]
                 ) as executor_span:
                     executor_span_id = uuid.UUID(
                         int=executor_span.get_span_context().span_id
@@ -366,19 +370,19 @@ class Evaluation:
 
                     partial_datapoint = PartialEvaluationDatapoint(
                         id=evaluation_id,
-                        data=datapoint.data,
+                        data=datapoint.data,  # pyright: ignore[reportAny]
                         target=datapoint.target,
                         index=index,
                         trace_id=trace_id,
                         executor_span_id=executor_span_id,
                         metadata=datapoint.metadata,
                     )
-                    if self._source_dataset is not None:
+                    if self._source_dataset is not None and self._source_dataset.id is not None:
                         partial_datapoint.dataset_link = (
                             EvaluationDatapointDatasetLink(
                                 dataset_id=self._source_dataset.id,
-                                datapoint_id=datapoint.id,
-                                created_at=datapoint.created_at,
+                                datapoint_id=datapoint.id or uuid.UUID(int=0),
+                                created_at=datapoint.created_at or datetime.now(timezone.utc),
                             )
                         )
                     # First, create datapoint with trace_id so that we can show the dp in the UI
@@ -389,72 +393,52 @@ class Evaluation:
                     # Run synchronous executors in a thread pool to avoid blocking
                     if not is_async(self.executor):
                         loop = asyncio.get_event_loop()
-                        output = await loop.run_in_executor(
-                            None, self.executor, datapoint.data
+                        output = await loop.run_in_executor(    # pyright: ignore[reportAny]
+                            None, self.executor, datapoint.data   # pyright: ignore[reportAny]
                         )
                     else:
-                        output = await self.executor(datapoint.data)
+                        output = await self.executor(datapoint.data)  # pyright: ignore[reportAny]
 
                     L.set_span_output(output)
                 target = datapoint.target
 
                 # Iterate over evaluators
-                scores: dict[str, Numeric] = {}
+                scores: dict[str, Numeric | None] = {}
                 for evaluator_name, evaluator in self.evaluators.items():
                     # Check if evaluator is a HumanEvaluator instance
-                    if isinstance(evaluator, dict):  # HumanEvaluator is a TypedDict
-                        # Create an empty span for human evaluators
-                        with L.start_as_current_span(
-                            evaluator_name,
-                            input={"output": output, "target": target},
-                        ) as human_evaluator_span:
-                            human_evaluator_span.set_attribute(
-                                SPAN_TYPE, SpanType.HUMAN_EVALUATOR.value
-                            )
-                            if evaluator.get("options"):
-                                human_evaluator_span.set_attribute(
-                                    HUMAN_EVALUATOR_OPTIONS,
-                                    json_dumps(evaluator.get("options")),
-                                )
-                            # Human evaluators don't execute automatically, just create the span
-                            L.set_span_output(None)
-
-                        # We don't want to save the score for human evaluators
-                        scores[evaluator_name] = None
-                    else:
-                        # Regular evaluator function
-                        with L.start_as_current_span(
-                            evaluator_name,
-                            input={"output": output, "target": target},
-                        ) as evaluator_span:
-                            evaluator_span.set_attribute(
-                                SPAN_TYPE, SpanType.EVALUATOR.value
-                            )
-                            if is_async(evaluator):
-                                value = await evaluator(output, target)
-                            else:
-                                loop = asyncio.get_event_loop()
-                                value = await loop.run_in_executor(
-                                    None, evaluator, output, target
-                                )
-                            L.set_span_output(value)
-
-                        # If evaluator returns a single number, use evaluator name as key
-                        if isinstance(value, NumericTypes):
-                            scores[evaluator_name] = value
+                    # Regular evaluator function
+                    with L.start_as_current_span(
+                        evaluator_name,
+                        input={"output": output, "target": target},
+                    ) as evaluator_span:
+                        evaluator_span.set_attribute(
+                            SPAN_TYPE, SpanType.EVALUATOR.value
+                        )
+                        if is_async(evaluator):
+                            value = await cast(Awaitable[EvaluatorFunctionReturnType], evaluator(output, target))
                         else:
-                            scores.update(value)
+                            loop = asyncio.get_event_loop()
+                            value = cast(EvaluatorFunctionReturnType, await loop.run_in_executor(
+                                None, evaluator, output, target
+                            ))
+                        L.set_span_output(value)
+
+                    # If evaluator returns a single number, use evaluator name as key
+                    if isinstance(value, NumericTypes):
+                        scores[evaluator_name] = value
+                    else:
+                        scores.update(value)
 
                 trace_id = uuid.UUID(int=evaluation_span.get_span_context().trace_id)
         finally:
             try:
                 detach_context(eval_id_token)
-            except Exception:
-                pass
+            except Exception as e:
+                self._logger.debug(f"Failed to detach evaluation trace context {e}")
 
         eval_datapoint = EvaluationResultDatapoint(
             id=evaluation_id,
-            data=datapoint.data,
+            data=datapoint.data,  # pyright: ignore[reportAny]
             target=target,
             executor_output=output,
             scores=scores,
@@ -463,11 +447,11 @@ class Evaluation:
             index=index,
             metadata=datapoint.metadata,
         )
-        if self._source_dataset is not None:
+        if self._source_dataset is not None and self._source_dataset.id is not None:
             eval_datapoint.dataset_link = EvaluationDatapointDatasetLink(
                 dataset_id=self._source_dataset.id,
-                datapoint_id=datapoint.id,
-                created_at=datapoint.created_at,
+                datapoint_id=datapoint.id or uuid.UUID(int=0),
+                created_at=datapoint.created_at or datetime.now(timezone.utc),
             )
 
         # Create background upload task without awaiting it

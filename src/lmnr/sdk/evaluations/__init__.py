@@ -1,8 +1,6 @@
 import asyncio
-import uuid
+from types import CoroutineType
 from typing import Any
-
-from typing_extensions import TypedDict
 
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 from lmnr.sdk.datasets import EvaluationDataset
@@ -14,18 +12,17 @@ from lmnr.sdk.evaluations.models import (
     EvaluationRunResult,
     EvaluatorFunction,
     ExecutorFunction,
-    HumanEvaluator,
 )
 from lmnr.sdk.types import Datapoint
 
 
 def evaluate(
-    data: EvaluationDataset | list[Datapoint | dict],
+    data: EvaluationDataset | list[Datapoint | dict[Any, Any]],  # pyright:ignore[reportExplicitAny]
     executor: ExecutorFunction,
-    evaluators: dict[str, EvaluatorFunction | HumanEvaluator],
+    evaluators: dict[str, EvaluatorFunction],
     name: str | None = None,
     group_name: str | None = None,
-    metadata: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,  # pyright:ignore[reportExplicitAny]
     concurrency_limit: int = DEFAULT_BATCH_SIZE,
     project_api_key: str | None = None,
     base_url: str | None = None,
@@ -41,7 +38,7 @@ def evaluate(
     ) = None,
     max_export_batch_size: int | None = MAX_EXPORT_BATCH_SIZE,
     trace_export_timeout_seconds: int | None = None,
-) -> EvaluationRunResult | None:
+) -> EvaluationRunResult | CoroutineType[Any, Any, EvaluationRunResult] | None:  # pyright: ignore[reportExplicitAny]
     """
     If added to the file which is called through `lmnr eval` command, then
     registers the evaluation; otherwise, runs the evaluation.
@@ -131,7 +128,7 @@ def evaluate(
     if PREPARE_ONLY.get():
         existing_evaluations = EVALUATION_INSTANCES.get([])
         new_evaluations = (existing_evaluations or []) + [evaluation]
-        EVALUATION_INSTANCES.set(new_evaluations)
+        _set_token = EVALUATION_INSTANCES.set(new_evaluations)
         return None
     else:
         try:

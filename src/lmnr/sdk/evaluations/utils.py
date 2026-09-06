@@ -38,14 +38,14 @@ def get_evaluation_url(
 
 
 def get_average_scores(results: list[EvaluationResultDatapoint]) -> dict[str, Numeric]:
-    per_score_values = {}
+    per_score_values: dict[str, list[Numeric | None]] = {}
     for result in results:
         for key, value in result.scores.items():
             if key not in per_score_values:
                 per_score_values[key] = []
             per_score_values[key].append(value)
 
-    average_scores = {}
+    average_scores: dict[str, Numeric] = {}
     for key, values in per_score_values.items():
         scores = [v for v in values if v is not None]
 

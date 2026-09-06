@@ -1,15 +1,35 @@
 """Debug (rollout) session registration resource for the synchronous client."""
 
 import uuid
-from typing import cast
+from typing import Any, cast
 
 from lmnr.sdk.client.synchronous.resources.base import BaseResource
-from lmnr.sdk.debug.outcome import CacheOutcome, parse_cache_outcome
+from lmnr.sdk.debug.outcome import CacheOutcome
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import SessionBlock, SessionBlockContent, SessionBlockType
 
 logger = get_default_logger(__name__)
 
+def _parse_cache_outcome(data: object) -> CacheOutcome:
+    """Map app-server's `{outcome: hit|miss|live, response?}` body to CacheOutcome.
+
+    Anything unrecognized degrades to `live` (safe).
+    """
+    outcome = data.get("outcome") if isinstance(data, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    if outcome == "hit":
+        # A HIT must carry a response envelope to be servable; the provider
+        # wrappers call cached_response_to_*(cached), which does cached.get().
+        # A response-less HIT (omitted/null `response`) is malformed — degrade
+        # to `live` so the call runs live (no latch) instead of raising.
+        data_dict = cast(dict[str, Any], data)  # pyright: ignore[reportExplicitAny]
+        response = data_dict.get("response")
+        if response is None:
+            logger.debug("Cache HIT without response body; running call live")
+            return CacheOutcome(kind="live")
+        return CacheOutcome(kind="hit", cached=response) # pyright: ignore[reportAny])
+    if outcome == "miss":
+        return CacheOutcome(kind="miss")
+    return CacheOutcome(kind="live")
 
 class RolloutSessions(BaseResource):
     """Register / delete debug sessions on the backend.
@@ -133,8 +153,8 @@ class RolloutSessions(BaseResource):
     def cache(
         self,
         session_id: uuid.UUID | str,
-        replay_trace_id: uuid.UUID | str,
-        cache_until: str,
+        replay_trace_id: uuid.UUID | str | None,
+        cache_until: str | None,
         input_hash: str,
     ) -> CacheOutcome:
         """Look up one LLM call's input hash in the server-side replay cache.
@@ -152,7 +172,7 @@ class RolloutSessions(BaseResource):
                 f"{self._base_url}/v1/rollouts/{session_id}/cache",
                 headers=self._headers(),
                 json={
-                    "replayTraceId": str(replay_trace_id),
+                    "replayTraceId": str(replay_trace_id) if replay_trace_id is not None else None,
                     "cacheUntil": cache_until,
                     "inputHash": input_hash,
                 },
@@ -167,4 +187,4 @@ class RolloutSessions(BaseResource):
         except Exception as exc:
             logger.debug("Cache lookup failed (%s); running this call live", exc)
             return CacheOutcome(kind="live")
-        return parse_cache_outcome(data)
+        return _parse_cache_outcome(data)
