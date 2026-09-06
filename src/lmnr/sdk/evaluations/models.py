@@ -46,15 +46,6 @@ EvaluatorFunction = Callable[
 ]
 
 
-class HumanEvaluatorOptionsEntry(TypedDict):
-    label: str
-    value: float
-
-
-class HumanEvaluator(TypedDict, total=False):
-    options: list[HumanEvaluatorOptionsEntry]
-
-
 class InitEvaluationResponse(TypedDict):
     id: uuid.UUID
     createdAt: datetime.datetime
@@ -92,7 +83,7 @@ def _dataset_link_to_dict(link: EvaluationDatapointDatasetLink) -> dict[str, str
 
 class PartialEvaluationDatapoint(BaseModel):
     id: uuid.UUID
-    data: EvaluationDatapointData
+    data: EvaluationDatapointData  # pyright: ignore[reportExplicitAny]
     target: EvaluationDatapointTarget
     index: int
     trace_id: uuid.UUID
@@ -102,7 +93,7 @@ class PartialEvaluationDatapoint(BaseModel):
 
     # uuid is not serializable by default, so we need to convert it to a string
     def to_dict(self, max_data_length: int = DEFAULT_DATAPOINT_MAX_DATA_LENGTH):
-        serialized_data = serialize(self.data)
+        serialized_data = serialize(self.data)  # pyright: ignore[reportAny]
         serialized_target = serialize(self.target)
         str_data = json_dumps(serialized_data)
         str_target = json_dumps(serialized_target)
@@ -123,7 +114,7 @@ class PartialEvaluationDatapoint(BaseModel):
                 "traceId": str(self.trace_id),
                 "executorSpanId": str(self.executor_span_id),
                 "metadata": (
-                    serialize(self.metadata) if self.metadata is not None else {}
+                    serialize(self.metadata) if self.metadata is not None else {}  # pyright: ignore[reportAny]
                 ),
                 "datasetLink": (
                     _dataset_link_to_dict(self.dataset_link)
@@ -138,9 +129,9 @@ class PartialEvaluationDatapoint(BaseModel):
 class EvaluationResultDatapoint(BaseModel):
     id: uuid.UUID
     index: int
-    data: EvaluationDatapointData
+    data: EvaluationDatapointData  # pyright: ignore[reportExplicitAny]
     target: EvaluationDatapointTarget
-    executor_output: ExecutorFunctionReturnType
+    executor_output: ExecutorFunctionReturnType  # pyright: ignore[reportExplicitAny]
     scores: dict[str, Numeric | None]
     trace_id: uuid.UUID
     executor_span_id: uuid.UUID
@@ -150,9 +141,9 @@ class EvaluationResultDatapoint(BaseModel):
     # uuid is not serializable by default, so we need to convert it to a string
     def to_dict(self, max_data_length: int = DEFAULT_DATAPOINT_MAX_DATA_LENGTH):
         try:
-            serialized_data = serialize(self.data)
+            serialized_data = serialize(self.data)  # pyright: ignore[reportAny]
             serialized_target = serialize(self.target)
-            serialized_executor_output = serialize(self.executor_output)
+            serialized_executor_output = serialize(self.executor_output)  # pyright: ignore[reportAny]
             str_data = json.dumps(serialized_data)
             str_target = json.dumps(serialized_target)
             str_executor_output = json.dumps(serialized_executor_output)
@@ -180,7 +171,7 @@ class EvaluationResultDatapoint(BaseModel):
                 "executorSpanId": str(self.executor_span_id),
                 "index": self.index,
                 "metadata": (
-                    serialize(self.metadata) if self.metadata is not None else {}
+                    serialize(self.metadata) if self.metadata is not None else {}  # pyright: ignore[reportAny]
                 ),
                 "datasetLink": (
                     _dataset_link_to_dict(self.dataset_link)

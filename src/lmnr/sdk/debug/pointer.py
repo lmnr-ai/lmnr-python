@@ -22,6 +22,9 @@ from lmnr.sdk.debug.debug_session_file import (
     resolve_debug_session_dir,
     write_debug_session_file,
 )
+from lmnr.sdk.log import get_default_logger
+
+logger = get_default_logger(__name__)
 
 # Console marker the orchestrating tooling greps for. Must match the TS SDK.
 CONSOLE_PREFIX = "LMNR_DEBUG_RUN "
@@ -82,4 +85,5 @@ def emit_pointer(
         file_session_id_at_init,
     ):
         return
-    write_debug_session_file(file, directory)
+    if not write_debug_session_file(file, directory):
+        logger.debug("Failed to write debug session_file")

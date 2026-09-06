@@ -14,7 +14,7 @@ and consumed by the wrappers.
 import json
 from typing import Any
 
-from opentelemetry.trace import Span
+from opentelemetry.sdk.trace import Span
 
 from lmnr.sdk.debug import get_runtime
 from lmnr.sdk.debug.hash import debug_input_hash
@@ -45,7 +45,7 @@ def replay_enabled() -> bool:
     return runtime is not None and runtime.replay_configured
 
 
-def input_messages_from_span(span: Span | None) -> list[Any] | None:
+def input_messages_from_span(span: Span | None) -> list[Any] | None:  # pyright: ignore[reportExplicitAny]
     """Read and parse the `gen_ai.input.messages` JSON off a live span.
 
     Every provider sets this attribute (via `json_dumps`) before the rollout
@@ -57,14 +57,14 @@ def input_messages_from_span(span: Span | None) -> list[Any] | None:
     if span is None:
         return None
     try:
-        raw = span.attributes.get(GEN_AI_INPUT_MESSAGES_ATTRIBUTE)
+        raw = (span.attributes or {}).get(GEN_AI_INPUT_MESSAGES_ATTRIBUTE)
         if not raw:
             return None
         messages = json.loads(raw) if isinstance(raw, str) else raw
         if isinstance(messages, list):
-            return messages
-    except Exception:
-        pass
+            return messages  # pyright: ignore[reportUnknownVariableType]
+    except Exception as e:
+       logger.debug(f"Failed to get input mesages from span {e}")
     return None
 
 
@@ -143,5 +143,5 @@ def mark_span_cached(span: Span | None) -> None:
                     "lmnr.span.original_type": "LLM",
                 }
             )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Failed to mark span as cached {e}")

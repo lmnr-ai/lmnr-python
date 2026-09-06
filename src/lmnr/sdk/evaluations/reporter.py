@@ -1,3 +1,4 @@
+from typing import NoReturn
 from uuid import UUID
 
 from tqdm import tqdm
@@ -7,9 +8,10 @@ from lmnr.sdk.types import Numeric
 
 
 class EvaluationReporter:
-    def __init__(self, base_url, frontend_port: int | None = None):
-        self.base_url = base_url
-        self.frontend_port = frontend_port
+    def __init__(self, base_url: str, frontend_port: int | None = None):
+        self.base_url: str = base_url
+        self.frontend_port: int | None = frontend_port
+        self.cli_progress: tqdm[NoReturn] | None = None
 
     def start(self, length: int):
         self.cli_progress = tqdm(
@@ -19,16 +21,18 @@ class EvaluationReporter:
         )
 
     def update(self, batch_length: int):
-        self.cli_progress.update(batch_length)
+        assert self.cli_progress is not None
+        _display_method_triggered = self.cli_progress.update(batch_length)
 
     def stop_with_error(self, error: Exception):
-        if hasattr(self, "cli_progress"):
+        if self.cli_progress is not None:
             self.cli_progress.close()
         raise error
 
     def stop(
         self, average_scores: dict[str, Numeric], project_id: UUID, evaluation_id: UUID
     ):
+        assert self.cli_progress is not None
         self.cli_progress.close()
         print("Average scores:")
         for name, score in average_scores.items():

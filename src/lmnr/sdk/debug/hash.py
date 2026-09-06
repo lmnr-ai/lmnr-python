@@ -26,12 +26,12 @@ lockstep.
 """
 
 import json
-from typing import Any
+from typing import Any, cast
 
 from blake3 import blake3
 
 
-def _canonical_json(value: Any) -> str:
+def _canonical_json(value: Any) -> str:  # pyright: ignore[reportExplicitAny, reportAny]
     """Reproduce app-server's `canonical_json` (input_dedup.rs).
 
     Objects → keys sorted lexicographically (recursive); arrays → order
@@ -39,21 +39,21 @@ def _canonical_json(value: Any) -> str:
     strings/numbers/bools/null). No whitespace, `","` / `":"` separators.
     """
     if isinstance(value, dict):
-        items = sorted(value.items(), key=lambda kv: kv[0])
+        items = sorted(value.items(), key=lambda kv: kv[0])  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType, reportUnknownVariableType]
         return (
             "{"
             + ",".join(
                 json.dumps(k, ensure_ascii=False) + ":" + _canonical_json(v)
-                for k, v in items
+                for k, v in items  # pyright: ignore[reportUnknownVariableType]
             )
             + "}"
         )
     if isinstance(value, list):
-        return "[" + ",".join(_canonical_json(v) for v in value) + "]"
+        return "[" + ",".join(_canonical_json(v) for v in value) + "]"  # pyright: ignore[reportUnknownVariableType]
     return json.dumps(value, ensure_ascii=False)
 
 
-def _extract_system_remaining(messages: Any) -> list[Any] | None:
+def _extract_system_remaining(messages: Any) -> list[Any] | None:  # pyright: ignore[reportExplicitAny, reportAny]
     """Return the message array without its system message, or None.
 
     Mirrors `extract_system_message` (prompt_hash.rs): find the first
@@ -68,22 +68,22 @@ def _extract_system_remaining(messages: Any) -> list[Any] | None:
     sys_idx = next(
         (
             i
-            for i, m in enumerate(messages)
-            if isinstance(m, dict) and m.get("role") == "system"
+            for i, m in enumerate(messages) # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
+            if isinstance(m, dict) and cast(dict[str, str], m).get("role") == "system"
         ),
         None,
     )
     if sys_idx is None:
         return None
 
-    sys_text = _system_text(messages[sys_idx])
+    sys_text = _system_text(messages[sys_idx]) # pyright: ignore[reportUnknownArgumentType]
     if not sys_text:
         return None
 
-    return [m for i, m in enumerate(messages) if i != sys_idx]
+    return [m for i, m in enumerate(messages) if i != sys_idx] # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
 
 
-def _system_text(sys_msg: dict[str, Any]) -> str:
+def _system_text(sys_msg: dict[str, Any]) -> str:  # pyright: ignore[reportExplicitAny]
     """Extract the system prompt text (priority order matches prompt_hash.rs)."""
     content = sys_msg.get("content")
     # "content": "plain string" (OpenAI format)
@@ -94,15 +94,16 @@ def _system_text(sys_msg: dict[str, Any]) -> str:
         joined = " ".join(
             block["text"]
             for block in content
-            if isinstance(block, dict) and isinstance(block.get("text"), str)
+            if isinstance(block, dict) and isinstance(cast(dict[str, str], block).get("text"), str)  # pyright: ignore[reportUnknownArgumentType]
         )
         if joined:
             return joined
     # "parts" shapes — first part only (Gemini {"text"}, OTel {"content"}).
     parts = sys_msg.get("parts")
     if isinstance(parts, list) and parts:
-        first = parts[0]
+        first = parts[0]  # pyright: ignore[reportUnknownVariableType]
         if isinstance(first, dict):
+            first = cast(dict[str, str], first)
             text = first.get("text")
             if not isinstance(text, str):
                 text = first.get("content")
@@ -111,7 +112,7 @@ def _system_text(sys_msg: dict[str, Any]) -> str:
     return ""
 
 
-def debug_input_hash(messages: Any) -> str:
+def debug_input_hash(messages: Any) -> str:  # pyright: ignore[reportExplicitAny, reportAny]
     """Hex blake3 of the canonical, system-excluded input messages (shared §5)."""
     remaining = _extract_system_remaining(messages)
     target = remaining if remaining is not None else messages
