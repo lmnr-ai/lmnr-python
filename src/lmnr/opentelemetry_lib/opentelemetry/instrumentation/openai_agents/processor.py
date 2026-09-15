@@ -7,7 +7,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from opentelemetry.context import get_value, set_value
+from opentelemetry.context import set_value
 
 try:
     from agents.tracing import TracingProcessor as _Base
@@ -19,22 +19,61 @@ if TYPE_CHECKING:
     from agents.tracing import Trace
 
     from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
-    from lmnr.sdk.types import LaminarSpanContext
 
 from lmnr import Laminar
+from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.tracing.attributes import SPAN_IDS_PATH, SPAN_PATH
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
+from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 
 from .helpers import (
     DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY,
-    name_from_span_data,
-    export_span_data,
     map_span_type,
-    span_kind,
     span_name,
 )
 from .span_data import apply_span_data, apply_span_error
 
 logger = logging.getLogger(__name__)
+
+# Fallback name for the root span, used only when the trace name cannot be
+# resolved. `lmnr.span.path` is captured at span start, so a placeholder here
+# would be baked into the path of every span in the trace.
+_ROOT_SPAN_FALLBACK_NAME = "agents.trace"
+
+
+def _root_span_name(trace_or_span: Trace | AgentsSpan[Any]) -> str:
+    """Resolve the trace name up front, whether a trace or a span arrived first."""
+    # Only Trace carries `name`; Span does not.
+    name = getattr(trace_or_span, "name", None)
+    if not name:
+        try:
+            from agents.tracing import get_current_trace
+
+            current_trace = get_current_trace()
+            name = getattr(current_trace, "name", None) if current_trace else None
+        except Exception:
+            name = None
+    return name or _ROOT_SPAN_FALLBACK_NAME
+
+
+def _rename_span(lmnr_span: LaminarSpan, name: str) -> None:
+    """Rename a span and repair the dotted path captured at start."""
+    lmnr_span.update_name(name)
+    attributes = lmnr_span.attributes or {}
+    span_path = list(attributes.get(SPAN_PATH, ()))
+    if not span_path:
+        return
+    span_path[-1] = name
+    lmnr_span.set_attribute(SPAN_PATH, span_path)
+    # Children resolve their parent path from the processor's cache, not from
+    # the attribute, so both have to move.
+    processor = TracerWrapper.instance._span_processor
+    if isinstance(processor, LaminarSpanProcessor):
+        processor.set_parent_path_info(
+            lmnr_span.context.span_id,
+            span_path,
+            list(attributes.get(SPAN_IDS_PATH, ())),
+        )
 
 
 @dataclass
@@ -57,9 +96,6 @@ class _TraceState:
     failed: bool = False
     # Guards against double-ending from concurrent on_trace_end and shutdown.
     ended: bool = False
-    # Maps destination agent name -> handoff lmnr span context so that the
-    # subsequent agent span becomes a child of the handoff span.
-    pending_handoff_ctxs: dict[str, LaminarSpanContext] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         # Initially no pending ends, so mark as done.
@@ -85,9 +121,13 @@ class LaminarAgentsTraceProcessor(_Base):
             # If a span arrived first, the root span may have a placeholder
             # name. Update it to the actual trace name.
             trace_name = trace.name
-            if trace_name and state.root_span is not None:
+            if (
+                trace_name
+                and state.root_span is not None
+                and state.root_span.name != trace_name
+            ):
                 try:
-                    state.root_span.update_name(trace_name)
+                    _rename_span(state.root_span, trace_name)
                 except Exception:
                     pass
             self._apply_trace_metadata(state.root_span, trace)
@@ -121,34 +161,24 @@ class LaminarAgentsTraceProcessor(_Base):
         try:
             state = self._get_or_create_trace(span)
 
-            parent_ctx: LaminarSpanContext | None = None
-
             span_data = span.span_data
             span_type = map_span_type(span_data)
             name = span_name(span, span_data)
-
-            # If this is an agent span, check if a handoff targeting this agent
-            # is pending. If so, make this span a child of the handoff span so
-            # the subagent is nested under the handoff that triggered it.
-            if span_kind(span_data) == "agent":
-                this_agent = name_from_span_data(
-                    export_span_data(span_data).get("name")
-                    or getattr(span_data, "name", None)
-                )
-                with self._lock:
-                    handoff_ctx = state.pending_handoff_ctxs.pop(this_agent, None)
-                if handoff_ctx is not None:
-                    parent_ctx = handoff_ctx
 
             otel_ctx = get_current_context()
             ctx = set_value(
                 DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY, True, otel_ctx
             )
 
+            # The SDK's own nesting is authoritative. In particular a handoff's
+            # destination agent must NOT be reparented onto the handoff or its
+            # parent: the SDK finishes the source agent's span before starting
+            # the destination's, so those are already closed and the child would
+            # start after its parent ended. The handoff stays discoverable via
+            # `openai.agents.handoff.{from,to}`.
             lmnr_span = Laminar.start_active_span(
                 name=name,
                 span_type=span_type,
-                parent_span_context=parent_ctx,
                 context=ctx,
             )
             # Use span_id as key so parent_id lookups in on_span_start
@@ -199,34 +229,6 @@ class LaminarAgentsTraceProcessor(_Base):
                 apply_span_error(entry.lmnr_span, span)
             except Exception:
                 pass
-
-            # When a handoff span ends, save the *parent* span's context keyed
-            # by the destination agent name. on_span_start consumes this so
-            # the subsequent agent span becomes a sibling of the handoff span
-            # (both children of the handoff's parent).
-            if span_kind(span_data) == "handoff":
-                try:
-                    to_agent = name_from_span_data(
-                        export_span_data(span_data).get("to_agent")
-                        or getattr(span_data, "to_agent", None)
-                    )
-                    if to_agent:
-                        parent_id = getattr(span, "parent_id", None)
-                        with self._lock:
-                            parent_entry = (
-                                state.spans.get(parent_id) if parent_id else None
-                            )
-                        parent_lmnr_span = (
-                            parent_entry.lmnr_span
-                            if parent_entry is not None
-                            else state.root_span
-                        )
-                        if parent_lmnr_span is not None:
-                            handoff_ctx = parent_lmnr_span.get_laminar_span_context()
-                            with self._lock:
-                                state.pending_handoff_ctxs[to_agent] = handoff_ctx
-                except Exception:
-                    pass
 
             try:
                 entry.lmnr_span.end()
@@ -315,10 +317,8 @@ class LaminarAgentsTraceProcessor(_Base):
                 creator = True
         if creator:
             try:
-                # Use a generic name; on_trace_start will update it
-                # to the actual trace name via update_name.
                 root_span = Laminar.start_active_span(
-                    "agents.trace",
+                    _root_span_name(trace_or_span),
                 )
                 state.root_span = root_span
             except Exception:

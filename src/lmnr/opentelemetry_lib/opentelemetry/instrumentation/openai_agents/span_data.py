@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from opentelemetry.semconv.attributes.exception_attributes import (
+    EXCEPTION_STACKTRACE,
+    EXCEPTION_TYPE,
+)
 from opentelemetry.trace import Status, StatusCode
 
 if TYPE_CHECKING:
@@ -12,10 +16,12 @@ if TYPE_CHECKING:
     from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 
 from lmnr.opentelemetry_lib.tracing.attributes import Attributes
+from lmnr.opentelemetry_lib.tracing.context import get_event_attributes_from_context
 from lmnr.sdk.utils import json_dumps
 
 from .helpers import (
     export_span_data,
+    get_current_model_name,
     get_current_system_instructions,
     name_from_span_data,
     span_kind,
@@ -40,8 +46,28 @@ def apply_span_error(lmnr_span: LaminarSpan, span: AgentsSpan[Any]) -> None:
     if not error:
         return
     try:
-        message = getattr(error, "message", None) or str(error)
-        lmnr_span.set_status(Status(StatusCode.ERROR, message))
+        # `SpanError` is a TypedDict, so at runtime its fields are dict keys.
+        # `message` is a short label, `data` carries the specifics.
+        if isinstance(error, dict):
+            label = error.get("message")
+            data = error.get("data")
+        else:
+            label = getattr(error, "message", None)
+            data = getattr(error, "data", None)
+        label = label or str(error)
+
+        # app-server derives a span's error status from the presence of an
+        # `exception` event, never from the OTel status code. Nothing was
+        # raised here, so wrap the payload and blank the synthetic stacktrace.
+        lmnr_span.record_exception(
+            Exception(json_dumps(data) if data else label),
+            attributes={
+                **get_event_attributes_from_context(),
+                EXCEPTION_TYPE: label,
+                EXCEPTION_STACKTRACE: "",
+            },
+        )
+        lmnr_span.set_status(Status(StatusCode.ERROR, label))
     except Exception:
         pass
 
@@ -71,6 +97,10 @@ def apply_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
         _apply_guardrail_span_data(lmnr_span, span_data)
     elif kind == "custom":
         _apply_custom_span_data(lmnr_span, span_data)
+    elif kind == "task":
+        _apply_task_span_data(lmnr_span, span_data)
+    elif kind == "turn":
+        _apply_turn_span_data(lmnr_span, span_data)
     elif kind in {"mcp_list_tools", "mcp_tools"}:
         _apply_mcp_span_data(lmnr_span, span_data)
     elif kind == "speech":
@@ -107,9 +137,17 @@ def _apply_agent_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
 
 
 def _apply_function_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
+    # FunctionSpanData.export() renders output as `str(self.output)`, which turns
+    # a structured tool result into an unparseable Python repr and drops falsy
+    # ones, so prefer the raw attributes and fall back to the export.
     data = export_span_data(span_data)
-    # Use gen_ai messages for input/output
-    set_lmnr_span_io(lmnr_span, data.get("input"), data.get("output"))
+    input_data = getattr(span_data, "input", None)
+    if input_data is None:
+        input_data = data.get("input")
+    output_data = getattr(span_data, "output", None)
+    if output_data is None:
+        output_data = data.get("output")
+    set_lmnr_span_io(lmnr_span, input_data, output_data)
 
 
 def _apply_generation_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
@@ -163,6 +201,10 @@ def _apply_response_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
 
         # Apply LLM attributes from response
         apply_llm_attributes(lmnr_span, response_to_llm_data(response))
+    else:
+        # A failed call leaves no response, but the model was known before the
+        # request, so the span can still be attributed to it.
+        apply_llm_attributes(lmnr_span, {"model": get_current_model_name()})
 
 
 def _apply_handoff_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
@@ -197,6 +239,51 @@ def _apply_custom_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     custom_data = data.get("data")
     if custom_data is not None:
         lmnr_span.set_attribute("openai.agents.custom.data", json_dumps(custom_data))
+
+
+def _exported_payload(span_data: Any) -> dict[str, Any]:
+    """Fields of a span_data that exports as `{type: custom, data: {...}}`."""
+    data = export_span_data(span_data).get("data")
+    return data if isinstance(data, dict) else {}
+
+
+def _apply_task_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
+    """Handle 'task' spans - one top-level Runner run."""
+    data = _exported_payload(span_data)
+    name = data.get("name") or getattr(span_data, "name", None)
+    if name:
+        lmnr_span.set_attribute("openai.agents.task.name", name)
+    _apply_aggregate_usage(lmnr_span, "task", data, span_data)
+
+
+def _apply_turn_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
+    """Handle 'turn' spans - one iteration of the agent loop."""
+    data = _exported_payload(span_data)
+    turn = data.get("turn")
+    if turn is None:
+        turn = getattr(span_data, "turn", None)
+    if turn is not None:
+        lmnr_span.set_attribute("openai.agents.turn.index", turn)
+    agent_name = data.get("agent_name") or getattr(span_data, "agent_name", None)
+    if agent_name:
+        lmnr_span.set_attribute("openai.agents.turn.agent_name", agent_name)
+    _apply_aggregate_usage(lmnr_span, "turn", data, span_data)
+
+
+def _apply_aggregate_usage(
+    lmnr_span: LaminarSpan, kind: str, data: dict[str, Any], span_data: Any
+) -> None:
+    """Roll-up usage for a wrapper span.
+
+    Deliberately not `gen_ai.usage.*`: the wrapped LLM spans already report
+    their own usage, and `gen_ai.*` would make the backend type this as an LLM
+    call.
+    """
+    usage = data.get("usage")
+    if usage is None:
+        usage = getattr(span_data, "usage", None)
+    if usage:
+        lmnr_span.set_attribute(f"openai.agents.{kind}.usage", json_dumps(usage))
 
 
 def _apply_mcp_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:

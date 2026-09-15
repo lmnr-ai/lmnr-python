@@ -10,7 +10,9 @@ from opentelemetry.instrumentation.utils import unwrap
 from wrapt import wrap_function_wrapper
 
 from .helpers import (
+    reset_current_model_name,
     reset_current_system_instructions,
+    set_current_model_name,
     set_current_system_instructions,
 )
 from .processor import LaminarAgentsTraceProcessor
@@ -28,27 +30,43 @@ def _extract_system_instructions(args: tuple, kwargs: dict) -> Any:
     return None
 
 
+def _model_name(instance: Any) -> str | None:
+    name = getattr(instance, "model", None)
+    return name if isinstance(name, str) else None
+
+
+def _enter_model_call(instance: Any, args: tuple, kwargs: dict) -> tuple:
+    return (
+        set_current_system_instructions(_extract_system_instructions(args, kwargs)),
+        set_current_model_name(_model_name(instance)),
+    )
+
+
+def _exit_model_call(tokens: tuple) -> None:
+    instructions_token, model_token = tokens
+    reset_current_model_name(model_token)
+    reset_current_system_instructions(instructions_token)
+
+
 async def _wrap_get_response(wrapped, instance, args, kwargs):
-    token = set_current_system_instructions(_extract_system_instructions(args, kwargs))
+    tokens = _enter_model_call(instance, args, kwargs)
     try:
         return await wrapped(*args, **kwargs)
     finally:
-        reset_current_system_instructions(token)
+        _exit_model_call(tokens)
 
 
 def _wrap_stream_response(wrapped, instance, args, kwargs):
     # wrapped(*args, **kwargs) returns an async generator; wrap iteration so the
-    # ContextVar stays set while generation_span / response_span exits (which is
-    # where on_span_end fires and we read the system instructions).
-    system_instructions = _extract_system_instructions(args, kwargs)
-
+    # ContextVars stay set while generation_span / response_span exits (which is
+    # where on_span_end fires and we read them).
     async def _gen():
-        token = set_current_system_instructions(system_instructions)
+        tokens = _enter_model_call(instance, args, kwargs)
         try:
             async for chunk in wrapped(*args, **kwargs):
                 yield chunk
         finally:
-            reset_current_system_instructions(token)
+            _exit_model_call(tokens)
 
     return _gen()
 

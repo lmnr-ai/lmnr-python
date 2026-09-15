@@ -6,7 +6,7 @@
 
 [project]
 name = "lmnr"
-version = "0.7.62"
+version = "0.7.66"
 description = "Python SDK for Laminar"
 authors = [
   { name = "lmnr.ai", email = "founders@lmnr.ai" }
@@ -132,7 +132,7 @@ dev = [
   "langgraph==1.2.5",
   "litellm==1.85.2",
   "openai==2.30.0",
-  "openai-agents==0.14.1",
+  "openai-agents==0.16.1",
   "patchright==1.58.2",
   "playwright==1.58.0",
   "pydantic-ai-slim==2.5.1",

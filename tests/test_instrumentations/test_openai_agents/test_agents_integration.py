@@ -69,7 +69,8 @@ def test_simple_agent(instrument_openai_agents, span_exporter):
 
     # Verify gen_ai.output.messages contains the response text
     output_messages = json.loads(resp["attributes"]["gen_ai.output.messages"])
-    assert any("4" in str(m) for m in output_messages["output"])
+    assert isinstance(output_messages, list)
+    assert any("4" in str(m) for m in output_messages)
 
     # Verify gen_ai.input.messages contains the user message
     input_messages = json.loads(resp["attributes"]["gen_ai.input.messages"])
@@ -119,7 +120,8 @@ def test_agent_with_tool(instrument_openai_agents, span_exporter):
     for s in span_data:
         if "gen_ai.output.messages" in s["attributes"]:
             msgs = json.loads(s["attributes"]["gen_ai.output.messages"])
-            all_output.extend(msgs["output"])
+            assert isinstance(msgs, list)
+            all_output.extend(msgs)
     assert any("72" in str(m) for m in all_output)
 
     # Should have a function/tool span for get_weather

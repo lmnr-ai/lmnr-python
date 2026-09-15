@@ -45,6 +45,26 @@ def reset_current_system_instructions(
     _current_system_instructions.reset(token)
 
 
+# The model name for the currently-executing call. `ResponseSpanData` has no
+# model field, so a failed call (which leaves `response=None`) has no other
+# source for it.
+_current_model_name: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "lmnr_openai_agents_model_name", default=None
+)
+
+
+def get_current_model_name() -> str | None:
+    return _current_model_name.get()
+
+
+def set_current_model_name(value: str | None) -> "contextvars.Token[str | None]":
+    return _current_model_name.set(value)
+
+
+def reset_current_model_name(token: "contextvars.Token[str | None]") -> None:
+    _current_model_name.reset(token)
+
+
 def span_name(span: Any, span_data: Any) -> str:
     name = getattr(span, "name", None)
     if name:
