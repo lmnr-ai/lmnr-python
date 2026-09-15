@@ -20,7 +20,11 @@ from ..utils import (
     is_openai_v1,
     should_send_prompts,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.helpers import (
+    DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY,
+)
 from lmnr.opentelemetry_lib.tracing.context import (
+    get_current_context,
     get_event_attributes_from_context,
     is_in_litellm_context,
 )
@@ -54,6 +58,13 @@ def chat_wrapper(
     # we check if we're in a LiteLLM context and return the result directly if so.
 
     if is_in_litellm_context():
+        return wrapped(*args, **kwargs)
+
+    # Set by LaminarAgentsTraceProcessor: despite the name it suppresses both
+    # OpenAI model paths (name kept verbatim for lmnr-ts parity).
+    if context_api.get_value(
+        DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY, get_current_context()
+    ):
         return wrapped(*args, **kwargs)
 
     span = safe_start_span(
@@ -138,6 +149,11 @@ async def achat_wrapper(
         return await wrapped(*args, **kwargs)
 
     if is_in_litellm_context():
+        return await wrapped(*args, **kwargs)
+
+    if context_api.get_value(
+        DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY, get_current_context()
+    ):
         return await wrapped(*args, **kwargs)
 
     span = safe_start_span(

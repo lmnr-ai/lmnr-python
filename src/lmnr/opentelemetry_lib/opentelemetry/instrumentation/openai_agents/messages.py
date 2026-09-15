@@ -38,6 +38,50 @@ def set_lmnr_span_io(
         lmnr_span.set_attribute("lmnr.span.output", json_dumps(output_data))
 
 
+# Responses-API output blocks (`function_call`, `reasoning`, ...) carry no
+# `role`, so a flat array of them is not self-describing and renderers fall
+# back to showing a model-authored tool call as the user's. These are the block
+# types the model does NOT author; mirrors `responsesItemRole` in the
+# frontend's `lib/spans/process-messages.ts`.
+_TOOL_OUTPUT_BLOCK_TYPES = frozenset(
+    {
+        "function_call_output",
+        "computer_call_output",
+        "local_shell_call_output",
+        "mcp_approval_response",
+        "custom_tool_call_output",
+    }
+)
+
+
+def _with_roles(blocks: list[Any]) -> list[Any]:
+    """Stamp authorship onto blocks that carry no role of their own."""
+    result = []
+    for block in blocks:
+        if isinstance(block, dict) and not block.get("role"):
+            is_tool_output = block.get("type") in _TOOL_OUTPUT_BLOCK_TYPES
+            block = {**block, "role": "tool" if is_tool_output else "assistant"}
+        result.append(block)
+    return result
+
+
+def _message_text(message: Any) -> str:
+    """Flatten a message's content to text, for str and content-block shapes."""
+    if not isinstance(message, dict):
+        return ""
+    content = message.get("content")
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = [
+            block.get("text") or block.get("input_text") or ""
+            for block in content
+            if isinstance(block, dict)
+        ]
+        return "".join(parts).strip()
+    return ""
+
+
 def set_gen_ai_input_messages(
     lmnr_span: LaminarSpan,
     input_data: Any,
@@ -51,7 +95,16 @@ def set_gen_ai_input_messages(
     if input_data is None and not system_instructions:
         return
     messages = normalize_messages(input_data) if input_data is not None else []
-    if system_instructions:
+    # The ChatCompletions path already inserts the system message into
+    # span_data.input, the Responses path does not (it sends `instructions` as a
+    # separate API field), so prepending unconditionally duplicates it there.
+    already_present = any(
+        message.get("role") == "system"
+        and _message_text(message) == (system_instructions or "").strip()
+        for message in messages
+        if isinstance(message, dict)
+    )
+    if system_instructions and not already_present:
         messages.insert(
             0,
             {
@@ -67,7 +120,7 @@ def set_gen_ai_output_messages(lmnr_span: LaminarSpan, output_data: Any) -> None
     """Set gen_ai.output.messages on the span."""
     if output_data is None:
         return
-    messages = normalize_messages(output_data, role="assistant")
+    messages = _with_roles(normalize_messages(output_data, role="assistant"))
     if messages:
         lmnr_span.set_attribute("gen_ai.output.messages", json_dumps(messages))
 
@@ -83,21 +136,20 @@ def set_gen_ai_output_messages_from_response(
     if not output_items:
         return
 
-    id = getattr(response, "id", None)
-
     if not isinstance(output_items, list):
         logger.debug(
             "Laminar OpenAI agents instrumentation, failed to parse output items. Expected array"
         )
-        output_items = []
+        return
 
-    result = {
-        "id": id,
-        "object": "response",
-        "output": output_items,
-    }
+    # Flat array of output blocks in their native `{type, ...}` shape, matching
+    # `build_genai_output_messages` on the OpenAI Responses path. The response
+    # id is recorded separately by `apply_llm_attributes`.
+    messages = _with_roles(
+        [model_as_dict(item) or {"content": str(item)} for item in output_items]
+    )
 
-    lmnr_span.set_attribute("gen_ai.output.messages", json_dumps(result))
+    lmnr_span.set_attribute("gen_ai.output.messages", json_dumps(messages))
 
 
 # ---------------------------------------------------------------------------
