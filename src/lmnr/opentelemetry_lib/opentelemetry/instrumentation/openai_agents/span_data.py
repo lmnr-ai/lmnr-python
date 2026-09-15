@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from opentelemetry.semconv.attributes.exception_attributes import (
+    EXCEPTION_STACKTRACE,
     EXCEPTION_TYPE,
 )
 from opentelemetry.trace import Status, StatusCode
@@ -70,6 +71,12 @@ def apply_span_error(lmnr_span: LaminarSpan, span: AgentsSpan[Any]) -> None:
             attributes={
                 **get_event_attributes_from_context(),
                 EXCEPTION_TYPE: label,
+                # Nothing was raised here, so the stacktrace
+                # `record_exception` derives from our wrapper is just
+                # `Exception: <details>`, which the error card would show
+                # under "Stack trace" as a duplicate of the message.
+                # Blank it rather than mislead.
+                EXCEPTION_STACKTRACE: "",
             },
         )
         lmnr_span.set_status(Status(StatusCode.ERROR, label))

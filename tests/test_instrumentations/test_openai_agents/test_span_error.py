@@ -46,9 +46,11 @@ def test_span_error_dict_emits_exception_event(span_exporter):
     attributes = dict(events[0].attributes)
     assert attributes["exception.type"] == "Error running tool (non-fatal)"
     assert json.loads(attributes["exception.message"]) == error["data"]
-    # Reported through `record_exception`, like every other instrumentor, so the
-    # event also carries a stacktrace instead of just the two attributes.
-    assert "exception.stacktrace" in attributes
+    # Reported through `record_exception`, like every other instrumentor —
+    # `exception.escaped` only comes from that path.
+    assert attributes["exception.escaped"] == "False"
+    # Nothing was raised, so no misleading synthetic stacktrace.
+    assert attributes["exception.stacktrace"] == ""
 
 
 def test_span_error_event_carries_context_attributes(span_exporter):
