@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from opentelemetry.semconv.attributes.exception_attributes import (
+    EXCEPTION_TYPE,
+)
 from opentelemetry.trace import Status, StatusCode
 
 if TYPE_CHECKING:
@@ -12,6 +15,9 @@ if TYPE_CHECKING:
     from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 
 from lmnr.opentelemetry_lib.tracing.attributes import Attributes
+from lmnr.opentelemetry_lib.tracing.context import (
+    get_event_attributes_from_context,
+)
 from lmnr.sdk.utils import json_dumps
 
 from .helpers import (
@@ -52,15 +58,21 @@ def apply_span_error(lmnr_span: LaminarSpan, span: AgentsSpan[Any]) -> None:
         label = label or str(error)
         details = json_dumps(data) if data else label
 
-        lmnr_span.set_status(Status(StatusCode.ERROR, label))
         # app-server derives a span's error status from the presence of an
         # `exception` event, never from the OTel status code, so the status
-        # above is invisible on its own. These two attributes are what the
-        # trace view's error card renders.
-        lmnr_span.add_event(
-            "exception",
-            {"exception.type": label, "exception.message": details},
+        # below is invisible on its own. The Agents SDK reports failures as a
+        # `SpanError` payload rather than a raised exception, so wrap it like
+        # `openai/v1/responses_wrappers.py` does for cancelled responses, and
+        # override `exception.type` so the trace view's error card is headlined
+        # by the SDK's label instead of `Exception`.
+        lmnr_span.record_exception(
+            Exception(details),
+            attributes={
+                **get_event_attributes_from_context(),
+                EXCEPTION_TYPE: label,
+            },
         )
+        lmnr_span.set_status(Status(StatusCode.ERROR, label))
     except Exception:
         pass
 

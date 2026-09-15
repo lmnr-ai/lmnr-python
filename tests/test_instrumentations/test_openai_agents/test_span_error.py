@@ -46,6 +46,24 @@ def test_span_error_dict_emits_exception_event(span_exporter):
     attributes = dict(events[0].attributes)
     assert attributes["exception.type"] == "Error running tool (non-fatal)"
     assert json.loads(attributes["exception.message"]) == error["data"]
+    # Reported through `record_exception`, like every other instrumentor, so the
+    # event also carries a stacktrace instead of just the two attributes.
+    assert "exception.stacktrace" in attributes
+
+
+def test_span_error_event_carries_context_attributes(span_exporter):
+    """`record_exception` is called with `get_event_attributes_from_context()`."""
+    span_exporter.clear()
+
+    with Laminar.start_as_current_span(
+        name="tool-with-session", session_id="session-123", user_id="user-456"
+    ) as span:
+        apply_span_error(span, _FakeAgentsSpan({"message": "Max turns exceeded"}))
+
+    events = _exception_events(_only_span(span_exporter, "tool-with-session"))
+    attributes = dict(events[0].attributes)
+    assert attributes["lmnr.event.session_id"] == "session-123"
+    assert attributes["lmnr.event.user_id"] == "user-456"
 
 
 def test_span_error_object_emits_exception_event(span_exporter):
