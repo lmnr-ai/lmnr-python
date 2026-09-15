@@ -1,0 +1,58 @@
+interactions:
+- request:
+    body: '{"contents":[{"role":"user","parts":[{"text":"What is the capital of France?"}]}],"generationConfig":{}}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate, zstd
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '104'
+      Content-Type:
+      - application/json
+      Host:
+      - generativelanguage.googleapis.com
+      User-Agent:
+      - litellm/1.81.0
+    method: POST
+    uri: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAC/22QS2uEMBSF9/6KkKWMw7Slduiu9AGFPqS1Qx/M4mKuYzAmkmSKrcx/b4zVcWhd
+        xHDPybmcrw0IoRlIxhlYNPScfLgJIa0/O01Ji9I6YRi5YQ3a7r39107uzmKx6R7RtECSQc0tCKJy
+        cqNBZki4IWGYgOYmDOd08nI33tez/T6tBHZhlWIoBvtuMNCcS26KJwSjZGd7Th8TOqpcMmzceBEM
+        C3w03RrY4D1acM1h7EdrrarapqpEeam2vvmyz5pw+le2ypU8UI7i2Z9Qc+VWcjHFNyHrGoLg9suj
+        u35N6YSCPVg6UPD/dfDLo0e0Qm14z2KDlaMTHc9Po1yAKSKXjj6VajS1kgZvWWdcnjWf8AYnD+9R
+        WbKXZBHffccXhga74AdkK4q4JQIAAA==
+    headers:
+      Alt-Svc:
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json; charset=UTF-8
+      Date:
+      - Tue, 20 Jan 2026 17:35:47 GMT
+      Server:
+      - scaffolding on HTTPServer2
+      Server-Timing:
+      - gfet4t7; dur=273
+      Transfer-Encoding:
+      - chunked
+      Vary:
+      - Origin
+      - X-Origin
+      - Referer
+      X-Content-Type-Options:
+      - nosniff
+      X-Frame-Options:
+      - SAMEORIGIN
+      X-XSS-Protection:
+      - '0'
+    status:
+      code: 200
+      message: OK
+version: 1
