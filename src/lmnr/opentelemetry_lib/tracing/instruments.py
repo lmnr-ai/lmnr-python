@@ -68,6 +68,7 @@ class Instruments(Enum):
     OLLAMA = "ollama"
     OPENAI = "openai"
     OPENAI_AGENTS = "openai_agents"
+    OPENROUTER = "openrouter"
     # Patch OpenTelemetry to fix DataDog's broken Span context
     # See lmnr.opentelemetry_lib.opentelemetry.instrumentation.opentelemetry
     # for more details.
@@ -131,6 +132,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.OLLAMA: initializers.OllamaInstrumentorInitializer(),
     Instruments.OPENAI: initializers.OpenAIInstrumentorInitializer(),
     Instruments.OPENAI_AGENTS: initializers.OpenAIAgentsInstrumentorInitializer(),
+    Instruments.OPENROUTER: initializers.OpenRouterInstrumentorInitializer(),
     Instruments.OPENTELEMETRY: initializers.OpenTelemetryInstrumentorInitializer(),
     Instruments.PATCHRIGHT: initializers.PatchrightInstrumentorInitializer(),
     Instruments.PINECONE: initializers.PineconeInstrumentorInitializer(),

@@ -1,0 +1,67 @@
+interactions:
+- request:
+    body: '{"messages":[{"content":"What is the capital of France?","role":"user"}],"max_tokens":20,"model":"openai/gpt-4o-mini","stream":false}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '133'
+      content-type:
+      - application/json
+      host:
+      - openrouter.ai
+      user-agent:
+      - speakeasy-sdk/python 1.1.156 2.914.0 1.0.0 openrouter
+    method: POST
+    uri: https://openrouter.ai/api/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAA/+JSgAEuAAAAAP//fFFNb9NAEP0r1p6d1DEhbXzjgtRDVURBgCq0Wttje8h+aWcd
+        GlX+74wbHByR1hdLb96+j5lngbUoRAt2sbq+2W7WWZ7ni4evh7uHH6u74L69/77b4a35fC9S4cpf
+        UEWmV52Ky8oZryGiszyqAqgILPVPJRXG1aCZ7jxYhVetj4u1Wxi0yC98cHusIfD8nucfbhmjA0Uw
+        skHbQvAB7WjWeJmV23K73SgoRxKEPVYgI46Pba8123eOIRLFIxeyNTyJIkuFdi27lDSxWBepkxyV
+        OHQhKDrPglZF3IN8ZWqASLUgimcRnOa/UERIUXE4NnY2wkvMLx0klfIYlU5ck3wMylaQICWfVEBa
+        MjdA05PSU5qjEVc9AsPwMxX9ZMW5jY8yuh1Yzr9aj1bTvk/wdSqiY8MTkK9GHnGebJmN3+ZdKpBk
+        eXA7UTRKE6Tn2rKGqFDTaFqpqoP6JMYbfEHk74AR5rDqa3RzYLzkDBiOKebavafIjY1E20AA3o38
+        L+gFzt+sZ9Sx5EW5aT90zl/nw4XtzcOdTjHvhIZv8UbrYRj+AAAA//8DAIEc6LdJAwAA
+    headers:
+      access-control-allow-origin:
+      - '*'
+      access-control-expose-headers:
+      - X-Generation-Id,X-Provider-Name,request-id,cf-ray
+      cf-ray:
+      - a3c75bde4b0bf3bb-EWR
+      connection:
+      - keep-alive
+      content-encoding:
+      - gzip
+      content-type:
+      - application/json
+      date:
+      - Thu, 17 Sep 2026 10:17:02 GMT
+      permissions-policy:
+      - payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com"
+        "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")
+      referrer-policy:
+      - no-referrer, strict-origin-when-cross-origin
+      server:
+      - cloudflare
+      set-cookie:
+      - __cf_bm=86SCz8vm8s785ACzYUOkz9azZ20FG1GF8UsaAwiD9S4-1789640222.4454744-1.0.1.1-XFD4FFFvE0lev0nCkOkBxB5Ak5JM2c4VHTQ7T41HSY2uz6seo18zywI4gGieNJwMK.WRVaKQo.CDbtawiZFC0t9IlIbo2G5AmfFWsYeJNpqufLNeTJdFfyIP4.Ut_FWN;
+        HttpOnly; SameSite=None; Secure; Path=/; Domain=openrouter.ai; Expires=Thu,
+        17 Sep 2026 10:47:02 GMT
+      transfer-encoding:
+      - chunked
+      x-content-type-options:
+      - nosniff
+      x-generation-id:
+      - gen-1789640222-SUyMSY1MroW5XkkiImRO
+    status:
+      code: 200
+      message: OK
+version: 1

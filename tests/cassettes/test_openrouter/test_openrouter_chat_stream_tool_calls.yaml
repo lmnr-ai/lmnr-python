@@ -1,0 +1,90 @@
+interactions:
+- request:
+    body: '{"messages":[{"content":"What is the weather in Paris?","role":"user"}],"model":"openai/gpt-4o-mini","stream":true,"tools":[{"function":{"name":"get_weather","description":"Get
+      the weather in a city","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}},"type":"function"}]}'
+    headers:
+      accept:
+      - text/event-stream
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '312'
+      content-type:
+      - application/json
+      host:
+      - openrouter.ai
+      user-agent:
+      - speakeasy-sdk/python 1.1.156 2.914.0 1.0.0 openrouter
+    method: POST
+    uri: https://openrouter.ai/api/v1/chat/completions
+  response:
+    body:
+      string: 'data: {"id":"gen-1789640221-butj2Wji10fMhdjJnTVO","object":"chat.completion.chunk","created":1789640221,"model":"openai/gpt-4o-mini","provider":"OpenAI","system_fingerprint":"fp_d7a419f4b5","choices":[{"index":0,"delta":{"content":null,"role":"assistant","tool_calls":[{"index":0,"id":"call_17Dmlel5LPfgplkUevB5wobZ","type":"function","function":{"name":"get_weather","arguments":""}}]},"finish_reason":null,"native_finish_reason":null}]}
+
+
+        data: {"id":"gen-1789640221-butj2Wji10fMhdjJnTVO","object":"chat.completion.chunk","created":1789640221,"model":"openai/gpt-4o-mini","provider":"OpenAI","system_fingerprint":"fp_d7a419f4b5","choices":[{"index":0,"delta":{"content":null,"role":"assistant","tool_calls":[{"index":0,"function":{"arguments":""}}]},"finish_reason":null,"native_finish_reason":null}]}
+
+
+        data: {"id":"gen-1789640221-butj2Wji10fMhdjJnTVO","object":"chat.completion.chunk","created":1789640221,"model":"openai/gpt-4o-mini","provider":"OpenAI","system_fingerprint":"fp_d7a419f4b5","choices":[{"index":0,"delta":{"content":null,"role":"assistant","tool_calls":[{"index":0,"function":{"arguments":"{\""}}]},"finish_reason":null,"native_finish_reason":null}]}
+
+
+        data: {"id":"gen-1789640221-butj2Wji10fMhdjJnTVO","object":"chat.completion.chunk","created":1789640221,"model":"openai/gpt-4o-mini","provider":"OpenAI","system_fingerprint":"fp_d7a419f4b5","choices":[{"index":0,"delta":{"content":null,"role":"assistant","tool_calls":[{"index":0,"function":{"arguments":"city"}}]},"finish_reason":null,"native_finish_reason":null}]}
+
+
+        data: {"id":"gen-1789640221-butj2Wji10fMhdjJnTVO","object":"chat.completion.chunk","created":1789640221,"model":"openai/gpt-4o-mini","provider":"OpenAI","system_fingerprint":"fp_d7a419f4b5","choices":[{"index":0,"delta":{"content":null,"role":"assistant","tool_calls":[{"index":0,"function":{"arguments":"\":\""}}]},"finish_reason":null,"native_finish_reason":null}]}
+
+
+        data: {"id":"gen-1789640221-butj2Wji10fMhdjJnTVO","object":"chat.completion.chunk","created":1789640221,"model":"openai/gpt-4o-mini","provider":"OpenAI","system_fingerprint":"fp_d7a419f4b5","choices":[{"index":0,"delta":{"content":null,"role":"assistant","tool_calls":[{"index":0,"function":{"arguments":"Paris"}}]},"finish_reason":null,"native_finish_reason":null}]}
+
+
+        data: {"id":"gen-1789640221-butj2Wji10fMhdjJnTVO","object":"chat.completion.chunk","created":1789640221,"model":"openai/gpt-4o-mini","provider":"OpenAI","system_fingerprint":"fp_d7a419f4b5","choices":[{"index":0,"delta":{"content":null,"role":"assistant","tool_calls":[{"index":0,"function":{"arguments":"\"}"}}]},"finish_reason":null,"native_finish_reason":null}]}
+
+
+        data: {"id":"gen-1789640221-butj2Wji10fMhdjJnTVO","object":"chat.completion.chunk","created":1789640221,"model":"openai/gpt-4o-mini","provider":"OpenAI","system_fingerprint":"fp_d7a419f4b5","choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls","native_finish_reason":"tool_calls"}]}
+
+
+        data: {"id":"gen-1789640221-butj2Wji10fMhdjJnTVO","object":"chat.completion.chunk","created":1789640221,"model":"openai/gpt-4o-mini","provider":"OpenAI","system_fingerprint":"fp_d7a419f4b5","service_tier":null,"choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"tool_calls","native_finish_reason":"tool_calls"}],"usage":{"prompt_tokens":51,"completion_tokens":14,"total_tokens":65,"cost":0.00001605,"is_byok":false,"prompt_tokens_details":{"cached_tokens":0,"cache_write_tokens":0,"audio_tokens":0,"video_tokens":0},"cost_details":{"upstream_inference_cost":0.00001605,"upstream_inference_prompt_cost":0.00000765,"upstream_inference_completions_cost":0.0000084},"completion_tokens_details":{"reasoning_tokens":0,"image_tokens":0,"audio_tokens":0}}}
+
+
+        data: [DONE]
+
+
+        '
+    headers:
+      access-control-allow-origin:
+      - '*'
+      access-control-expose-headers:
+      - X-Generation-Id,X-Provider-Name,request-id,cf-ray
+      cache-control:
+      - no-cache
+      cf-ray:
+      - a3c75bda8a41b3aa-EWR
+      connection:
+      - keep-alive
+      content-type:
+      - text/event-stream
+      date:
+      - Thu, 17 Sep 2026 10:17:02 GMT
+      permissions-policy:
+      - payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com"
+        "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")
+      referrer-policy:
+      - no-referrer, strict-origin-when-cross-origin
+      server:
+      - cloudflare
+      set-cookie:
+      - __cf_bm=iaBv_BpvX0jhayyqeRypnVtpFO3F9W.kVkfFqepojtc-1789640221.8419547-1.0.1.1-GpXl16nJKE97dMBMPHIT2QzenhQrtvBBniYRpfw5V8fVVQWuWTas_3COai67Ig_eIb.fkqMAZKYdKkgAaC9y.D8e_1ScrH7fBsV4RYqGOPBhP_wtpxO6ylpVq1_ciqVb;
+        HttpOnly; SameSite=None; Secure; Path=/; Domain=openrouter.ai; Expires=Thu,
+        17 Sep 2026 10:47:02 GMT
+      transfer-encoding:
+      - chunked
+      x-content-type-options:
+      - nosniff
+      x-generation-id:
+      - gen-1789640221-butj2Wji10fMhdjJnTVO
+    status:
+      code: 200
+      message: OK
+version: 1
