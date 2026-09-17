@@ -106,8 +106,10 @@ def _wrap_stream(stream: EventStream, span: Span, kind: str) -> EventStream:
     original_close = stream.close
 
     def close():
-        original_close()
-        _finish_stream(span, kind, chunks)
+        try:
+            original_close()
+        finally:
+            _finish_stream(span, kind, chunks)
 
     stream.generator = generator(stream.generator)
     stream.close = close
@@ -133,8 +135,10 @@ def _wrap_async_stream(
     original_close = stream.close
 
     async def close():
-        await original_close()
-        _finish_stream(span, kind, chunks)
+        try:
+            await original_close()
+        finally:
+            _finish_stream(span, kind, chunks)
 
     stream.generator = generator(stream.generator)
     stream.close = close

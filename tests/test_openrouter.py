@@ -139,6 +139,27 @@ def test_openrouter_chat_stream_closed_unread(span_exporter: InMemorySpanExporte
 
 
 @pytest.mark.vcr
+def test_openrouter_chat_stream_close_error(span_exporter: InMemorySpanExporter):
+    stream = _client().chat.send(
+        model=MODEL,
+        messages=[{"role": "user", "content": "What is the capital of France?"}],
+        max_tokens=20,
+        stream=True,
+    )
+
+    def failing_close():
+        raise RuntimeError("close failed")
+
+    stream.response.close = failing_close
+    with pytest.raises(RuntimeError):
+        stream.close()
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "openrouter.chat"
+
+
+@pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_openrouter_chat_async_stream_closed_unread(
     span_exporter: InMemorySpanExporter,
