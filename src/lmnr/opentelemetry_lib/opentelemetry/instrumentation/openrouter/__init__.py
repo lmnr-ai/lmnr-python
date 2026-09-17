@@ -1,16 +1,22 @@
 """OpenTelemetry OpenRouter instrumentation"""
 
-import logging
+from importlib.metadata import version
 from typing import Collection
 
 from opentelemetry import context as context_api
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
+from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.trace import Span
 from opentelemetry.trace.status import Status, StatusCode
 from openrouter.utils.eventstreaming import EventStream, EventStreamAsync
-from wrapt import wrap_function_wrapper
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
+    BaseLaminarInstrumentor,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WrappedFunctionSpec,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     safe_start_span,
@@ -26,29 +32,25 @@ from .span_utils import (
     set_responses_response_attributes,
 )
 
-logger = logging.getLogger(__name__)
-
 _instruments = ("openrouter >= 1.0.0",)
 
-WRAPPED_METHODS = [
-    {
-        "package": "openrouter.chat",
-        "object": "Chat",
-        "method": "send",
-        "span_name": "openrouter.chat",
-        "kind": "chat",
-    },
-    {
-        "package": "openrouter.responses",
-        "object": "Responses",
-        "method": "send",
-        "span_name": "openrouter.responses",
-        "kind": "responses",
-    },
-]
-WRAPPED_AMETHODS = [
-    {**method, "method": "send_async"} for method in WRAPPED_METHODS
-]
+
+def _kind(to_wrap: WrappedFunctionSpec) -> str:
+    """`chat` or `responses`, derived from the span name."""
+    return to_wrap["span_name"].split(".")[-1]
+
+
+def _start_span(to_wrap: WrappedFunctionSpec) -> Span | None:
+    scope = to_wrap.get("instrumentation_scope", {})
+    return safe_start_span(
+        name=to_wrap["span_name"],
+        attributes={
+            "gen_ai.system": "openrouter",
+            "lmnr.span.instrumentation_scope.name": scope.get("name"),
+            "lmnr.span.instrumentation_scope.version": scope.get("version"),
+        },
+        span_type=to_wrap["span_type"],
+    )
 
 
 @dont_throw
@@ -76,6 +78,9 @@ def _record_error(span: Span, error: Exception):
 
 
 def _finish_stream(span: Span, kind: str, chunks: list[dict]):
+    # Called from both the wrapping generator and `close()`; only the first ends.
+    if not span.is_recording():
+        return
     if kind == "chat":
         response = aggregate_chat_chunks(chunks)
     else:
@@ -85,8 +90,9 @@ def _finish_stream(span: Span, kind: str, chunks: list[dict]):
 
 
 def _wrap_stream(stream: EventStream, span: Span, kind: str) -> EventStream:
+    chunks: list[dict] = []
+
     def generator(source):
-        chunks = []
         try:
             for chunk in source:
                 chunks.append(to_dict(chunk))
@@ -97,15 +103,23 @@ def _wrap_stream(stream: EventStream, span: Span, kind: str) -> EventStream:
         finally:
             _finish_stream(span, kind, chunks)
 
+    original_close = stream.close
+
+    def close():
+        original_close()
+        _finish_stream(span, kind, chunks)
+
     stream.generator = generator(stream.generator)
+    stream.close = close
     return stream
 
 
 def _wrap_async_stream(
     stream: EventStreamAsync, span: Span, kind: str
 ) -> EventStreamAsync:
+    chunks: list[dict] = []
+
     async def generator(source):
-        chunks = []
         try:
             async for chunk in source:
                 chunks.append(to_dict(chunk))
@@ -116,97 +130,102 @@ def _wrap_async_stream(
         finally:
             _finish_stream(span, kind, chunks)
 
+    original_close = stream.close
+
+    async def close():
+        await original_close()
+        _finish_stream(span, kind, chunks)
+
     stream.generator = generator(stream.generator)
+    stream.close = close
     return stream
 
 
-def _wrap(to_wrap: dict):
-    def wrapper(wrapped, instance, args, kwargs):
-        if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
-            return wrapped(*args, **kwargs)
+def _wrap(to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs):
+    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
+        return wrapped(*args, **kwargs)
 
-        kind = to_wrap["kind"]
-        span = safe_start_span(
-            name=to_wrap["span_name"],
-            attributes={"gen_ai.system": "openrouter"},
-            span_type="LLM",
-        )
-        if not span:
-            return wrapped(*args, **kwargs)
+    span = _start_span(to_wrap)
+    if not span:
+        return wrapped(*args, **kwargs)
 
-        _set_request_attributes(span, kind, kwargs)
-        try:
-            response = wrapped(*args, **kwargs)
-        except Exception as e:
-            _record_error(span, e)
-            span.end()
-            raise
-
-        if isinstance(response, EventStream):
-            return _wrap_stream(response, span, kind)
-
-        _set_response_attributes(span, kind, to_dict(response))
+    kind = _kind(to_wrap)
+    _set_request_attributes(span, kind, kwargs)
+    try:
+        response = wrapped(*args, **kwargs)
+    except Exception as e:
+        _record_error(span, e)
         span.end()
-        return response
+        raise
 
-    return wrapper
+    if isinstance(response, EventStream):
+        return _wrap_stream(response, span, kind)
+
+    _set_response_attributes(span, kind, to_dict(response))
+    span.end()
+    return response
 
 
-def _awrap(to_wrap: dict):
-    async def wrapper(wrapped, instance, args, kwargs):
-        if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
-            return await wrapped(*args, **kwargs)
+async def _awrap(to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs):
+    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
+        return await wrapped(*args, **kwargs)
 
-        kind = to_wrap["kind"]
-        span = safe_start_span(
-            name=to_wrap["span_name"],
-            attributes={"gen_ai.system": "openrouter"},
-            span_type="LLM",
-        )
-        if not span:
-            return await wrapped(*args, **kwargs)
+    span = _start_span(to_wrap)
+    if not span:
+        return await wrapped(*args, **kwargs)
 
-        _set_request_attributes(span, kind, kwargs)
-        try:
-            response = await wrapped(*args, **kwargs)
-        except Exception as e:
-            _record_error(span, e)
-            span.end()
-            raise
-
-        if isinstance(response, EventStreamAsync):
-            return _wrap_async_stream(response, span, kind)
-
-        _set_response_attributes(span, kind, to_dict(response))
+    kind = _kind(to_wrap)
+    _set_request_attributes(span, kind, kwargs)
+    try:
+        response = await wrapped(*args, **kwargs)
+    except Exception as e:
+        _record_error(span, e)
         span.end()
-        return response
+        raise
 
-    return wrapper
+    if isinstance(response, EventStreamAsync):
+        return _wrap_async_stream(response, span, kind)
+
+    _set_response_attributes(span, kind, to_dict(response))
+    span.end()
+    return response
 
 
-class OpenRouterInstrumentor(BaseInstrumentor):
+class OpenRouterInstrumentor(BaseLaminarInstrumentor):
     """An instrumentor for the OpenRouter Python SDK."""
+
+    _scope: LaminarInstrumentationScopeAttributes | None = None
 
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
-    def _instrument(self, **kwargs):
-        for wrapped_method in WRAPPED_METHODS:
-            wrap_function_wrapper(
-                wrapped_method["package"],
-                f"{wrapped_method['object']}.{wrapped_method['method']}",
-                _wrap(wrapped_method),
+    def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
+        if self._scope is None:
+            try:
+                openrouter_version = version("openrouter")
+            except Exception:
+                openrouter_version = "unknown"
+            self._scope = LaminarInstrumentationScopeAttributes(
+                name="openrouter", version=openrouter_version
             )
-        for wrapped_method in WRAPPED_AMETHODS:
-            wrap_function_wrapper(
-                wrapped_method["package"],
-                f"{wrapped_method['object']}.{wrapped_method['method']}",
-                _awrap(wrapped_method),
-            )
+        return self._scope
 
-    def _uninstrument(self, **kwargs):
-        for wrapped_method in WRAPPED_METHODS + WRAPPED_AMETHODS:
-            unwrap(
-                f"{wrapped_method['package']}.{wrapped_method['object']}",
-                wrapped_method["method"],
-            )
+    def __init__(self):
+        super().__init__()
+        self.instrumentor_config = LaminarInstrumentorConfig(
+            wrapped_functions=[
+                WrappedFunctionSpec(
+                    package_name=f"openrouter.{kind}",
+                    object_name=kind.capitalize(),
+                    method_name=method_name,
+                    is_async=is_async,
+                    is_streaming=True,
+                    span_name=f"openrouter.{kind}",
+                    span_type="LLM",
+                    instrumentation_scope=self.instrumentation_scope(),
+                    wrapper_function=_awrap if is_async else _wrap,
+                )
+                for kind in ("chat", "responses")
+                for method_name, is_async in (("send", False), ("send_async", True))
+            ]
+        )

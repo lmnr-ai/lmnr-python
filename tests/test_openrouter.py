@@ -50,6 +50,8 @@ def test_openrouter_chat(span_exporter: InMemorySpanExporter):
     assert span.name == "openrouter.chat"
     assert span.attributes["lmnr.span.type"] == "LLM"
     assert span.attributes["gen_ai.system"] == "openrouter"
+    assert span.attributes["lmnr.span.instrumentation_scope.name"] == "openrouter"
+    assert span.attributes["lmnr.span.instrumentation_scope.version"]
     assert span.attributes["gen_ai.request.model"] == MODEL
     assert span.attributes["gen_ai.request.max_tokens"] == 20
     assert span.attributes["gen_ai.request.temperature"] == 0
@@ -117,6 +119,43 @@ def test_openrouter_chat_stream_tool_calls(span_exporter: InMemorySpanExporter):
     assert tool_calls[0]["function"]["name"] == "get_weather"
     assert json.loads(tool_calls[0]["function"]["arguments"]) == {"city": "Paris"}
     assert output_messages[0]["finish_reason"] == "tool_calls"
+
+
+@pytest.mark.vcr
+def test_openrouter_chat_stream_closed_unread(span_exporter: InMemorySpanExporter):
+    with _client().chat.send(
+        model=MODEL,
+        messages=[{"role": "user", "content": "What is the capital of France?"}],
+        max_tokens=20,
+        stream=True,
+    ):
+        pass
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "openrouter.chat"
+    assert spans[0].attributes["gen_ai.request.model"] == MODEL
+    assert "gen_ai.output.messages" not in spans[0].attributes
+
+
+@pytest.mark.vcr
+@pytest.mark.asyncio
+async def test_openrouter_chat_async_stream_closed_unread(
+    span_exporter: InMemorySpanExporter,
+):
+    stream = await _client().chat.send_async(
+        model=MODEL,
+        messages=[{"role": "user", "content": "What is the capital of France?"}],
+        max_tokens=20,
+        stream=True,
+    )
+    async with stream:
+        pass
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    assert spans[0].name == "openrouter.chat"
+    assert "gen_ai.output.messages" not in spans[0].attributes
 
 
 @pytest.mark.vcr
