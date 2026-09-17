@@ -21,20 +21,20 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAA/4yRX0vDMBTFv0ue25Gb/+nbXoSBMBERQaR07d2sa5uyZDId/e6mW3V7EPQl3Jtz
-        cu/vkCNxqzcsA8lIU/tAElIVoSDZ8/EiYLvCqqq7TVQvdfac0hlVVisOhkvLtUzijaCKyYTOuBRM
-        GCqU0WPLrKFWasqBnWxMaqmun3HJKdNcTD0HbpUwp5bOJADj51kvCam7Cg8ko0PyD8i4ilstFLXn
-        UUxayWCaHBfBGThW2gjQ9puXazBMQTy/fVxppaU2cMoHYBkFpSjIKbCR1ijORv0CCUOsW1dhExkD
-        HkL6A5fy1LdF00TgvS82SLIj6Xeu7UMe3BY7TzKRkOBC0VxflC5+U2YwNXGJz1cfbkuyddF4PGt5
-        haGoGz+O2/c+7LBo87pb4w67EvPr57/IE8AfrjKaGgy16/xkpcOQjPTvdYW7GHXZYzdfxGh1FbsN
-        dmPuFLSxShoLMr3Fx/kCnlb69XDflw83n3duSYYvAAAA//8DAEozSmyPAgAA
+        H4sIAAAAAAAA/4yRP2/bMBDFvwtnyeDx+FdbsiSdmiXIEBSCbJ5tJZJoiEybwtB3L2UrtYcAyULc
+        8T3e/R54ZGH9QpvEKta1MbGC+SY1rHo+XgTq1+R9O+yyeqmr55KvuHZGI1hUDo0q8o3kWqiCr1BJ
+        IS2X2pq5Fc5ypwxHECebUEbp62eokAuDcukR0GlpTy1fKQCB51m/CtYOnt5ZxafiG5B5FTojNXfn
+        UUI5JWCZnBfBGThXxkow7oMXDVihIZ8fPtRGG2UsnPIBOMFBaw5qCWyVsxrFrF8gYcp1Hzx1mTHR
+        eyr/w5VYxr7pugz8FpsdserIDmPoD6lO4ZWGyCpZsBRS011fbEL+pspSafOSWK//hldWbZsu0lmr
+        PaWm7eI87u0Q00hNX7fDlkYaNlRfP/9EXgC+cG2yqaPUhiEuVj5NxUz/u/U05qg/DzTc/MjRWp+7
+        HQ1z7hKMdVqjMqaMT4/ybvyz9g972+8DpPvbLZv+AQAA//8DAGwCTGaPAgAA
     headers:
       access-control-allow-origin:
       - '*'
       access-control-expose-headers:
       - X-Generation-Id,X-Provider-Name,request-id,cf-ray
       cf-ray:
-      - a3c92440ded46578-AMS
+      - a3c996114c1b0f89-EWR
       connection:
       - keep-alive
       content-encoding:
@@ -42,7 +42,7 @@ interactions:
       content-type:
       - application/json
       date:
-      - Thu, 17 Sep 2026 15:28:36 GMT
+      - Thu, 17 Sep 2026 16:46:17 GMT
       permissions-policy:
       - payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com"
         "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")
@@ -51,9 +51,68 @@ interactions:
       server:
       - cloudflare
       set-cookie:
-      - __cf_bm=b6_8CvByKIxxWiGeFDUJnUz9uY5nxElnw96_d2tOtIA-1789658915.9751604-1.0.1.1-Z6j0pEgDIi6DLGrJoVap1d1kHnTzaoQEn8ZBTD2qFGBajwivqwPeyb8C8xJVM4f27t8MGtXU_2XOEr6p5eohVHCVIQ6zPptzyRm77o.q3IkbnxHugbeR0aPvmiH7AVEW;
+      - __cf_bm=yx8xb_Eyst0nD.JvDrSBnkuf4dCgJ0W56vmJsmn8a2U-1789663577.807929-1.0.1.1-3y9lVQ0TvoEmdNQI_vPOC_hvwvPAWjN8eO_Yfin0Gz9LC.Xu4qOiJpB0_9cJLj5MGUseDhvD5.5TiaSry0lYtkCRa7mz8F_h6z9gdFtaW74jpBVMucLPsYICMc10aXUR;
         HttpOnly; SameSite=None; Secure; Path=/; Domain=openrouter.ai; Expires=Thu,
-        17 Sep 2026 15:58:36 GMT
+        17 Sep 2026 17:16:17 GMT
+      transfer-encoding:
+      - chunked
+      x-content-type-options:
+      - nosniff
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"input":[15339.0,1917.0],"model":"openai/text-embedding-3-small","dimensions":8}'
+    headers:
+      accept:
+      - application/json;q=1, text/event-stream;q=0
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '81'
+      content-type:
+      - application/json
+      cookie:
+      - __cf_bm=yx8xb_Eyst0nD.JvDrSBnkuf4dCgJ0W56vmJsmn8a2U-1789663577.807929-1.0.1.1-3y9lVQ0TvoEmdNQI_vPOC_hvwvPAWjN8eO_Yfin0Gz9LC.Xu4qOiJpB0_9cJLj5MGUseDhvD5.5TiaSry0lYtkCRa7mz8F_h6z9gdFtaW74jpBVMucLPsYICMc10aXUR
+      host:
+      - openrouter.ai
+      user-agent:
+      - speakeasy-sdk/python 1.1.156 2.914.0 1.0.0 openrouter
+    method: POST
+    uri: https://openrouter.ai/api/v1/embeddings
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAA/4RQy07DMBD8F5+TyvE7vnECJEQPcKtQ5CbbytSxo9ilpVX+Hfch2gMSt52d2d2Z
+        PaKw/IQ2IY2cjQkVqDPJIL043gjol9B11q8ze6v1osQzLGopaKUor6nkRe4wLAgv8IxyRpjCTCh5
+        gqRWuOYS04qcZYRLLu7HKKeYSMqumFa0FkydIZ7xqiL0suujQNZ3sEcaT7nuQwcue0ywT+WvuZKW
+        sTfOZcPbaNaA9BENY+iH1KSwAR+RJgVKIRl332hD/oBmUKp8JDbL77BBemVchAvXdJCMdfG0bjvE
+        NILpG+tXMIJvobkf/4O+GvhH1WaRg2SDj1cpnqbi5P7LdjDmqPMB/MNzjma7jNbgT7nLSqpaCMql
+        Kt98a3bmQF9f5o9PaXfYM/OOph8AAAD//wMAKqA7ROoBAAA=
+    headers:
+      access-control-allow-origin:
+      - '*'
+      access-control-expose-headers:
+      - X-Generation-Id,X-Provider-Name,request-id,cf-ray
+      cf-ray:
+      - a3c996128d3f0f89-EWR
+      connection:
+      - keep-alive
+      content-encoding:
+      - gzip
+      content-type:
+      - application/json
+      date:
+      - Thu, 17 Sep 2026 16:46:19 GMT
+      permissions-policy:
+      - payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com"
+        "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")
+      referrer-policy:
+      - no-referrer, strict-origin-when-cross-origin
+      server:
+      - cloudflare
       transfer-encoding:
       - chunked
       x-content-type-options:

@@ -1,6 +1,6 @@
 interactions:
 - request:
-    body: '{"messages":[{"content":"What is the capital of France?","role":"user"}],"max_tokens":20,"model":"openai/gpt-4o-mini","stream":false,"temperature":0.0}'
+    body: '{"messages":[{"content":"What is the capital of France?","role":"user"}],"frequency_penalty":0.5,"max_tokens":30,"model":"openai/gpt-4o-mini","presence_penalty":0.3,"reasoning_effort":"low","response_format":{"json_schema":{"name":"capital","schema":{"type":"object","properties":{"capital":{"type":"string"}},"required":["capital"],"additionalProperties":false},"strict":true},"type":"json_schema"},"stream":false,"temperature":0.0,"user":"user-123"}'
     headers:
       accept:
       - application/json
@@ -9,7 +9,7 @@ interactions:
       connection:
       - keep-alive
       content-length:
-      - '151'
+      - '451'
       content-type:
       - application/json
       host:
@@ -21,21 +21,21 @@ interactions:
   response:
     body:
       string: !!binary |
-        H4sIAAAAAAAA/+JSgAEuAAAAAP//fFFNj9MwEP0rkc9pabJRSnNDS7lwWA4gkBCyXGeSDOvYlsfp
-        Ulb570y2pKSikEukN8/vY+ZZYC0q0YJdZdvXu7LY5Nlutb9///nLp7f3Tw+D3Z8eilw3e5EKd/gO
-        OjJddyquteu9gYjO8kgHUBFY6o9KKnpXg2G682AVvmp9XBVu1aNFfuGDO2INgedvfg4BGKITRehl
-        g7aF4APayavx8q7cQVnmRbadSBCOqEFGnN7awRh27xxDJKqv3MfW8ENUm1QY17LJgWYW6yJ1kpMS
-        Z64ERedZ0KqIR5D/mPZApFoQ1bMIzvBfKCKkqDgcGzsb4SXmxw4SrTxGZRLXJO+CshoSpOSDCkhr
-        5gZoBlJmTnM24qpnYBy/pWKYrTh376OM7hEs58+KyWpe9wXepiI6NrwAeTbxiPNs1pvpK+9SgSQP
-        J/coqkYZgvRaW9YQFRqaTLXSHdQXMd7gCyKfAkZYwmqo0S2B6ZALYDynWGoPniI37iXaBgLwbuRf
-        QW9wfme9ok4lb8rN+6FrfpGPN7a3DHc5xbIT9nyL/7Qex/EXAAAA//8DAKW+DtxIAwAA
+        H4sIAAAAAAAA/+JSgAEuAAAAAP//fFFNj9NADP0vPqdL2X5ubqiHFSeQkBASRaNp4iTencyMxk6h
+        qvLfcba0TUUhl0jPb96HfQQqIYca/eT9av20XM4Wq/lkgxv3vKHnWXP4FuLhS7352kAGYfeChSi9
+        aKw8FKGNDoWC11GR0Aqq1FUlgzaU6JQeInpL7+ook3mYtORJX8QU9lRi0vknnX/4qBgfWLA1Ffka
+        U0zkB7MqGtzNq7JaT9eLgYRpTwUaoeGx75xT+yYoxJB/10K+xF+QTzNwoVaXHZ9ZqkvcGI3KGjoH
+        lhBV0FuhPZp/TFtktjVCfoQUnP7BMhOL1XBqHLzgW8zjFgobSazbQr6FzzYRb6FXTsKqY+vOKU4G
+        WvEE9P2PDLqzheZtoxgJr+g19/xxsDjv+QIvMpCgTlfeauCx5pg+TIfvaZYBsdkdwivklXWM2a22
+        KVEsOR5MC1s0WF7EdHNviPmZSHAM266kMAaGC46A/pRirN1FFm3cGvIVJvR6uL+C3uH8yXpDXd6n
+        XvfDt/xZf2d542yXS4wrUaun+E/pvu9/AwAA//8DAHr5NA5AAwAA
     headers:
       access-control-allow-origin:
       - '*'
       access-control-expose-headers:
       - X-Generation-Id,X-Provider-Name,request-id,cf-ray
       cf-ray:
-      - a3c75bcc89133869-EWR
+      - a3c995fb1e8361a4-EWR
       connection:
       - keep-alive
       content-encoding:
@@ -43,7 +43,7 @@ interactions:
       content-type:
       - application/json
       date:
-      - Thu, 17 Sep 2026 10:17:00 GMT
+      - Thu, 17 Sep 2026 16:46:14 GMT
       permissions-policy:
       - payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com"
         "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")
@@ -52,15 +52,15 @@ interactions:
       server:
       - cloudflare
       set-cookie:
-      - __cf_bm=wpjgM2YR177Yo_MQgp1rhP1zD2Vr5ilGLBfgymwFvz0-1789640219.6010914-1.0.1.1-9fNnUy2vpGHM9_LJtJYKgVjrUoXDoxz0zlLa7h69tGb6tLpNDxjIjHPaKnQ.GAlHYF.BW57rgimL26gg77LRm37XT4NPZBDi7ft15iTxy0xyPN4Upl3gfgSJM9C._HIE;
+      - __cf_bm=9ZasyWjmbrqu5V.cddGw2fUV1zHU4cSvqqGwJeVI5mM-1789663574.2594285-1.0.1.1-a40PDsvh18Sigb27BdrqZqWmf3fUEC_jkjYAKaOO_sdYB3vdJiW5QXtx46qzN1dZLO6tdrEtUgFUvqX3XBmbyw1DwP.kWWXljR4IFlS4hi6YXNQG1yIN5o.pLj5reRUN;
         HttpOnly; SameSite=None; Secure; Path=/; Domain=openrouter.ai; Expires=Thu,
-        17 Sep 2026 10:47:00 GMT
+        17 Sep 2026 17:16:14 GMT
       transfer-encoding:
       - chunked
       x-content-type-options:
       - nosniff
       x-generation-id:
-      - gen-1789640219-ECKWXUDCwOunEyO42cfE
+      - gen-1789663574-CeClGCiG3hyXopySgCVh
     status:
       code: 200
       message: OK
