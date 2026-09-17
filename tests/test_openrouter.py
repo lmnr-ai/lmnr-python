@@ -412,6 +412,22 @@ def test_openrouter_embeddings(span_exporter: InMemorySpanExporter):
 
 
 @pytest.mark.vcr
+def test_openrouter_embeddings_token_ids(span_exporter: InMemorySpanExporter):
+    # A flat list of token ids is one document, not a batch of them.
+    token_ids = [15339, 1917]
+    _client().embeddings.generate(
+        model=EMBEDDINGS_MODEL,
+        input=token_ids,
+        dimensions=8,
+    )
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    input_messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    assert input_messages == [{"content": token_ids}]
+
+
+@pytest.mark.vcr
 def test_openrouter_chat_error(span_exporter: InMemorySpanExporter):
     with pytest.raises(Exception):
         _client().chat.send(

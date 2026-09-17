@@ -105,14 +105,25 @@ def set_responses_request_attributes(span: Span, kwargs: dict):
 
 
 @dont_throw
+def _embeddings_input_messages(input_value) -> list[dict]:
+    """`input` is either one document or a batch of them."""
+    if not isinstance(input_value, list):
+        return [{"content": input_value}]
+    # A flat list of numbers is one token-id sequence, not a batch of documents.
+    if isinstance(input_value[0], (int, float)):
+        return [{"content": input_value}]
+    return [{"content": document} for document in input_value]
+
+
 def set_embeddings_request_attributes(span: Span, kwargs: dict):
     set_span_attribute(span, "gen_ai.request.model", kwargs.get("model"))
     set_span_attribute(span, "llm.user", kwargs.get("user"))
     input_value = kwargs.get("input")
     if input_value and should_send_prompts():
-        items = input_value if isinstance(input_value, list) else [input_value]
         set_span_attribute(
-            span, "gen_ai.input.messages", json_dumps([{"content": i} for i in items])
+            span,
+            "gen_ai.input.messages",
+            json_dumps(_embeddings_input_messages(input_value)),
         )
 
 
