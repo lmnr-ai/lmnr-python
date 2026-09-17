@@ -26,17 +26,42 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
 from .span_utils import (
     aggregate_chat_chunks,
     response_from_stream_events,
+    responses_error_message,
     set_chat_request_attributes,
     set_chat_response_attributes,
+    set_embeddings_request_attributes,
+    set_embeddings_response_attributes,
     set_responses_request_attributes,
     set_responses_response_attributes,
 )
 
 _instruments = ("openrouter >= 1.0.0",)
 
+# (kind, method name, is_async). `kind` doubles as the module and the span suffix.
+_WRAPPED_METHODS = (
+    ("chat", "send", False),
+    ("chat", "send_async", True),
+    ("responses", "send", False),
+    ("responses", "send_async", True),
+    ("embeddings", "generate", False),
+    ("embeddings", "generate_async", True),
+)
+
+_REQUEST_ATTRIBUTE_SETTERS = {
+    "chat": set_chat_request_attributes,
+    "responses": set_responses_request_attributes,
+    "embeddings": set_embeddings_request_attributes,
+}
+
+_RESPONSE_ATTRIBUTE_SETTERS = {
+    "chat": set_chat_response_attributes,
+    "responses": set_responses_response_attributes,
+    "embeddings": set_embeddings_response_attributes,
+}
+
 
 def _kind(to_wrap: WrappedFunctionSpec) -> str:
-    """`chat` or `responses`, derived from the span name."""
+    """`chat`, `responses` or `embeddings`, derived from the span name."""
     return to_wrap["span_name"].split(".")[-1]
 
 
@@ -55,20 +80,19 @@ def _start_span(to_wrap: WrappedFunctionSpec) -> Span | None:
 
 @dont_throw
 def _set_request_attributes(span: Span, kind: str, kwargs: dict):
-    if kind == "chat":
-        set_chat_request_attributes(span, kwargs)
-    else:
-        set_responses_request_attributes(span, kwargs)
+    _REQUEST_ATTRIBUTE_SETTERS[kind](span, kwargs)
 
 
 @dont_throw
 def _set_response_attributes(span: Span, kind: str, response: dict | None):
     if not response:
         return
-    if kind == "chat":
-        set_chat_response_attributes(span, response)
-    else:
-        set_responses_response_attributes(span, response)
+    _RESPONSE_ATTRIBUTE_SETTERS[kind](span, response)
+    if kind == "responses":
+        error = responses_error_message(response)
+        if error:
+            span.set_attribute("error.type", response["status"])
+            span.set_status(Status(StatusCode.ERROR, error))
 
 
 def _record_error(span: Span, error: Exception):
@@ -108,6 +132,9 @@ def _wrap_stream(stream: EventStream, span: Span, kind: str) -> EventStream:
     def close():
         try:
             original_close()
+        except Exception as e:
+            _record_error(span, e)
+            raise
         finally:
             _finish_stream(span, kind, chunks)
 
@@ -137,6 +164,9 @@ def _wrap_async_stream(
     async def close():
         try:
             await original_close()
+        except Exception as e:
+            _record_error(span, e)
+            raise
         finally:
             _finish_stream(span, kind, chunks)
 
@@ -223,13 +253,12 @@ class OpenRouterInstrumentor(BaseLaminarInstrumentor):
                     object_name=kind.capitalize(),
                     method_name=method_name,
                     is_async=is_async,
-                    is_streaming=True,
+                    is_streaming=kind != "embeddings",
                     span_name=f"openrouter.{kind}",
                     span_type="LLM",
                     instrumentation_scope=self.instrumentation_scope(),
                     wrapper_function=_awrap if is_async else _wrap,
                 )
-                for kind in ("chat", "responses")
-                for method_name, is_async in (("send", False), ("send_async", True))
+                for kind, method_name, is_async in _WRAPPED_METHODS
             ]
         )

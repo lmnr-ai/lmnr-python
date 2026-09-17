@@ -7,6 +7,14 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 from opentelemetry.trace import StatusCode
 
 MODEL = "openai/gpt-4o-mini"
+EMBEDDINGS_MODEL = "openai/text-embedding-3-small"
+
+CAPITAL_SCHEMA = {
+    "type": "object",
+    "properties": {"capital": {"type": "string"}},
+    "required": ["capital"],
+    "additionalProperties": False,
+}
 
 WEATHER_TOOL = {
     "type": "function",
@@ -66,6 +74,91 @@ def test_openrouter_chat(span_exporter: InMemorySpanExporter):
     output_messages = json.loads(span.attributes["gen_ai.output.messages"])
     assert output_messages[0]["message"]["role"] == "assistant"
     assert "Paris" in output_messages[0]["message"]["content"]
+
+
+@pytest.mark.vcr
+def test_openrouter_chat_request_attributes(span_exporter: InMemorySpanExporter):
+    _client().chat.send(
+        model=MODEL,
+        messages=[{"role": "user", "content": "What is the capital of France?"}],
+        max_tokens=30,
+        frequency_penalty=0.5,
+        presence_penalty=0.3,
+        reasoning_effort="low",
+        user="user-123",
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "capital",
+                "strict": True,
+                "schema": CAPITAL_SCHEMA,
+            },
+        },
+    )
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.attributes["gen_ai.request.frequency_penalty"] == 0.5
+    assert span.attributes["gen_ai.request.presence_penalty"] == 0.3
+    assert span.attributes["gen_ai.request.reasoning_effort"] == "low"
+    assert span.attributes["llm.user"] == "user-123"
+    schema = json.loads(span.attributes["gen_ai.request.structured_output_schema"])
+    assert schema == CAPITAL_SCHEMA
+
+
+@pytest.mark.vcr
+def test_openrouter_responses_request_attributes(span_exporter: InMemorySpanExporter):
+    _client().responses.send(
+        model=MODEL,
+        input="What is the capital of France?",
+        max_output_tokens=50,
+        frequency_penalty=0.2,
+        presence_penalty=0.1,
+        user="user-123",
+        reasoning={"effort": "low"},
+        # Speakeasy's typed dicts spell the aliased fields with a trailing
+        # underscore; the models dump them as `format` / `schema`.
+        text={
+            "format_": {
+                "type": "json_schema",
+                "name": "capital",
+                "schema_": CAPITAL_SCHEMA,
+            }
+        },
+    )
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.attributes["gen_ai.request.frequency_penalty"] == 0.2
+    assert span.attributes["gen_ai.request.presence_penalty"] == 0.1
+    assert span.attributes["gen_ai.request.reasoning_effort"] == "low"
+    assert span.attributes["llm.user"] == "user-123"
+    schema = json.loads(span.attributes["gen_ai.request.structured_output_schema"])
+    assert schema == CAPITAL_SCHEMA
+
+
+@pytest.mark.vcr
+def test_openrouter_chat_no_trace_content(
+    span_exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("LMNR_TRACE_CONTENT", "false")
+    _client().chat.send(
+        model=MODEL,
+        messages=[{"role": "user", "content": "What is the capital of France?"}],
+        tools=[WEATHER_TOOL],
+        max_tokens=20,
+    )
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    span = spans[0]
+    assert "gen_ai.input.messages" not in span.attributes
+    assert "gen_ai.output.messages" not in span.attributes
+    assert "gen_ai.tool.definitions" not in span.attributes
+    assert span.attributes["gen_ai.request.model"] == MODEL
+    _assert_usage(span)
 
 
 @pytest.mark.vcr
@@ -270,6 +363,52 @@ def test_openrouter_responses_stream(span_exporter: InMemorySpanExporter):
     _assert_usage(span)
     output = json.loads(span.attributes["gen_ai.output.messages"])
     assert "Paris" in output[0]["content"][0]["text"]
+
+
+@pytest.mark.vcr
+def test_openrouter_responses_incomplete(span_exporter: InMemorySpanExporter):
+    _client().responses.send(
+        model=MODEL,
+        input="Write a 500 word essay about the history of France.",
+        max_output_tokens=16,
+    )
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.name == "openrouter.responses"
+    assert span.status.status_code == StatusCode.ERROR
+    assert span.status.description == "max_output_tokens"
+    assert span.attributes["error.type"] == "incomplete"
+
+
+@pytest.mark.vcr
+def test_openrouter_embeddings(span_exporter: InMemorySpanExporter):
+    response = _client().embeddings.generate(
+        model=EMBEDDINGS_MODEL,
+        input=["hello world", "bonjour"],
+        user="user-123",
+        # Keeps the recorded cassette small.
+        dimensions=8,
+    )
+
+    spans = span_exporter.get_finished_spans()
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.name == "openrouter.embeddings"
+    assert span.attributes["lmnr.span.type"] == "LLM"
+    assert span.attributes["gen_ai.system"] == "openrouter"
+    assert span.attributes["gen_ai.request.model"] == EMBEDDINGS_MODEL
+    assert span.attributes["llm.user"] == "user-123"
+    assert span.attributes["gen_ai.response.id"] == response.id
+    assert span.attributes["gen_ai.response.model"]
+    assert span.attributes["gen_ai.usage.input_tokens"] > 0
+    assert span.attributes["llm.usage.total_tokens"] > 0
+    assert span.attributes["gen_ai.usage.cost"] > 0
+    assert span.attributes["gen_ai.usage.input_cost"] > 0
+
+    input_messages = json.loads(span.attributes["gen_ai.input.messages"])
+    assert input_messages == [{"content": "hello world"}, {"content": "bonjour"}]
 
 
 @pytest.mark.vcr

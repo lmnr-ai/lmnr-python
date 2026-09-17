@@ -1,3 +1,5 @@
+import os
+
 from opentelemetry.trace import Span
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
@@ -13,18 +15,49 @@ TERMINAL_RESPONSE_EVENTS = (
     "response.failed",
 )
 
+# A `responses` result in one of these states carries no usable completion.
+ERROR_RESPONSE_STATUSES = ("failed", "incomplete")
+
+
+def should_send_prompts() -> bool:
+    return (os.getenv("LMNR_TRACE_CONTENT") or "true").lower() == "true"
+
 
 def _to_dicts(items: list) -> list:
     return [item if isinstance(item, dict) else to_dict(item) for item in items]
+
+
+def _aliased(d: dict, key: str):
+    """Speakeasy models dump `schema`/`format` as `schema_`/`format_`."""
+    return d.get(key, d.get(f"{key}_"))
+
+
+def _set_structured_output_schema(span: Span, schema: dict | None):
+    if schema:
+        set_span_attribute(
+            span, "gen_ai.request.structured_output_schema", json_dumps(schema)
+        )
 
 
 def _set_common_request_attributes(span: Span, kwargs: dict):
     set_span_attribute(span, "gen_ai.request.model", kwargs.get("model"))
     set_span_attribute(span, "gen_ai.request.temperature", kwargs.get("temperature"))
     set_span_attribute(span, "gen_ai.request.top_p", kwargs.get("top_p"))
+    set_span_attribute(
+        span, "gen_ai.request.frequency_penalty", kwargs.get("frequency_penalty")
+    )
+    set_span_attribute(
+        span, "gen_ai.request.presence_penalty", kwargs.get("presence_penalty")
+    )
+    set_span_attribute(span, "llm.user", kwargs.get("user"))
+    # `chat` takes a flat `reasoning_effort`, `responses` nests it under `reasoning`.
+    reasoning_effort = kwargs.get("reasoning_effort") or to_dict(
+        kwargs.get("reasoning")
+    ).get("effort")
+    set_span_attribute(span, "gen_ai.request.reasoning_effort", reasoning_effort)
     if kwargs.get("stream"):
         set_span_attribute(span, "llm.is_streaming", True)
-    if kwargs.get("tools"):
+    if kwargs.get("tools") and should_send_prompts():
         set_span_attribute(
             span, "gen_ai.tool.definitions", json_dumps(_to_dicts(kwargs["tools"]))
         )
@@ -34,7 +67,13 @@ def _set_common_request_attributes(span: Span, kwargs: dict):
 def set_chat_request_attributes(span: Span, kwargs: dict):
     _set_common_request_attributes(span, kwargs)
     set_span_attribute(span, "gen_ai.request.max_tokens", kwargs.get("max_tokens"))
-    if kwargs.get("messages"):
+
+    response_format = to_dict(kwargs.get("response_format"))
+    if response_format.get("type") == "json_schema":
+        json_schema = to_dict(response_format.get("json_schema"))
+        _set_structured_output_schema(span, _aliased(json_schema, "schema"))
+
+    if kwargs.get("messages") and should_send_prompts():
         set_span_attribute(
             span, "gen_ai.input.messages", json_dumps(_to_dicts(kwargs["messages"]))
         )
@@ -47,6 +86,12 @@ def set_responses_request_attributes(span: Span, kwargs: dict):
         span, "gen_ai.request.max_tokens", kwargs.get("max_output_tokens")
     )
 
+    text_format = to_dict(_aliased(to_dict(kwargs.get("text")), "format"))
+    if text_format.get("type") == "json_schema":
+        _set_structured_output_schema(span, _aliased(text_format, "schema"))
+
+    if not should_send_prompts():
+        return
     messages = []
     if kwargs.get("instructions"):
         messages.append({"role": "system", "content": kwargs["instructions"]})
@@ -57,6 +102,18 @@ def set_responses_request_attributes(span: Span, kwargs: dict):
         messages.extend(_to_dicts(input_value))
     if messages:
         set_span_attribute(span, "gen_ai.input.messages", json_dumps(messages))
+
+
+@dont_throw
+def set_embeddings_request_attributes(span: Span, kwargs: dict):
+    set_span_attribute(span, "gen_ai.request.model", kwargs.get("model"))
+    set_span_attribute(span, "llm.user", kwargs.get("user"))
+    input_value = kwargs.get("input")
+    if input_value and should_send_prompts():
+        items = input_value if isinstance(input_value, list) else [input_value]
+        set_span_attribute(
+            span, "gen_ai.input.messages", json_dumps([{"content": i} for i in items])
+        )
 
 
 def _set_usage_attributes(
@@ -109,10 +166,24 @@ def set_chat_response_attributes(span: Span, response: dict):
         "upstream_inference_prompt_cost",
         "upstream_inference_completions_cost",
     )
-    if response.get("choices"):
+    if response.get("choices") and should_send_prompts():
         set_span_attribute(
             span, "gen_ai.output.messages", json_dumps(response["choices"])
         )
+
+
+@dont_throw
+def set_embeddings_response_attributes(span: Span, response: dict):
+    set_span_attribute(span, "gen_ai.response.id", response.get("id"))
+    set_span_attribute(span, "gen_ai.response.model", response.get("model"))
+    _set_usage_attributes(
+        span,
+        response.get("usage"),
+        "prompt_tokens",
+        "completion_tokens",
+        "upstream_inference_prompt_cost",
+        "upstream_inference_completions_cost",
+    )
 
 
 @dont_throw
@@ -127,10 +198,20 @@ def set_responses_response_attributes(span: Span, response: dict):
         "upstream_inference_input_cost",
         "upstream_inference_output_cost",
     )
-    if response.get("output"):
+    if response.get("output") and should_send_prompts():
         set_span_attribute(
             span, "gen_ai.output.messages", json_dumps(response["output"])
         )
+
+
+def responses_error_message(response: dict) -> str | None:
+    """Message to fail the span with, or `None` if the response succeeded."""
+    status = response.get("status")
+    if status not in ERROR_RESPONSE_STATUSES:
+        return None
+    error = response.get("error") or {}
+    incomplete_details = response.get("incomplete_details") or {}
+    return error.get("message") or incomplete_details.get("reason") or status
 
 
 def aggregate_chat_chunks(chunks: list[dict]) -> dict:

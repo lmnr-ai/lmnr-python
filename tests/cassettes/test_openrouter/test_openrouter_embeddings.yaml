@@ -1,0 +1,64 @@
+interactions:
+- request:
+    body: '{"input":["hello world","bonjour"],"model":"openai/text-embedding-3-small","dimensions":8,"user":"user-123"}'
+    headers:
+      accept:
+      - application/json;q=1, text/event-stream;q=0
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '108'
+      content-type:
+      - application/json
+      host:
+      - openrouter.ai
+      user-agent:
+      - speakeasy-sdk/python 1.1.156 2.914.0 1.0.0 openrouter
+    method: POST
+    uri: https://openrouter.ai/api/v1/embeddings
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAA/4yRX0vDMBTFv0ue25Gb/+nbXoSBMBERQaR07d2sa5uyZDId/e6mW3V7EPQl3Jtz
+        cu/vkCNxqzcsA8lIU/tAElIVoSDZ8/EiYLvCqqq7TVQvdfac0hlVVisOhkvLtUzijaCKyYTOuBRM
+        GCqU0WPLrKFWasqBnWxMaqmun3HJKdNcTD0HbpUwp5bOJADj51kvCam7Cg8ko0PyD8i4ilstFLXn
+        UUxayWCaHBfBGThW2gjQ9puXazBMQTy/fVxppaU2cMoHYBkFpSjIKbCR1ijORv0CCUOsW1dhExkD
+        HkL6A5fy1LdF00TgvS82SLIj6Xeu7UMe3BY7TzKRkOBC0VxflC5+U2YwNXGJz1cfbkuyddF4PGt5
+        haGoGz+O2/c+7LBo87pb4w67EvPr57/IE8AfrjKaGgy16/xkpcOQjPTvdYW7GHXZYzdfxGh1FbsN
+        dmPuFLSxShoLMr3Fx/kCnlb69XDflw83n3duSYYvAAAA//8DAEozSmyPAgAA
+    headers:
+      access-control-allow-origin:
+      - '*'
+      access-control-expose-headers:
+      - X-Generation-Id,X-Provider-Name,request-id,cf-ray
+      cf-ray:
+      - a3c92440ded46578-AMS
+      connection:
+      - keep-alive
+      content-encoding:
+      - gzip
+      content-type:
+      - application/json
+      date:
+      - Thu, 17 Sep 2026 15:28:36 GMT
+      permissions-policy:
+      - payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com"
+        "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")
+      referrer-policy:
+      - no-referrer, strict-origin-when-cross-origin
+      server:
+      - cloudflare
+      set-cookie:
+      - __cf_bm=b6_8CvByKIxxWiGeFDUJnUz9uY5nxElnw96_d2tOtIA-1789658915.9751604-1.0.1.1-Z6j0pEgDIi6DLGrJoVap1d1kHnTzaoQEn8ZBTD2qFGBajwivqwPeyb8C8xJVM4f27t8MGtXU_2XOEr6p5eohVHCVIQ6zPptzyRm77o.q3IkbnxHugbeR0aPvmiH7AVEW;
+        HttpOnly; SameSite=None; Secure; Path=/; Domain=openrouter.ai; Expires=Thu,
+        17 Sep 2026 15:58:36 GMT
+      transfer-encoding:
+      - chunked
+      x-content-type-options:
+      - nosniff
+    status:
+      code: 200
+      message: OK
+version: 1
