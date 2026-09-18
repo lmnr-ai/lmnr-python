@@ -3,7 +3,7 @@ import sys
 import httpx
 from packaging import version
 
-__version__ = "0.7.63"
+__version__ = "0.7.63.post1"
 PYTHON_VERSION = f"{sys.version_info.major}.{sys.version_info.minor}"
 
 
