@@ -1,0 +1,58 @@
+interactions:
+- request:
+    body: '{"messages":[{"content":"Hello","role":"user"}],"model":"openai/this-model-does-not-exist","stream":false}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '106'
+      content-type:
+      - application/json
+      host:
+      - openrouter.ai
+      user-agent:
+      - speakeasy-sdk/python 1.1.156 2.914.0 1.0.0 openrouter
+    method: POST
+    uri: https://openrouter.ai/api/v1/chat/completions
+  response:
+    body:
+      string: '{"error":{"message":"openai/this-model-does-not-exist is not a valid
+        model ID","code":400},"user_id":"org_33pG5UfhxJ3NWHjfi343YzeOIei"}'
+    headers:
+      access-control-allow-origin:
+      - '*'
+      access-control-expose-headers:
+      - X-Generation-Id,X-Provider-Name,request-id,cf-ray
+      cf-ray:
+      - a3c75beca964f5fa-EWR
+      connection:
+      - keep-alive
+      content-type:
+      - application/json
+      date:
+      - Thu, 17 Sep 2026 10:17:04 GMT
+      permissions-policy:
+      - payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com"
+        "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")
+      referrer-policy:
+      - no-referrer, strict-origin-when-cross-origin
+      server:
+      - cloudflare
+      set-cookie:
+      - __cf_bm=l3_Y8b5_ndw_Gs2Cbciy3pNeIHrA1AymcOmCL95whys-1789640224.742397-1.0.1.1-L6T3rUOy61BgaOSAA2gRG9SjAf7QNR56kr2MHRwdePlokkogkXrbCjZFus3CcXqANdt8OrlcmLYZCdXZNgVLhutSfZ2kCZZOZhZQIXqKzYujjk8.O4mNDiPmpGvor77b;
+        HttpOnly; SameSite=None; Secure; Path=/; Domain=openrouter.ai; Expires=Thu,
+        17 Sep 2026 10:47:04 GMT
+      transfer-encoding:
+      - chunked
+      x-content-type-options:
+      - nosniff
+      x-generation-id:
+      - gen-1789640224-XUYDUDgA3YWyvkNUTbeZ
+    status:
+      code: 400
+      message: Bad Request
+version: 1

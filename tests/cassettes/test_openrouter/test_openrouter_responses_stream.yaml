@@ -1,0 +1,116 @@
+interactions:
+- request:
+    body: '{"input":"What is the capital of France?","max_output_tokens":20,"model":"openai/gpt-4o-mini","service_tier":"auto","store":false,"stream":true}'
+    headers:
+      accept:
+      - text/event-stream
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '144'
+      content-type:
+      - application/json
+      host:
+      - openrouter.ai
+      user-agent:
+      - speakeasy-sdk/python 1.1.156 2.914.0 1.0.0 openrouter
+    method: POST
+    uri: https://openrouter.ai/api/v1/responses
+  response:
+    body:
+      string: 'data: {"type":"response.created","response":{"id":"gen-1789640224-yDv2jrlH2nrCXnPfNwxG","object":"response","created_at":1789640224,"model":"openai/gpt-4o-mini","status":"in_progress","completed_at":null,"output":[],"error":null,"incomplete_details":null,"tools":[],"tool_choice":"auto","parallel_tool_calls":true,"max_output_tokens":20,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"auto","truncation":"disabled","store":false,"instructions":null,"text":{"format":{"type":"text"}},"reasoning":null,"safety_identifier":null,"prompt_cache_key":null,"prompt_cache_options":null,"usage":null},"sequence_number":0}
+
+
+        data: {"type":"response.in_progress","response":{"id":"gen-1789640224-yDv2jrlH2nrCXnPfNwxG","object":"response","created_at":1789640224,"model":"openai/gpt-4o-mini","status":"in_progress","completed_at":null,"output":[],"error":null,"incomplete_details":null,"tools":[],"tool_choice":"auto","parallel_tool_calls":true,"max_output_tokens":20,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"auto","truncation":"disabled","store":false,"instructions":null,"text":{"format":{"type":"text"}},"reasoning":null,"safety_identifier":null,"prompt_cache_key":null,"prompt_cache_options":null,"usage":null},"sequence_number":1}
+
+
+        data: {"type":"response.output_item.added","output_index":0,"item":{"id":"msg_tmp_i27g8eb5nvg","type":"message","status":"in_progress","role":"assistant","content":[]},"sequence_number":2}
+
+
+        data: {"type":"response.content_part.added","output_index":0,"item_id":"msg_tmp_i27g8eb5nvg","content_index":0,"part":{"type":"output_text","text":"","annotations":[],"logprobs":[]},"sequence_number":3}
+
+
+        data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_i27g8eb5nvg","content_index":0,"delta":"The","logprobs":[],"sequence_number":4}
+
+
+        data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_i27g8eb5nvg","content_index":0,"delta":"
+        capital","logprobs":[],"sequence_number":5}
+
+
+        data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_i27g8eb5nvg","content_index":0,"delta":"
+        of","logprobs":[],"sequence_number":6}
+
+
+        data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_i27g8eb5nvg","content_index":0,"delta":"
+        France","logprobs":[],"sequence_number":7}
+
+
+        data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_i27g8eb5nvg","content_index":0,"delta":"
+        is","logprobs":[],"sequence_number":8}
+
+
+        data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_i27g8eb5nvg","content_index":0,"delta":"
+        Paris","logprobs":[],"sequence_number":9}
+
+
+        data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg_tmp_i27g8eb5nvg","content_index":0,"delta":".","logprobs":[],"sequence_number":10}
+
+
+        data: {"type":"response.output_text.done","output_index":0,"item_id":"msg_tmp_i27g8eb5nvg","content_index":0,"text":"The
+        capital of France is Paris.","logprobs":[],"sequence_number":11}
+
+
+        data: {"type":"response.content_part.done","output_index":0,"item_id":"msg_tmp_i27g8eb5nvg","content_index":0,"part":{"type":"output_text","text":"The
+        capital of France is Paris.","annotations":[],"logprobs":[]},"sequence_number":12}
+
+
+        data: {"type":"response.output_item.done","output_index":0,"item":{"id":"msg_tmp_i27g8eb5nvg","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"The
+        capital of France is Paris.","annotations":[],"logprobs":[]}]},"sequence_number":13}
+
+
+        data: {"type":"response.completed","response":{"id":"gen-1789640224-yDv2jrlH2nrCXnPfNwxG","object":"response","created_at":1789640224,"model":"openai/gpt-4o-mini","status":"completed","completed_at":1789640224,"output":[{"id":"msg_tmp_i27g8eb5nvg","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"The
+        capital of France is Paris.","annotations":[],"logprobs":[]}]}],"error":null,"incomplete_details":null,"tools":[],"tool_choice":"auto","parallel_tool_calls":true,"max_output_tokens":20,"temperature":1,"top_p":1,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"max_tool_calls":null,"metadata":{},"background":false,"previous_response_id":null,"service_tier":"auto","truncation":"disabled","store":false,"instructions":null,"text":{"format":{"type":"text"}},"reasoning":null,"safety_identifier":null,"prompt_cache_key":null,"prompt_cache_options":null,"usage":{"input_tokens":14,"input_tokens_details":{"cached_tokens":0},"output_tokens":7,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":21,"cost":0.0000063,"is_byok":false,"cost_details":{"upstream_inference_cost":0.0000063,"upstream_inference_input_cost":0.0000021,"upstream_inference_output_cost":0.0000042}}},"sequence_number":14}
+
+
+        data: [DONE]
+
+
+        '
+    headers:
+      access-control-allow-origin:
+      - '*'
+      access-control-expose-headers:
+      - X-Generation-Id,X-Provider-Name,request-id,cf-ray
+      cache-control:
+      - no-cache
+      cf-ray:
+      - a3c75be86c6e4350-EWR
+      connection:
+      - keep-alive
+      content-type:
+      - text/event-stream
+      date:
+      - Thu, 17 Sep 2026 10:17:04 GMT
+      permissions-policy:
+      - payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com"
+        "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")
+      referrer-policy:
+      - no-referrer, strict-origin-when-cross-origin
+      server:
+      - cloudflare
+      set-cookie:
+      - __cf_bm=WEUy3qN18a_Az_MKgTL6hqGh.euRscNpr13wCK7gcR0-1789640224.0652864-1.0.1.1-FSSoAtGpuTew8hJtPGa2mHSKW7BNA31x3t9hoSCVJDIiD7hhSUlUVXPrwfiAaaefp6eWo03n8MY70oz3X2r6NtNc7RkJtnmVuRP5e61QYMKtTZIHNzCN2hGGAeLoSWbM;
+        HttpOnly; SameSite=None; Secure; Path=/; Domain=openrouter.ai; Expires=Thu,
+        17 Sep 2026 10:47:04 GMT
+      transfer-encoding:
+      - chunked
+      x-content-type-options:
+      - nosniff
+      x-generation-id:
+      - gen-1789640224-yDv2jrlH2nrCXnPfNwxG
+    status:
+      code: 200
+      message: OK
+version: 1

@@ -1,0 +1,94 @@
+interactions:
+- request:
+    body: '{"messages":[{"content":"What is the capital of France?","role":"user"}],"max_tokens":20,"model":"openai/gpt-4o-mini","stream":true}'
+    headers:
+      accept:
+      - text/event-stream
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '132'
+      content-type:
+      - application/json
+      host:
+      - openrouter.ai
+      user-agent:
+      - speakeasy-sdk/python 1.1.156 2.914.0 1.0.0 openrouter
+    method: POST
+    uri: https://openrouter.ai/api/v1/chat/completions
+  response:
+    body:
+      string: 'data: {"id":"gen-1789642417-dU0lRomcQNZjiE6fsx5o","object":"chat.completion.chunk","created":1789642417,"model":"openai/gpt-4o-mini","provider":"OpenAI","system_fingerprint":"fp_0b9b996aeb","choices":[{"index":0,"delta":{"content":"The","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+
+        data: {"id":"gen-1789642417-dU0lRomcQNZjiE6fsx5o","object":"chat.completion.chunk","created":1789642417,"model":"openai/gpt-4o-mini","provider":"OpenAI","system_fingerprint":"fp_0b9b996aeb","choices":[{"index":0,"delta":{"content":"
+        capital","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+
+        data: {"id":"gen-1789642417-dU0lRomcQNZjiE6fsx5o","object":"chat.completion.chunk","created":1789642417,"model":"openai/gpt-4o-mini","provider":"OpenAI","system_fingerprint":"fp_0b9b996aeb","choices":[{"index":0,"delta":{"content":"
+        of","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+
+        data: {"id":"gen-1789642417-dU0lRomcQNZjiE6fsx5o","object":"chat.completion.chunk","created":1789642417,"model":"openai/gpt-4o-mini","provider":"OpenAI","system_fingerprint":"fp_0b9b996aeb","choices":[{"index":0,"delta":{"content":"
+        France","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+
+        data: {"id":"gen-1789642417-dU0lRomcQNZjiE6fsx5o","object":"chat.completion.chunk","created":1789642417,"model":"openai/gpt-4o-mini","provider":"OpenAI","system_fingerprint":"fp_0b9b996aeb","choices":[{"index":0,"delta":{"content":"
+        is","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+
+        data: {"id":"gen-1789642417-dU0lRomcQNZjiE6fsx5o","object":"chat.completion.chunk","created":1789642417,"model":"openai/gpt-4o-mini","provider":"OpenAI","system_fingerprint":"fp_0b9b996aeb","choices":[{"index":0,"delta":{"content":"
+        Paris","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+
+        data: {"id":"gen-1789642417-dU0lRomcQNZjiE6fsx5o","object":"chat.completion.chunk","created":1789642417,"model":"openai/gpt-4o-mini","provider":"OpenAI","system_fingerprint":"fp_0b9b996aeb","choices":[{"index":0,"delta":{"content":".","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+
+        data: {"id":"gen-1789642417-dU0lRomcQNZjiE6fsx5o","object":"chat.completion.chunk","created":1789642417,"model":"openai/gpt-4o-mini","provider":"OpenAI","system_fingerprint":"fp_0b9b996aeb","choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"stop","native_finish_reason":"stop"}]}
+
+
+        data: {"id":"gen-1789642417-dU0lRomcQNZjiE6fsx5o","object":"chat.completion.chunk","created":1789642417,"model":"openai/gpt-4o-mini","provider":"OpenAI","system_fingerprint":"fp_0b9b996aeb","service_tier":null,"choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"stop","native_finish_reason":"stop"}],"usage":{"prompt_tokens":14,"completion_tokens":7,"total_tokens":21,"cost":0.0000063,"is_byok":false,"prompt_tokens_details":{"cached_tokens":0,"cache_write_tokens":0,"audio_tokens":0,"video_tokens":0},"cost_details":{"upstream_inference_cost":0.0000063,"upstream_inference_prompt_cost":0.0000021,"upstream_inference_completions_cost":0.0000042},"completion_tokens_details":{"reasoning_tokens":0,"image_tokens":0,"audio_tokens":0}}}
+
+
+        data: [DONE]
+
+
+        '
+    headers:
+      access-control-allow-origin:
+      - '*'
+      access-control-expose-headers:
+      - X-Generation-Id,X-Provider-Name,request-id,cf-ray
+      cache-control:
+      - no-cache
+      cf-ray:
+      - a3c791728e0714f4-IAD
+      connection:
+      - keep-alive
+      content-type:
+      - text/event-stream
+      date:
+      - Thu, 17 Sep 2026 10:53:37 GMT
+      permissions-policy:
+      - payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com"
+        "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")
+      referrer-policy:
+      - no-referrer, strict-origin-when-cross-origin
+      server:
+      - cloudflare
+      set-cookie:
+      - __cf_bm=WOLHvkj_1Vj6E7axoYI1nI6fdW6wbWNr8a1tCORH17g-1789642417.0454488-1.0.1.1-OCVXcQj4kf2pE2R9o1DTbNnB1zHkFMBNxzJL.BZDszPfL66defOeCoqzVlTSMVrnK3P9s72tpLroIuUuXR9gxCZG3XG8YPHSbincbnQpd0azM_1fkRf.vjU1rlLfdhfU;
+        HttpOnly; SameSite=None; Secure; Path=/; Domain=openrouter.ai; Expires=Thu,
+        17 Sep 2026 11:23:37 GMT
+      transfer-encoding:
+      - chunked
+      x-content-type-options:
+      - nosniff
+      x-generation-id:
+      - gen-1789642417-dU0lRomcQNZjiE6fsx5o
+    status:
+      code: 200
+      message: OK
+version: 1

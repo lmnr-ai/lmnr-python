@@ -1,0 +1,67 @@
+interactions:
+- request:
+    body: '{"messages":[{"content":"What is the capital of France?","role":"user"}],"frequency_penalty":0.5,"max_tokens":30,"model":"openai/gpt-4o-mini","presence_penalty":0.3,"reasoning_effort":"low","response_format":{"json_schema":{"name":"capital","schema":{"type":"object","properties":{"capital":{"type":"string"}},"required":["capital"],"additionalProperties":false},"strict":true},"type":"json_schema"},"stream":false,"temperature":0.0,"user":"user-123"}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate, zstd
+      connection:
+      - keep-alive
+      content-length:
+      - '451'
+      content-type:
+      - application/json
+      host:
+      - openrouter.ai
+      user-agent:
+      - speakeasy-sdk/python 1.1.156 2.914.0 1.0.0 openrouter
+    method: POST
+    uri: https://openrouter.ai/api/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAA/+JSgAEuAAAAAP//fFFNj9NADP0vPqdL2X5ubqiHFSeQkBASRaNp4iTencyMxk6h
+        qvLfcba0TUUhl0jPb96HfQQqIYca/eT9av20XM4Wq/lkgxv3vKHnWXP4FuLhS7352kAGYfeChSi9
+        aKw8FKGNDoWC11GR0Aqq1FUlgzaU6JQeInpL7+ook3mYtORJX8QU9lRi0vknnX/4qBgfWLA1Ffka
+        U0zkB7MqGtzNq7JaT9eLgYRpTwUaoeGx75xT+yYoxJB/10K+xF+QTzNwoVaXHZ9ZqkvcGI3KGjoH
+        lhBV0FuhPZp/TFtktjVCfoQUnP7BMhOL1XBqHLzgW8zjFgobSazbQr6FzzYRb6FXTsKqY+vOKU4G
+        WvEE9P2PDLqzheZtoxgJr+g19/xxsDjv+QIvMpCgTlfeauCx5pg+TIfvaZYBsdkdwivklXWM2a22
+        KVEsOR5MC1s0WF7EdHNviPmZSHAM266kMAaGC46A/pRirN1FFm3cGvIVJvR6uL+C3uH8yXpDXd6n
+        XvfDt/xZf2d542yXS4wrUaun+E/pvu9/AwAA//8DAHr5NA5AAwAA
+    headers:
+      access-control-allow-origin:
+      - '*'
+      access-control-expose-headers:
+      - X-Generation-Id,X-Provider-Name,request-id,cf-ray
+      cf-ray:
+      - a3c995fb1e8361a4-EWR
+      connection:
+      - keep-alive
+      content-encoding:
+      - gzip
+      content-type:
+      - application/json
+      date:
+      - Thu, 17 Sep 2026 16:46:14 GMT
+      permissions-policy:
+      - payment=(self "https://checkout.stripe.com" "https://connect-js.stripe.com"
+        "https://js.stripe.com" "https://*.js.stripe.com" "https://hooks.stripe.com")
+      referrer-policy:
+      - no-referrer, strict-origin-when-cross-origin
+      server:
+      - cloudflare
+      set-cookie:
+      - __cf_bm=9ZasyWjmbrqu5V.cddGw2fUV1zHU4cSvqqGwJeVI5mM-1789663574.2594285-1.0.1.1-a40PDsvh18Sigb27BdrqZqWmf3fUEC_jkjYAKaOO_sdYB3vdJiW5QXtx46qzN1dZLO6tdrEtUgFUvqX3XBmbyw1DwP.kWWXljR4IFlS4hi6YXNQG1yIN5o.pLj5reRUN;
+        HttpOnly; SameSite=None; Secure; Path=/; Domain=openrouter.ai; Expires=Thu,
+        17 Sep 2026 17:16:14 GMT
+      transfer-encoding:
+      - chunked
+      x-content-type-options:
+      - nosniff
+      x-generation-id:
+      - gen-1789663574-CeClGCiG3hyXopySgCVh
+    status:
+      code: 200
+      message: OK
+version: 1

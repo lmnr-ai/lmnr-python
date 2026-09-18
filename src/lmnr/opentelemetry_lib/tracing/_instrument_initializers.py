@@ -448,6 +448,18 @@ class OpenAIAgentsInstrumentorInitializer(InstrumentorInitializer):
         return OpenAIAgentsInstrumentor()
 
 
+class OpenRouterInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("openrouter"):
+            return None
+
+        from ..opentelemetry.instrumentation.openrouter import (
+            OpenRouterInstrumentor,
+        )
+
+        return OpenRouterInstrumentor()
+
+
 class OpenTelemetryInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         from ..opentelemetry.instrumentation.opentelemetry import (
