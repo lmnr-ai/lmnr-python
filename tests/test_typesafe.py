@@ -1,3 +1,11 @@
+"""No VCR here: `typesafe-sdk` runs on `httpx2`, which vcrpy cannot intercept.
+
+Responses are injected through the SDK's own `transport=` seam
+(`httpx2.MockTransport`) and are validated by the SDK's strict
+`SystemOneResponse` pydantic model, so a wrong-shaped body fails in the SDK
+rather than silently passing.
+"""
+
 import json
 
 import httpx2
