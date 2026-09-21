@@ -39,9 +39,42 @@ def _default_session_recording_options() -> SessionRecordingOptions:
     return {"mask_input_options": None}
 
 
+def _detach_span_processor(provider: TracerProvider, processor: SpanProcessor) -> None:
+    """Remove `processor` from `provider`, touching the private
+    `_span_processors` tuple under its lock (same approach as the Langfuse
+    bridge's `_remove_span_processor`)."""
+    active = getattr(provider, "_active_span_processor", None)
+    current = getattr(active, "_span_processors", None)
+    if current is None:
+        return
+    filtered = tuple(p for p in current if p is not processor)
+    lock = getattr(active, "_lock", None)
+    if lock is not None:
+        with lock:
+            active._span_processors = filtered
+    else:
+        active._span_processors = filtered
+
+
+def _detach_log_processor(
+    provider: LoggerProvider, processor: BatchLogRecordProcessor
+) -> None:
+    """`_detach_span_processor`'s counterpart for the logs pipeline."""
+    multi = getattr(provider, "_multi_log_record_processor", None)
+    current = getattr(multi, "_log_record_processors", None)
+    if current is None:
+        return
+    filtered = tuple(p for p in current if p is not processor)
+    lock = getattr(multi, "_lock", None)
+    if lock is not None:
+        with lock:
+            multi._log_record_processors = filtered
+    else:
+        multi._log_record_processors = filtered
+
+
 class TracerWrapper:
-    """Holds the OpenTelemetry plumbing for one process lifetime.
-    """
+    """Holds the OpenTelemetry plumbing for one process lifetime."""
 
     def __init__(
         self,
@@ -69,8 +102,21 @@ class TracerWrapper:
         return span_result and log_result
 
     def shutdown(self) -> None:
-        self.tracer_provider.shutdown()
-        self.logger_provider.shutdown()
+        """Detach and shut down this run's processors.
+
+        The providers deliberately OUTLIVE the wrapper. OTel refuses to
+        override an already-set global `TracerProvider`, so a later
+        `init_tracing()` can never publish a replacement — and instrumentors
+        that captured a tracer at `_instrument()` time (MCP, pydantic_ai, the
+        traceloop-derived ones) are not re-instrumented either, since
+        `BaseInstrumentor.instrument()` no-ops when already instrumented.
+        Shutting the provider down here would therefore strand them on a dead
+        provider for the rest of the process.
+        """
+        _detach_span_processor(self.tracer_provider, self.span_processor)
+        _detach_log_processor(self.logger_provider, self.log_processor)
+        self.span_processor.shutdown()
+        self.log_processor.shutdown()
 
     def force_reinit_processor(self) -> bool:
         if not isinstance(self.span_processor, LaminarSpanProcessor):
@@ -105,6 +151,10 @@ _tracer_wrapper: TracerWrapper | None = None
 # Kept outside the wrapper because the browser utils read it before (and
 # without) initialization.
 _session_recording_options: SessionRecordingOptions | None = None
+# The providers are built ONCE per process and reused across
+# initialize()/shutdown() cycles — see TracerWrapper.shutdown.
+_tracer_provider: TracerProvider | None = None
+_logger_provider: LoggerProvider | None = None
 
 
 def init_tracing(
@@ -142,6 +192,7 @@ def init_tracing(
     """Initialize Laminar tracing. Idempotent: a second call returns the
     existing wrapper and ignores the new arguments."""
     global _tracer_wrapper, _session_recording_options
+    global _tracer_provider, _logger_provider
 
     # Silence some opentelemetry warnings
     logging.getLogger("opentelemetry.trace").setLevel(otel_logger_level)
@@ -158,7 +209,10 @@ def init_tracing(
         )
 
         resource = Resource(
-            attributes={**(resource_attributes or {}), SERVICE_NAME: app_name or "default_app"}
+            attributes={
+                **(resource_attributes or {}),
+                SERVICE_NAME: app_name or "default_app",
+            }
         )
 
         async_client = (
@@ -184,13 +238,21 @@ def init_tracing(
             disable_batch=disable_batch,
         )
 
-        tracer_provider = TracerProvider(resource=resource)
+        if _tracer_provider is None:
+            _tracer_provider = TracerProvider(resource=resource)
+            global_provider = trace.get_tracer_provider()
+            if set_global_tracer_provider and isinstance(
+                global_provider, trace.ProxyTracerProvider
+            ):
+                trace.set_tracer_provider(_tracer_provider)
+        elif _tracer_provider.resource != resource:
+            LOG.warning(
+                "Reusing the tracer provider from a previous Laminar "
+                "initialization; its resource attributes (including app_name) "
+                "are fixed at first initialization and will not be updated."
+            )
+        tracer_provider = _tracer_provider
         tracer_provider.add_span_processor(span_processor)
-        global_provider = trace.get_tracer_provider()
-        if set_global_tracer_provider and isinstance(
-            global_provider, trace.ProxyTracerProvider
-        ):
-            trace.set_tracer_provider(tracer_provider)
 
         # Setup LoggerProvider for OTel logs
         log_exporter = LaminarLogExporter(
@@ -201,12 +263,13 @@ def init_tracing(
             force_http=force_http,
         )
         log_processor = BatchLogRecordProcessor(log_exporter)
-        logger_provider = LoggerProvider(resource=resource)
+        if _logger_provider is None:
+            _logger_provider = LoggerProvider(resource=resource)
+            # Set global logger provider (follows same flag as tracer provider)
+            if set_global_tracer_provider:
+                set_logger_provider(_logger_provider)
+        logger_provider = _logger_provider
         logger_provider.add_log_record_processor(log_processor)
-
-        # Set global logger provider (follows same flag as tracer provider)
-        if set_global_tracer_provider:
-            set_logger_provider(logger_provider)
 
         wrapper = TracerWrapper(
             resource=resource,
@@ -305,11 +368,13 @@ def shutdown_tracing() -> None:
 
 
 def reset_tracing() -> None:
-    """Drop the singleton without shutting it down. Test hook."""
-    global _tracer_wrapper, _session_recording_options
-    if _tracer_wrapper is not None:
-        atexit.unregister(_tracer_wrapper.exit_handler)
-    _tracer_wrapper = None
+    """Drop the tracing singleton. Test hook.
+
+    Goes through `shutdown_tracing` so the retired processors are detached
+    from the (reused) providers rather than left accumulating on them.
+    """
+    global _session_recording_options
+    shutdown_tracing()
     _session_recording_options = None
 
 
