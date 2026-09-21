@@ -92,6 +92,7 @@ class Instruments(Enum):
     TEMPORAL = "temporal"
     TOGETHER = "together"
     TRANSFORMERS = "transformers"
+    TYPESAFE = "typesafe"
     VERTEXAI = "vertexai"
     WATSONX = "watsonx"
     WEAVIATE = "weaviate"
@@ -145,6 +146,7 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.TEMPORAL: initializers.TemporalInstrumentorInitializer(),
     Instruments.TOGETHER: initializers.TogetherInstrumentorInitializer(),
     Instruments.TRANSFORMERS: initializers.TransformersInstrumentorInitializer(),
+    Instruments.TYPESAFE: initializers.TypeSafeInstrumentorInitializer(),
     Instruments.VERTEXAI: initializers.VertexAIInstrumentorInitializer(),
     Instruments.WATSONX: initializers.WatsonxInstrumentorInitializer(),
     Instruments.WEAVIATE: initializers.WeaviateInstrumentorInitializer(),

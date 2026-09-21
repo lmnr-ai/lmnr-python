@@ -607,6 +607,18 @@ class TransformersInstrumentorInitializer(InstrumentorInitializer):
         return TransformersInstrumentor()
 
 
+class TypeSafeInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("typesafe-sdk"):
+            return None
+
+        from ..opentelemetry.instrumentation.typesafe import (
+            TypeSafeInstrumentor,
+        )
+
+        return TypeSafeInstrumentor()
+
+
 class VertexAIInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("vertexai"):
