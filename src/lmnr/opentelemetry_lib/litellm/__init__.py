@@ -15,7 +15,7 @@ from lmnr.opentelemetry_lib.litellm.utils import (
     model_as_dict,
     set_span_attribute,
 )
-from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.tracing import get_tracer_wrapper
 
 from lmnr.opentelemetry_lib.tracing.context import (
     get_current_context,
@@ -56,7 +56,7 @@ try:
 
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
-            if not hasattr(TracerWrapper, "instance") or TracerWrapper.instance is None:
+            if get_tracer_wrapper() is None:
                 raise ValueError("Laminar must be initialized before LiteLLM callback")
 
             self.logged_openai_responses = set()
@@ -94,9 +94,10 @@ try:
                 self.is_litellm_instrumented = False
 
         def _get_tracer(self) -> Tracer:
-            if not hasattr(TracerWrapper, "instance") or TracerWrapper.instance is None:
+            wrapper = get_tracer_wrapper()
+            if wrapper is None:
                 raise ValueError("Laminar must be initialized before LiteLLM callback")
-            return TracerWrapper().get_tracer()
+            return wrapper.get_tracer()
 
         def log_success_event(
             self, kwargs, response_obj, start_time: datetime, end_time: datetime

@@ -1,10 +1,11 @@
 import threading
 from abc import ABC, abstractmethod
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any
 
+from opentelemetry import trace
 from opentelemetry.context import Context, Token, create_key, get_value, set_value
 
 from lmnr.opentelemetry_lib.tracing.attributes import (
@@ -185,6 +186,13 @@ def push_span_context(context: Context) -> None:
     set_token_stack(token_stack)
 
 
+def push_span(span: trace.Span, from_ctx: Context | None = None) -> Context:
+    """Push a new context with the given span onto the stack."""
+    new_context = trace.set_span_in_context(span, from_ctx or get_current_context())
+    push_span_context(new_context)
+    return new_context
+
+
 def clear_context() -> None:
     """Clear the isolated context and token stack.
 
@@ -228,3 +236,50 @@ def in_litellm_context() -> Generator[None, None, None]:
         yield
     finally:
         _in_litellm_context.reset(token)
+
+
+# Set once, process-wide: `threading.Thread.__init__` is monkey-patched so that
+# threads inherit Laminar's isolated context, and the original must survive
+# repeated initialize()/shutdown() cycles.
+_original_thread_init: Callable[..., None] | None = None
+
+
+def setup_thread_context_inheritance() -> None:
+    """Make new threads inherit the current isolated context and token stack."""
+    global _original_thread_init
+    if _original_thread_init is not None:
+        return
+
+    _original_thread_init = threading.Thread.__init__
+
+    def patched_thread_init(thread_self, *args: Any, **kwargs: Any):  # pyright: ignore[reportExplicitAny]
+        # Capture current isolated context and token stack for inheritance
+        current_context = get_current_context()
+        current_token_stack = get_token_stack().copy()
+
+        # Get the original target function
+        original_target = kwargs.get("target")
+        if not original_target and args:
+            original_target = args[0]
+
+        # Only inherit if we have a target function
+        if original_target:
+            # Create a wrapper function that sets up context
+            def thread_wrapper(*target_args, **target_kwargs):
+                # Set inherited context and token stack in the new thread
+                attach_context(current_context)
+                set_token_stack(current_token_stack)
+                # Run original target
+                return original_target(*target_args, **target_kwargs)
+
+            # Replace the target with our wrapper
+            if "target" in kwargs:
+                kwargs["target"] = thread_wrapper
+            elif args:
+                args = (thread_wrapper,) + args[1:]
+
+        # Call original init
+        if _original_thread_init is not None:
+            _original_thread_init(thread_self, *args, **kwargs)
+
+    threading.Thread.__init__ = patched_thread_init  # pyright: ignore[reportAttributeAccessIssue] thread_self -> self aliasing

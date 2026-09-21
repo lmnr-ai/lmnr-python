@@ -46,11 +46,12 @@ def test_our_loggers_do_not_propagate():
     handler the host app installed (e.g. after logging.basicConfig()). An earlier fix
     passed propagate=True to satisfy a caplog-based test and reintroduced exactly the
     duplication this module exists to prevent."""
-    from lmnr.opentelemetry_lib.tracing import TracerWrapper
     from lmnr.sdk.laminar import Laminar
+    from lmnr.sdk.log import get_default_logger
 
     Laminar._initialize_logger()
-    TracerWrapper._initialize_logger(TracerWrapper)
+    get_default_logger("lmnr.opentelemetry_lib.tracing")
+    get_default_logger("lmnr.opentelemetry_lib.tracing")
 
     for name in ("lmnr.sdk.laminar", "lmnr.opentelemetry_lib.tracing"):
         logger = logging.getLogger(name)

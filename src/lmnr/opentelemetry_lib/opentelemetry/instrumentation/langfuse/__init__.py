@@ -1078,14 +1078,14 @@ class LangfuseInstrumentor:
         cls._lmnr_tracer_provider = lmnr_tracer_provider
 
         # Pre-register Laminar's provider id so `_attach_to_provider` short-
-        # circuits if Langfuse happens to share it. The `TracerWrapper.instance`
+        # circuits if Langfuse happens to share it. The `get_tracer_wrapper()`
         # fallback check is racy during auto-install — `init_instrumentations`
-        # runs BEFORE `TracerWrapper.instance` is assigned, so
-        # `verify_initialized()` returns False, and a Langfuse client that
+        # runs BEFORE `init_tracing` publishes the wrapper, so
+        # `get_tracer_wrapper()` returns None, and a Langfuse client that
         # had already been constructed against a pre-existing global provider
         # identical to Laminar's would otherwise get the translator +
         # laminar span processor attached a second time. id()-based
-        # short-circuit is independent of TracerWrapper lifecycle.
+        # short-circuit is independent of the tracing lifecycle.
         if cls._handled_providers is None:
             cls._handled_providers = set()
         cls._handled_providers.add(id(lmnr_tracer_provider))
@@ -1120,6 +1120,68 @@ class LangfuseInstrumentor:
             # recorded in `_attached_providers`).
             self.uninstrument()
             raise
+
+    def rebind(
+        self,
+        lmnr_tracer_provider: SdkTracerProvider,
+        lmnr_span_processor: SpanProcessor,
+    ) -> bool:
+        """Point an already-installed bridge at a new Laminar span processor.
+
+        `Laminar.shutdown()` retires the run's `LaminarSpanProcessor` and a
+        later `initialize()` builds a fresh one, but `instrument()` returns
+        early once `installed` is set — so without this every Langfuse-owned
+        provider (and every LiteLLM `langfuse_otel` logger provider) would keep
+        calling `on_end` on the shut-down processor and its spans would never
+        reach the new exporter. Driven from `Laminar.initialize()`, because
+        nothing else runs on a re-init: `LANGFUSE` is never in the default
+        instrument set and `connect_to_langfuse()` is a one-shot the user calls.
+
+        Returns True if a swap happened.
+        """
+        cls = type(self)
+        if not cls.installed:
+            return False
+
+        old_processor = cls._lmnr_span_processor
+        provider_moved = cls._lmnr_tracer_provider is not lmnr_tracer_provider
+        if old_processor is lmnr_span_processor and not provider_moved:
+            return False
+
+        # The translator lives on Laminar's OWN provider, which is reused
+        # across initialize()/shutdown() cycles — so this branch is normally
+        # dead. It only fires if that provider is ever swapped.
+        if provider_moved and cls._translator is not None:
+            if cls._lmnr_tracer_provider is not None:
+                _remove_span_processor(cls._lmnr_tracer_provider, cls._translator)
+            try:
+                _prepend_span_processor(lmnr_tracer_provider, cls._translator)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.warning("Failed to move Langfuse translator: %s", exc)
+                return False
+            if cls._handled_providers is not None:
+                cls._handled_providers.add(id(lmnr_tracer_provider))
+
+        cls._lmnr_tracer_provider = lmnr_tracer_provider
+        cls._lmnr_span_processor = lmnr_span_processor
+
+        # Every attach path (Langfuse clients, the resource-manager patch, and
+        # the LiteLLM logger providers) records into `_attached_providers`, so
+        # this covers all of them.
+        for provider in list((cls._attached_providers or {}).values()):
+            if old_processor is not None:
+                _remove_span_processor(provider, old_processor)
+            add = getattr(provider, "add_span_processor", None)
+            if callable(add):
+                try:
+                    add(lmnr_span_processor)
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    logger.warning(
+                        "Failed to rebind Laminar processor on Langfuse "
+                        "TracerProvider: %s",
+                        exc,
+                    )
+        return True
 
     def uninstrument(self) -> None:
         """Reverse `instrument`: detach the translator and Laminar span
@@ -1210,12 +1272,10 @@ class LangfuseInstrumentor:
 
         # Skip the Laminar provider itself — our processor and translator are
         # already attached there.
-        from lmnr.opentelemetry_lib.tracing import TracerWrapper
+        from lmnr.opentelemetry_lib.tracing import get_tracer_wrapper
 
-        if (
-            TracerWrapper.verify_initialized()
-            and TracerWrapper.instance.tracer_provider is provider
-        ):
+        lmnr_wrapper = get_tracer_wrapper()
+        if lmnr_wrapper is not None and lmnr_wrapper.tracer_provider is provider:
             return
 
         try:

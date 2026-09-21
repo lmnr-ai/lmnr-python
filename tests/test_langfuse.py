@@ -42,7 +42,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
     LangfuseInstrumentor,
     _is_langfuse_span,
 )
-from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.tracing import get_tracer_wrapper
 from lmnr.opentelemetry_lib.tracing import instruments as instruments_mod
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
@@ -1202,7 +1202,7 @@ def test_instrumentor_skips_laminar_own_provider(span_exporter):
     spans on every Laminar export).
     """
     instrumentor = LangfuseInstrumentor()
-    wrapper = TracerWrapper.instance
+    wrapper = get_tracer_wrapper()
     initial_count = len(
         wrapper.tracer_provider._active_span_processor._span_processors
     )
@@ -1282,16 +1282,16 @@ def test_instrument_rolls_back_translator_if_attach_phase_raises(span_exporter):
 
 def test_instrument_skips_shared_laminar_provider_without_tracerwrapper(span_exporter):
     """Regression: during auto-install via `init_instrumentations`,
-    `TracerWrapper.instance` is assigned AFTER `init_instrumentations`
+    the tracer wrapper is published AFTER `init_instrumentations`
     returns. If a pre-existing Langfuse client happens to share Laminar's
     newly-created `TracerProvider`, `_attach_to_provider`'s
-    `TracerWrapper.verify_initialized()` fallback guard returns False
+    `get_tracer_wrapper()` fallback guard returns None
     (the wrapper isn't set yet) and the translator + Laminar span processor
     would be double-attached.
 
     `instrument()` must pre-register `id(lmnr_tracer_provider)` in
     `_handled_providers` so the short-circuit works independently of the
-    TracerWrapper lifecycle.
+    tracing lifecycle.
     """
     from opentelemetry.sdk.trace import TracerProvider
 
@@ -1304,7 +1304,7 @@ def test_instrument_skips_shared_laminar_provider_without_tracerwrapper(span_exp
     LangfuseInstrumentor._lmnr_tracer_provider = None
 
     # A fresh provider standing in for Laminar's. We deliberately do NOT
-    # reassign `TracerWrapper.instance` to point at this provider — that's
+    # publish a tracer wrapper pointing at this provider — that's
     # exactly the case the guard has to cover during auto-install.
     shared_provider = TracerProvider()
 
@@ -1369,7 +1369,7 @@ def test_uninstrument_removes_translator_and_clears_state(span_exporter):
     from langfuse._client.resource_manager import LangfuseResourceManager
 
     LangfuseResourceManager._instances.clear()
-    wrapper = TracerWrapper.instance
+    wrapper = get_tracer_wrapper()
     lmnr_provider = wrapper.tracer_provider
 
     def count_translators() -> int:
@@ -1436,7 +1436,7 @@ def test_uninstrument_detaches_processors_from_langfuse_providers(span_exporter)
     """
     from opentelemetry.sdk.trace import TracerProvider
 
-    wrapper = TracerWrapper.instance
+    wrapper = get_tracer_wrapper()
     lmnr_provider = wrapper.tracer_provider
     lmnr_processor = wrapper.span_processor
 
@@ -1590,7 +1590,7 @@ def test_litellm_bridge_attaches_to_existing_logger(span_exporter):
     original_loggers = list(litellm_logging._in_memory_loggers)
     litellm_logging._in_memory_loggers.append(logger_obj)
     try:
-        wrapper = TracerWrapper.instance
+        wrapper = get_tracer_wrapper()
         instrumentor = LangfuseInstrumentor()
         instrumentor.instrument(
             lmnr_tracer_provider=wrapper.tracer_provider,
@@ -1627,7 +1627,7 @@ def test_litellm_bridge_patches_factory_for_late_loggers(span_exporter):
     original_loggers = list(litellm_logging._in_memory_loggers)
     original_factory = litellm_logging._init_custom_logger_compatible_class
     try:
-        wrapper = TracerWrapper.instance
+        wrapper = get_tracer_wrapper()
         instrumentor = LangfuseInstrumentor()
         instrumentor.instrument(
             lmnr_tracer_provider=wrapper.tracer_provider,
@@ -1676,7 +1676,7 @@ def test_litellm_factory_does_not_bridge_non_langfuse_loggers(span_exporter):
     original_loggers = list(litellm_logging._in_memory_loggers)
     original_factory = litellm_logging._init_custom_logger_compatible_class
     try:
-        wrapper = TracerWrapper.instance
+        wrapper = get_tracer_wrapper()
         instrumentor = LangfuseInstrumentor()
         instrumentor.instrument(
             lmnr_tracer_provider=wrapper.tracer_provider,
@@ -1769,7 +1769,7 @@ def test_litellm_bridge_wraps_and_unwraps_logger_methods(span_exporter):
     litellm_logging._in_memory_loggers.append(logger_obj)
     probe_tracer = TracerProvider().get_tracer("probe")
     try:
-        wrapper = TracerWrapper.instance
+        wrapper = get_tracer_wrapper()
         instrumentor = LangfuseInstrumentor()
         instrumentor.instrument(
             lmnr_tracer_provider=wrapper.tracer_provider,
@@ -1805,3 +1805,96 @@ def test_litellm_bridge_wraps_and_unwraps_logger_methods(span_exporter):
     finally:
         litellm_logging._in_memory_loggers[:] = original_loggers
         _reset_langfuse_instrumentor_state()
+
+
+def test_bridge_is_rebound_to_the_new_processor_after_a_reinit(span_exporter):
+    """`LangfuseInstrumentor.instrument()` returns early once `installed` is
+    set, so an initialize()/shutdown()/initialize() cycle used to leave the
+    bridge — and every Langfuse-owned provider it attached to — holding the
+    RETIRED `LaminarSpanProcessor`. Langfuse spans then hit `on_end` on a
+    shut-down processor and never reached the new exporter.
+
+    `Laminar.initialize()` now drives `LangfuseInstrumentor.rebind()`; nothing
+    else would, since LANGFUSE is never in the default instrument set and
+    `connect_to_langfuse()` is a one-shot.
+    """
+    from unittest.mock import patch
+
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    import lmnr.sdk.laminar as laminar_mod
+    from lmnr.opentelemetry_lib import tracing as tracing_mod
+    from lmnr.opentelemetry_lib.tracing import init_tracing, reset_tracing
+
+    def boot(exporter):
+        def injected(*args, **kwargs):
+            kwargs["exporter"] = exporter
+            return init_tracing(*args, **kwargs)
+
+        # The session fixture already initialized Laminar, and `initialize()`
+        # short-circuits on its own flag.
+        Laminar._Laminar__initialized = False
+        with patch.object(laminar_mod, "init_tracing", side_effect=injected):
+            Laminar.initialize(
+                project_api_key="k", disable_batch=True, instruments=set()
+            )
+
+    def processors(provider):
+        return provider._active_span_processor._span_processors
+
+    saved_wrapper = tracing_mod._tracer_wrapper
+    saved_options = tracing_mod._session_recording_options
+    saved_initialized = Laminar.is_initialized()
+    tracing_mod._tracer_wrapper = None
+    tracing_mod._session_recording_options = None
+    _reset_langfuse_instrumentor_state()
+
+    try:
+        exp1 = InMemorySpanExporter()
+        boot(exp1)
+        retired = get_tracer_wrapper().span_processor
+        assert Laminar.connect_to_langfuse() is True
+
+        # A Langfuse-owned provider, as the resource-manager hook would supply.
+        lf_provider = TracerProvider()
+        LangfuseInstrumentor()._attach_to_provider(lf_provider)
+        assert retired in processors(lf_provider)
+
+        lf_provider.get_tracer("langfuse-sdk").start_span("lf1").end()
+        assert [s.name for s in exp1.get_finished_spans()] == ["lf1"]
+
+        Laminar.shutdown()
+
+        exp2 = InMemorySpanExporter()
+        boot(exp2)
+        current = get_tracer_wrapper().span_processor
+        assert current is not retired
+
+        assert LangfuseInstrumentor._lmnr_span_processor is current
+        assert retired not in processors(lf_provider)
+        assert current in processors(lf_provider)
+
+        exp1.clear()
+        lf_provider.get_tracer("langfuse-sdk").start_span("lf2").end()
+        assert [s.name for s in exp2.get_finished_spans()] == ["lf2"]
+        assert exp1.get_finished_spans() == ()
+    finally:
+        LangfuseInstrumentor().uninstrument()
+        _reset_langfuse_instrumentor_state()
+        reset_tracing()
+        tracing_mod._tracer_wrapper = saved_wrapper
+        tracing_mod._session_recording_options = saved_options
+        Laminar._Laminar__initialized = saved_initialized
+
+
+def test_rebind_is_a_no_op_when_the_bridge_is_not_installed():
+    _reset_langfuse_instrumentor_state()
+    assert (
+        LangfuseInstrumentor().rebind(
+            lmnr_tracer_provider=MagicMock(), lmnr_span_processor=MagicMock()
+        )
+        is False
+    )

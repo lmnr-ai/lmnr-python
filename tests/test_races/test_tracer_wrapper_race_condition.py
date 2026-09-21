@@ -1,11 +1,19 @@
 import asyncio
 import pytest
 import threading
+from unittest.mock import patch
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from lmnr import Laminar
-from lmnr.opentelemetry_lib import TracerManager
-from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.opentelemetry_lib import tracing as tracing_mod
+from lmnr.opentelemetry_lib.tracing import (
+    flush_tracing,
+    force_reinit_processor,
+    get_tracer_wrapper,
+    init_tracing,
+    is_tracing_initialized,
+    reset_tracing,
+)
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 
@@ -25,14 +33,8 @@ class TestTracerWrapperRaceCondition:
         self._clear_tracer_instances()
 
     def _clear_tracer_instances(self):
-        """Clear all tracer instances to ensure clean state."""
-        # Clear TracerWrapper singleton
-        if hasattr(TracerWrapper, "instance"):
-            delattr(TracerWrapper, "instance")
-
-        # Clear TracerManager tracer wrapper
-        if hasattr(TracerManager, "_TracerManager__tracer_wrapper"):
-            delattr(TracerManager, "_TracerManager__tracer_wrapper")
+        """Drop the tracer singleton to ensure clean state."""
+        reset_tracing()
 
     def test_concurrent_initialization_and_flush_must_succeed(self):
         """Test that concurrent initialization and flush operations succeed without race conditions."""
@@ -44,14 +46,14 @@ class TestTracerWrapperRaceCondition:
             try:
                 exporter = InMemorySpanExporter()
 
-                TracerManager.init(
+                init_tracing(
                     project_api_key=f"race-test-key-{thread_id}",
                     disable_batch=True,
                     exporter=exporter,
                     timeout_seconds=1,
                 )
 
-                result = TracerManager.flush()
+                result = flush_tracing()
                 results.append(f"Thread-{thread_id}: {result}")
                 return result
 
@@ -205,7 +207,7 @@ class TestTracerWrapperRaceCondition:
             """Worker function that performs init/flush in a thread."""
             try:
                 exporter = InMemorySpanExporter()
-                TracerManager.init(
+                init_tracing(
                     project_api_key=f"async-thread-{worker_id}",
                     disable_batch=True,
                     exporter=exporter,
@@ -213,7 +215,7 @@ class TestTracerWrapperRaceCondition:
                 )
 
                 # Immediate flush to trigger race condition
-                result = TracerManager.flush()
+                result = flush_tracing()
                 results.append(f"AsyncThread-{worker_id}: {result}")
                 return result
 
@@ -268,7 +270,7 @@ class TestTracerWrapperRaceCondition:
 
                 # All threads try to create/use singleton simultaneously
                 exporter = InMemorySpanExporter()
-                TracerManager.init(
+                init_tracing(
                     project_api_key=f"stress-{thread_id}",
                     disable_batch=True,
                     exporter=exporter,
@@ -276,8 +278,8 @@ class TestTracerWrapperRaceCondition:
                 )
 
                 # Immediate operations on the singleton
-                initialized = TracerWrapper.verify_initialized()
-                flush_result = TracerManager.flush()
+                initialized = is_tracing_initialized()
+                flush_result = flush_tracing()
 
                 results.append(
                     f"Stress-{thread_id}: init={initialized}, flush={flush_result}"
@@ -312,41 +314,45 @@ class TestTracerWrapperRaceCondition:
         ), f"All stress operations should succeed: {len(results)}/20"
         assert len(exceptions) == 0, f"No singleton race conditions: {exceptions}"
 
-    def test_manual_partial_initialization(self):
-        """Manually create race condition scenario that must be handled properly.
-
-        This test creates the exact scenario that causes the race condition
-        and verifies it's been fixed.
-        """
-        # This test bypasses conftest.py initialization to create race condition
+    def test_flush_before_init_returns_false(self):
+        """Lifecycle calls on an uninitialized tracer must return False, never
+        raise. This used to be reachable as a genuine race (the singleton was
+        published mid-build, so a concurrent flush could hit a wrapper with no
+        span processor); publishing only the finished wrapper makes that state
+        unrepresentable, and this pins the remaining contract."""
         self._clear_tracer_instances()
 
-        def create_partial_instance():
-            """Create a TracerWrapper instance but don't fully initialize it."""
-            # Create instance but simulate incomplete initialization
-            instance = object.__new__(TracerWrapper)
-            # Assign to singleton but without _span_processor
-            TracerWrapper.instance = instance
-            TracerManager._TracerManager__tracer_wrapper = instance
-            return instance
+        assert flush_tracing() is False
+        assert force_reinit_processor() is False
+        assert is_tracing_initialized() is False
+        assert get_tracer_wrapper() is None
 
-        def attempt_flush_on_partial():
-            """Try to flush the partially initialized instance."""
-            try:
-                return TracerManager.flush()
-            except AttributeError as e:
-                if "span_processor" in str(e):
-                    raise AssertionError(f"Partial initialization: {str(e)}") from e
-                raise
+    def test_wrapper_is_not_published_during_init_instrumentations(self):
+        """`init_instrumentations` runs while the init lock is held and can
+        import modules that evaluate the `observe` decorator at import time, so
+        the wrapper must still be invisible at that point. The Langfuse bridge
+        depends on the same ordering."""
+        self._clear_tracer_instances()
 
-        # Create the race condition scenario
-        create_partial_instance()
+        observed = []
+        original = tracing_mod.init_instrumentations
 
-        # This should NOT raise an AttributeError if the race condition is fixed
-        result = attempt_flush_on_partial()
+        def spy(*args, **kwargs):
+            observed.append(
+                (is_tracing_initialized(), get_tracer_wrapper() is None)
+            )
+            return original(*args, **kwargs)
 
-        # If we get here, the race condition has been properly handled
-        assert isinstance(result, bool), "Flush must return a boolean"
+        with patch.object(tracing_mod, "init_instrumentations", side_effect=spy):
+            init_tracing(
+                project_api_key="publish-order",
+                disable_batch=True,
+                exporter=InMemorySpanExporter(),
+                timeout_seconds=1,
+            )
+
+        assert observed == [(False, True)]
+        assert is_tracing_initialized() is True
 
     def test_initialization_atomicity(self):
         """Test that TracerWrapper initialization is atomic and thread-safe."""
@@ -360,7 +366,7 @@ class TestTracerWrapperRaceCondition:
 
             try:
                 exporter = InMemorySpanExporter()
-                TracerManager.init(
+                init_tracing(
                     project_api_key=f"atomic-{thread_id}",
                     disable_batch=True,
                     exporter=exporter,
@@ -369,11 +375,10 @@ class TestTracerWrapperRaceCondition:
 
                 with lock:
                     initialization_count += 1
-                    if hasattr(TracerWrapper, "instance"):
-                        instances_created.append(id(TracerWrapper.instance))
+                    instances_created.append(id(get_tracer_wrapper()))
 
                 # Test immediate usage
-                result = TracerManager.flush()
+                result = flush_tracing()
                 return f"Thread-{thread_id}: {result}"
 
             except AttributeError as e:

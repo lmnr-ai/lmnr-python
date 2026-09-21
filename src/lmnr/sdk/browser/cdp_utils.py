@@ -9,7 +9,7 @@ from weakref import WeakKeyDictionary
 import orjson
 from opentelemetry import trace
 
-from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.tracing import get_session_recording_options
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.sdk.browser.background_send_events import (
     get_background_loop,
@@ -159,7 +159,7 @@ async def should_skip_page(cdp_session: Any):  # pyright: ignore[reportExplicitA
 def get_mask_input_setting() -> MaskInputOptions:
     """Get the mask_input setting from session recording configuration."""
     try:
-        config = TracerWrapper.get_session_recording_options()
+        config = get_session_recording_options()
         return config.get("mask_input_options") or MaskInputOptions(
             textarea=False,
             text=False,
@@ -169,7 +169,7 @@ def get_mask_input_setting() -> MaskInputOptions:
             tel=False,
         )
     except (AttributeError, Exception):
-        # Fallback to default configuration if TracerWrapper is not initialized
+        # Fallback to default configuration if tracing is not initialized
         return MaskInputOptions(
             textarea=False,
             text=False,
