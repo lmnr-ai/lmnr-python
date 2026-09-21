@@ -1203,7 +1203,7 @@ class LangfuseInstrumentor:
         if provider is None:
             return
         pid = id(provider)
-        if self._handled_providers:
+        if self._handled_providers is not None:
             if pid in self._handled_providers:
                 return
             self._handled_providers.add(pid)
@@ -1233,16 +1233,20 @@ class LangfuseInstrumentor:
             # letting a reinstall stack a second one. `_remove_span_processor`
             # tolerates a processor that was never attached, so recording
             # eagerly is safe.
-            if self._attached_providers is None:
-                self._attached_providers = {}
             if self._translator is not None:
                 _prepend_span_processor(provider, self._translator)
-                self._attached_providers[pid] = provider
+                if type(self)._attached_providers is None:
+                    type(self)._attached_providers = {pid: provider}
+                else:
+                    type(self)._attached_providers[pid] = provider
             if self._lmnr_span_processor is not None:
                 add = getattr(provider, "add_span_processor", None)
                 if callable(add):
                     add(self._lmnr_span_processor)
-                    self._attached_providers[pid] = provider
+                    if type(self)._attached_providers is None:
+                        type(self)._attached_providers = {pid: provider}
+                    else:
+                        type(self)._attached_providers[pid] = provider
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning(
                 "Failed to attach Laminar processor to Langfuse TracerProvider: %s",

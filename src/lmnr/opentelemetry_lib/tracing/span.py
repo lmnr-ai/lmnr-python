@@ -34,7 +34,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
     pop_span_context,
 )
 from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.types import DebugContext, LaminarSpanContext, TraceType
+from lmnr.sdk.types import DebugContext, LaminarSpanContext, MetadataType, TraceType
 from lmnr.sdk.utils import is_otel_attribute_value_type, json_dumps
 
 MAX_MANUAL_SPAN_PAYLOAD_SIZE = 1024 * 1024 * 10  # 10MB
@@ -164,10 +164,10 @@ class LaminarSpanInterfaceMixin:
             is_remote=self.span.get_span_context().is_remote,
             span_path=span_path,
             span_ids_path=span_ids_path,
-            user_id=str(user_id),
-            session_id=str(session_id),
+            user_id=str(user_id) if user_id is not None else None,
+            session_id=str(session_id) if session_id is not None else None,
             trace_type=TraceType(str(trace_type)) if trace_type is not None else None,
-            metadata=metadata,
+            metadata=cast(MetadataType, metadata),
             debug=_current_debug_context(),
         )
 
