@@ -1,8 +1,9 @@
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator, Iterator, Tuple
 
 from opentelemetry import trace
 from opentelemetry.context import Context
+
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 
@@ -24,7 +25,7 @@ def get_tracer(flush_on_exit: bool = False):
 @contextmanager
 def get_tracer_with_context(
     flush_on_exit: bool = False,
-) -> Generator[Tuple[trace.Tracer, Context], None, None]:
+) -> Generator[tuple[trace.Tracer, Context], None, None]:
     """Get tracer with isolated context. Returns (tracer, context) tuple."""
     wrapper = TracerWrapper()
     try:
@@ -47,7 +48,7 @@ class LaminarTracer(trace.Tracer):
         return span
 
     @contextmanager
-    def start_as_current_span(self, *args, **kwargs) -> Iterator[trace.Span]:
+    def start_as_current_span(self, *args, **kwargs) -> Generator[trace.Span]:
         wrapper = TracerWrapper()
         with self._instance.start_as_current_span(*args, **kwargs) as span:
             wrapper.push_span_context(span)

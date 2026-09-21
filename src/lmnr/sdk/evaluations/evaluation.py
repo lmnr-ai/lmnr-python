@@ -331,7 +331,7 @@ class Evaluation:
 
         # Create tasks only after acquiring semaphore
         for idx, item in enumerate(data_iter):
-            _ = await semaphore.acquire()
+            _success = await semaphore.acquire()
             datapoint = cast(Datapoint, item if isinstance(self.data, list) else self.data[cast(int, item)])
             task = asyncio.create_task(evaluate_task(datapoint, idx))
             tasks.append(task)

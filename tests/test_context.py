@@ -1,6 +1,7 @@
-from opentelemetry.trace.span import INVALID_SPAN_ID
-from lmnr import Laminar, observe
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace.span import INVALID_SPAN_ID
+
+from lmnr import Laminar, observe
 
 
 def test_clear_context_observe(span_exporter: InMemorySpanExporter):

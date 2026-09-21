@@ -1,9 +1,9 @@
 import logging
-
 from enum import Enum
 from typing import TYPE_CHECKING
 
 from opentelemetry.trace import TracerProvider
+
 import lmnr.opentelemetry_lib.tracing._instrument_initializers as initializers
 from lmnr.opentelemetry_lib.utils.package_check import (
     get_package_version,
@@ -205,7 +205,7 @@ def _google_adk_installed() -> bool:
     return is_package_installed("google-adk")
 
 
-def _langfuse_installed() -> bool:
+def langfuse_installed() -> bool:
     """The bridge targets langfuse >= 3.0 (OTel-native). For langfuse 2.x we
     report False so `connect_to_langfuse()` refuses to install a useless
     translator (the bridge initializer returns None for 2.x)."""

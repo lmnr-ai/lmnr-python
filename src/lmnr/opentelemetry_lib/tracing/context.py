@@ -1,9 +1,10 @@
 import threading
-
 from abc import ABC, abstractmethod
+from collections.abc import Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Any, Generator
+from typing import Any
+
 from opentelemetry.context import Context, Token, create_key, get_value, set_value
 
 from lmnr.opentelemetry_lib.tracing.attributes import (

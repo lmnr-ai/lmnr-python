@@ -1,11 +1,12 @@
-from lmnr.opentelemetry_lib.decorators import (
-    observe_base,
-    async_observe_base,
-)
+from collections.abc import Callable, Coroutine
+from typing import Any, Literal, Protocol, TypeVar, cast, overload
 
-from typing import Any, Callable, Coroutine, Literal, TypeVar, overload
 from typing_extensions import ParamSpec
 
+from lmnr.opentelemetry_lib.decorators import (
+    async_observe_base,
+    observe_base,
+)
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import TraceType
 
@@ -17,44 +18,19 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 
-# Overload for synchronous functions
-@overload
-def observe(
-    *,
-    name: str | None = None,
-    session_id: str | None = None,
-    user_id: str | None = None,
-    ignore_input: bool = False,
-    ignore_output: bool = False,
-    span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
-    ignore_inputs: list[str] | None = None,
-    input_formatter: Callable[..., str] | None = None,
-    output_formatter: Callable[..., str] | None = None,
-    metadata: dict[str, Any] | None = None,
-    tags: list[str] | None = None,
-    preserve_global_context: bool = False,
-) -> Callable[[Callable[P, R]], Callable[P, R]]: ...
+class _ObserveDecorator(Protocol):
+    """The callable returned by `observe(...)`, overloaded on whether the
+    wrapped function is sync or async so callers see the matching return
+    type.
+    """
 
-
-# Overload for asynchronous functions
-@overload
-def observe(
-    *,
-    name: str | None = None,
-    session_id: str | None = None,
-    user_id: str | None = None,
-    ignore_input: bool = False,
-    ignore_output: bool = False,
-    span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
-    ignore_inputs: list[str] | None = None,
-    input_formatter: Callable[..., str] | None = None,
-    output_formatter: Callable[..., str] | None = None,
-    metadata: dict[str, Any] | None = None,
-    tags: list[str] | None = None,
-    preserve_global_context: bool = False,
-) -> Callable[
-    [Callable[P, Coroutine[Any, Any, R]]], Callable[P, Coroutine[Any, Any, R]]
-]: ...
+    @overload
+    def __call__(
+        self,
+        func: Callable[P, Coroutine[Any, Any, R]],  # pyright: ignore[reportExplicitAny]
+    ) -> Callable[P, Coroutine[Any, Any, R]]: ...  # pyright: ignore[reportExplicitAny]
+    @overload
+    def __call__(self, func: Callable[P, R]) -> Callable[P, R]: ...
 
 
 # Implementation
@@ -69,11 +45,10 @@ def observe(
     ignore_inputs: list[str] | None = None,
     input_formatter: Callable[..., str] | None = None,
     output_formatter: Callable[..., str] | None = None,
-    metadata: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
     tags: list[str] | None = None,
     preserve_global_context: bool = False,
-):
-    # Return type is determined by overloads above
+) -> _ObserveDecorator:
     """The main decorator entrypoint for Laminar. This is used to wrap
     functions and methods to create spans.
 
@@ -123,11 +98,11 @@ def observe(
     """
 
     def decorator(
-        func: Callable[P, R] | Callable[P, Coroutine[Any, Any, R]],
-    ) -> Callable[P, R] | Callable[P, Coroutine[Any, Any, R]]:
+        func: Callable[P, R] | Callable[P, Coroutine[Any, Any, R]], # pyright: ignore[reportExplicitAny]
+    ) -> Callable[P, R] | Callable[P, Coroutine[Any, Any, R]]:  # pyright: ignore[reportExplicitAny]
         func_name = getattr(func, "__name__", "unknown")
 
-        association_properties = {}
+        association_properties: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
         if session_id is not None:
             association_properties["session_id"] = session_id
         if user_id is not None:
@@ -135,8 +110,8 @@ def observe(
         if span_type in ["EVALUATION", "EXECUTOR", "EVALUATOR"]:
             association_properties["trace_type"] = TraceType.EVALUATION.value
         if tags is not None:
-            if not isinstance(tags, list) or not all(
-                isinstance(tag, str) for tag in tags
+            if not isinstance(tags, list) or not all(  # pyright: ignore[reportUnnecessaryIsInstance]
+                isinstance(tag, str) for tag in tags  # pyright: ignore[reportUnnecessaryIsInstance]
             ):
                 logger.warning("Tags must be a list of strings. Tags will be ignored.")
             else:
@@ -144,21 +119,21 @@ def observe(
                 association_properties["tags"] = list(set(tags))
         if input_formatter is not None and ignore_input:
             logger.warning(
-                f"observe, function {func_name}: Input formatter"
-                " is ignored because `ignore_input` is True. Specify only one of"
+                f"observe, function {func_name}: Input formatter" +
+                " is ignored because `ignore_input` is True. Specify only one of" +
                 " `ignore_input` or `input_formatter`."
             )
         if input_formatter is not None and ignore_inputs is not None:
             logger.warning(
-                f"observe, function {func_name}: Both input formatter and"
-                " `ignore_inputs` are specified. Input formatter"
-                " will pass all arguments to the formatter regardless of"
+                f"observe, function {func_name}: Both input formatter and" +
+                " `ignore_inputs` are specified. Input formatter" +
+                " will pass all arguments to the formatter regardless of" +
                 " `ignore_inputs`."
             )
         if output_formatter is not None and ignore_output:
             logger.warning(
-                f"observe, function {func_name}: Output formatter"
-                " is ignored because `ignore_output` is True. Specify only one of"
+                f"observe, function {func_name}: Output formatter" +
+                " is ignored because `ignore_output` is True. Specify only one of" +
                 " `ignore_output` or `output_formatter`."
             )
 
@@ -191,4 +166,4 @@ def observe(
 
         return wrapped_func
 
-    return decorator
+    return cast(_ObserveDecorator, decorator)

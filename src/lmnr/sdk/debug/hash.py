@@ -93,8 +93,8 @@ def _system_text(sys_msg: dict[str, Any]) -> str:  # pyright: ignore[reportExpli
     if isinstance(content, list):
         joined = " ".join(
             block["text"]
-            for block in content
-            if isinstance(block, dict) and isinstance(cast(dict[str, str], block).get("text"), str)  # pyright: ignore[reportUnknownArgumentType]
+            for block in content  # pyright: ignore[reportUnknownVariableType]
+            if isinstance(block, dict) and isinstance(cast(dict[str, str], block).get("text"), str)
         )
         if joined:
             return joined

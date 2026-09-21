@@ -2,65 +2,87 @@ import logging
 import os
 
 import dotenv
+from typing_extensions import override
+
+GREY = "\x1b[38;20m"
+GREEN = "\x1b[32;20m"
+YELLOW = "\x1b[33;20m"
+RED = "\x1b[31;20m"
+BOLD_RED = "\x1b[31;1m"
+RESET = "\x1b[0m"
+
+
+_nameToLevel = {
+    'CRITICAL': logging.CRITICAL,
+    'FATAL': logging.FATAL,
+    'ERROR': logging.ERROR,
+    'WARN': logging.WARNING,
+    'WARNING': logging.WARNING,
+    'INFO': logging.INFO,
+    'DEBUG': logging.DEBUG,
+    'NOTSET': logging.NOTSET,
+}
 
 
 class CustomFormatter(logging.Formatter):
-    grey = "\x1b[38;20m"
-    green = "\x1b[32;20m"
-    yellow = "\x1b[33;20m"
-    red = "\x1b[31;20m"
-    bold_red = "\x1b[31;1m"
-    reset = "\x1b[0m"
-    fmt = "%(asctime)s::%(name)s::%(levelname)s: %(message)s (%(filename)s:%(lineno)d)"
+    fmt: str = "%(asctime)s::%(name)s::%(levelname)s: %(message)s (%(filename)s:%(lineno)d)"
 
-    FORMATS = {
-        logging.DEBUG: grey + fmt + reset,
-        logging.INFO: green + fmt + reset,
-        logging.WARNING: yellow + fmt + reset,
-        logging.ERROR: red + fmt + reset,
-        logging.CRITICAL: bold_red + fmt + reset,
-    }
+    def _format_definition(self, level: int) -> str | None:
+        if level == logging.DEBUG:
+            return GREY + self.fmt + RESET
+        if level == logging.INFO:
+            return GREEN + self.fmt + RESET
+        if level == logging.WARNING:
+            return YELLOW + self.fmt + RESET
+        if level == logging.ERROR:
+            return RED + self.fmt + RESET
+        if level == logging.CRITICAL:
+            return BOLD_RED + self.fmt + RESET
+        return None
 
+    @override
     def format(self, record: logging.LogRecord):
-        log_fmt = self.FORMATS.get(record.levelno)
+        log_fmt = self._format_definition(record.levelno)
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
 
 
 class ColorfulFormatter(logging.Formatter):
-    grey = "\x1b[38;20m"
-    green = "\x1b[32;20m"
-    yellow = "\x1b[33;20m"
-    red = "\x1b[31;20m"
-    bold_red = "\x1b[31;1m"
-    reset = "\x1b[0m"
-    fmt = "Laminar %(levelname)s: %(message)s"
+    fmt: str = "Laminar %(levelname)s: %(message)s"
 
-    FORMATS = {
-        logging.DEBUG: grey + fmt + reset,
-        logging.INFO: green + fmt + reset,
-        logging.WARNING: yellow + fmt + reset,
-        logging.ERROR: red + fmt + reset,
-        logging.CRITICAL: bold_red + fmt + reset,
-    }
+    def _format_definition(self, level: int) -> str | None:
+        if level == logging.DEBUG:
+            return GREY + self.fmt + RESET
+        if level == logging.INFO:
+            return GREEN + self.fmt + RESET
+        if level == logging.WARNING:
+            return YELLOW + self.fmt + RESET
+        if level == logging.ERROR:
+            return RED + self.fmt + RESET
+        if level == logging.CRITICAL:
+            return BOLD_RED + self.fmt + RESET
+        return None
 
+    @override
     def format(self, record: logging.LogRecord):
-        log_fmt = self.FORMATS.get(record.levelno)
+        log_fmt = self._format_definition(record.levelno)
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
 
 
 # For StreamHandlers / console
 class VerboseColorfulFormatter(CustomFormatter):
-    def format(self, record):
+    @override
+    def format(self, record: logging.LogRecord):
         return super().format(record)
 
 
 # For Verbose FileHandlers / files
 class VerboseFormatter(CustomFormatter):
-    fmt = "%(asctime)s::%(name)s::%(levelname)s: %(message)s (%(filename)s:%(lineno)d)"
+    fmt: str = "%(asctime)s::%(name)s::%(levelname)s: %(message)s (%(filename)s:%(lineno)d)"
 
-    def format(self, record):
+    @override
+    def format(self, record: logging.LogRecord):
         formatter = logging.Formatter(self.fmt)
         return formatter.format(record)
 
@@ -83,7 +105,7 @@ def get_level_from_env() -> int:
             .strip()
         )
     if env_level:
-        return logging._nameToLevel.get(env_level, logging.INFO)
+        return _nameToLevel.get(env_level, logging.INFO)  # pyright
     return logging.INFO
 
 

@@ -253,7 +253,7 @@ async def handle_datasets_push(args: DatasetsArgs) -> None:
         return
     try:
         datapoints = [Datapoint.model_validate(item) for item in raw_data]
-        _ = await client.datasets.push(
+        _push_response = await client.datasets.push(
             datapoints,
             name=args.name,
             id=dataset_id,
@@ -347,7 +347,7 @@ async def handle_datasets_create(args: DatasetsArgs) -> None:
     # Push data to create/populate the dataset
     LOG.info(f"Pushing {len(datapoints)} data points to dataset '{args.name}'...")
     try:
-        _ = await client.datasets.push(
+        _push_response = await client.datasets.push(
             datapoints,
             name=args.name,
             batch_size=args.batch_size or DEFAULT_DATASET_PUSH_BATCH_SIZE,

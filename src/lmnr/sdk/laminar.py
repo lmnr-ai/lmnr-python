@@ -11,16 +11,18 @@ import uuid
 import warnings
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal, cast
 
 from opentelemetry import context as context_api
 from opentelemetry import trace
 from opentelemetry.context import Context, get_value
+from opentelemetry.sdk.trace import Span as SDKSpan
 from opentelemetry.sdk.trace.id_generator import RandomIdGenerator
 from opentelemetry.trace import INVALID_TRACE_ID, Span, Status, StatusCode, use_span
 from opentelemetry.util.types import AttributeValue
 from typing_extensions import TypedDict
 
+from lmnr import AsyncLaminarClient
 from lmnr.opentelemetry_lib import TracerManager
 from lmnr.opentelemetry_lib.tracing import TracerWrapper
 from lmnr.opentelemetry_lib.tracing.attributes import (
@@ -51,6 +53,7 @@ from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.utils import set_association_props_in_context
 from lmnr.sdk.utils import (
+    JsonValue,
     from_env,
     get_otel_env_var,
     is_otel_attribute_value_type,
@@ -61,7 +64,9 @@ from .log import get_default_logger
 from .types import (
     DebugContext,
     LaminarSpanContext,
+    LaminarSpanContextDict,
     LaminarSpanType,
+    MetadataType,
     SessionRecordingOptions,
     TraceType,
 )
@@ -76,14 +81,14 @@ class ParsedParentSpanContext(TypedDict):
     user_id: str | None
     session_id: str | None
     trace_type: TraceType | None
-    metadata: dict[str, Any] | None
+    metadata: MetadataType | None
     # The propagated debugger block, if any (used to arm the debug runtime on a
     # downstream run). None when the context carried no debug block.
     debug: DebugContext | None
 
 
 def _parse_parent_span_context(
-    parent_span_context: LaminarSpanContext | dict | str | None,
+    parent_span_context: LaminarSpanContext | LaminarSpanContextDict | str | None,
     logger: logging.Logger,
 ) -> ParsedParentSpanContext:
     """Parse parent_span_context and extract all relevant information.
@@ -123,7 +128,7 @@ def _parse_parent_span_context(
             laminar_span_context = LaminarSpanContext.deserialize(parent_span_context)
         except Exception:
             logger.warning(
-                f"Could not deserialize parent_span_context: {parent_span_context}. "
+                f"Could not deserialize parent_span_context: {parent_span_context}. " +
                 "Will use it as is."
             )
             laminar_span_context = parent_span_context
@@ -182,13 +187,13 @@ class Laminar:
     __project_api_key: str | None = None
     __initialized: bool = False
     __base_http_url: str | None = None
-    __global_metadata: dict[str, AttributeValue] = {}
+    __global_metadata: dict[str, AttributeValue] | None = None
     # The debug run's atexit pointer hook (a bound `runtime.emit_pointer`),
     # kept by reference so shutdown() can unregister it. atexit holds a strong
     # ref to whatever it registers, so without this an initialize()/shutdown()
     # loop (common in tests / notebooks) keeps every retired DebugRuntime — and
     # its replay cache — alive and uncollectable.
-    __debug_exit_hook: Callable[[], None] | None = None
+    __debug_exit_hook: ClassVar[Callable[..., None] | None] = None
     # Base url / http port captured at initialize(), reused to build the clients
     # when the debug runtime is armed late from a propagated context (the
     # from-context path has no access to initialize()'s args).
@@ -315,8 +320,8 @@ class Laminar:
             and not get_otel_env_var("HEADERS")
         ):
             raise ValueError(
-                "Please initialize the Laminar object with"
-                " your project API key or set the LMNR_PROJECT_API_KEY"
+                "Please initialize the Laminar object with" +
+                " your project API key or set the LMNR_PROJECT_API_KEY" +
                 " environment variable in your environment or .env file"
             )
 
@@ -357,12 +362,12 @@ class Laminar:
 
         cls.__initialized = True
         cls.__base_http_url = f"{http_url}:{http_port or 443}"
-        env_metadata: dict[str, Any] = {}
+        env_metadata = {}
         if env_metadata_str := os.getenv("LMNR_TRACE_METADATA"):
             try:
-                env_metadata = json.loads(env_metadata_str)
+                env_metadata = cast(dict[str, AttributeValue], json.loads(env_metadata_str))
             except Exception:
-                pass
+               cls.__logger.warning("Failed to parse value of LMNR_TRACE_METADATA env. Make sure it's a valid JSON")
         cls.__global_metadata = {**env_metadata, **(metadata or {})}
 
         if not os.getenv("OTEL_ATTRIBUTE_COUNT_LIMIT"):
@@ -376,9 +381,9 @@ class Laminar:
         # (the env-origin gate; a downstream context-armed run inherits the
         # upstream session but configures its own transport). Mirrors the
         # LMNR_DEBUG truthy gate used by _init_debug_runtime / the TS SDK.
-        from lmnr.sdk.debug.config import _is_truthy
+        from lmnr.sdk.debug.config import is_truthy
 
-        disable_batch_resolved = disable_batch or _is_truthy(
+        disable_batch_resolved = disable_batch or is_truthy(
             os.environ.get("LMNR_DEBUG")
         )
 
@@ -413,11 +418,11 @@ class Laminar:
         # runtime is registered before the inherited trace id is recorded.
         cls._init_debug_runtime(base_url=url, http_port=http_port)
 
-        with get_tracer_with_context() as (tracer, isolated_context):
+        with get_tracer_with_context() as (_tracer, isolated_context):
             new_ctx = context_api.set_value(
                 CONTEXT_METADATA_KEY, cls.__global_metadata, isolated_context
             )
-            attach_context(new_ctx)
+            _token = attach_context(new_ctx)
 
         cls._initialize_context_from_env()
 
@@ -468,7 +473,7 @@ class Laminar:
         base_context = context_api.set_value(
             CONTEXT_METADATA_KEY, cls.__global_metadata, base_context
         )
-        processor = TracerWrapper.instance._span_processor
+        processor = TracerWrapper.instance.span_processor
         if isinstance(processor, LaminarSpanProcessor):
             processor.set_parent_path_info(
                 otel_span_context.span_id,
@@ -530,7 +535,7 @@ class Laminar:
                 init_debug_runtime,
                 reset_debug_runtime,
             )
-            from lmnr.sdk.debug.config import _is_truthy
+            from lmnr.sdk.debug.config import is_truthy
 
             # Debug mode off: bail before constructing the clients (and their
             # httpx pools), which would otherwise leak unclosed on every normal
@@ -539,7 +544,7 @@ class Laminar:
             # here (which would mint a throwaway session uuid and re-read the
             # debug-session file) that init_debug_runtime() then discards and
             # rebuilds.
-            if not _is_truthy(os.environ.get("LMNR_DEBUG")):
+            if not is_truthy(os.environ.get("LMNR_DEBUG")):
                 return
 
             # LMNR_DEBUG is set, so env config owns this process. But initialize()
@@ -608,6 +613,8 @@ class Laminar:
                     # here (single code path via debugger_session_url).
                     runtime.record_project_id(project_id)
                     session_url = runtime.debugger_session_url()
+                    if session_url is None:
+                        raise RuntimeError("Cannot set debugger session URL")
                     cls.__logger.info(
                         "Laminar debugger session: %s",
                         session_url,
@@ -620,7 +627,7 @@ class Laminar:
                             if sys.platform == "win32"
                             else "xdg-open"
                         )
-                        subprocess.Popen(
+                        _popen = subprocess.Popen(
                             [opener, session_url],
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
@@ -629,7 +636,7 @@ class Laminar:
                 cls.__logger.warning("Failed to register debug session: %s", exc)
 
             cls.__global_metadata = {
-                **cls.__global_metadata,
+                **(cls.__global_metadata or {}),
                 "rollout.session_id": runtime.session_id,
             }
             # Drop any prior hook first so a repeated initialize() (or an
@@ -637,9 +644,9 @@ class Laminar:
             # its replay cache) alive via atexit's strong reference; keep this
             # one by reference for shutdown() to unregister.
             if cls.__debug_exit_hook is not None:
-                atexit.unregister(cls.__debug_exit_hook)
+                _handler = atexit.unregister(cls.__debug_exit_hook)
             cls.__debug_exit_hook = runtime.emit_pointer
-            atexit.register(cls.__debug_exit_hook)
+            _handler = atexit.register(cls.__debug_exit_hook)
         except Exception as exc:  # never let debug setup crash initialization
             cls.__logger.warning("Failed to initialize debug runtime: %s", exc)
 
@@ -756,14 +763,14 @@ class Laminar:
             cls.set_debug_run_live(False)
 
             try:
-                runtime.client.rollout_sessions.register(runtime.session_id)
+                _project_id = runtime.client.rollout_sessions.register(runtime.session_id)
             except Exception as exc:
                 cls.__logger.debug(
                     "Failed to register downstream debug session: %s", exc
                 )
 
             cls.__global_metadata = {
-                **cls.__global_metadata,
+                **(cls.__global_metadata or {}),
                 "rollout.session_id": runtime.session_id,
             }
             # Re-stamp global metadata onto the ambient isolated context.
@@ -775,13 +782,13 @@ class Laminar:
             refreshed = context_api.set_value(
                 CONTEXT_METADATA_KEY, cls.__global_metadata, get_current_context()
             )
-            attach_context(refreshed)
+            _token = attach_context(refreshed)
             # No atexit pointer hook: a downstream run must not emit the pointer.
         except Exception as exc:  # never let debug arming crash span creation
             cls.__logger.debug("Failed to arm debug runtime from context: %s", exc)
 
     @staticmethod
-    def _close_debug_async_client(async_client: Any) -> None:
+    def _close_debug_async_client(async_client: AsyncLaminarClient) -> None:
         """Best-effort close of the retained async cache client from sync code.
 
         `AsyncLaminarClient.close()` is a coroutine, but both call sites (the
@@ -794,8 +801,8 @@ class Laminar:
         """
         try:
             asyncio.run(async_client.close())
-        except Exception:
-            pass
+        except Exception as e:
+            Laminar.__logger.debug(f"Failed to close debug client, {e}")
 
     @classmethod
     def is_initialized(cls):
@@ -868,7 +875,7 @@ class Laminar:
     def start_as_current_span(
         cls,
         name: str,
-        input: Any = None,
+        input: Any = None,  # pyright: ignore[reportExplicitAny, reportAny]
         span_type: LaminarSpanType = "DEFAULT",
         context: Context | None = None,
         labels: list[str] | None = None,
@@ -925,13 +932,14 @@ class Laminar:
         """
 
         if not cls.is_initialized():
-            yield trace.NonRecordingSpan(
+            non_recording_span = trace.NonRecordingSpan(
                 trace.SpanContext(
                     trace_id=RandomIdGenerator().generate_trace_id(),
                     span_id=RandomIdGenerator().generate_span_id(),
                     is_remote=False,
                 )
             )
+            yield non_recording_span  # pyright: ignore[reportReturnType]
             return
 
         with get_tracer_with_context() as (tracer, isolated_context):
@@ -971,7 +979,7 @@ class Laminar:
 
             # Merge metadata: context (inherited) + global + parent + explicit (explicit wins)
             # Get metadata from context if it exists
-            ctx_metadata = get_value(CONTEXT_METADATA_KEY, ctx) or {}
+            ctx_metadata = cast(MetadataType, get_value(CONTEXT_METADATA_KEY, ctx)) or {}
             # Merge with priority: global < context < parent < explicit
             merged_metadata = {
                 **(cls.__global_metadata or {}),
@@ -981,8 +989,8 @@ class Laminar:
             }
 
             # Get association props from context (fallback values)
-            ctx_user_id = get_value(CONTEXT_USER_ID_KEY, ctx)
-            ctx_session_id = get_value(CONTEXT_SESSION_ID_KEY, ctx)
+            ctx_user_id = cast(str, get_value(CONTEXT_USER_ID_KEY, ctx))
+            ctx_session_id = cast(str, get_value(CONTEXT_SESSION_ID_KEY, ctx))
 
             # Merge user_id and session_id with priority: context < parent < explicit
             final_user_id = (
@@ -1023,16 +1031,16 @@ class Laminar:
                     label_props = {f"{ASSOCIATION_PROPERTIES}.labels": labels}
             except Exception:
                 cls.__logger.warning(
-                    f"`start_as_current_span` Could not set labels: {labels}. "
+                    f"`start_as_current_span` Could not set labels: {labels}. " +
                     "They will be propagated to the next span."
                 )
             tag_props = {}
             if tags:
-                if isinstance(tags, list) and all(isinstance(tag, str) for tag in tags):
+                if isinstance(tags, list) and all(isinstance(tag, str) for tag in tags):  # pyright: ignore[reportUnnecessaryIsInstance]
                     tag_props = {f"{ASSOCIATION_PROPERTIES}.tags": tags}
                 else:
                     cls.__logger.warning(
-                        f"`start_as_current_span` Could not set tags: {tags}. Tags must be a list of strings. "
+                        f"`start_as_current_span` Could not set tags: {tags}. Tags must be a list of strings. " +
                         "Tags will be ignored."
                     )
 
@@ -1052,21 +1060,21 @@ class Laminar:
                     },
                 ) as span:
                     if not isinstance(span, LaminarSpan):
-                        span = LaminarSpan(span)
+                        span = LaminarSpan(cast(SDKSpan, span))
                     span.set_input(input)
                     yield span
             finally:
                 try:
                     detach_context(isolated_context_token)
                     context_api.detach(ctx_token)
-                except Exception:
-                    pass
+                except Exception as e:
+                    cls.__logger.debug(f"failed to detach context tokens {e}")
 
     @classmethod
     def start_span(
         cls,
         name: str,
-        input: Any = None,
+        input: Any = None,  # pyright: ignore[reportExplicitAny, reportAny]
         span_type: LaminarSpanType = "DEFAULT",
         context: Context | None = None,
         parent_span_context: LaminarSpanContext | None = None,
@@ -1156,7 +1164,7 @@ class Laminar:
                 trace_id = RandomIdGenerator().generate_trace_id()
                 span_id = RandomIdGenerator().generate_span_id()
             except Exception:
-                pass
+                cls.__logger.warning("failed to generate trace or span ID, continuing with nil")
             return trace.NonRecordingSpan(
                 trace.SpanContext(
                     trace_id=trace_id,
@@ -1190,9 +1198,9 @@ class Laminar:
                 )
 
             # Get association props from context (fallback values)
-            ctx_user_id = get_value(CONTEXT_USER_ID_KEY, ctx)
-            ctx_session_id = get_value(CONTEXT_SESSION_ID_KEY, ctx)
-            ctx_metadata = get_value(CONTEXT_METADATA_KEY, ctx)
+            ctx_user_id = cast(str, get_value(CONTEXT_USER_ID_KEY, ctx))
+            ctx_session_id = cast(str, get_value(CONTEXT_SESSION_ID_KEY, ctx))
+            ctx_metadata = cast(dict[str, AttributeValue], get_value(CONTEXT_METADATA_KEY, ctx))
 
             label_props = {}
             try:
@@ -1202,16 +1210,16 @@ class Laminar:
                         DeprecationWarning,
                     )
                     label_props = {
-                        f"{ASSOCIATION_PROPERTIES}.labels": json_dumps(labels)
+                        f"{ASSOCIATION_PROPERTIES}.labels": json_dumps(cast(JsonValue, labels))
                     }
             except Exception:
                 cls.__logger.warning(
-                    f"`start_span` Could not set labels: {labels}. They will be "
+                    f"`start_span` Could not set labels: {labels}. They will be " +
                     "propagated to the next span."
                 )
             tag_props = {}
             if tags:
-                if isinstance(tags, list) and all(isinstance(tag, str) for tag in tags):
+                if isinstance(tags, list) and all(isinstance(tag, str) for tag in tags):  # pyright: ignore[reportUnnecessaryIsInstance]
                     tag_props = {f"{ASSOCIATION_PROPERTIES}.tags": tags}
                 else:
                     cls.__logger.warning(
@@ -1283,7 +1291,7 @@ class Laminar:
             )
 
             if not isinstance(span, LaminarSpan):
-                span = LaminarSpan(span)
+                span = LaminarSpan(cast(SDKSpan, span))
             span.set_input(input)
             return span
 
@@ -1322,12 +1330,14 @@ class Laminar:
 
         wrapper = TracerWrapper()
 
+        context_token = None
+
         try:
             # Set association props in context before push_span_context
             # so child spans inherit them
             assoc_props_token = set_association_props_in_context(span)
             if assoc_props_token and isinstance(span, LaminarSpan):
-                span._lmnr_assoc_props_token = assoc_props_token
+                span.lmnr_assoc_props_token = assoc_props_token
 
             context = wrapper.push_span_context(span)
             # Some auto-instrumentations are not under our control, so they
@@ -1338,17 +1348,17 @@ class Laminar:
             if isinstance(span, LaminarSpan):
                 yield span
             else:
-                yield LaminarSpan(span)
+                yield LaminarSpan(cast(SDKSpan, span))
 
         # Record only exceptions that inherit Exception class but not BaseException, because
         # classes that directly inherit BaseException are not technically errors, e.g. GeneratorExit.
         # See https://github.com/open-telemetry/opentelemetry-python/issues/4484
         except Exception as exc:  # pylint: disable=broad-exception-caught
-            if isinstance(span, Span) and span.is_recording():
+            if isinstance(span, Span) and span.is_recording():  # pyright: ignore[reportUnnecessaryIsInstance]
                 # Record the exception as an event
                 if record_exception:
                     span.record_exception(
-                        exc, attributes=get_event_attributes_from_context()
+                        exc, attributes=cast(dict[str, AttributeValue], get_event_attributes_from_context())
                     )
 
                 # Set status in case exception was raised
@@ -1368,7 +1378,8 @@ class Laminar:
 
         finally:
             try:
-                context_api.detach(context_token)
+                if context_token:
+                    context_api.detach(context_token)
                 wrapper.pop_span_context()
             finally:
                 if end_on_exit:
@@ -1378,7 +1389,7 @@ class Laminar:
     @contextmanager
     def use_span_context(
         cls,
-        parent_span_context: LaminarSpanContext | dict | str,
+        parent_span_context: LaminarSpanContext | LaminarSpanContextDict | str,
     ) -> Generator[None, None, None]:
         """Activate a remote `LaminarSpanContext` as the parent for spans created
         inside this block, WITHOUT creating a span of its own.
@@ -1420,9 +1431,9 @@ class Laminar:
         # `set_association_prop_context(metadata=parent_metadata)` would
         # `set_value` over `CONTEXT_METADATA_KEY` wholesale and drop the global /
         # ambient metadata — most importantly the just-armed `rollout.session_id`.
-        ctx_user_id = get_value(CONTEXT_USER_ID_KEY, ctx)
-        ctx_session_id = get_value(CONTEXT_SESSION_ID_KEY, ctx)
-        ctx_metadata = get_value(CONTEXT_METADATA_KEY, ctx)
+        ctx_user_id = cast(str, get_value(CONTEXT_USER_ID_KEY, ctx))
+        ctx_session_id = cast(str, get_value(CONTEXT_SESSION_ID_KEY, ctx))
+        ctx_metadata = cast(MetadataType, get_value(CONTEXT_METADATA_KEY, ctx))
 
         merged_metadata = {
             **(cls.__global_metadata or {}),
@@ -1447,7 +1458,7 @@ class Laminar:
 
         # Register the parent path so child spans build correct dotted paths,
         # mirroring the LMNR_SPAN_CONTEXT env-init path.
-        processor = TracerWrapper.instance._span_processor
+        processor = TracerWrapper.instance.span_processor
         if isinstance(processor, LaminarSpanProcessor):
             processor.set_parent_path_info(
                 parsed["otel_span_context"].span_id,
@@ -1467,7 +1478,7 @@ class Laminar:
     def start_active_span(
         cls,
         name: str,
-        input: Any = None,
+        input: Any = None,  # pyright: ignore[reportAny, reportExplicitAny]
         span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
         context: Context | None = None,
         parent_span_context: LaminarSpanContext | None = None,
@@ -1570,29 +1581,30 @@ class Laminar:
         )
         if not cls.is_initialized():
             return span
+        # start_span always returns a LaminarSpan once initialized; the
+        # `LaminarSpan | Span` return type only accounts for the
+        # not-initialized early-return above.
+        span = cast(LaminarSpan, span)
         wrapper = TracerWrapper()
 
         # Set association props in context before push_span_context
         # so child spans inherit them
         assoc_props_token = set_association_props_in_context(span)
-        if assoc_props_token and isinstance(span, LaminarSpan):
-            span._lmnr_assoc_props_token = assoc_props_token
+        if assoc_props_token:
+            span.lmnr_assoc_props_token = assoc_props_token
 
         context = wrapper.push_span_context(span, from_ctx=context)
         context_token = context_api.attach(context)
-        span._lmnr_ctx_token = context_token
+        span.lmnr_ctx_token = context_token
         try:
             current_task = asyncio.current_task()
         except Exception:
             current_task = None
-        span._lmnr_task_id = id(current_task)
-        if isinstance(span, LaminarSpan):
-            return span
-        else:
-            return LaminarSpan(span)
+        span.lmnr_task_id = id(current_task)
+        return span
 
     @classmethod
-    def set_span_output(cls, output: Any = None):
+    def set_span_output(cls, output: Any = None):  # pyright: ignore[reportExplicitAny, reportAny]
         """Set the output of the current span. Useful for manual
         instrumentation.
 
@@ -1608,7 +1620,7 @@ class Laminar:
     @classmethod
     def set_span_attributes(
         cls,
-        attributes: dict[Attributes | str, Any],
+        attributes: dict[Attributes | str, Any],  # pyright: ignore[reportExplicitAny]
     ):
         """Set attributes for the current span. Useful for manual
         instrumentation.
@@ -1636,13 +1648,13 @@ class Laminar:
         if span == trace.INVALID_SPAN or span is None:
             return
 
-        for key, value in attributes.items():
+        for key, value in attributes.items():  # pyright: ignore[reportAny]
             if isinstance(key, Attributes):
                 key = key.value
-            if not is_otel_attribute_value_type(value):
-                span.set_attribute(key, json_dumps(value))
+            if not is_otel_attribute_value_type(value):  # pyright: ignore[reportAny]:
+                span.set_attribute(key, json_dumps(value))  # pyright: ignore[reportAny])
             else:
-                span.set_attribute(key, value)
+                span.set_attribute(key, value)  # pyright: ignore[reportAny])
 
     @classmethod
     def get_laminar_span_context(
@@ -1658,13 +1670,13 @@ class Laminar:
         if span == trace.INVALID_SPAN or span is None:
             return None
         if not isinstance(span, LaminarSpan):
-            span = LaminarSpan(span)
+            span = LaminarSpan(cast(SDKSpan, span))
         return span.get_laminar_span_context()
 
     @classmethod
     def get_laminar_span_context_dict(
         cls, span: trace.Span | None = None
-    ) -> dict | None:
+    ) -> LaminarSpanContextDict | None:
         span_context = cls.get_laminar_span_context(span)
         if span_context is None:
             return None
@@ -1705,7 +1717,7 @@ class Laminar:
         return str(span_context)
 
     @classmethod
-    def deserialize_span_context(cls, span_context: dict | str) -> LaminarSpanContext:
+    def deserialize_span_context(cls, span_context: LaminarSpanContextDict | str) -> LaminarSpanContext:
         return LaminarSpanContext.deserialize(span_context)
 
     @classmethod
@@ -1729,7 +1741,7 @@ class Laminar:
         if isinstance(span, LaminarSpan):
             return span
         else:
-            return LaminarSpan(span)
+            return LaminarSpan(cast(SDKSpan, span))
 
     @classmethod
     def connect_to_langfuse(cls) -> bool:
@@ -1759,7 +1771,7 @@ class Laminar:
             )
             return False
         from lmnr.opentelemetry_lib.tracing.instruments import (
-            _langfuse_installed,
+            langfuse_installed,
         )
 
         # `_langfuse_installed` gates on both presence AND version >= 3.0 —
@@ -1767,9 +1779,9 @@ class Laminar:
         # Going through `instrument()` on 2.x would install a useless
         # translator, flip `_installed=True`, and permanently block a later
         # valid install.
-        if not _langfuse_installed():
+        if not langfuse_installed():
             logger.warning(
-                "`langfuse >= 3.0` is required for the Laminar/Langfuse "
+                "`langfuse >= 3.0` is required for the Laminar/Langfuse " +
                 "bridge. Install it with `pip install 'langfuse>=3.0'`."
             )
             return False
@@ -1787,15 +1799,15 @@ class Laminar:
         # would never reach Laminar. Refuse to report success in that case.
         if not langfuse_sdk_importable():
             logger.warning(
-                "`langfuse` is installed but cannot be imported in this "
-                "interpreter (a known pydantic v1 incompatibility on Python "
-                "3.14). The Laminar/Langfuse bridge would be inert, so it was "
+                "`langfuse` is installed but cannot be imported in this " +
+                "interpreter (a known pydantic v1 incompatibility on Python " +
+                "3.14). The Laminar/Langfuse bridge would be inert, so it was " +
                 "not installed."
             )
             return False
 
         wrapper = TracerWrapper.instance
-        if wrapper._tracer_provider is None:
+        if wrapper.tracer_provider is None:
             return False
         # `LangfuseInstrumentor.instrument()` re-raises after rollback if the
         # attach-to-existing / resource-manager-patch phase fails (e.g.
@@ -1806,13 +1818,13 @@ class Laminar:
         # partial state by the time we get here.
         try:
             LangfuseInstrumentor().instrument(
-                lmnr_tracer_provider=wrapper._tracer_provider,
-                lmnr_span_processor=wrapper._span_processor,
+                lmnr_tracer_provider=wrapper.tracer_provider,
+                lmnr_span_processor=wrapper.span_processor,
             )
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("Failed to install Laminar/Langfuse bridge: %s", exc)
             return False
-        return LangfuseInstrumentor._installed
+        return LangfuseInstrumentor.installed
 
     @classmethod
     def flush(cls) -> bool:
@@ -1827,7 +1839,7 @@ class Laminar:
         return TracerManager.flush()
 
     @classmethod
-    def force_flush(cls):
+    def force_flush(cls) -> bool:
         """Force flush the internal tracer. WARNING: Any active spans are
         removed from context; that is, spans started afterwards will start
         a new trace.
@@ -1839,8 +1851,8 @@ class Laminar:
         inside it runs in a background thread.
         """
         if not cls.is_initialized():
-            return
-        TracerManager.force_reinit_processor()
+            return False
+        return TracerManager.force_reinit_processor()
 
     @classmethod
     def shutdown(cls):
@@ -1957,7 +1969,7 @@ class Laminar:
         if not cls.is_initialized():
             return
 
-        merged_metadata = {**cls.__global_metadata, **(metadata or {})}
+        merged_metadata = {**(cls.__global_metadata or {}), **(metadata or {})}
 
         span = cls.get_current_span()
         if span is None:
@@ -2023,7 +2035,7 @@ class Laminar:
         user_id: str | None = None,
         session_id: str | None = None,
         trace_type: TraceType | None = None,
-        metadata: dict[str, AttributeValue] | None = None,
+        metadata: MetadataType | None = None,
     ) -> dict[str, AttributeValue]:
         association_properties = {}
         if user_id is not None:
@@ -2034,19 +2046,19 @@ class Laminar:
             )
         if trace_type is not None:
             trace_type_val = (
-                trace_type.value if isinstance(trace_type, TraceType) else trace_type
+                trace_type.value if isinstance(trace_type, TraceType) else trace_type  # pyright: ignore[reportUnnecessaryIsInstance]
             )
             association_properties[f"{ASSOCIATION_PROPERTIES}.{TRACE_TYPE}"] = (
                 trace_type_val
             )
 
-        merged_metadata = {**cls.__global_metadata, **(metadata or {})}
+        merged_metadata = {**(cls.__global_metadata or {}), **(metadata or {})}
         association_properties.update(
             {
                 f"{ASSOCIATION_PROPERTIES}.metadata.{k}": (
-                    v if is_otel_attribute_value_type(v) else json_dumps(v)
+                    v if is_otel_attribute_value_type(v) else json_dumps(cast(JsonValue, v))
                 )
                 for k, v in merged_metadata.items()
             }
         )
-        return association_properties
+        return cast(dict[str, AttributeValue], association_properties)

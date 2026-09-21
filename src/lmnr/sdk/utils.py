@@ -373,7 +373,7 @@ def format_id(id_value: str | int | uuid.UUID | object) -> str:
     elif isinstance(id_value, int):
         return str(uuid.UUID(int=id_value))
     elif isinstance(id_value, str):
-        _ = uuid.UUID(id_value)
+        _check_result = uuid.UUID(id_value)
         return id_value
     else:
         raise TypeError(f"Invalid ID type: {type(id_value)}")
@@ -480,7 +480,7 @@ _ORJSON_NATIVE_KEY_TYPES = (
 )
 
 
-def _stringify_dict_keys(value: JsonValue) -> JsonValue:
+def _stringify_dict_keys(value: JsonValue | Sequence[Any] | dict[Any, Any]) -> JsonValue:  # pyright: ignore[reportExplicitAny]
     """Coerce the mapping keys orjson cannot encode into strings.
 
     `OPT_NON_STR_KEYS` only covers a fixed set of scalar key types, and orjson
@@ -495,11 +495,11 @@ def _stringify_dict_keys(value: JsonValue) -> JsonValue:
     """
     # bytes are a Sequence, so check them before unwrapping.
     if isinstance(value, (bytes, bytearray)):
-        return value
+        return cast(JsonValue, cast(object, value))
 
     opened = _unwrap_container(value)
     if opened is _UNWRAP_MISS:
-        return value
+        return cast(JsonValue, value)
     opened = cast("dict[Any, Any] | list[Any]", opened)  # pyright: ignore[reportExplicitAny]
 
     if isinstance(opened, dict):
@@ -528,7 +528,7 @@ def _stringify_dict_keys(value: JsonValue) -> JsonValue:
     ]
 
 
-def json_dumps(data: JsonValue | dict[Any, Any] | list[Any]) -> str:  # pyright: ignore[reportExplicitAny]
+def json_dumps(data: JsonValue | dict[str, Any] | Sequence[Any]) -> str:  # pyright: ignore[reportExplicitAny]
     try:
         return orjson.dumps(
             data,

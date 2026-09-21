@@ -618,7 +618,7 @@ def test_span_context_path_ids_path(span_exporter: InMemorySpanExporter):
         span = Laminar.start_span("test")
         # Clear the span processor to ensure the path is not cached
         # This simulates span context being passed across services
-        TracerWrapper.instance._span_processor.clear()
+        TracerWrapper.instance.span_processor.clear()
         foo(Laminar.serialize_span_context(span))
         span.end()
 
@@ -652,7 +652,7 @@ def test_span_context_path_ids_path_start_span(span_exporter: InMemorySpanExport
         span = Laminar.start_span("test")
         # Clear the span processor to ensure the path is not cached
         # This simulates span context being passed across services
-        TracerWrapper.instance._span_processor.clear()
+        TracerWrapper.instance.span_processor.clear()
         foo(Laminar.serialize_span_context(span))
         span.end()
 
