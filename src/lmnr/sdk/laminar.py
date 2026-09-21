@@ -414,6 +414,13 @@ class Laminar:
             force_http=force_http,
         )
 
+        # A previous initialize()/shutdown() cycle leaves the Langfuse bridge
+        # holding the retired span processor — its `instrument()` returns early
+        # once installed, and nothing else re-runs on a re-init (LANGFUSE is
+        # never in the default instrument set). Cheap no-op when the bridge was
+        # never installed or the processor is unchanged.
+        cls._rebind_langfuse_bridge()
+
         # Build the debug runtime only after tracing is up. It has no dependency
         # on init_tracing (which never reads the runtime or global
         # metadata), so running it here means a tracer-init failure aborts before
@@ -1748,6 +1755,29 @@ class Laminar:
             return span
         else:
             return LaminarSpan(cast(SDKSpan, span))
+
+    @classmethod
+    def _rebind_langfuse_bridge(cls) -> None:
+        """Re-point an already-installed Laminar/Langfuse bridge at the current
+        span processor. Best-effort: never let it break `initialize()`."""
+        try:
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
+                LangfuseInstrumentor,
+            )
+
+            if not LangfuseInstrumentor.installed:
+                return
+            wrapper = get_tracer_wrapper()
+            if wrapper is None:
+                return
+            LangfuseInstrumentor().rebind(
+                lmnr_tracer_provider=wrapper.tracer_provider,
+                lmnr_span_processor=wrapper.span_processor,
+            )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            cls.__logger.warning(
+                "Failed to rebind the Laminar/Langfuse bridge: %s", exc
+            )
 
     @classmethod
     def connect_to_langfuse(cls) -> bool:
