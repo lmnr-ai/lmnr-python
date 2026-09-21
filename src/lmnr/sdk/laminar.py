@@ -23,8 +23,13 @@ from opentelemetry.util.types import AttributeValue
 from typing_extensions import TypedDict
 
 from lmnr import AsyncLaminarClient
-from lmnr.opentelemetry_lib import TracerManager
-from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.tracing import (
+    flush_tracing,
+    force_reinit_processor,
+    get_tracer_wrapper,
+    init_tracing,
+    shutdown_tracing,
+)
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     PARENT_SPAN_IDS_PATH,
@@ -44,6 +49,8 @@ from lmnr.opentelemetry_lib.tracing.context import (
     detach_context,
     get_current_context,
     get_event_attributes_from_context,
+    pop_span_context,
+    push_span,
     push_span_context,
     set_association_prop_context,
 )
@@ -387,7 +394,7 @@ class Laminar:
             os.environ.get("LMNR_DEBUG")
         )
 
-        TracerManager.init(
+        init_tracing(
             base_url=url,
             http_port=http_port or 443,
             port=grpc_port or 8443,
@@ -408,7 +415,7 @@ class Laminar:
         )
 
         # Build the debug runtime only after tracing is up. It has no dependency
-        # on TracerManager.init (which never reads the runtime or global
+        # on init_tracing (which never reads the runtime or global
         # metadata), so running it here means a tracer-init failure aborts before
         # any debug side effects — backend session registration, the
         # `rollout.session_id` stamp, the atexit pointer hook — instead of
@@ -473,7 +480,8 @@ class Laminar:
         base_context = context_api.set_value(
             CONTEXT_METADATA_KEY, cls.__global_metadata, base_context
         )
-        processor = TracerWrapper.instance.span_processor
+        wrapper = get_tracer_wrapper()
+        processor = wrapper.span_processor if wrapper else None
         if isinstance(processor, LaminarSpanProcessor):
             processor.set_parent_path_info(
                 otel_span_context.span_id,
@@ -1328,8 +1336,6 @@ class Laminar:
                 yield s
             return
 
-        wrapper = TracerWrapper()
-
         context_token = None
 
         try:
@@ -1339,7 +1345,7 @@ class Laminar:
             if assoc_props_token and isinstance(span, LaminarSpan):
                 span.lmnr_assoc_props_token = assoc_props_token
 
-            context = wrapper.push_span_context(span)
+            context = push_span(span)
             # Some auto-instrumentations are not under our control, so they
             # don't have access to our isolated context. We attach the context
             # to the OTEL global context, so that spans know their parent
@@ -1380,7 +1386,7 @@ class Laminar:
             try:
                 if context_token:
                     context_api.detach(context_token)
-                wrapper.pop_span_context()
+                pop_span_context()
             finally:
                 if end_on_exit:
                     span.end()
@@ -1458,7 +1464,8 @@ class Laminar:
 
         # Register the parent path so child spans build correct dotted paths,
         # mirroring the LMNR_SPAN_CONTEXT env-init path.
-        processor = TracerWrapper.instance.span_processor
+        wrapper = get_tracer_wrapper()
+        processor = wrapper.span_processor if wrapper else None
         if isinstance(processor, LaminarSpanProcessor):
             processor.set_parent_path_info(
                 parsed["otel_span_context"].span_id,
@@ -1585,7 +1592,6 @@ class Laminar:
         # `LaminarSpan | Span` return type only accounts for the
         # not-initialized early-return above.
         span = cast(LaminarSpan, span)
-        wrapper = TracerWrapper()
 
         # Set association props in context before push_span_context
         # so child spans inherit them
@@ -1593,7 +1599,7 @@ class Laminar:
         if assoc_props_token:
             span.lmnr_assoc_props_token = assoc_props_token
 
-        context = wrapper.push_span_context(span, from_ctx=context)
+        context = push_span(span, from_ctx=context)
         context_token = context_api.attach(context)
         span.lmnr_ctx_token = context_token
         try:
@@ -1806,8 +1812,8 @@ class Laminar:
             )
             return False
 
-        wrapper = TracerWrapper.instance
-        if wrapper.tracer_provider is None:
+        wrapper = get_tracer_wrapper()
+        if wrapper is None:
             return False
         # `LangfuseInstrumentor.instrument()` re-raises after rollback if the
         # attach-to-existing / resource-manager-patch phase fails (e.g.
@@ -1836,7 +1842,7 @@ class Laminar:
         """
         if not cls.is_initialized():
             return False
-        return TracerManager.flush()
+        return flush_tracing()
 
     @classmethod
     def force_flush(cls) -> bool:
@@ -1852,7 +1858,7 @@ class Laminar:
         """
         if not cls.is_initialized():
             return False
-        return TracerManager.force_reinit_processor()
+        return force_reinit_processor()
 
     @classmethod
     def shutdown(cls):
@@ -1882,7 +1888,7 @@ class Laminar:
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     cls.__logger.debug("Failed to close debug cache client: %s", exc)
                 cls._close_debug_async_client(runtime.async_client)
-            TracerManager.shutdown()
+            shutdown_tracing()
             cls.__initialized = False
             # Clear the one-shot debug-runtime state so a subsequent
             # initialize() re-reads LMNR_DEBUG* instead of resurrecting the

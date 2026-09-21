@@ -143,7 +143,7 @@ class TestLaminarOtelInitialization:
 
     def test_traditional_initialization_still_works(self):
         """Test that traditional initialization path is not broken."""
-        with patch("lmnr.opentelemetry_lib.TracerManager.init") as mock_init:
+        with patch("lmnr.sdk.laminar.init_tracing") as mock_init:
             Laminar.initialize(project_api_key="test-key")
 
             mock_init.assert_called_once()
@@ -161,7 +161,7 @@ class TestLaminarOtelInitialization:
             },
             clear=True,
         ):
-            with patch("lmnr.opentelemetry_lib.TracerManager.init") as mock_init:
+            with patch("lmnr.sdk.laminar.init_tracing") as mock_init:
                 Laminar.initialize()
 
                 mock_init.assert_called_once()
@@ -175,7 +175,7 @@ class TestLaminarOtelInitialization:
             {"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://custom-endpoint:4318"},
             clear=True,
         ):
-            with patch("lmnr.opentelemetry_lib.TracerManager.init") as mock_init:
+            with patch("lmnr.sdk.laminar.init_tracing") as mock_init:
                 # Need to provide API key when base_url is specified
                 Laminar.initialize(
                     base_url="https://custom.lmnr.ai", project_api_key="test-key"
@@ -200,7 +200,7 @@ class TestLaminarOtelInitialization:
             {"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://custom-endpoint:4318"},
             clear=True,
         ):
-            with patch("lmnr.opentelemetry_lib.TracerManager.init") as mock_init:
+            with patch("lmnr.sdk.laminar.init_tracing") as mock_init:
                 Laminar.initialize(project_api_key="explicit-key")
 
                 mock_init.assert_called_once()
@@ -231,10 +231,10 @@ class TestOtelConfigIntegration:
             },
             clear=True,
         ):
-            with patch("lmnr.opentelemetry_lib.TracerManager.init") as mock_init:
+            with patch("lmnr.sdk.laminar.init_tracing") as mock_init:
                 Laminar.initialize()
 
-                # Verify TracerManager.init was called with OTEL config
+                # Verify init_tracing was called with OTEL config
                 mock_init.assert_called_once()
                 call_kwargs = mock_init.call_args[1]
                 assert call_kwargs["base_url"] is None

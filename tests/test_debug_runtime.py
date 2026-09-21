@@ -670,7 +670,7 @@ def test_init_survives_registration_failure(monkeypatch):
 
 
 def test_init_does_not_build_debug_runtime_when_tracing_fails(monkeypatch):
-    # If TracerManager.init() raises, initialize() must abort BEFORE any debug
+    # If init_tracing() raises, initialize() must abort BEFORE any debug
     # side effects: no backend session registration and no debug runtime left
     # live on a process whose tracing never came up.
     import os
@@ -688,7 +688,7 @@ def test_init_does_not_build_debug_runtime_when_tracing_fails(monkeypatch):
     def _boom(*args, **kwargs):
         raise RuntimeError("tracer down")
 
-    monkeypatch.setattr("lmnr.opentelemetry_lib.TracerManager.init", _boom)
+    monkeypatch.setattr("lmnr.sdk.laminar.init_tracing", _boom)
     monkeypatch.setattr(Laminar, "_Laminar__initialized", False, raising=False)
 
     with patch.dict(os.environ, {"LMNR_PROJECT_API_KEY": "k"}):
@@ -710,7 +710,7 @@ def test_initialize_captures_debug_connection_args_before_marking_initialized(
     # The from-context arm path (_arm_debug_runtime_from_context) builds its own
     # cache clients from __base_url_for_debug / __http_port_for_debug. Those are
     # also set inside _init_debug_runtime, but that runs AFTER initialize() flips
-    # __initialized (and after TracerManager.init) — so a span arriving with a
+    # __initialized (and after init_tracing) — so a span arriving with a
     # propagated debug block in that window would read None and target the
     # default base URL, then first-wins would pin the mis-targeted runtime.
     # initialize() must therefore capture the args itself, BEFORE __initialized.
@@ -725,7 +725,7 @@ def test_initialize_captures_debug_connection_args_before_marking_initialized(
     monkeypatch.setattr(Laminar, "_Laminar__base_url_for_debug", None, raising=False)
     monkeypatch.setattr(Laminar, "_Laminar__http_port_for_debug", None, raising=False)
     monkeypatch.setattr(
-        "lmnr.opentelemetry_lib.TracerManager.init", lambda *a, **k: None
+        "lmnr.sdk.laminar.init_tracing", lambda *a, **k: None
     )
     # No-op the debug-runtime build so the only thing that can set the static
     # connection fields is the capture in initialize() itself.
@@ -771,7 +771,7 @@ def test_exit_hook_does_not_accumulate_across_cycles(tmp_path, monkeypatch):
 
     _patch_clients(monkeypatch, _SpyDebugClient())
     monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
-    monkeypatch.setattr("lmnr.opentelemetry_lib.TracerManager.shutdown", lambda: None)
+    monkeypatch.setattr("lmnr.sdk.laminar.shutdown_tracing", lambda: None)
 
     for _ in range(12):
         Laminar._init_debug_runtime(base_url="http://localhost", http_port=8000)
@@ -798,7 +798,7 @@ def test_shutdown_closes_retained_clients(tmp_path, monkeypatch):
     async_spy = _SpyAsyncDebugClient()
     _patch_clients(monkeypatch, sync_spy, async_spy)
     monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
-    monkeypatch.setattr("lmnr.opentelemetry_lib.TracerManager.shutdown", lambda: None)
+    monkeypatch.setattr("lmnr.sdk.laminar.shutdown_tracing", lambda: None)
 
     Laminar._init_debug_runtime(base_url="http://localhost", http_port=8000)
     monkeypatch.setattr(Laminar, "_Laminar__initialized", True, raising=False)
@@ -824,7 +824,7 @@ def test_shutdown_resets_run_live_latch(tmp_path, monkeypatch):
 
     _patch_clients(monkeypatch, _SpyDebugClient())
     monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
-    monkeypatch.setattr("lmnr.opentelemetry_lib.TracerManager.shutdown", lambda: None)
+    monkeypatch.setattr("lmnr.sdk.laminar.shutdown_tracing", lambda: None)
 
     Laminar._init_debug_runtime(base_url="http://localhost", http_port=8000)
     monkeypatch.setattr(Laminar, "_Laminar__initialized", True, raising=False)
@@ -841,7 +841,7 @@ def test_shutdown_resets_run_live_latch(tmp_path, monkeypatch):
 def test_shutdown_completes_cleanup_when_emit_pointer_raises(tmp_path, monkeypatch):
     # emit_pointer prints to stdout, which can raise OSError/BrokenPipeError
     # (closed stdout in daemons/containers, notebook kernel restarts). That must
-    # never abort shutdown's cleanup: TracerManager.shutdown(), the reset, and
+    # never abort shutdown's cleanup: shutdown_tracing(), the reset, and
     # the __initialized flip must still run.
     from lmnr.sdk.laminar import Laminar
 
@@ -856,7 +856,7 @@ def test_shutdown_completes_cleanup_when_emit_pointer_raises(tmp_path, monkeypat
 
     shutdown_calls: list = []
     monkeypatch.setattr(
-        "lmnr.opentelemetry_lib.TracerManager.shutdown",
+        "lmnr.sdk.laminar.shutdown_tracing",
         lambda: shutdown_calls.append(True),
     )
 

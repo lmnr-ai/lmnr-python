@@ -8,7 +8,7 @@ from opentelemetry import context as context_api
 from opentelemetry.sdk.trace import Span as SdkSpan
 from opentelemetry.trace import Span, Status, StatusCode
 
-from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.tracing import is_tracing_initialized
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     METADATA,
@@ -17,6 +17,8 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
 from lmnr.opentelemetry_lib.tracing.context import (
     CONTEXT_METADATA_KEY,
     get_event_attributes_from_context,
+    pop_span_context,
+    push_span,
 )
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
@@ -144,7 +146,7 @@ def _process_output(
             logger.debug(msg, exc_info=True)
 
 
-def _cleanup_span(span: Span, wrapper: TracerWrapper, do_pop_context: bool = True):
+def _cleanup_span(span: Span, do_pop_context: bool = True):
     """Clean up span and context."""
     try:
         span.end()
@@ -153,7 +155,7 @@ def _cleanup_span(span: Span, wrapper: TracerWrapper, do_pop_context: bool = Tru
     if not do_pop_context:
         return
     try:
-        wrapper.pop_span_context()
+        pop_span_context()
     except Exception:
         logger.debug("Failed to pop span context in _cleanup_span", exc_info=True)
 
@@ -182,16 +184,10 @@ def observe_base(
     def decorate(fn: F) -> F:
         @wraps(fn)
         def wrap(*args: Any, **kwargs: Any):   # pyright: ignore[reportExplicitAny, reportAny]:
-            if not TracerWrapper.verify_initialized():
+            if not is_tracing_initialized():
                 return fn(*args, **kwargs)  # pyright: ignore[reportAny]
 
             span_name = name or getattr(fn, "__name__", "unknown")
-            wrapper = None
-            try:
-                wrapper = TracerWrapper()
-            except Exception:
-                logger.debug("Failed to create tracer wrapper", exc_info=True)
-                return fn(*args, **kwargs)  # pyright: ignore[reportAny]
 
             span = _setup_span(
                 span_name,
@@ -220,7 +216,7 @@ def observe_base(
                 except Exception:
                     current_task = None
                 current_context_id = id(current_task)
-                new_context = wrapper.push_span_context(span)
+                new_context = push_span(span)
                 did_push_context = True
                 # Some auto-instrumentations are not under our control, so they
                 # don't have access to our isolated context. We attach the context
@@ -238,7 +234,7 @@ def observe_base(
                 res = fn(*args, **kwargs)  # pyright: ignore[reportAny]
             except Exception as e:
                 _process_exception(span, e)
-                _cleanup_span(span, wrapper, did_push_context)
+                _cleanup_span(span, did_push_context)
                 raise
             finally:
                 current_task = None
@@ -261,7 +257,6 @@ def observe_base(
             if isinstance(res, types.GeneratorType):
                 return _handle_generator(
                     span,
-                    wrapper,
                     res,
                     ignore_output,
                     output_formatter,
@@ -277,7 +272,6 @@ def observe_base(
                 # See also: https://groups.google.com/g/python-tulip/c/6rWweGXLutU?pli=1
                 return _ahandle_generator(
                     span,
-                    wrapper,
                     res,
                     ignore_output,
                     output_formatter,
@@ -285,7 +279,7 @@ def observe_base(
                 )
 
             _process_output(span, res, ignore_output, output_formatter)
-            _cleanup_span(span, wrapper, did_push_context)
+            _cleanup_span(span, did_push_context)
             return res  # pyright: ignore[reportAny]
 
         return cast(F, wrap)
@@ -318,16 +312,10 @@ def async_observe_base(
     def decorate(fn: F) -> F:
         @wraps(fn)
         async def wrap(*args: Any, **kwargs: Any):  # pyright: ignore[reportExplicitAny, reportAny]
-            if not TracerWrapper.verify_initialized():
+            if not is_tracing_initialized():
                 return await fn(*args, **kwargs)  # pyright: ignore[reportAny]
 
             span_name = name or getattr(fn, "__name__", "unknown")
-            wrapper = None
-            try:
-                wrapper = TracerWrapper()
-            except Exception:
-                logger.debug("Failed to create tracer wrapper", exc_info=True)
-                return await fn(*args, **kwargs)  # pyright: ignore[reportAny]
 
             span = _setup_span(
                 span_name,
@@ -356,7 +344,7 @@ def async_observe_base(
                 except Exception:
                     current_task = None
                 current_context_id = id(current_task)
-                new_context = wrapper.push_span_context(span)
+                new_context = push_span(span)
                 did_push_context = True
                 # Some auto-instrumentations are not under our control, so they
                 # don't have access to our isolated context. We attach the context
@@ -374,7 +362,7 @@ def async_observe_base(
                 res = await fn(*args, **kwargs)   # pyright: ignore[reportAny]
             except Exception as e:
                 _process_exception(span, e)
-                _cleanup_span(span, wrapper, did_push_context)
+                _cleanup_span(span, did_push_context)
                 raise
             finally:
                 # Always restore global context if we are in the same asyncio context
@@ -400,7 +388,6 @@ def async_observe_base(
                 # part of the sync wrapper.
                 return _ahandle_generator(
                     span,
-                    wrapper,
                     res,
                     ignore_output,
                     output_formatter,
@@ -408,7 +395,7 @@ def async_observe_base(
                 )
 
             _process_output(span, res, ignore_output, output_formatter)
-            _cleanup_span(span, wrapper, did_push_context)
+            _cleanup_span(span, did_push_context)
             return res  # pyright: ignore[reportAny]
 
         return cast(F, wrap)
@@ -418,7 +405,6 @@ def async_observe_base(
 
 def _handle_generator(
     span: Span,
-    wrapper: TracerWrapper,
     res: types.GeneratorType[Any, Any, Any],  # pyright: ignore[reportExplicitAny]
     ignore_output: bool = False,
     output_formatter: Callable[..., str] | None = None,
@@ -434,12 +420,11 @@ def _handle_generator(
         raise
     finally:
         _process_output(span, results, ignore_output, output_formatter)
-        _cleanup_span(span, wrapper, did_push_context)
+        _cleanup_span(span, did_push_context)
 
 
 async def _ahandle_generator(
     span: Span,
-    wrapper: TracerWrapper,
     res: types.AsyncGeneratorType[Any, Any],  # pyright: ignore[reportExplicitAny]
     ignore_output: bool = False,
     output_formatter: Callable[..., str] | None = None,
@@ -455,7 +440,7 @@ async def _ahandle_generator(
         raise
     finally:
         _process_output(span, results, ignore_output, output_formatter)
-        _cleanup_span(span, wrapper, did_push_context)
+        _cleanup_span(span, did_push_context)
 
 
 def _process_exception(span: Span, e: Exception):

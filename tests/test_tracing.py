@@ -6,7 +6,7 @@ import uuid
 from lmnr import Attributes, Laminar
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from lmnr.opentelemetry_lib.tracing.tracer import TracerWrapper
+from lmnr.opentelemetry_lib.tracing import get_tracer_wrapper
 from lmnr.sdk.types import LaminarSpanContext
 
 
@@ -618,7 +618,7 @@ def test_span_context_path_ids_path(span_exporter: InMemorySpanExporter):
         span = Laminar.start_span("test")
         # Clear the span processor to ensure the path is not cached
         # This simulates span context being passed across services
-        TracerWrapper.instance.span_processor.clear()
+        get_tracer_wrapper().span_processor.clear()
         foo(Laminar.serialize_span_context(span))
         span.end()
 
@@ -652,7 +652,7 @@ def test_span_context_path_ids_path_start_span(span_exporter: InMemorySpanExport
         span = Laminar.start_span("test")
         # Clear the span processor to ensure the path is not cached
         # This simulates span context being passed across services
-        TracerWrapper.instance.span_processor.clear()
+        get_tracer_wrapper().span_processor.clear()
         foo(Laminar.serialize_span_context(span))
         span.end()
 

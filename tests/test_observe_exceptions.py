@@ -10,7 +10,6 @@ from unittest.mock import patch, PropertyMock
 import opentelemetry.context as otel_context
 
 from lmnr import observe
-from lmnr.opentelemetry_lib.tracing import TracerWrapper
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
@@ -54,20 +53,21 @@ async def test_setup_span_failure_async(span_exporter: InMemorySpanExporter):
 
 
 # =============================================================================
-# TracerWrapper() construction failures
-# The try/except around `wrapper = TracerWrapper()` falls back to fn(*args).
-# Result: 0 spans, function still returns correctly.
+# Tracing not initialized
+# `observe` returns the original function untouched.
+# Result: no span, function returns correctly.
 # =============================================================================
 
 
-def test_tracer_wrapper_creation_failure_sync(span_exporter: InMemorySpanExporter):
+def test_tracing_not_initialized_sync(span_exporter: InMemorySpanExporter):
     @observe()
     def observed_foo():
         return "foo"
 
-    with patch("lmnr.opentelemetry_lib.decorators.TracerWrapper") as mock_tw:
-        mock_tw.verify_initialized.return_value = True
-        mock_tw.side_effect = RuntimeError("wrapper exploded")
+    with patch(
+        "lmnr.opentelemetry_lib.decorators.is_tracing_initialized",
+        return_value=False,
+    ):
         result = observed_foo()
 
     assert result == "foo"
@@ -75,14 +75,15 @@ def test_tracer_wrapper_creation_failure_sync(span_exporter: InMemorySpanExporte
 
 
 @pytest.mark.asyncio
-async def test_tracer_wrapper_creation_failure_async(span_exporter: InMemorySpanExporter):
+async def test_tracing_not_initialized_async(span_exporter: InMemorySpanExporter):
     @observe()
     async def observed_foo():
         return "foo"
 
-    with patch("lmnr.opentelemetry_lib.decorators.TracerWrapper") as mock_tw:
-        mock_tw.verify_initialized.return_value = True
-        mock_tw.side_effect = RuntimeError("wrapper exploded")
+    with patch(
+        "lmnr.opentelemetry_lib.decorators.is_tracing_initialized",
+        return_value=False,
+    ):
         result = await observed_foo()
 
     assert result == "foo"
@@ -239,7 +240,7 @@ async def test_cleanup_span_end_failure_async(span_exporter: InMemorySpanExporte
 
 
 # =============================================================================
-# _cleanup_span failures — wrapper.pop_span_context() raises
+# _cleanup_span failures — pop_span_context() raises
 # span.end() has already run and exported the span; the subsequent
 # pop_span_context failure is caught by the same try/except in _cleanup_span.
 # Result: 1 span, function returns correctly.
@@ -251,8 +252,9 @@ def test_cleanup_span_pop_context_failure_sync(span_exporter: InMemorySpanExport
     def observed_foo():
         return "foo"
 
-    with patch.object(
-        TracerWrapper, "pop_span_context", side_effect=RuntimeError("pop exploded")
+    with patch(
+        "lmnr.opentelemetry_lib.decorators.pop_span_context",
+        side_effect=RuntimeError("pop exploded"),
     ):
         result = observed_foo()
 
@@ -268,8 +270,9 @@ async def test_cleanup_span_pop_context_failure_async(span_exporter: InMemorySpa
     async def observed_foo():
         return "foo"
 
-    with patch.object(
-        TracerWrapper, "pop_span_context", side_effect=RuntimeError("pop exploded")
+    with patch(
+        "lmnr.opentelemetry_lib.decorators.pop_span_context",
+        side_effect=RuntimeError("pop exploded"),
     ):
         result = await observed_foo()
 
@@ -280,7 +283,7 @@ async def test_cleanup_span_pop_context_failure_async(span_exporter: InMemorySpa
 
 
 # =============================================================================
-# Context setup failures — wrapper.push_span_context raises
+# Context setup failures — push_span raises
 # The outer try/except around the entire context-setup block catches it.
 # Execution proceeds; the span is still created and properly closed.
 # Result: 1 span, function returns correctly.
@@ -292,8 +295,9 @@ def test_push_span_context_failure_sync(span_exporter: InMemorySpanExporter):
     def observed_foo():
         return "foo"
 
-    with patch.object(
-        TracerWrapper, "push_span_context", side_effect=RuntimeError("push exploded")
+    with patch(
+        "lmnr.opentelemetry_lib.decorators.push_span",
+        side_effect=RuntimeError("push exploded"),
     ):
         result = observed_foo()
 
@@ -309,8 +313,9 @@ async def test_push_span_context_failure_async(span_exporter: InMemorySpanExport
     async def observed_foo():
         return "foo"
 
-    with patch.object(
-        TracerWrapper, "push_span_context", side_effect=RuntimeError("push exploded")
+    with patch(
+        "lmnr.opentelemetry_lib.decorators.push_span",
+        side_effect=RuntimeError("push exploded"),
     ):
         result = await observed_foo()
 
@@ -591,8 +596,9 @@ def test_generator_cleanup_pop_context_failure(span_exporter: InMemorySpanExport
         yield "foo"
         yield "bar"
 
-    with patch.object(
-        TracerWrapper, "pop_span_context", side_effect=RuntimeError("pop exploded")
+    with patch(
+        "lmnr.opentelemetry_lib.decorators.pop_span_context",
+        side_effect=RuntimeError("pop exploded"),
     ):
         results = list(observed_foo())
 
@@ -611,8 +617,9 @@ async def test_async_generator_cleanup_pop_context_failure(
         yield "foo"
         yield "bar"
 
-    with patch.object(
-        TracerWrapper, "pop_span_context", side_effect=RuntimeError("pop exploded")
+    with patch(
+        "lmnr.opentelemetry_lib.decorators.pop_span_context",
+        side_effect=RuntimeError("pop exploded"),
     ):
         results = [r async for r in observed_foo()]
 

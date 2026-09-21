@@ -3,7 +3,7 @@
 from typing import TYPE_CHECKING, Any
 
 from lmnr import Laminar
-from lmnr.opentelemetry_lib.tracing import get_current_context
+from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.opentelemetry_lib.tracing.attributes import SPAN_IDS_PATH, SPAN_PATH
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import get_input_from_func_args, is_method, json_dumps

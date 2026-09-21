@@ -1078,14 +1078,14 @@ class LangfuseInstrumentor:
         cls._lmnr_tracer_provider = lmnr_tracer_provider
 
         # Pre-register Laminar's provider id so `_attach_to_provider` short-
-        # circuits if Langfuse happens to share it. The `TracerWrapper.instance`
+        # circuits if Langfuse happens to share it. The `get_tracer_wrapper()`
         # fallback check is racy during auto-install — `init_instrumentations`
-        # runs BEFORE `TracerWrapper.instance` is assigned, so
-        # `verify_initialized()` returns False, and a Langfuse client that
+        # runs BEFORE `init_tracing` publishes the wrapper, so
+        # `get_tracer_wrapper()` returns None, and a Langfuse client that
         # had already been constructed against a pre-existing global provider
         # identical to Laminar's would otherwise get the translator +
         # laminar span processor attached a second time. id()-based
-        # short-circuit is independent of TracerWrapper lifecycle.
+        # short-circuit is independent of the tracing lifecycle.
         if cls._handled_providers is None:
             cls._handled_providers = set()
         cls._handled_providers.add(id(lmnr_tracer_provider))
@@ -1210,12 +1210,10 @@ class LangfuseInstrumentor:
 
         # Skip the Laminar provider itself — our processor and translator are
         # already attached there.
-        from lmnr.opentelemetry_lib.tracing import TracerWrapper
+        from lmnr.opentelemetry_lib.tracing import get_tracer_wrapper
 
-        if (
-            TracerWrapper.verify_initialized()
-            and TracerWrapper.instance.tracer_provider is provider
-        ):
+        lmnr_wrapper = get_tracer_wrapper()
+        if lmnr_wrapper is not None and lmnr_wrapper.tracer_provider is provider:
             return
 
         try:

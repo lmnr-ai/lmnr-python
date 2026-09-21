@@ -1,12 +1,12 @@
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.tracing import get_tracer_wrapper
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.sdk.decorators import observe
 
 
 def test_span_processor_cleanup(span_exporter: InMemorySpanExporter):
-    processor: LaminarSpanProcessor = TracerWrapper().span_processor
+    processor: LaminarSpanProcessor = get_tracer_wrapper().span_processor
 
     @observe()
     def foo():

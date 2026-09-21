@@ -8,9 +8,8 @@ from opentelemetry.sdk.trace.export import SpanExporter
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from lmnr import Laminar
-from lmnr.opentelemetry_lib import TracerManager
 from lmnr.opentelemetry_lib.litellm import LaminarLiteLLMCallback
-from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.tracing import clear_tracing_state, init_tracing
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
 
 pytest_plugins = ("pytest_asyncio",)
@@ -20,17 +19,16 @@ pytest_plugins = ("pytest_asyncio",)
 def span_exporter() -> SpanExporter:
     exporter = InMemorySpanExporter()
 
-    # Set up a partial mock of TracerManager.init to inject our exporter
-    orig_tracermanager_init = TracerManager.init
-
-    def mock_tracermanager_init(*args, **kwargs):
+    # Partially mock init_tracing to inject our exporter. Patch the name as
+    # imported into laminar.py — that is where the lookup happens.
+    def mock_init_tracing(*args, **kwargs):
         new_kwargs = kwargs.copy()
         new_kwargs["exporter"] = exporter
-        orig_tracermanager_init(*args, **new_kwargs)
+        return init_tracing(*args, **new_kwargs)
 
     with patch(
-        "lmnr.opentelemetry_lib.TracerManager.init",
-        side_effect=mock_tracermanager_init,
+        "lmnr.sdk.laminar.init_tracing",
+        side_effect=mock_init_tracing,
     ):
         # Block PYDANTIC_AI so the raw-provider instrumentor tests still
         # receive the SDK-level spans they expect. Without this, having
@@ -77,19 +75,18 @@ def litellm_callback() -> Generator[LaminarLiteLLMCallback, None, None]:
     # Re-instrument OpenAI if it was originally instrumented
     if was_instrumented and not instrumentor.is_instrumented_by_opentelemetry:
         # Re-instrument with the same settings as the global initialization
-        from lmnr.opentelemetry_lib.tracing import TracerWrapper
+        from lmnr.opentelemetry_lib.tracing import get_tracer_wrapper
 
-        if hasattr(TracerWrapper, "instance") and TracerWrapper.instance is not None:
-            instrumentor.instrument(
-                tracer_provider=TracerWrapper.instance.tracer_provider
-            )
+        wrapper = get_tracer_wrapper()
+        if wrapper is not None:
+            instrumentor.instrument(tracer_provider=wrapper.tracer_provider)
 
 
 @pytest.fixture(scope="function", autouse=True)
 def clear_span_exporter(span_exporter: InMemorySpanExporter):
     # Clear before test
     span_exporter.clear()
-    TracerWrapper.clear()
+    clear_tracing_state()
 
     # Clear OpenTelemetry context to ensure clean state between tests
     # This prevents spans from one test from becoming parents of spans in another test
@@ -101,7 +98,7 @@ def clear_span_exporter(span_exporter: InMemorySpanExporter):
 
     # Clear after test as well for good measure
     span_exporter.clear()
-    TracerWrapper.clear()
+    clear_tracing_state()
 
     # Restore and create fresh context again
     try:

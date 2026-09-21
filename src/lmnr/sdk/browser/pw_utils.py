@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 import orjson
 from opentelemetry import trace
 
-from lmnr.opentelemetry_lib.tracing import TracerWrapper
+from lmnr.opentelemetry_lib.tracing import get_session_recording_options
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from lmnr.sdk.browser.background_send_events import (
@@ -161,7 +161,7 @@ with open(os.path.join(current_dir, "inject_script.js"), "r") as f:
 def get_mask_input_setting() -> MaskInputOptions:
     """Get the mask_input setting from session recording configuration."""
     try:
-        config = TracerWrapper.get_session_recording_options()
+        config = get_session_recording_options()
         return config.get("mask_input_options") or MaskInputOptions(
             textarea=False,
             text=False,
@@ -171,7 +171,7 @@ def get_mask_input_setting() -> MaskInputOptions:
             tel=False,
         )
     except (AttributeError, Exception):
-        # Fallback to default configuration if TracerWrapper is not initialized
+        # Fallback to default configuration if tracing is not initialized
         return MaskInputOptions(
             textarea=False,
             text=False,

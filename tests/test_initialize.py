@@ -202,7 +202,7 @@ def test_laminar_initialize_url_parsing():
 
     for test_case in test_cases:
         with patch.dict(os.environ, test_case["env_vars"], clear=True):
-            with patch("lmnr.opentelemetry_lib.TracerManager.init") as mock_tracer_init:
+            with patch("lmnr.sdk.laminar.init_tracing") as mock_tracer_init:
                 # Reset state for each test
                 Laminar._Laminar__initialized = False
                 Laminar._Laminar__base_http_url = None
@@ -215,7 +215,7 @@ def test_laminar_initialize_url_parsing():
                 # Call initialize
                 Laminar.initialize(**params)
 
-                # Verify TracerManager.init was called with expected args
+                # Verify init_tracing was called with expected args
                 mock_tracer_init.assert_called_once()
                 call_args = mock_tracer_init.call_args[1]
 
