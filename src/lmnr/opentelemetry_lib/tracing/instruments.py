@@ -296,8 +296,8 @@ def init_instrumentations(
                 + "Instruments.GOOGLE_GENAI."
             )
             instruments = instruments - _GOOGLE_ADK_GENAI_CONFLICTS
-    if not isinstance(instruments, set):
-        instruments = set(instruments)
+    if not isinstance(instruments, set):  # pyright: ignore[reportUnnecessaryIsInstance]
+        instruments = set(instruments)  # pyright: ignore[reportUnreachable]
 
     # Remove any instruments that were explicitly blocked
     instruments = instruments - block_instruments

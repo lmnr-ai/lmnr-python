@@ -394,7 +394,7 @@ class Laminar:
             os.environ.get("LMNR_DEBUG")
         )
 
-        init_tracing(
+        _tracer_wrapper = init_tracing(
             base_url=url,
             http_port=http_port or 443,
             port=grpc_port or 8443,
@@ -419,7 +419,7 @@ class Laminar:
         # once installed, and nothing else re-runs on a re-init (LANGFUSE is
         # never in the default instrument set). Cheap no-op when the bridge was
         # never installed or the processor is unchanged.
-        cls._rebind_langfuse_bridge()
+        _rebind_success = cls._rebind_langfuse_bridge()
 
         # Build the debug runtime only after tracing is up. It has no dependency
         # on init_tracing (which never reads the runtime or global
@@ -1757,20 +1757,23 @@ class Laminar:
             return LaminarSpan(cast(SDKSpan, span))
 
     @classmethod
-    def _rebind_langfuse_bridge(cls) -> None:
+    def _rebind_langfuse_bridge(cls) -> bool:
         """Re-point an already-installed Laminar/Langfuse bridge at the current
-        span processor. Best-effort: never let it break `initialize()`."""
+        span processor. Best-effort: never let it break `initialize()`.
+
+        Returns: whether rebind was successful
+        """
         try:
             from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
                 LangfuseInstrumentor,
             )
 
             if not LangfuseInstrumentor.installed:
-                return
+                return False
             wrapper = get_tracer_wrapper()
             if wrapper is None:
-                return
-            LangfuseInstrumentor().rebind(
+                return False
+            return LangfuseInstrumentor().rebind(
                 lmnr_tracer_provider=wrapper.tracer_provider,
                 lmnr_span_processor=wrapper.span_processor,
             )
@@ -1778,6 +1781,7 @@ class Laminar:
             cls.__logger.warning(
                 "Failed to rebind the Laminar/Langfuse bridge: %s", exc
             )
+            return False
 
     @classmethod
     def connect_to_langfuse(cls) -> bool:
@@ -2073,7 +2077,7 @@ class Laminar:
         trace_type: TraceType | None = None,
         metadata: MetadataType | None = None,
     ) -> dict[str, AttributeValue]:
-        association_properties = {}
+        association_properties: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
         if user_id is not None:
             association_properties[f"{ASSOCIATION_PROPERTIES}.{USER_ID}"] = user_id
         if session_id is not None:

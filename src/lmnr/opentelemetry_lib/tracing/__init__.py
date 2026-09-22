@@ -3,6 +3,7 @@ import logging
 import sys
 import threading
 from collections.abc import Sequence
+from typing import cast
 
 from opentelemetry import trace
 from opentelemetry._logs import set_logger_provider
@@ -47,8 +48,10 @@ def _detach_span_processor(provider: TracerProvider, processor: SpanProcessor) -
     current = getattr(active, "_span_processors", None)
     if current is None:
         return
-    filtered = tuple(p for p in current if p is not processor)
+    filtered = tuple(p for p in cast(Sequence[SpanProcessor], current) if p is not processor)
     lock = getattr(active, "_lock", None)
+    if active is None:
+        return
     if lock is not None:
         with lock:
             active._span_processors = filtered
@@ -64,8 +67,10 @@ def _detach_log_processor(
     current = getattr(multi, "_log_record_processors", None)
     if current is None:
         return
-    filtered = tuple(p for p in current if p is not processor)
+    filtered = tuple(p for p in cast(Sequence[BatchLogRecordProcessor], current) if p is not processor)
     lock = getattr(multi, "_lock", None)
+    if multi is None:
+        return
     if lock is not None:
         with lock:
             multi._log_record_processors = filtered
@@ -86,12 +91,12 @@ class TracerWrapper:
         log_processor: BatchLogRecordProcessor,
         async_client: AsyncLaminarClient | None,
     ) -> None:
-        self.resource = resource
-        self.span_processor = span_processor
-        self.tracer_provider = tracer_provider
-        self.logger_provider = logger_provider
-        self.log_processor = log_processor
-        self.async_client = async_client
+        self.resource: Resource = resource
+        self.span_processor: SpanProcessor = span_processor
+        self.tracer_provider: TracerProvider = tracer_provider
+        self.logger_provider: LoggerProvider = logger_provider
+        self.log_processor: BatchLogRecordProcessor = log_processor
+        self.async_client: AsyncLaminarClient | None = async_client
 
     def get_tracer(self) -> trace.Tracer:
         return self.tracer_provider.get_tracer(TRACER_NAME)
@@ -122,13 +127,13 @@ class TracerWrapper:
         if not isinstance(self.span_processor, LaminarSpanProcessor):
             LOG.warning("Not using LaminarSpanProcessor, cannot force reinit")
             return False
-        self.span_processor.force_flush()
-        self.span_processor.force_reinit()
-        self.log_processor.force_flush()
+        spans_flush = self.span_processor.force_flush()
+        spans_reinit = self.span_processor.force_reinit()
+        logs_flush = self.log_processor.force_flush()
         # Clear the isolated context to prevent subsequent invocations
         # (e.g., in Lambda) from continuing traces from previous invocations
         clear_context()
-        return True
+        return spans_flush and spans_reinit and logs_flush
 
     def clear(self) -> None:
         """Reset per-run state. Used in between tests."""
@@ -141,7 +146,7 @@ class TracerWrapper:
         # Force flushes for debug environments (e.g. local development)
         if isinstance(self.span_processor, LaminarSpanProcessor):
             self.span_processor.clear()
-        self.flush()
+        _success = self.flush()
 
 
 # The singleton lives here, not on the class, so that `TracerWrapper(...)` can
@@ -247,8 +252,8 @@ def init_tracing(
                 trace.set_tracer_provider(_tracer_provider)
         elif _tracer_provider.resource != resource:
             LOG.warning(
-                "Reusing the tracer provider from a previous Laminar "
-                "initialization; its resource attributes (including app_name) "
+                "Reusing the tracer provider from a previous Laminar " +
+                "initialization; its resource attributes (including app_name) " +
                 "are fixed at first initialization and will not be updated."
             )
         tracer_provider = _tracer_provider
@@ -306,7 +311,7 @@ def init_tracing(
         # ordering to avoid double-attaching to Laminar's own tracer provider.
         _tracer_wrapper = wrapper
 
-        atexit.register(wrapper.exit_handler)
+        _handler = atexit.register(wrapper.exit_handler)
 
         return wrapper
 

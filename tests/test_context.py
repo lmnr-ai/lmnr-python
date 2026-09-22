@@ -83,3 +83,54 @@ def test_clear_context_start_active_span(span_exporter: InMemorySpanExporter):
     assert (
         inner_span.get_span_context().trace_id != outer_span.get_span_context().trace_id
     )
+
+
+def test_isolated_context_is_readable_from_a_fresh_contextvars_context():
+    """The ContextVars need real defaults: a value set at import time only exists
+    in the importing context, so a fresh context (a thread not created through
+    the patched Thread.__init__, an executor, ...) would raise LookupError."""
+    import _thread
+    import contextvars
+    import threading
+
+    from opentelemetry.context import Context
+
+    from lmnr.opentelemetry_lib.tracing.context import (
+        get_current_context,
+        get_token_stack,
+        pop_span_context,
+        push_span_context,
+    )
+
+    def exercise() -> tuple[Context, tuple, tuple, tuple]:
+        before = get_token_stack()
+        push_span_context(Context())
+        pushed = get_token_stack()
+        pop_span_context()
+        return get_current_context(), before, pushed, get_token_stack()
+
+    def check(result):
+        context, before, pushed, after = result
+        assert context == Context()
+        assert before == ()
+        assert len(pushed) == 1
+        assert after == ()
+
+    check(contextvars.Context().run(exercise))
+
+    # `_thread` bypasses the patched `threading.Thread.__init__`, so the new
+    # thread starts with an empty contextvars context.
+    results = []
+    done = threading.Event()
+
+    def target():
+        try:
+            results.append(exercise())
+        except Exception as e:
+            results.append(e)
+        finally:
+            done.set()
+
+    _thread.start_new_thread(target, ())
+    assert done.wait(5)
+    check(results[0])
