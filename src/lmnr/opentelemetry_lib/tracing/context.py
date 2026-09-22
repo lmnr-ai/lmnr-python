@@ -2,11 +2,12 @@ import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
-from contextvars import ContextVar
-from typing import Any
+from contextvars import ContextVar, Token
+from typing import Any, cast
 
 from opentelemetry import trace
-from opentelemetry.context import Context, Token, create_key, get_value, set_value
+from opentelemetry.context import Context, create_key, get_value, set_value
+from typing_extensions import override
 
 from lmnr.opentelemetry_lib.tracing.attributes import (
     METADATA,
@@ -15,7 +16,7 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
     USER_ID,
 )
 from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.types import TraceType
+from lmnr.sdk.types import MetadataMemberType, TraceType
 
 logger = get_default_logger(__name__)
 
@@ -53,10 +54,10 @@ class IsolatedContextVarsRuntimeContext(_IsolatedRuntimeContext):
     """
 
     def __init__(self) -> None:
-        self._current_context = ContextVar(
-            "isolated_current_context", default=Context()
-        )
+        self._current_context: ContextVar[Context] = ContextVar("isolated_current_context")
+        _set_token = self._current_context.set(Context())
 
+    @override
     def attach(self, context: Context) -> Token[Context]:
         """Sets the current `Context` object. Returns a
         token that can be used to reset to the previous `Context`.
@@ -66,10 +67,12 @@ class IsolatedContextVarsRuntimeContext(_IsolatedRuntimeContext):
         """
         return self._current_context.set(context)
 
+    @override
     def get_current(self) -> Context:
         """Returns the current `Context` object."""
         return self._current_context.get()
 
+    @override
     def detach(self, token: Token[Context]) -> None:
         """Resets Context to a previous value
 
@@ -101,13 +104,13 @@ def get_token_stack() -> list[Token[Context]]:
     except LookupError:
         if not hasattr(_isolated_token_stack_storage, "token_stack"):
             _isolated_token_stack_storage.token_stack = []
-        return _isolated_token_stack_storage.token_stack
+        return _isolated_token_stack_storage.token_stack  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
 
 
 def set_token_stack(stack: list[Token[Context]]) -> None:
     """Set the token stack, supporting both asyncio and threading."""
     try:
-        _isolated_token_stack.set(stack)
+        _set_token = _isolated_token_stack.set(stack)
     except LookupError:
         _isolated_token_stack_storage.token_stack = stack
 
@@ -135,12 +138,12 @@ CONTEXT_TRACE_TYPE_KEY = create_key(f"lmnr.{TRACE_TYPE}")
 
 def get_event_attributes_from_context(context: Context | None = None) -> dict[str, str]:
     """Get the event attributes from the context."""
-    attributes = {}
+    attributes: dict[str, str] = {}
     try:
         context = context or get_current_context()
-        if session_id := get_value(CONTEXT_SESSION_ID_KEY, context):
+        if session_id := cast(str, get_value(CONTEXT_SESSION_ID_KEY, context)):
             attributes["lmnr.event.session_id"] = session_id
-        if user_id := get_value(CONTEXT_USER_ID_KEY, context):
+        if user_id := cast(str, get_value(CONTEXT_USER_ID_KEY, context)):
             attributes["lmnr.event.user_id"] = user_id
     except Exception:
         logger.debug("Error getting event attributes from context", exc_info=True)
@@ -152,7 +155,7 @@ def set_association_prop_context(
     session_id: str | None = None,
     trace_type: TraceType | None = None,
     context: Context | None = None,
-    metadata: dict[str, Any] | None = None,
+    metadata: dict[str, MetadataMemberType] | None = None,
     attach: bool = True,
 ) -> Context:
     context = context or get_current_context()
@@ -165,7 +168,7 @@ def set_association_prop_context(
     if metadata is not None:
         context = set_value(CONTEXT_METADATA_KEY, metadata, context)
     if attach:
-        attach_context(context)
+        _attach_token = attach_context(context)
     return context
 
 
@@ -205,7 +208,7 @@ def clear_context() -> None:
     """
     # Clear the token stack first
     try:
-        _isolated_token_stack.set([])
+        _set_token = _isolated_token_stack.set([])
     except LookupError:
         pass
 
@@ -216,7 +219,7 @@ def clear_context() -> None:
     # Reset the context to a fresh empty context
     # This doesn't require manually detaching tokens since we're
     # intentionally resetting everything to a clean state
-    _ISOLATED_RUNTIME_CONTEXT._current_context.set(Context())
+    _set_token = _ISOLATED_RUNTIME_CONTEXT._current_context.set(Context())  # pyright: ignore[reportPrivateUsage] same file
 
 
 def is_in_litellm_context() -> bool:
@@ -252,7 +255,7 @@ def setup_thread_context_inheritance() -> None:
 
     _original_thread_init = threading.Thread.__init__
 
-    def patched_thread_init(thread_self, *args: Any, **kwargs: Any):  # pyright: ignore[reportExplicitAny]
+    def patched_thread_init(thread_self: threading.Thread, *args: Any, **kwargs: Any):  # pyright: ignore[reportExplicitAny, reportAny]
         # Capture current isolated context and token stack for inheritance
         current_context = get_current_context()
         current_token_stack = get_token_stack().copy()
@@ -260,17 +263,17 @@ def setup_thread_context_inheritance() -> None:
         # Get the original target function
         original_target = kwargs.get("target")
         if not original_target and args:
-            original_target = args[0]
+            original_target = args[0]  # pyright: ignore[reportAny]
 
         # Only inherit if we have a target function
         if original_target:
             # Create a wrapper function that sets up context
-            def thread_wrapper(*target_args, **target_kwargs):
+            def thread_wrapper(*target_args: Any, **target_kwargs: Any):  # pyright: ignore[reportExplicitAny, reportAny]
                 # Set inherited context and token stack in the new thread
-                attach_context(current_context)
+                _attach_token = attach_context(current_context)
                 set_token_stack(current_token_stack)
                 # Run original target
-                return original_target(*target_args, **target_kwargs)
+                return original_target(*target_args, **target_kwargs)  # pyright: ignore[reportAny]
 
             # Replace the target with our wrapper
             if "target" in kwargs:

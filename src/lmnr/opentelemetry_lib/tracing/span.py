@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from collections.abc import Mapping
 from contextvars import Token
 from logging import Logger
 from types import TracebackType
@@ -15,8 +16,9 @@ from opentelemetry.sdk.util.instrumentation import (
     InstrumentationScope,
 )
 from opentelemetry.trace import Link, Span, SpanContext, SpanKind, Status
-from opentelemetry.util.types import AttributeValue
-from typing_extensions import Self
+from opentelemetry.trace.status import StatusCode
+from opentelemetry.util.types import Attributes, AttributeValue
+from typing_extensions import Self, override
 
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
@@ -86,8 +88,9 @@ def _current_debug_context() -> DebugContext | None:
 class LaminarSpanInterfaceMixin:
     """Mixin providing Laminar-specific span methods and properties."""
 
-    span: SDKSpan
-    logger: Logger
+    # Provided by the concrete class that mixes this in (e.g. LaminarSpan.__init__).
+    span: SDKSpan  # pyright: ignore[reportUninitializedInstanceVariable]
+    logger: Logger  # pyright: ignore[reportUninitializedInstanceVariable]
 
     def set_trace_session_id(self, session_id: str | None = None) -> None:
         """Set the session id for the current trace. Must be called at most once per trace.
@@ -96,7 +99,7 @@ class LaminarSpanInterfaceMixin:
             session_id (str | None): Session id to set for the span.
         """
         if session_id is not None:
-            self.set_attribute(f"{ASSOCIATION_PROPERTIES}.session_id", session_id)
+            self.span.set_attribute(f"{ASSOCIATION_PROPERTIES}.session_id", session_id)
 
     def set_trace_user_id(self, user_id: str | None = None) -> None:
         """Set the user id for the current trace. Must be called at most once per trace.
@@ -114,7 +117,7 @@ class LaminarSpanInterfaceMixin:
         Args:
             metadata (dict[str, AttributeValue]): Metadata to set for the trace.
         """
-        formatted_metadata = {}
+        formatted_metadata: dict[str, AttributeValue] = {}
         for key, value in metadata.items():
             if is_otel_attribute_value_type(value):
                 formatted_metadata[f"{ASSOCIATION_PROPERTIES}.metadata.{key}"] = value
@@ -249,7 +252,7 @@ class LaminarSpanInterfaceMixin:
             return []
 
     @property
-    def laminar_association_properties(self) -> dict[str, Any]:
+    def laminar_association_properties(self) -> MetadataType:
         if not hasattr(self.span, "attributes"):
             self.logger.debug(
                 "[LaminarSpan.laminar_association_properties] WARNING. Current span " +
@@ -260,16 +263,19 @@ class LaminarSpanInterfaceMixin:
             )
             return {}
         try:
-            values = {}
+            values: MetadataType = {}
             for key, value in (self.span.attributes or {}).items():
                 if key.startswith(f"{ASSOCIATION_PROPERTIES}."):
                     if key.startswith(f"{ASSOCIATION_PROPERTIES}.metadata."):
                         meta_key = key.replace(
                             f"{ASSOCIATION_PROPERTIES}.metadata.", ""
                         )
-                        try:
-                            values[meta_key] = orjson.loads(value)
-                        except Exception:
+                        if isinstance(value, (bytes, str, bytearray)):
+                            try:
+                                values[meta_key] = orjson.loads(value)
+                            except Exception:
+                                values[meta_key] = value
+                        else:
                             values[meta_key] = value
                     else:
                         values[key] = value
@@ -281,12 +287,13 @@ class LaminarSpanInterfaceMixin:
 class SpanDelegationMixin:
     """Mixin providing delegation to the wrapped SDK span for standard OpenTelemetry methods."""
 
-    span: SDKSpan
+    # Provided by the concrete class that mixes this in (e.g. LaminarSpan.__init__).
+    span: SDKSpan  # pyright: ignore[reportUninitializedInstanceVariable]
 
     def get_span_context(self) -> SpanContext:
         return self.span.get_span_context()
 
-    def set_attributes(self, attributes: dict[str, AttributeValue]) -> None:
+    def set_attributes(self, attributes: Mapping[str, AttributeValue]) -> None:
         self.span.set_attributes(attributes)
 
     def set_attribute(self, key: str, value: AttributeValue) -> None:
@@ -295,13 +302,13 @@ class SpanDelegationMixin:
     def add_event(
         self,
         name: str,
-        attributes: dict[str, AttributeValue] = None,
+        attributes: Attributes = None,
         timestamp: int | None = None,
     ) -> None:
         self.span.add_event(name, attributes, timestamp)
 
     def add_link(
-        self, context: SpanContext, attributes: dict[str, AttributeValue] = None
+        self, context: SpanContext, attributes: Attributes = None,
     ) -> None:
         self.span.add_link(context, attributes)
 
@@ -311,27 +318,24 @@ class SpanDelegationMixin:
     def is_recording(self) -> bool:
         return self.span.is_recording()
 
-    def set_status(self, status: Status, description: str | None = None) -> None:
+    def set_status(self, status: Status | StatusCode, description: str | None = None) -> None:
         self.span.set_status(status, description)
 
     def record_exception(
         self,
         exception: BaseException,
-        attributes: dict[str, AttributeValue] | None = None,
+        attributes: Attributes | None = None,
         timestamp: int | None = None,
         escaped: bool = False,
     ) -> None:
         self.span.record_exception(exception, attributes, timestamp, escaped)
-
-    def _readable_span(self) -> ReadableSpan:
-        return self.span._readable_span()
 
     @property
     def name(self) -> str:
         return self.span.name
 
     @property
-    def context(self) -> SpanContext:
+    def context(self) -> SpanContext | None:
         return self.span.context
 
     @property
@@ -379,15 +383,16 @@ class SpanDelegationMixin:
         return self.span.resource
 
     @property
-    def instrumentation_scope(self) -> InstrumentationScope:
+    def instrumentation_scope(self) -> InstrumentationScope | None:
         return self.span.instrumentation_scope
 
     @property
-    def instrumentation_info(self) -> InstrumentationInfo:
-        return self.span.instrumentation_info
+    def instrumentation_info(self) -> InstrumentationInfo | None:
+        # added deliberately for backwards-compat
+        return self.span.instrumentation_info  # pyright: ignore[reportDeprecated]
 
-    def to_json(self) -> str:
-        return self.span.to_json()
+    def to_json(self, indent: int | None = 4) -> str:
+        return self.span.to_json(indent)
 
 
 class LaminarSpan(LaminarSpanInterfaceMixin, SpanDelegationMixin, Span, ReadableSpan):
@@ -408,9 +413,11 @@ class LaminarSpan(LaminarSpanInterfaceMixin, SpanDelegationMixin, Span, Readable
     def __init__(self, span: SDKSpan):
         if isinstance(span, LaminarSpan):
             span = span.span
-        self.logger = get_default_logger(__name__)
+        self.logger: Logger = get_default_logger(__name__)
         self.span = span
+        super(ReadableSpan, self).__init__()
 
+    @override
     def end(self, end_time: int | None = None) -> None:
         self.span.end(end_time)
         if self.lmnr_ctx_token is not None and not self._popped:
@@ -421,8 +428,7 @@ class LaminarSpan(LaminarSpanInterfaceMixin, SpanDelegationMixin, Span, Readable
                 except Exception:
                     current_task = None
                 if id(current_task) == self.lmnr_task_id:
-                    if self.lmnr_ctx_token is not None:
-                        detach(self.lmnr_ctx_token)
+                    detach(self.lmnr_ctx_token)
                 else:
                     self.logger.debug(
                         "Not detaching global context, not in the same context"
@@ -438,10 +444,12 @@ class LaminarSpan(LaminarSpanInterfaceMixin, SpanDelegationMixin, Span, Readable
                     "Failed to detach association properties context", exc_info=True
                 )
 
-    def __enter__(self) -> Self:
+    @override
+    def __enter__(self) -> Self:  # pyright: ignore[reportMissingSuperCall]
         return self
 
-    def __exit__(
+    @override
+    def __exit__(  # pyright: ignore[reportMissingSuperCall]
         self,
         exc_type: type[BaseException] | None,
         exc_value: BaseException | None,

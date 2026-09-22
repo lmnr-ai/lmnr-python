@@ -61,13 +61,13 @@ def test_force_reinit_shuts_down_old_processor_before_reinit_exporter(
     operation_order = []
 
     # Patch the exporter's _init_instance to track when it's called
-    original_init = processor.exporter._init_instance
+    original_init = processor.exporter.init_instance
 
     def tracked_init():
         operation_order.append("exporter_reinit")
         return original_init()
 
-    processor.exporter._init_instance = tracked_init
+    processor.exporter.init_instance = tracked_init
 
     # Patch the processor instance's shutdown to track when it's called
     original_shutdown = processor.instance.shutdown

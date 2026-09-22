@@ -1,10 +1,11 @@
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import cast
+from typing import Any, cast
 
 from opentelemetry import trace
 from opentelemetry.context import Context
 from opentelemetry.sdk.trace import Span as SDKSpan
+from typing_extensions import override
 
 from lmnr.opentelemetry_lib.tracing import TRACER_NAME, get_tracer_wrapper
 from lmnr.opentelemetry_lib.tracing.context import (
@@ -39,7 +40,7 @@ def get_tracer(flush_on_exit: bool = False) -> Generator[trace.Tracer, None, Non
         if flush_on_exit:
             wrapper = get_tracer_wrapper()
             if wrapper is not None:
-                wrapper.flush()
+                _flush_success = wrapper.flush()
 
 
 @contextmanager
@@ -53,7 +54,7 @@ def get_tracer_with_context(
         if flush_on_exit:
             wrapper = get_tracer_wrapper()
             if wrapper is not None:
-                wrapper.flush()
+                _flush_success = wrapper.flush()
 
 
 class LaminarTracer(trace.Tracer):
@@ -62,14 +63,15 @@ class LaminarTracer(trace.Tracer):
     def __init__(self, instance: trace.Tracer):
         self._instance = instance
 
-    def start_span(self, *args, **kwargs) -> trace.Span:
-        span = self._instance.start_span(*args, **kwargs)
+    @override
+    def start_span(self, *args: Any, **kwargs: Any) -> trace.Span:  # pyright: ignore[reportExplicitAny, reportAny]
+        span = self._instance.start_span(*args, **kwargs)  # pyright: ignore[reportAny]
         return LaminarSpan(cast(SDKSpan, span))
 
     @contextmanager
-    def start_as_current_span(self, *args, **kwargs) -> Generator[trace.Span]:  # pyright: ignore[reportIncompatibleMethodOverride]
-        with self._instance.start_as_current_span(*args, **kwargs) as span:
-            push_span(span)
+    def start_as_current_span(self, *args: Any, **kwargs: Any) -> Generator[trace.Span]:  # pyright: ignore[reportIncompatibleMethodOverride, reportExplicitAny, reportAny]
+        with self._instance.start_as_current_span(*args, **kwargs) as span:  # pyright: ignore[reportAny]
+            _new_context = push_span(span)
             try:
                 yield LaminarSpan(cast(SDKSpan, span))
             finally:

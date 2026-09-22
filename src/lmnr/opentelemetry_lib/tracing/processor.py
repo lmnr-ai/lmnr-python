@@ -1,6 +1,7 @@
 import logging
 import threading
 import uuid
+from typing import Any, cast
 
 from opentelemetry.context import Context, get_value
 from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor
@@ -9,6 +10,8 @@ from opentelemetry.sdk.trace.export import (
     SimpleSpanProcessor,
     SpanExporter,
 )
+from opentelemetry.util.types import AttributeValue
+from typing_extensions import override
 
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
@@ -36,6 +39,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
 )
 from lmnr.opentelemetry_lib.tracing.exporter import LaminarSpanExporter
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.types import MetadataType
 from lmnr.sdk.utils import from_env, is_otel_attribute_value_type, json_dumps
 from lmnr.version import PYTHON_VERSION, __version__
 
@@ -57,8 +61,8 @@ def _replay_active() -> bool:
 class LaminarSpanProcessor(SpanProcessor):
     instance: BatchSpanProcessor | SimpleSpanProcessor
     logger: logging.Logger
-    __span_id_to_path: dict[int, list[str]] = {}
-    __span_id_lists: dict[int, list[str]] = {}
+    __span_id_to_path: dict[int, list[str]]
+    __span_id_lists: dict[int, list[str]]
     max_export_batch_size: int
     max_export_batch_size_bytes: int
     flush_by_size: bool
@@ -90,7 +94,7 @@ class LaminarSpanProcessor(SpanProcessor):
         )
         self.flush_by_size = flush_by_size
         port = http_port if force_http else grpc_port
-        self.exporter = exporter or LaminarSpanExporter(
+        self.exporter: SpanExporter = exporter or LaminarSpanExporter(
             base_url=base_url,
             port=port,
             api_key=api_key,
@@ -102,6 +106,8 @@ class LaminarSpanProcessor(SpanProcessor):
             if disable_batch
             else self._new_batch_processor()
         )
+        self.__span_id_to_path = {}
+        self.__span_id_lists = {}
 
     def _new_batch_processor(self) -> BatchSpanProcessor:
         if self.flush_by_size:
@@ -114,6 +120,7 @@ class LaminarSpanProcessor(SpanProcessor):
             self.exporter, max_export_batch_size=self.max_export_batch_size
         )
 
+    @override
     def on_start(self, span: Span, parent_context: Context | None = None):
         is_disabled = (
             from_env("LMNR_DISABLE_TRACING") or "false"
@@ -123,11 +130,11 @@ class LaminarSpanProcessor(SpanProcessor):
             span.set_attribute("lmnr.internal.disabled", True)
 
         with self._paths_lock:
-            parent_span_path = list(span.attributes.get(PARENT_SPAN_PATH, tuple())) or (
+            parent_span_path = list(cast(tuple[str], (span.attributes or {}).get(PARENT_SPAN_PATH, ()))) or (
                 self.__span_id_to_path.get(span.parent.span_id) if span.parent else None
             )
             parent_span_ids_path = list(
-                span.attributes.get(PARENT_SPAN_IDS_PATH, tuple())
+                cast(tuple[str], (span.attributes or {}).get(PARENT_SPAN_IDS_PATH, ()))
             ) or (
                 self.__span_id_lists.get(span.parent.span_id, []) if span.parent else []
             )
@@ -148,7 +155,7 @@ class LaminarSpanProcessor(SpanProcessor):
                 else [span_name_in_path]
             )
             span_context = span.get_span_context()
-            if span_context is None:
+            if span_context is None:  # pyright: ignore[reportUnnecessaryComparison]
                 raise ValueError("Improperly setup span, no span_context")
             span_ids_path = parent_span_ids_path + [
                 str(uuid.UUID(int=span_context.span_id))
@@ -173,53 +180,54 @@ class LaminarSpanProcessor(SpanProcessor):
         span.set_attribute(SPAN_LANGUAGE_VERSION, f"python@{PYTHON_VERSION}")
 
         if parent_context:
-            trace_type = get_value(CONTEXT_TRACE_TYPE_KEY, parent_context)
+            trace_type = cast(str, get_value(CONTEXT_TRACE_TYPE_KEY, parent_context))
             if trace_type:
                 span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{TRACE_TYPE}", trace_type)
-            user_id = get_value(CONTEXT_USER_ID_KEY, parent_context)
+            user_id = cast(str, get_value(CONTEXT_USER_ID_KEY, parent_context))
             if user_id:
                 span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{USER_ID}", user_id)
-            session_id = get_value(CONTEXT_SESSION_ID_KEY, parent_context)
+            session_id = cast(str, get_value(CONTEXT_SESSION_ID_KEY, parent_context))
             if session_id:
                 span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}", session_id)
             ctx_metadata = get_value(CONTEXT_METADATA_KEY, parent_context)
             if ctx_metadata and isinstance(ctx_metadata, dict):
-                span_metadata = {}
+                span_metadata: dict[str, AttributeValue] = {}
                 if hasattr(span, "attributes") and hasattr(span.attributes, "items"):
-                    for key, value in span.attributes.items():
+                    for key, value in (span.attributes or {}).items():
                         if key.startswith(f"{ASSOCIATION_PROPERTIES}.metadata."):
                             span_metadata[
                                 key.replace(f"{ASSOCIATION_PROPERTIES}.metadata.", "")
                             ] = value
 
-                for key, value in {**ctx_metadata, **span_metadata}.items():
+                for key, value in {**(cast(MetadataType, ctx_metadata)), **span_metadata}.items():
                     span.set_attribute(
                         f"{ASSOCIATION_PROPERTIES}.metadata.{key}",
                         (
-                            value
+                            value  # pyright: ignore[reportArgumentType]
                             if is_otel_attribute_value_type(value)
                             else json_dumps(value)
                         ),
                     )
 
         if span.name == "LangGraph.workflow":
-            graph_context = get_value("lmnr.langgraph.graph") or {}
-            for key, value in graph_context.items():
-                span.set_attribute(f"lmnr.association.properties.{key}", value)
+            graph_context = cast(dict[Any, Any], get_value("lmnr.langgraph.graph")) or {}  # pyright: ignore[reportExplicitAny]
+            for key, value in graph_context.items():  # pyright: ignore[reportAny]
+                span.set_attribute(f"lmnr.association.properties.{key}", value)  # pyright: ignore[reportAny]
 
         with self._instance_lock:
             self.instance.on_start(span, parent_context)
 
+    @override
     def on_end(self, span: ReadableSpan):
         span_context = span.get_span_context()
         if span_context is not None:
             with self._paths_lock:
                 try:
-                    self.__span_id_lists.pop(span_context.span_id)
+                    _popped = self.__span_id_lists.pop(span_context.span_id)
                 except KeyError:
                     pass
                 try:
-                    self.__span_id_to_path.pop(span_context.span_id)
+                    _popped = self.__span_id_to_path.pop(span_context.span_id)
                 except KeyError:
                     pass
         if (from_env("LMNR_DISABLE_TRACING") or "false").lower().strip() == "true" or (
@@ -242,21 +250,22 @@ class LaminarSpanProcessor(SpanProcessor):
             if runtime is None:
                 return
             span_context = span.get_span_context()
-            if span_context is not None:
+            if span_context is not None:  # pyright: ignore[reportUnnecessaryComparison]
                 runtime.record_trace_id(str(uuid.UUID(int=span_context.trace_id)))
         except Exception as e:
             self.logger.debug(f"Failed to record debug trace id: {e}")
 
+    @override
     def force_flush(self, timeout_millis: int = 30000) -> bool:
         with self._instance_lock:
             return self.instance.force_flush(timeout_millis)
 
-    def force_reinit(self):
+    def force_reinit(self) -> bool:
         if not isinstance(self.exporter, LaminarSpanExporter):
             self.logger.warning(
                 "LaminarSpanProcessor is not using LaminarSpanExporter, cannot force reinit"
             )
-            return
+            return False
 
         with self._instance_lock:
             old_instance = self.instance
@@ -272,7 +281,7 @@ class LaminarSpanProcessor(SpanProcessor):
 
             # reinitialize the exporter
             # This is thread-safe as it has its own locking
-            self.exporter._init_instance()
+            self.exporter.init_instance()
 
             # Create new processor with fresh exporter
             self.instance = (
@@ -283,7 +292,9 @@ class LaminarSpanProcessor(SpanProcessor):
             # Force reinit protocol is a clear state, so clear
             # any remaining internal state
             self.clear()
+        return True
 
+    @override
     def shutdown(self):
         with self._instance_lock:
             self.instance.shutdown()

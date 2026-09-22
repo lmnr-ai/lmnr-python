@@ -2,15 +2,19 @@ import logging
 import os
 import threading
 import weakref
+from collections.abc import Callable
+from typing import Any
 
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter
-from opentelemetry.util.types import AttributeValue
+from opentelemetry.trace.status import StatusCode
+from opentelemetry.util.types import Attributes, AttributeValue
+from typing_extensions import override
 
 logger = logging.getLogger(__name__)
 
 
-def _call_if_alive(weak_method: weakref.WeakMethod) -> None:
+def _call_if_alive(weak_method: weakref.WeakMethod[Callable[..., None]]) -> None:
     """Call a weakly-referenced bound method if its object still exists.
 
     `os.register_at_fork` handlers cannot be unregistered, so they must not keep
@@ -75,7 +79,7 @@ def _value_size(value: AttributeValue) -> int:
     return _FIXED_ATTRIBUTE_VALUE_SIZE
 
 
-def _attributes_size(attributes) -> int:
+def _attributes_size(attributes: Attributes) -> int:
     if not attributes:
         return 0
     return sum(utf8_size(key) + _value_size(value) for key, value in attributes.items())
@@ -97,7 +101,7 @@ def approximate_span_size(span: ReadableSpan) -> int:
         total += utf8_size(event.name or "") + _attributes_size(event.attributes)
     for link in span.links or ():
         total += _attributes_size(link.attributes)
-    if span.status is not None and span.status.description:
+    if span.status.status_code != StatusCode.UNSET and span.status.description:  # span.status != Status.UNSET
         total += utf8_size(span.status.description)
     return total
 
@@ -139,23 +143,23 @@ class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
         self,
         span_exporter: SpanExporter,
         max_export_batch_size_bytes: int | None = None,
-        **kwargs,
+        **kwargs: Any,  # pyright: ignore[reportAny, reportExplicitAny]
     ):
-        super().__init__(span_exporter, **kwargs)
-        self._max_export_batch_size_bytes = (
+        super().__init__(span_exporter, **kwargs)  # pyright: ignore[reportAny]
+        self._max_export_batch_size_bytes: int = (
             max_export_batch_size_bytes or DEFAULT_MAX_EXPORT_BATCH_SIZE_BYTES
         )
-        self._pending_size_bytes = 0
-        self._pending_size_lock = threading.Lock()
+        self._pending_size_bytes: int = 0
+        self._pending_size_lock: threading.Lock = threading.Lock()
 
         # Set by on_end to request a flush; cleared by the flush thread once it
         # has one in progress. An Event rather than a queue because requests
         # coalesce: two triggers arriving before the thread wakes need one
         # flush, not two.
-        self._flush_requested = threading.Event()
-        self._flush_shutdown = False
+        self._flush_requested: threading.Event = threading.Event()
+        self._flush_shutdown: bool = False
         self._flush_thread: threading.Thread | None = None
-        self._flush_thread_lock = threading.Lock()
+        self._flush_thread_lock: threading.Lock = threading.Lock()
         self._flush_thread_pid: int | None = None
         self._start_flush_thread()
         if hasattr(os, "register_at_fork"):
@@ -208,7 +212,7 @@ class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
 
     def _flush_loop(self) -> None:
         while True:
-            self._flush_requested.wait()
+            _not_timed_out = self._flush_requested.wait()
             if self._flush_shutdown:
                 return
             # Clear before flushing, not after: a span ended *during* the export
@@ -216,12 +220,13 @@ class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
             # flush. Clearing afterwards would swallow that request.
             self._flush_requested.clear()
             try:
-                self.force_flush()
+                _flush_success = self.force_flush()
             except Exception:
                 # A failed export must not kill the thread — that would silently
                 # disable the byte limit for the rest of the process.
                 logger.debug("Size-triggered span flush failed", exc_info=True)
 
+    @override
     def on_end(self, span: ReadableSpan) -> None:
         if not (span.context and span.context.trace_flags.sampled):
             return
@@ -279,12 +284,13 @@ class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
             #    literally incompressible.
             oversized = size * 2 >= self._max_export_batch_size_bytes
             if self._flush_requested.is_set() or oversized:
-                self.force_flush()
+                _flush_success = self.force_flush()
             else:
                 self._flush_requested.set()
 
         super().on_end(span)
 
+    @override
     def shutdown(self) -> None:
         """Stop the flush thread, then hand off to upstream's shutdown.
 
