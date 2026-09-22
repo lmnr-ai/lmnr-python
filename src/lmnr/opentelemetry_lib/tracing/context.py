@@ -86,9 +86,8 @@ class IsolatedContextVarsRuntimeContext(_IsolatedRuntimeContext):
 _ISOLATED_RUNTIME_CONTEXT = IsolatedContextVarsRuntimeContext()
 
 # Token stack for push/pop API compatibility - much lighter than copying contexts
-_isolated_token_stack: ContextVar[list[Token[Context]]] = ContextVar(
-    "isolated_token_stack", default=[]
-)
+_isolated_token_stack: ContextVar[list[Token[Context]]] = ContextVar("isolated_token_stack")
+_set_token = _isolated_token_stack.set([])
 
 # Thread-local storage for threading support
 _isolated_token_stack_storage = threading.local()
