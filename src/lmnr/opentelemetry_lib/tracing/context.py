@@ -48,14 +48,19 @@ class _IsolatedRuntimeContext(ABC):
         """
 
 
+# OTel's Context is immutable, so sharing one instance as the default is safe.
+_EMPTY_CONTEXT = Context()
+
+
 class IsolatedContextVarsRuntimeContext(_IsolatedRuntimeContext):
     """An isolated implementation of the RuntimeContext interface which wraps ContextVar
     but uses its own ContextVar instead of the global one.
     """
 
     def __init__(self) -> None:
-        self._current_context: ContextVar[Context] = ContextVar("isolated_current_context")
-        _set_token = self._current_context.set(Context())
+        self._current_context: ContextVar[Context] = ContextVar(
+            "isolated_current_context", default=_EMPTY_CONTEXT
+        )
 
     @override
     def attach(self, context: Context) -> Token[Context]:
@@ -85,33 +90,24 @@ class IsolatedContextVarsRuntimeContext(_IsolatedRuntimeContext):
 # Create the isolated runtime context
 _ISOLATED_RUNTIME_CONTEXT = IsolatedContextVarsRuntimeContext()
 
-# Token stack for push/pop API compatibility - much lighter than copying contexts
-_isolated_token_stack: ContextVar[list[Token[Context]]] = ContextVar("isolated_token_stack")
-_set_token = _isolated_token_stack.set([])
-
-# Thread-local storage for threading support
-_isolated_token_stack_storage = threading.local()
+# Token stack for push/pop API compatibility - much lighter than copying contexts.
+# A tuple so the shared default is immutable; push/pop replace it wholesale.
+_isolated_token_stack: ContextVar[tuple[Token[Context], ...]] = ContextVar(
+    "isolated_token_stack", default=()
+)
 
 # ContextVar to track if we're in a LiteLLM context
 _in_litellm_context: ContextVar[bool] = ContextVar("in_litellm_context", default=False)
 
 
-def get_token_stack() -> list[Token[Context]]:
-    """Get the token stack, supporting both asyncio and threading."""
-    try:
-        return _isolated_token_stack.get()
-    except LookupError:
-        if not hasattr(_isolated_token_stack_storage, "token_stack"):
-            _isolated_token_stack_storage.token_stack = []
-        return _isolated_token_stack_storage.token_stack  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
+def get_token_stack() -> tuple[Token[Context], ...]:
+    """Get the token stack."""
+    return _isolated_token_stack.get()
 
 
-def set_token_stack(stack: list[Token[Context]]) -> None:
-    """Set the token stack, supporting both asyncio and threading."""
-    try:
-        _set_token = _isolated_token_stack.set(stack)
-    except LookupError:
-        _isolated_token_stack_storage.token_stack = stack
+def set_token_stack(stack: tuple[Token[Context], ...]) -> None:
+    """Set the token stack."""
+    _set_token = _isolated_token_stack.set(stack)
 
 
 def get_current_context() -> Context:
@@ -173,19 +169,16 @@ def set_association_prop_context(
 
 def pop_span_context() -> None:
     """Pop the current span context from the stack."""
-    current_stack = get_token_stack().copy()
+    current_stack = get_token_stack()
     if current_stack:
-        token = current_stack.pop()
-        set_token_stack(current_stack)
-        detach_context(token)
+        set_token_stack(current_stack[:-1])
+        detach_context(current_stack[-1])
 
 
 def push_span_context(context: Context) -> None:
     """Push a new span context onto the stack."""
     token = attach_context(context)
-    token_stack = get_token_stack().copy()
-    token_stack.append(token)
-    set_token_stack(token_stack)
+    set_token_stack(get_token_stack() + (token,))
 
 
 def push_span(span: trace.Span, from_ctx: Context | None = None) -> Context:
@@ -206,19 +199,12 @@ def clear_context() -> None:
     actively being processed, as it will reset all context state.
     """
     # Clear the token stack first
-    try:
-        _set_token = _isolated_token_stack.set([])
-    except LookupError:
-        pass
-
-    # Clear thread-local storage if it exists
-    if hasattr(_isolated_token_stack_storage, "token_stack"):
-        _isolated_token_stack_storage.token_stack = []
+    _set_token = _isolated_token_stack.set(())
 
     # Reset the context to a fresh empty context
     # This doesn't require manually detaching tokens since we're
     # intentionally resetting everything to a clean state
-    _set_token = _ISOLATED_RUNTIME_CONTEXT._current_context.set(Context())  # pyright: ignore[reportPrivateUsage] same file
+    _set_token = _ISOLATED_RUNTIME_CONTEXT._current_context.set(_EMPTY_CONTEXT)  # pyright: ignore[reportPrivateUsage] same file
 
 
 def is_in_litellm_context() -> bool:
@@ -257,7 +243,7 @@ def setup_thread_context_inheritance() -> None:
     def patched_thread_init(thread_self: threading.Thread, *args: Any, **kwargs: Any):  # pyright: ignore[reportExplicitAny, reportAny]
         # Capture current isolated context and token stack for inheritance
         current_context = get_current_context()
-        current_token_stack = get_token_stack().copy()
+        current_token_stack = get_token_stack()
 
         # Get the original target function
         original_target = kwargs.get("target")
