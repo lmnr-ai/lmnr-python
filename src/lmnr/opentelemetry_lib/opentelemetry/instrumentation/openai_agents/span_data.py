@@ -207,6 +207,12 @@ def _apply_mcp_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     result = data.get("result")
     if result is not None:
         lmnr_span.set_attribute("openai.agents.mcp.result", json_dumps(result))
+    # Every other handler here sets span I/O and the trace view renders only
+    # that, so without this an mcp_list_tools span looks empty even though the
+    # server name and the tool list it returned are both right there.
+    set_lmnr_span_io(
+        lmnr_span, {"server": server} if server else None, result
+    )
 
 
 def _apply_speech_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:

@@ -108,6 +108,13 @@ lmnr datasets pull <id>       # Pull dataset
 - **Tests use VCR.py** to record/replay HTTP responses in `tests/cassettes/`
 - **Tests use InMemorySpanExporter** configured in `tests/conftest.py` for span assertions
 
+## OpenAI Agents instrumentation (`instrumentation/openai_agents/`)
+
+- **A custom `openai.agents.*` attribute is NOT visible in the trace view.** The span view renders `lmnr.span.input` / `lmnr.span.output` (what `set_lmnr_span_io` writes) and the `gen_ai.*` message attributes; anything else is inspectable only by querying `attributes` in SQL. `_apply_mcp_span_data` set `openai.agents.mcp.server` / `.result` and nothing else, so every `mcp_list_tools` span rendered EMPTY while holding the full tool list — the failure mode looks like broken instrumentation but is a missing `set_lmnr_span_io` call. Any new `_apply_*_span_data` handler needs one too.
+- **`mcp_tools` spans are emitted once per turn even with `cache_tools_list=True`** — `MCPUtil.get_function_tools` opens the span around `server.list_tools()`, which checks the cache internally. Measured on a 15-turn run: first span 11ms (real round trip), the other 14 ~0.3ms. A pile of these is expected, not a caching bug.
+- **The first turn's `mcp_tools` span parents to the TRACE ROOT, not to the agent span.** `agents/run.py` calls `get_all_tools()` before it creates/starts `agent_span(...)`, and only creates the agent span `if current_span is None`. So one sibling-of-the-agent `mcp_tools` span per run is upstream SDK ordering, not a parenting bug in the processor.
+- **Tool definitions (`gen_ai.tool.definitions`) exist only on the Responses path.** `_apply_response_span_data` calls `set_tool_definitions_from_response`; `_apply_generation_span_data` (chat completions) does not. Switching a harness to chat completions silently drops them while the rest of the trace still looks correct.
+
 ## Span batching / export
 
 - **`LaminarSpanProcessor` is a `SpanProcessor` wrapper, not a batcher.** It owns the path bookkeeping + attribute stamping and delegates the actual buffering to `self.instance`: `SimpleSpanProcessor` when `disable_batch=True`, `SizeLimitedBatchSpanProcessor` when `flush_by_size=True`, and the plain upstream `BatchSpanProcessor` otherwise. `disable_batch` wins over `flush_by_size`. Both construction sites (`__init__` and `force_reinit`) go through `_new_batch_processor()` so the two must never drift — `force_reinit` silently dropping a limit *or switching transports* is the failure mode this centralization prevents.
