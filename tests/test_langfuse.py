@@ -39,7 +39,8 @@ logging.getLogger("opentelemetry.exporter.otlp.proto.http").setLevel(logging.CRI
 from lmnr import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
     LangfuseAttributeTranslator,
-    _is_langfuse_span,
+    LangfuseInstrumentor,
+    is_langfuse_span,
     get_langfuse_instrumentor,
 )
 from lmnr.opentelemetry_lib.tracing import get_tracer_wrapper
@@ -360,7 +361,7 @@ def test_is_langfuse_span_detects_attrs_without_scope():
     attribute check rather than short-circuiting on a None scope."""
     span = _FakeSpan({"langfuse.observation.type": "generation"})
     span.instrumentation_scope = None
-    assert _is_langfuse_span(span) is True
+    assert is_langfuse_span(span) is True
 
 
 def test_translator_maps_generation_to_llm_span():
@@ -1108,7 +1109,7 @@ def test_connect_to_langfuse_returns_false_on_install_failure(monkeypatch):
     def failing_prepend(provider, processor):  # noqa: ARG001
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(lf, "_prepend_span_processor", failing_prepend)
+    monkeypatch.setattr(lf, "prepend_span_processor", failing_prepend)
 
     assert Laminar.connect_to_langfuse() is False
     assert get_langfuse_instrumentor().is_instrumented_by_opentelemetry is False
@@ -1433,6 +1434,52 @@ def test_uninstrument_removes_translator_and_clears_state(span_exporter):
     assert count_translators() == baseline_translators
 
 
+def test_stray_reconstruction_does_not_wipe_live_state(span_exporter):
+    """Regression: `BaseInstrumentor.__new__` caches a single instance per
+    class, but Python still calls `__init__` on that cached instance every
+    time `LangfuseInstrumentor()` is invoked. A stray direct construction
+    (bypassing `get_langfuse_instrumentor()`) after the bridge is already
+    installed must NOT reset `_translator` / `_provider_attachment` /
+    `_litellm_bridge` to `None` while `is_instrumented_by_opentelemetry`
+    stays `True` — that would make `instrument()` no-op (already
+    instrumented), `rebind()` report success without anything to rebind, and
+    `_teardown()` unable to find what to detach.
+    """
+    from langfuse._client.resource_manager import LangfuseResourceManager
+
+    LangfuseResourceManager._instances.clear()
+    wrapper = get_tracer_wrapper()
+    lmnr_provider = wrapper.tracer_provider
+
+    _reset_langfuse_bridge()
+
+    instrumentor = get_langfuse_instrumentor()
+    instrumentor.instrument(
+        lmnr_tracer_provider=lmnr_provider,
+        lmnr_span_processor=wrapper.span_processor,
+    )
+    assert instrumentor.is_instrumented_by_opentelemetry is True
+    live_translator = instrumentor._translator
+    live_provider_attachment = instrumentor._provider_attachment
+    live_litellm_bridge = instrumentor._litellm_bridge
+    assert live_translator is not None
+    assert live_provider_attachment is not None
+    assert live_litellm_bridge is not None
+
+    # A stray direct construction must be the SAME instance and must NOT
+    # clobber the state set up by `instrument()`.
+    same_instance = LangfuseInstrumentor()
+    assert same_instance is instrumentor
+    assert same_instance.is_instrumented_by_opentelemetry is True
+    assert same_instance._translator is live_translator
+    assert same_instance._provider_attachment is live_provider_attachment
+    assert same_instance._litellm_bridge is live_litellm_bridge
+
+    instrumentor.uninstrument()
+    assert instrumentor.is_instrumented_by_opentelemetry is False
+    assert instrumentor._translator is None
+
+
 def test_uninstrument_detaches_processors_from_langfuse_providers(span_exporter):
     """Regression: after `uninstrument`, every provider we previously attached
     the translator / Laminar span processor to must lose those processors.
@@ -1721,18 +1768,18 @@ def test_is_llm_span_detects_llm_parents():
     NOT mistake a plain `@observe` root for one (so the bridge forces a
     `litellm_request` span there)."""
     from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
-        _is_llm_span,
+        is_llm_span,
     )
 
-    assert _is_llm_span(_FakeSpan({SPAN_TYPE: "LLM"}))
-    assert _is_llm_span(_FakeSpan({"openinference.span.kind": "LLM"}))
-    assert _is_llm_span(_FakeSpan({"gen_ai.request.model": "gpt-4o"}))
-    assert _is_llm_span(_FakeSpan({"gen_ai.response.model": "gpt-4o"}))
-    assert _is_llm_span(_FakeSpan({"gen_ai.system": "openai"}))
+    assert is_llm_span(_FakeSpan({SPAN_TYPE: "LLM"}))
+    assert is_llm_span(_FakeSpan({"openinference.span.kind": "LLM"}))
+    assert is_llm_span(_FakeSpan({"gen_ai.request.model": "gpt-4o"}))
+    assert is_llm_span(_FakeSpan({"gen_ai.response.model": "gpt-4o"}))
+    assert is_llm_span(_FakeSpan({"gen_ai.system": "openai"}))
     # A plain root / tool span must NOT read as LLM.
-    assert not _is_llm_span(_FakeSpan({}))
-    assert not _is_llm_span(_FakeSpan({SPAN_TYPE: "DEFAULT"}))
-    assert not _is_llm_span(_FakeSpan({"langfuse.observation.type": "span"}))
+    assert not is_llm_span(_FakeSpan({}))
+    assert not is_llm_span(_FakeSpan({SPAN_TYPE: "DEFAULT"}))
+    assert not is_llm_span(_FakeSpan({"langfuse.observation.type": "span"}))
 
 
 @_litellm_required

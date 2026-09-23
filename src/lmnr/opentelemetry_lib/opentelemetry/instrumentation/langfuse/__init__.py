@@ -130,6 +130,19 @@ class LangfuseInstrumentor(BaseInstrumentor):
 
     def __init__(self) -> None:
         super().__init__()
+        # `BaseInstrumentor.__new__` caches and returns the same instance for
+        # every `LangfuseInstrumentor()` call, but Python still calls
+        # `__init__` on that cached instance every time. Without this guard,
+        # a stray direct construction (bypassing `get_langfuse_instrumentor()`)
+        # after the bridge is already installed would silently wipe
+        # `_translator` / `_provider_attachment` / `_litellm_bridge` while
+        # `is_instrumented_by_opentelemetry` stays True — `instrument()` then
+        # no-ops (already instrumented), `rebind()` reports success without
+        # anything to rebind, and `_teardown()` can no longer find what to
+        # detach. Only initialize state on the first real construction.
+        if getattr(self, "_state_initialized", False):
+            return
+        self._state_initialized: bool = True
         self._translator: LangfuseAttributeTranslator | None = None
         self._lmnr_span_processor: SpanProcessor | None = None
         self._lmnr_tracer_provider: SdkTracerProvider | None = None
