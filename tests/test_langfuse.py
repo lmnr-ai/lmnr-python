@@ -1434,6 +1434,7 @@ def test_uninstrument_removes_translator_and_clears_state(span_exporter):
     assert count_translators() == baseline_translators
 
 
+@_langfuse_sdk_required
 def test_stray_reconstruction_does_not_wipe_live_state(span_exporter):
     """Regression: `BaseInstrumentor.__new__` caches a single instance per
     class, but Python still calls `__init__` on that cached instance every
