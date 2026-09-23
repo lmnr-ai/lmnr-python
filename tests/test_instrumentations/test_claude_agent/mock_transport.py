@@ -183,4 +183,4 @@ class MockClaudeTransport(Transport):
             message = await self._message_queue.get()
             if message is self._sentinel:
                 break
-            yield message  # type: ignore[misc]
+            yield message

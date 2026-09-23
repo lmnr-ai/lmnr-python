@@ -10,7 +10,7 @@ from lmnr.sdk.log import get_default_logger
 try:
     from langchain.agents.middleware.types import AgentMiddleware
 except ImportError:  # pragma: no cover - guarded by the instrumentor
-    AgentMiddleware = object  # type: ignore[assignment,misc]
+    AgentMiddleware = object
 
 logger = get_default_logger(__name__)
 
@@ -63,7 +63,7 @@ def _tool_span_input(request: Any) -> Any:
     return None
 
 
-class LaminarMiddleware(AgentMiddleware):  # type: ignore[misc,valid-type]
+class LaminarMiddleware(AgentMiddleware):
     """Emits Laminar TOOL spans around every agent tool call.
 
     Injected automatically by `DeepagentsInstrumentor` into every agent
@@ -80,7 +80,7 @@ class LaminarMiddleware(AgentMiddleware):  # type: ignore[misc,valid-type]
     for the entire graph execution.
     """
 
-    def wrap_tool_call(  # type: ignore[override]
+    def wrap_tool_call(
         self,
         request: Any,
         handler: Callable[[Any], Any],
@@ -94,7 +94,7 @@ class LaminarMiddleware(AgentMiddleware):  # type: ignore[misc,valid-type]
             span.set_output(_tool_result_to_json(result))
             return result
 
-    async def awrap_tool_call(  # type: ignore[override]
+    async def awrap_tool_call(
         self,
         request: Any,
         handler: Callable[[Any], Awaitable[Any]],

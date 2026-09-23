@@ -1765,15 +1765,16 @@ class Laminar:
         """
         try:
             from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
-                LangfuseInstrumentor,
+                get_langfuse_instrumentor,
             )
 
-            if not LangfuseInstrumentor.installed:
+            instrumentor = get_langfuse_instrumentor()
+            if not instrumentor.is_instrumented_by_opentelemetry:
                 return False
             wrapper = get_tracer_wrapper()
             if wrapper is None:
                 return False
-            return LangfuseInstrumentor().rebind(
+            return instrumentor.rebind(
                 lmnr_tracer_provider=wrapper.tracer_provider,
                 lmnr_span_processor=wrapper.span_processor,
             )
@@ -1826,7 +1827,7 @@ class Laminar:
             )
             return False
         from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
-            LangfuseInstrumentor,
+            get_langfuse_instrumentor,
             langfuse_sdk_importable,
         )
 
@@ -1849,7 +1850,8 @@ class Laminar:
         wrapper = get_tracer_wrapper()
         if wrapper is None:
             return False
-        # `LangfuseInstrumentor.instrument()` re-raises after rollback if the
+        instrumentor = get_langfuse_instrumentor()
+        # `LangfuseInstrumentor._instrument()` re-raises after rollback if the
         # attach-to-existing / resource-manager-patch phase fails (e.g.
         # `RuntimeError` from concurrent modification of
         # `LangfuseResourceManager._instances`). This public helper is
@@ -1857,14 +1859,14 @@ class Laminar:
         # the failure as False — `uninstrument()` has already cleaned up
         # partial state by the time we get here.
         try:
-            LangfuseInstrumentor().instrument(
+            instrumentor.instrument(
                 lmnr_tracer_provider=wrapper.tracer_provider,
                 lmnr_span_processor=wrapper.span_processor,
             )
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("Failed to install Laminar/Langfuse bridge: %s", exc)
             return False
-        return LangfuseInstrumentor.installed
+        return instrumentor.is_instrumented_by_opentelemetry
 
     @classmethod
     def flush(cls) -> bool:

@@ -312,9 +312,11 @@ def init_instrumentations(
             instrumentor = initializer.init_instrumentor(async_client)
             if instrumentor is None:
                 continue
-            # LangfuseInstrumentor doesn't extend BaseInstrumentor; it needs
-            # access to the Laminar SpanProcessor so it can dual-attach that
-            # same processor onto Langfuse-owned TracerProviders.
+            # LangfuseInstrumentor is a real BaseInstrumentor, but unlike every
+            # other one here it needs an EXTRA kwarg — the Laminar
+            # SpanProcessor — so it can dual-attach that same processor onto
+            # Langfuse-owned TracerProviders (not just a tracer_provider /
+            # logger_provider).
             if instrument == Instruments.LANGFUSE:
                 if lmnr_span_processor is None:
                     module_logger.debug(

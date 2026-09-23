@@ -48,7 +48,7 @@ from concurrent import futures
 from typing import TYPE_CHECKING, Any, Callable, Collection
 
 from wrapt import (
-    wrap_function_wrapper,  # type: ignore[reportUnknownVariableType]
+    wrap_function_wrapper,
 )
 
 from lmnr.opentelemetry_lib.tracing.context import (
