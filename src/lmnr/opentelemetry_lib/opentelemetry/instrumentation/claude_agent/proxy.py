@@ -80,7 +80,7 @@ def create_proxy_for_transport() -> ProxyServer:
     port = _allocate_port()
     proxy = ProxyServer(port=port)
     # Store port for cleanup
-    proxy._allocated_port = port  # type: ignore
+    proxy._allocated_port = port
     return proxy
 
 
@@ -118,13 +118,13 @@ def start_proxy(proxy: ProxyServer, target_url: str, max_retries: int = 10) -> s
 
             # Release current port and allocate a new one
             if hasattr(proxy, "_allocated_port"):
-                _release_port(proxy._allocated_port)  # type: ignore
+                _release_port(proxy._allocated_port)
 
             # Allocate new port for next attempt
             if attempt < max_retries - 1:
                 new_port = _allocate_port()
                 proxy.port = new_port
-                proxy._allocated_port = new_port  # type: ignore
+                proxy._allocated_port = new_port
                 continue
             else:
                 # Last attempt failed
@@ -147,12 +147,12 @@ def start_proxy(proxy: ProxyServer, target_url: str, max_retries: int = 10) -> s
             finally:
                 # Release current port and allocate a new one
                 if hasattr(proxy, "_allocated_port"):
-                    _release_port(proxy._allocated_port)  # type: ignore
+                    _release_port(proxy._allocated_port)
 
             if attempt < max_retries - 1:
                 new_port = _allocate_port()
                 proxy.port = new_port
-                proxy._allocated_port = new_port  # type: ignore
+                proxy._allocated_port = new_port
                 continue
             else:
                 raise RuntimeError(
@@ -182,7 +182,7 @@ def stop_proxy(proxy: ProxyServer) -> None:
         logger.debug("Error stopping proxy on port %d: %s", port, e)
     finally:
         if hasattr(proxy, "_allocated_port"):
-            _release_port(proxy._allocated_port)  # type: ignore
+            _release_port(proxy._allocated_port)
 
 
 def publish_span_context_to_proxy(

@@ -16,7 +16,7 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
     USER_ID,
 )
 from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.types import MetadataMemberType, TraceType
+from lmnr.sdk.types import MetadataType, TraceType
 
 logger = get_default_logger(__name__)
 
@@ -150,7 +150,7 @@ def set_association_prop_context(
     session_id: str | None = None,
     trace_type: TraceType | None = None,
     context: Context | None = None,
-    metadata: dict[str, MetadataMemberType] | None = None,
+    metadata: MetadataType | None = None,
     attach: bool = True,
 ) -> Context:
     context = context or get_current_context()

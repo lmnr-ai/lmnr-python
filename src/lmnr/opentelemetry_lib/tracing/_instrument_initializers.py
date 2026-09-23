@@ -312,7 +312,7 @@ class LangchainInstrumentorInitializer(InstrumentorInitializer):
 
 class LangfuseInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any):  # pyright: ignore[reportAny, reportExplicitAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportAny, reportExplicitAny]
         if not is_package_installed("langfuse"):
             return None
 
@@ -351,9 +351,9 @@ class LangfuseInstrumentorInitializer(InstrumentorInitializer):
             )
             return None
 
-        from ..opentelemetry.instrumentation.langfuse import LangfuseInstrumentor
+        from ..opentelemetry.instrumentation.langfuse import get_langfuse_instrumentor
 
-        return LangfuseInstrumentor()
+        return get_langfuse_instrumentor()
 
 
 class LanggraphInstrumentorInitializer(InstrumentorInitializer):

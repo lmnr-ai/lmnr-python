@@ -349,7 +349,7 @@ async def _cleanup_transport_context(instance) -> None:
             # Must happen before background cleanup in case event loop shuts down
             proxy = context.get("proxy")
             if proxy and hasattr(proxy, "_allocated_port"):
-                _release_port(proxy._allocated_port)  # type: ignore
+                _release_port(proxy._allocated_port)
                 # Prevent double-release in stop_proxy
                 try:
                     delattr(proxy, "_allocated_port")

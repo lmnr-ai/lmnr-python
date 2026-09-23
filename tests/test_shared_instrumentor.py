@@ -34,7 +34,7 @@ def _spec(**overrides) -> WrappedFunctionSpec:
         is_async=False,
         wrapper_function=lambda *a, **k: None,
     )
-    base.update(overrides)  # type: ignore[typeddict-item]
+    base.update(overrides)
     return base
 
 
@@ -192,7 +192,7 @@ def test_safe_start_span_default_path_still_goes_through_laminar(span_exporter):
 
 def test_base_instrumentor_is_abstract():
     with pytest.raises(TypeError):
-        BaseLaminarInstrumentor()  # type: ignore[abstract]
+        BaseLaminarInstrumentor()
 
 
 def test_wrapper_kwargs_defaults_to_empty_and_reaches_the_wrapper():

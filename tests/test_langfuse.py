@@ -40,7 +40,8 @@ from lmnr import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
     LangfuseAttributeTranslator,
     LangfuseInstrumentor,
-    _is_langfuse_span,
+    is_langfuse_span,
+    get_langfuse_instrumentor,
 )
 from lmnr.opentelemetry_lib.tracing import get_tracer_wrapper
 from lmnr.opentelemetry_lib.tracing import instruments as instruments_mod
@@ -94,6 +95,33 @@ _langfuse_sdk_required = pytest.mark.skipif(
     reason="langfuse SDK cannot be imported on this interpreter "
     "(known pydantic v1 incompatibility on Python 3.14)",
 )
+
+
+def _reset_langfuse_bridge() -> None:
+    """Reset the `get_langfuse_instrumentor()` singleton to a clean,
+    uninstalled state.
+
+    Routes through the real `_teardown()` (detaches any processors it still
+    has attached, restores the resource-manager / LiteLLM-factory patches,
+    and drops `_provider_attachment` / `_litellm_bridge`), then clears the
+    `BaseInstrumentor`-owned instrumented flag directly — `_teardown()` only
+    covers the instance state this module introduced, not the flag
+    `instrument()`/`uninstrument()` manage. Safe to call regardless of
+    whether the bridge is currently installed (every step is a no-op on
+    already-clean state).
+    """
+    instrumentor = get_langfuse_instrumentor()
+    instrumentor._teardown()
+    instrumentor._is_instrumented_by_opentelemetry = False
+
+
+@pytest.fixture
+def reset_langfuse_bridge():
+    """Ensure the bridge singleton starts AND ends the test in a clean,
+    uninstalled state."""
+    _reset_langfuse_bridge()
+    yield
+    _reset_langfuse_bridge()
 
 
 # ---------------------------------------------------------------------------
@@ -333,7 +361,7 @@ def test_is_langfuse_span_detects_attrs_without_scope():
     attribute check rather than short-circuiting on a None scope."""
     span = _FakeSpan({"langfuse.observation.type": "generation"})
     span.instrumentation_scope = None
-    assert _is_langfuse_span(span) is True
+    assert is_langfuse_span(span) is True
 
 
 def test_translator_maps_generation_to_llm_span():
@@ -988,7 +1016,7 @@ def test_translator_mutates_before_synchronous_exporter():
     )
 
     from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
-        _prepend_span_processor,
+        prepend_span_processor,
     )
 
     exported: list[dict] = []
@@ -1008,7 +1036,7 @@ def test_translator_mutates_before_synchronous_exporter():
     # Install the translator AFTER the exporter (the real-world order) but
     # via `_prepend_span_processor`, which reorders it to the front.
     translator = LangfuseAttributeTranslator()
-    assert _prepend_span_processor(provider, translator) is True
+    assert prepend_span_processor(provider, translator) is True
 
     tracer = provider.get_tracer("langfuse-sdk")
     span = tracer.start_span(
@@ -1030,30 +1058,26 @@ def test_connect_to_langfuse_swallows_install_exceptions(monkeypatch):
     documents a `bool` return and callers should not have to wrap it in a
     try/except — so the helper must swallow the exception and return
     `False` on failure."""
-    from lmnr.opentelemetry_lib.opentelemetry.instrumentation import langfuse as lf
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse.provider_attachment import (
+        ProviderAttachment,
+    )
 
-    LangfuseInstrumentor.installed = False
-    LangfuseInstrumentor._handled_providers = set()
-    LangfuseInstrumentor._attached_providers = {}
-    LangfuseInstrumentor._translator = None
-    LangfuseInstrumentor._lmnr_span_processor = None
-    LangfuseInstrumentor._lmnr_tracer_provider = None
-    LangfuseInstrumentor._original_initialize_instance = None
+    _reset_langfuse_bridge()
 
     def exploding_attach(self):  # noqa: ARG001
         raise RuntimeError("simulated attach failure")
 
     monkeypatch.setattr(
-        lf.LangfuseInstrumentor,
-        "_attach_to_existing_langfuse_providers",
+        ProviderAttachment,
+        "attach_to_existing_langfuse_providers",
         exploding_attach,
     )
 
     # Must not raise.
     assert Laminar.connect_to_langfuse() is False
     # `instrument()`'s rollback path must have cleaned up, leaving
-    # `_installed=False`.
-    assert LangfuseInstrumentor.installed is False
+    # not instrumented.
+    assert get_langfuse_instrumentor().is_instrumented_by_opentelemetry is False
 
 
 def test_connect_to_langfuse_before_initialize_does_not_crash(monkeypatch):
@@ -1080,17 +1104,15 @@ def test_connect_to_langfuse_returns_false_on_install_failure(monkeypatch):
     as `False` — not claim success."""
     from lmnr.opentelemetry_lib.opentelemetry.instrumentation import langfuse as lf
 
-    LangfuseInstrumentor.installed = False
-    LangfuseInstrumentor._translator = None
-    LangfuseInstrumentor._original_initialize_instance = None
+    _reset_langfuse_bridge()
 
     def failing_prepend(provider, processor):  # noqa: ARG001
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(lf, "_prepend_span_processor", failing_prepend)
+    monkeypatch.setattr(lf, "prepend_span_processor", failing_prepend)
 
     assert Laminar.connect_to_langfuse() is False
-    assert LangfuseInstrumentor.installed is False
+    assert get_langfuse_instrumentor().is_instrumented_by_opentelemetry is False
 
 
 def test_connect_to_langfuse_returns_false_without_langfuse(monkeypatch):
@@ -1104,13 +1126,12 @@ def test_connect_to_langfuse_returns_false_without_langfuse(monkeypatch):
         lambda: False,
     )
 
-    LangfuseInstrumentor.installed = False
-    LangfuseInstrumentor._translator = None
-    LangfuseInstrumentor._original_initialize_instance = None
+    _reset_langfuse_bridge()
 
     assert Laminar.connect_to_langfuse() is False
-    assert LangfuseInstrumentor.installed is False
-    assert LangfuseInstrumentor._translator is None
+    instrumentor = get_langfuse_instrumentor()
+    assert instrumentor.is_instrumented_by_opentelemetry is False
+    assert instrumentor._translator is None
 
 
 def test_connect_to_langfuse_returns_false_when_sdk_unimportable(monkeypatch):
@@ -1126,15 +1147,14 @@ def test_connect_to_langfuse_returns_false_when_sdk_unimportable(monkeypatch):
     monkeypatch.setattr(instruments_mod, "langfuse_installed", lambda: True)
     monkeypatch.setattr(lf, "langfuse_sdk_importable", lambda: False)
 
-    LangfuseInstrumentor.installed = False
-    LangfuseInstrumentor._translator = None
-    LangfuseInstrumentor._original_initialize_instance = None
+    _reset_langfuse_bridge()
 
     assert Laminar.connect_to_langfuse() is False
     # The bridge must NOT have been installed (no orphaned translator that a
     # later valid install would have to clean up / could stack a second one).
-    assert LangfuseInstrumentor.installed is False
-    assert LangfuseInstrumentor._translator is None
+    instrumentor = get_langfuse_instrumentor()
+    assert instrumentor.is_instrumented_by_opentelemetry is False
+    assert instrumentor._translator is None
 
 
 def test_connect_to_langfuse_rejects_langfuse_v2(monkeypatch):
@@ -1153,13 +1173,12 @@ def test_connect_to_langfuse_rejects_langfuse_v2(monkeypatch):
         lambda name: "2.60.0" if name == "langfuse" else None,
     )
 
-    LangfuseInstrumentor.installed = False
-    LangfuseInstrumentor._translator = None
-    LangfuseInstrumentor._original_initialize_instance = None
+    _reset_langfuse_bridge()
 
     assert Laminar.connect_to_langfuse() is False
-    assert LangfuseInstrumentor.installed is False
-    assert LangfuseInstrumentor._translator is None
+    instrumentor = get_langfuse_instrumentor()
+    assert instrumentor.is_instrumented_by_opentelemetry is False
+    assert instrumentor._translator is None
 
 
 @_langfuse_sdk_required
@@ -1197,17 +1216,22 @@ def test_late_attach_patches_future_langfuse_clients(span_exporter):
 
 def test_instrumentor_skips_laminar_own_provider(span_exporter):
     """Guardrail: if Langfuse somehow ends up sharing Laminar's
-    TracerProvider, `_attach_to_provider` must skip it (otherwise Laminar's
-    processor would be attached to Laminar's provider twice → duplicate
-    spans on every Laminar export).
+    TracerProvider, `ProviderAttachment.attach` must skip it (otherwise
+    Laminar's processor would be attached to Laminar's provider twice →
+    duplicate spans on every Laminar export).
     """
-    instrumentor = LangfuseInstrumentor()
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse.provider_attachment import (
+        ProviderAttachment,
+    )
+
     wrapper = get_tracer_wrapper()
     initial_count = len(
         wrapper.tracer_provider._active_span_processor._span_processors
     )
-    instrumentor._lmnr_span_processor = wrapper.span_processor
-    instrumentor._attach_to_provider(wrapper.tracer_provider)
+    provider_attachment = ProviderAttachment(
+        translator=None, lmnr_span_processor=wrapper.span_processor
+    )
+    provider_attachment.attach(wrapper.tracer_provider)
     after_count = len(wrapper.tracer_provider._active_span_processor._span_processors)
     assert (
         after_count == initial_count
@@ -1215,22 +1239,22 @@ def test_instrumentor_skips_laminar_own_provider(span_exporter):
 
 
 def test_instrument_rolls_back_translator_if_attach_phase_raises(span_exporter):
-    """Regression: if `_attach_to_existing_langfuse_providers` or
-    `_patch_resource_manager` raises, the translator that was already
+    """Regression: if `attach_to_existing_langfuse_providers` or
+    `patch_resource_manager` raises, the translator that was already
     prepended to Laminar's provider in step 1 must be removed and all
-    class-level state cleared. Otherwise, a subsequent `instrument()` (e.g.
-    via `Laminar.connect_to_langfuse()`) would pass the `_installed` guard
-    and prepend a SECOND translator, double-translating every Langfuse span.
+    instance-level state cleared. Otherwise, a subsequent `instrument()`
+    (e.g. via `Laminar.connect_to_langfuse()`) would pass the
+    `is_instrumented_by_opentelemetry` guard and prepend a SECOND translator,
+    double-translating every Langfuse span.
     """
     from opentelemetry.sdk.trace import TracerProvider
 
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse.provider_attachment import (
+        ProviderAttachment,
+    )
+
     # Clean state.
-    LangfuseInstrumentor.installed = False
-    LangfuseInstrumentor._handled_providers = set()
-    LangfuseInstrumentor._attached_providers = {}
-    LangfuseInstrumentor._translator = None
-    LangfuseInstrumentor._lmnr_span_processor = None
-    LangfuseInstrumentor._lmnr_tracer_provider = None
+    _reset_langfuse_bridge()
 
     provider = TracerProvider()
 
@@ -1243,15 +1267,15 @@ def test_instrument_rolls_back_translator_if_attach_phase_raises(span_exporter):
 
     baseline = count_translators()
 
-    instrumentor = LangfuseInstrumentor()
+    instrumentor = get_langfuse_instrumentor()
 
-    # Force `_attach_to_existing_langfuse_providers` to blow up on first
+    # Force `attach_to_existing_langfuse_providers` to blow up on first
     # install.
     def exploding_attach(self):  # noqa: ARG001
         raise RuntimeError("simulated attach failure")
 
-    original_attach = LangfuseInstrumentor._attach_to_existing_langfuse_providers
-    LangfuseInstrumentor._attach_to_existing_langfuse_providers = exploding_attach
+    original_attach = ProviderAttachment.attach_to_existing_langfuse_providers
+    ProviderAttachment.attach_to_existing_langfuse_providers = exploding_attach
     try:
         with pytest.raises(RuntimeError, match="simulated attach failure"):
             instrumentor.instrument(
@@ -1259,19 +1283,19 @@ def test_instrument_rolls_back_translator_if_attach_phase_raises(span_exporter):
                 lmnr_span_processor=MagicMock(),
             )
     finally:
-        LangfuseInstrumentor._attach_to_existing_langfuse_providers = original_attach
+        ProviderAttachment.attach_to_existing_langfuse_providers = original_attach
 
     # Translator must have been rolled back.
     assert (
         count_translators() == baseline
     ), "translator must be removed on partial install failure"
-    assert LangfuseInstrumentor.installed is False
-    assert LangfuseInstrumentor._translator is None
+    assert instrumentor.is_instrumented_by_opentelemetry is False
+    assert instrumentor._translator is None
 
     # A subsequent successful install must attach exactly ONE translator —
     # not two, which is what would happen if the failed-install translator
     # were still around.
-    instrumentor2 = LangfuseInstrumentor()
+    instrumentor2 = get_langfuse_instrumentor()
     instrumentor2.instrument(
         lmnr_tracer_provider=provider,
         lmnr_span_processor=MagicMock(),
@@ -1284,7 +1308,7 @@ def test_instrument_skips_shared_laminar_provider_without_tracerwrapper(span_exp
     """Regression: during auto-install via `init_instrumentations`,
     the tracer wrapper is published AFTER `init_instrumentations`
     returns. If a pre-existing Langfuse client happens to share Laminar's
-    newly-created `TracerProvider`, `_attach_to_provider`'s
+    newly-created `TracerProvider`, `ProviderAttachment.attach`'s
     `get_tracer_wrapper()` fallback guard returns None
     (the wrapper isn't set yet) and the translator + Laminar span processor
     would be double-attached.
@@ -1296,12 +1320,7 @@ def test_instrument_skips_shared_laminar_provider_without_tracerwrapper(span_exp
     from opentelemetry.sdk.trace import TracerProvider
 
     # Start from a clean slate.
-    LangfuseInstrumentor.installed = False
-    LangfuseInstrumentor._handled_providers = set()
-    LangfuseInstrumentor._attached_providers = {}
-    LangfuseInstrumentor._translator = None
-    LangfuseInstrumentor._lmnr_span_processor = None
-    LangfuseInstrumentor._lmnr_tracer_provider = None
+    _reset_langfuse_bridge()
 
     # A fresh provider standing in for Laminar's. We deliberately do NOT
     # publish a tracer wrapper pointing at this provider — that's
@@ -1309,7 +1328,7 @@ def test_instrument_skips_shared_laminar_provider_without_tracerwrapper(span_exp
     shared_provider = TracerProvider()
 
     mock_processor = MagicMock()
-    instrumentor = LangfuseInstrumentor()
+    instrumentor = get_langfuse_instrumentor()
     instrumentor.instrument(
         lmnr_tracer_provider=shared_provider,
         lmnr_span_processor=mock_processor,
@@ -1331,10 +1350,9 @@ def test_instrument_skips_shared_laminar_provider_without_tracerwrapper(span_exp
         "provider — the translator is enough there"
     )
 
-    # Now simulate Langfuse's resource manager calling `_attach_to_provider`
-    # with the same provider. The pre-registered id must prevent a
-    # double-attach.
-    instrumentor._attach_to_provider(shared_provider)
+    # Now simulate Langfuse's resource manager calling `attach` with the same
+    # provider. The pre-registered id must prevent a double-attach.
+    instrumentor._provider_attachment.attach(shared_provider)
 
     processors_after_simulated_langfuse = list(
         shared_provider._active_span_processor._span_processors
@@ -1358,13 +1376,13 @@ def test_instrument_skips_shared_laminar_provider_without_tracerwrapper(span_exp
 @_langfuse_sdk_required
 def test_uninstrument_removes_translator_and_clears_state(span_exporter):
     """Regression: `uninstrument` must detach the translator from Laminar's
-    provider and clear class-level state (`_handled_providers`, `_translator`,
-    `_lmnr_span_processor`, `_attached_providers`, `_lmnr_tracer_provider`).
+    provider and clear instance-level state (`_provider_attachment`,
+    `_translator`, `_lmnr_span_processor`, `_lmnr_tracer_provider`).
     Otherwise a subsequent `instrument()` call would prepend a SECOND
     translator onto Laminar's provider (the first was never removed), and
-    `_handled_providers` would still hold ids from the previous session,
-    making `_attach_to_existing_langfuse_providers` skip providers it saw
-    last time around.
+    the retained `_provider_attachment` would still hold ids from the
+    previous session, making `attach_to_existing_langfuse_providers` skip
+    providers it saw last time around.
     """
     from langfuse._client.resource_manager import LangfuseResourceManager
 
@@ -1380,39 +1398,33 @@ def test_uninstrument_removes_translator_and_clears_state(span_exporter):
         )
 
     # Start from a clean slate in case an earlier test left state behind.
-    LangfuseInstrumentor.installed = False
-    LangfuseInstrumentor._handled_providers = set()
-    LangfuseInstrumentor._attached_providers = {}
-    LangfuseInstrumentor._translator = None
-    LangfuseInstrumentor._lmnr_span_processor = None
-    LangfuseInstrumentor._lmnr_tracer_provider = None
+    _reset_langfuse_bridge()
 
     baseline_translators = count_translators()
 
-    instrumentor = LangfuseInstrumentor()
+    instrumentor = get_langfuse_instrumentor()
     instrumentor.instrument(
         lmnr_tracer_provider=lmnr_provider,
         lmnr_span_processor=wrapper.span_processor,
     )
-    assert LangfuseInstrumentor.installed is True
+    assert instrumentor.is_instrumented_by_opentelemetry is True
     assert count_translators() == baseline_translators + 1
 
     instrumentor.uninstrument()
 
     # Translator must have been removed from Laminar's provider.
     assert count_translators() == baseline_translators
-    # All class-level state must be cleared so a fresh install starts clean.
-    assert LangfuseInstrumentor.installed is False
-    assert LangfuseInstrumentor._translator is None
-    assert LangfuseInstrumentor._lmnr_span_processor is None
-    assert LangfuseInstrumentor._lmnr_tracer_provider is None
-    assert LangfuseInstrumentor._handled_providers == set()
-    assert LangfuseInstrumentor._attached_providers == {}
+    # All instance-level state must be cleared so a fresh install starts clean.
+    assert instrumentor.is_instrumented_by_opentelemetry is False
+    assert instrumentor._translator is None
+    assert instrumentor._lmnr_span_processor is None
+    assert instrumentor._lmnr_tracer_provider is None
+    assert instrumentor._provider_attachment is None
 
     # Re-install: the translator count should increase by exactly one again —
     # NOT two, which is what would happen if the previous translator was
     # still attached.
-    instrumentor2 = LangfuseInstrumentor()
+    instrumentor2 = get_langfuse_instrumentor()
     instrumentor2.instrument(
         lmnr_tracer_provider=lmnr_provider,
         lmnr_span_processor=wrapper.span_processor,
@@ -1422,17 +1434,64 @@ def test_uninstrument_removes_translator_and_clears_state(span_exporter):
     assert count_translators() == baseline_translators
 
 
+@_langfuse_sdk_required
+def test_stray_reconstruction_does_not_wipe_live_state(span_exporter):
+    """Regression: `BaseInstrumentor.__new__` caches a single instance per
+    class, but Python still calls `__init__` on that cached instance every
+    time `LangfuseInstrumentor()` is invoked. A stray direct construction
+    (bypassing `get_langfuse_instrumentor()`) after the bridge is already
+    installed must NOT reset `_translator` / `_provider_attachment` /
+    `_litellm_bridge` to `None` while `is_instrumented_by_opentelemetry`
+    stays `True` — that would make `instrument()` no-op (already
+    instrumented), `rebind()` report success without anything to rebind, and
+    `_teardown()` unable to find what to detach.
+    """
+    from langfuse._client.resource_manager import LangfuseResourceManager
+
+    LangfuseResourceManager._instances.clear()
+    wrapper = get_tracer_wrapper()
+    lmnr_provider = wrapper.tracer_provider
+
+    _reset_langfuse_bridge()
+
+    instrumentor = get_langfuse_instrumentor()
+    instrumentor.instrument(
+        lmnr_tracer_provider=lmnr_provider,
+        lmnr_span_processor=wrapper.span_processor,
+    )
+    assert instrumentor.is_instrumented_by_opentelemetry is True
+    live_translator = instrumentor._translator
+    live_provider_attachment = instrumentor._provider_attachment
+    live_litellm_bridge = instrumentor._litellm_bridge
+    assert live_translator is not None
+    assert live_provider_attachment is not None
+    assert live_litellm_bridge is not None
+
+    # A stray direct construction must be the SAME instance and must NOT
+    # clobber the state set up by `instrument()`.
+    same_instance = LangfuseInstrumentor()
+    assert same_instance is instrumentor
+    assert same_instance.is_instrumented_by_opentelemetry is True
+    assert same_instance._translator is live_translator
+    assert same_instance._provider_attachment is live_provider_attachment
+    assert same_instance._litellm_bridge is live_litellm_bridge
+
+    instrumentor.uninstrument()
+    assert instrumentor.is_instrumented_by_opentelemetry is False
+    assert instrumentor._translator is None
+
+
 def test_uninstrument_detaches_processors_from_langfuse_providers(span_exporter):
     """Regression: after `uninstrument`, every provider we previously attached
     the translator / Laminar span processor to must lose those processors.
-    Re-install must also succeed (stale `_handled_providers` must not
+    Re-install must also succeed (a stale `_provider_attachment` must not
     short-circuit re-attachment).
 
     We simulate a Langfuse-owned TracerProvider with a plain
-    `sdk.trace.TracerProvider`, directed at `_attach_to_provider`: the bridge
-    treats any non-Laminar provider the same way, so this exercises the
-    install/uninstall/reinstall flow deterministically without depending on
-    whether the real Langfuse SDK reuses the global provider.
+    `sdk.trace.TracerProvider`, directed at `ProviderAttachment.attach`: the
+    bridge treats any non-Laminar provider the same way, so this exercises
+    the install/uninstall/reinstall flow deterministically without depending
+    on whether the real Langfuse SDK reuses the global provider.
     """
     from opentelemetry.sdk.trace import TracerProvider
 
@@ -1441,29 +1500,24 @@ def test_uninstrument_detaches_processors_from_langfuse_providers(span_exporter)
     lmnr_processor = wrapper.span_processor
 
     # Start from a known-clean state.
-    LangfuseInstrumentor.installed = False
-    LangfuseInstrumentor._handled_providers = set()
-    LangfuseInstrumentor._attached_providers = {}
-    LangfuseInstrumentor._translator = None
-    LangfuseInstrumentor._lmnr_span_processor = None
-    LangfuseInstrumentor._lmnr_tracer_provider = None
+    _reset_langfuse_bridge()
 
     fake_lf_provider = TracerProvider()
     baseline = list(fake_lf_provider._active_span_processor._span_processors)
 
-    instrumentor = LangfuseInstrumentor()
+    instrumentor = get_langfuse_instrumentor()
     instrumentor.instrument(
         lmnr_tracer_provider=lmnr_provider,
         lmnr_span_processor=lmnr_processor,
     )
     # Manually attach to our fake Langfuse-owned provider the same way the
     # monkey-patched `_initialize_instance` would in production.
-    instrumentor._attach_to_provider(fake_lf_provider)
+    instrumentor._provider_attachment.attach(fake_lf_provider)
 
     after_install = list(fake_lf_provider._active_span_processor._span_processors)
     assert any(isinstance(p, LangfuseAttributeTranslator) for p in after_install)
     assert lmnr_processor in after_install
-    assert id(fake_lf_provider) in LangfuseInstrumentor._attached_providers
+    assert id(fake_lf_provider) in instrumentor._provider_attachment._attached_providers
 
     instrumentor.uninstrument()
 
@@ -1477,13 +1531,13 @@ def test_uninstrument_detaches_processors_from_langfuse_providers(span_exporter)
     # Ordering of unrelated processors should be preserved.
     assert after_uninstall == baseline
 
-    # Re-install must work — stale `_handled_providers` was cleared so the
-    # existing provider is seen again.
+    # Re-install must work — a stale `_provider_attachment` was cleared so
+    # the existing provider is seen again.
     instrumentor.instrument(
         lmnr_tracer_provider=lmnr_provider,
         lmnr_span_processor=lmnr_processor,
     )
-    instrumentor._attach_to_provider(fake_lf_provider)
+    instrumentor._provider_attachment.attach(fake_lf_provider)
     reinstalled = list(fake_lf_provider._active_span_processor._span_processors)
     assert any(isinstance(p, LangfuseAttributeTranslator) for p in reinstalled)
     assert lmnr_processor in reinstalled
@@ -1559,16 +1613,6 @@ def test_translator_routes_litellm_hybrid_span_through_openinference():
     assert span.attributes[f"{ASSOCIATION_PROPERTIES}.user_id"] == "user-3"
 
 
-def _reset_langfuse_instrumentor_state():
-    LangfuseInstrumentor.installed = False
-    LangfuseInstrumentor._handled_providers = set()
-    LangfuseInstrumentor._attached_providers = {}
-    LangfuseInstrumentor._translator = None
-    LangfuseInstrumentor._lmnr_span_processor = None
-    LangfuseInstrumentor._lmnr_tracer_provider = None
-    LangfuseInstrumentor._original_initialize_instance = None
-    LangfuseInstrumentor._original_litellm_init_logger = None
-    LangfuseInstrumentor._wrapped_litellm_loggers = {}
 
 
 @_litellm_required
@@ -1581,7 +1625,7 @@ def test_litellm_bridge_attaches_to_existing_logger(span_exporter):
     from litellm.integrations.langfuse.langfuse_otel import LangfuseOtelLogger
     from litellm.litellm_core_utils import litellm_logging
 
-    _reset_langfuse_instrumentor_state()
+    _reset_langfuse_bridge()
 
     logger_obj = LangfuseOtelLogger(callback_name="langfuse_otel")
     provider = logger_obj._tracer_provider
@@ -1591,7 +1635,7 @@ def test_litellm_bridge_attaches_to_existing_logger(span_exporter):
     litellm_logging._in_memory_loggers.append(logger_obj)
     try:
         wrapper = get_tracer_wrapper()
-        instrumentor = LangfuseInstrumentor()
+        instrumentor = get_langfuse_instrumentor()
         instrumentor.instrument(
             lmnr_tracer_provider=wrapper.tracer_provider,
             lmnr_span_processor=wrapper.span_processor,
@@ -1612,7 +1656,7 @@ def test_litellm_bridge_attaches_to_existing_logger(span_exporter):
         assert wrapper.span_processor not in after
     finally:
         litellm_logging._in_memory_loggers[:] = original_loggers
-        _reset_langfuse_instrumentor_state()
+        _reset_langfuse_bridge()
 
 
 @_litellm_required
@@ -1622,13 +1666,13 @@ def test_litellm_bridge_patches_factory_for_late_loggers(span_exporter):
     dual-attached. The factory patch must be reverted on uninstrument."""
     from litellm.litellm_core_utils import litellm_logging
 
-    _reset_langfuse_instrumentor_state()
+    _reset_langfuse_bridge()
 
     original_loggers = list(litellm_logging._in_memory_loggers)
     original_factory = litellm_logging._init_custom_logger_compatible_class
     try:
         wrapper = get_tracer_wrapper()
-        instrumentor = LangfuseInstrumentor()
+        instrumentor = get_langfuse_instrumentor()
         instrumentor.instrument(
             lmnr_tracer_provider=wrapper.tracer_provider,
             lmnr_span_processor=wrapper.span_processor,
@@ -1656,7 +1700,7 @@ def test_litellm_bridge_patches_factory_for_late_loggers(span_exporter):
     finally:
         litellm_logging._init_custom_logger_compatible_class = original_factory
         litellm_logging._in_memory_loggers[:] = original_loggers
-        _reset_langfuse_instrumentor_state()
+        _reset_langfuse_bridge()
 
 
 @_litellm_required
@@ -1668,29 +1712,29 @@ def test_litellm_factory_does_not_bridge_non_langfuse_loggers(span_exporter):
     Laminar. The base `otel` provider is in fact the global (Laminar's own)
     provider, so we can't assert on its processors — instead we assert the
     factory patch never routes a non-langfuse logger through
-    `_attach_to_provider`."""
+    `ProviderAttachment.attach`."""
     from litellm.litellm_core_utils import litellm_logging
 
-    _reset_langfuse_instrumentor_state()
+    _reset_langfuse_bridge()
 
     original_loggers = list(litellm_logging._in_memory_loggers)
     original_factory = litellm_logging._init_custom_logger_compatible_class
     try:
         wrapper = get_tracer_wrapper()
-        instrumentor = LangfuseInstrumentor()
+        instrumentor = get_langfuse_instrumentor()
         instrumentor.instrument(
             lmnr_tracer_provider=wrapper.tracer_provider,
             lmnr_span_processor=wrapper.span_processor,
         )
 
         attached: list = []
-        original_attach = instrumentor._attach_to_provider
+        original_attach = instrumentor._provider_attachment.attach
 
         def _spy(provider):
             attached.append(provider)
             return original_attach(provider)
 
-        instrumentor._attach_to_provider = _spy
+        instrumentor._provider_attachment.attach = _spy
 
         # The base `otel` callback is an `OpenTelemetry` instance (NOT a
         # `LangfuseOtelLogger`) that carries its own `_tracer_provider`. The
@@ -1701,7 +1745,7 @@ def test_litellm_factory_does_not_bridge_non_langfuse_loggers(span_exporter):
             llm_router=None,
         )
         assert attached == [], (
-            "non-langfuse LiteLLM logger must NOT be routed to " "_attach_to_provider"
+            "non-langfuse LiteLLM logger must NOT be routed to " "ProviderAttachment.attach"
         )
 
         # A `langfuse_otel` logger built through the same factory MUST attach.
@@ -1716,7 +1760,7 @@ def test_litellm_factory_does_not_bridge_non_langfuse_loggers(span_exporter):
     finally:
         litellm_logging._init_custom_logger_compatible_class = original_factory
         litellm_logging._in_memory_loggers[:] = original_loggers
-        _reset_langfuse_instrumentor_state()
+        _reset_langfuse_bridge()
 
 
 def test_is_llm_span_detects_llm_parents():
@@ -1725,18 +1769,18 @@ def test_is_llm_span_detects_llm_parents():
     NOT mistake a plain `@observe` root for one (so the bridge forces a
     `litellm_request` span there)."""
     from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
-        _is_llm_span,
+        is_llm_span,
     )
 
-    assert _is_llm_span(_FakeSpan({SPAN_TYPE: "LLM"}))
-    assert _is_llm_span(_FakeSpan({"openinference.span.kind": "LLM"}))
-    assert _is_llm_span(_FakeSpan({"gen_ai.request.model": "gpt-4o"}))
-    assert _is_llm_span(_FakeSpan({"gen_ai.response.model": "gpt-4o"}))
-    assert _is_llm_span(_FakeSpan({"gen_ai.system": "openai"}))
+    assert is_llm_span(_FakeSpan({SPAN_TYPE: "LLM"}))
+    assert is_llm_span(_FakeSpan({"openinference.span.kind": "LLM"}))
+    assert is_llm_span(_FakeSpan({"gen_ai.request.model": "gpt-4o"}))
+    assert is_llm_span(_FakeSpan({"gen_ai.response.model": "gpt-4o"}))
+    assert is_llm_span(_FakeSpan({"gen_ai.system": "openai"}))
     # A plain root / tool span must NOT read as LLM.
-    assert not _is_llm_span(_FakeSpan({}))
-    assert not _is_llm_span(_FakeSpan({SPAN_TYPE: "DEFAULT"}))
-    assert not _is_llm_span(_FakeSpan({"langfuse.observation.type": "span"}))
+    assert not is_llm_span(_FakeSpan({}))
+    assert not is_llm_span(_FakeSpan({SPAN_TYPE: "DEFAULT"}))
+    assert not is_llm_span(_FakeSpan({"langfuse.observation.type": "span"}))
 
 
 @_litellm_required
@@ -1759,7 +1803,7 @@ def test_litellm_bridge_wraps_and_unwraps_logger_methods(span_exporter):
     from litellm.integrations.langfuse.langfuse_otel import LangfuseOtelLogger
     from litellm.litellm_core_utils import litellm_logging
 
-    _reset_langfuse_instrumentor_state()
+    _reset_langfuse_bridge()
 
     logger_obj = LangfuseOtelLogger(callback_name="langfuse_otel")
     orig_get_tracer = logger_obj._get_tracer_with_dynamic_headers
@@ -1770,7 +1814,7 @@ def test_litellm_bridge_wraps_and_unwraps_logger_methods(span_exporter):
     probe_tracer = TracerProvider().get_tracer("probe")
     try:
         wrapper = get_tracer_wrapper()
-        instrumentor = LangfuseInstrumentor()
+        instrumentor = get_langfuse_instrumentor()
         instrumentor.instrument(
             lmnr_tracer_provider=wrapper.tracer_provider,
             lmnr_span_processor=wrapper.span_processor,
@@ -1801,15 +1845,15 @@ def test_litellm_bridge_wraps_and_unwraps_logger_methods(span_exporter):
         # Both originals restored.
         assert logger_obj._get_tracer_with_dynamic_headers == orig_get_tracer
         assert logger_obj._get_span_context == orig_get_ctx
-        assert LangfuseInstrumentor._wrapped_litellm_loggers == {}
+        assert instrumentor._litellm_bridge is None
     finally:
         litellm_logging._in_memory_loggers[:] = original_loggers
-        _reset_langfuse_instrumentor_state()
+        _reset_langfuse_bridge()
 
 
 def test_bridge_is_rebound_to_the_new_processor_after_a_reinit(span_exporter):
-    """`LangfuseInstrumentor.instrument()` returns early once `installed` is
-    set, so an initialize()/shutdown()/initialize() cycle used to leave the
+    """`LangfuseInstrumentor.instrument()` returns early once already
+    instrumented, so an initialize()/shutdown()/initialize() cycle used to leave the
     bridge — and every Langfuse-owned provider it attached to — holding the
     RETIRED `LaminarSpanProcessor`. Langfuse spans then hit `on_end` on a
     shut-down processor and never reached the new exporter.
@@ -1850,7 +1894,7 @@ def test_bridge_is_rebound_to_the_new_processor_after_a_reinit(span_exporter):
     saved_initialized = Laminar.is_initialized()
     tracing_mod._tracer_wrapper = None
     tracing_mod._session_recording_options = None
-    _reset_langfuse_instrumentor_state()
+    _reset_langfuse_bridge()
 
     try:
         exp1 = InMemorySpanExporter()
@@ -1860,7 +1904,7 @@ def test_bridge_is_rebound_to_the_new_processor_after_a_reinit(span_exporter):
 
         # A Langfuse-owned provider, as the resource-manager hook would supply.
         lf_provider = TracerProvider()
-        LangfuseInstrumentor()._attach_to_provider(lf_provider)
+        get_langfuse_instrumentor()._provider_attachment.attach(lf_provider)
         assert retired in processors(lf_provider)
 
         lf_provider.get_tracer("langfuse-sdk").start_span("lf1").end()
@@ -1873,7 +1917,7 @@ def test_bridge_is_rebound_to_the_new_processor_after_a_reinit(span_exporter):
         current = get_tracer_wrapper().span_processor
         assert current is not retired
 
-        assert LangfuseInstrumentor._lmnr_span_processor is current
+        assert get_langfuse_instrumentor()._lmnr_span_processor is current
         assert retired not in processors(lf_provider)
         assert current in processors(lf_provider)
 
@@ -1882,8 +1926,8 @@ def test_bridge_is_rebound_to_the_new_processor_after_a_reinit(span_exporter):
         assert [s.name for s in exp2.get_finished_spans()] == ["lf2"]
         assert exp1.get_finished_spans() == ()
     finally:
-        LangfuseInstrumentor().uninstrument()
-        _reset_langfuse_instrumentor_state()
+        get_langfuse_instrumentor().uninstrument()
+        _reset_langfuse_bridge()
         reset_tracing()
         tracing_mod._tracer_wrapper = saved_wrapper
         tracing_mod._session_recording_options = saved_options
@@ -1891,9 +1935,9 @@ def test_bridge_is_rebound_to_the_new_processor_after_a_reinit(span_exporter):
 
 
 def test_rebind_is_a_no_op_when_the_bridge_is_not_installed():
-    _reset_langfuse_instrumentor_state()
+    _reset_langfuse_bridge()
     assert (
-        LangfuseInstrumentor().rebind(
+        get_langfuse_instrumentor().rebind(
             lmnr_tracer_provider=MagicMock(), lmnr_span_processor=MagicMock()
         )
         is False

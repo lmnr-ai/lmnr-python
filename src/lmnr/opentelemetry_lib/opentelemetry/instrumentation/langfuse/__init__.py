@@ -34,950 +34,63 @@ Two operations are performed:
    - openinference-instrumented spans (groq / google_genai, which Langfuse's
      docs recommend) carry a different flat/indexed attribute layout and no
      `langfuse.*` keys; they're detected and translated separately.
+
+This package is organized as:
+- `attributes.py` — attribute-name constants (pure data).
+- `translate.py` — pure Langfuse/openinference → Laminar/GenAI shape functions.
+- `processor.py` — the `LangfuseAttributeTranslator` `SpanProcessor` and the
+  span-processor-ordering helpers.
+- `provider_attachment.py` — `ProviderAttachment`, which owns attaching /
+  detaching the translator + Laminar span processor to Langfuse-owned
+  `TracerProvider`s (including future ones, via the resource-manager patch).
+- `litellm_bridge.py` — `LiteLLMLangfuseBridge`, which bridges LiteLLM's
+  `langfuse_otel` success callback (a separate code path Langfuse's own
+  resource manager never sees).
+- This module — the `LangfuseInstrumentor` orchestrator (a real
+  `BaseInstrumentor`) and the module-level singleton accessor.
 """
 
 from __future__ import annotations
 
-import json
-from collections.abc import Callable, Collection
+from collections.abc import Collection
 from typing import Any
 
-from opentelemetry.context import Context
-from opentelemetry.sdk.trace import ReadableSpan, Span, SpanProcessor
+from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
+from opentelemetry.sdk.trace import SpanProcessor
 from opentelemetry.sdk.trace import TracerProvider as SdkTracerProvider
+from typing_extensions import override
 
-from lmnr.opentelemetry_lib.tracing.attributes import (
-    ASSOCIATION_PROPERTIES,
-    SESSION_ID,
-    SPAN_INPUT,
-    SPAN_OUTPUT,
-    SPAN_TYPE,
-    USER_ID,
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse.litellm_bridge import (
+    LiteLLMLangfuseBridge,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse.processor import (
+    LangfuseAttributeTranslator,
+    prepend_span_processor,
+    remove_span_processor,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse.provider_attachment import (
+    ProviderAttachment,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse.translate import (
+    is_langfuse_span,
+    is_llm_span,
 )
 from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.utils import json_dumps
 
 logger = get_default_logger(__name__)
 
-LANGFUSE_TRACER_NAME = "langfuse-sdk"
-
-# Langfuse attribute names (mirrors langfuse._client.attributes.LangfuseOtelSpanAttributes)
-# Duplicated here so this module has no hard import dependency on langfuse.
-_TRACE_INPUT = "langfuse.trace.input"
-_TRACE_OUTPUT = "langfuse.trace.output"
-_TRACE_TAGS = "langfuse.trace.tags"
-_TRACE_METADATA_PREFIX = "langfuse.trace.metadata"
-_TRACE_USER_ID = "user.id"
-_TRACE_SESSION_ID = "session.id"
-
-_OBSERVATION_TYPE = "langfuse.observation.type"
-_OBSERVATION_INPUT = "langfuse.observation.input"
-_OBSERVATION_OUTPUT = "langfuse.observation.output"
-_OBSERVATION_MODEL = "langfuse.observation.model.name"
-_OBSERVATION_USAGE_DETAILS = "langfuse.observation.usage_details"
-_OBSERVATION_COST_DETAILS = "langfuse.observation.cost_details"
-_OBSERVATION_METADATA_PREFIX = "langfuse.observation.metadata"
-
-_GEN_AI_REQUEST_MODEL = "gen_ai.request.model"
-_GEN_AI_RESPONSE_MODEL = "gen_ai.response.model"
-_GEN_AI_INPUT_MESSAGES = "gen_ai.input.messages"
-_GEN_AI_OUTPUT_MESSAGES = "gen_ai.output.messages"
-_GEN_AI_TOOL_DEFINITIONS = "gen_ai.tool.definitions"
-_GEN_AI_USAGE_INPUT_TOKENS = "gen_ai.usage.input_tokens"
-_GEN_AI_USAGE_OUTPUT_TOKENS = "gen_ai.usage.output_tokens"
-_GEN_AI_USAGE_TOTAL_TOKENS = "llm.usage.total_tokens"
-_GEN_AI_USAGE_INPUT_COST = "gen_ai.usage.input_cost"
-_GEN_AI_USAGE_OUTPUT_COST = "gen_ai.usage.output_cost"
-_GEN_AI_USAGE_TOTAL_COST = "gen_ai.usage.cost"
-
-# Langfuse "observation types" that represent LLM calls. See
-# langfuse._client.constants.ObservationTypeGenerationLike. Any of these maps
-# to Laminar's LLM span type.
-_LLM_OBSERVATION_TYPES = {"generation", "completion", "embedding"}
-_TOOL_OBSERVATION_TYPES = {"tool"}
-
-# --- OpenInference semantic conventions -------------------------------------
-# Langfuse's docs recommend openinference instrumentations for groq and
-# google_genai (e.g. `openinference-instrumentation-google-genai`). Those emit
-# a flat, indexed attribute layout — `llm.input_messages.0.message.role`,
-# `llm.input_messages.0.message.content`, `llm.output_messages.0...`,
-# `llm.token_count.prompt`, `llm.tools.0.tool.json_schema`, etc. — completely
-# different from both Langfuse's `langfuse.*` blobs and Laminar's GenAI shape.
-# See the openinference-semantic-conventions package in the Arize-ai/
-# openinference repo. We translate the flat layout into Laminar / OTel GenAI
-# conventions.
-_OI_SPAN_KIND = "openinference.span.kind"
-_OI_LLM_MODEL_NAME = "llm.model_name"
-_OI_LLM_INPUT_MESSAGES = "llm.input_messages"
-_OI_LLM_OUTPUT_MESSAGES = "llm.output_messages"
-_OI_LLM_TOOLS = "llm.tools"
-_OI_TOKEN_PROMPT = "llm.token_count.prompt"
-_OI_TOKEN_COMPLETION = "llm.token_count.completion"
-_OI_TOKEN_TOTAL = "llm.token_count.total"
-_OI_INPUT_VALUE = "input.value"
-_OI_OUTPUT_VALUE = "output.value"
-# openinference.span.kind values that mean "LLM call".
-_OI_LLM_SPAN_KINDS = {"LLM"}
-
-
-def _parse_json(raw: Any) -> Any:
-    if not isinstance(raw, str):
-        return raw
-    try:
-        return json.loads(raw)
-    except (ValueError, TypeError):
-        return raw
-
-
-def _genai_input_from_langfuse(input_raw: Any) -> tuple[Any, Any] | None:
-    """Split a Langfuse LLM input into (messages, tool_definitions).
-
-    Langfuse's OpenAI integration ships the call input in one of two shapes
-    (see `langfuse.openai._extract_chat_prompt`):
-
-    - A bare list of OpenAI-style message dicts (`[{role, content}, ...]`) when
-      the caller passed no `tools`/`functions`.
-    - A dict `{"messages": [...], "tools": [...], "functions": [...],
-      "function_call": ...}` when tools/functions were supplied.
-
-    Laminar (and the app-server's GenAI parser) want these split into
-    `gen_ai.input.messages` (the message array) and `gen_ai.tool.definitions`
-    (the tool/function array) — dumping the whole dict into `lmnr.span.input`
-    leaves them unparsed in the UI. Returns `(messages, tools_or_none)` when
-    the shape is recognized, or `None` when it isn't (caller falls back to the
-    raw input). Langchain-style inputs share the OpenAI message shape, so the
-    same split applies.
-    """
-    parsed = _parse_json(input_raw)
-    if isinstance(parsed, list):
-        return parsed, None
-    if isinstance(parsed, dict) and isinstance(parsed.get("messages"), list):
-        tools = parsed.get("tools")
-        if tools is None:
-            tools = parsed.get("functions")
-        return parsed["messages"], tools
-    return None
-
-
-def _split_messages_and_tool_defs_langchain(
-    messages: Any,
-) -> tuple[Any, list[Any] | None]:
-    """Splits langfuse.langchain input into the actual messages and tool definitions
-
-    The callback inlines tool definitions into the message array as messages with
-    role "tool" and a "content" dict. Two provider-specific shapes occur:
-
-    * OpenAI: ``{"type": "function", "function": {...}}`` — the actual definition
-      lives under the ``"function"`` key.
-    * Anthropic: ``{"name", "input_schema", "description"}`` — the content dict IS
-      the definition (already the Anthropic-native shape Laminar's own Anthropic
-      instrumentor emits into ``gen_ai.tool.definitions``).
-
-    Both are pulled out into the tool-definitions list; everything else stays a
-    message.
-    """
-    if not isinstance(messages, list):
-        return (messages, None)
-    new_msgs = []
-    tool_defs = []
-    for msg in messages:
-        if isinstance(msg, dict) and msg.get("role") == "tool":
-            content = msg.get("content")
-            if isinstance(content, dict):
-                if content.get("type") == "function" and isinstance(
-                    content.get("function"), dict
-                ):
-                    tool_defs.append(content["function"])
-                    continue
-                if "input_schema" in content and "name" in content:
-                    tool_defs.append(content)
-                    continue
-        new_msgs.append(msg)
-    return (new_msgs, tool_defs)
-
-
-def _genai_output_from_langfuse(output_raw: Any) -> Any | None:
-    """Normalize a Langfuse LLM output into a `gen_ai.output.messages` array.
-
-    Langfuse's OpenAI integration emits the response as a single message dict
-    (`{role, content, tool_calls, function_call, audio}` — see
-    `_extract_chat_response`). The GenAI convention is an array of such message
-    dicts (one per choice), matching what Laminar's own litellm wrapper stamps.
-    A single dict is wrapped into a one-element list; an already-list value is
-    passed through. Returns `None` for any other shape so the caller falls back
-    to `lmnr.span.output`.
-    """
-    parsed = _parse_json(output_raw)
-    if isinstance(parsed, list):
-        return parsed
-    if isinstance(parsed, dict):
-        return [parsed]
-    return None
-
-
-def _convert_openai_tool_calls_to_content_parts(
-    messages: list[Any], is_output: bool
-) -> list[Any]:
-    """The output of LangChain integration looks a lot like OpenAI's output,
-    i.e. separate tool_calls and content keys. This function extracts the tool
-    calls and converts them to a more generic content-part style.
-
-    Three assistant-message shapes occur:
-
-    * OpenAI/langchain: string ``content`` + a separate ``tool_calls`` list. The
-      string is wrapped into a text part and the tool calls are appended as
-      content parts.
-    * Anthropic/langchain: list ``content`` that ALREADY embeds the calls as
-      ``{"type": "tool_use", ...}`` blocks, PLUS a redundant top-level
-      ``tool_calls`` list mirroring the same calls. Keep the content blocks and
-      drop the duplicate top-level ``tool_calls`` so the call isn't rendered
-      twice.
-    * OpenAI (from langfuse.openai). Function calls are content blocks of
-      ``{"type": "function", "function": {...}}``. If such are detected,
-      the entire message is best-effort wrapped into an OpenAI choices schema.
-      This is only relevant to the output messages.
-    """
-
-    def is_assistant(msg: Any) -> bool:
-        return isinstance(msg, dict) and msg.get("role") == "assistant"
-
-    def has_inlined_tool_calls(content: Any) -> bool:
-        return isinstance(content, list) and any(
-            isinstance(part, dict) and part.get("type") in ("tool_use", "tool_call")
-            for part in content
-        )
-
-    def is_raw_openai_tool_call_format(tc: Any) -> bool:
-        return (
-            isinstance(tc, dict)
-            and tc.get("type") == "function"
-            and isinstance(tc.get("function"), dict)
-        )
-
-    def normalize(msg: dict) -> dict:
-        content = msg.get("content")
-        tool_calls = msg.get("tool_calls")
-        if not isinstance(tool_calls, list):
-            return msg
-        # OpenAI output choice. Guard on a NON-EMPTY tool_calls list:
-        # `all([])` is True, so a plain text completion that carries
-        # `tool_calls: []` would otherwise be wrapped into the choices shape
-        # and break transcript rendering.
-        if (
-            is_output
-            and tool_calls
-            and all(is_raw_openai_tool_call_format(tc) for tc in tool_calls)
-        ):
-            return {"message": msg}
-        # Anthropic: calls already embedded in the content blocks — drop the
-        # redundant mirror to avoid double rendering.
-        if has_inlined_tool_calls(content):
-            return {k: v for k, v in msg.items() if k != "tool_calls"}
-        # OpenAI tool calls as "function" in input convert to tool_call block
-        if not is_output:
-            new_tool_calls = []
-            for tc in tool_calls:
-                if is_raw_openai_tool_call_format(tc):
-                    fn = tc["function"]
-                    new_tool_calls.append(
-                        {
-                            "id": tc.get("id"),
-                            "type": "tool_call",
-                            "name": fn.get("name"),
-                            "arguments": fn.get("arguments"),
-                        }
-                    )
-                else:
-                    new_tool_calls.append(tc)
-            tool_calls = new_tool_calls
-
-        # OpenAI: fold the separate tool_calls into the content parts.
-        new_cnt = (
-            content
-            if isinstance(content, list)
-            else [{"type": "text", "text": content}]
-            if isinstance(content, str) and content != ""
-            else []
-        )
-        return {
-            "role": msg.get("role"),
-            "content": [*new_cnt, *tool_calls],
-        }
-
-    return [normalize(msg) if is_assistant(msg) else msg for msg in messages]
-
-
-def _usage_field(usage: Any, *keys: str) -> int | None:
-    if not isinstance(usage, dict):
-        return None
-    for k in keys:
-        v = usage.get(k)
-        if isinstance(v, (int, float)):
-            return int(v)
-    return None
-
-
-def _cost_field(cost: Any, *keys: str) -> float | None:
-    if not isinstance(cost, dict):
-        return None
-    for k in keys:
-        v = cost.get(k)
-        if isinstance(v, (int, float)):
-            return float(v)
-    return None
-
-
-def _oi_collect_indexed(attrs: dict[str, Any], prefix: str) -> list[dict[str, Any]]:
-    """Reassemble openinference's flat indexed attributes into a list of dicts.
-
-    OpenInference flattens nested structures into dotted keys with numeric
-    indices, e.g. for `llm.input_messages`:
-
-        llm.input_messages.0.message.role     = "user"
-        llm.input_messages.0.message.content  = "hi"
-        llm.input_messages.1.message.role     = "assistant"
-        llm.input_messages.1.message.tool_calls.0.tool_call.function.name = ...
-
-    Given the list prefix (`llm.input_messages`) this walks every matching key,
-    parses the remaining dotted path (treating all-digit segments as list
-    indices and everything else as dict keys), and rebuilds the nested
-    structure. Returns the list ordered by leading index. Leaf JSON-string
-    values (openinference stamps e.g. `*.arguments` as a JSON string) are left
-    as-is; the caller decides whether to re-parse.
-    """
-    by_index: dict[int, Any] = {}
-    plen = len(prefix) + 1
-    for key, value in attrs.items():
-        if not isinstance(key, str) or not key.startswith(prefix + "."):
-            continue
-        rest = key[plen:]
-        segments = rest.split(".")
-        if not segments or not segments[0].isdigit():
-            continue
-        idx = int(segments[0])
-        container = by_index.setdefault(idx, {})
-        _oi_assign_path(container, segments[1:], value)
-    return [by_index[i] for i in sorted(by_index)]
-
-
-def _oi_assign_path(container: dict[str, Any], segments: list[str], value: Any) -> None:
-    """Assign `value` into `container` following a dotted openinference path.
-
-    Numeric segments index into lists, named segments index into dicts. Lists
-    are grown with placeholder dicts as needed. The first segment is always a
-    dict key (openinference never starts a sub-path with an index once the
-    leading list index has been stripped).
-    """
-    cur: Any = container
-    for i, seg in enumerate(segments):
-        last = i == len(segments) - 1
-        nxt = segments[i + 1] if not last else None
-        if seg.isdigit():
-            seg_idx = int(seg)
-            if not isinstance(cur, list):
-                return
-            while len(cur) <= seg_idx:
-                cur.append({})
-            if last:
-                cur[seg_idx] = value
-            else:
-                if not isinstance(cur[seg_idx], (dict, list)):
-                    cur[seg_idx] = [] if (nxt and nxt.isdigit()) else {}
-                cur = cur[seg_idx]
-        else:
-            if not isinstance(cur, dict):
-                return
-            if last:
-                cur[seg] = value
-            else:
-                child = cur.get(seg)
-                if not isinstance(child, (dict, list)):
-                    child = [] if (nxt and nxt.isdigit()) else {}
-                    cur[seg] = child
-                cur = child
-
-
-def _oi_message_to_genai(raw: dict[str, Any]) -> dict[str, Any]:
-    """Convert one reassembled openinference message dict into an OpenAI-style
-    GenAI message dict.
-
-    OpenInference nests the message under a `message` key with fields like
-    `role`, `content`, `contents` (multi-part), `tool_calls` (each
-    `{tool_call: {id, function: {name, arguments}}}`), `tool_call_id`,
-    `function_call_name` / `function_call_arguments_json`. We flatten that into
-    the `{role, content, tool_calls: [{id, type, function: {...}}]}` shape
-    Laminar's other instrumentors emit.
-    """
-    msg = raw.get("message", raw) if isinstance(raw, dict) else {}
-    if not isinstance(msg, dict):
-        return {"role": "assistant", "content": str(msg)}
-    out: dict[str, Any] = {"role": msg.get("role") or "assistant"}
-
-    content = msg.get("content")
-    contents = msg.get("contents")
-    if content is not None:
-        out["content"] = content
-    elif isinstance(contents, list):
-        out["content"] = contents
-
-    tool_calls = msg.get("tool_calls")
-    if isinstance(tool_calls, list):
-        converted = []
-        for tc in tool_calls:
-            inner = tc.get("tool_call", tc) if isinstance(tc, dict) else {}
-            if not isinstance(inner, dict):
-                continue
-            fn = inner.get("function", {})
-            fn = fn if isinstance(fn, dict) else {}
-            converted.append(
-                {
-                    "id": inner.get("id"),
-                    "type": "tool_call",
-                    "name": fn.get("name"),
-                    "arguments": fn.get("arguments"),
-                }
-            )
-        if converted:
-            existing = out.get("content")
-            if isinstance(existing, list):
-                out["content"] = [*existing, *converted]
-            elif isinstance(existing, str):
-                out["content"] = [{"type": "text", "text": existing}, *converted]
-            else:
-                out["content"] = converted
-
-    if msg.get("function_call_name") is not None:
-        out["function_call"] = {
-            "name": msg.get("function_call_name"),
-            "arguments": msg.get("function_call_arguments_json"),
-        }
-    if msg.get("tool_call_id") is not None:
-        out["tool_call_id"] = msg.get("tool_call_id")
-    if msg.get("name") is not None:
-        out["name"] = msg.get("name")
-    return out
-
-
-def _oi_tool_to_genai(raw: dict[str, Any]) -> Any:
-    """Convert one reassembled openinference tool dict into a GenAI tool
-    definition.
-
-    OpenInference stamps each tool as `llm.tools.K.tool.json_schema`, where the
-    value is the full JSON-schema tool definition (usually a JSON string). We
-    return the parsed schema so it lands in `gen_ai.tool.definitions` in the
-    same shape OpenAI/litellm tools use.
-    """
-    tool = raw.get("tool", raw) if isinstance(raw, dict) else raw
-    if isinstance(tool, dict) and "json_schema" in tool:
-        return _parse_json(tool["json_schema"])
-    return tool
-
-
-def _is_openinference_span(span: ReadableSpan) -> bool:
-    attrs = span.attributes or {}
-    if _OI_SPAN_KIND in attrs:
-        return True
-    return any(
-        isinstance(k, str)
-        and (
-            k.startswith(_OI_LLM_INPUT_MESSAGES + ".")
-            or k.startswith(_OI_LLM_OUTPUT_MESSAGES + ".")
-            or k.startswith("llm.token_count.")
-        )
-        for k in attrs.keys()
-    )
-
-
-def _is_llm_span(span: Any) -> bool:
-    """True if `span` is already typed as an LLM span.
-
-    Used to gate LiteLLM's primary-span forcing: when the active parent is
-    Laminar's own `litellm.completion` LLM span (present when
-    `Instruments.LITELLM` runs alongside the bridge), letting LiteLLM fold its
-    `gen_ai.*` attrs onto that parent is the correct deduplicated shape, so we
-    must NOT redirect it into a second nested `litellm_request` LLM span.
-    Reads the live (still-recording) span's attributes defensively — any
-    unexpected span shape falls back to False (fold not LLM → safe to force).
-    """
-    try:
-        attrs = getattr(span, "attributes", None) or {}
-        if attrs.get("lmnr.span.type") == "LLM":
-            return True
-        if attrs.get(_OI_SPAN_KIND) == "LLM":
-            return True
-        return any(
-            isinstance(k, str)
-            and (
-                k == "gen_ai.request.model"
-                or k == "gen_ai.response.model"
-                or k == "gen_ai.system"
-            )
-            for k in attrs.keys()
-        )
-    except Exception:  # pylint: disable=broad-exception-caught
-        return False
-
-
-def _prepend_span_processor(provider: Any, processor: SpanProcessor) -> bool:
-    """Add `processor` to `provider` so that it runs BEFORE any processors
-    already registered on the provider.
-
-    Ordering matters: the translator must mutate `langfuse.*` attributes
-    before the exporter (`LaminarSpanProcessor` wrapping `SimpleSpanProcessor`
-    when `disable_batch=True`) consumes the span in `on_end` — otherwise the
-    exporter ships the pre-translation shape. `TracerProvider.add_span_processor`
-    appends to the end, so we call it, then reorder the underlying tuple.
-
-    The reorder touches `SynchronousMultiSpanProcessor._span_processors` /
-    `ConcurrentMultiSpanProcessor._span_processors` — both expose the same
-    private layout and lock. If the attribute shape changes upstream we fall
-    back to a plain `add_span_processor` and log.
-    """
-    add = getattr(provider, "add_span_processor", None)
-    if not callable(add):
-        return False
-    add(processor)
-    active = getattr(provider, "_active_span_processor", None)
-    if active is None:
-        return True
-    lock = getattr(active, "_lock", None)
-    current = getattr(active, "_span_processors", None)
-    if current is None:
-        return True
-    try:
-        new_order = (processor,) + tuple(p for p in current if p is not processor)
-        if lock is not None:
-            with lock:
-                active._span_processors = new_order
-        else:
-            active._span_processors = new_order
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        logger.debug(
-            "Could not reorder span processors on %r; translator will run "
-            "after the exporter (%s)",
-            provider,
-            exc,
-        )
-    return True
-
-
-def _remove_span_processor(provider: Any, processor: SpanProcessor) -> bool:
-    """Remove `processor` from `provider`'s active span processor, if present.
-
-    Mirror of `_prepend_span_processor` for the uninstall path: touches the
-    private `_span_processors` tuple on `SynchronousMultiSpanProcessor` /
-    `ConcurrentMultiSpanProcessor` under its lock. Returns True if the
-    processor was removed, False otherwise.
-    """
-    active = getattr(provider, "_active_span_processor", None)
-    if active is None:
-        return False
-    lock = getattr(active, "_lock", None)
-    current = getattr(active, "_span_processors", None)
-    if current is None:
-        return False
-    try:
-        filtered = tuple(p for p in current if p is not processor)
-        if len(filtered) == len(current):
-            return False
-        if lock is not None:
-            with lock:
-                active._span_processors = filtered
-        else:
-            active._span_processors = filtered
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        logger.debug(
-            "Could not remove span processor from %r (%s)",
-            provider,
-            exc,
-        )
-        return False
-    return True
-
-
-def _is_langfuse_span(span: ReadableSpan) -> bool:
-    scope = getattr(span, "instrumentation_scope", None)
-    if scope is not None and scope.name == LANGFUSE_TRACER_NAME:
-        return True
-    attrs = span.attributes or {}
-    return any(isinstance(k, str) and k.startswith("langfuse.") for k in attrs.keys())
-
-
-class LangfuseAttributeTranslator(SpanProcessor):
-    """Rewrites `langfuse.*` attributes to Laminar / OTel GenAI attributes.
-
-    Runs as its own `SpanProcessor` on Laminar's `TracerProvider`. On `on_end`,
-    if the span looks like a Langfuse span, we mutate its attributes in place —
-    Laminar's `LaminarSpanProcessor` (also attached to the same provider) then
-    sees the translated shape when it exports to Laminar's OTLP endpoint.
-
-    Mutation-in-place is safe because the `ReadableSpan` handed to `on_end`
-    shares its `_attributes` dict with the underlying recording `Span`, which
-    is the same object the exporter eventually serializes. We cannot call
-    `span.set_attribute(...)` here: `on_end` receives a `ReadableSpan` (no
-    `set_attribute` method), and even if it were the recording `Span`, the
-    span is already ended at this point and `set_attribute` would be a no-op.
-    We write to `span._attributes` directly instead.
-    """
-
-    def on_start(self, span: Span, parent_context: Context | None = None) -> None:
-        return None
-
-    def on_end(self, span: ReadableSpan) -> None:
-        # Routing precedence — openinference FIRST:
-        #   * groq / google_genai (the openinference instrumentations Langfuse
-        #     recommends) emit purely openinference `llm.*` attrs, no
-        #     `langfuse.*` keys.
-        #   * LiteLLM's `langfuse_otel` callback emits a HYBRID: openinference
-        #     `llm.*` attrs (model, tokens, indexed messages, tools, span kind)
-        #     AND `langfuse.*` attrs — but it never sets
-        #     `langfuse.observation.type`, so the langfuse path can't tell the
-        #     span is an LLM call and would miss the model/tokens/messages.
-        #     The openinference path carries all of that, so it wins; it also
-        #     promotes the `langfuse.*` trace-level session/user/metadata.
-        #   * Real Langfuse-SDK spans never carry `openinference.span.kind` /
-        #     `llm.token_count.*` / `llm.input_messages.*`, so they fall
-        #     through to the langfuse path.
-        try:
-            if _is_openinference_span(span):
-                self._translate_openinference(span)
-            elif _is_langfuse_span(span):
-                self._translate(span)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.debug("Langfuse attribute translation failed: %s", exc)
-
-    def shutdown(self) -> None:
-        return None
-
-    def force_flush(self, timeout_millis: int = 30000) -> bool:
-        return True
-
-    @staticmethod
-    def _translate(span: ReadableSpan) -> None:
-        attrs = dict(span.attributes or {})
-        if not attrs:
-            return
-        new_attrs: dict[str, Any] = {}
-
-        is_llm = False
-        obs_type = attrs.get(_OBSERVATION_TYPE)
-        if isinstance(obs_type, str):
-            if obs_type.lower() in _LLM_OBSERVATION_TYPES:
-                new_attrs[SPAN_TYPE] = "LLM"
-                is_llm = True
-            elif obs_type.lower() in _TOOL_OBSERVATION_TYPES:
-                new_attrs[SPAN_TYPE] = "TOOL"
-
-        # Model
-        model = attrs.get(_OBSERVATION_MODEL)
-        if isinstance(model, str) and model:
-            new_attrs.setdefault(_GEN_AI_REQUEST_MODEL, model)
-            new_attrs.setdefault(_GEN_AI_RESPONSE_MODEL, model)
-
-        # Usage details (tokens)
-        usage_raw = _parse_json(attrs.get(_OBSERVATION_USAGE_DETAILS))
-        input_tokens = _usage_field(usage_raw, "input", "prompt_tokens", "input_tokens")
-        output_tokens = _usage_field(
-            usage_raw, "output", "completion_tokens", "output_tokens"
-        )
-        total_tokens = _usage_field(usage_raw, "total", "total_tokens")
-        if input_tokens is not None:
-            new_attrs[_GEN_AI_USAGE_INPUT_TOKENS] = input_tokens
-        if output_tokens is not None:
-            new_attrs[_GEN_AI_USAGE_OUTPUT_TOKENS] = output_tokens
-        if total_tokens is None and (
-            input_tokens is not None or output_tokens is not None
-        ):
-            total_tokens = (input_tokens or 0) + (output_tokens or 0)
-        if total_tokens is not None:
-            new_attrs[_GEN_AI_USAGE_TOTAL_TOKENS] = total_tokens
-
-        # Cost details
-        cost_raw = _parse_json(attrs.get(_OBSERVATION_COST_DETAILS))
-        input_cost = _cost_field(cost_raw, "input")
-        output_cost = _cost_field(cost_raw, "output")
-        total_cost = _cost_field(cost_raw, "total")
-        if input_cost is not None:
-            new_attrs[_GEN_AI_USAGE_INPUT_COST] = input_cost
-        if output_cost is not None:
-            new_attrs[_GEN_AI_USAGE_OUTPUT_COST] = output_cost
-        if total_cost is None and (input_cost is not None or output_cost is not None):
-            total_cost = (input_cost or 0.0) + (output_cost or 0.0)
-        if total_cost is not None:
-            new_attrs[_GEN_AI_USAGE_TOTAL_COST] = total_cost
-
-        # Input / output — prefer observation-level, fall back to trace-level.
-        # For LLM observations we translate into the GenAI message conventions
-        # (`gen_ai.input.messages` / `gen_ai.output.messages` /
-        # `gen_ai.tool.definitions`) so the Laminar UI renders them as a chat
-        # transcript and the app-server parses tokens/tools correctly. For
-        # non-LLM observations (or when the LLM shape isn't recognized) we fall
-        # back to the raw `lmnr.span.input/output` blob.
-        input_raw = attrs.get(_OBSERVATION_INPUT)
-        if input_raw is None:
-            input_raw = attrs.get(_TRACE_INPUT)
-        input_handled = False
-        if is_llm and input_raw is not None:
-            split = _genai_input_from_langfuse(input_raw)
-            if split is not None:
-                messages, tools = split
-                messages, lc_tools = _split_messages_and_tool_defs_langchain(messages)
-                messages = _convert_openai_tool_calls_to_content_parts(messages, False)
-                new_attrs[_GEN_AI_INPUT_MESSAGES] = json_dumps(messages)
-                if tools:
-                    new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(tools)
-                elif lc_tools:
-                    new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(lc_tools)
-                input_handled = True
-        if (
-            not input_handled
-            and isinstance(input_raw, str)
-            and input_raw
-            and SPAN_INPUT not in attrs
-        ):
-            new_attrs[SPAN_INPUT] = input_raw
-
-        output_raw = attrs.get(_OBSERVATION_OUTPUT)
-        if output_raw is None:
-            output_raw = attrs.get(_TRACE_OUTPUT)
-        output_handled = False
-        if is_llm and output_raw is not None:
-            messages = _genai_output_from_langfuse(output_raw)
-            if messages is not None:
-                if isinstance(messages, list):
-                    messages = _convert_openai_tool_calls_to_content_parts(
-                        messages, True
-                    )
-                new_attrs[_GEN_AI_OUTPUT_MESSAGES] = json_dumps(messages)
-                output_handled = True
-        if (
-            not output_handled
-            and isinstance(output_raw, str)
-            and output_raw
-            and SPAN_OUTPUT not in attrs
-        ):
-            new_attrs[SPAN_OUTPUT] = output_raw
-
-        LangfuseAttributeTranslator._promote_trace_attributes(attrs, new_attrs)
-        LangfuseAttributeTranslator._write_attrs(span, new_attrs)
-
-    @staticmethod
-    def _promote_trace_attributes(
-        attrs: dict[str, Any], new_attrs: dict[str, Any]
-    ) -> None:
-        """Promote Langfuse trace-level `langfuse.*` attrs to Laminar
-        association properties.
-
-        Shared by both the langfuse and openinference translators: LiteLLM's
-        `langfuse_otel` callback stamps `session.id` / `user.id` /
-        `langfuse.trace.*` alongside the openinference `llm.*` attrs, so the
-        openinference path needs this promotion too (the openinference
-        instrumentations for groq / google_genai simply won't have these keys,
-        making it a harmless no-op there).
-        """
-        # Session / user id — promote so the trace groups by session in the UI.
-        session_id = attrs.get(_TRACE_SESSION_ID)
-        if isinstance(session_id, str) and session_id:
-            new_attrs[f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}"] = session_id
-        user_id = attrs.get(_TRACE_USER_ID)
-        if isinstance(user_id, str) and user_id:
-            new_attrs[f"{ASSOCIATION_PROPERTIES}.{USER_ID}"] = user_id
-
-        # Tags
-        tags = attrs.get(_TRACE_TAGS)
-        if isinstance(tags, (list, tuple)) and tags:
-            new_attrs[f"{ASSOCIATION_PROPERTIES}.tags"] = list(tags)
-
-        # Trace / observation metadata — flat form is `langfuse.trace.metadata.<k>`,
-        # unflattened form is `langfuse.trace.metadata`. Route both into Laminar's
-        # `lmnr.association.properties.metadata.<k>` namespace.
-        for k, v in attrs.items():
-            if not isinstance(k, str):
-                continue
-            for prefix in (_TRACE_METADATA_PREFIX, _OBSERVATION_METADATA_PREFIX):
-                if k == prefix:
-                    parsed = _parse_json(v)
-                    if isinstance(parsed, dict):
-                        for mk, mv in parsed.items():
-                            new_attrs[f"{ASSOCIATION_PROPERTIES}.metadata.{mk}"] = (
-                                mv
-                                if isinstance(mv, (str, int, float, bool))
-                                else json.dumps(mv)
-                            )
-                    break
-                if k.startswith(prefix + "."):
-                    sub = k[len(prefix) + 1 :]
-                    new_attrs[f"{ASSOCIATION_PROPERTIES}.metadata.{sub}"] = v
-                    break
-
-    @staticmethod
-    def _write_attrs(span: ReadableSpan, new_attrs: dict[str, Any]) -> None:
-        if not new_attrs:
-            return
-        # `on_end` receives a `ReadableSpan` (no `set_attribute` method), and
-        # the underlying span is already ended so `set_attribute` would be a
-        # silent no-op anyway. Write to the shared `_attributes` dict directly.
-        target = getattr(span, "_attributes", None)
-        if target is None:
-            return
-        # `Span.end()` marks `BoundedAttributes._immutable = True` before
-        # `on_end` runs (opentelemetry-sdk >= 1.4x), so `target[k] = v` now
-        # raises `TypeError` here. Flip the flag off for the duration of the
-        # write — this is the same private flag `end()` sets, so toggling it
-        # is safe and is a no-op on older SDKs where the attribute is absent.
-        #
-        # The flag toggle (not the writes) is guarded by `target._lock` — the
-        # same lock `BoundedAttributes.__setitem__` takes internally to
-        # serialize `_dict` mutations. We must NOT hold it across the
-        # `target[k] = v` calls below: that lock is a plain (non-reentrant)
-        # `threading.Lock`, and `__setitem__` acquires it again itself, so
-        # holding it here too would deadlock. This only protects the flag
-        # flip itself from a concurrent `_write_attrs` call on the same span
-        # (possible if a `TracerProvider` were ever built with
-        # `ConcurrentMultiSpanProcessor`, which dispatches every processor's
-        # `on_end` for a span to a thread pool concurrently — not what this
-        # codebase constructs today). It does not make the whole multi-key
-        # write atomic with a concurrent reader; that would require locking
-        # inside `BoundedAttributes` itself, upstream of this code.
-        lock = getattr(target, "_lock", None)
-
-        def _set_immutable(value: bool) -> None:
-            if lock is not None:
-                with lock:
-                    target._immutable = value
-            else:
-                target._immutable = value
-
-        was_immutable = getattr(target, "_immutable", False)
-        if was_immutable:
-            _set_immutable(False)
-        try:
-            for k, v in new_attrs.items():
-                try:
-                    target[k] = v
-                except Exception as e:
-                   logger.debug(f"Failed to set attribute to span: {e}")
-        finally:
-            if was_immutable:
-                _set_immutable(True)
-
-    @staticmethod
-    def _translate_openinference(span: ReadableSpan) -> None:
-        """Translate openinference-flattened LLM attributes into Laminar / OTel
-        GenAI conventions.
-
-        Handles the groq / google_genai path: Langfuse's docs route those
-        through openinference instrumentations, whose attribute layout is a
-        flat set of indexed keys rather than Langfuse's `langfuse.*` JSON
-        blobs. We reassemble the indexed messages/tools, convert tokens, model
-        name, and mark the span as LLM so it renders correctly.
-        """
-        attrs = dict(span.attributes or {})
-        if not attrs:
-            return
-        new_attrs: dict[str, Any] = {}
-
-        # litellm's `langfuse_otel` callback runs through arize's attribute
-        # setter, which forces `openinference.span.kind=TOOL` on ANY completion
-        # that merely passes `tools=[...]` (see litellm
-        # `integrations/arize/_utils.py`: `if optional_tools ... span_kind =
-        # TOOL`). That's a genuine LLM call, not a tool execution, so we must
-        # not trust a `TOOL` kind when the span also carries LLM signals — a
-        # model name, token counts, or indexed input/output messages. Otherwise
-        # `litellm_request` spans get mis-typed `TOOL` whenever the caller used
-        # tool-calling.
-        kind = attrs.get(_OI_SPAN_KIND)
-        has_llm_signals = (
-            _OI_LLM_MODEL_NAME in attrs
-            or _OI_TOKEN_PROMPT in attrs
-            or _OI_TOKEN_COMPLETION in attrs
-            or _OI_TOKEN_TOTAL in attrs
-            or any(
-                isinstance(k, str)
-                and (
-                    k.startswith(_OI_LLM_INPUT_MESSAGES + ".")
-                    or k.startswith(_OI_LLM_OUTPUT_MESSAGES + ".")
-                )
-                for k in attrs.keys()
-            )
-        )
-        is_llm = (
-            isinstance(kind, str) and kind.upper() in _OI_LLM_SPAN_KINDS
-        ) or has_llm_signals
-        if is_llm:
-            new_attrs[SPAN_TYPE] = "LLM"
-        elif isinstance(kind, str) and kind.upper() == "TOOL":
-            new_attrs[SPAN_TYPE] = "TOOL"
-
-        # Model
-        model = attrs.get(_OI_LLM_MODEL_NAME)
-        if isinstance(model, str) and model:
-            new_attrs.setdefault(_GEN_AI_REQUEST_MODEL, model)
-            new_attrs.setdefault(_GEN_AI_RESPONSE_MODEL, model)
-
-        # Tokens
-        prompt_tokens = attrs.get(_OI_TOKEN_PROMPT)
-        completion_tokens = attrs.get(_OI_TOKEN_COMPLETION)
-        total_tokens = attrs.get(_OI_TOKEN_TOTAL)
-        if isinstance(prompt_tokens, (int, float)):
-            new_attrs[_GEN_AI_USAGE_INPUT_TOKENS] = int(prompt_tokens)
-        if isinstance(completion_tokens, (int, float)):
-            new_attrs[_GEN_AI_USAGE_OUTPUT_TOKENS] = int(completion_tokens)
-        if isinstance(total_tokens, (int, float)):
-            new_attrs[_GEN_AI_USAGE_TOTAL_TOKENS] = int(total_tokens)
-        elif isinstance(prompt_tokens, (int, float)) or isinstance(
-            completion_tokens, (int, float)
-        ):
-            new_attrs[_GEN_AI_USAGE_TOTAL_TOKENS] = int(
-                (prompt_tokens or 0) + (completion_tokens or 0)
-            )
-
-        # Messages
-        input_messages = [
-            _oi_message_to_genai(m)
-            for m in _oi_collect_indexed(attrs, _OI_LLM_INPUT_MESSAGES)
-        ]
-        if input_messages:
-            new_attrs[_GEN_AI_INPUT_MESSAGES] = json_dumps(input_messages)
-        output_messages = [
-            _oi_message_to_genai(m)
-            for m in _oi_collect_indexed(attrs, _OI_LLM_OUTPUT_MESSAGES)
-        ]
-        if output_messages:
-            new_attrs[_GEN_AI_OUTPUT_MESSAGES] = json_dumps(output_messages)
-
-        # Tool definitions
-        tools = [
-            _oi_tool_to_genai(t) for t in _oi_collect_indexed(attrs, _OI_LLM_TOOLS)
-        ]
-        tools = [t for t in tools if t]
-        if tools:
-            new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(tools)
-
-        # Fall back to opaque input/output blobs only when the structured
-        # messages weren't available. openinference stamps `input.value` /
-        # `output.value`; LiteLLM's hybrid spans additionally carry the
-        # `langfuse.observation.input/output` blobs, so try those too.
-        if not input_messages:
-            in_val = attrs.get(_OI_INPUT_VALUE)
-            if not (isinstance(in_val, str) and in_val):
-                in_val = attrs.get(_OBSERVATION_INPUT)
-            if isinstance(in_val, str) and in_val and SPAN_INPUT not in attrs:
-                new_attrs[SPAN_INPUT] = in_val
-        if not output_messages:
-            out_val = attrs.get(_OI_OUTPUT_VALUE)
-            if not (isinstance(out_val, str) and out_val):
-                out_val = attrs.get(_OBSERVATION_OUTPUT)
-            if isinstance(out_val, str) and out_val and SPAN_OUTPUT not in attrs:
-                new_attrs[SPAN_OUTPUT] = out_val
-
-        # LiteLLM's `langfuse_otel` hybrid spans also carry trace-level
-        # `langfuse.*` session/user/metadata; promote those too. For the pure
-        # openinference (groq / google_genai) case these keys are absent, so
-        # this is a no-op.
-        LangfuseAttributeTranslator._promote_trace_attributes(attrs, new_attrs)
-
-        LangfuseAttributeTranslator._write_attrs(span, new_attrs)
+__all__ = [
+    "LangfuseAttributeTranslator",
+    "LangfuseInstrumentor",
+    "get_langfuse_instrumentor",
+    # Re-exported for tests / callers that reached into the old monolithic
+    # module directly; not part of the documented public API.
+    "is_langfuse_span",
+    "is_llm_span",
+    "langfuse_sdk_importable",
+    "prepend_span_processor",
+    "remove_span_processor",
+]
 
 
 def langfuse_sdk_importable() -> bool:
@@ -997,68 +110,53 @@ def langfuse_sdk_importable() -> bool:
     module the attach/patch path needs.
     """
     try:
-        import langfuse._client.resource_manager  # noqa: F401
+        import langfuse._client.resource_manager  # noqa: F401, # pyright: ignore[reportMissingTypeStubs, reportUnusedImport]
     except Exception:
         return False
     return True
 
 
-class LangfuseInstrumentor:
+class LangfuseInstrumentor(BaseInstrumentor):
     """Attaches Laminar's span processor to every Langfuse `TracerProvider`.
 
-    Unlike the other Laminar instrumentors, this one does NOT extend
-    `BaseInstrumentor` — `BaseInstrumentor.instrument()` ignores extra keyword
-    arguments that aren't `tracer_provider`/`logger_provider`, and we need the
-    caller-supplied Laminar `SpanProcessor` to attach. `init_instrumentations`
-    has a special-case branch for this class.
+    A real `BaseInstrumentor`. `init_instrumentations` still has a
+    special-case branch for it (see `tracing/instruments.py`): unlike every
+    other instrumentor, this one needs the caller-supplied Laminar
+    `SpanProcessor` (not just a `tracer_provider`/`logger_provider`) so it can
+    dual-attach that same processor onto Langfuse-owned `TracerProvider`s —
+    `_instrument` reads `lmnr_tracer_provider` / `lmnr_span_processor` from
+    kwargs.
     """
 
-    # State is class-level so repeated calls to `Laminar.connect_to_langfuse()`
-    # (or repeated auto-install via `init_instrumentations`) don't re-attach
-    # processors or re-wrap `LangfuseResourceManager._initialize_instance`.
-    installed: bool = False
-    _handled_providers: set[int] | None = None
-    #: Providers we attached the translator / span processor to, keyed by id().
-    #: `uninstrument` walks this map to detach what we added. The reference is
-    #: only held for the duration of `instrument(...)`; `uninstrument` clears
-    #: it immediately so the instrumentor never pins a provider long-term.
-    _attached_providers: dict[int, Any] | None = None
-    _lmnr_tracer_provider: Any = None
-    _original_initialize_instance: Callable[..., Any] | None = None
-    #: Saved reference to LiteLLM's
-    #: `litellm_logging._init_custom_logger_compatible_class` factory so the
-    #: monkey-patch installed for late-constructed `langfuse_otel` loggers can
-    #: be reverted on `uninstrument`. See `_patch_litellm_logger_factory`.
-    _original_litellm_init_logger: Callable[..., Any] | None = None
-    #: LiteLLM `langfuse_otel` loggers we wrapped, keyed by logger id(), mapping
-    #: to `(logger, original_get_tracer, original_get_span_context)`. LiteLLM's
-    #: callback emits its `litellm_request` / `raw_gen_ai_request` spans through
-    #: lazily-built, per-credential `TracerProvider`s cached in
-    #: `logger._tracer_provider_cache` — NOT `logger._tracer_provider` (which is
-    #: the only provider the resource-manager attach path can reach). We wrap
-    #: `_get_tracer_with_dynamic_headers` so every cache provider also gets
-    #: Laminar's translator + span processor, and `_get_span_context` so the
-    #: callback creates its own `litellm_request` span instead of folding
-    #: `gen_ai.*` attributes onto the `@observe` root. This map lets
-    #: `uninstrument` restore both originals. See `_patch_litellm_logger`.
-    _wrapped_litellm_loggers: "dict[int, tuple[Any, Callable[..., Any], Callable[..., Any]]]" = {}
-    _translator: LangfuseAttributeTranslator | None = None
-    _lmnr_span_processor: SpanProcessor | None = None
-
     def __init__(self) -> None:
-        pass
+        super().__init__()
+        # `BaseInstrumentor.__new__` caches and returns the same instance for
+        # every `LangfuseInstrumentor()` call, but Python still calls
+        # `__init__` on that cached instance every time. Without this guard,
+        # a stray direct construction (bypassing `get_langfuse_instrumentor()`)
+        # after the bridge is already installed would silently wipe
+        # `_translator` / `_provider_attachment` / `_litellm_bridge` while
+        # `is_instrumented_by_opentelemetry` stays True — `instrument()` then
+        # no-ops (already instrumented), `rebind()` reports success without
+        # anything to rebind, and `_teardown()` can no longer find what to
+        # detach. Only initialize state on the first real construction.
+        if getattr(self, "_state_initialized", False):
+            return
+        self._state_initialized: bool = True
+        self._translator: LangfuseAttributeTranslator | None = None
+        self._lmnr_span_processor: SpanProcessor | None = None
+        self._lmnr_tracer_provider: SdkTracerProvider | None = None
+        self._provider_attachment: ProviderAttachment | None = None
+        self._litellm_bridge: LiteLLMLangfuseBridge | None = None
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return ("langfuse >= 3.0.0",)
 
-    def instrument(
-        self,
-        lmnr_tracer_provider: SdkTracerProvider,
-        lmnr_span_processor: SpanProcessor,
-    ) -> None:
-        cls = type(self)
-        if cls.installed:
-            return
+    @override
+    def _instrument(self, **kwargs: Any) -> None:  # pyright: ignore[reportAny, reportExplicitAny]
+        lmnr_tracer_provider: SdkTracerProvider = kwargs["lmnr_tracer_provider"]  # pyright: ignore[reportAny]
+        lmnr_span_processor: SpanProcessor = kwargs["lmnr_span_processor"]  # pyright: ignore[reportAny]
 
         # 1. Translator lives on Laminar's own provider so it sees every
         #    Langfuse span that reaches the Laminar exporter (including spans
@@ -1069,56 +167,62 @@ class LangfuseInstrumentor:
         #    happens synchronously inside `on_end`.
         translator = LangfuseAttributeTranslator()
         try:
-            _prepend_span_processor(lmnr_tracer_provider, translator)
+            _success = prepend_span_processor(lmnr_tracer_provider, translator)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("Failed to install Langfuse attribute translator: %s", exc)
-            return
-        cls._translator = translator
-        cls._lmnr_span_processor = lmnr_span_processor
-        cls._lmnr_tracer_provider = lmnr_tracer_provider
+            # Re-raise (rather than silently returning) so
+            # `BaseInstrumentor.instrument()` — which only flips
+            # `_is_instrumented_by_opentelemetry = True` after `_instrument`
+            # returns WITHOUT raising — does not report success. Callers
+            # (`connect_to_langfuse()`, `init_instrumentations`) already wrap
+            # `instrument()` in their own try/except and degrade to a
+            # warning + `False`/`continue`.
+            raise
+        self._translator = translator
+        self._lmnr_span_processor = lmnr_span_processor
+        self._lmnr_tracer_provider = lmnr_tracer_provider
 
-        # Pre-register Laminar's provider id so `_attach_to_provider` short-
-        # circuits if Langfuse happens to share it. The `get_tracer_wrapper()`
-        # fallback check is racy during auto-install — `init_instrumentations`
-        # runs BEFORE `init_tracing` publishes the wrapper, so
-        # `get_tracer_wrapper()` returns None, and a Langfuse client that
-        # had already been constructed against a pre-existing global provider
-        # identical to Laminar's would otherwise get the translator +
-        # laminar span processor attached a second time. id()-based
-        # short-circuit is independent of the tracing lifecycle.
-        if cls._handled_providers is None:
-            cls._handled_providers = set()
-        cls._handled_providers.add(id(lmnr_tracer_provider))
+        provider_attachment = ProviderAttachment(translator, lmnr_span_processor)
+        # Pre-register Laminar's provider id so `attach()` short-circuits if
+        # Langfuse happens to share it. The `get_tracer_wrapper()` fallback
+        # check is racy during auto-install — `init_instrumentations` runs
+        # BEFORE `init_tracing` publishes the wrapper, so `get_tracer_wrapper()`
+        # returns None, and a Langfuse client that had already been
+        # constructed against a pre-existing global provider identical to
+        # Laminar's would otherwise get the translator + laminar span
+        # processor attached a second time. id()-based short-circuit is
+        # independent of the tracing lifecycle.
+        provider_attachment.mark_handled(lmnr_tracer_provider)
+        self._provider_attachment = provider_attachment
+        self._litellm_bridge = LiteLLMLangfuseBridge(provider_attachment, is_llm_span)
 
         # 2 & 3. Attach to already-initialized Langfuse clients and patch
-        # future-client construction. If either raises an uncaught exception
-        # before we flip `_installed=True`, the translator we just prepended
-        # to Laminar's provider would be left orphaned — a subsequent
-        # `instrument()` (e.g. via `Laminar.connect_to_langfuse()`) would pass
-        # the `_installed` guard and prepend a SECOND translator, causing
-        # every Langfuse span to be translated twice. Roll back by walking
-        # the half-applied state through `uninstrument()`.
-        cls.installed = True
+        # future-client construction. If either raises an uncaught exception,
+        # the translator we just prepended to Laminar's provider would be
+        # left orphaned — a subsequent `instrument()` (e.g. via
+        # `Laminar.connect_to_langfuse()`) would prepend a SECOND translator,
+        # causing every Langfuse span to be translated twice. Roll back by
+        # walking the half-applied state through `_teardown()`.
         try:
             # For every already-initialized Langfuse client, attach our span
             # processor and our translator to its `TracerProvider`. If
             # Langfuse reused Laminar's provider, both are already attached —
             # the `_handled_providers` guard makes this a no-op.
-            self._attach_to_existing_langfuse_providers()
+            provider_attachment.attach_to_existing_langfuse_providers()
             # Patch future Langfuse-client construction.
-            self._patch_resource_manager()
+            provider_attachment.patch_resource_manager()
             # LiteLLM's `langfuse_otel` success callback never registers with
             # `LangfuseResourceManager`, so the two steps above can't reach it.
             # Attach to its private TracerProvider separately (existing loggers
             # + a factory patch for ones constructed later).
-            self._attach_to_existing_litellm_loggers()
-            self._patch_litellm_logger_factory()
+            self._litellm_bridge.attach_to_existing_loggers()
+            self._litellm_bridge.patch_logger_factory()
         except Exception:  # pylint: disable=broad-exception-caught
             # Best-effort cleanup: detach whatever we've attached so far and
-            # clear class-level state. `uninstrument()` is idempotent and
-            # tolerant of partial state (it only touches providers we
-            # recorded in `_attached_providers`).
-            self.uninstrument()
+            # clear instance state. `_teardown()` is idempotent and tolerant
+            # of partial state (it only touches providers we recorded in
+            # `_attached_providers`).
+            self._teardown()
             raise
 
     def rebind(
@@ -1129,445 +233,104 @@ class LangfuseInstrumentor:
         """Point an already-installed bridge at a new Laminar span processor.
 
         `Laminar.shutdown()` retires the run's `LaminarSpanProcessor` and a
-        later `initialize()` builds a fresh one, but `instrument()` returns
-        early once `installed` is set — so without this every Langfuse-owned
-        provider (and every LiteLLM `langfuse_otel` logger provider) would keep
-        calling `on_end` on the shut-down processor and its spans would never
-        reach the new exporter. Driven from `Laminar.initialize()`, because
-        nothing else runs on a re-init: `LANGFUSE` is never in the default
-        instrument set and `connect_to_langfuse()` is a one-shot the user calls.
+        later `initialize()` builds a fresh one, but `instrument()` (via
+        `BaseInstrumentor`) returns early once already instrumented — so
+        without this every Langfuse-owned provider (and every LiteLLM
+        `langfuse_otel` logger provider) would keep calling `on_end` on the
+        shut-down processor and its spans would never reach the new exporter.
+        Driven from `Laminar.initialize()`, because nothing else runs on a
+        re-init: `LANGFUSE` is never in the default instrument set and
+        `connect_to_langfuse()` is a one-shot the user calls.
 
         Returns True if a swap happened.
         """
-        cls = type(self)
-        if not cls.installed:
+        if not self.is_instrumented_by_opentelemetry:
             return False
 
-        old_processor = cls._lmnr_span_processor
-        provider_moved = cls._lmnr_tracer_provider is not lmnr_tracer_provider
+        old_processor = self._lmnr_span_processor
+        provider_moved = self._lmnr_tracer_provider is not lmnr_tracer_provider
         if old_processor is lmnr_span_processor and not provider_moved:
             return False
 
         # The translator lives on Laminar's OWN provider, which is reused
         # across initialize()/shutdown() cycles — so this branch is normally
         # dead. It only fires if that provider is ever swapped.
-        if provider_moved and cls._translator is not None:
-            if cls._lmnr_tracer_provider is not None:
-                _remove_span_processor(cls._lmnr_tracer_provider, cls._translator)
+        if provider_moved and self._translator is not None:
+            if self._lmnr_tracer_provider is not None:
+                _success = remove_span_processor(self._lmnr_tracer_provider, self._translator)
             try:
-                _prepend_span_processor(lmnr_tracer_provider, cls._translator)
+                _success = prepend_span_processor(lmnr_tracer_provider, self._translator)
             except Exception as exc:  # pylint: disable=broad-exception-caught
                 logger.warning("Failed to move Langfuse translator: %s", exc)
                 return False
-            if cls._handled_providers is not None:
-                cls._handled_providers.add(id(lmnr_tracer_provider))
+            if self._provider_attachment is not None:
+                self._provider_attachment.mark_handled(lmnr_tracer_provider)
 
-        cls._lmnr_tracer_provider = lmnr_tracer_provider
-        cls._lmnr_span_processor = lmnr_span_processor
+        self._lmnr_tracer_provider = lmnr_tracer_provider
+        self._lmnr_span_processor = lmnr_span_processor
 
         # Every attach path (Langfuse clients, the resource-manager patch, and
         # the LiteLLM logger providers) records into `_attached_providers`, so
         # this covers all of them.
-        for provider in list((cls._attached_providers or {}).values()):
-            if old_processor is not None:
-                _remove_span_processor(provider, old_processor)
-            add = getattr(provider, "add_span_processor", None)
-            if callable(add):
-                try:
-                    add(lmnr_span_processor)
-                except Exception as exc:  # pylint: disable=broad-exception-caught
-                    logger.warning(
-                        "Failed to rebind Laminar processor on Langfuse "
-                        "TracerProvider: %s",
-                        exc,
-                    )
+        if self._provider_attachment is not None:
+            self._provider_attachment.rebind(old_processor, lmnr_span_processor)
         return True
 
-    def uninstrument(self) -> None:
-        """Reverse `instrument`: detach the translator and Laminar span
+    def _teardown(self) -> None:
+        """Reverse `_instrument`: detach the translator and Laminar span
         processor from every provider we attached them to, restore the
-        resource-manager patch, and clear class-level state so a subsequent
-        `instrument()` starts from a clean slate.
+        resource-manager / LiteLLM-factory patches, and clear instance state
+        so a subsequent `_instrument()` starts from a clean slate.
+
+        Called from BOTH `_uninstrument()` and the exception-rollback path in
+        `_instrument()` — `BaseInstrumentor.instrument()` only flips
+        `_is_instrumented_by_opentelemetry = True` AFTER `_instrument()`
+        returns successfully, so calling the public `uninstrument()` from a
+        failing `_instrument()` would no-op (flag still False) and leak the
+        translator. This private method runs unconditionally instead.
 
         Without the full reset, a re-install would prepend a second
         translator onto Laminar's provider (the first was never removed) and
         `_handled_providers` would still contain stale ids from the previous
-        session so `_attach_to_existing_langfuse_providers` would skip
+        session so `attach_to_existing_langfuse_providers` would skip
         already-seen Langfuse providers instead of re-attaching.
         """
-        cls = type(self)
-        if not cls.installed:
-            return
-        self._unpatch_resource_manager()
-        self._unpatch_litellm_logger_factory()
-        self._unwrap_litellm_loggers()
+        if self._provider_attachment is not None:
+            self._provider_attachment.unpatch_resource_manager()
+        if self._litellm_bridge is not None:
+            self._litellm_bridge.unpatch_logger_factory()
+            self._litellm_bridge.unwrap_loggers()
 
-        translator = cls._translator
-        lmnr_processor = cls._lmnr_span_processor
-        lmnr_provider = cls._lmnr_tracer_provider
+        translator = self._translator
+        lmnr_provider = self._lmnr_tracer_provider
 
         # Detach translator from Laminar's provider.
         if lmnr_provider is not None and translator is not None:
-            _remove_span_processor(lmnr_provider, translator)
+            _success = remove_span_processor(lmnr_provider, translator)
 
         # Detach translator + laminar span processor from every Langfuse
         # provider we attached them to.
-        for provider in list((cls._attached_providers or {}).values()):
-            if translator is not None:
-                _remove_span_processor(provider, translator)
-            if lmnr_processor is not None:
-                _remove_span_processor(provider, lmnr_processor)
+        if self._provider_attachment is not None:
+            self._provider_attachment.detach_all()
 
-        cls._attached_providers = {}
-        cls._handled_providers = set()
-        cls._translator = None
-        cls._lmnr_span_processor = None
-        cls._lmnr_tracer_provider = None
-        cls.installed = False
+        self._translator = None
+        self._lmnr_span_processor = None
+        self._lmnr_tracer_provider = None
+        self._provider_attachment = None
+        self._litellm_bridge = None
 
-    def _unwrap_litellm_loggers(self) -> None:
-        """Restore the original `_get_tracer_with_dynamic_headers` /
-        `_get_span_context` bound methods on every `langfuse_otel` logger we
-        wrapped. Mirror of the wrapping in `_patch_litellm_logger`.
-        """
-        cls = type(self)
-        for logger_obj, orig_get_tracer, orig_get_ctx in list(
-            cls._wrapped_litellm_loggers.values()
-        ):
-            try:
-                logger_obj._get_tracer_with_dynamic_headers = orig_get_tracer
-                logger_obj._get_span_context = orig_get_ctx
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logger.debug("Could not restore LiteLLM logger wrap: %s", exc)
-        cls._wrapped_litellm_loggers = {}
+    @override
+    def _uninstrument(self, **kwargs: Any) -> None:  # pyright: ignore[reportAny, reportExplicitAny]
+        self._teardown()
 
-    # --- internals ---
 
-    def _attach_to_existing_langfuse_providers(self) -> None:
-        try:
-            from langfuse._client.resource_manager import (  # type: ignore[import-not-found]
-                LangfuseResourceManager,
-            )
-        except Exception:
-            # ImportError if not installed. Other exceptions (e.g. pydantic
-            # v1 ConfigError on Python 3.14 due to langfuse's own pydantic
-            # compat bug) mean the SDK is unusable in this interpreter —
-            # treat the same as absent and leave the bridge installed but
-            # inert for the resource-manager path.
-            return
+# Module-level singleton, mirroring `get_tracer_wrapper()` in
+# `tracing/__init__.py`. `BaseInstrumentor.__new__` already makes
+# `LangfuseInstrumentor()` a per-class singleton, but routing every caller
+# through one accessor keeps the intent explicit and matches the idiom used
+# for `TracerWrapper`.
+_instrumentor = LangfuseInstrumentor()
 
-        instances = getattr(LangfuseResourceManager, "_instances", {}) or {}
-        for rm in instances.values():
-            provider = getattr(rm, "tracer_provider", None)
-            self._attach_to_provider(provider)
 
-    def _attach_to_provider(self, provider: Any) -> None:
-        if provider is None:
-            return
-        pid = id(provider)
-        if self._handled_providers is not None:
-            if pid in self._handled_providers:
-                return
-            self._handled_providers.add(pid)
-
-        # Skip the Laminar provider itself — our processor and translator are
-        # already attached there.
-        from lmnr.opentelemetry_lib.tracing import get_tracer_wrapper
-
-        lmnr_wrapper = get_tracer_wrapper()
-        if lmnr_wrapper is not None and lmnr_wrapper.tracer_provider is provider:
-            return
-
-        try:
-            # Prepend the translator so it runs before any existing exporter
-            # attached by Langfuse (its own OTLP BatchSpanProcessor). For the
-            # Laminar processor, plain append is fine — it's the exporter; as
-            # long as the translator runs first, export order among exporters
-            # doesn't matter.
-            #
-            # Record the provider in `_attached_providers` as soon as the
-            # FIRST processor lands — not after both. If attaching the
-            # Laminar span processor raises after the translator was already
-            # prepended, an end-of-block record would be skipped and
-            # `uninstrument` could never detach the orphaned translator,
-            # letting a reinstall stack a second one. `_remove_span_processor`
-            # tolerates a processor that was never attached, so recording
-            # eagerly is safe.
-            if self._translator is not None:
-                _prepend_span_processor(provider, self._translator)
-                if type(self)._attached_providers is None:
-                    type(self)._attached_providers = {pid: provider}
-                else:
-                    type(self)._attached_providers[pid] = provider
-            if self._lmnr_span_processor is not None:
-                add = getattr(provider, "add_span_processor", None)
-                if callable(add):
-                    add(self._lmnr_span_processor)
-                    if type(self)._attached_providers is None:
-                        type(self)._attached_providers = {pid: provider}
-                    else:
-                        type(self)._attached_providers[pid] = provider
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.warning(
-                "Failed to attach Laminar processor to Langfuse TracerProvider: %s",
-                exc,
-            )
-            # Roll back the partial attach and un-mark the provider so a later
-            # attempt (e.g. the resource-manager re-init hook) can retry. Left
-            # as-is, `pid` would stay in `_handled_providers` and every future
-            # `_attach_to_provider` call would short-circuit, so dual-export to
-            # Laminar would never run for this provider.
-            if self._translator is not None:
-                _remove_span_processor(provider, self._translator)
-            if self._lmnr_span_processor is not None:
-                _remove_span_processor(provider, self._lmnr_span_processor)
-            if self._handled_providers is not None:
-                self._handled_providers.discard(pid)
-            if self._attached_providers is not None:
-                self._attached_providers.pop(pid, None)
-
-    def _patch_resource_manager(self) -> None:
-        try:
-            from langfuse._client.resource_manager import (  # type: ignore[import-not-found]
-                LangfuseResourceManager,
-            )
-        except Exception:
-            # See `_attach_to_existing_langfuse_providers` — any import-time
-            # failure means Langfuse isn't usable in this interpreter.
-            return
-
-        cls = type(self)
-        if cls._original_initialize_instance is not None:
-            return
-
-        original = LangfuseResourceManager._initialize_instance
-        cls._original_initialize_instance = original
-        instrumentor = self
-
-        def patched(self_rm, *args, **kwargs):  # type: ignore[no-untyped-def]
-            result = original(self_rm, *args, **kwargs)
-            try:
-                instrumentor._attach_to_provider(
-                    getattr(self_rm, "tracer_provider", None)
-                )
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logger.debug("Langfuse post-init attach failed: %s", exc)
-            return result
-
-        LangfuseResourceManager._initialize_instance = patched
-
-    def _unpatch_resource_manager(self) -> None:
-        cls = type(self)
-        if cls._original_initialize_instance is None:
-            return
-        try:
-            from langfuse._client.resource_manager import (  # type: ignore[import-not-found]
-                LangfuseResourceManager,
-            )
-
-            LangfuseResourceManager._initialize_instance = (
-                cls._original_initialize_instance
-            )
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            # If langfuse can't be imported here it isn't usable in this
-            # interpreter, so the patched hook can never be invoked anyway.
-            # Clear the bookkeeping regardless so `uninstrument` leaves no
-            # half-reset state (a retained `_original_initialize_instance`
-            # would make a later `_patch_resource_manager` short-circuit).
-            logger.debug(
-                "Could not restore Langfuse _initialize_instance patch: %s", exc
-            )
-        finally:
-            cls._original_initialize_instance = None
-
-    # --- LiteLLM `langfuse_otel` bridge ---
-    #
-    # LiteLLM ships a `langfuse_otel` success callback
-    # (`litellm.integrations.langfuse.langfuse_otel.LangfuseOtelLogger`) that
-    # subclasses LiteLLM's base `OpenTelemetry` integration with
-    # `skip_set_global=True`. It builds its OWN private `TracerProvider`s and
-    # exports OTLP straight to Langfuse Cloud — it never registers with
-    # `LangfuseResourceManager`, so the resource-manager attach/patch path
-    # above can't see it. The spans it emits carry a hybrid of `langfuse.*`
-    # attrs AND openinference `llm.*` indexed attrs, both of which
-    # `LangfuseAttributeTranslator` already knows how to translate, so the only
-    # work is making those spans flow into Laminar with the right shape. Two
-    # things have to happen, both per-logger (see `_patch_litellm_logger`):
-    #
-    #   Layer 1 — provider attachment. When the request carries credentials
-    #   (the common `langfuse_otel` case — env-var or dynamic headers),
-    #   LiteLLM does NOT emit through `logger._tracer_provider`. It calls
-    #   `_get_tracer_with_dynamic_headers`, which lazily builds a SEPARATE
-    #   `TracerProvider` per credential set and caches it in
-    #   `logger._tracer_provider_cache`. Attaching Laminar's translator + span
-    #   processor only to `logger._tracer_provider` therefore misses every
-    #   `litellm_request` / `raw_gen_ai_request` span. We wrap
-    #   `_get_tracer_with_dynamic_headers` to dual-attach to each cache
-    #   provider as it appears (and still attach to `_tracer_provider` for the
-    #   no-credentials path).
-    #
-    #   Layer 2 — force a primary span. In `_handle_success`, when a parent
-    #   span is active and `USE_OTEL_LITELLM_REQUEST_SPAN` is unset (the
-    #   default), LiteLLM creates NO `litellm_request` span and instead folds
-    #   `gen_ai.*` / openinference attrs onto the parent. With
-    #   `instruments=[Instruments.LANGFUSE]` the active parent is the user's
-    #   `@observe` root, so the root gets mis-marked LLM by app-server's
-    #   `gen_ai.*` heuristic and no LLM span is produced at all. We wrap
-    #   `_get_span_context` to report `parent_span=None` (while keeping the
-    #   parent CONTEXT, so nesting is preserved), which flips LiteLLM's
-    #   `should_create_primary_span` to True without touching the global env
-    #   var. The wrap is gated: if the parent is already an LLM span (Laminar's
-    #   own `litellm.completion`, present when `Instruments.LITELLM` also runs),
-    #   folding is correct and we leave the parent untouched to avoid a
-    #   duplicate nested LLM span.
-
-    def _attach_to_existing_litellm_loggers(self) -> None:
-        for logger_obj in self._iter_litellm_langfuse_otel_loggers():
-            self._patch_litellm_logger(logger_obj)
-
-    @staticmethod
-    def _iter_litellm_langfuse_otel_loggers() -> list[Any]:
-        """Return every constructed LiteLLM `langfuse_otel` logger instance.
-
-        LiteLLM keeps callback singletons in
-        `litellm.litellm_core_utils.litellm_logging._in_memory_loggers`. We
-        filter that list for `LangfuseOtelLogger` instances. Any import/attr
-        failure (LiteLLM absent, internal layout changed) yields an empty
-        list so the bridge stays inert rather than raising.
-        """
-        try:
-            from litellm.integrations.langfuse.langfuse_otel import (  # type: ignore[import-not-found]
-                LangfuseOtelLogger,
-            )
-            from litellm.litellm_core_utils import (  # type: ignore[import-not-found]
-                litellm_logging,
-            )
-        except Exception:
-            return []
-        loggers = getattr(litellm_logging, "_in_memory_loggers", None) or []
-        return [lg for lg in loggers if isinstance(lg, LangfuseOtelLogger)]
-
-    def _patch_litellm_logger(self, logger_obj: Any) -> None:
-        """Apply both bridge layers to a single `langfuse_otel` logger.
-
-        Idempotent per logger (guarded by `_wrapped_litellm_loggers`), so it's
-        safe to call from both the existing-logger scan and the factory patch.
-        Also attaches to `logger._tracer_provider` for the no-credentials path,
-        reusing the `_handled_providers`-guarded `_attach_to_provider`.
-        """
-        if logger_obj is None:
-            return
-        cls = type(self)
-        lid = id(logger_obj)
-        if lid in cls._wrapped_litellm_loggers:
-            return
-
-        # No-credentials path still emits through `_tracer_provider`.
-        self._attach_to_provider(getattr(logger_obj, "_tracer_provider", None))
-
-        orig_get_tracer = getattr(logger_obj, "_get_tracer_with_dynamic_headers", None)
-        orig_get_ctx = getattr(logger_obj, "_get_span_context", None)
-        if not callable(orig_get_tracer) or not callable(orig_get_ctx):
-            return
-
-        instrumentor = self
-
-        def patched_get_tracer(dynamic_headers, _orig=orig_get_tracer):
-            tracer = _orig(dynamic_headers)
-            # Attach to every cache provider we haven't seen yet. The cache is
-            # keyed by credential set, so per-team keys each get a provider;
-            # `_attach_to_provider`'s id() guard makes repeats a no-op.
-            try:
-                cache = getattr(logger_obj, "_tracer_provider_cache", None) or {}
-                for provider in list(cache.values()):
-                    instrumentor._attach_to_provider(provider)
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logger.debug("LiteLLM cache-provider attach failed: %s", exc)
-            return tracer
-
-        def patched_get_ctx(kwargs, default_span=None, _orig=orig_get_ctx):
-            ctx, parent_span = _orig(kwargs, default_span)
-            # Only force primary-span creation when folding would corrupt the
-            # parent. If the parent is already an LLM span (Laminar's own
-            # `litellm.completion`), folding LiteLLM's attrs onto it is the
-            # correct, deduplicated shape — leave it alone.
-            if parent_span is not None and not _is_llm_span(parent_span):
-                return ctx, None
-            return ctx, parent_span
-
-        logger_obj._get_tracer_with_dynamic_headers = patched_get_tracer
-        logger_obj._get_span_context = patched_get_ctx
-        cls._wrapped_litellm_loggers[lid] = (
-            logger_obj,
-            orig_get_tracer,
-            orig_get_ctx,
-        )
-
-    def _patch_litellm_logger_factory(self) -> None:
-        """Wrap LiteLLM's `_init_custom_logger_compatible_class` so any
-        `langfuse_otel` logger constructed AFTER the bridge installs also gets
-        its private provider dual-attached.
-
-        LiteLLM constructs the callback lazily — the first LLM call (or a
-        `litellm.success_callback = ["langfuse_otel"]` assignment that triggers
-        `litellm.utils._init_custom_callbacks`) is what builds the logger. All
-        call sites import the factory freshly from the module each time (see
-        `litellm/utils.py`, `litellm/proxy/...`), so a module-level patch is
-        observed by every caller. We attach on the way out, reusing the
-        idempotent `_attach_to_provider` (its `_handled_providers` guard makes
-        repeat calls for the same provider a no-op).
-        """
-        try:
-            from litellm.integrations.langfuse.langfuse_otel import (  # type: ignore[import-not-found]
-                LangfuseOtelLogger,
-            )
-            from litellm.litellm_core_utils import (  # type: ignore[import-not-found]
-                litellm_logging,
-            )
-        except Exception:
-            return
-
-        cls = type(self)
-        if cls._original_litellm_init_logger is not None:
-            return
-
-        original = getattr(
-            litellm_logging, "_init_custom_logger_compatible_class", None
-        )
-        if not callable(original):
-            return
-        cls._original_litellm_init_logger = original
-        instrumentor = self
-
-        def patched(*args, **kwargs):  # type: ignore[no-untyped-def]
-            result = original(*args, **kwargs)
-            try:
-                # Only the `langfuse_otel` callback should be bridged. The
-                # factory builds many OTel-based callbacks (arize, otel, …),
-                # all of which carry a private `_tracer_provider`; attaching
-                # Laminar's translator + exporter to those would ship
-                # unrelated spans into Laminar.
-                if isinstance(result, LangfuseOtelLogger):
-                    instrumentor._patch_litellm_logger(result)
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logger.debug("LiteLLM post-init attach failed: %s", exc)
-            return result
-
-        litellm_logging._init_custom_logger_compatible_class = patched
-
-    def _unpatch_litellm_logger_factory(self) -> None:
-        cls = type(self)
-        if cls._original_litellm_init_logger is None:
-            return
-        try:
-            from litellm.litellm_core_utils import (  # type: ignore[import-not-found]
-                litellm_logging,
-            )
-
-            litellm_logging._init_custom_logger_compatible_class = (
-                cls._original_litellm_init_logger
-            )
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.debug("Could not restore LiteLLM logger factory patch: %s", exc)
-        finally:
-            cls._original_litellm_init_logger = None
+def get_langfuse_instrumentor() -> LangfuseInstrumentor:
+    return _instrumentor
