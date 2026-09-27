@@ -1,8 +1,13 @@
 """OpenTelemetry CUA instrumentation"""
 
 import logging
+from collections.abc import AsyncGenerator, Callable, Collection, Sequence
 from importlib.metadata import version
-from typing import Any, AsyncGenerator, Collection, Sequence
+from typing import Any
+
+from opentelemetry.trace import Span
+from opentelemetry.trace.status import Status, StatusCode
+from typing_extensions import override
 
 from lmnr import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
@@ -18,9 +23,6 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers
 )
 from lmnr.sdk.utils import json_dumps
 
-from opentelemetry.trace import Span
-from opentelemetry.trace.status import Status, StatusCode
-
 logger = logging.getLogger(__name__)
 
 _instruments = ("cua-agent >= 0.4.0",)
@@ -28,17 +30,17 @@ _instruments = ("cua-agent >= 0.4.0",)
 
 def _wrap_run(
     to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
-):
+    wrapped: Callable[..., AsyncGenerator[dict[str, Any], None]],  # pyright: ignore[reportExplicitAny]
+    instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+) -> AsyncGenerator[dict[str, Any], None]:  # pyright: ignore[reportExplicitAny]
     parent_span = Laminar.start_span(to_wrap.get("span_name") or "ComputerAgent.run")
     stamp_instrumentation_scope(parent_span, to_wrap)
     instance._lmnr_parent_span = parent_span
 
     try:
-        result: AsyncGenerator[dict[str, Any], None] = wrapped(*args, **kwargs)
+        result: AsyncGenerator[dict[str, Any], None] = wrapped(*args, **kwargs)  # pyright: ignore[reportExplicitAny]
         return _abuild_from_streaming_response(to_wrap, parent_span, result)
     except Exception as e:
         if parent_span.is_recording():
@@ -51,8 +53,8 @@ def _wrap_run(
 async def _abuild_from_streaming_response(
     to_wrap: WrappedFunctionSpec,
     parent_span: Span,
-    response: AsyncGenerator[dict[str, Any], None],
-) -> AsyncGenerator[dict[str, Any], None]:
+    response: AsyncGenerator[dict[str, Any], None],  # pyright: ignore[reportExplicitAny]
+) -> AsyncGenerator[dict[str, Any], None]:  # pyright: ignore[reportExplicitAny]
     with Laminar.use_span(parent_span, end_on_exit=True):
         response_iter = aiter(response)
         while True:
@@ -67,26 +69,28 @@ async def _abuild_from_streaming_response(
                         # When processing tool calls, each output item is processed separately,
                         # if the output is message, agent.step returns an empty array
                         # https://github.com/trycua/cua/blob/17d670962970a1d1774daaec029ebf92f1f9235e/libs/python/agent/agent/agent.py#L459
-                        if len(step.get("output", [])) == 0:
+                        if len(step.get("output", [])) == 0:  # pyright: ignore[reportAny]
                             continue
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Failed to process output tool calls: {e}")
                     if step_span.is_recording():
                         step_span.end()
                 except StopAsyncIteration:
                     # don't end on purpose, there is no iteration step here.
                     break
 
-            if step is not None:
+            if step is not None:  # pyright: ignore[reportUnnecessaryComparison]
                 yield step
 
 
 class CuaAgentInstrumentor(BaseLaminarInstrumentor):
     _scope: LaminarInstrumentationScopeAttributes | None = None
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is None:
             try:
@@ -102,7 +106,7 @@ class CuaAgentInstrumentor(BaseLaminarInstrumentor):
 
     def __init__(self):
         super().__init__()
-        self.instrumentor_config = LaminarInstrumentorConfig(
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 WrappedFunctionSpec(
                     package_name="agent.agent",
