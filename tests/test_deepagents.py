@@ -41,7 +41,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.deepagents.instrumento
     _wrap_graph_stream,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.deepagents.middleware import (
-    _summarize_messages,
+    summarize_messages,
     _tool_result_to_json,
     _tool_span_input,
     _tool_span_name,
@@ -64,19 +64,19 @@ class _FakeMessage:
 
 def test_summarize_messages_handles_objects_with_type():
     msgs = [_FakeMessage(type_="human", content="hi")]
-    result = _summarize_messages(msgs)
+    result = summarize_messages(msgs)
     assert result == [{"role": "human", "content": "hi"}]
 
 
 def test_summarize_messages_falls_back_to_role():
     msgs = [_FakeMessage(role="assistant", content="ok")]
-    result = _summarize_messages(msgs)
+    result = summarize_messages(msgs)
     assert result == [{"role": "assistant", "content": "ok"}]
 
 
 def test_summarize_messages_handles_dicts():
     msgs = [{"role": "user", "content": "q"}, {"type": "ai", "content": "a"}]
-    result = _summarize_messages(msgs)
+    result = summarize_messages(msgs)
     assert result == [
         {"role": "user", "content": "q"},
         {"role": "ai", "content": "a"},
@@ -87,13 +87,13 @@ def test_summarize_messages_passes_through_unknown_items():
     # An item with neither a role nor a type attribute (and isn't a dict) is
     # passed through untouched.
     sentinel = object()
-    result = _summarize_messages([sentinel])
+    result = summarize_messages([sentinel])
     assert result == [sentinel]
 
 
 def test_summarize_messages_returns_non_lists_unchanged():
-    assert _summarize_messages("not a list") == "not a list"
-    assert _summarize_messages(None) is None
+    assert summarize_messages("not a list") == "not a list"
+    assert summarize_messages(None) is None
 
 
 def test_tool_result_to_json_with_content():
