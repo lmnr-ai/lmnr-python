@@ -1,23 +1,25 @@
+import traceback
+from collections.abc import Callable
 from copy import deepcopy
 from typing import Any
-
-import traceback
 
 from opentelemetry.context import Context
 from opentelemetry.trace import Span, SpanKind
 from opentelemetry.util.types import AttributeValue
 from pydantic import BaseModel
+from typing_extensions import TypeVar
 
 from lmnr.opentelemetry_lib.tracing.attributes import SPAN_TYPE
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
-from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.laminar import Laminar
+from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import LaminarSpanType
 
 logger = get_default_logger(__name__)
+T = TypeVar("T")
 
 
-def dont_throw(func):
+def dont_throw(func: Callable[..., T]) -> Callable[..., T | None]:
     def wrapper(*args, **kwargs):
         logger = get_default_logger(func.__module__)
         try:

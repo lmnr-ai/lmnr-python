@@ -1493,7 +1493,7 @@ class Laminar:
         cls,
         name: str,
         input: Any = None,  # pyright: ignore[reportAny, reportExplicitAny]
-        span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
+        span_type: LaminarSpanType = "DEFAULT",
         context: Context | None = None,
         parent_span_context: LaminarSpanContext | None = None,
         tags: list[str] | None = None,

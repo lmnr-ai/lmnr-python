@@ -28,19 +28,34 @@ Note: The module path for the Daytona SDK may need adjustment based on the
 actual package structure. Update WRAPPED_METHODS if the module path differs.
 """
 
-from typing import Collection
+from collections.abc import Collection
 from importlib.metadata import version
 
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import BaseLaminarInstrumentor, LaminarInstrumentorConfig
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import WrappedFunctionSpec, LaminarInstrumentationScopeAttributes
+from typing_extensions import override
 
-from .wrappers import _wrap, _awrap, _wrap_exec, _awrap_exec
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.daytona.wrappers import (
+    awrap,
+    awrap_exec,
+    wrap,
+    wrap_exec,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
+    BaseLaminarInstrumentor,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WrappedFunctionSpec,
+)
+from lmnr.sdk.log import get_default_logger
 
 _instruments = ("daytona >= 0.1.0",)
+logger = get_default_logger(__name__)
 
 class DaytonaSDKInstrumentor(BaseLaminarInstrumentor):
     _scope: LaminarInstrumentationScopeAttributes | None = None
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
@@ -48,13 +63,14 @@ class DaytonaSDKInstrumentor(BaseLaminarInstrumentor):
         daytona_version = "unknown"
         try:
             daytona_version = version("daytona")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Failed to get the version of `daytona` instrumentor: {e}")
         return LaminarInstrumentationScopeAttributes(
             name="daytona",
             version=daytona_version,
         )
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is not None:
             return self._scope
@@ -63,7 +79,7 @@ class DaytonaSDKInstrumentor(BaseLaminarInstrumentor):
 
     def __init__(self):
         super().__init__()
-        self.instrumentor_config =LaminarInstrumentorConfig(
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions= [
                 WrappedFunctionSpec(
                     package_name="daytona._sync.process",
@@ -74,7 +90,7 @@ class DaytonaSDKInstrumentor(BaseLaminarInstrumentor):
                     span_name="daytona.sandbox.process.execute_session_command",
                     span_type="DEFAULT",
                     instrumentation_scope=self.instrumentation_scope(),
-                    wrapper_function=_wrap,
+                    wrapper_function=wrap,
                 ),
                 WrappedFunctionSpec(
                     package_name="daytona._async.process",
@@ -85,7 +101,7 @@ class DaytonaSDKInstrumentor(BaseLaminarInstrumentor):
                     span_name="daytona.sandbox.process.execute_session_command",
                     span_type="DEFAULT",
                     instrumentation_scope=self.instrumentation_scope(),
-                    wrapper_function=_awrap,
+                    wrapper_function=awrap,
                 ),
                 WrappedFunctionSpec(
                     package_name="daytona._sync.process",
@@ -96,7 +112,7 @@ class DaytonaSDKInstrumentor(BaseLaminarInstrumentor):
                     span_name="daytona.sandbox.process.exec",
                     span_type="DEFAULT",
                     instrumentation_scope=self.instrumentation_scope(),
-                    wrapper_function=_wrap_exec,
+                    wrapper_function=wrap_exec,
                 ),
                 WrappedFunctionSpec(
                     package_name="daytona._async.process",
@@ -107,7 +123,7 @@ class DaytonaSDKInstrumentor(BaseLaminarInstrumentor):
                     span_name="daytona.sandbox.process.exec",
                     span_type="DEFAULT",
                     instrumentation_scope=self.instrumentation_scope(),
-                    wrapper_function=_awrap_exec,
+                    wrapper_function=awrap_exec,
                 ),
             ]
         )
