@@ -229,7 +229,7 @@ def test_release_port():
     port = claude_proxy._allocate_port()
     assert port in claude_proxy._ALLOCATED_PORTS
 
-    claude_proxy._release_port(port)
+    claude_proxy.release_port(port)
     assert port not in claude_proxy._ALLOCATED_PORTS
 
 
@@ -238,7 +238,7 @@ def test_port_reuse_after_release():
     port1 = claude_proxy._allocate_port()
     port2 = claude_proxy._allocate_port()
 
-    claude_proxy._release_port(port1)
+    claude_proxy.release_port(port1)
 
     # Next allocation should skip port1 (already allocated) and use port3
     port3 = claude_proxy._allocate_port()

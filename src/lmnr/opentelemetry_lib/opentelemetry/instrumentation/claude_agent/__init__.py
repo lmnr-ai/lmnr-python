@@ -1,6 +1,20 @@
+from collections.abc import Collection
 from importlib.metadata import version
-from typing import Collection
 
+from typing_extensions import override
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.types import (
+    ClaudeAgentSpec,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.wrappers import (
+    wrap_async,
+    wrap_async_gen,
+    wrap_client_init,
+    wrap_query,
+    wrap_sync,
+    wrap_transport_close,
+    wrap_transport_connect,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
 )
@@ -9,17 +23,6 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     LaminarInstrumentorConfig,
 )
 from lmnr.sdk.log import get_default_logger
-
-from .types import ClaudeAgentSpec
-from .wrappers import (
-    wrap_sync,
-    wrap_async,
-    wrap_async_gen,
-    wrap_transport_connect,
-    wrap_transport_close,
-    wrap_query,
-    wrap_client_init,
-)
 
 logger = get_default_logger(__name__)
 
@@ -132,9 +135,11 @@ WRAPPED_FUNCTIONS: list[ClaudeAgentSpec] = [
 class ClaudeAgentInstrumentor(BaseLaminarInstrumentor):
     _scope: LaminarInstrumentationScopeAttributes | None = None
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is None:
             try:
@@ -150,7 +155,7 @@ class ClaudeAgentInstrumentor(BaseLaminarInstrumentor):
 
     def __init__(self):
         super().__init__()
-        self.instrumentor_config = LaminarInstrumentorConfig(
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 {**spec, "instrumentation_scope": self.instrumentation_scope()}
                 for spec in WRAPPED_FUNCTIONS

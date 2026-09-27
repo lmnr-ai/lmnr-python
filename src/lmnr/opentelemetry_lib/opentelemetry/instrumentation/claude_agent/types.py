@@ -1,3 +1,8 @@
+from typing import Any, TypedDict
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.proxy import (
+    LaminarProxyServer,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
@@ -15,3 +20,23 @@ class ClaudeAgentSpec(WrappedFunctionSpec, total=False):
 
     class_name: str
     should_publish_span_context: bool
+
+
+class ProxyContext(TypedDict):
+    trace_id: str
+    span_id:str
+    project_api_key: str
+    span_ids_path: list[str]
+    span_path: list[str]
+    laminar_url: str | None
+
+
+class CASLaminarContext(TypedDict):
+    proxy: LaminarProxyServer
+    proxy_url: str
+    is_custom_transport: bool
+    original_env: dict[str, str | None]
+    env_set_keys: set[str]
+    options_env_snapshot: dict[str, str | None]
+    original_settings: dict[str, Any]  # pyright: ignore[reportExplicitAny]
+    settings_overridden: bool
