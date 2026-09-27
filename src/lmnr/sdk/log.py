@@ -24,6 +24,16 @@ _nameToLevel = {
 }
 
 
+levelToName = _levelToName = {
+    logging.CRITICAL: 'CRITICAL',
+    logging.ERROR: 'ERROR',
+    logging.WARNING: 'WARNING',
+    logging.INFO: 'INFO',
+    logging.DEBUG: 'DEBUG',
+    logging.NOTSET: 'NOTSET',
+}
+
+
 class CustomFormatter(logging.Formatter):
     fmt: str = "%(asctime)s::%(name)s::%(levelname)s: %(message)s (%(filename)s:%(lineno)d)"
 
