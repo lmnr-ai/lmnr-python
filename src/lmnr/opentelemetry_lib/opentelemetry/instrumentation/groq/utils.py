@@ -37,9 +37,9 @@ def dont_throw(func):
             return func(*args, **kwargs)
         except Exception as e:
             logger.debug(
-                "OpenLLMetry failed to trace in %s, error: %s",
+                "Laminar failed to trace in %s",
                 func.__name__,
-                traceback.format_exc(),
+                exc_info=True,
             )
             if Config.exception_logger:
                 Config.exception_logger(e)

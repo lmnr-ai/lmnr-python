@@ -76,6 +76,9 @@ _BASE_LLM_FLOW_MODULE = "google.adk.flows.llm_flows.base_llm_flow"
 _TOOL_ARGS_ATTRIBUTE = "gcp.vertex.agent.tool_call_args"
 _TOOL_RESPONSE_ATTRIBUTE = "gcp.vertex.agent.tool_response"
 _LLM_REQUEST_ATTRIBUTE = "gcp.vertex.agent.llm_request"
+_GENAI_DETECTOR = (
+    "_instrumented_with_opentelemetry_instrumentation_google_genai"
+)
 
 T = TypeVar("T")
 
@@ -398,9 +401,20 @@ def _wrap_use_extra_generate_content_attributes(  # pyright: ignore[reportAny]
             return wrapped(*args, **kwargs)
         else:
             return _noop_context()
-    except Exception as e:
-        logger.debug(f"Failed to wrap use extra generate_content_attributes {e}")
+    except Exception:
+        logger.debug("Failed to wrap use extra generate_content_attributes", exc_info=True)
         return _noop_context()
+
+
+def _wrap_genai_detection(wrapped, instance, args, kwargs):
+    """ADK's own native `generate_content <model>` span is always redundant
+    while this instrumentor is active: by default `call_llm` is enriched
+    directly (GOOGLE_GENAI is auto-removed from the default set — see
+    `_GOOGLE_ADK_GENAI_CONFLICTS`), and if a caller explicitly opts
+    GOOGLE_GENAI back in alongside ADK, Laminar's own google_genai span
+    already covers the call. Either way, tell ADK an external genai
+    instrumentation is present so it skips its native span."""
+    return True
 
 
 _wrapped_functions: list[tuple[str, str, Callable[..., Any]]] = []  # pyright: ignore[reportExplicitAny]
@@ -451,6 +465,7 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
                 "trace_agent_invocation",
                 _wrap_trace_agent_invocation,
             ),
+            (_TRACING_MODULE, _GENAI_DETECTOR, _wrap_genai_detection),
             (
                 _TRACING_MODULE,
                 "_use_extra_generate_content_attributes",
@@ -507,8 +522,9 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
                     is wrapper
                 ):
                     unwrap(module, function_name)
-            except Exception as e:
+            except Exception:
                 logger.debug(
-                    f"failed to uninstrument google adk module{module_name}, e: {e}"
+                    f"failed to uninstrument google adk module{module_name}",
+                    exc_info=True,
                 )
         _wrapped_functions = []

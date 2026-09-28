@@ -133,9 +133,10 @@ def _normalize_http_endpoint(endpoint: str, default_path: str) -> str:
                 )
                 return normalized_url
             return endpoint
-        except Exception as e:
+        except Exception:
             logger.warning(
-                f"Failed to parse endpoint URL '{endpoint}': {e}. Using as-is."
+                "Failed to parse endpoint URL '{endpoint}'. Using as-is.",
+                exc_info=True,
             )
             return endpoint
 
@@ -188,8 +189,8 @@ class LaminarSpanExporter(SpanExporter):
             if old_instance is not None:
                 try:
                     old_instance.shutdown()
-                except Exception as e:
-                    logger.warning(f"Error shutting down old exporter instance: {e}")
+                except Exception:
+                    logger.warning("Error shutting down old exporter instance", exc_info=True)
             self.instance = new_instance
 
     @override
@@ -255,8 +256,8 @@ class LaminarLogExporter(LogRecordExporter):
         if old_instance is not None:
             try:
                 old_instance.shutdown()
-            except Exception as e:
-                logger.warning(f"Error shutting down old exporter instance: {e}")
+            except Exception:
+                logger.warning("Error shutting down old exporter instance", exc_info=True)
         self.instance = new_instance
 
     @override

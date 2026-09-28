@@ -151,8 +151,8 @@ async def should_skip_page(cdp_session: Any):  # pyright: ignore[reportExplicitA
     except asyncio.TimeoutError:
         logger.debug("Timeout error when checking if error page")
         return True
-    except Exception as e:
-        logger.debug(f"Error during checking if error page: {e}")
+    except Exception:
+        logger.debug("Error during checking if error page", exc_info=True)
         return True
 
 
@@ -194,8 +194,8 @@ async def get_isolated_context_id(cdp_session: Any) -> int | None:  # pyright: i
         except asyncio.TimeoutError:
             logger.debug("Timeout error when getting frame tree")
             return None
-        except Exception as e:
-            logger.debug(f"Failed to get frame tree: {e}")
+        except Exception:
+            logger.debug("Failed to get frame tree", exc_info=True)
             return None
         frame: dict[str, Any] = (tree.get("frameTree") or {}).get("frame") or {}
         frame_id = frame.get("id")
@@ -223,8 +223,8 @@ async def get_isolated_context_id(cdp_session: Any) -> int | None:  # pyright: i
         except asyncio.TimeoutError:
             logger.debug("Timeout error when getting isolated context id")
             return None
-        except Exception as e:
-            logger.debug(f"Failed to get isolated context id: {e}")
+        except Exception:
+            logger.debug("Failed to get isolated context id", exc_info=True)
             return None
         isolated_context_id = result["executionContextId"]
         frame_to_isolated_context_id[key] = isolated_context_id
@@ -242,8 +242,8 @@ async def inject_session_recorder(cdp_session: Any) -> int | None:  # pyright: i
         should_skip = True
         try:
             should_skip = await should_skip_page(cdp_session)
-        except Exception as e:
-            logger.debug(f"Failed to check if error page: {e}")
+        except Exception:
+            logger.debug("Failed to check if error page", exc_info=True)
 
         if should_skip:
             logger.debug("Empty page detected, skipping session recorder injection")
@@ -253,8 +253,8 @@ async def inject_session_recorder(cdp_session: Any) -> int | None:  # pyright: i
         try:
             is_loaded = await is_recorder_present(cdp_session, isolated_context_id)
             logger.debug(f"Session recorder is loaded: {is_loaded}")
-        except Exception as e:
-            logger.debug(f"Failed to check if session recorder is loaded: {e}")
+        except Exception:
+            logger.debug("Failed to check if session recorder is loaded", exc_info=True)
             is_loaded = False
 
         if is_loaded:
@@ -281,8 +281,8 @@ async def inject_session_recorder(cdp_session: Any) -> int | None:  # pyright: i
             except asyncio.TimeoutError:
                 logger.debug("Timeout error when loading session recorder base")
                 return False
-            except Exception as e:
-                logger.debug(f"Failed to load session recorder base: {e}")
+            except Exception:
+                logger.debug("Failed to load session recorder base", exc_info=True)
                 return False
 
         if not await retry_async(
@@ -308,11 +308,11 @@ async def inject_session_recorder(cdp_session: Any) -> int | None:  # pyright: i
             return isolated_context_id
         except asyncio.TimeoutError:
             logger.debug("Timeout error when injecting session recorder")
-        except Exception as e:
-            logger.debug(f"Failed to inject recorder: {e}")
+        except Exception:
+            logger.debug("Failed to inject recorder", exc_info=True)
 
-    except Exception as e:
-        logger.debug(f"Error during session recorder injection: {e}")
+    except Exception:
+        logger.debug("Error during session recorder injection", exc_info=True)
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
@@ -390,8 +390,8 @@ async def start_recording_events(
                 logger.debug(f"Cleaning up incomplete chunk buffer: {bid}")
                 del chunk_buffers[bid]
 
-        except Exception as e:
-            logger.debug(f"Could not send events: {e}")
+        except Exception:
+            logger.debug("Could not send events", exc_info=True)
 
     # Track valid context IDs so the callback accepts events after navigation
     valid_context_ids: set[int] = set()
@@ -426,8 +426,8 @@ async def start_recording_events(
             )
             valid_context_ids.add(context_id)
             return True
-        except Exception as e:
-            logger.debug(f"Failed to add binding for context {context_id}: {e}")
+        except Exception:
+            logger.debug("Failed to add binding for context {context_id}", exc_info=True)
             return False
 
     async def on_navigated():
@@ -442,8 +442,8 @@ async def start_recording_events(
         await enable_target_discovery(cdp_session)
         register_on_target_created(cdp_session, lmnr_session_id, client)
         register_on_frame_navigated(cdp_session, on_navigated)
-    except Exception as e:
-        logger.debug(f"Failed to register CDP event handlers: {e}")
+    except Exception:
+        logger.debug("Failed to register CDP event handlers", exc_info=True)
         return False
 
     # Now try initial injection (may fail on about:blank - that's OK,
@@ -480,8 +480,8 @@ def register_on_target_created(
 
     try:
         cdp_session.cdp_client.register.Target.targetCreated(on_target_created)
-    except Exception as e:
-        logger.debug(f"Failed to register on target created: {e}")
+    except Exception:
+        logger.debug("Failed to register on target created", exc_info=True)
 
 
 def register_on_frame_navigated(
@@ -517,8 +517,8 @@ def register_on_frame_navigated(
 
     try:
         cdp_session.cdp_client.register.Page.frameNavigated(on_frame_navigated)
-    except Exception as e:
-        logger.debug(f"Failed to register frame navigated handler: {e}")
+    except Exception:
+        logger.debug("Failed to register frame navigated handler", exc_info=True)
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
@@ -595,7 +595,7 @@ async def take_full_snapshot(cdp_session: Any) -> bool:  # pyright: ignore[repor
     except asyncio.TimeoutError:
         logger.debug("Timeout error when taking full snapshot")
         return False
-    except Exception as e:
-        logger.debug(f"Error when taking full snapshot: {e}")
+    except Exception:
+        logger.debug("Error when taking full snapshot", exc_info=True)
         return False
     return False

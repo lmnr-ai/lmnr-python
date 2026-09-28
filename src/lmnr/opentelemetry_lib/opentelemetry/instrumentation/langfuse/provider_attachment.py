@@ -92,10 +92,10 @@ class ProviderAttachment:
                 if callable(add):
                     _success = add(self._lmnr_span_processor)
                     self._attached_providers[pid] = provider
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception:
             logger.warning(
                 "Failed to attach Laminar processor to Langfuse TracerProvider: %s",
-                exc,
+                exc_info=True,
             )
             # Roll back the partial attach and un-mark the provider so a later
             # attempt (e.g. the resource-manager re-init hook) can retry. Left
@@ -139,11 +139,10 @@ class ProviderAttachment:
             if callable(add):
                 try:
                     _added = add(new_processor)
-                except Exception as exc:  # pylint: disable=broad-exception-caught
+                except Exception:
                     logger.warning(
-                        "Failed to rebind Laminar processor on Langfuse " +
-                        "TracerProvider: %s",
-                        exc,
+                        "Failed to rebind Laminar processor on Langfuse TracerProvider",
+                        exc_info=True,
                     )
 
     # --- future Langfuse-client coverage ---
@@ -187,8 +186,8 @@ class ProviderAttachment:
             result = original(self_rm, *args, **kwargs)
             try:
                 provider_attachment.attach(getattr(self_rm, "tracer_provider", None))
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logger.debug("Langfuse post-init attach failed: %s", exc)
+            except Exception:
+                logger.debug("Langfuse post-init attach failed: %s", exc_info=True)
             return result
 
         LangfuseResourceManager._initialize_instance = patched  # pyright: ignore[reportAttributeAccessIssue]
@@ -204,14 +203,15 @@ class ProviderAttachment:
             LangfuseResourceManager._initialize_instance = (
                 self._original_initialize_instance
             )
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception:
             # If langfuse can't be imported here it isn't usable in this
             # interpreter, so the patched hook can never be invoked anyway.
             # Clear the bookkeeping regardless so a later reset leaves no
             # half-reset state (a retained `_original_initialize_instance`
             # would make a later `patch_resource_manager` short-circuit).
             logger.debug(
-                "Could not restore Langfuse _initialize_instance patch: %s", exc
+                "Could not restore Langfuse _initialize_instance patch: %s",
+                exc_info=True,
             )
         finally:
             self._original_initialize_instance = None

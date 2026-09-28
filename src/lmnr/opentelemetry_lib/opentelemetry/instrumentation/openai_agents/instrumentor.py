@@ -93,8 +93,8 @@ class OpenAIAgentsInstrumentor(BaseInstrumentor):
         processor = LaminarAgentsTraceProcessor()
         try:
             add_trace_processor(processor)
-        except Exception as exc:
-            logger.warning("Failed to register Laminar Agents processor: %s", exc)
+        except Exception:
+            logger.warning("Failed to register Laminar Agents processor: %s", exc_info=True)
             raise
         self._processor = processor
 

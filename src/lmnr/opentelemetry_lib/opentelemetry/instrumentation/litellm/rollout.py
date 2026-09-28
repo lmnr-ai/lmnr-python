@@ -184,12 +184,12 @@ class LiteLLMRolloutWrapper:
                 if ModelResponse:
                     try:
                         return ModelResponse.model_validate(response_dict)
-                    except Exception as e:
-                        logger.debug(f"Failed to validate ModelResponse, returning dict: {e}")
+                    except Exception:
+                        logger.debug("Failed to validate ModelResponse, returning dict", exc_info=True)
                         return response_dict
                 return response_dict
-            except Exception as e:
-                logger.debug(f"Failed to parse raw LiteLLM completion response: {e}", exc_info=True)
+            except Exception:
+                logger.debug("Failed to parse raw LiteLLM completion response", exc_info=True)
                 return None
 
         # envelope_type == "genAi"
@@ -218,14 +218,14 @@ class LiteLLMRolloutWrapper:
             if ModelResponse:
                 try:
                     return ModelResponse.model_validate(response_dict)
-                except Exception as e:
-                    logger.debug(f"Failed to validate ModelResponse, returning dict: {e}")
+                except Exception:
+                    logger.debug("Failed to validate ModelResponse, returning dict", exc_info=True)
                     return response_dict
             return response_dict
 
-        except Exception as e:
+        except Exception:
             logger.debug(
-                f"Failed to convert genAi response to LiteLLM completion format: {e}",
+                "Failed to convert genAi response to LiteLLM completion format",
                 exc_info=True,
             )
             return None
@@ -250,12 +250,12 @@ class LiteLLMRolloutWrapper:
                 if ResponsesAPIResponse:
                     try:
                         return ResponsesAPIResponse.model_validate(response_dict)
-                    except Exception as e:
-                        logger.debug(f"Failed to validate ResponsesAPIResponse, returning dict: {e}")
+                    except Exception:
+                        logger.debug("Failed to validate ResponsesAPIResponse, returning dict", exc_info=True)
                         return response_dict
                 return response_dict
-            except Exception as e:
-                logger.debug(f"Failed to parse raw LiteLLM responses response: {e}", exc_info=True)
+            except Exception:
+                logger.debug("Failed to parse raw LiteLLM responses response", exc_info=True)
                 return None
 
         # envelope_type == "genAi"
@@ -287,14 +287,14 @@ class LiteLLMRolloutWrapper:
             if ResponsesAPIResponse:
                 try:
                     return ResponsesAPIResponse.model_validate(response_dict)
-                except Exception as e:
-                    logger.debug(f"Failed to validate ResponsesAPIResponse, returning dict: {e}")
+                except Exception:
+                    logger.debug("Failed to validate ResponsesAPIResponse, returning dict", exc_info=True)
                     return response_dict
             return response_dict
 
-        except Exception as e:
+        except Exception:
             logger.debug(
-                f"Failed to convert genAi response to LiteLLM responses format: {e}",
+                "Failed to convert genAi response to LiteLLM responses format",
                 exc_info=True,
             )
             return None
@@ -538,8 +538,8 @@ def get_litellm_rollout_wrapper() -> LiteLLMRolloutWrapper | None:
     if _litellm_rollout_wrapper is None:
         try:
             _litellm_rollout_wrapper = LiteLLMRolloutWrapper()
-        except Exception as e:
-            logger.error(f"Failed to create LiteLLM debugger wrapper: {e}")
+        except Exception:
+            logger.exception("Failed to create LiteLLM debugger wrapper")
             return None
 
     return _litellm_rollout_wrapper

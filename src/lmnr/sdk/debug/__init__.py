@@ -320,8 +320,8 @@ def init_debug_runtime_from_context(
 
     try:
         config = build_debug_config_from_context(debug)
-    except Exception as exc:
-        logger.debug("Failed to build debug config from context: %s", exc)
+    except Exception:
+        logger.debug("Failed to build debug config from context", exc_info=True)
         return None, False
     if config is None:
         # No coordinates to apply, but a runtime may already exist (env or a

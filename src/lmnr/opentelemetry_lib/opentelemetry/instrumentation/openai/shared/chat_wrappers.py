@@ -468,9 +468,9 @@ class ChatStream(ObjectProxy):
                 self._cleanup_completed = True
                 logger.debug("ChatStream cleanup completed successfully")
 
-            except Exception as e:
+            except Exception:
                 # Log cleanup errors but don't propagate to avoid masking original issues
-                logger.debug("Error during ChatStream cleanup: %s", str(e))
+                logger.debug("Error during ChatStream cleanup", exc_info=True)
 
                 # Still try to close the span even if metrics recording failed
                 try:

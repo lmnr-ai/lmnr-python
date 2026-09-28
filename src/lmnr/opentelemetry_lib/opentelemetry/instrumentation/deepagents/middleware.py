@@ -111,7 +111,7 @@ try:
                 span.set_output(_tool_result_to_json(result))
                 return result
 
-except ImportError as e:
-    logger.debug(f"failed to import DeepAgents: {e}")
+except ImportError:
+    logger.debug("failed to import DeepAgents", exc_info=True)
     class LaminarMiddleware:
         pass

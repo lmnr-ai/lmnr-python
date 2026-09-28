@@ -101,8 +101,8 @@ class BubusInstrumentor(BaseLaminarInstrumentor):
         if self._scope is None:
             try:
                 bubus_version = version("bubus")
-            except Exception as e:
-                logger.debug(f"Failed to get bubus version {e}")
+            except Exception:
+                logger.debug("Failed to get bubus version", exc_info=True)
                 bubus_version = "unknown"
             self._scope = LaminarInstrumentationScopeAttributes(
                 name="bubus",

@@ -71,8 +71,8 @@ async def _abuild_from_streaming_response(
                         # https://github.com/trycua/cua/blob/17d670962970a1d1774daaec029ebf92f1f9235e/libs/python/agent/agent/agent.py#L459
                         if len(step.get("output", [])) == 0:  # pyright: ignore[reportAny]
                             continue
-                    except Exception as e:
-                        logger.debug(f"Failed to process output tool calls: {e}")
+                    except Exception:
+                        logger.debug("Failed to process output tool calls", exc_info=True)
                     if step_span.is_recording():
                         step_span.end()
                 except StopAsyncIteration:
@@ -95,8 +95,8 @@ class CuaAgentInstrumentor(BaseLaminarInstrumentor):
         if self._scope is None:
             try:
                 cua_version = version("cua-agent")
-            except Exception as e:
-                logger.debug(f"Failed to get cua-agent version {e}")
+            except Exception:
+                logger.debug("Failed to get cua-agent version", exc_info=True)
                 cua_version = "unknown"
             self._scope = LaminarInstrumentationScopeAttributes(
                 name="cua-agent",

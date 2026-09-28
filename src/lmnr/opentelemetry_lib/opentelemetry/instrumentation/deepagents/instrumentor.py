@@ -224,8 +224,8 @@ def _wrap_graph_methods(graph: Any) -> None:  # pyright: ignore[reportExplicitAn
         wrap_function_wrapper(graph, "astream", _awrap_graph_stream)  # pyright: ignore[reportAny]
     try:
         setattr(graph, _INSTRUMENTED_GRAPH_FLAG, True)  # pyright: ignore[reportAny]
-    except Exception as  e:
-        logger.debug(f"Failed to wrap Langgraph methods for deepagents: {e}")
+    except Exception:
+        logger.debug("Failed to wrap Langgraph methods for deepagents", exc_info=True)
 
 
 def _inject_middleware(

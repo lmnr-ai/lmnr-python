@@ -85,10 +85,8 @@ def _create_stream_processor(
                 finish_reason = chunk_finish_reason
             if chunk_usage:
                 usage = chunk_usage
-        except Exception as e:
-            logger.warning(
-                "Failed to process streaming chunk for groq span, error: %s", str(e)
-            )
+        except Exception:
+            logger.warning("Failed to process streaming chunk for groq span", exc_info=True)
         finally:
             yield chunk
 
@@ -115,9 +113,9 @@ async def _create_async_stream_processor(response, span):
                 finish_reason = chunk_finish_reason
             if chunk_usage:
                 usage = chunk_usage
-        except Exception as e:
+        except Exception:
             logger.warning(
-                "Failed to process streaming chunk for groq span, error: %s", str(e)
+                "Failed to process streaming chunk for groq span", exc_info=True,
             )
         finally:
             yield chunk
@@ -164,19 +162,15 @@ def _wrap(
     stamp_instrumentation_scope(span, to_wrap)
     _handle_input(span, kwargs)
 
-    try:
-        response = wrapped(*args, **kwargs)
-    except Exception as e:  # pylint: disable=broad-except
-        raise e
+    response = wrapped(*args, **kwargs)
+
 
     if is_streaming_response(response):
         try:
             return _create_stream_processor(response, span)
         except Exception as ex:
-            logger.warning(
-                "Failed to process streaming response for groq span, error: %s",
-                str(ex),
-            )
+            logger.warning("Failed to process streaming response for groq span", exc_info=True)
+            span.record_exception(ex)
             span.set_status(Status(StatusCode.ERROR))
             span.end()
             raise
@@ -184,11 +178,8 @@ def _wrap(
         try:
             _handle_response(span, response)
 
-        except Exception as ex:  # pylint: disable=broad-except
-            logger.warning(
-                "Failed to set response attributes for groq span, error: %s",
-                str(ex),
-            )
+        except Exception:
+            logger.warning("Failed to set response attributes for groq span", exc_info=True)
 
         if span.is_recording():
             span.set_status(Status(StatusCode.OK))
@@ -218,19 +209,18 @@ async def _awrap(
     stamp_instrumentation_scope(span, to_wrap)
     _handle_input(span, kwargs)
 
-    try:
-        response = await wrapped(*args, **kwargs)
-    except Exception as e:  # pylint: disable=broad-except
-        raise e
+    response = await wrapped(*args, **kwargs)
+
 
     if is_streaming_response(response):
         try:
             return await _create_async_stream_processor(response, span)
         except Exception as ex:
             logger.warning(
-                "Failed to process streaming response for groq span, error: %s",
-                str(ex),
+                "Failed to process streaming response for groq span",
+                exc_info=True,
             )
+            span.record_exception(ex)
             span.set_status(Status(StatusCode.ERROR))
             span.end()
             raise
@@ -290,8 +280,8 @@ class GroqInstrumentor(BaseLaminarInstrumentor):
         if self._scope is None:
             try:
                 groq_version = version("groq")
-            except Exception as e:
-                logger.debug(f"Failed to get groq version {e}")
+            except Exception:
+                logger.debug("Failed to get groq version", exc_info=True)
                 groq_version = "unknown"
             self._scope = LaminarInstrumentationScopeAttributes(
                 name="groq",

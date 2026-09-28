@@ -168,8 +168,8 @@ class LangfuseInstrumentor(BaseInstrumentor):
         translator = LangfuseAttributeTranslator()
         try:
             _success = prepend_span_processor(lmnr_tracer_provider, translator)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.warning("Failed to install Langfuse attribute translator: %s", exc)
+        except Exception:
+            logger.warning("Failed to install Langfuse attribute translator", exc_info=True)
             # Re-raise (rather than silently returning) so
             # `BaseInstrumentor.instrument()` — which only flips
             # `_is_instrumented_by_opentelemetry = True` after `_instrument`
@@ -260,8 +260,8 @@ class LangfuseInstrumentor(BaseInstrumentor):
                 _success = remove_span_processor(self._lmnr_tracer_provider, self._translator)
             try:
                 _success = prepend_span_processor(lmnr_tracer_provider, self._translator)
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logger.warning("Failed to move Langfuse translator: %s", exc)
+            except Exception:
+                logger.warning("Failed to move Langfuse translator", exc_info=True)
                 return False
             if self._provider_attachment is not None:
                 self._provider_attachment.mark_handled(lmnr_tracer_provider)

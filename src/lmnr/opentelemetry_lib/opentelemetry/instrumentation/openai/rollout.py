@@ -73,8 +73,8 @@ class OpenAIRolloutWrapper:
                     return None
                 response_dict = raw if isinstance(raw, dict) else json.loads(raw)
                 return ChatCompletion.model_validate(response_dict)
-            except Exception as e:
-                logger.debug(f"Failed to parse raw OpenAI response: {e}", exc_info=True)
+            except Exception:
+                logger.debug("Failed to parse raw OpenAI response", exc_info=True)
                 return None
 
         # envelope_type == "genAi"
@@ -136,9 +136,9 @@ class OpenAIRolloutWrapper:
                 usage=None,
             )
 
-        except Exception as e:
+        except Exception:
             logger.debug(
-                f"Failed to convert genAi response to OpenAI format: {e}",
+                "Failed to convert genAi response to OpenAI format",
                 exc_info=True,
             )
             return None
@@ -175,9 +175,9 @@ class OpenAIRolloutWrapper:
                     return None
                 response_dict = raw if isinstance(raw, dict) else json.loads(raw)
                 return Response.model_validate(response_dict)
-            except Exception as e:
+            except Exception:
                 logger.debug(
-                    f"Failed to parse raw OpenAI Responses response: {e}",
+                    "Failed to parse raw OpenAI Responses response",
                     exc_info=True,
                 )
                 return None
@@ -214,9 +214,9 @@ class OpenAIRolloutWrapper:
             }
             return Response.model_validate(response_dict)
 
-        except Exception as e:
+        except Exception:
             logger.debug(
-                f"Failed to convert genAi response to OpenAI Responses format: {e}",
+                "Failed to convert genAi response to OpenAI Responses format",
                 exc_info=True,
             )
             return None
@@ -317,8 +317,8 @@ def get_openai_rollout_wrapper() -> OpenAIRolloutWrapper | None:
     if _openai_rollout_wrapper is None:
         try:
             _openai_rollout_wrapper = OpenAIRolloutWrapper()
-        except Exception as e:
-            logger.error(f"Failed to create OpenAI debugger wrapper: {e}")
+        except Exception:
+            logger.exception("Failed to create OpenAI debugger wrapper")
             return None
 
     return _openai_rollout_wrapper

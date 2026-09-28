@@ -165,8 +165,8 @@ def _parse_parent_span_context(
         otel_span_context = LaminarSpanContext.try_to_otel_span_context(
             laminar_span_context, logger
         )
-    except ValueError as exc:
-        logger.warning(f"Invalid span context provided: {exc}")
+    except ValueError:
+        logger.warning("Invalid span context provided", exc_info=True)
         return ParsedParentSpanContext(
             otel_span_context=None,
             path=path,
@@ -449,9 +449,9 @@ class Laminar:
 
         try:
             laminar_context = LaminarSpanContext.deserialize(env_context)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception:
             cls.__logger.warning(
-                "LMNR_SPAN_CONTEXT is set but could not be deserialized: %s", exc
+                "LMNR_SPAN_CONTEXT is set but could not be deserialized", exc_info=True,
             )
             return
 
@@ -469,9 +469,9 @@ class Laminar:
             otel_span_context = LaminarSpanContext.try_to_otel_span_context(
                 laminar_context, cls.__logger
             )
-        except ValueError as exc:
+        except ValueError:
             cls.__logger.warning(
-                "LMNR_SPAN_CONTEXT is set but invalid span context provided: %s", exc
+                "LMNR_SPAN_CONTEXT is set but invalid span context provided", exc_info=True,
             )
             return
 
@@ -519,8 +519,8 @@ class Laminar:
             if runtime is None:
                 return
             runtime.record_trace_id(str(uuid.UUID(int=otel_span_context.trace_id)))
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            cls.__logger.debug("Failed to record debug trace id from env: %s", exc)
+        except Exception as exc:
+            cls.__logger.debug("Failed to record debug trace id from env", exc_info=True)
 
     @classmethod
     def _init_debug_runtime(cls, base_url: str | None, http_port: int | None) -> None:
@@ -647,8 +647,8 @@ class Laminar:
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL,
                         )
-            except Exception as exc:
-                cls.__logger.warning("Failed to register debug session: %s", exc)
+            except Exception:
+                cls.__logger.warning("Failed to register debug session", exc_info=True)
 
             cls.__global_metadata = {
                 **(cls.__global_metadata or {}),
@@ -662,8 +662,8 @@ class Laminar:
                 _handler = atexit.unregister(cls.__debug_exit_hook)
             cls.__debug_exit_hook = runtime.emit_pointer
             _handler = atexit.register(cls.__debug_exit_hook)
-        except Exception as exc:  # never let debug setup crash initialization
-            cls.__logger.warning("Failed to initialize debug runtime: %s", exc)
+        except Exception:  # never let debug setup crash initialization
+            cls.__logger.warning("Failed to initialize debug runtime", exc_info=True)
 
     @classmethod
     def _arm_debug_runtime_from_context(cls, debug: DebugContext | None) -> None:
@@ -779,9 +779,9 @@ class Laminar:
 
             try:
                 _project_id = runtime.client.rollout_sessions.register(runtime.session_id)
-            except Exception as exc:
+            except Exception:
                 cls.__logger.debug(
-                    "Failed to register downstream debug session: %s", exc
+                    "Failed to register downstream debug session: %s", exc_info=True,
                 )
 
             cls.__global_metadata = {
@@ -799,8 +799,8 @@ class Laminar:
             )
             _token = attach_context(refreshed)
             # No atexit pointer hook: a downstream run must not emit the pointer.
-        except Exception as exc:  # never let debug arming crash span creation
-            cls.__logger.debug("Failed to arm debug runtime from context: %s", exc)
+        except Exception:  # never let debug arming crash span creation
+            cls.__logger.debug("Failed to arm debug runtime from context", exc_info=True)
 
     @staticmethod
     def _close_debug_async_client(async_client: AsyncLaminarClient) -> None:
@@ -816,8 +816,8 @@ class Laminar:
         """
         try:
             asyncio.run(async_client.close())
-        except Exception as e:
-            Laminar.__logger.debug(f"Failed to close debug client, {e}")
+        except Exception:
+            Laminar.__logger.debug("Failed to close debug client", exc_info=True)
 
     @classmethod
     def is_initialized(cls):
@@ -1082,8 +1082,8 @@ class Laminar:
                 try:
                     detach_context(isolated_context_token)
                     context_api.detach(ctx_token)
-                except Exception as e:
-                    cls.__logger.debug(f"failed to detach context tokens {e}")
+                except Exception:
+                    cls.__logger.debug("failed to detach context tokens", exc_info=True)
 
     @classmethod
     def start_span(
@@ -1366,7 +1366,7 @@ class Laminar:
         # Record only exceptions that inherit Exception class but not BaseException, because
         # classes that directly inherit BaseException are not technically errors, e.g. GeneratorExit.
         # See https://github.com/open-telemetry/opentelemetry-python/issues/4484
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             if isinstance(span, Span) and span.is_recording():  # pyright: ignore[reportUnnecessaryIsInstance]
                 # Record the exception as an event
                 if record_exception:
@@ -1778,9 +1778,9 @@ class Laminar:
                 lmnr_tracer_provider=wrapper.tracer_provider,
                 lmnr_span_processor=wrapper.span_processor,
             )
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception:
             cls.__logger.warning(
-                "Failed to rebind the Laminar/Langfuse bridge: %s", exc
+                "Failed to rebind the Laminar/Langfuse bridge", exc_info=True,
             )
             return False
 
@@ -1863,8 +1863,8 @@ class Laminar:
                 lmnr_tracer_provider=wrapper.tracer_provider,
                 lmnr_span_processor=wrapper.span_processor,
             )
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.warning("Failed to install Laminar/Langfuse bridge: %s", exc)
+        except Exception:
+            logger.warning("Failed to install Laminar/Langfuse bridge", exc_info=True)
             return False
         return instrumentor.is_instrumented_by_opentelemetry
 
@@ -1913,16 +1913,16 @@ class Laminar:
                 # below — leaving exporter threads alive and __initialized=True.
                 try:
                     runtime.emit_pointer()
-                except Exception as exc:  # pylint: disable=broad-exception-caught
-                    cls.__logger.debug("Failed to emit debug run pointer: %s", exc)
+                except Exception:
+                    cls.__logger.debug("Failed to emit debug run pointer", exc_info=True)
                 # Close the cache clients retained for the run's lifetime (v2
                 # keeps both open so provider wrappers can hit the cache
                 # endpoint on every live call). Best-effort, each guarded
                 # independently so one failing close can't leak the other.
                 try:
                     runtime.client.close()
-                except Exception as exc:  # pylint: disable=broad-exception-caught
-                    cls.__logger.debug("Failed to close debug cache client: %s", exc)
+                except Exception:
+                    cls.__logger.debug("Failed to close debug cache client", exc_info=True)
                 cls._close_debug_async_client(runtime.async_client)
             shutdown_tracing()
             cls.__initialized = False

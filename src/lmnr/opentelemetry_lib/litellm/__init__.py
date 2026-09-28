@@ -118,8 +118,8 @@ try:
                 self._create_span(
                     kwargs, response_obj, start_time, end_time, is_success=True
                 )
-            except Exception as e:
-                logger.error(f"Error in log_success_event: {e}")
+            except Exception:
+                logger.exception("Error in log_success_event")
 
         def log_failure_event(
             self, kwargs, response_obj, start_time: datetime, end_time: datetime
@@ -132,8 +132,8 @@ try:
                 self._create_span(
                     kwargs, response_obj, start_time, end_time, is_success=False
                 )
-            except Exception as e:
-                logger.error(f"Error in log_failure_event: {e}")
+            except Exception:
+                logger.exception("Error in log_failure_event")
 
         async def async_log_success_event(
             self, kwargs, response_obj, start_time: datetime, end_time: datetime
@@ -166,8 +166,8 @@ try:
             span_name = f"litellm.{call_type}"
             try:
                 tracer = self._get_tracer()
-            except Exception as e:
-                logger.error(f"Error getting tracer: {e}")
+            except Exception:
+                logger.exception("Error getting tracer")
                 return
 
             span = tracer.start_span(
@@ -692,8 +692,8 @@ try:
             elif response_dict.get("output"):
                 self._process_response_output(span, response_dict.get("output"))
 
-except ImportError as e:
-    logger.debug(f"LiteLLM callback unavailable: {e}")
+except ImportError:
+    logger.debug("LiteLLM callback unavailable", exc_info=True)
 
     # Create a no-op logger when LiteLLM is not available
     class LaminarLiteLLMCallback:

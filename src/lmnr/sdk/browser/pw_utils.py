@@ -144,8 +144,8 @@ def create_send_events_handler(
                 logger.debug(f"Cleaning up incomplete chunk buffer: {bid}")
                 del chunk_buffers[bid]
 
-        except Exception as e:
-            logger.debug(f"Could not send events: {e}")
+        except Exception:
+            logger.debug("Could not send events", exc_info=True)
 
     return send_events_from_browser
 
@@ -188,8 +188,8 @@ def inject_session_recorder_sync(page: SyncPage):
             is_loaded = cast(bool, page.evaluate(
                 """() => typeof window.lmnrRrweb !== 'undefined'"""
             ))
-        except Exception as e:
-            logger.debug(f"Failed to check if session recorder is loaded: {e}")
+        except Exception:
+            logger.debug("Failed to check if session recorder is loaded", exc_info=True)
             is_loaded = False
 
         if not is_loaded:
@@ -200,8 +200,8 @@ def inject_session_recorder_sync(page: SyncPage):
                         return False
                     page.evaluate(RRWEB_CONTENT)
                     return True
-                except Exception as e:
-                    logger.debug(f"Failed to load session recorder: {e}")
+                except Exception:
+                    logger.debug("Failed to load session recorder", exc_info=True)
                     return False
 
             if not retry_sync(
@@ -216,11 +216,11 @@ def inject_session_recorder_sync(page: SyncPage):
                     page.evaluate(
                         f"({INJECT_SCRIPT_CONTENT})({orjson.dumps(get_mask_input_setting()).decode('utf-8')}, false)"
                     )
-            except Exception as e:
-                logger.debug(f"Failed to inject session recorder: {e}")
+            except Exception:
+                logger.debug("Failed to inject session recorder", exc_info=True)
 
-    except Exception as e:
-        logger.debug(f"Error during session recorder injection: {e}")
+    except Exception:
+        logger.debug("Error during session recorder injection", exc_info=True)
 
 
 async def inject_session_recorder_async(page: Page):
@@ -229,8 +229,8 @@ async def inject_session_recorder_async(page: Page):
             is_loaded = cast(bool, await page.evaluate(
                 """() => typeof window.lmnrRrweb !== 'undefined'"""
             ))
-        except Exception as e:
-            logger.debug(f"Failed to check if session recorder is loaded: {e}")
+        except Exception:
+            logger.debug("Failed to check if session recorder is loaded", exc_info=True)
             is_loaded = False
 
         if not is_loaded:
@@ -241,8 +241,8 @@ async def inject_session_recorder_async(page: Page):
                         return False
                     await page.evaluate(RRWEB_CONTENT)
                     return True
-                except Exception as e:
-                    logger.debug(f"Failed to load session recorder: {e}")
+                except Exception:
+                    logger.debug("Failed to load session recorder", exc_info=True)
                     return False
 
             if not await retry_async(
@@ -257,11 +257,11 @@ async def inject_session_recorder_async(page: Page):
                     await page.evaluate(
                         f"({INJECT_SCRIPT_CONTENT})({orjson.dumps(get_mask_input_setting()).decode('utf-8')}, false)"
                     )
-            except Exception as e:
-                logger.debug(f"Failed to inject session recorder placeholder: {e}")
+            except Exception:
+                logger.debug("Failed to inject session recorder placeholder", exc_info=True)
 
-    except Exception as e:
-        logger.debug(f"Error during session recorder injection: {e}")
+    except Exception:
+        logger.debug("Error during session recorder injection", exc_info=True)
 
 
 @observe(name="playwright.page", ignore_input=True, ignore_output=True)
@@ -293,13 +293,13 @@ def start_recording_events_sync(
                 send_events_from_browser(chunk),
                 background_loop,
             )
-        except Exception as e:
-            logger.debug(f"Error submitting event: {e}")
+        except Exception:
+            logger.debug("Error submitting event", exc_info=True)
 
     try:
         cast(_ExposesSyncEvents, page).expose_function("lmnrSendEvents", submit_event)
-    except Exception as e:
-        logger.debug(f"Could not expose function: {e}")
+    except Exception:
+        logger.debug("Could not expose function", exc_info=True)
 
     inject_session_recorder_sync(page)
 
@@ -307,8 +307,8 @@ def start_recording_events_sync(
         try:
             if not p.is_closed():
                 inject_session_recorder_sync(p)
-        except Exception as e:
-            logger.debug(f"Error in on_load handler: {e}")
+        except Exception:
+            logger.debug("Error in on_load handler", exc_info=True)
 
     page.on("domcontentloaded", on_load)
 
@@ -337,8 +337,8 @@ async def start_recording_events_async(
         await cast(_ExposesAsyncEvents, page).expose_function(
             "lmnrSendEvents", send_events_from_browser
         )
-    except Exception as e:
-        logger.debug(f"Could not expose function: {e}")
+    except Exception:
+        logger.debug("Could not expose function", exc_info=True)
 
     await inject_session_recorder_async(page)
 
@@ -347,8 +347,8 @@ async def start_recording_events_async(
             # Check if page is closed before attempting to inject
             if not p.is_closed():
                 await inject_session_recorder_async(p)
-        except Exception as e:
-            logger.debug(f"Error in on_load handler: {e}")
+        except Exception:
+            logger.debug("Error in on_load handler", exc_info=True)
 
     page.on("domcontentloaded", on_load)
 

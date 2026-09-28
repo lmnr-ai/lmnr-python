@@ -50,8 +50,8 @@ def record_input(
                 )
             ),
         )
-    except Exception as e:
-        logger.debug(f"Failed to record input on CAS span {e}")
+    except Exception:
+        logger.debug("Failed to record input on CAS span", exc_info=True)
 
 
 def record_output(
@@ -62,8 +62,8 @@ def record_output(
     """Record function output as span attribute."""
     try:
         span.set_attribute("lmnr.span.output", json_dumps(value))  # pyright: ignore[reportAny]
-    except Exception as e:
-        logger.debug(f"Failed to record output on CAS span {e}")
+    except Exception:
+        logger.debug("Failed to record output on CAS span", exc_info=True)
 
 
 
@@ -126,5 +126,5 @@ def publish_span_context_for_transport(transport: Any) -> None:  # pyright: igno
             span_ids_path=payload["span_ids_path"],
             laminar_url=payload["laminar_url"] or "https://api.lmnr.ai",
         )
-    except Exception as e:  # pylint: disable=broad-except
-        logger.debug("Failed to publish span context to proxy: %s", e)
+    except Exception:
+        logger.debug("Failed to publish span context to proxy", exc_info=True)

@@ -94,8 +94,8 @@ async def _aset_token_usage(
     if response and hasattr(response, "parse") and callable(response.parse):
         try:
             response = response.parse()
-        except Exception as e:
-            logger.debug(f"Failed to parse with_raw_response: {e}")
+        except Exception:
+            logger.debug("Failed to parse with_raw_response", exc_info=True)
             return
 
     usage = getattr(response, "usage", None) if response else None
@@ -151,8 +151,8 @@ def _set_token_usage(
     if response and hasattr(response, "parse") and callable(response.parse):
         try:
             response = response.parse()
-        except Exception as e:
-            logger.debug(f"Failed to parse with_raw_response: {e}")
+        except Exception:
+            logger.debug("Failed to parse with_raw_response", exc_info=True)
             return
 
     usage = getattr(response, "usage", None) if response else None
@@ -221,9 +221,9 @@ def _handle_response(span: Span, response, record_raw_response=False):
         try:
             from lmnr.sdk.utils import json_dumps
 
-            from .utils import _extract_response_data, model_as_dict
+            from .utils import extract_response_data, model_as_dict
 
-            response_data = _extract_response_data(response)
+            response_data = extract_response_data(response)
             response_dict = model_as_dict(response_data)
             set_span_attribute(span, "lmnr.sdk.raw.response", json_dumps(response_dict))
         except Exception:
@@ -240,9 +240,9 @@ async def _ahandle_response(span: Span, response, record_raw_response=False):
         try:
             from lmnr.sdk.utils import json_dumps
 
-            from .utils import _aextract_response_data, model_as_dict
+            from .utils import aextract_response_data, model_as_dict
 
-            response_data = await _aextract_response_data(response)
+            response_data = await aextract_response_data(response)
             response_dict = model_as_dict(response_data)
             set_span_attribute(span, "lmnr.sdk.raw.response", json_dumps(response_dict))
         except Exception:
@@ -276,21 +276,18 @@ def _wrap(
     rollout_wrapper = get_anthropic_rollout_wrapper()
     is_rollout = rollout_wrapper is not None
 
-    try:
-        if rollout_wrapper:
-            response = rollout_wrapper.wrap_create(
-                wrapped,
-                instance,
-                args,
-                kwargs,
-                span=span,
-                is_streaming=kwargs.get("stream", False),
-                is_async=False,
-            )
-        else:
-            response = wrapped(*args, **kwargs)
-    except Exception as e:  # pylint: disable=broad-except
-        raise e
+    if rollout_wrapper:
+        response = rollout_wrapper.wrap_create(
+            wrapped,
+            instance,
+            args,
+            kwargs,
+            span=span,
+            is_streaming=kwargs.get("stream", False),
+            is_async=False,
+        )
+    else:
+        response = wrapped(*args, **kwargs)
 
     if kwargs.get("stream") or is_streaming_response(response):
         return build_from_streaming_response(
@@ -327,10 +324,10 @@ def _wrap(
                     kwargs,
                     response,
                 )
-        except Exception as ex:  # pylint: disable=broad-except
+        except Exception:
             logger.warning(
-                "Failed to set response attributes for anthropic span, error: %s",
-                str(ex),
+                "Failed to set response attributes for anthropic span",
+                exc_info=True
             )
 
         if span.is_recording():
@@ -366,21 +363,18 @@ async def _awrap(
     rollout_wrapper = get_anthropic_rollout_wrapper()
     is_rollout = rollout_wrapper is not None
 
-    try:
-        if rollout_wrapper:
-            response = await rollout_wrapper.wrap_create(
-                wrapped,
-                instance,
-                args,
-                kwargs,
-                span=span,
-                is_streaming=kwargs.get("stream", False),
-                is_async=True,
-            )
-        else:
-            response = await wrapped(*args, **kwargs)
-    except Exception as e:  # pylint: disable=broad-except
-        raise e
+    if rollout_wrapper:
+        response = await rollout_wrapper.wrap_create(
+            wrapped,
+            instance,
+            args,
+            kwargs,
+            span=span,
+            is_streaming=kwargs.get("stream", False),
+            is_async=True,
+        )
+    else:
+        response = await wrapped(*args, **kwargs)
 
     if kwargs.get("stream") or is_streaming_response(response):
         return abuild_from_streaming_response(
@@ -610,8 +604,8 @@ class AnthropicInstrumentor(BaseLaminarInstrumentor):
         if self._scope is None:
             try:
                 anthropic_version = version("anthropic")
-            except Exception as e:
-                logger.debug(f"Failed to get anthropic version {e}")
+            except Exception:
+                logger.debug("Failed to get anthropic version", exc_info=True)
                 anthropic_version = "unknown"
             self._scope = LaminarInstrumentationScopeAttributes(
                 name="anthropic",

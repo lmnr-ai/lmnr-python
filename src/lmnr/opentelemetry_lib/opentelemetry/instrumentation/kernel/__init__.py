@@ -67,7 +67,7 @@ def _wrap(
         )
         try:
             result = wrapped(*args, **kwargs)
-        except Exception as e:  # pylint: disable=broad-except
+        except Exception as e:
             span.set_status(Status(StatusCode.ERROR))
             span.record_exception(e)
             raise
@@ -98,7 +98,7 @@ async def _wrap_async(
         )
         try:
             result = await wrapped(*args, **kwargs)
-        except Exception as e:  # pylint: disable=broad-except
+        except Exception as e:
             span.set_status(Status(StatusCode.ERROR))
             span.record_exception(e)
             raise
@@ -550,8 +550,8 @@ class KernelInstrumentor(BaseLaminarInstrumentor):
         if self._scope is None:
             try:
                 kernel_version = version("kernel")
-            except Exception as e:
-                logger.debug(f"Failed to get kernel version {e}")
+            except Exception:
+                logger.debug("Failed to get kernel version", exc_info=True)
                 kernel_version = "unknown"
             self._scope = LaminarInstrumentationScopeAttributes(
                 name="kernel",

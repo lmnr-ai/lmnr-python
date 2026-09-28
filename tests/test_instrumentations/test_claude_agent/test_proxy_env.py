@@ -22,7 +22,7 @@ def test_foundry_base_url_overrides_target(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_FOUNDRY_RESOURCE", raising=False)
 
     proxy = ProxyServer(port=45500)
-    proxy._allocated_port = 45500
+    proxy.allocated_port = 45500
 
     # Resolve target URL before starting proxy
     target_url = claude_utils.resolve_target_url_from_env({})
@@ -48,7 +48,7 @@ def test_foundry_resource_builds_target_url(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_FOUNDRY_RESOURCE", "my-resource")
 
     proxy = ProxyServer(port=45501)
-    proxy._allocated_port = 45501
+    proxy.allocated_port = 45501
 
     # Resolve target URL before starting proxy
     target_url = claude_utils.resolve_target_url_from_env({})
@@ -78,7 +78,7 @@ def test_foundry_missing_config_fails(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_FOUNDRY_RESOURCE", raising=False)
 
     proxy = ProxyServer(port=45502)
-    proxy._allocated_port = 45502
+    proxy.allocated_port = 45502
 
     # Resolve target URL - should return None for invalid config
     target_url = claude_utils.resolve_target_url_from_env({})

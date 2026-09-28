@@ -76,7 +76,7 @@ def wrap_sync(
 
         try:
             result = wrapped(*args, **kwargs)
-        except Exception as e:  # pylint: disable=broad-except
+        except Exception as e:
             span.set_status(Status(StatusCode.ERROR))
             span.record_exception(e)
             raise
@@ -107,7 +107,7 @@ async def wrap_async(
 
         try:
             result = await wrapped(*args, **kwargs)
-        except Exception as e:  # pylint: disable=broad-except
+        except Exception as e:
             span.set_status(Status(StatusCode.ERROR))
             span.record_exception(e)
             raise
@@ -167,7 +167,7 @@ def wrap_async_gen(
             # Request was cancelled (e.g., FastAPI client disconnect)
             # Don't record as error, just propagate
             raise
-        except Exception as e:  # pylint: disable=broad-except
+        except Exception as e:
             with Laminar.use_span(span):
                 span.set_status(Status(StatusCode.ERROR))
                 span.record_exception(e)
@@ -317,8 +317,8 @@ async def wrap_transport_connect(
 
         try:
             delattr(instance, "__lmnr_context")  # pyright: ignore[reportAny]
-        except Exception as e:
-            logger.debug(f"Failed to remove `__lmnr_context` from CC proxy instance: {e}")
+        except Exception:
+            logger.debug("Failed to remove `__lmnr_context` from CC proxy instance", exc_info=True)
         raise
 
 
@@ -374,21 +374,21 @@ async def _cleanup_transport_context(instance: Any) -> None:  # pyright: ignore[
                 except RuntimeError:
                     try:
                         stop_proxy(proxy)
-                    except Exception as e:
-                        logger.debug(f"failed to stop CAS proxy: {e}")
+                    except Exception:
+                        logger.debug("failed to stop CAS proxy", exc_info=True)
         finally:
             try:
                 delattr(instance, "__lmnr_context")  # pyright: ignore[reportAny]
-            except Exception as e:
-                logger.debug(f"failed to delete `__lmnr_context` from CAS proxy instance: {e}")
+            except Exception:
+                logger.debug("failed to delete `__lmnr_context` from CAS proxy instance", exc_info=True)
 
     try:
         await asyncio.wait_for(
             asyncio.shield(_do_cleanup()), timeout=DEFAULT_CLEANUP_TIMEOUT
         )
-    except BaseException as be:
+    except BaseException:
         # Swallow all exceptions - cleanup failures are expected
-        logger.debug(f"Expected `BaseException` during CAS proxy cleanup: {be}")
+        logger.debug("Expected `BaseException` during CAS proxy cleanup", exc_info=True)
 
 
 def snapshot_options_env_for_proxy(options: Any) -> dict[str, str | None]:  # pyright: ignore[reportAny, reportExplicitAny]

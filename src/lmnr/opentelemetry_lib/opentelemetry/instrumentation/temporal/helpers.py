@@ -87,9 +87,10 @@ def restore_context_from_headers(
     if laminar_raw:
         try:
             return LaminarSpanContext.deserialize(laminar_raw)
-        except Exception as e:
+        except Exception:
             logger.warning(
-                f"Could not restore {LAMINAR_SPAN_CONTEXT_HEADER}: {e}"
+                f"Could not restore {LAMINAR_SPAN_CONTEXT_HEADER}",
+                exc_info=True,
             )
 
     traceparent = decode_payload(headers.get(TRACEPARENT_HEADER))
@@ -102,7 +103,7 @@ def restore_context_from_headers(
                     span_id=uuid.UUID(hex=parts[2].rjust(32, "0")),
                     is_remote=True,
                 )
-            except Exception as e:
-                logger.warning(f"Could not restore traceparent: {e}")
+            except Exception:
+                logger.warning("Could not restore traceparent", exc_info=True)
 
     return None

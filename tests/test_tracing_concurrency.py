@@ -631,7 +631,7 @@ def test_threadpool_exception_handling(span_exporter: InMemorySpanExporter):
                         result = future.result()
                         results.append(result)
                     except ValueError as e:
-                        results.append(f"error: {str(e)}")
+                        results.append(f"error: {e!s}")
 
             Laminar.set_span_output(results)
             return results

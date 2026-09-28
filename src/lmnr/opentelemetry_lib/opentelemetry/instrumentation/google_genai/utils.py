@@ -92,9 +92,9 @@ def dont_throw(func):
             return func(*args, **kwargs)
         except Exception as e:
             func_logger.debug(
-                "Laminar failed to trace in %s, error: %s",
+                "Laminar failed to trace in %s",
                 func.__name__,
-                traceback.format_exc(),
+                exc_info=True,
             )
             if Config.exception_logger:
                 Config.exception_logger(e)
@@ -117,8 +117,8 @@ def to_dict(
             return {}
         else:
             return dict(obj)
-    except Exception as e:
-        logger.debug(f"Error converting to dict: {obj}, error: {e}")
+    except Exception:
+        logger.debug(f"Error converting to dict: {obj}", exc_info=True)
         return dict(obj)
 
 

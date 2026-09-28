@@ -40,8 +40,8 @@ try:
     from daytona import SessionExecuteRequest, SessionExecuteResponse
     from daytona._async.process import AsyncProcess
     from daytona._sync.process import Process
-except Exception as e:
-    log.debug(f"Failed to import from daytona: {e}")
+except Exception:
+    log.debug("Failed to import from daytona", exc_info=True)
 
 
 T = TypeVar("T")
@@ -133,8 +133,8 @@ def _emit_log(
                 event_name=event_name,
             )
         )
-    except Exception as e:
-        log.debug(f"Failed to emit Daytona log event: {e}")
+    except Exception:
+        log.debug("Failed to emit Daytona log event", exc_info=True)
 
 
 def _emit_logs_from_response(
@@ -218,8 +218,8 @@ async def _stream_logs_async(
         )
     except asyncio.CancelledError:
         log.debug("Daytona log streaming was cancelled")
-    except Exception as e:
-        log.debug(f"Failed to stream Daytona logs: {e}")
+    except Exception:
+        log.debug("Failed to stream Daytona logs", exc_info=True)
 
 
 def _start_log_streaming(
@@ -245,8 +245,8 @@ def _start_log_streaming(
     async def stream_wrapper():
         try:
             await _stream_logs_async(logger, instance, session_id, cmd_id, ctx)
-        except Exception as e:
-            log.debug(f"Log streaming error: {e}")
+        except Exception:
+            log.debug("Log streaming error", exc_info=True)
 
     # Try to use existing event loop first (for async contexts)
     # This avoids cross-event-loop issues with aiohttp clients
@@ -265,14 +265,14 @@ def _start_log_streaming(
             asyncio.run(
                 _stream_logs_async(logger, instance, session_id, cmd_id, ctx)
             )
-        except Exception as e:
-            log.debug(f"Log streaming thread error: {e}")
+        except Exception:
+            log.debug("Log streaming thread error", exc_info=True)
 
     try:
         thread = threading.Thread(target=run_in_thread, daemon=True)
         thread.start()
-    except Exception as e:
-        log.debug(f"Failed to start Daytona log streaming thread: {e}")
+    except Exception:
+        log.debug("Failed to start Daytona log streaming thread", exc_info=True)
 
 
 def _process_command_response(
@@ -370,8 +370,8 @@ def wrap(
         _process_command_response(
             logger, instance, response, session_id or "", request, ctx
         )
-    except Exception as log_error:
-        log.debug(f"Failed to process Daytona command response for logging: {log_error}")
+    except Exception:
+        log.debug("Failed to process Daytona command response for logging", exc_info=True)
 
     return response
 
@@ -441,8 +441,8 @@ async def awrap(
         _process_command_response(
             logger, instance, response, session_id or "", request, ctx
         )
-    except Exception as log_error:
-        log.debug(f"Failed to process Daytona command response for logging: {log_error}")
+    except Exception:
+        log.debug("Failed to process Daytona command response for logging", exc_info=True)
 
     return response
 
@@ -542,8 +542,8 @@ def wrap_exec(
 
     try:
         _emit_exec_logs_from_response(logger, response, command, ctx)
-    except Exception as log_error:
-        log.debug(f"Failed to process Daytona exec response for logging: {log_error}")
+    except Exception:
+        log.debug("Failed to process Daytona exec response for logging", exc_info=True)
 
     return response
 
@@ -607,7 +607,7 @@ async def awrap_exec(
 
     try:
         _emit_exec_logs_from_response(logger, response, command, ctx)
-    except Exception as log_error:
-        log.debug(f"Failed to process Daytona exec response for logging: {log_error}")
+    except Exception:
+        log.debug("Failed to process Daytona exec response for logging", exc_info=True)
 
     return response

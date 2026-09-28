@@ -578,8 +578,8 @@ class GoogleGenAiSdkInstrumentor(BaseLaminarInstrumentor):
         if self._scope is None:
             try:
                 google_genai_version = version("google-genai")
-            except Exception as e:
-                logger.debug(f"Failed to get google-genai version {e}")
+            except Exception:
+                logger.debug("Failed to get google-genai version", exc_info=True)
                 google_genai_version = "unknown"
             self._scope = LaminarInstrumentationScopeAttributes(
                 name="google-genai",

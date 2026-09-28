@@ -175,8 +175,8 @@ def _wrap_workflow_handle(
         if isinstance(span, LaminarSpan):
             try:
                 span.set_output(res)
-            except Exception as e:
-                logger.debug(f"failed to set workflow span output: {e}")
+            except Exception:
+                logger.debug("failed to set workflow span output", exc_info=True)
         close()
         return res
 
@@ -249,6 +249,6 @@ class _LaminarActivityInboundInterceptor(
             ):
                 try:
                     span.set_output(res)
-                except Exception as e:
-                    logger.debug(f"failed to set activity span output: {e}")
+                except Exception:
+                    logger.debug("failed to set activity span output", exc_info=True)
             return res

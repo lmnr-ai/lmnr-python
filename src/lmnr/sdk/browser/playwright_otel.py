@@ -349,8 +349,8 @@ class PlaywrightInstrumentor(BaseLaminarInstrumentor):
         if self._scope is None:
             try:
                 pw_version = version("playwright")
-            except Exception as e:
-                logger.debug(f"Failed to get playwright version {e}")
+            except Exception:
+                logger.debug("Failed to get playwright version", exc_info=True)
                 pw_version = "unknown"
             self._scope = LaminarInstrumentationScopeAttributes(
                 name="playwright",

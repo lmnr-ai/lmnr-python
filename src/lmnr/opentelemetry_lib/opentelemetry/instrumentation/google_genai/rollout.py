@@ -48,8 +48,8 @@ class GoogleGenAIRolloutWrapper:
             while isinstance(parsed, str):
                 parsed = json.loads(parsed)
             return parsed
-        except (json.JSONDecodeError, TypeError) as e:
-            logger.error(f"Failed to parse output JSON: {e}")
+        except (json.JSONDecodeError, TypeError):
+            logger.exception("Failed to parse output JSON")
             return None
 
     def _add_parsed_to_response(
@@ -120,9 +120,9 @@ class GoogleGenAIRolloutWrapper:
                     )
                     return response
                 return None
-            except Exception as e:
+            except Exception:
                 logger.debug(
-                    f"Failed to parse raw Google GenAI response: {e}", exc_info=True
+                    "Failed to parse raw Google GenAI response", exc_info=True,
                 )
                 return None
 
@@ -176,9 +176,9 @@ class GoogleGenAIRolloutWrapper:
             self._add_parsed_to_response(response, content_blocks, config)
             return response
 
-        except Exception as e:
+        except Exception:
             logger.debug(
-                f"Failed to convert genAi response to Google GenAI format: {e}",
+                "Failed to convert genAi response to Google GenAI format",
                 exc_info=True,
             )
             return None
@@ -219,8 +219,8 @@ class GoogleGenAIRolloutWrapper:
             if hasattr(response_schema, "model_validate"):
                 try:
                     return response_schema.model_validate(json_data)
-                except Exception as e:
-                    logger.debug(f"Failed to validate with pydantic model: {e}")
+                except Exception:
+                    logger.debug("Failed to validate with pydantic model", exc_info=True)
                     # Fall back to returning the dict
                     return json_data
 
@@ -228,15 +228,15 @@ class GoogleGenAIRolloutWrapper:
             if hasattr(response_schema, "__members__"):
                 try:
                     return response_schema(json_data)
-                except Exception as e:
-                    logger.debug(f"Failed to construct Enum: {e}")
+                except Exception:
+                    logger.debug("Failed to construct Enum", exc_info=True)
                     return json_data
 
             # Otherwise, return the parsed JSON dict/list
             return json_data
 
-        except Exception as e:
-            logger.debug(f"Failed to parse structured output: {e}")
+        except Exception:
+            logger.debug("Failed to parse structured output", exc_info=True)
             return None
 
     def wrap_generate_content(
@@ -349,8 +349,8 @@ def get_google_genai_rollout_wrapper() -> GoogleGenAIRolloutWrapper | None:
     if _google_genai_rollout_wrapper is None:
         try:
             _google_genai_rollout_wrapper = GoogleGenAIRolloutWrapper()
-        except Exception as e:
-            logger.error(f"Failed to create Google GenAI replay wrapper: {e}")
+        except Exception:
+            logger.exception("Failed to create Google GenAI replay wrapper")
             return None
 
     return _google_genai_rollout_wrapper

@@ -82,8 +82,8 @@ class TemporalInstrumentor(BaseInstrumentor):
                 "Client.__init__",
                 _wrap_client_init,
             )
-        except (ModuleNotFoundError, AttributeError) as e:
-            logger.debug(f"failed to instrument temporalio client: {e}")
+        except (ModuleNotFoundError, AttributeError):
+            logger.debug("failed to instrument temporalio client", exc_info=True)
 
     def _uninstrument(self, **kwargs):
         try:

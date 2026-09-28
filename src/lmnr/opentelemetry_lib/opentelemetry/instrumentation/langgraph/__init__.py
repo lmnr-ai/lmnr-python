@@ -108,8 +108,8 @@ class LanggraphInstrumentor(BaseLaminarInstrumentor):
         if self._scope is None:
             try:
                 langgraph_version = version("langgraph")
-            except Exception as e:
-                logger.debug(f"Failed to get langgraph version {e}")
+            except Exception:
+                logger.debug("Failed to get langgraph version", exc_info=True)
                 langgraph_version = "unknown"
             self._scope = LaminarInstrumentationScopeAttributes(
                 name="langgraph",

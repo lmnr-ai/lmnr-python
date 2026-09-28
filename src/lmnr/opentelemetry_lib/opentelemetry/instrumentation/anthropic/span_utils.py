@@ -19,9 +19,9 @@ from lmnr.sdk.utils import json_dumps
 
 from .event_models import AnthropicResponseMessage
 from .utils import (
-    _aextract_response_data,
-    _extract_response_data,
+    aextract_response_data,
     dont_throw,
+    extract_response_data,
     model_as_dict,
     set_span_attribute,
     should_send_prompts,
@@ -178,7 +178,7 @@ async def _aset_span_completions(span, response):
     if not should_send_prompts():
         return
 
-    response = await _aextract_response_data(response)
+    response = await aextract_response_data(response)
     output = _build_output_from_response(response)
     set_span_attribute(span, "gen_ai.output.messages", json_dumps(output))
 
@@ -194,7 +194,7 @@ def _set_span_completions(span, response):
 
 @dont_throw
 async def aset_response_attributes(span, response):
-    response = await _aextract_response_data(response)
+    response = await aextract_response_data(response)
     set_span_attribute(span, GEN_AI_RESPONSE_MODEL, response.get("model"))
     set_span_attribute(span, GEN_AI_RESPONSE_ID, response.get("id"))
 
@@ -215,7 +215,7 @@ async def aset_response_attributes(span, response):
 
 @dont_throw
 def set_response_attributes(span, response):
-    response = _extract_response_data(response)
+    response = extract_response_data(response)
     set_span_attribute(span, GEN_AI_RESPONSE_MODEL, response.get("model"))
     set_span_attribute(span, GEN_AI_RESPONSE_ID, response.get("id"))
 

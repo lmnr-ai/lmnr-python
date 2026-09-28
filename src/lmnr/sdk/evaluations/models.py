@@ -123,7 +123,7 @@ class PartialEvaluationDatapoint(BaseModel):
                 ),
             }
         except Exception as e:
-            raise ValueError(f"Error serializing PartialEvaluationDatapoint: {e}")
+            raise ValueError("Error serializing PartialEvaluationDatapoint") from e
 
 
 class EvaluationResultDatapoint(BaseModel):
@@ -180,4 +180,4 @@ class EvaluationResultDatapoint(BaseModel):
                 ),
             }
         except Exception as e:
-            raise ValueError(f"Error serializing EvaluationResultDatapoint: {e}")
+            raise ValueError("Error serializing EvaluationResultDatapoint") from e

@@ -234,8 +234,8 @@ class OpenAIV1Instrumentor(BaseLaminarInstrumentor):
         if self._scope is None:
             try:
                 openai_version = version("openai")
-            except Exception as e:
-                logger.debug(f"Failed to get openai version {e}")
+            except Exception:
+                logger.debug("Failed to get openai version", exc_info=True)
                 openai_version = "unknown"
             self._scope = LaminarInstrumentationScopeAttributes(
                 name="openai",

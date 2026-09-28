@@ -63,8 +63,8 @@ class DaytonaSDKInstrumentor(BaseLaminarInstrumentor):
         daytona_version = "unknown"
         try:
             daytona_version = version("daytona")
-        except Exception as e:
-            logger.debug(f"Failed to get the version of `daytona` instrumentor: {e}")
+        except Exception:
+            logger.debug("Failed to get the version of `daytona` instrumentor", exc_info=True)
         return LaminarInstrumentationScopeAttributes(
             name="daytona",
             version=daytona_version,

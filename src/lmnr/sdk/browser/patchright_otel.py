@@ -62,8 +62,8 @@ class PatchrightInstrumentor(BaseLaminarInstrumentor):
         if self._scope is None:
             try:
                 pr_version = version("patchright")
-            except Exception as e:
-                logger.debug(f"Failed to get patchright version {e}")
+            except Exception:
+                logger.debug("Failed to get patchright version", exc_info=True)
                 pr_version = "unknown"
             self._scope = LaminarInstrumentationScopeAttributes(
                 name="patchright",

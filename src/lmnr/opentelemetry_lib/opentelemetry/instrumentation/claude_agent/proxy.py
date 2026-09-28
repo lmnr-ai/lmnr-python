@@ -162,11 +162,11 @@ def start_proxy(
             proxy.run_server(target_url)
         except Exception as e:
             logger.debug(
-                "Failed to start proxy server on port %d (attempt %d/%d): %s",
+                "Failed to start proxy server on port %d (attempt %d/%d)",
                 current_port,
                 attempt + 1,
                 max_retries,
-                e,
+                exc_info=True,
             )
 
             # Release current port and allocate a new one
@@ -182,7 +182,7 @@ def start_proxy(
             else:
                 # Last attempt failed
                 raise RuntimeError(
-                    f"Failed to start proxy after {max_retries} attempts. Last error on port {current_port}: {e}"
+                    f"Failed to start proxy after {max_retries} attempts. Last error on port {current_port}"
                 ) from e
 
         # Wait for readiness
@@ -195,8 +195,8 @@ def start_proxy(
             )
             try:
                 proxy.stop_server()
-            except Exception as e:
-                logger.debug("Error stopping proxy on port %d: %s", proxy.port, e)
+            except Exception:
+                logger.debug("Error stopping proxy on port %d", proxy.port, exc_info=True)
             finally:
                 # Release current port and allocate a new one
                 if proxy.allocated_port is not None:
@@ -231,8 +231,8 @@ def stop_proxy(proxy: LaminarProxyServer) -> None:
     try:
         proxy.stop_server()
         logger.debug("Stopped proxy server on port %d", port)
-    except Exception as e:
-        logger.debug("Error stopping proxy on port %d: %s", port, e)
+    except Exception:
+        logger.debug("Error stopping proxy on port %d", port, exc_info=True)
     finally:
         if proxy.allocated_port is not None:
             release_port(proxy.allocated_port)
@@ -257,5 +257,5 @@ def publish_span_context_to_proxy(
             span_ids_path=span_ids_path,
             laminar_url=laminar_url,
         )
-    except Exception as e:
-        logger.debug("Failed to publish span context to proxy: %s", e)
+    except Exception:
+        logger.debug("Failed to publish span context to proxy", exc_info=True)

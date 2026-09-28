@@ -136,10 +136,7 @@ def build_from_streaming_response(
     }
 
     for item in response:
-        try:
-            yield item
-        except Exception as e:
-            raise e
+        yield item
         _process_response_item(item, complete_response)
 
     set_span_attribute(span, GEN_AI_RESPONSE_ID, complete_response.get("id"))
@@ -171,8 +168,8 @@ def build_from_streaming_response(
             prompt_tokens,
             completion_tokens,
         )
-    except Exception as e:
-        logger.warning("Failed to set token usage, error: %s", e)
+    except Exception:
+        logger.warning("Failed to set token usage", exc_info=True)
 
     _handle_streaming_response(span, complete_response, record_raw_response)
 
@@ -197,10 +194,7 @@ async def abuild_from_streaming_response(
         "service_tier": None,
     }
     async for item in response:
-        try:
-            yield item
-        except Exception as e:
-            raise e
+        yield item
         _process_response_item(item, complete_response)
 
     set_span_attribute(span, GEN_AI_RESPONSE_ID, complete_response.get("id"))
@@ -232,8 +226,8 @@ async def abuild_from_streaming_response(
             prompt_tokens,
             completion_tokens,
         )
-    except Exception as e:
-        logger.warning("Failed to set token usage, error: %s", str(e))
+    except Exception:
+        logger.warning("Failed to set token usage", exc_info=True)
 
     _handle_streaming_response(span, complete_response, record_raw_response)
 

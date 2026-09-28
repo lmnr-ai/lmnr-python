@@ -252,8 +252,8 @@ class LaminarSpanProcessor(SpanProcessor):
             span_context = span.get_span_context()
             if span_context is not None:  # pyright: ignore[reportUnnecessaryComparison]
                 runtime.record_trace_id(str(uuid.UUID(int=span_context.trace_id)))
-        except Exception as e:
-            self.logger.debug(f"Failed to record debug trace id: {e}")
+        except Exception:
+            self.logger.debug("Failed to record debug trace id", exc_info=True)
 
     @override
     def force_flush(self, timeout_millis: int = 30000) -> bool:
@@ -276,8 +276,8 @@ class LaminarSpanProcessor(SpanProcessor):
             # Only then, we can reinitialize the exporter.
             try:
                 old_instance.shutdown()
-            except Exception as e:
-                self.logger.debug(f"Error shutting down old processor instance: {e}")
+            except Exception:
+                self.logger.debug("Error shutting down old processor instance", exc_info=True)
 
             # reinitialize the exporter
             # This is thread-safe as it has its own locking

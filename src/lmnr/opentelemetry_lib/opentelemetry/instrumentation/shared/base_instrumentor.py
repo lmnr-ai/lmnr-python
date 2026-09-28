@@ -168,11 +168,11 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
                     self.logger.debug(
                         f"Successfully instrumented {package_name}.{target}"
                     )
-            except (AttributeError, ModuleNotFoundError, ImportError) as e:
+            except (AttributeError, ModuleNotFoundError, ImportError):
                 # that's ok, we don't want to fail if some methods do not exist
-                self.logger.debug(f"Failed to instrument {package_name}.{target}: {e}")
-            except Exception as e:
-                self.logger.error(f"Failed to instrument {package_name}.{target}: {e}")
+                self.logger.debug(f"Failed to instrument {package_name}.{target}", exc_info=True)
+            except Exception:
+                self.logger.exception(f"Failed to instrument {package_name}.{target}")
                 # don't re-raise, we don't want to fail the entire program
 
     # default implementation, can be overridden by subclasses
@@ -207,8 +207,9 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
                         else package_name
                     )
                     unwrap(holder, method_name)
-            except Exception as e:
+            except Exception:
                 self.logger.debug(
-                    f"Failed to uninstrument {package_name}.{target}: {e}"
+                    f"Failed to uninstrument {package_name}.{target}",
+                    exc_info=True,
                 )
                 # don't re-raise, we don't want to fail the entire program

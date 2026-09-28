@@ -208,8 +208,8 @@ class SkyvernInstrumentor(BaseLaminarInstrumentor):
         if self._scope is None:
             try:
                 skyvern_version = version("skyvern")
-            except Exception as e:
-                logger.debug(f"Failed to get skyvern version {e}")
+            except Exception:
+                logger.debug("Failed to get skyvern version", exc_info=True)
                 skyvern_version = "unknown"
             self._scope = LaminarInstrumentationScopeAttributes(
                 name="skyvern",
@@ -227,8 +227,8 @@ class SkyvernInstrumentor(BaseLaminarInstrumentor):
             self._original_llm_handler = instrument_llm_handler(
                 self.instrumentation_scope()
             )
-        except Exception as e:
-            logger.debug(f"Failed to instrument skyvern LLM_API_HANDLER: {e}")
+        except Exception:
+            logger.debug("Failed to instrument skyvern LLM_API_HANDLER", exc_info=True)
 
         super()._instrument(**kwargs)
 
@@ -241,8 +241,8 @@ class SkyvernInstrumentor(BaseLaminarInstrumentor):
                 from skyvern.forge import app
 
                 app.LLM_API_HANDLER = self._original_llm_handler
-            except Exception as e:
-                logger.debug(f"Failed to restore skyvern LLM_API_HANDLER: {e}")
+            except Exception:
+                logger.debug("Failed to restore skyvern LLM_API_HANDLER", exc_info=True)
             self._original_llm_handler = None
 
         super()._uninstrument(**kwargs)

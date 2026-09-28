@@ -144,8 +144,8 @@ class ClaudeAgentInstrumentor(BaseLaminarInstrumentor):
         if self._scope is None:
             try:
                 sdk_version = version("claude-agent-sdk")
-            except Exception as e:
-                logger.debug(f"Failed to get claude-agent-sdk version {e}")
+            except Exception:
+                logger.debug("Failed to get claude-agent-sdk version", exc_info=True)
                 sdk_version = "unknown"
             self._scope = LaminarInstrumentationScopeAttributes(
                 name="claude-agent-sdk",

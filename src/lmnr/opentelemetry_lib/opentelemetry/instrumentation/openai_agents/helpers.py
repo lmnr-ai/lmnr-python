@@ -183,8 +183,8 @@ def to_dict(
             return {}
         else:
             return dict(obj)
-    except Exception as e:
-        logger.debug(f"Error converting to dict: {obj}, error: {e}")
+    except Exception:
+        logger.debug(f"Error converting to dict: {obj}", exc_info=True)
         try:
             return dict(obj)
         except Exception:

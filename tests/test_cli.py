@@ -306,7 +306,7 @@ async def test_run_evaluation_evaluation_error_no_continue(
         await run_evaluation(mock_args)
 
     # Verify error logging
-    mock_log.error.assert_called()
+    mock_log.exception.assert_called()
 
 
 @patch("lmnr.cli.evals.importlib.util.spec_from_file_location")
@@ -346,7 +346,7 @@ async def test_run_evaluation_evaluation_error_with_continue(
     await run_evaluation(mock_args)
 
     # Verify error logging but function continues
-    mock_log.error.assert_called()
+    mock_log.exception.assert_called()
     mock_prepare_only.reset.assert_called_once_with(mock_token)
 
 

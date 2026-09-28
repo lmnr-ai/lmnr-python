@@ -108,8 +108,8 @@ def _wrap(
         result = wrapped(*args, **kwargs)
         try:
             instance._interface._lmnr_parent_span = parent_span  # pyright: ignore[reportAny]
-        except Exception as e:
-            logger.debug(f"Failed to set parent span on CUA computer instance: {e}")
+        except Exception:
+            logger.debug("Failed to set parent span on CUA computer instance", exc_info=True)
         return result
     elif to_wrap.get("action") == "end_parent_span":
         result = wrapped(*args, **kwargs)
@@ -117,8 +117,8 @@ def _wrap(
             parent_span = instance._interface._lmnr_parent_span  # pyright: ignore[reportAny]
             if parent_span and parent_span.is_recording():
                 parent_span.end()
-        except Exception as e:
-            logger.debug(f"Failed to get parent span from CUA computer instance: {e}")
+        except Exception:
+            logger.debug("Failed to get parent span from CUA computer instance", exc_info=True)
         return result
 
     # if there's no parent span, use
@@ -126,8 +126,8 @@ def _wrap(
     try:
         if instance._lmnr_parent_span:  # pyright: ignore[reportAny]
             parent_span: Span = instance._lmnr_parent_span  # pyright: ignore[reportAny]
-    except Exception as e:
-        logger.debug(f"Failed to get parent span from CUA computer instance: {e}")
+    except Exception:
+        logger.debug("Failed to get parent span from CUA computer instance", exc_info=True)
 
     with Laminar.use_span(parent_span):
         instance_name = "interface"
@@ -141,7 +141,7 @@ def _wrap(
             )
             try:
                 result = wrapped(*args, **kwargs)
-            except Exception as e:  # pylint: disable=broad-except
+            except Exception as e:
                 span.set_status(Status(StatusCode.ERROR))
                 span.record_exception(e)
                 span.end()
@@ -167,8 +167,8 @@ async def _wrap_async(
         result = await wrapped(*args, **kwargs)
         try:
             instance._interface._lmnr_parent_span = parent_span  # pyright: ignore[reportAny]
-        except Exception as e:
-            logger.debug(f"Failed to set parent span on CUA computer instance: {e}")
+        except Exception:
+            logger.debug("Failed to set parent span on CUA computer instance", exc_info=True)
         return result
     elif to_wrap.get("action") == "end_parent_span":
         result = await wrapped(*args, **kwargs)
@@ -176,16 +176,16 @@ async def _wrap_async(
             parent_span = instance._interface._lmnr_parent_span  # pyright: ignore[reportAny]
             if parent_span and parent_span.is_recording():
                 parent_span.end()
-        except Exception as e:
-            logger.debug(f"Failed to get parent span from CUA computer instance: {e}")
+        except Exception:
+            logger.debug("Failed to get parent span from CUA computer instance", exc_info=True)
         return result
 
     # if there's no parent span, use
     parent_span = trace.get_current_span(context=get_current_context())
     try:
         parent_span: Span = instance._lmnr_parent_span  # pyright: ignore[reportAny]
-    except Exception as e:
-        logger.debug(f"Failed to get parent span from CUA computer instance: {e}")
+    except Exception:
+        logger.debug("Failed to get parent span from CUA computer instance", exc_info=True)
 
     with Laminar.use_span(parent_span):
         instance_name = "interface"
@@ -200,7 +200,7 @@ async def _wrap_async(
             )
             try:
                 result = await wrapped(*args, **kwargs)
-            except Exception as e:  # pylint: disable=broad-except
+            except Exception as e:
                 span.set_status(Status(StatusCode.ERROR))
                 span.record_exception(e)
                 span.end()
@@ -518,8 +518,8 @@ class CuaComputerInstrumentor(BaseLaminarInstrumentor):
         if self._scope is None:
             try:
                 cua_version = version("cua-computer")
-            except Exception as e:
-                logger.debug(f"Failed to get cua-computer version {e}")
+            except Exception:
+                logger.debug("Failed to get cua-computer version", exc_info=True)
                 cua_version = "unknown"
             self._scope = LaminarInstrumentationScopeAttributes(
                 name="cua-computer",

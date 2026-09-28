@@ -123,8 +123,8 @@ class RolloutSessions(BaseResource):
         try:
             response_dict = cast(dict[str, str | None], response.json())
             return response_dict.get("id")
-        except Exception as e:
-            logger.warning(f"Failed to parse add-block response: {e}")
+        except Exception:
+            logger.warning("Failed to parse add-block response", exc_info=True)
             return None
 
     def list_blocks(self, session_id: uuid.UUID | str) -> list[SessionBlock]:
@@ -146,8 +146,8 @@ class RolloutSessions(BaseResource):
             body = cast(list[SessionBlock] | dict[str, list[SessionBlock]], response.json())
             blocks = body if isinstance(body, list) else body.get("blocks")
             return blocks or []
-        except Exception as e:
-            logger.warning(f"Failed to parse list-blocks response: {e}")
+        except Exception:
+            logger.warning("Failed to parse list-blocks response", exc_info=True)
             return []
 
     def cache(
@@ -184,7 +184,7 @@ class RolloutSessions(BaseResource):
                 )
                 return CacheOutcome(kind="live")
             data = cast(object, response.json())
-        except Exception as exc:
-            logger.debug("Cache lookup failed (%s); running this call live", exc)
+        except Exception:
+            logger.debug("Cache lookup failed; running this call live", exc_info=True)
             return CacheOutcome(kind="live")
         return _parse_cache_outcome(data)
