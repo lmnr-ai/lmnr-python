@@ -103,13 +103,14 @@ def dont_throw(func):
 
 
 def to_dict(
-    obj: BaseModel | pydantic.BaseModel | dict, pydantic_kwargs: dict[str, Any] = {}
+    obj: BaseModel | pydantic.BaseModel | dict, pydantic_kwargs: dict[str, Any] | None = None
 ) -> dict[str, Any]:
+    defaulted_pydantic_kwargs = pydantic_kwargs or {}
     try:
         if isinstance(obj, BaseModel):
             return obj.model_dump()
         elif isinstance(obj, pydantic.BaseModel):
-            return obj.model_dump(**pydantic_kwargs)
+            return obj.model_dump(**defaulted_pydantic_kwargs)
         elif isinstance(obj, dict):
             return obj
         elif obj is None:
