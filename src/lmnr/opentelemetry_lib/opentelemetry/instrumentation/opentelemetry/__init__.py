@@ -1,7 +1,8 @@
+from collections.abc import Callable, Collection, Sequence
 from importlib.metadata import version
-from typing import Any, Collection, Sequence
+from typing import Any
 
-from opentelemetry.trace import TraceFlags, SpanContext
+from typing_extensions import override
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
@@ -11,15 +12,16 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     LaminarInstrumentorConfig,
     WrappedFunctionSpec,
 )
+from opentelemetry.trace import SpanContext, TraceFlags
 
 
 def _wrap_span_context(
-    to_wrap: WrappedFunctionSpec,
-    fn,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
-):
+    _to_wrap: WrappedFunctionSpec,
+    fn: Callable[..., SpanContext],
+    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+) -> SpanContext:
     """
     DataDog does something to the OpenTelemetry Contexts, so that when any code
     tries to access the current active span, it returns a non-recording span.
@@ -63,9 +65,11 @@ def _wrap_span_context(
 class OpentelemetryInstrumentor(BaseLaminarInstrumentor):
     _scope: LaminarInstrumentationScopeAttributes | None = None
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return ("opentelemetry-api>=1.0.0",)
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is None:
             try:
@@ -80,7 +84,7 @@ class OpentelemetryInstrumentor(BaseLaminarInstrumentor):
 
     def __init__(self):
         super().__init__()
-        self.instrumentor_config = LaminarInstrumentorConfig(
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 WrappedFunctionSpec(
                     package_name="opentelemetry.trace.span",
