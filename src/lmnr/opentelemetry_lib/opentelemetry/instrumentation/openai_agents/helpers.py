@@ -1,13 +1,14 @@
 """Span naming, type mapping, and utility helpers for OpenAI Agents instrumentation."""
 
 import contextvars
-from typing import Any
+from typing import Any, cast
 
-from lmnr.sdk.types import LaminarSpanType
-from lmnr.sdk.log import get_default_logger
-
+from agents.tracing import Span
 from opentelemetry.context import create_key
 from pydantic import BaseModel
+
+from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.types import LaminarSpanType
 
 logger = get_default_logger(__name__)
 
@@ -45,10 +46,10 @@ def reset_current_system_instructions(
     _current_system_instructions.reset(token)
 
 
-def span_name(span: Any, span_data: Any) -> str:
+def span_name(span: Span[Any], span_data: Any) -> str:  # pyright: ignore[reportAny, reportExplicitAny]
     name = getattr(span, "name", None)
     if name:
-        return name
+        return name  # pyright: ignore[reportAny]
     kind = span_kind(span_data)
     if kind:
         if kind in ["agent", "custom", "function", "tool"]:
@@ -57,13 +58,13 @@ def span_name(span: Any, span_data: Any) -> str:
     return "agents.span"
 
 
-def span_kind(span_data: Any) -> str:
+def span_kind(span_data: Any) -> str:  # pyright: ignore[reportAny, reportExplicitAny]
     if span_data is None:
         return ""
-    return getattr(span_data, "type", "")
+    return getattr(span_data, "type", "")  # pyright: ignore[reportAny]
 
 
-def map_span_type(span_data: Any) -> LaminarSpanType:
+def map_span_type(span_data: Any) -> LaminarSpanType:  # pyright: ignore[reportAny, reportExplicitAny]
     kind = span_kind(span_data)
     if kind in {"generation", "response", "transcription", "speech", "speech_group"}:
         return "LLM"
@@ -72,20 +73,20 @@ def map_span_type(span_data: Any) -> LaminarSpanType:
     return "DEFAULT"
 
 
-def export_span_data(span_data: Any) -> dict[str, Any]:
+def export_span_data(span_data: Any) -> dict[str, Any]:  # pyright: ignore[reportAny, reportExplicitAny]
     if span_data is None:
         return {}
-    if hasattr(span_data, "export"):
+    if hasattr(span_data, "export"):  # pyright: ignore[reportAny]
         try:
-            exported = span_data.export()
+            exported = span_data.export()  # pyright: ignore[reportAny]
             if isinstance(exported, dict):
-                return exported
+                return exported  # pyright: ignore[reportUnknownVariableType]
         except Exception:
             return {}
     return {}
 
 
-def normalize_messages(data: Any, role: str = "user") -> list[dict[str, Any]]:
+def normalize_messages(data: Any, role: str = "user") -> list[dict[str, Any]]:  # pyright: ignore[reportAny, reportExplicitAny]
     """Normalize various input/output formats into a list of message dicts."""
     if data is None:
         return []
@@ -95,21 +96,21 @@ def normalize_messages(data: Any, role: str = "user") -> list[dict[str, Any]]:
 
     if isinstance(data, list):
         messages = []
-        for item in data:
+        for item in data:  # pyright: ignore[reportUnknownVariableType]
             if isinstance(item, dict):
-                messages.append(item)
-            elif hasattr(item, "model_dump"):
+                messages.append(item)  # pyright: ignore[reportUnknownMemberType]
+            elif hasattr(item, "model_dump"):  # pyright: ignore[reportUnknownArgumentType]
                 try:
-                    messages.append(item.model_dump())
+                    messages.append(item.model_dump())  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
                 except Exception:
-                    messages.append({"content": str(item)})
+                    messages.append({"content": str(item)})  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
             else:
                 item_dict = model_as_dict(item)
                 if item_dict:
-                    messages.append(item_dict)
+                    messages.append(item_dict)  # pyright: ignore[reportUnknownMemberType]
                 else:
-                    messages.append({"content": str(item)})
-        return messages
+                    messages.append({"content": str(item)})  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        return messages  # pyright: ignore[reportUnknownVariableType]
 
     if isinstance(data, dict):
         return [data]
@@ -119,73 +120,74 @@ def normalize_messages(data: Any, role: str = "user") -> list[dict[str, Any]]:
     if as_dict:
         return [as_dict]
 
-    return [{"content": str(data)}]
+    return [{"content": str(data)}]  # pyright: ignore[reportAny]
 
 
-def model_as_dict(obj: Any) -> dict[str, Any] | None:
+def model_as_dict(obj: Any) -> dict[str, Any] | None:  # pyright: ignore[reportAny, reportExplicitAny]
     """Convert a pydantic model or similar object to a dict."""
     if obj is None:
         return None
     if isinstance(obj, dict):
-        return obj
-    if hasattr(obj, "model_dump"):
+        return obj  # pyright: ignore[reportUnknownVariableType]
+    if hasattr(obj, "model_dump"):  # pyright: ignore[reportAny]
         try:
-            return obj.model_dump()
+            return obj.model_dump()  # pyright: ignore[reportAny]
         except Exception:
-            pass
-    if hasattr(obj, "dict"):
+            logger.debug("failed to dump openai agents model", exc_info=True)
+    if hasattr(obj, "dict"):  # pyright: ignore[reportAny]
         try:
-            return obj.dict()
+            return obj.dict()  # pyright: ignore[reportAny]
         except Exception:
-            pass
-    if hasattr(obj, "__dict__"):
-        return {k: v for k, v in obj.__dict__.items() if not k.startswith("_")}
+            logger.debug("failed to dump openai agents model", exc_info=True)
+    if hasattr(obj, "__dict__"):  # pyright: ignore[reportAny]
+        return {k: v for k, v in obj.__dict__.items() if not k.startswith("_")}  # pyright: ignore[reportAny]
     return None
 
 
-def name_from_span_data(agent: Any) -> str:
+def name_from_span_data(agent: Any) -> str:  # pyright: ignore[reportAny, reportExplicitAny]
     if isinstance(agent, dict):
-        return agent.get("name") or ""
+        return agent.get("name") or "" ## pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
     if isinstance(agent, str):
         return agent
-    if hasattr(agent, "name"):
-        return getattr(agent, "name") or ""
+    if hasattr(agent, "name"):  # pyright: ignore[reportAny]
+        return getattr(agent, "name", "") or ""  # pyright: ignore[reportAny]
     return ""
 
 
-def get_first_not_none(d: dict, *keys: str) -> Any:
+def get_first_not_none(d: dict[str, Any], *keys: str) -> Any:  # pyright: ignore[reportExplicitAny, reportAny]
     """Get the first key whose value is not None from a dict."""
     for key in keys:
         val = d.get(key)
         if val is not None:
-            return val
+            return val  # pyright: ignore[reportAny]
     return None
 
 
-def get_attr_not_none(obj: Any, *attrs: str) -> Any:
+def get_attr_not_none(obj: Any, *attrs: str) -> Any:  # pyright: ignore[reportAny, reportExplicitAny]
     """Get the first attribute whose value is not None from an object."""
     for attr in attrs:
-        val = getattr(obj, attr, None)
+        val = getattr(obj, attr, None)  # pyright: ignore[reportAny]
         if val is not None:
-            return val
+            return val  # pyright: ignore[reportAny]
     return None
 
 
 def to_dict(
-    obj: BaseModel | dict, pydantic_kwargs: dict[str, Any] | None = None
-) -> dict[str, Any]:
+    obj: BaseModel | dict[str, Any] | Any | None,  # pyright: ignore[reportExplicitAny]
+    pydantic_kwargs: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
+) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
     try:
         if isinstance(obj, BaseModel):
-            return obj.model_dump(**(pydantic_kwargs or {}))
+            return obj.model_dump(**(pydantic_kwargs or {}))  # pyright: ignore[reportAny]
         elif isinstance(obj, dict):
-            return obj
+            return obj  # pyright: ignore[reportUnknownVariableType]
         elif obj is None:
             return {}
         else:
-            return dict(obj)
+            return dict(obj)  # pyright: ignore[reportAny]
     except Exception:
         logger.debug(f"Error converting to dict: {obj}", exc_info=True)
         try:
-            return dict(obj)
+            return dict(cast(dict[str, Any], obj))  # pyright: ignore[reportExplicitAny]
         except Exception:
             return {}
