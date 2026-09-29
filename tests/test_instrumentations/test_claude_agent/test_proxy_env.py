@@ -3,14 +3,17 @@
 import os
 from unittest.mock import patch
 
+from lmnr_claude_code_proxy import ProxyServer
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (
+    proxy as claude_proxy,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (
+    utils as claude_utils,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     add_spec_wrapper,
 )
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (
-    proxy as claude_proxy,
-    utils as claude_utils,
-)
-from lmnr_claude_code_proxy import ProxyServer
 
 
 def test_foundry_base_url_overrides_target(monkeypatch):

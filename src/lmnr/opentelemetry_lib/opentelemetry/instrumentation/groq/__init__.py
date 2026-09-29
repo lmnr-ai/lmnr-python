@@ -1,12 +1,28 @@
 """OpenTelemetry Groq instrumentation"""
 
 import logging
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterable,
+    Awaitable,
+    Callable,
+    Collection,
+    Generator,
+    Iterable,
+    Sequence,
+)
 from importlib.metadata import version
-from typing import Any, Collection, Sequence
+from typing import Any, cast
 
 from opentelemetry import context as context_api
-from .config import Config
-from .span_utils import (
+from opentelemetry.trace import Span
+from opentelemetry.trace.status import Status, StatusCode
+from typing_extensions import TypeVar, override
+
+from groq._streaming import AsyncStream, Stream
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.config import Config
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.event_models import Usage
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.span_utils import (
     set_input_attributes,
     set_model_input_attributes,
     set_model_response_attributes,
@@ -14,7 +30,6 @@ from .span_utils import (
     set_response_attributes,
     set_streaming_response_attributes,
 )
-
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
 )
@@ -30,47 +45,49 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     stamp_instrumentation_scope,
 )
-from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
-from opentelemetry.trace.status import Status, StatusCode
-
-from groq._streaming import AsyncStream, Stream
 
 logger = logging.getLogger(__name__)
 
 _instruments = ("groq >= 0.9.0",)
 
+T = TypeVar("T")
 
-def is_streaming_response(response):
-    return isinstance(response, Stream) or isinstance(response, AsyncStream)
+def is_streaming_response(response: Any) -> bool:  # pyright: ignore[reportAny, reportExplicitAny]
+    return isinstance(response, (Stream, AsyncStream))
 
 
-def _process_streaming_chunk(chunk):
+def _process_streaming_chunk(chunk: Any) -> tuple[Any, Any, Any]:  # pyright: ignore[reportAny, reportExplicitAny]
     """Extract content, finish_reason and usage from a streaming chunk."""
-    if not chunk.choices:
+    if not getattr(chunk, "choices", None):  # pyright: ignore[reportAny]
         return None, None, None
 
-    delta = chunk.choices[0].delta
-    content = delta.content if hasattr(delta, "content") else None
-    finish_reason = chunk.choices[0].finish_reason
+    delta = chunk.choices[0].delta  # pyright: ignore[reportAny]
+    content = delta.content if hasattr(delta, "content") else None  # pyright: ignore[reportAny]
+    finish_reason = chunk.choices[0].finish_reason  # pyright: ignore[reportAny]
 
     # Extract usage from x_groq if present in the final chunk
     usage = None
-    if hasattr(chunk, "x_groq") and chunk.x_groq and chunk.x_groq.usage:
-        usage = chunk.x_groq.usage
+    if hasattr(chunk, "x_groq") and chunk.x_groq and getattr(chunk.x_groq, "usage", None):  # pyright: ignore[reportAny]
+        usage = chunk.x_groq.usage  # pyright: ignore[reportAny]
 
     return content, finish_reason, usage
 
 
 @dont_throw
-def _handle_streaming_response(span, accumulated_content, finish_reason, usage):
+def _handle_streaming_response(
+    span: Span,
+    accumulated_content: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    finish_reason: str | None,
+    usage: Usage | None,
+):
     set_model_streaming_response_attributes(span, usage)
     set_streaming_response_attributes(span, accumulated_content, finish_reason, usage)
 
 
 def _create_stream_processor(
-    response,
-    span,
-):
+    response: Iterable[T],
+    span: Span,
+)-> Generator[T]:
     """Create a generator that processes a stream while collecting telemetry."""
     accumulated_content = ""
     finish_reason = None
@@ -78,13 +95,13 @@ def _create_stream_processor(
 
     for chunk in response:
         try:
-            content, chunk_finish_reason, chunk_usage = _process_streaming_chunk(chunk)
+            content, chunk_finish_reason, chunk_usage = _process_streaming_chunk(chunk)  # pyright: ignore[reportAny]
             if content:
-                accumulated_content += content
+                accumulated_content += content  # pyright: ignore[reportAny]
             if chunk_finish_reason:
-                finish_reason = chunk_finish_reason
+                finish_reason = chunk_finish_reason  # pyright: ignore[reportAny]
             if chunk_usage:
-                usage = chunk_usage
+                usage = chunk_usage  # pyright: ignore[reportAny]
         except Exception:
             logger.warning("Failed to process streaming chunk for groq span", exc_info=True)
         finally:
@@ -98,7 +115,10 @@ def _create_stream_processor(
     span.end()
 
 
-async def _create_async_stream_processor(response, span):
+async def _create_async_stream_processor(
+    response: AsyncIterable[T],
+    span: Span
+) -> AsyncGenerator[T]:
     """Create an async generator that processes a stream while collecting telemetry."""
     accumulated_content = ""
     finish_reason = None
@@ -106,13 +126,13 @@ async def _create_async_stream_processor(response, span):
 
     async for chunk in response:
         try:
-            content, chunk_finish_reason, chunk_usage = _process_streaming_chunk(chunk)
+            content, chunk_finish_reason, chunk_usage = _process_streaming_chunk(chunk)  # pyright: ignore[reportAny]
             if content:
-                accumulated_content += content
+                accumulated_content += content  # pyright: ignore[reportAny]
             if chunk_finish_reason:
-                finish_reason = chunk_finish_reason
+                finish_reason = chunk_finish_reason  # pyright: ignore[reportAny]
             if chunk_usage:
-                usage = chunk_usage
+                usage = chunk_usage  # pyright: ignore[reportAny]
         except Exception:
             logger.warning(
                 "Failed to process streaming chunk for groq span", exc_info=True,
@@ -129,26 +149,26 @@ async def _create_async_stream_processor(response, span):
 
 
 @dont_throw
-def _handle_input(span, kwargs):
+def _handle_input(span: Span, kwargs: dict[str, Any]):  # pyright: ignore[reportExplicitAny]
     set_model_input_attributes(span, kwargs)
     set_input_attributes(span, kwargs)
 
 
 @dont_throw
-def _handle_response(span, response):
+def _handle_response(span: Span, response: Any):  # pyright: ignore[reportExplicitAny, reportAny]:
     set_model_response_attributes(span, response)
     set_response_attributes(span, response)
 
 
 def _wrap(
     to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
-):
+    wrapped: Callable[..., T],
+    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+) -> T | Generator[T]:
     """Instruments and calls every function defined in WRAPPED_FUNCTIONS."""
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
+    if context_api.get_value(context_api._SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
     name = to_wrap.get("span_name") or "groq.chat"
@@ -167,7 +187,7 @@ def _wrap(
 
     if is_streaming_response(response):
         try:
-            return _create_stream_processor(response, span)
+            return _create_stream_processor(cast(Iterable[Any], response), span)  #  pyright: ignore[reportExplicitAny]
         except Exception as ex:
             logger.warning("Failed to process streaming response for groq span", exc_info=True)
             span.record_exception(ex)
@@ -189,13 +209,13 @@ def _wrap(
 
 async def _awrap(
     to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
-):
+    wrapped: Callable[..., Awaitable[T]],
+    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+) -> T | AsyncGenerator[T]:
     """Instruments and calls every function defined in WRAPPED_FUNCTIONS."""
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
+    if context_api.get_value(context_api._SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
     name = to_wrap.get("span_name") or "groq.chat"
@@ -214,7 +234,7 @@ async def _awrap(
 
     if is_streaming_response(response):
         try:
-            return await _create_async_stream_processor(response, span)
+            return _create_async_stream_processor(cast(AsyncIterable[Any], response), span)  # pyright: ignore[reportExplicitAny]
         except Exception as ex:
             logger.warning(
                 "Failed to process streaming response for groq span",
@@ -258,6 +278,7 @@ class GroqInstrumentor(BaseLaminarInstrumentor):
 
     _scope: LaminarInstrumentationScopeAttributes | None = None
 
+    @override
     def __init__(
         self,
         enrich_token_usage: bool = False,
@@ -266,16 +287,18 @@ class GroqInstrumentor(BaseLaminarInstrumentor):
         super().__init__()
         Config.enrich_token_usage = enrich_token_usage
         Config.use_legacy_attributes = use_legacy_attributes
-        self.instrumentor_config = LaminarInstrumentorConfig(
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 {**spec, "instrumentation_scope": self.instrumentation_scope()}
                 for spec in WRAPPED_FUNCTIONS
             ]
         )
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is None:
             try:

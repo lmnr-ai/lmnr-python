@@ -1,29 +1,34 @@
 import json
+from collections.abc import Iterable, Mapping
+from typing import Any, cast
 
-from .utils import (
-    dont_throw,
-    model_as_dict,
-    set_span_attribute,
-    should_send_prompts,
-)
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_REQUEST_FREQUENCY_PENALTY,
     GEN_AI_REQUEST_MAX_TOKENS,
     GEN_AI_REQUEST_MODEL,
+    GEN_AI_REQUEST_PRESENCE_PENALTY,
     GEN_AI_REQUEST_TEMPERATURE,
     GEN_AI_REQUEST_TOP_P,
     GEN_AI_RESPONSE_ID,
     GEN_AI_RESPONSE_MODEL,
-    GEN_AI_REQUEST_FREQUENCY_PENALTY,
-    GEN_AI_REQUEST_PRESENCE_PENALTY,
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
+)
+from opentelemetry.trace import Span
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.event_models import Usage
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.utils import (
+    dont_throw,
+    model_as_dict,
+    set_span_attribute,
+    should_send_prompts,
 )
 
 CONTENT_FILTER_KEY = "content_filter_results"
 
 
 @dont_throw
-def set_input_attributes(span, kwargs):
+def set_input_attributes(span: Span, kwargs: dict[str, Any]):  # pyright: ignore[reportExplicitAny]
     if not span.is_recording():
         return
 
@@ -32,8 +37,8 @@ def set_input_attributes(span, kwargs):
             set_span_attribute(span, "gen_ai.prompt.0.role", "user")
             set_span_attribute(span, "gen_ai.prompt.0.content", kwargs.get("prompt"))
 
-        elif kwargs.get("messages") is not None:
-            for i, message in enumerate(kwargs.get("messages")):
+        elif kwargs.get("messages") is not None and isinstance(kwargs.get("messages"), Iterable):
+            for i, message in enumerate(cast(Iterable[dict[str, Any]], kwargs.get("messages"))):  # pyright: ignore[reportExplicitAny]
                 set_span_attribute(
                     span,
                     f"gen_ai.prompt.{i}.content",
@@ -43,7 +48,7 @@ def set_input_attributes(span, kwargs):
 
 
 @dont_throw
-def set_model_input_attributes(span, kwargs):
+def set_model_input_attributes(span: Span, kwargs: dict[str, Any]):  # pyright: ignore[reportExplicitAny]
     if not span.is_recording():
         return
 
@@ -63,7 +68,10 @@ def set_model_input_attributes(span, kwargs):
 
 
 def set_streaming_response_attributes(
-    span, accumulated_content, finish_reason=None, usage=None
+    span: Span,
+    accumulated_content: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    finish_reason: str | None = None,
+    usage: Any=None  # TODO: set usage on attributes
 ):
     """Set span attributes for accumulated streaming response."""
     if not span.is_recording() or not should_send_prompts():
@@ -76,7 +84,10 @@ def set_streaming_response_attributes(
         set_span_attribute(span, f"{prefix}.finish_reason", finish_reason)
 
 
-def set_model_streaming_response_attributes(span, usage):
+def set_model_streaming_response_attributes(
+    span: Span,
+    usage: Usage | None,
+):
     if not span.is_recording():
         return
 
@@ -87,31 +98,32 @@ def set_model_streaming_response_attributes(span, usage):
 
 
 @dont_throw
-def set_model_response_attributes(span, response):
+def set_model_response_attributes(
+    span: Span,
+    response: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+):
     if not span.is_recording():
         return
     response = model_as_dict(response)
-    set_span_attribute(span, GEN_AI_RESPONSE_MODEL, response.get("model"))
-    set_span_attribute(span, GEN_AI_RESPONSE_ID, response.get("id"))
+    set_span_attribute(span, GEN_AI_RESPONSE_MODEL, response.get("model"))  # pyright: ignore[reportAny]
+    set_span_attribute(span, GEN_AI_RESPONSE_ID, response.get("id"))  # pyright: ignore[reportAny]
 
-    usage = response.get("usage") or {}
-    prompt_tokens = usage.get("prompt_tokens")
-    completion_tokens = usage.get("completion_tokens")
+    usage = cast(dict[str, int | float], response.get("usage") or {})  # pyright: ignore[reportAny]
     if usage:
         set_span_attribute(span, "llm.usage.total_tokens", usage.get("total_tokens"))
-        set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, completion_tokens)
-        set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, prompt_tokens)
+        set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, usage.get("completion_tokens"))
+        set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, usage.get("prompt_tokens"))
 
 
-def set_response_attributes(span, response):
+def set_response_attributes(span: Span, response: Any):  # pyright: ignore[reportAny, reportExplicitAny]
     if not span.is_recording():
         return
     choices = model_as_dict(response).get("choices")
     if should_send_prompts() and choices:
-        _set_completions(span, choices)
+        _set_completions(span, choices)  # pyright: ignore[reportAny]
 
 
-def _set_completions(span, choices):
+def _set_completions(span: Span, choices: list[dict[str, Any]] | None):  # pyright: ignore[reportExplicitAny]
     if choices is None or not should_send_prompts():
         return
 
@@ -134,58 +146,68 @@ def _set_completions(span, choices):
             return
 
         message = choice.get("message")
-        if not message:
+        if not message or not isinstance(message, Mapping):
             return
 
-        set_span_attribute(span, f"{prefix}.role", message.get("role"))
-        set_span_attribute(span, f"{prefix}.content", message.get("content"))
+        set_span_attribute(span, f"{prefix}.role", message.get("role"))  # pyright: ignore[reportUnknownMemberType]
+        set_span_attribute(span, f"{prefix}.content", message.get("content"))  # pyright: ignore[reportUnknownMemberType]
 
-        function_call = message.get("function_call")
-        if function_call:
+        function_call = message.get("function_call")  # pyright: ignore[reportUnknownMemberType]
+        if function_call and isinstance(function_call, dict):
             set_span_attribute(
-                span, f"{prefix}.tool_calls.0.name", function_call.get("name")
+                span, f"{prefix}.tool_calls.0.name", function_call.get("name")  # pyright: ignore[reportUnknownMemberType]
             )
             set_span_attribute(
                 span,
                 f"{prefix}.tool_calls.0.arguments",
-                function_call.get("arguments"),
+                function_call.get("arguments"),  # pyright: ignore[reportUnknownMemberType]
             )
 
-        tool_calls = message.get("tool_calls")
-        if tool_calls:
+        tool_calls = message.get("tool_calls")  # pyright: ignore[reportUnknownMemberType]
+        if tool_calls and isinstance(tool_calls, Iterable):
             for i, tool_call in enumerate(tool_calls):
-                function = tool_call.get("function")
+                if not isinstance(tool_call, Mapping):
+                    continue
+                function = tool_call.get("function")  # pyright: ignore[reportUnknownMemberType]
+                if not isinstance(function, Mapping):
+                    continue
                 set_span_attribute(
                     span,
                     f"{prefix}.tool_calls.{i}.id",
-                    tool_call.get("id"),
+                    tool_call.get("id"),  # pyright: ignore[reportUnknownMemberType]
                 )
                 set_span_attribute(
                     span,
                     f"{prefix}.tool_calls.{i}.name",
-                    function.get("name"),
+                    function.get("name"),  # pyright: ignore[reportUnknownMemberType]
                 )
                 set_span_attribute(
                     span,
                     f"{prefix}.tool_calls.{i}.arguments",
-                    function.get("arguments"),
+                    function.get("arguments"),  # pyright: ignore[reportUnknownMemberType]
                 )
 
 
-def _dump_content(content):
+def _dump_content(content: Any) -> str:  # pyright: ignore[reportAny, reportExplicitAny]
     if isinstance(content, str):
         return content
     json_serializable = []
+    if not isinstance(content, Iterable):
+        return ""
     for item in content:
-        if item.get("type") == "text":
-            json_serializable.append({"type": "text", "text": item.get("text")})
-        elif image_url := item.get("image_url"):
-            json_serializable.append(
+        if not isinstance(item, Mapping):
+            continue
+        if item.get("type") == "text":  # pyright: ignore[reportUnknownMemberType]
+            json_serializable.append({"type": "text", "text": item.get("text")})  # pyright: ignore[reportUnknownMemberType]
+        elif image_url := item.get("image_url"):  # pyright: ignore[reportUnknownMemberType]
+            if not isinstance(image_url, Mapping):
+                continue
+            json_serializable.append(  # pyright: ignore[reportUnknownMemberType]
                 {
                     "type": "image_url",
                     "image_url": {
-                        "url": image_url.get("url"),
-                        "detail": image_url.get("detail"),
+                        "url": image_url.get("url"),  # pyright: ignore[reportUnknownMemberType]
+                        "detail": image_url.get("detail"),  # pyright: ignore[reportUnknownMemberType]
                     },
                 }
             )
