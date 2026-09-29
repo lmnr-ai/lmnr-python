@@ -2,9 +2,14 @@
 
 import functools
 import logging
+from collections.abc import Awaitable, Callable, Collection, Sequence
 from importlib.metadata import version
-from typing import Any, Callable, Collection, Sequence
+from typing import Any, cast
 
+from opentelemetry.trace.status import Status, StatusCode
+from typing_extensions import TypeVar, override
+
+from lmnr import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.kernel.utils import (
     process_tool_output_formatter,
     screenshot_tool_output_formatter,
@@ -21,10 +26,8 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers
     stamp_instrumentation_scope,
 )
 from lmnr.sdk.decorators import observe
+from lmnr.sdk.types import LaminarSpanType
 from lmnr.sdk.utils import get_input_from_func_args, is_async, json_dumps
-from lmnr import Laminar
-
-from opentelemetry.trace.status import Status, StatusCode
 
 logger = logging.getLogger(__name__)
 
@@ -40,21 +43,22 @@ class KernelSpec(WrappedFunctionSpec, total=False):
     """
 
     class_name: str
-    output_formatter: Callable[[Any], Any]
+    output_formatter: Callable[..., str]
 
 
+T = TypeVar("T")
 
 
 def _wrap(
     to_wrap: KernelSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
-):
+    wrapped: Callable[..., T],
+    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+) -> T:
     with Laminar.start_as_current_span(
         f"{to_wrap.get('class_name')}.{to_wrap['method_name']}",
-        span_type=to_wrap.get("span_type", "DEFAULT"),
+        span_type=cast(LaminarSpanType, to_wrap.get("span_type") or "DEFAULT"),
     ) as span:
         stamp_instrumentation_scope(span, to_wrap)
         input_kv = get_input_from_func_args(wrapped, True, args, kwargs)
@@ -71,21 +75,24 @@ def _wrap(
             span.set_status(Status(StatusCode.ERROR))
             span.record_exception(e)
             raise
-        output_formatter = to_wrap.get("output_formatter") or (lambda x: json_dumps(x))
+        output_formatter = (  # pyright: ignore[reportUnknownVariableType]
+            to_wrap.get("output_formatter")
+            or (lambda x: json_dumps(x))  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+        )
         span.set_attribute("lmnr.span.output", output_formatter(result))
         return result
 
 
 async def _wrap_async(
     to_wrap: KernelSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
-):
+    wrapped: Callable[..., Awaitable[T]],
+    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+) -> T:
     with Laminar.start_as_current_span(
         f"{to_wrap.get('class_name')}.{to_wrap['method_name']}",
-        span_type=to_wrap.get("span_type", "DEFAULT"),
+        span_type=cast(LaminarSpanType, to_wrap.get("span_type") or "DEFAULT"),
     ) as span:
         stamp_instrumentation_scope(span, to_wrap)
         input_kv = get_input_from_func_args(wrapped, True, args, kwargs)
@@ -102,18 +109,21 @@ async def _wrap_async(
             span.set_status(Status(StatusCode.ERROR))
             span.record_exception(e)
             raise
-        output_formatter = to_wrap.get("output_formatter") or (lambda x: json_dumps(x))
+        output_formatter = (  # pyright: ignore[reportUnknownVariableType]
+            to_wrap.get("output_formatter")
+            or (lambda x: json_dumps(x))  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+        )
         span.set_attribute("lmnr.span.output", output_formatter(result))
         return result
 
 
 def _wrap_app_action(
-    to_wrap: KernelSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
-):
+    _to_wrap: KernelSpec,
+    wrapped: Callable[..., Callable[..., T]],
+    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+) -> Callable[..., T]:
     """
     Wraps app.action() decorator factory to add tracing to action handlers.
 
@@ -128,10 +138,10 @@ def _wrap_app_action(
     original_decorator = wrapped(*args, **kwargs)
 
     # Get the action name from args
-    action_name = args[0] if args else kwargs.get("name", "unknown")
+    action_name = args[0] if args else kwargs.get("name", "unknown")  # pyright: ignore[reportAny]
 
     # Create a wrapper for the decorator that intercepts the handler
-    def tracing_decorator(handler):
+    def tracing_decorator(handler: Callable[..., Awaitable[Callable[..., T]] | Callable[..., T]]) -> T:
         # Apply the observe decorator to add tracing
         observed_handler = observe(
             name=f"action.{action_name}",
@@ -142,11 +152,13 @@ def _wrap_app_action(
         if is_async(handler):
 
             @functools.wraps(handler)
-            async def async_wrapper_with_flush(*handler_args, **handler_kwargs):
+            async def async_wrapper_with_flush(*handler_args: Any, **handler_kwargs: Any) -> Callable[..., T]:  # pyright: ignore[reportAny, reportExplicitAny]
                 # Execute the observed handler (tracing happens here)
-                result = await observed_handler(*handler_args, **handler_kwargs)
+                result = await cast(
+                    Awaitable[Callable[..., T]], observed_handler(*handler_args, **handler_kwargs)
+                )
 
-                Laminar.flush()
+                _flush_success = Laminar.flush()
 
                 return result
 
@@ -155,11 +167,13 @@ def _wrap_app_action(
         else:
 
             @functools.wraps(handler)
-            def sync_wrapper_with_flush(*handler_args, **handler_kwargs):
+            def sync_wrapper_with_flush(*handler_args: Any, **handler_kwargs: Any) -> Callable[..., T]:  # pyright: ignore[reportAny, reportExplicitAny]:
                 # Execute the observed handler (tracing happens here)
-                result = observed_handler(*handler_args, **handler_kwargs)
+                result = cast(
+                    Callable[..., T], observed_handler(*handler_args, **handler_kwargs)
+                )
 
-                Laminar.flush()
+                _flush_success = Laminar.flush()
 
                 return result
 
@@ -543,9 +557,11 @@ WRAPPED_FUNCTIONS: list[KernelSpec] = [
 class KernelInstrumentor(BaseLaminarInstrumentor):
     _scope: LaminarInstrumentationScopeAttributes | None = None
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is None:
             try:
@@ -561,7 +577,7 @@ class KernelInstrumentor(BaseLaminarInstrumentor):
 
     def __init__(self):
         super().__init__()
-        self.instrumentor_config = LaminarInstrumentorConfig(
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 {**spec, "instrumentation_scope": self.instrumentation_scope()}
                 for spec in WRAPPED_FUNCTIONS

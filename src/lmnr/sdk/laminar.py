@@ -11,7 +11,7 @@ import uuid
 import warnings
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
-from typing import Any, ClassVar, Literal, cast
+from typing import Any, ClassVar, cast
 
 from opentelemetry import context as context_api
 from opentelemetry import trace
@@ -519,7 +519,7 @@ class Laminar:
             if runtime is None:
                 return
             runtime.record_trace_id(str(uuid.UUID(int=otel_span_context.trace_id)))
-        except Exception as exc:
+        except Exception:
             cls.__logger.debug("Failed to record debug trace id from env", exc_info=True)
 
     @classmethod
