@@ -24,12 +24,18 @@ duplicates ingestion and storage cost for what is effectively the
 concatenation of the children. The accompanying `logfire.json_schema` entry
 is updated in lockstep so backends that read it stay consistent.
 """
-
-from typing import Any, Collection
+import json
+from collections.abc import Callable, Collection, Sequence
+from typing import Any, TypeVar
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
+from typing_extensions import override
 from wrapt import wrap_function_wrapper
+
+from lmnr.sdk.log import get_default_logger
+
+T = TypeVar("T")
 
 _DEFAULT_SEMCONV_VERSION = 5
 _SETTINGS_MODULE = "pydantic_ai.models.instrumented"
@@ -38,13 +44,13 @@ _AGENT_MODULE = "pydantic_ai.agent"
 _RUN_SPAN_END_ATTRS = "Agent._run_span_end_attributes"
 _DUPLICATE_MESSAGE_ATTRS = ("pydantic_ai.all_messages", "all_messages_events")
 
+logger = get_default_logger(__name__)
 
 def _strip_duplicate_message_attrs(
-    attrs: dict[str, Any],
-) -> dict[str, Any]:
-    import json
+    attrs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
 
-    cleaned = {k: v for k, v in attrs.items() if k not in _DUPLICATE_MESSAGE_ATTRS}
+    cleaned = {k: v for k, v in attrs.items() if k not in _DUPLICATE_MESSAGE_ATTRS}  # pyright: ignore[reportAny]
 
     # `logfire.json_schema` lists every attribute key the agent run span sets
     # — keep it consistent so consumers that key off it don't see references
@@ -52,21 +58,21 @@ def _strip_duplicate_message_attrs(
     schema_json = cleaned.get("logfire.json_schema")
     if isinstance(schema_json, str):
         try:
-            schema = json.loads(schema_json)
+            schema = json.loads(schema_json)  # pyright: ignore[reportAny]
         except (TypeError, ValueError):
             return cleaned
-        properties = schema.get("properties")
+        properties = schema.get("properties")  # pyright: ignore[reportAny]
         if isinstance(properties, dict):
             for key in _DUPLICATE_MESSAGE_ATTRS:
-                properties.pop(key, None)
+                properties.pop(key, None)  # pyright: ignore[reportUnknownMemberType]
             cleaned["logfire.json_schema"] = json.dumps(schema)
     return cleaned
 
 
 class PydanticAIInstrumentor(BaseInstrumentor):
-    _previous_instrument_default: object = None
     _enabled: bool = False
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         # Declared for `BaseInstrumentor.instrument()`'s dependency check.
         # We only list `pydantic-ai-slim` (the core package shared by both the
@@ -78,13 +84,20 @@ class PydanticAIInstrumentor(BaseInstrumentor):
         # validate compatibility and bump the cap.
         return ("pydantic-ai-slim >= 1.0.0, < 3.0.0",)
 
-    def _instrument(self, **kwargs: Any):
+    @override
+    def _instrument(self, **kwargs: Any):  # pyright: ignore[reportAny, reportExplicitAny]
         from pydantic_ai import Agent
         from pydantic_ai.models.instrumented import InstrumentationSettings
 
         default_tracer_provider = kwargs.get("tracer_provider")
+        self._previous_instrument_default: bool | InstrumentationSettings | None = None
 
-        def _wrap_settings_init(wrapped, instance, args, call_kwargs):
+        def _wrap_settings_init(
+            wrapped: Callable[..., T],
+            _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+            args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+            call_kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+        ) -> T:
             if call_kwargs.get("tracer_provider") is None:
                 call_kwargs["tracer_provider"] = default_tracer_provider
             if call_kwargs.get("version") in (None, 1):
@@ -93,11 +106,16 @@ class PydanticAIInstrumentor(BaseInstrumentor):
 
         wrap_function_wrapper(_SETTINGS_MODULE, _SETTINGS_INIT, _wrap_settings_init)
 
-        def _wrap_run_span_end_attrs(wrapped, instance, args, call_kwargs):
+        def _wrap_run_span_end_attrs(
+            wrapped: Callable[..., T],
+            _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+            args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+            call_kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+        ) -> T | dict[str, Any]:  # pyright: ignore[reportExplicitAny]
             attrs = wrapped(*args, **call_kwargs)
             if not isinstance(attrs, dict):
                 return attrs
-            return _strip_duplicate_message_attrs(attrs)
+            return _strip_duplicate_message_attrs(attrs)  # pyright: ignore[reportUnknownArgumentType]
 
         try:
             wrap_function_wrapper(
@@ -116,14 +134,16 @@ class PydanticAIInstrumentor(BaseInstrumentor):
         Agent.instrument_all(settings)
         self._enabled = True
 
-    def _uninstrument(self, **kwargs: Any):
+    @override
+    def _uninstrument(self, **kwargs: Any):  # pyright: ignore[reportExplicitAny, reportAny]
         if not self._enabled:
             return
 
         from pydantic_ai import Agent
         from pydantic_ai.models.instrumented import InstrumentationSettings
 
-        Agent._instrument_default = self._previous_instrument_default
+        if hasattr(self, "_previous_instrument_default") and self._previous_instrument_default is not None:
+            Agent._instrument_default = self._previous_instrument_default
         self._previous_instrument_default = None
 
         unwrap(InstrumentationSettings, "__init__")
@@ -133,6 +153,6 @@ class PydanticAIInstrumentor(BaseInstrumentor):
 
             unwrap(Instrumentation, "_run_span_end_attributes")
         except Exception:
-            pass
+           logger.debug("Failed to uninstrument Pydantic AI SDK", exc_info=True)
 
         self._enabled = False
