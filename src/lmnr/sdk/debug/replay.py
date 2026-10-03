@@ -105,7 +105,7 @@ def cache_outcome_for(span: Span | LaminarSpan | None) -> CacheOutcome | None:
     return outcome
 
 
-async def acache_outcome_for(span: Span | None) -> CacheOutcome | None:
+async def acache_outcome_for(span: Span | LaminarSpan | None) -> CacheOutcome | None:
     """Async variant of `cache_outcome_for` — uses the async cache client.
 
     Identical decision logic; only the cache HTTP is awaited through the

@@ -1,20 +1,18 @@
 from collections import defaultdict
-import traceback
-from typing_extensions import TypedDict
+from collections.abc import Callable
+from typing import Any, cast
 
-from .config import (
-    Config,
-)
+import pydantic
 from google.genai import types
 from google.genai._common import BaseModel
-import pydantic
 from opentelemetry.trace import Span
-from typing import Any
+from opentelemetry.util.types import AttributeValue
+from typing_extensions import TypedDict, TypeVar
 
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
-
+T = TypeVar("T")
 
 class ProcessChunkResult(TypedDict):
     role: str
@@ -40,16 +38,14 @@ def merge_text_parts(
             if accumulated_text:
                 merged_parts.append(types.Part(text=accumulated_text))
                 accumulated_text = ""
-            # Add the File as-is (wrapped in a Part if needed)
-            # Note: File objects should be passed through as-is in the original part
-            merged_parts.append(part)
+            merged_parts.append(types.Part(file=part))
         # Handle Part and PartDict (dicts)
         else:
-            part_dict = to_dict(part)
+            part_dict = to_dict(cast(dict[str, Any] | BaseModel, part))  # pyright: ignore[reportExplicitAny]
 
             # Check if this is a text part
             if part_dict.get("text") is not None:
-                accumulated_text += part_dict.get("text")
+                accumulated_text += cast(str, part_dict.get("text") or "")
             else:
                 # Non-text part (inline_data, function_call, etc.)
                 # Flush any accumulated text first
@@ -60,9 +56,9 @@ def merge_text_parts(
                 # Add the non-text part as-is
                 if isinstance(part, types.Part):
                     merged_parts.append(part)
-                elif isinstance(part, dict):
+                elif isinstance(part, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
                     # Convert dict to Part object
-                    merged_parts.append(types.Part(**part_dict))
+                    merged_parts.append(types.Part(**part_dict))  # pyright: ignore[reportAny]
 
     # Don't forget to add any remaining accumulated text
     if accumulated_text:
@@ -71,13 +67,12 @@ def merge_text_parts(
     return merged_parts
 
 
-def set_span_attribute(span: Span, name: str, value: Any):
+def set_span_attribute(span: Span, name: str, value: AttributeValue | None):
     if value is not None and value != "":
         span.set_attribute(name, value)
-    return
 
 
-def dont_throw(func):
+def dont_throw(func: Callable[..., T]) -> Callable[..., T | None]:
     """
     A decorator that wraps the passed in function and logs exceptions instead of throwing them.
 
@@ -87,30 +82,29 @@ def dont_throw(func):
     # Obtain a logger specific to the function's module
     func_logger = get_default_logger(func.__module__)
 
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> T | None:  # pyright: ignore[reportAny, reportExplicitAny]
         try:
             return func(*args, **kwargs)
-        except Exception as e:
+        except Exception:
             func_logger.debug(
                 "Laminar failed to trace in %s",
                 func.__name__,
                 exc_info=True,
             )
-            if Config.exception_logger:
-                Config.exception_logger(e)
 
     return wrapper
 
 
 def to_dict(
-    obj: BaseModel | pydantic.BaseModel | dict, pydantic_kwargs: dict[str, Any] | None = None
-) -> dict[str, Any]:
+    obj: BaseModel | pydantic.BaseModel | dict[str, Any] | None,  # pyright: ignore[reportExplicitAny]
+    pydantic_kwargs: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
+) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
     defaulted_pydantic_kwargs = pydantic_kwargs or {}
     try:
         if isinstance(obj, BaseModel):
             return obj.model_dump()
         elif isinstance(obj, pydantic.BaseModel):
-            return obj.model_dump(**defaulted_pydantic_kwargs)
+            return obj.model_dump(**defaulted_pydantic_kwargs)  # pyright: ignore[reportAny]
         elif isinstance(obj, dict):
             return obj
         elif obj is None:
@@ -119,6 +113,8 @@ def to_dict(
             return dict(obj)
     except Exception:
         logger.debug(f"Error converting to dict: {obj}", exc_info=True)
+        if obj is None:
+            return {}
         return dict(obj)
 
 
@@ -170,23 +166,23 @@ def process_stream_chunk(
     )
 
 
-def is_model_valid(obj: Any, model: BaseModel) -> bool:
+def is_model_valid(obj: Any, model: BaseModel) -> bool:  # pyright: ignore[reportAny, reportExplicitAny]
     try:
-        model.model_validate(obj)
+        _validated_model = model.model_validate(obj)
         return True
     except Exception:
         return False
 
 
-def strip_none_values(obj: dict[str, Any]) -> dict[str, Any]:
+def strip_none_values(obj: dict[str, Any]) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
     return {
-        k: strip_none_values(v) if isinstance(v, dict) else v
-        for k, v in obj.items()
+        k: strip_none_values(v) if isinstance(v, dict) else v  # pyright: ignore[reportUnknownArgumentType]
+        for k, v in obj.items()  # pyright: ignore[reportAny]
         if v is not None
     }
 
 
-def model_to_json_safe_dict(model: pydantic.BaseModel, **kwargs) -> dict[str, Any]:
+def model_to_json_safe_dict(model: pydantic.BaseModel, **kwargs: Any) -> dict[str, Any]:  # pyright: ignore[reportAny, reportExplicitAny]
     """Dump a pydantic model to a dict safe to hand to `json_dumps`.
 
     Deliberately `mode="python"` rather than `mode="json"`: google-genai's models
@@ -212,24 +208,24 @@ def model_to_json_safe_dict(model: pydantic.BaseModel, **kwargs) -> dict[str, An
     attribute — every message in the conversation, not just the odd value.
     Python mode hands the value to `json_dumps`, which degrades just that leaf.
     """
-    return model.model_dump(mode="python", **kwargs)
+    return model.model_dump(mode="python", **kwargs)  # pyright: ignore[reportAny]
 
 
-def part_to_dict(part) -> dict[str, Any]:
+def part_to_dict(part: Any) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny, reportAny]
     """Convert a Part-like object to a serializable dict."""
     if isinstance(part, str):
         return {"text": part}
     if isinstance(part, dict):
-        return strip_none_values(part)
-    if hasattr(part, "model_dump"):
-        return model_to_json_safe_dict(part, exclude_unset=True, exclude_none=True)
-    return strip_none_values(to_dict(part))
+        return strip_none_values(part)  # pyright: ignore[reportUnknownArgumentType]
+    if hasattr(part, "model_dump"):  # pyright: ignore[reportAny]
+        return model_to_json_safe_dict(part, exclude_unset=True, exclude_none=True)  # pyright: ignore[reportAny]
+    return strip_none_values(to_dict(part))  # pyright: ignore[reportAny]
 
 
 def content_union_to_dict(
-    content: types.ContentUnion | types.ContentUnionDict,
+    content: types.ContentUnion | types.ContentUnionDict,  # pyright: ignore[reportUnknownMemberType, reportUnknownParameterType]
     default_role: str = "user",
-) -> dict[str, Any]:
+) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
     """Convert a ContentUnion to a Gemini Content dict with 'parts' and 'role'."""
     if isinstance(content, types.Content):
         result = model_to_json_safe_dict(content, exclude_unset=True, exclude_none=True)
@@ -240,14 +236,14 @@ def content_union_to_dict(
         return {"role": default_role, "parts": [{"text": content}]}
     elif isinstance(content, dict):
         if "parts" in content:
-            result = dict(content)
-            result["parts"] = [part_to_dict(p) for p in result["parts"]]
+            result = dict(content)  # pyright: ignore[reportUnknownArgumentType]
+            result["parts"] = [part_to_dict(p) for p in cast(list[Any], result["parts"])]  # pyright: ignore[reportExplicitAny, reportAny]
             if "role" not in result:
                 result["role"] = default_role
             return result
         else:
             return {"role": default_role, "parts": [part_to_dict(content)]}
     elif isinstance(content, list):
-        return {"role": default_role, "parts": [part_to_dict(p) for p in content]}
+        return {"role": default_role, "parts": [part_to_dict(p) for p in content]}  # pyright: ignore[reportUnknownVariableType]
     else:
         return {"role": default_role, "parts": [part_to_dict(content)]}
