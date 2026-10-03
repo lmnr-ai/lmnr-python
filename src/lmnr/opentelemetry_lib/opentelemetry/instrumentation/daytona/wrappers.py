@@ -460,7 +460,7 @@ def _set_exec_request_attributes(span: Span, command: str, cwd: str | None):
 @dont_throw
 def _set_exec_response_attributes(span: Span, response: SessionExecuteResponse):
     """Set span attributes from the exec response."""
-    if hasattr(response, "exit_code") and response.exit_code:
+    if hasattr(response, "exit_code"):
         set_span_attribute(span, "daytona.exit_code", response.exit_code)
     set_span_attribute(span, SPAN_OUTPUT, _serialize_response(response) or "{}")
 
