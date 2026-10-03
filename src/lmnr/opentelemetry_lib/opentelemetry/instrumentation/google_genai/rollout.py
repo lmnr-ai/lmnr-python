@@ -59,7 +59,7 @@ class GoogleGenAIRolloutWrapper:
     def _add_parsed_to_response(
         self,
         response: types.GenerateContentResponse,
-        parts: list[dict[str, Any] | types.Part],  # pyright: ignore[reportExplicitAny]
+        parts: list[dict[str, Any] | types.Part | None],  # pyright: ignore[reportExplicitAny]
         config: types.GenerateContentConfig | dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
     ):
         # Handle structured output (parsed field)
@@ -120,13 +120,11 @@ class GoogleGenAIRolloutWrapper:
                     logger.debug("No candidates on the response")
                     return None
                 content = response.candidates[0].content
-                if content is None or content.parts is None:
-                    logger.debug("No content parts")
-                    return None
+                parts = content.parts or [] if content is not None else []
                 if response:
                     self._add_parsed_to_response(
                         response,
-                        cast(list[types.Part | dict[str, Any]], content.parts),  # pyright: ignore[reportExplicitAny]
+                        cast(list[types.Part | dict[str, Any] | None], parts),  # pyright: ignore[reportExplicitAny]
                         config,
                     )
                     return response
@@ -196,7 +194,7 @@ class GoogleGenAIRolloutWrapper:
 
     def _parse_structured_output(
         self,
-        content_blocks: list[dict[str, Any] | types.Part],  # pyright:ignore[reportExplicitAny]
+        content_blocks: list[dict[str, Any] | types.Part | None],  # pyright:ignore[reportExplicitAny]
         response_schema: Any,  # pyright: ignore[reportExplicitAny, reportAny]
     ) -> Any | None:  # pyright: ignore[reportExplicitAny]
         """
