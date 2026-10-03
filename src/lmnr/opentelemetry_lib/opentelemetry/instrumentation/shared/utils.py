@@ -20,7 +20,7 @@ T = TypeVar("T")
 
 
 def dont_throw(func: Callable[..., T]) -> Callable[..., T | None]:
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> T | None:  # pyright: ignore[reportAny, reportExplicitAny]
         logger = get_default_logger(func.__module__)
         try:
             return func(*args, **kwargs)
@@ -36,28 +36,28 @@ def dont_throw(func: Callable[..., T]) -> Callable[..., T | None]:
 
 
 def set_span_attribute(
-    span: Span, attribute_name: str, attribute_value: AttributeValue
+    span: Span, attribute_name: str, attribute_value: AttributeValue | None
 ):
     if attribute_value is not None and attribute_value != "":
         span.set_attribute(attribute_name, attribute_value)
 
 
-def to_dict(obj: Any) -> dict[str, Any]:
+def to_dict(obj: Any) -> dict[str, Any]:  # pyright: ignore[reportAny, reportExplicitAny]
     try:
         if isinstance(obj, BaseModel):
             return obj.model_dump()
         elif isinstance(obj, dict):
-            return deepcopy(obj)
+            return deepcopy(obj)  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
         elif obj is None:
             return {}
         else:
-            return dict(obj)
+            return dict(obj)  # pyright: ignore[reportAny]
     except Exception:
         logger.debug(f"Error converting to dict: {obj}", exc_info=True)
         return {}
 
 
-def extract_json_schema(schema: dict[str, Any] | BaseModel) -> dict[str, Any]:
+def extract_json_schema(schema: dict[str, Any] | BaseModel) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
     if isinstance(schema, dict):
         return schema
     elif hasattr(schema, "model_json_schema") and callable(schema.model_json_schema):
