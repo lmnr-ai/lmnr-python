@@ -60,7 +60,7 @@ def embeddings_wrapper(
         response = wrapped(*args, **kwargs)
         _handle_response(response, span)
         return response
-    except Exception as e:  # pylint: disable=broad-except
+    except Exception as e:
         attributes = {"error.type": e.__class__.__name__}
 
         span.set_attribute("error.type", e.__class__.__name__)
@@ -97,7 +97,7 @@ async def aembeddings_wrapper(
         response = await wrapped(*args, **kwargs)
         _handle_response(response, span)
         return response
-    except Exception as e:  # pylint: disable=broad-except
+    except Exception as e:
         attributes = {
             "error.type": e.__class__.__name__,
         }

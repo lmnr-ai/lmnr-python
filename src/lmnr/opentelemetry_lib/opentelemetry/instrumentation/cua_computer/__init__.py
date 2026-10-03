@@ -1,10 +1,15 @@
 """OpenTelemetry CUA instrumentation"""
 
 import logging
+from collections.abc import Awaitable, Callable, Collection, Sequence
 from importlib.metadata import version
-from typing import Any, Callable, Collection, Sequence
+from typing import Any, TypeVar
 
-from lmnr.sdk.utils import get_input_from_func_args, json_dumps
+from opentelemetry import trace
+from opentelemetry.trace import Span
+from opentelemetry.trace.status import Status, StatusCode
+from typing_extensions import override
+
 from lmnr import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
@@ -18,16 +23,17 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers
     stamp_instrumentation_scope,
 )
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
-
-from opentelemetry import trace
-from opentelemetry.trace import Span
-from opentelemetry.trace.status import Status, StatusCode
+from lmnr.sdk.log import levelToName
+from lmnr.sdk.utils import get_input_from_func_args, json_dumps
 
 from .utils import payload_to_placeholder
 
 logger = logging.getLogger(__name__)
 
 _instruments = ("cua-computer >= 0.4.0",)
+
+
+T = TypeVar("T")
 
 
 class CuaComputerSpec(WrappedFunctionSpec, total=False):
@@ -39,91 +45,89 @@ class CuaComputerSpec(WrappedFunctionSpec, total=False):
     """
 
     action: str
-    output_formatter: Callable[[Any], Any]
+    output_formatter: Callable[[Any], Any]  # pyright: ignore[reportExplicitAny]
 
 
-
-
-def add_input_to_parent_span(span, instance):
+def add_input_to_parent_span(span: Span, instance: Any):  # pyright: ignore[reportAny, reportExplicitAny]
     # api_key is skipped on purpose
     params = {}
-    if hasattr(instance, "display"):
-        params["display"] = instance.display
-    if hasattr(instance, "memory"):
-        params["memory"] = instance.memory
-    if hasattr(instance, "cpu"):
-        params["cpu"] = instance.cpu
-    if hasattr(instance, "os_type"):
-        params["os_type"] = instance.os_type
-    if hasattr(instance, "name"):
-        params["name"] = instance.name
-    if hasattr(instance, "image"):
-        params["image"] = instance.image
-    if hasattr(instance, "shared_directories"):
-        params["shared_directories"] = instance.shared_directories
-    if hasattr(instance, "use_host_computer_server"):
-        params["use_host_computer_server"] = instance.use_host_computer_server
-    if hasattr(instance, "verbosity"):
+    if hasattr(instance, "display"):  # pyright: ignore[reportAny]
+        params["display"] = instance.display  # pyright: ignore[reportAny]
+    if hasattr(instance, "memory"):  # pyright: ignore[reportAny]
+        params["memory"] = instance.memory  # pyright: ignore[reportAny]
+    if hasattr(instance, "cpu"):  # pyright: ignore[reportAny]
+        params["cpu"] = instance.cpu  # pyright: ignore[reportAny]
+    if hasattr(instance, "os_type"):  # pyright: ignore[reportAny]
+        params["os_type"] = instance.os_type  # pyright: ignore[reportAny]
+    if hasattr(instance, "name"):  # pyright: ignore[reportAny]
+        params["name"] = instance.name  # pyright: ignore[reportAny]
+    if hasattr(instance, "image"):  # pyright: ignore[reportAny]
+        params["image"] = instance.image  # pyright: ignore[reportAny]
+    if hasattr(instance, "shared_directories"):  # pyright: ignore[reportAny]
+        params["shared_directories"] = instance.shared_directories  # pyright: ignore[reportAny]
+    if hasattr(instance, "use_host_computer_server"):  # pyright: ignore[reportAny]
+        params["use_host_computer_server"] = instance.use_host_computer_server  # pyright: ignore[reportAny]
+    if hasattr(instance, "verbosity"):  # pyright: ignore[reportAny]
         if (
-            isinstance(instance.verbosity, int)
-            and instance.verbosity in logging._levelToName
+            isinstance(instance.verbosity, int)  # pyright: ignore[reportAny]
+            and instance.verbosity in levelToName
         ):
-            params["verbosity"] = logging._levelToName[instance.verbosity]
+            params["verbosity"] = levelToName[instance.verbosity]
         else:
             params["verbosity"] = instance.verbosity
-    if hasattr(instance, "telemetry_enabled"):
-        params["telemetry_enabled"] = instance.telemetry_enabled
-    if hasattr(instance, "provider_type"):
-        params["provider_type"] = instance.provider_type
-    if hasattr(instance, "port"):
-        params["port"] = instance.port
-    if hasattr(instance, "noVNC_port"):
-        params["noVNC_port"] = instance.noVNC_port
-    if hasattr(instance, "host"):
-        params["host"] = instance.host
-    if hasattr(instance, "storage"):
-        params["storage"] = instance.storage
-    if hasattr(instance, "ephemeral"):
-        params["ephemeral"] = instance.ephemeral
-    if hasattr(instance, "experiments"):
-        params["experiments"] = instance.experiments
-    span.set_attribute("lmnr.span.input", json_dumps(params))
+    if hasattr(instance, "telemetry_enabled"):  # pyright: ignore[reportAny]
+        params["telemetry_enabled"] = instance.telemetry_enabled  # pyright: ignore[reportAny]
+    if hasattr(instance, "provider_type"):  # pyright: ignore[reportAny]
+        params["provider_type"] = instance.provider_type  # pyright: ignore[reportAny]
+    if hasattr(instance, "port"):  # pyright: ignore[reportAny]
+        params["port"] = instance.port  # pyright: ignore[reportAny]
+    if hasattr(instance, "noVNC_port"):  # pyright: ignore[reportAny]
+        params["noVNC_port"] = instance.noVNC_port  # pyright: ignore[reportAny]
+    if hasattr(instance, "host"):  # pyright: ignore[reportAny]
+        params["host"] = instance.host  # pyright: ignore[reportAny]
+    if hasattr(instance, "storage"):  # pyright: ignore[reportAny]
+        params["storage"] = instance.storage  # pyright: ignore[reportAny]
+    if hasattr(instance, "ephemeral"):  # pyright: ignore[reportAny]
+        params["ephemeral"] = instance.ephemeral  # pyright: ignore[reportAny]
+    if hasattr(instance, "experiments"):  # pyright: ignore[reportAny]
+        params["experiments"] = instance.experiments  # pyright: ignore[reportAny]
+    span.set_attribute("lmnr.span.input", json_dumps(params))  # pyright: ignore[reportUnknownArgumentType]
 
 
 def _wrap(
     to_wrap: CuaComputerSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
-):
+    wrapped: Callable[..., T],
+    instance: Any,   # pyright: ignore[reportAny, reportExplicitAny]
+    args: Sequence[Any],   # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],   # pyright: ignore[reportExplicitAny]
+) -> T:
     if to_wrap.get("action") == "start_parent_span":
         parent_span = Laminar.start_span("computer.run")
         stamp_instrumentation_scope(parent_span, to_wrap)
         add_input_to_parent_span(parent_span, instance)
         result = wrapped(*args, **kwargs)
         try:
-            instance._interface._lmnr_parent_span = parent_span
+            instance._interface._lmnr_parent_span = parent_span  # pyright: ignore[reportAny]
         except Exception:
-            pass
+            logger.debug("Failed to set parent span on CUA computer instance", exc_info=True)
         return result
     elif to_wrap.get("action") == "end_parent_span":
         result = wrapped(*args, **kwargs)
         try:
-            parent_span: Span = instance._interface._lmnr_parent_span
+            parent_span = instance._interface._lmnr_parent_span  # pyright: ignore[reportAny]
             if parent_span and parent_span.is_recording():
                 parent_span.end()
         except Exception:
-            pass
+            logger.debug("Failed to get parent span from CUA computer instance", exc_info=True)
         return result
 
     # if there's no parent span, use
     parent_span = trace.get_current_span(context=get_current_context())
     try:
-        if instance._lmnr_parent_span:
-            parent_span: Span = instance._lmnr_parent_span
+        if instance._lmnr_parent_span:  # pyright: ignore[reportAny]
+            parent_span: Span = instance._lmnr_parent_span  # pyright: ignore[reportAny]
     except Exception:
-        pass
+        logger.debug("Failed to get parent span from CUA computer instance", exc_info=True)
 
     with Laminar.use_span(parent_span):
         instance_name = "interface"
@@ -137,13 +141,13 @@ def _wrap(
             )
             try:
                 result = wrapped(*args, **kwargs)
-            except Exception as e:  # pylint: disable=broad-except
+            except Exception as e:
                 span.set_status(Status(StatusCode.ERROR))
                 span.record_exception(e)
                 span.end()
                 raise
-            output_formatter = to_wrap.get("output_formatter") or (
-                lambda x: json_dumps(x)
+            output_formatter = to_wrap.get("output_formatter") or (  # pyright: ignore[reportUnknownVariableType]
+                lambda x: json_dumps(x)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
             )
             span.set_attribute("lmnr.span.output", output_formatter(result))
             return result
@@ -151,37 +155,37 @@ def _wrap(
 
 async def _wrap_async(
     to_wrap: CuaComputerSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
-):
+    wrapped: Callable[..., Awaitable[T]],
+    instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+)-> T:
     if to_wrap.get("action") == "start_parent_span":
         parent_span = Laminar.start_span("computer.run")
         stamp_instrumentation_scope(parent_span, to_wrap)
         add_input_to_parent_span(parent_span, instance)
         result = await wrapped(*args, **kwargs)
         try:
-            instance._interface._lmnr_parent_span = parent_span
+            instance._interface._lmnr_parent_span = parent_span  # pyright: ignore[reportAny]
         except Exception:
-            pass
+            logger.debug("Failed to set parent span on CUA computer instance", exc_info=True)
         return result
     elif to_wrap.get("action") == "end_parent_span":
         result = await wrapped(*args, **kwargs)
         try:
-            parent_span: Span = instance._interface._lmnr_parent_span
+            parent_span = instance._interface._lmnr_parent_span  # pyright: ignore[reportAny]
             if parent_span and parent_span.is_recording():
                 parent_span.end()
         except Exception:
-            pass
+            logger.debug("Failed to get parent span from CUA computer instance", exc_info=True)
         return result
 
     # if there's no parent span, use
     parent_span = trace.get_current_span(context=get_current_context())
     try:
-        parent_span: Span = instance._lmnr_parent_span
+        parent_span: Span = instance._lmnr_parent_span  # pyright: ignore[reportAny]
     except Exception:
-        pass
+        logger.debug("Failed to get parent span from CUA computer instance", exc_info=True)
 
     with Laminar.use_span(parent_span):
         instance_name = "interface"
@@ -196,13 +200,13 @@ async def _wrap_async(
             )
             try:
                 result = await wrapped(*args, **kwargs)
-            except Exception as e:  # pylint: disable=broad-except
+            except Exception as e:
                 span.set_status(Status(StatusCode.ERROR))
                 span.record_exception(e)
                 span.end()
                 raise
-            output_formatter = to_wrap.get("output_formatter") or (
-                lambda x: json_dumps(x)
+            output_formatter = to_wrap.get("output_formatter") or (  # pyright: ignore[reportUnknownVariableType]
+                lambda x: json_dumps(x)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
             )
             span.set_attribute("lmnr.span.output", output_formatter(result))
             return result
@@ -505,15 +509,17 @@ WRAPPED_FUNCTIONS: list[CuaComputerSpec] = [
 class CuaComputerInstrumentor(BaseLaminarInstrumentor):
     _scope: LaminarInstrumentationScopeAttributes | None = None
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is None:
             try:
                 cua_version = version("cua-computer")
-            except Exception as e:
-                logger.debug(f"Failed to get cua-computer version {e}")
+            except Exception:
+                logger.debug("Failed to get cua-computer version", exc_info=True)
                 cua_version = "unknown"
             self._scope = LaminarInstrumentationScopeAttributes(
                 name="cua-computer",
@@ -523,7 +529,7 @@ class CuaComputerInstrumentor(BaseLaminarInstrumentor):
 
     def __init__(self):
         super().__init__()
-        self.instrumentor_config = LaminarInstrumentorConfig(
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 {**spec, "instrumentation_scope": self.instrumentation_scope()}
                 for spec in WRAPPED_FUNCTIONS

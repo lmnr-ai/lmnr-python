@@ -60,7 +60,7 @@ PROXY_NEUTRALIZED_ENV_KEYS = (*PROXY_ENV_KEYS, FOUNDRY_RESOURCE_ENV)
 UPSTREAM_SETTINGS_EXCLUDED_ENV_KEYS = PROXY_ENV_KEYS
 
 
-def is_truthy_env(value: str | None) -> bool:
+def is_truthy_env(value: str | bool | None) -> bool:
     """
     Check whether an env value enables a feature.
 
@@ -76,7 +76,7 @@ def is_truthy_env(value: str | None) -> bool:
     return value.strip().lower() in ("1", "true", "yes", "on")
 
 
-def _load_settings_file(path: Path) -> dict[str, Any] | None:
+def _load_settings_file(path: Path) -> dict[str, Any] | None:  # pyright: ignore[reportExplicitAny]
     """
     Load a Claude settings JSON file, or ``None`` when it could not be read.
 
@@ -86,10 +86,10 @@ def _load_settings_file(path: Path) -> dict[str, Any] | None:
     """
     try:
         with path.open(encoding="utf-8") as f:
-            data = json.load(f)
+            data = json.load(f)  # pyright: ignore[reportAny]
     except (OSError, ValueError):
         return None
-    return data if isinstance(data, dict) else None
+    return data if isinstance(data, dict) else None  # pyright: ignore[reportUnknownVariableType]
 
 
 def flag_settings_env(
@@ -112,10 +112,10 @@ def flag_settings_env(
     stripped = existing.strip()
     if stripped.startswith("{") and stripped.endswith("}"):
         try:
-            parsed = json.loads(stripped)
+            parsed = json.loads(stripped)  # pyright: ignore[reportAny]
         except ValueError:
             return {}
-        return _settings_env_block(parsed) if isinstance(parsed, dict) else {}
+        return _settings_env_block(parsed) if isinstance(parsed, dict) else {}  # pyright: ignore[reportUnknownArgumentType]
 
     path = Path(stripped).expanduser()
     if not path.is_absolute() and cwd is not None:
@@ -123,12 +123,12 @@ def flag_settings_env(
     return _settings_env_block(_load_settings_file(path) or {})
 
 
-def _settings_env_block(data: dict[str, Any]) -> dict[str, str]:
+def _settings_env_block(data: dict[str, Any]) -> dict[str, str]:  # pyright: ignore[reportExplicitAny]
     """Normalize a settings object's ``env`` block to a str -> str mapping."""
     env = data.get("env")
     if not isinstance(env, dict):
         return {}
-    return {str(k): str(v) for k, v in env.items() if v is not None}
+    return {str(k): str(v) for k, v in env.items() if v is not None}  # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
 
 
 def read_claude_settings_env(
@@ -201,7 +201,7 @@ def restore_env(snapshot: dict[str, str | None], set_keys: set[str]) -> None:
         if key in set_keys:
             os.environ[key] = value if value is not None else ""
         else:
-            os.environ.pop(key, None)
+            _popped_val = os.environ.pop(key, None)
 
 
 def is_port_open(port: int, timeout: float = 0.5) -> bool:
@@ -350,7 +350,7 @@ def resolve_target_url_from_env(
 
         # Foundry is enabled but misconfigured
         logger.error(
-            "%s is set but neither %s nor %s is configured. "
+            "%s is set but neither %s nor %s is configured. " +
             "Microsoft Foundry requires one of these values.",
             FOUNDRY_USE_ENV,
             FOUNDRY_BASE_URL_ENV,
@@ -374,7 +374,7 @@ def resolve_target_url_from_env(
             return f"https://bedrock-runtime.{region}.amazonaws.com"
 
         logger.error(
-            "%s is set but could not determine AWS region. "
+            "%s is set but could not determine AWS region. " +
             "Set %s or configure a region in ~/.aws/config for the active profile.",
             BEDROCK_USE_ENV,
             BEDROCK_AWS_REGION_ENV,
@@ -424,17 +424,17 @@ def build_proxy_flag_settings(
     the caller's existing value is a file path we could not read (in that case
     the path must be left alone so the CLI can still resolve it itself).
     """
-    settings_obj: dict[str, Any] = {}
+    settings_obj: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
     if existing:
         stripped = existing.strip()
         if stripped.startswith("{") and stripped.endswith("}"):
             try:
-                parsed = json.loads(stripped)
+                parsed = json.loads(stripped)  # pyright: ignore[reportAny]
             except ValueError:
                 return None
             if not isinstance(parsed, dict):
                 return None
-            settings_obj = parsed
+            settings_obj = parsed  # pyright: ignore[reportUnknownVariableType]
         else:
             path = Path(stripped).expanduser()
             if not path.is_absolute() and cwd is not None:
@@ -542,7 +542,7 @@ def setup_proxy_env(
 
     # Remove HTTP_PROXY and HTTPS_PROXY (our proxy will forward to them)
     for proxy_var in PROXY_ENV_KEYS:
-        os.environ.pop(proxy_var, None)
+        _popped_val = os.environ.pop(proxy_var, None)
 
     # Handle Foundry-specific env vars
     if provider_enabled(FOUNDRY_USE_ENV):
@@ -550,7 +550,7 @@ def setup_proxy_env(
         snapshot[FOUNDRY_RESOURCE_ENV] = os.environ.get(FOUNDRY_RESOURCE_ENV)
 
         os.environ[FOUNDRY_BASE_URL_ENV] = proxy_url
-        os.environ.pop(FOUNDRY_RESOURCE_ENV, None)
+        _popped_val = os.environ.pop(FOUNDRY_RESOURCE_ENV, None)
 
     # Handle Bedrock-specific env vars
     if provider_enabled(BEDROCK_USE_ENV):

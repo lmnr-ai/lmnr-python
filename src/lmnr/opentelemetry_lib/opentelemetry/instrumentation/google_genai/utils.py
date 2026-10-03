@@ -92,9 +92,9 @@ def dont_throw(func):
             return func(*args, **kwargs)
         except Exception as e:
             func_logger.debug(
-                "Laminar failed to trace in %s, error: %s",
+                "Laminar failed to trace in %s",
                 func.__name__,
-                traceback.format_exc(),
+                exc_info=True,
             )
             if Config.exception_logger:
                 Config.exception_logger(e)
@@ -103,21 +103,22 @@ def dont_throw(func):
 
 
 def to_dict(
-    obj: BaseModel | pydantic.BaseModel | dict, pydantic_kwargs: dict[str, Any] = {}
+    obj: BaseModel | pydantic.BaseModel | dict, pydantic_kwargs: dict[str, Any] | None = None
 ) -> dict[str, Any]:
+    defaulted_pydantic_kwargs = pydantic_kwargs or {}
     try:
         if isinstance(obj, BaseModel):
             return obj.model_dump()
         elif isinstance(obj, pydantic.BaseModel):
-            return obj.model_dump(**pydantic_kwargs)
+            return obj.model_dump(**defaulted_pydantic_kwargs)
         elif isinstance(obj, dict):
             return obj
         elif obj is None:
             return {}
         else:
             return dict(obj)
-    except Exception as e:
-        logger.debug(f"Error converting to dict: {obj}, error: {e}")
+    except Exception:
+        logger.debug(f"Error converting to dict: {obj}", exc_info=True)
         return dict(obj)
 
 

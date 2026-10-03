@@ -259,10 +259,11 @@ class Evaluation:
                             self._logger.warning(f"Dataset {source.name} not found")
                         else:
                             source.id = datasets[0]["id"]
-                    except Exception as e:
+                    except Exception:
                         # Backward compatibility with old Laminar API (self hosted)
                         self._logger.warning(
-                            f"Error getting dataset {source.name}: {e}"
+                            f"Error getting dataset {source.name}",
+                            exc_info=True,
                         )
         self._source_dataset = source
 
@@ -433,8 +434,8 @@ class Evaluation:
         finally:
             try:
                 detach_context(eval_id_token)
-            except Exception as e:
-                self._logger.debug(f"Failed to detach evaluation trace context {e}")
+            except Exception:
+                self._logger.debug("Failed to detach evaluation trace context", exc_info=True)
 
         eval_datapoint = EvaluationResultDatapoint(
             id=evaluation_id,

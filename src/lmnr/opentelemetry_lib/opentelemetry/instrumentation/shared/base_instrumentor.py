@@ -1,6 +1,7 @@
 import importlib
 import sys
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from logging import Logger
 from typing import Any
 
@@ -9,10 +10,15 @@ from opentelemetry.instrumentation.utils import unwrap
 from typing_extensions import override
 from wrapt import FunctionWrapper, wrap_function_wrapper
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WraptWrapper,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    add_spec_wrapper,
+)
 from lmnr.sdk.log import get_default_logger
-
-from .types import LaminarInstrumentationScopeAttributes, LaminarInstrumentorConfig
-from .wrapper_helpers import add_spec_wrapper
 
 
 class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
@@ -20,13 +26,13 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
     logger: Logger = get_default_logger(__name__)
 
     # Store original functions for alias replacement and uninstrumentation
-    _module_function_originals: dict[tuple[str, str], Any] = {}
+    _module_function_originals: dict[tuple[str, str], Callable[..., Any]] | None = None  # pyright: ignore[reportExplicitAny]
 
     @abstractmethod
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         pass
 
-    def wrapper_kwargs(self) -> dict[str, Any]:
+    def wrapper_kwargs(self) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
         """Extra keyword arguments handed to every wrapper on every call.
 
         Override when a wrapper needs an instrumentor-level collaborator that is
@@ -38,7 +44,10 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
         return {}
 
     @staticmethod
-    def _replace_function_aliases(original, wrapped):
+    def _replace_function_aliases(
+        original: Callable[..., Any],  # pyright: ignore[reportExplicitAny]
+        wrapped: Callable[..., Any],  # pyright: ignore[reportExplicitAny]
+    ) -> None:
         """
         Replace all references to the original function across ALL loaded modules.
 
@@ -58,16 +67,16 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
             module_dict = getattr(module, "__dict__", None)
             if not module_dict:
                 continue
-            for attr, value in list(module_dict.items()):
+            for attr, value in list(module_dict.items()):  # pyright: ignore[reportAny]
                 if value is original:
                     try:
-                        setattr(module, attr, wrapped)
+                        setattr(module, attr, wrapped)  # pyright: ignore[reportAny]
                     except (AttributeError, TypeError):
                         # Some modules may have read-only attributes
                         pass
 
     def _wrap_module_function_with_alias_replacement(
-        self, module_name: str, function_name: str, wrapper
+        self, module_name: str, function_name: str, wrapper: WraptWrapper
     ) -> bool:
         """
         Wrap a module-level function and replace all aliases across loaded modules.
@@ -88,25 +97,27 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
             return False
 
         try:
-            original = getattr(module, function_name)
+            original = getattr(module, function_name)  # pyright: ignore[reportAny]
         except AttributeError:
             return False
 
+        if self._module_function_originals is None:
+            self._module_function_originals = {}
         key = (module_name, function_name)
         if key not in self._module_function_originals:
             self._module_function_originals[key] = original
 
-        wrapped_function = FunctionWrapper(original, wrapper)
+        wrapped_function = FunctionWrapper(original, wrapper)  # pyright: ignore[reportUnknownVariableType]
         setattr(module, function_name, wrapped_function)
 
         # Replace all existing references to the original function across ALL loaded modules
-        self._replace_function_aliases(original, wrapped_function)
+        self._replace_function_aliases(original, wrapped_function)  # pyright: ignore[reportUnknownArgumentType, reportAny]
 
         return True
 
     def _unwrap_module_function_with_alias_replacement(
         self, module_name: str, function_name: str
-    ):
+    ) -> None:
         """
         Restore the original function and replace all aliases back.
 
@@ -115,7 +126,7 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
             function_name: The name of the function to unwrap
         """
         key = (module_name, function_name)
-        original = self._module_function_originals.get(key)
+        original = (self._module_function_originals or {}).get(key)
         if not original:
             return
 
@@ -126,8 +137,9 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
         current = getattr(module, function_name, None)
         setattr(module, function_name, original)
         if current is not None:
-            self._replace_function_aliases(current, original)
-        del self._module_function_originals[key]
+            self._replace_function_aliases(current, original)  # pyright: ignore[reportAny]
+        if self._module_function_originals is not None:
+            del self._module_function_originals[key]
 
     # default implementation, can be overridden by subclasses
     @override
@@ -168,11 +180,11 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
                     self.logger.debug(
                         f"Successfully instrumented {package_name}.{target}"
                     )
-            except (AttributeError, ModuleNotFoundError, ImportError) as e:
+            except (AttributeError, ModuleNotFoundError, ImportError):
                 # that's ok, we don't want to fail if some methods do not exist
-                self.logger.debug(f"Failed to instrument {package_name}.{target}: {e}")
-            except Exception as e:
-                self.logger.error(f"Failed to instrument {package_name}.{target}: {e}")
+                self.logger.debug(f"Failed to instrument {package_name}.{target}", exc_info=True)
+            except Exception:
+                self.logger.exception(f"Failed to instrument {package_name}.{target}")
                 # don't re-raise, we don't want to fail the entire program
 
     # default implementation, can be overridden by subclasses
@@ -207,8 +219,9 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
                         else package_name
                     )
                     unwrap(holder, method_name)
-            except Exception as e:
+            except Exception:
                 self.logger.debug(
-                    f"Failed to uninstrument {package_name}.{target}: {e}"
+                    f"Failed to uninstrument {package_name}.{target}",
+                    exc_info=True,
                 )
                 # don't re-raise, we don't want to fail the entire program

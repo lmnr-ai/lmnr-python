@@ -4,17 +4,18 @@ import os
 import socket
 import threading
 import time
-from unittest.mock import MagicMock, AsyncMock, patch
-
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
-    add_spec_wrapper,
-)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (
     proxy as claude_proxy,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (
     utils as claude_utils,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    add_spec_wrapper,
 )
 
 
@@ -34,11 +35,11 @@ def clean_env(monkeypatch):
 def reset_port_allocation():
     """Reset port allocation state before and after tests."""
     with claude_proxy._PORT_LOCK:
-        claude_proxy._NEXT_PORT = 45667
+        claude_proxy._next_port = 45667
         claude_proxy._ALLOCATED_PORTS.clear()
     yield
     with claude_proxy._PORT_LOCK:
-        claude_proxy._NEXT_PORT = 45667
+        claude_proxy._next_port = 45667
         claude_proxy._ALLOCATED_PORTS.clear()
 
 
@@ -229,7 +230,7 @@ def test_release_port():
     port = claude_proxy._allocate_port()
     assert port in claude_proxy._ALLOCATED_PORTS
 
-    claude_proxy._release_port(port)
+    claude_proxy.release_port(port)
     assert port not in claude_proxy._ALLOCATED_PORTS
 
 
@@ -238,7 +239,7 @@ def test_port_reuse_after_release():
     port1 = claude_proxy._allocate_port()
     port2 = claude_proxy._allocate_port()
 
-    claude_proxy._release_port(port1)
+    claude_proxy.release_port(port1)
 
     # Next allocation should skip port1 (already allocated) and use port3
     port3 = claude_proxy._allocate_port()
@@ -275,17 +276,16 @@ def test_create_proxy_for_transport():
     proxy = claude_proxy.create_proxy_for_transport()
 
     assert proxy is not None
-    assert hasattr(proxy, "_allocated_port")
-    assert proxy._allocated_port in claude_proxy._ALLOCATED_PORTS
-    assert proxy.port == proxy._allocated_port
+    assert hasattr(proxy, "allocated_port")
+    assert proxy.allocated_port in claude_proxy._ALLOCATED_PORTS
+    assert proxy.port == proxy.allocated_port
 
 
 def test_start_proxy_success(monkeypatch, clean_env):
     """Test starting a proxy successfully."""
     from lmnr_claude_code_proxy import ProxyServer
 
-    proxy = ProxyServer(port=45400)
-    proxy._allocated_port = 45400
+    proxy = claude_proxy.LaminarProxyServer(ProxyServer(port=45400), allocated_port=45400)
 
     with (
         patch.object(proxy, "run_server") as mock_run,
@@ -301,8 +301,7 @@ def test_start_proxy_with_explicit_target_url(monkeypatch, clean_env):
     """Test starting proxy with explicit target_url."""
     from lmnr_claude_code_proxy import ProxyServer
 
-    proxy = ProxyServer(port=45401)
-    proxy._allocated_port = 45401
+    proxy = claude_proxy.LaminarProxyServer(ProxyServer(port=45401), allocated_port=45401)
 
     with (
         patch.object(proxy, "run_server") as mock_run,
@@ -318,8 +317,7 @@ def test_start_proxy_server_fails(monkeypatch, clean_env):
     """Test handling server startup failure."""
     from lmnr_claude_code_proxy import ProxyServer
 
-    proxy = ProxyServer(port=45403)
-    proxy._allocated_port = 45403
+    proxy = claude_proxy.LaminarProxyServer(ProxyServer(port=45403), allocated_port=45403)
 
     with patch.object(proxy, "run_server", side_effect=Exception("Server error")):
         with pytest.raises(RuntimeError, match="Failed to start proxy"):
@@ -333,8 +331,7 @@ def test_start_proxy_not_ready(monkeypatch, clean_env):
     """Test when proxy doesn't become ready."""
     from lmnr_claude_code_proxy import ProxyServer
 
-    proxy = ProxyServer(port=45404)
-    proxy._allocated_port = 45404
+    proxy = claude_proxy.LaminarProxyServer(ProxyServer(port=45404), allocated_port=45404)
 
     with (
         patch.object(proxy, "run_server"),
@@ -354,8 +351,7 @@ def test_stop_proxy():
     from lmnr_claude_code_proxy import ProxyServer
 
     port = claude_proxy._allocate_port()
-    proxy = ProxyServer(port=port)
-    proxy._allocated_port = port
+    proxy = claude_proxy.LaminarProxyServer(ProxyServer(port=port), allocated_port=port)
 
     with patch.object(proxy, "stop_server") as mock_stop:
         claude_proxy.stop_proxy(proxy)
@@ -369,8 +365,7 @@ def test_stop_proxy_handles_error():
     from lmnr_claude_code_proxy import ProxyServer
 
     port = claude_proxy._allocate_port()
-    proxy = ProxyServer(port=port)
-    proxy._allocated_port = port
+    proxy = claude_proxy.LaminarProxyServer(ProxyServer(port=port), allocated_port=port)
 
     with patch.object(proxy, "stop_server", side_effect=Exception("Stop error")):
         # Should not raise
@@ -384,7 +379,7 @@ def test_publish_span_context_to_proxy():
     """Test publishing span context to a proxy."""
     from lmnr_claude_code_proxy import ProxyServer
 
-    proxy = ProxyServer(port=45405)
+    proxy = claude_proxy.LaminarProxyServer(ProxyServer(port=45405), allocated_port=45405)
 
     with patch.object(proxy, "set_current_trace") as mock_set:
         claude_proxy.publish_span_context_to_proxy(
@@ -411,7 +406,7 @@ def test_publish_span_context_handles_error():
     """Test that publish_span_context_to_proxy handles errors."""
     from lmnr_claude_code_proxy import ProxyServer
 
-    proxy = ProxyServer(port=45406)
+    proxy = claude_proxy.LaminarProxyServer(ProxyServer(port=45406), allocated_port=45406)
 
     with patch.object(proxy, "set_current_trace", side_effect=Exception("HTTP error")):
         # Should not raise, just log

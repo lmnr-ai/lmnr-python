@@ -41,7 +41,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.deepagents.instrumento
     _wrap_graph_stream,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.deepagents.middleware import (
-    _summarize_messages,
+    summarize_messages,
     _tool_result_to_json,
     _tool_span_input,
     _tool_span_name,
@@ -64,19 +64,19 @@ class _FakeMessage:
 
 def test_summarize_messages_handles_objects_with_type():
     msgs = [_FakeMessage(type_="human", content="hi")]
-    result = _summarize_messages(msgs)
+    result = summarize_messages(msgs)
     assert result == [{"role": "human", "content": "hi"}]
 
 
 def test_summarize_messages_falls_back_to_role():
     msgs = [_FakeMessage(role="assistant", content="ok")]
-    result = _summarize_messages(msgs)
+    result = summarize_messages(msgs)
     assert result == [{"role": "assistant", "content": "ok"}]
 
 
 def test_summarize_messages_handles_dicts():
     msgs = [{"role": "user", "content": "q"}, {"type": "ai", "content": "a"}]
-    result = _summarize_messages(msgs)
+    result = summarize_messages(msgs)
     assert result == [
         {"role": "user", "content": "q"},
         {"role": "ai", "content": "a"},
@@ -87,13 +87,13 @@ def test_summarize_messages_passes_through_unknown_items():
     # An item with neither a role nor a type attribute (and isn't a dict) is
     # passed through untouched.
     sentinel = object()
-    result = _summarize_messages([sentinel])
+    result = summarize_messages([sentinel])
     assert result == [sentinel]
 
 
 def test_summarize_messages_returns_non_lists_unchanged():
-    assert _summarize_messages("not a list") == "not a list"
-    assert _summarize_messages(None) is None
+    assert summarize_messages("not a list") == "not a list"
+    assert summarize_messages(None) is None
 
 
 def test_tool_result_to_json_with_content():
@@ -289,7 +289,7 @@ def test_wrap_graph_invoke_emits_root_span_with_input_and_output(
 
     result = _wrap_graph_invoke(
         wrapped,
-        instance=None,
+        _instance=None,
         args=({"messages": [_FakeMessage(type_="human", content="hi")]},),
         kwargs={},
     )
@@ -317,7 +317,7 @@ def test_wrap_graph_invoke_skips_when_root_already_active(
             called.append(payload)
             return {"messages": []}
 
-        _wrap_graph_invoke(wrapped, instance=None, args=({"messages": []},), kwargs={})
+        _wrap_graph_invoke(wrapped, _instance=None, args=({"messages": []},), kwargs={})
     finally:
         _root_active.reset(token)
 
@@ -332,7 +332,7 @@ def test_wrap_graph_invoke_records_exception(span_exporter: InMemorySpanExporter
 
     with pytest.raises(RuntimeError, match="graph failed"):
         _wrap_graph_invoke(
-            wrapped, instance=None, args=({"messages": []},), kwargs={}
+            wrapped, _instance=None, args=({"messages": []},), kwargs={}
         )
 
     spans = _span_by_name(span_exporter, "deep_agent")
@@ -349,7 +349,7 @@ def test_wrap_graph_invoke_resets_root_active_on_success(
         assert _root_active.get() is True
         return {"messages": []}
 
-    _wrap_graph_invoke(wrapped, instance=None, args=({"messages": []},), kwargs={})
+    _wrap_graph_invoke(wrapped, _instance=None, args=({"messages": []},), kwargs={})
     assert _root_active.get() is False
 
 
@@ -363,7 +363,7 @@ def test_wrap_graph_invoke_resets_root_active_on_exception(
 
     with pytest.raises(RuntimeError):
         _wrap_graph_invoke(
-            wrapped, instance=None, args=({"messages": []},), kwargs={}
+            wrapped, _instance=None, args=({"messages": []},), kwargs={}
         )
     assert _root_active.get() is False
 
@@ -377,7 +377,7 @@ async def test_awrap_graph_invoke_emits_root_span(
 
     result = await _awrap_graph_invoke(
         wrapped,
-        instance=None,
+        _instance=None,
         args=({"messages": []},),
         kwargs={},
     )
@@ -402,7 +402,7 @@ def test_wrap_graph_stream_does_not_open_span_if_never_iterated(
         yield {"messages": []}
 
     gen = _wrap_graph_stream(
-        wrapped, instance=None, args=({"messages": []},), kwargs={}
+        wrapped, _instance=None, args=({"messages": []},), kwargs={}
     )
 
     # No iteration → no span, no sentinel.
@@ -426,7 +426,7 @@ def test_wrap_graph_stream_emits_span_when_iterated(
 
     chunks = list(
         _wrap_graph_stream(
-            wrapped, instance=None, args=({"messages": []},), kwargs={}
+            wrapped, _instance=None, args=({"messages": []},), kwargs={}
         )
     )
     assert chunks == [{"step": 1}, {"step": 2}]
@@ -457,7 +457,7 @@ def test_interleaved_sync_streams_both_get_root_spans(
         yield {"stream": "b", "step": 2}
 
     gen_a = _wrap_graph_stream(
-        wrapped_a, instance=None, args=({"messages": []},), kwargs={}
+        wrapped_a, _instance=None, args=({"messages": []},), kwargs={}
     )
     # Pull the first chunk from A (this starts the generator body and,
     # before the fix, would flip `_root_active` on in the caller).
@@ -466,7 +466,7 @@ def test_interleaved_sync_streams_both_get_root_spans(
 
     # B must still be instrumented.
     gen_b = _wrap_graph_stream(
-        wrapped_b, instance=None, args=({"messages": []},), kwargs={}
+        wrapped_b, _instance=None, args=({"messages": []},), kwargs={}
     )
     chunks_b = list(gen_b)
     assert chunks_b == [{"stream": "b", "step": 1}, {"stream": "b", "step": 2}]
@@ -495,7 +495,7 @@ def test_wrap_graph_stream_does_not_mark_error_on_generator_exit(
         yield {"step": 3}
 
     for chunk in _wrap_graph_stream(
-        wrapped, instance=None, args=({"messages": []},), kwargs={}
+        wrapped, _instance=None, args=({"messages": []},), kwargs={}
     ):
         break  # triggers GeneratorExit on the underlying generator
 
@@ -515,7 +515,7 @@ def test_wrap_graph_stream_records_real_exception(
     with pytest.raises(RuntimeError, match="stream boom"):
         list(
             _wrap_graph_stream(
-                wrapped, instance=None, args=({"messages": []},), kwargs={}
+                wrapped, _instance=None, args=({"messages": []},), kwargs={}
             )
         )
 
@@ -535,7 +535,7 @@ async def test_awrap_graph_stream_emits_span_when_iterated(
 
     collected = []
     async for chunk in _awrap_graph_stream(
-        wrapped, instance=None, args=({"messages": []},), kwargs={}
+        wrapped, _instance=None, args=({"messages": []},), kwargs={}
     ):
         collected.append(chunk)
     assert collected == [{"step": 1}, {"step": 2}]
@@ -555,7 +555,7 @@ async def test_awrap_graph_stream_does_not_mark_error_on_generator_exit(
         yield {"step": 2}
 
     agen = _awrap_graph_stream(
-        wrapped, instance=None, args=({"messages": []},), kwargs={}
+        wrapped, _instance=None, args=({"messages": []},), kwargs={}
     )
     async for _ in agen:
         break
@@ -580,7 +580,7 @@ def test_inject_middleware_adds_laminar_middleware_when_absent():
         received.update(kwargs)
         return types.SimpleNamespace(invoke=lambda *a, **k: None, __class__=type("G", (), {}))
 
-    _inject_middleware(fake_create_deep_agent, instance=None, args=(), kwargs={})
+    _inject_middleware(fake_create_deep_agent, _instance=None, args=(), kwargs={})
     assert any(isinstance(m, LaminarMiddleware) for m in received["middleware"])
 
 
@@ -594,7 +594,7 @@ def test_inject_middleware_does_not_duplicate_laminar_middleware():
 
     _inject_middleware(
         fake_create_deep_agent,
-        instance=None,
+        _instance=None,
         args=(),
         kwargs={"middleware": (existing,)},
     )
@@ -631,7 +631,7 @@ def test_inject_middleware_wraps_returned_graph_invoke(
         return FakeGraph()
 
     graph = _inject_middleware(
-        fake_create_deep_agent, instance=None, args=(), kwargs={}
+        fake_create_deep_agent, _instance=None, args=(), kwargs={}
     )
     result = graph.invoke({"messages": [_FakeMessage(type_="human", content="q")]})
     assert result["messages"][0].content == "answer"
@@ -653,12 +653,12 @@ def test_nested_stream_inside_invoke_collapses_to_one_root_span(
     def outer_invoke(payload):
         # Simulate Pregel's pattern: invoke calls the already-wrapped stream.
         wrapped_stream = _wrap_graph_stream(
-            inner_stream, instance=None, args=(payload,), kwargs={}
+            inner_stream, _instance=None, args=(payload,), kwargs={}
         )
         return {"messages": list(wrapped_stream)}
 
     _wrap_graph_invoke(
-        outer_invoke, instance=None, args=({"messages": []},), kwargs={}
+        outer_invoke, _instance=None, args=({"messages": []},), kwargs={}
     )
 
     assert len(_span_by_name(span_exporter, "deep_agent")) == 1

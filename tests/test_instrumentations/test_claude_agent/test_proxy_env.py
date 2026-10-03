@@ -3,14 +3,17 @@
 import os
 from unittest.mock import patch
 
+from lmnr_claude_code_proxy import ProxyServer
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (
+    proxy as claude_proxy,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (
+    utils as claude_utils,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     add_spec_wrapper,
 )
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (
-    proxy as claude_proxy,
-    utils as claude_utils,
-)
-from lmnr_claude_code_proxy import ProxyServer
 
 
 def test_foundry_base_url_overrides_target(monkeypatch):
@@ -22,7 +25,7 @@ def test_foundry_base_url_overrides_target(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_FOUNDRY_RESOURCE", raising=False)
 
     proxy = ProxyServer(port=45500)
-    proxy._allocated_port = 45500
+    proxy.allocated_port = 45500
 
     # Resolve target URL before starting proxy
     target_url = claude_utils.resolve_target_url_from_env({})
@@ -48,7 +51,7 @@ def test_foundry_resource_builds_target_url(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_FOUNDRY_RESOURCE", "my-resource")
 
     proxy = ProxyServer(port=45501)
-    proxy._allocated_port = 45501
+    proxy.allocated_port = 45501
 
     # Resolve target URL before starting proxy
     target_url = claude_utils.resolve_target_url_from_env({})
@@ -78,7 +81,7 @@ def test_foundry_missing_config_fails(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_FOUNDRY_RESOURCE", raising=False)
 
     proxy = ProxyServer(port=45502)
-    proxy._allocated_port = 45502
+    proxy.allocated_port = 45502
 
     # Resolve target URL - should return None for invalid config
     target_url = claude_utils.resolve_target_url_from_env({})

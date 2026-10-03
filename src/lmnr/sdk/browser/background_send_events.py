@@ -145,8 +145,8 @@ def _cleanup_background_loop():
                 for f in futures_to_wait:
                     _cancelled = f.cancel()
                 raise
-            except Exception as e:
-                logger.debug(f"Error in async send: {e}")
+            except Exception:
+                logger.debug("Error in async send", exc_info=True)
 
     # Stop the background loop
     if _background_loop is not None and not _background_loop.is_closed():
@@ -155,5 +155,5 @@ def _cleanup_background_loop():
             # Wait for thread to finish
             if _background_loop_thread is not None:
                 _background_loop_thread.join(timeout=THREAD_JOIN_TIMEOUT_SECONDS)
-        except Exception as e:
-            logger.debug(f"Error stopping background loop: {e}")
+        except Exception:
+            logger.debug("Error stopping background loop", exc_info=True)

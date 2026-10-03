@@ -379,16 +379,18 @@ def get_token_count_from_string(string: str, model_name: str):
     if tiktoken_encodings.get(model_name) is None:
         try:
             encoding = tiktoken.encoding_for_model(model_name)
-        except KeyError as ex:
+        except KeyError:
             # no such model_name in tiktoken
             logger.warning(
-                f"Failed to get tiktoken encoding for model_name {model_name}, error: {str(ex)}"
+                "Failed to get tiktoken encoding for model_name {model_name}",
+                exc_info=True,
             )
             return None
-        except Exception as ex:
+        except Exception:
             # Other exceptions in tiktoken
             logger.warning(
-                f"Failed to get tiktoken encoding for model_name {model_name}, error: {str(ex)}"
+                "Failed to get tiktoken encoding for model_name {model_name}",
+                exc_info=True,
             )
             return None
 

@@ -130,8 +130,8 @@ async def run_evaluation(args: EvalArgs) -> None:
                             "url": eval_result["url"],
                         }
                     )
-                except Exception as e:
-                    LOG.error(f"Error running evaluation: {e}")
+                except Exception:
+                    LOG.exception("Error running evaluation")
                     if not args.continue_on_error:
                         raise
 

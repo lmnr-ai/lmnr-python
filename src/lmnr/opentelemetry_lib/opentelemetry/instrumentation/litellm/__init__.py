@@ -32,8 +32,8 @@ class LitellmInstrumentor(BaseLaminarInstrumentor):
         litellm_version = "unknown"
         try:
             litellm_version = version("litellm")
-        except Exception as e:
-            logger.debug(f"Failed to get litellm version {e}")
+        except Exception:
+            logger.debug("Failed to get litellm version", exc_info=True)
 
         return LaminarInstrumentationScopeAttributes(
             name="litellm",

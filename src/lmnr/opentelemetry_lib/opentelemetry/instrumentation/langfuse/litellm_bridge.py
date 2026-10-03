@@ -144,8 +144,8 @@ class LiteLLMLangfuseBridge:
                 cache: dict[Any, TracerProvider] = getattr(logger_obj, "_tracer_provider_cache", None) or {}  # pyright: ignore[reportExplicitAny]
                 for provider in list(cache.values()):
                     provider_attachment.attach(provider)
-            except Exception as exc:
-                logger.debug("LiteLLM cache-provider attach failed: %s", exc)
+            except Exception:
+                logger.debug("LiteLLM cache-provider attach failed", exc_info=True)
             return tracer
 
         def patched_get_ctx(
@@ -215,8 +215,8 @@ class LiteLLMLangfuseBridge:
                 # unrelated spans into Laminar.
                 if isinstance(result, LangfuseOtelLogger):
                     bridge._patch_logger(result)
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logger.debug("LiteLLM post-init attach failed: %s", exc)
+            except Exception:
+                logger.debug("LiteLLM post-init attach failed: %s", exc_info=True)
             return result
 
         litellm_logging._init_custom_logger_compatible_class = patched  # pyright: ignore[reportPrivateUsage]
@@ -232,8 +232,8 @@ class LiteLLMLangfuseBridge:
             litellm_logging._init_custom_logger_compatible_class = (  # pyright: ignore[reportPrivateUsage]
                 self._original_litellm_init_logger
             )
-        except Exception as exc:
-            logger.debug("Could not restore LiteLLM logger factory patch: %s", exc)
+        except Exception:
+            logger.debug("Could not restore LiteLLM logger factory patch", exc_info=True)
         finally:
             self._original_litellm_init_logger = None
 
@@ -248,6 +248,6 @@ class LiteLLMLangfuseBridge:
             try:
                 logger_obj._get_tracer_with_dynamic_headers = orig_get_tracer  # pyright: ignore[reportPrivateUsage]
                 logger_obj._get_span_context = orig_get_ctx  # pyright: ignore[reportPrivateUsage]
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logger.debug("Could not restore LiteLLM logger wrap: %s", exc)
+            except Exception:
+                logger.debug("Could not restore LiteLLM logger wrap", exc_info=True)
         self._wrapped_litellm_loggers = {}

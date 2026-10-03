@@ -80,8 +80,8 @@ def load_from_paths(paths: list[Path], recursive: bool = False) -> list[dict[str
             data = _read_file(file)
             result.extend(data)
             LOG.info(f"Read {len(data)} record(s) from {file}")
-        except Exception as e:
-            LOG.error(f"Error reading file {file}: {e}")
+        except Exception:
+            LOG.exception(f"Error reading file {file}")
             raise
 
     return result

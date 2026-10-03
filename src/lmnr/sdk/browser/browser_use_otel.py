@@ -162,8 +162,8 @@ class BrowserUseLegacyInstrumentor(BaseLaminarInstrumentor):
         if self._scope is None:
             try:
                 bu_version = version("browser-use")
-            except Exception as e:
-                logger.debug(f"Failed to get browser-use version {e}")
+            except Exception:
+                logger.debug("Failed to get browser-use version", exc_info=True)
                 bu_version = "unknown"
             self._scope = LaminarInstrumentationScopeAttributes(
                 name="browser-use",

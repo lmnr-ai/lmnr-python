@@ -2,13 +2,13 @@
 
 import json
 import logging
-from typing import Collection
-
+from collections.abc import AsyncIterable, Callable, Collection, Iterable, Sequence
 from importlib.metadata import version
-from typing import Any, Sequence
+from typing import Any, cast
 
 from langchain_core.runnables.graph import Graph
-from opentelemetry.context import get_value, attach, set_value
+from opentelemetry.context import attach, get_value, set_value
+from typing_extensions import TypeVar, override
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
@@ -19,20 +19,21 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
 
-
 logger = logging.getLogger(__name__)
 
 _instruments = ("langgraph >= 0.1.0",)
 
+T = TypeVar("T")
+
 
 def wrap_pregel_stream(
-    to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
-):
-    graph: Graph = instance.get_graph()
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., Iterable[T]],
+    instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+)-> Iterable[T]:
+    graph = cast(Graph, instance.get_graph())  # pyright: ignore[reportAny]
     nodes = [
         {
             "id": node.id,
@@ -53,20 +54,20 @@ def wrap_pregel_stream(
         "langgraph.edges": json.dumps(edges),
         "langgraph.nodes": json.dumps(nodes),
     }
-    association_properties = get_value("lmnr.langgraph.graph") or {}
+    association_properties = cast(dict[str, str], get_value("lmnr.langgraph.graph") or {})
     association_properties.update(d)
-    attach(set_value("lmnr.langgraph.graph", association_properties))
+    _attach_token = attach(set_value("lmnr.langgraph.graph", association_properties))
     return wrapped(*args, **kwargs)
 
 
 async def async_wrap_pregel_stream(
-    to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
-):
-    graph: Graph = await instance.aget_graph()
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., AsyncIterable[T]],
+    instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+)-> AsyncIterable[T]:
+    graph = cast(Graph, await instance.aget_graph())  # pyright: ignore[reportAny]
     nodes = [
         {
             "id": node.id,
@@ -88,9 +89,9 @@ async def async_wrap_pregel_stream(
         "langgraph.edges": json.dumps(edges),
         "langgraph.nodes": json.dumps(nodes),
     }
-    association_properties = get_value("lmnr.langgraph.graph") or {}
+    association_properties = cast(dict[str, str], get_value("lmnr.langgraph.graph") or {})
     association_properties.update(d)
-    attach(set_value("lmnr.langgraph.graph", association_properties))
+    _attach_token = attach(set_value("lmnr.langgraph.graph", association_properties))
 
     async for item in wrapped(*args, **kwargs):
         yield item
@@ -101,15 +102,17 @@ class LanggraphInstrumentor(BaseLaminarInstrumentor):
 
     _scope: LaminarInstrumentationScopeAttributes | None = None
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is None:
             try:
                 langgraph_version = version("langgraph")
-            except Exception as e:
-                logger.debug(f"Failed to get langgraph version {e}")
+            except Exception:
+                logger.debug("Failed to get langgraph version", exc_info=True)
                 langgraph_version = "unknown"
             self._scope = LaminarInstrumentationScopeAttributes(
                 name="langgraph",
@@ -119,7 +122,7 @@ class LanggraphInstrumentor(BaseLaminarInstrumentor):
 
     def __init__(self):
         super().__init__()
-        self.instrumentor_config = LaminarInstrumentorConfig(
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 WrappedFunctionSpec(
                     package_name="langgraph.pregel",

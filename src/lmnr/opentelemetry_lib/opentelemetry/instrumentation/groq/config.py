@@ -1,8 +1,7 @@
-from typing import Callable
+from collections.abc import Callable
 
 
 class Config:
-    enrich_token_usage = False
-    exception_logger = None
-    get_common_metrics_attributes: Callable[[], dict] = lambda: {}
-    use_legacy_attributes = True
+    enrich_token_usage: bool = False
+    exception_logger: Callable[..., None] | None = None
+    use_legacy_attributes: bool = True

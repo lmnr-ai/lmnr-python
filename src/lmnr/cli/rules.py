@@ -36,9 +36,9 @@ def add_cursor_rules() -> None:
 
         LOG.info(f"Successfully downloaded laminar.mdc to {target_file}")
 
-    except urllib.error.URLError as e:
-        LOG.error(f"Failed to download file from {url}: {e}")
+    except urllib.error.URLError:
+        LOG.exception(f"Failed to download file from {url}")
         sys.exit(1)
-    except Exception as e:
-        LOG.error(f"Unexpected error: {e}")
+    except Exception:
+        LOG.exception("Unexpected error")
         sys.exit(1)

@@ -36,6 +36,9 @@ LaminarSpanType = Literal[
     "DEFAULT",
     "LLM",
     "TOOL",
+    "EVALUATION",
+    "EXECUTOR",
+    "EVALUATOR"
 ]
 
 

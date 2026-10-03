@@ -23,10 +23,12 @@ import uuid
 from temporalio.api.common.v1 import Payload
 from temporalio.converter import PayloadConverter
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.temporal.consts import (
+    LAMINAR_SPAN_CONTEXT_HEADER,
+    TRACEPARENT_HEADER,
+)
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import LaminarSpanContext
-
-from .consts import LAMINAR_SPAN_CONTEXT_HEADER, TRACEPARENT_HEADER
 
 logger = get_default_logger(__name__)
 
@@ -43,7 +45,7 @@ def decode_payload(payload: Payload | None) -> str | None:
     if payload is None:
         return None
     try:
-        value = _payload_converter.from_payloads([payload])[0]
+        value = _payload_converter.from_payloads([payload])[0]  # pyright: ignore[reportAny]
         return value if isinstance(value, str) else None
     except Exception:
         return None
@@ -87,9 +89,10 @@ def restore_context_from_headers(
     if laminar_raw:
         try:
             return LaminarSpanContext.deserialize(laminar_raw)
-        except Exception as e:
+        except Exception:
             logger.warning(
-                f"Could not restore {LAMINAR_SPAN_CONTEXT_HEADER}: {e}"
+                f"Could not restore {LAMINAR_SPAN_CONTEXT_HEADER}",
+                exc_info=True,
             )
 
     traceparent = decode_payload(headers.get(TRACEPARENT_HEADER))
@@ -102,7 +105,7 @@ def restore_context_from_headers(
                     span_id=uuid.UUID(hex=parts[2].rjust(32, "0")),
                     is_remote=True,
                 )
-            except Exception as e:
-                logger.warning(f"Could not restore traceparent: {e}")
+            except Exception:
+                logger.warning("Could not restore traceparent", exc_info=True)
 
     return None

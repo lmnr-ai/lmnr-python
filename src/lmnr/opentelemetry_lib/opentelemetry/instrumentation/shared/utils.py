@@ -1,24 +1,26 @@
+import traceback
+from collections.abc import Callable
 from copy import deepcopy
 from typing import Any
-
-import traceback
 
 from opentelemetry.context import Context
 from opentelemetry.trace import Span, SpanKind
 from opentelemetry.util.types import AttributeValue
 from pydantic import BaseModel
+from typing_extensions import TypeVar
 
 from lmnr.opentelemetry_lib.tracing.attributes import SPAN_TYPE
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
-from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.laminar import Laminar
+from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import LaminarSpanType
 
 logger = get_default_logger(__name__)
+T = TypeVar("T")
 
 
-def dont_throw(func):
-    def wrapper(*args, **kwargs):
+def dont_throw(func: Callable[..., T]) -> Callable[..., T | None]:
+    def wrapper(*args: Any, **kwargs: Any) -> T | None:  # pyright: ignore[reportAny, reportExplicitAny]
         logger = get_default_logger(func.__module__)
         try:
             return func(*args, **kwargs)
@@ -34,28 +36,28 @@ def dont_throw(func):
 
 
 def set_span_attribute(
-    span: Span, attribute_name: str, attribute_value: AttributeValue
+    span: Span, attribute_name: str, attribute_value: AttributeValue | None
 ):
     if attribute_value is not None and attribute_value != "":
         span.set_attribute(attribute_name, attribute_value)
 
 
-def to_dict(obj: Any) -> dict[str, Any]:
+def to_dict(obj: Any) -> dict[str, Any]:  # pyright: ignore[reportAny, reportExplicitAny]
     try:
         if isinstance(obj, BaseModel):
             return obj.model_dump()
         elif isinstance(obj, dict):
-            return deepcopy(obj)
+            return deepcopy(obj)  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
         elif obj is None:
             return {}
         else:
-            return dict(obj)
-    except Exception as e:
-        logger.debug(f"Error converting to dict: {obj}, error: {e}")
+            return dict(obj)  # pyright: ignore[reportAny]
+    except Exception:
+        logger.debug(f"Error converting to dict: {obj}", exc_info=True)
         return {}
 
 
-def extract_json_schema(schema: dict[str, Any] | BaseModel) -> dict[str, Any]:
+def extract_json_schema(schema: dict[str, Any] | BaseModel) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
     if isinstance(schema, dict):
         return schema
     elif hasattr(schema, "model_json_schema") and callable(schema.model_json_schema):

@@ -122,12 +122,12 @@ def prepend_span_processor(provider: TracerProvider, processor: SpanProcessor) -
                 active._span_processors = new_order
         else:
             active._span_processors = new_order
-    except Exception as exc:  # pylint: disable=broad-exception-caught
+    except Exception:
         logger.debug(
             "Could not reorder span processors on %r; translator will run " +
-            "after the exporter (%s)",
+            "after the exporter",
             provider,
-            exc,
+            exc_info=True,
         )
     return True
 
@@ -156,11 +156,11 @@ def remove_span_processor(provider: TracerProvider, processor: SpanProcessor | N
                 active._span_processors = filtered
         else:
             active._span_processors = filtered
-    except Exception as exc:  # pylint: disable=broad-exception-caught
+    except Exception:
         logger.debug(
-            "Could not remove span processor from %r (%s)",
+            "Could not remove span processor from %r",
             provider,
-            exc,
+            exc_info=True,
         )
         return False
     return True
@@ -210,8 +210,8 @@ def _write_attrs(span: ReadableSpan, new_attrs: dict[str, AttributeValue]) -> No
         for k, v in new_attrs.items():
             try:
                 target[k] = v
-            except Exception as e:
-               logger.debug(f"Failed to set attribute to span: {e}")
+            except Exception:
+               logger.debug("Failed to set attribute to span", exc_info=True)
     finally:
         if was_immutable:
             _set_immutable(True)
@@ -537,8 +537,8 @@ class LangfuseAttributeTranslator(SpanProcessor):
                 _translate_openinference(span)
             elif is_langfuse_span(span):
                 _translate(span)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.debug("Langfuse attribute translation failed: %s", exc)
+        except Exception as exc:
+            logger.debug("Langfuse attribute translation failed", exc_info=True)
 
     @override
     def shutdown(self) -> None:

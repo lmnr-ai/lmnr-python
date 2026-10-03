@@ -337,9 +337,9 @@ def init_instrumentations(
                         lmnr_tracer_provider=tracer_provider,
                         lmnr_span_processor=lmnr_span_processor,
                     )
-                except Exception as exc:  # pylint: disable=broad-exception-caught
+                except Exception:
                     module_logger.warning(
-                        "Failed to install Laminar/Langfuse bridge: %s", exc
+                        "Failed to install Laminar/Langfuse bridge", exc_info=True,
                     )
                 continue
             if not instrumentor.is_instrumented_by_opentelemetry:

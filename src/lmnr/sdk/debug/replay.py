@@ -63,8 +63,8 @@ def input_messages_from_span(span: Span | None) -> list[Any] | None:  # pyright:
         messages = json.loads(raw) if isinstance(raw, str) else raw
         if isinstance(messages, list):
             return messages  # pyright: ignore[reportUnknownVariableType]
-    except Exception as e:
-       logger.debug(f"Failed to get input mesages from span {e}")
+    except Exception:
+       logger.debug("Failed to get input mesages from span", exc_info=True)
     return None
 
 
@@ -143,5 +143,5 @@ def mark_span_cached(span: Span | None) -> None:
                     "lmnr.span.original_type": "LLM",
                 }
             )
-    except Exception as e:
-        logger.debug(f"Failed to mark span as cached {e}")
+    except Exception:
+        logger.debug("Failed to mark span as cached", exc_info=True)

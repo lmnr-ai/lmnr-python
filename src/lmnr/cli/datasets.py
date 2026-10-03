@@ -201,8 +201,8 @@ async def handle_datasets_list(args: DatasetsArgs) -> None:
 
     try:
         datasets = await client.datasets.list_datasets()
-    except Exception as e:
-        LOG.error(f"Failed to list datasets: {e}")
+    except Exception:
+        LOG.exception("Failed to list datasets")
         return
     finally:
         await client.close()
@@ -262,8 +262,8 @@ async def handle_datasets_push(args: DatasetsArgs) -> None:
         LOG.info(
             f"Pushed {len(datapoints)} data points to dataset {args.name or args.id}"
         )
-    except Exception as e:
-        LOG.error(f"Failed to push dataset: {e}")
+    except Exception:
+        LOG.exception("Failed to push dataset")
     finally:
         await client.close()
 
@@ -297,8 +297,8 @@ async def handle_datasets_pull(args: DatasetsArgs) -> None:
             offset=args.offset or 0,
             limit=args.limit,
         )
-    except Exception as e:
-        LOG.error(f"Failed to pull dataset: {e}")
+    except Exception:
+        LOG.exception("Failed to pull dataset")
         return
     finally:
         await client.close()
@@ -356,8 +356,8 @@ async def handle_datasets_create(args: DatasetsArgs) -> None:
         LOG.info(
             f"Successfully pushed {len(datapoints)} data points to dataset '{args.name}'"
         )
-    except Exception as e:
-        LOG.error(f"Failed to create dataset: {e}")
+    except Exception:
+        LOG.exception("Failed to create dataset")
         await client.close()
         return
 
@@ -372,8 +372,8 @@ async def handle_datasets_create(args: DatasetsArgs) -> None:
             offset=0,
             limit=None,
         )
-    except Exception as e:
-        LOG.error(f"Failed to pull dataset after creation: {e}")
+    except Exception:
+        LOG.exception("Failed to pull dataset after creation")
         return
     finally:
         await client.close()

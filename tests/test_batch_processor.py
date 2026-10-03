@@ -504,7 +504,7 @@ def _run_in_fork(child, timeout: float = 30.0) -> str:
         os.close(read_fd)
         try:
             child(lambda text: os.write(write_fd, text.encode()))
-        except BaseException as exc:  # noqa: BLE001 - reported, not swallowed
+        except BaseException as exc:
             os.write(write_fd, f"EXCEPTION {type(exc).__name__}: {exc}".encode())
         finally:
             os.close(write_fd)

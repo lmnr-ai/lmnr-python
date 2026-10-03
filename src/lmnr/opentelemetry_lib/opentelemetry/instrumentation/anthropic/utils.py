@@ -5,36 +5,45 @@ import logging
 import os
 import threading
 import traceback
+from collections.abc import Awaitable, Callable
 from importlib.metadata import version
+from typing import cast
 
 from opentelemetry import context as context_api
-from .config import Config
+from opentelemetry.trace import Span
+from opentelemetry.util.types import AttributeValue
+from typing_extensions import TypeVar
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.config import Config
+from lmnr.sdk.log import get_default_logger
 
 _PYDANTIC_VERSION = version("pydantic")
 
 LMNR_TRACE_CONTENT = "LMNR_TRACE_CONTENT"
 
 
-def set_span_attribute(span, name, value):
-    if value is not None:
-        if value != "":
-            span.set_attribute(name, value)
-    return
+logger = get_default_logger(__name__)
 
 
-def should_send_prompts():
+T = TypeVar("T")
+
+
+def set_span_attribute(span: Span, name: str, value: AttributeValue | None):
+    if value is not None and value != "":
+        span.set_attribute(name, value)
+
+
+def should_send_prompts() -> bool:
     return (
         os.getenv(LMNR_TRACE_CONTENT) or "true"
-    ).lower() == "true" or context_api.get_value("override_enable_content_tracing")
+    ).lower() == "true" or cast(bool, context_api.get_value("override_enable_content_tracing"))
 
 
-def dont_throw(func):
+def dont_throw(func: Callable[..., T | Awaitable[T]]) -> Callable[..., T | Awaitable[T]] | None:  # pyright: ignore[reportExplicitAny]
     """
     A decorator that wraps the passed in function and logs exceptions instead of throwing them.
     Works for both synchronous and asynchronous functions.
     """
-    logger = logging.getLogger(func.__module__)
-
     async def async_wrapper(*args, **kwargs):
         try:
             return await func(*args, **kwargs)
@@ -59,7 +68,7 @@ def dont_throw(func):
     return async_wrapper if inspect.iscoroutinefunction(func) else sync_wrapper
 
 
-async def _aextract_response_data(response):
+async def aextract_response_data(response):
     """Async version of _extract_response_data that can await coroutines."""
     import inspect
 
@@ -67,11 +76,8 @@ async def _aextract_response_data(response):
     if inspect.iscoroutine(response):
         try:
             response = await response
-        except Exception as e:
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.debug(f"Failed to await coroutine response: {e}")
+        except Exception:
+            logger.debug("Failed to await coroutine response", exc_info=True)
             return {}
 
     if isinstance(response, dict):
@@ -85,12 +91,10 @@ async def _aextract_response_data(response):
             if not isinstance(parsed_response, dict):
                 parsed_response = parsed_response.__dict__
             return parsed_response
-        except Exception as e:
-            import logging
-
-            logger = logging.getLogger(__name__)
+        except Exception:
             logger.debug(
-                f"Failed to parse response: {e}, response type: {type(response)}"
+                f"Failed to parse response, response type: {type(response)}",
+                exc_info=True,
             )
 
     # Fallback to __dict__ for regular response objects
@@ -101,15 +105,12 @@ async def _aextract_response_data(response):
     return {}
 
 
-def _extract_response_data(response):
+def extract_response_data(response):
     """Extract the actual response data from both regular and with_raw_response wrapped responses."""
     import inspect
 
     # If we get a coroutine, we cannot process it in sync context
     if inspect.iscoroutine(response):
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.warning(
             f"_extract_response_data received coroutine {response} - response processing skipped"
         )
@@ -126,12 +127,10 @@ def _extract_response_data(response):
             if not isinstance(parsed_response, dict):
                 parsed_response = parsed_response.__dict__
             return parsed_response
-        except Exception as e:
-            import logging
-
-            logger = logging.getLogger(__name__)
+        except Exception:
             logger.debug(
-                f"Failed to parse response: {e}, response type: {type(response)}"
+                f"Failed to parse response, response type: {type(response)}",
+                exc_info=True,
             )
 
     # Fallback to __dict__ for regular response objects

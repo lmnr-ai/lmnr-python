@@ -58,11 +58,11 @@ class TestTracerWrapperRaceCondition:
                 return result
 
             except AttributeError as e:
-                exception_msg = f"Thread-{thread_id}: RACE CONDITION - {str(e)}"
+                exception_msg = f"Thread-{thread_id}: RACE CONDITION - {e!s}"
                 exceptions.append(exception_msg)
                 raise AssertionError(exception_msg) from e
             except Exception as e:
-                exception_msg = f"Thread-{thread_id}: {type(e).__name__} - {str(e)}"
+                exception_msg = f"Thread-{thread_id}: {type(e).__name__} - {e!s}"
                 exceptions.append(exception_msg)
                 raise AssertionError(exception_msg) from e
 
@@ -288,7 +288,7 @@ class TestTracerWrapperRaceCondition:
 
             except AttributeError as e:
                 if "span_processor" in str(e):
-                    exception_msg = f"Stress-{thread_id}: SINGLETON RACE - {str(e)}"
+                    exception_msg = f"Stress-{thread_id}: SINGLETON RACE - {e!s}"
                     exceptions.append(exception_msg)
                     raise AssertionError(exception_msg) from e
                 raise

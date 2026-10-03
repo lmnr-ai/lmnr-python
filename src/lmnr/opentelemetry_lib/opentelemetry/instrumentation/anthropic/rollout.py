@@ -63,8 +63,8 @@ class AnthropicRolloutWrapper:
                 if "usage" in response_dict:
                     response_dict["usage"] = {"input_tokens": 0, "output_tokens": 0}
                 return Message.model_validate(response_dict)
-            except Exception as e:
-                logger.debug(f"Failed to parse raw Anthropic response: {e}", exc_info=True)
+            except Exception:
+                logger.debug("Failed to parse raw Anthropic response", exc_info=True)
                 return None
 
         # envelope_type == "genAi"
@@ -86,9 +86,9 @@ class AnthropicRolloutWrapper:
                 type="message",
                 usage=Usage(input_tokens=0, output_tokens=0),
             )
-        except Exception as e:
+        except Exception:
             logger.debug(
-                f"Failed to convert genAi response to Anthropic format: {e}",
+                "Failed to convert genAi response to Anthropic format",
                 exc_info=True,
             )
             return None
@@ -226,8 +226,8 @@ def get_anthropic_rollout_wrapper() -> AnthropicRolloutWrapper | None:
     if _anthropic_rollout_wrapper is None:
         try:
             _anthropic_rollout_wrapper = AnthropicRolloutWrapper()
-        except Exception as e:
-            logger.error(f"Failed to create Anthropic replay wrapper: {e}")
+        except Exception:
+            logger.exception("Failed to create Anthropic replay wrapper")
             return None
 
     return _anthropic_rollout_wrapper
