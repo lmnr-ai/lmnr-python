@@ -4,15 +4,24 @@ import json
 import logging
 import os
 from collections import defaultdict
+from collections.abc import (
+    AsyncGenerator,
+    Awaitable,
+    Callable,
+    Collection,
+    Generator,
+    Sequence,
+)
 from importlib.metadata import version
-from typing import Any, AsyncGenerator, Callable, Collection, Generator, Sequence
+from typing import Any, cast
 
 from google.genai import types
 from opentelemetry import context as context_api
-from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
+from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv._incubating.attributes import gen_ai_attributes
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.trace import Span, Status, StatusCode
+from typing_extensions import TypeVar, override
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
@@ -34,9 +43,6 @@ from lmnr.opentelemetry_lib.tracing.context import (
 from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.utils import json_dumps
 
-from .config import (
-    Config,
-)
 from .schema_utils import SchemaJSONEncoder, process_schema
 from .utils import (
     content_union_to_dict,
@@ -49,18 +55,23 @@ from .utils import (
 )
 
 logger = logging.getLogger(__name__)
+T = TypeVar("T")
 
 _instruments = ("google-genai >= 1.0.0",)
 
 def should_send_prompts():
     return (
         os.getenv("LAMINAR_TRACE_CONTENT") or "true"
-    ).lower() == "true" or context_api.get_value("override_enable_content_tracing")
+    ).lower() == "true" or cast(bool, context_api.get_value("override_enable_content_tracing"))
 
 
 @dont_throw
-def _set_request_attributes(span, args, kwargs):
-    config_dict = to_dict(kwargs.get("config", {}))
+def _set_request_attributes(
+    span: Span,
+    _args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+):
+    config_dict = to_dict(kwargs.get("config", {}))  # pyright: ignore[reportAny]
     set_span_attribute(
         span, gen_ai_attributes.GEN_AI_REQUEST_MODEL, kwargs.get("model")
     )
@@ -112,45 +123,45 @@ def _set_request_attributes(span, args, kwargs):
                 json.dumps(process_schema(schema), cls=SchemaJSONEncoder),
             )
         except Exception:
-            pass
+            logger.debug("Failed to set response schema span attribute", exc_info=True)
     elif json_schema := config_dict.get("response_json_schema"):
         try:
             set_span_attribute(
                 span,
                 "gen_ai.request.structured_output_schema",
-                json_dumps(json_schema),
+                json_dumps(json_schema),  # pyright: ignore[reportAny]
             )
         except Exception:
-            pass
+            logger.debug("Failed to set response schema span attribute", exc_info=True)
 
     tools: list[types.FunctionDeclaration] = []
     arg_tools = config_dict.get("tools", kwargs.get("tools"))
     if arg_tools:
-        for tool in arg_tools:
+        for tool in arg_tools:  # pyright: ignore[reportAny]
             if isinstance(tool, types.Tool):
                 tools.extend(tool.function_declarations or [])
             elif isinstance(tool, dict) and isinstance(
-                tool.get("function_declarations"), list
+                tool.get("function_declarations"), list  # pyright: ignore[reportUnknownMemberType]
             ):
-                tools.extend(tool.get("function_declarations", []))
+                tools.extend(tool.get("function_declarations", []))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
             elif isinstance(tool, Callable):
-                tools.append(types.FunctionDeclaration.from_callable(tool))
+                tools.append(types.FunctionDeclaration.from_callable_with_api_option(callable=tool))  # pyright: ignore[reportUnknownArgumentType]
 
     if should_send_prompts():
         messages = []
         system_instruction = config_dict.get("system_instruction")
         if system_instruction:
-            msg = content_union_to_dict(system_instruction, default_role="system")
+            msg = content_union_to_dict(system_instruction, default_role="system")  # pyright: ignore[reportAny]
             msg["role"] = "system"
-            messages.append(msg)
+            messages.append(msg)  # pyright: ignore[reportUnknownMemberType]
 
-        contents = kwargs.get("contents", [])
+        contents = kwargs.get("contents", [])  # pyright: ignore[reportAny]
         if not isinstance(contents, list):
             contents = [contents]
-        for content in contents:
-            messages.append(content_union_to_dict(content))
+        for content in contents:  # pyright: ignore[reportUnknownVariableType]
+            messages.append(content_union_to_dict(content))  # pyright: ignore[reportUnknownMemberType]
 
-        set_span_attribute(span, "gen_ai.input.messages", json_dumps(messages))
+        set_span_attribute(span, "gen_ai.input.messages", json_dumps(messages))  # pyright: ignore[reportUnknownArgumentType]
     if tools:
         span.set_attribute(
             "gen_ai.tool.definitions",
@@ -159,7 +170,7 @@ def _set_request_attributes(span, args, kwargs):
 
 
 @dont_throw
-def _set_response_attributes(span, response: types.GenerateContentResponse):
+def _set_response_attributes(span: Span, response: types.GenerateContentResponse):
     set_span_attribute(
         span, gen_ai_attributes.GEN_AI_RESPONSE_ID, to_dict(response).get("response_id")
     )
@@ -210,7 +221,7 @@ def _set_response_attributes(span, response: types.GenerateContentResponse):
 
 @dont_throw
 def _set_raw_response_attribute(
-    span, response: types.GenerateContentResponse, record_raw_response: bool = False
+    span: Span, response: types.GenerateContentResponse, record_raw_response: bool = False
 ):
     set_span_attribute(
         span,
@@ -247,15 +258,15 @@ def _build_from_streaming_response(
     response: Generator[types.GenerateContentResponse, None, None],
     record_raw_response: bool = False,
 ) -> Generator[types.GenerateContentResponse, None, None]:
-    final_parts = []
+    final_parts: list[types.Part | None] = []
     role = "model"
-    aggregated_usage_metadata = defaultdict(int)
+    aggregated_usage_metadata: defaultdict[Any, int] = defaultdict(int)  # pyright: ignore[reportExplicitAny]
     model_version = None
     for chunk in response:
         try:
             span.add_event("llm.content.completion.chunk")
         except Exception:
-            pass
+            logger.debug("Failed to add completion event on span", exc_info=True)
         # Important: do all processing in a separate sync function, that is
         # wrapped in @dont_throw. If we did it here, the @dont_throw on top of
         # this function would not be able to catch the errors, as they are
@@ -275,18 +286,19 @@ def _build_from_streaming_response(
             model_version = chunk_result["model_version"]
         yield chunk
 
+    fp = cast(list[Any], [p for p in final_parts if p is not None])  # pyright: ignore[reportExplicitAny]
     try:
         compound_response = types.GenerateContentResponse(
             candidates=[
-                {
-                    "content": {
-                        "parts": merge_text_parts(final_parts),
-                        "role": role,
-                    },
-                }
+                types.Candidate(
+                    content=types.Content(
+                        parts = merge_text_parts(fp),
+                        role = role,
+                    )
+                )
             ],
-            usage_metadata=types.GenerateContentResponseUsageMetadataDict(
-                **aggregated_usage_metadata
+            usage_metadata=types.GenerateContentResponseUsageMetadata.model_validate(
+                aggregated_usage_metadata
             ),
             model_version=model_version,
         )
@@ -306,15 +318,15 @@ async def _abuild_from_streaming_response(
     response: AsyncGenerator[types.GenerateContentResponse, None],
     record_raw_response: bool = False,
 ) -> AsyncGenerator[types.GenerateContentResponse, None]:
-    final_parts = []
+    final_parts: list[types.Part | None] = []
     role = "model"
-    aggregated_usage_metadata = defaultdict(int)
+    aggregated_usage_metadata: defaultdict[Any, int] = defaultdict(int)  # pyright: ignore[reportExplicitAny]
     model_version = None
     async for chunk in response:
         try:
             span.add_event("llm.content.completion.chunk")
         except Exception:
-            pass
+            logger.debug("Failed to add completion event on span", exc_info=True)
         # Important: do all processing in a separate sync function, that is
         # wrapped in @dont_throw. If we did it here, the @dont_throw on top of
         # this function would not be able to catch the errors, as they are
@@ -334,18 +346,19 @@ async def _abuild_from_streaming_response(
             model_version = chunk_result["model_version"]
         yield chunk
 
+    fp = cast(list[Any], [p for p in final_parts if p is not None])  # pyright: ignore[reportExplicitAny]
     try:
         compound_response = types.GenerateContentResponse(
             candidates=[
-                {
-                    "content": {
-                        "parts": merge_text_parts(final_parts),
-                        "role": role,
-                    },
-                }
+                types.Candidate(
+                    content=types.Content(
+                        parts = merge_text_parts(fp),
+                        role = role,
+                    )
+                )
             ],
-            usage_metadata=types.GenerateContentResponseUsageMetadataDict(
-                **aggregated_usage_metadata
+            usage_metadata=types.GenerateContentResponseUsageMetadata.model_validate(
+                aggregated_usage_metadata
             ),
             model_version=model_version,
         )
@@ -361,11 +374,11 @@ async def _abuild_from_streaming_response(
 
 def _wrap(
     to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
-):
+    wrapped: Callable[..., types.GenerateContentResponse],
+    instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+) -> types.GenerateContentResponse | Generator[types.GenerateContentResponse] | Awaitable[types.GenerateContentResponse |  AsyncGenerator[types.GenerateContentResponse]] | None:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
@@ -431,11 +444,11 @@ def _wrap(
 
 async def _awrap(
     to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance: Any,
-    args: Sequence[Any],
-    kwargs: dict[str, Any],
-):
+    wrapped: Callable[..., Awaitable[types.GenerateContentResponse]],
+    instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
+    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+) -> types.GenerateContentResponse | Generator[types.GenerateContentResponse] | AsyncGenerator[types.GenerateContentResponse] | Awaitable[AsyncGenerator[types.GenerateContentResponse] | types.GenerateContentResponse] | None:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
@@ -482,7 +495,7 @@ async def _awrap(
                 import inspect
 
                 if inspect.iscoroutine(result):
-                    response = await result
+                    response = await result  # pyright: ignore[reportAny]
                 elif inspect.isasyncgen(result):
                     # It's an async generator (cached streaming response)
                     response = result
@@ -561,19 +574,20 @@ class GoogleGenAiSdkInstrumentor(BaseLaminarInstrumentor):
 
     _scope: LaminarInstrumentationScopeAttributes | None = None
 
-    def __init__(self, exception_logger=None):
+    def __init__(self):
         super().__init__()
-        Config.exception_logger = exception_logger
-        self.instrumentor_config = LaminarInstrumentorConfig(
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 {**spec, "instrumentation_scope": self.instrumentation_scope()}
                 for spec in WRAPPED_FUNCTIONS
             ]
         )
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is None:
             try:
