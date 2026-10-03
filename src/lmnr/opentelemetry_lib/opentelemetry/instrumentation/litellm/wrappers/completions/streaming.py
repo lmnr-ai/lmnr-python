@@ -1,6 +1,6 @@
 from collections import defaultdict
 from collections.abc import AsyncGenerator, Generator
-from typing import Any
+from typing import Any, TypedDict, TypeVar, cast
 
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_USAGE_INPUT_TOKENS,
@@ -16,40 +16,102 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
 from lmnr.sdk.utils import json_dumps
 
 
+class _ToolCallFunction(TypedDict):
+    name: str | None
+    arguments: str
+
+
+class _ToolCall(TypedDict):
+    index: int
+    id: str | None
+    type: str | None
+    function: _ToolCallFunction
+
+
+class _Choice(TypedDict):
+    index: int | None
+    content: str
+    role: str
+    reasoning_content: str
+    finish_reason: str | None
+    tool_calls: dict[int, _ToolCall]
+
+
+class _Usage(TypedDict, total=False):
+    prompt_tokens: int
+    completion_tokens: int
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    prompt_tokens_details: dict[str, int]
+    cache_read_input_tokens: int
+    cache_creation_input_tokens: int
+
+
+class _Accumulated(TypedDict):
+    id: str | None
+    model: str | None
+    usage: _Usage | None
+    choices: defaultdict[int, _Choice]
+
+
+T = TypeVar("T")
+
+
+def _new_choice() -> _Choice:
+    return {
+        "index": None,
+        "content": "",
+        "role": "assistant",
+        "reasoning_content": "",
+        "finish_reason": None,
+        "tool_calls": {},
+    }
+
+
+def _new_accumulated() -> _Accumulated:
+    return {
+        "id": None,
+        "model": None,
+        "usage": None,
+        "choices": defaultdict(_new_choice),
+    }
+
+
 @dont_throw
-def _accumulate_chunk(accumulated: dict, chunk: dict):
+def _accumulate_chunk(accumulated: _Accumulated, chunk: Any):  # pyright: ignore[reportAny, reportExplicitAny]
     chunk_dict = to_dict(chunk)
     if accumulated["id"] is None and chunk_dict.get("id"):
         accumulated["id"] = chunk_dict.get("id")
     if accumulated["model"] is None and chunk_dict.get("model"):
         accumulated["model"] = chunk_dict.get("model")
     if chunk_dict.get("usage") is not None:
-        accumulated["usage"] = to_dict(chunk_dict["usage"])
-    for i, choice in enumerate(chunk_dict.get("choices", [])):
-        idx = choice.get("index", i)
-        accumulated["choices"][idx]["content"] += choice.get("content", "")
+        accumulated["usage"] = cast(_Usage, cast(object, to_dict(chunk_dict["usage"])))
+    for i, choice in enumerate(chunk_dict.get("choices", [])):  # pyright: ignore[reportAny]
+        idx = cast(int, choice.get("index", i))  # pyright: ignore[reportAny]
+        accumulated["choices"][idx]["content"] += choice.get("content", "")  # pyright: ignore[reportAny]
         accumulated["choices"][idx]["index"] = idx
-        if choice.get("finish_reason"):
-            accumulated["choices"][idx]["finish_reason"] = choice.get("finish_reason")
-        delta = choice.get("delta", {})
-        if delta.get("role"):
-            accumulated["choices"][idx]["role"] = delta.get("role")
-        if delta.get("content"):
-            accumulated["choices"][idx]["content"] += delta.get("content")
+        if choice.get("finish_reason"):  # pyright: ignore[reportAny]
+            accumulated["choices"][idx]["finish_reason"] = choice.get("finish_reason")  # pyright: ignore[reportAny]
+        delta = choice.get("delta", {})  # pyright: ignore[reportAny]
+        if delta.get("role"):  # pyright: ignore[reportAny]
+            accumulated["choices"][idx]["role"] = delta.get("role")  # pyright: ignore[reportAny]
+        if delta.get("content"):  # pyright: ignore[reportAny]
+            accumulated["choices"][idx]["content"] += delta.get("content")  # pyright: ignore[reportAny]
         reasoning = next(
             (
-                delta.get(key)
+                delta.get(key)  # pyright: ignore[reportAny]
                 for key in ("reasoning_content", "reasoning", "thinking")
-                if delta.get(key)
+                if delta.get(key)  # pyright: ignore[reportAny]
             ),
             None,
         )
         if reasoning:
             accumulated["choices"][idx]["reasoning_content"] += reasoning
-        if delta.get("tool_calls"):
+        if delta.get("tool_calls"):  # pyright: ignore[reportAny]
             tool_calls_acc = accumulated["choices"][idx]["tool_calls"]
-            for tc_chunk in delta.get("tool_calls"):
-                tc_idx = tc_chunk.get("index", 0)
+            for tc_chunk in delta.get("tool_calls"):  # pyright: ignore[reportAny]
+                tc_idx = tc_chunk.get("index", 0)  # pyright: ignore[reportAny]
                 if tc_idx not in tool_calls_acc:
                     tool_calls_acc[tc_idx] = {
                         "index": tc_idx,
@@ -58,27 +120,27 @@ def _accumulate_chunk(accumulated: dict, chunk: dict):
                         "function": {"name": None, "arguments": ""},
                     }
                 tc = tool_calls_acc[tc_idx]
-                if tc_chunk.get("id"):
+                if tc_chunk.get("id"):  # pyright: ignore[reportAny]
                     tc["id"] = tc_chunk["id"]
-                if tc_chunk.get("type"):
+                if tc_chunk.get("type"):  # pyright: ignore[reportAny]
                     tc["type"] = tc_chunk["type"]
-                func = tc_chunk.get("function") or {}
-                if func.get("name"):
+                func = tc_chunk.get("function") or {}  # pyright: ignore[reportAny, reportUnknownVariableType]
+                if func.get("name"):  # pyright: ignore[reportUnknownMemberType]
                     tc["function"]["name"] = func["name"]
-                if func.get("arguments"):
+                if func.get("arguments"):  # pyright: ignore[reportUnknownMemberType]
                     tc["function"]["arguments"] += func["arguments"]
 
 
 @dont_throw
 def _set_accumulated_attributes(
-    span: Span, accumulated: dict, record_raw_response: bool = False
+    span: Span, accumulated: _Accumulated, record_raw_response: bool = False
 ):
     try:
         set_span_attribute(span, "gen_ai.response.id", accumulated["id"])
         set_span_attribute(span, "gen_ai.response.model", accumulated["model"])
         formatted_choices = []
         for choice in accumulated["choices"].values():
-            formatted_choices.append(
+            formatted_choices.append(  # pyright: ignore[reportUnknownMemberType]
                 {
                     "index": choice["index"],
                     # if the content is empty, set it to None
@@ -99,7 +161,7 @@ def _set_accumulated_attributes(
             )
 
         set_span_attribute(
-            span, "gen_ai.output.messages", json_dumps(formatted_choices)
+            span, "gen_ai.output.messages", json_dumps(formatted_choices)  # pyright: ignore[reportUnknownArgumentType]
         )
 
         if usage := accumulated.get("usage"):
@@ -117,7 +179,7 @@ def _set_accumulated_attributes(
                 set_span_attribute(
                     span,
                     "gen_ai.usage.cache_read_input_tokens",
-                    input_details["cached_tokens"],
+                    input_details["cached_tokens"],  # pyright: ignore[reportAny]
                 )
             elif "cache_read_input_tokens" in usage:
                 set_span_attribute(
@@ -129,7 +191,7 @@ def _set_accumulated_attributes(
                 set_span_attribute(
                     span,
                     "gen_ai.usage.cache_creation_input_tokens",
-                    input_details["cache_creation_tokens"],
+                    input_details["cache_creation_tokens"],  # pyright: ignore[reportAny]
                 )
             elif "cache_creation_input_tokens" in usage:
                 set_span_attribute(
@@ -141,7 +203,7 @@ def _set_accumulated_attributes(
         # Record raw response in rollout mode
         if record_raw_response:
             # Reconstruct full response from accumulated data
-            raw_response = {
+            raw_response: dict[str, Any] = {  # pyright: ignore[reportExplicitAny]
                 "id": accumulated["id"],
                 "model": accumulated["model"],
                 "object": "chat.completion",
@@ -149,7 +211,7 @@ def _set_accumulated_attributes(
                 "usage": accumulated.get("usage"),
             }
             for choice in accumulated["choices"].values():
-                raw_response["choices"].append(
+                raw_response["choices"].append(  # pyright: ignore[reportAny]
                     {
                         "index": choice["index"],
                         "message": {
@@ -178,24 +240,10 @@ def _set_accumulated_attributes(
 
 def process_completion_streaming_response(
     span: Span,
-    response: Generator[Any, None, None],
+    response: Generator[T, None, None],
     record_raw_response: bool = False,
-) -> Generator[Any, None, None]:
-    accumulated = {
-        "id": None,
-        "model": None,
-        "usage": None,
-        "choices": defaultdict(
-            lambda: {
-                "index": None,
-                "content": "",
-                "role": "assistant",
-                "reasoning_content": "",
-                "finish_reason": None,
-                "tool_calls": {},
-            }
-        ),
-    }
+) -> Generator[T, None, None]:
+    accumulated = _new_accumulated()
     try:
         for item in response:
             _accumulate_chunk(accumulated, item)
@@ -210,24 +258,10 @@ def process_completion_streaming_response(
 
 async def process_completion_async_streaming_response(
     span: Span,
-    response: AsyncGenerator[Any, None],
+    response: AsyncGenerator[T, None],
     record_raw_response: bool = False,
-) -> AsyncGenerator[Any, None]:
-    accumulated = {
-        "id": None,
-        "model": None,
-        "usage": None,
-        "choices": defaultdict(
-            lambda: {
-                "index": None,
-                "content": "",
-                "role": "assistant",
-                "reasoning_content": "",
-                "finish_reason": None,
-                "tool_calls": {},
-            }
-        ),
-    }
+) -> AsyncGenerator[T, None]:
+    accumulated = _new_accumulated()
     try:
         async for item in response:
             _accumulate_chunk(accumulated, item)

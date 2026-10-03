@@ -49,7 +49,7 @@ class LitellmInstrumentor(BaseLaminarInstrumentor):
 
     def __init__(self):
         super().__init__()
-        self.instrumentor_config = LaminarInstrumentorConfig(
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 # we are not wrapping `acompletion`, and `aresponses`,
                 # because they call `completion` and `responses` internally respectively

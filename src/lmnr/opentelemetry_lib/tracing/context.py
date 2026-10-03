@@ -212,6 +212,16 @@ def is_in_litellm_context() -> bool:
     return _in_litellm_context.get()
 
 
+def set_in_litellm_context(value: bool = True) -> Token[bool]:
+    """Set the LiteLLM context flag. Returns a token for `reset_in_litellm_context`."""
+    return _in_litellm_context.set(value)
+
+
+def reset_in_litellm_context(token: Token[bool]) -> None:
+    """Restore the LiteLLM context flag to its value before the matching set."""
+    _in_litellm_context.reset(token)
+
+
 @contextmanager
 def in_litellm_context() -> Generator[None, None, None]:
     """Context manager to run code in a LiteLLM context.
@@ -219,11 +229,11 @@ def in_litellm_context() -> Generator[None, None, None]:
     This sets a flag that can be checked by instrumentation code to determine
     if it's being called from within LiteLLM, allowing it to avoid double-instrumentation.
     """
-    token = _in_litellm_context.set(True)
+    token = set_in_litellm_context(True)
     try:
         yield
     finally:
-        _in_litellm_context.reset(token)
+        reset_in_litellm_context(token)
 
 
 # Set once, process-wide: `threading.Thread.__init__` is monkey-patched so that
