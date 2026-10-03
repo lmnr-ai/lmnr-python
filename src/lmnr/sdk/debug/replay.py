@@ -16,6 +16,7 @@ from typing import Any
 
 from opentelemetry.sdk.trace import Span
 
+from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from lmnr.sdk.debug import get_runtime
 from lmnr.sdk.debug.hash import debug_input_hash
 from lmnr.sdk.debug.outcome import CacheOutcome
@@ -45,7 +46,7 @@ def replay_enabled() -> bool:
     return runtime is not None and runtime.replay_configured
 
 
-def input_messages_from_span(span: Span | None) -> list[Any] | None:  # pyright: ignore[reportExplicitAny]
+def input_messages_from_span(span: Span | LaminarSpan | None) -> list[Any] | None:  # pyright: ignore[reportExplicitAny]
     """Read and parse the `gen_ai.input.messages` JSON off a live span.
 
     Every provider sets this attribute (via `json_dumps`) before the rollout
@@ -68,7 +69,7 @@ def input_messages_from_span(span: Span | None) -> list[Any] | None:  # pyright:
     return None
 
 
-def cache_outcome_for(span: Span | None) -> CacheOutcome | None:
+def cache_outcome_for(span: Span | LaminarSpan | None) -> CacheOutcome | None:
     """Decide HIT / MISS / LIVE for one live LLM call (sync path).
 
     Returns None when there is nothing to do (debug off, replay not configured,
@@ -133,7 +134,7 @@ async def acache_outcome_for(span: Span | None) -> CacheOutcome | None:
     return outcome
 
 
-def mark_span_cached(span: Span | None) -> None:
+def mark_span_cached(span: Span | LaminarSpan | None) -> None:
     """Stamp the CACHED boundary attributes the frontend renders (§9)."""
     try:
         if span and span.is_recording():
