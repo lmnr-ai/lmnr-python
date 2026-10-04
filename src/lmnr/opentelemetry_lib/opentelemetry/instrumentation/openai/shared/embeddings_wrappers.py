@@ -16,8 +16,8 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.shared import (
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
     is_openai_v1,
-    should_send_prompts,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import should_send_prompts
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )

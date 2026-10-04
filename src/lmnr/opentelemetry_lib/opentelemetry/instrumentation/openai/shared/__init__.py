@@ -1,6 +1,5 @@
 import json
 import types
-from collections.abc import Mapping
 from typing import Any, cast
 
 import pydantic

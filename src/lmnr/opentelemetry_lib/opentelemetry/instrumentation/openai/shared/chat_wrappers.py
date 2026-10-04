@@ -23,7 +23,6 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.shared import (
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
     is_openai_v1,
-    should_send_prompts,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
@@ -33,6 +32,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     model_as_dict,
     safe_start_span,
     set_span_attribute,
+    should_send_prompts,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     stamp_instrumentation_scope,
@@ -42,7 +42,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
     is_in_litellm_context,
 )
 from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.utils import JsonValue, json_dumps
+from lmnr.sdk.utils import json_dumps
 
 SPAN_NAME = "openai.chat"
 

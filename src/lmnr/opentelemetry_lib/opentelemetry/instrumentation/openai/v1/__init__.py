@@ -1,6 +1,26 @@
+from collections.abc import Collection
 from importlib.metadata import version
-from typing import Collection
 
+from typing_extensions import override
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.shared.chat_wrappers import (
+    achat_wrapper,
+    chat_wrapper,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.shared.completion_wrappers import (
+    acompletion_wrapper,
+    completion_wrapper,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.shared.embeddings_wrappers import (
+    aembeddings_wrapper,
+    embeddings_wrapper,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.v1.responses_wrappers import (
+    async_responses_cancel_wrapper,
+    async_responses_get_or_create_wrapper,
+    responses_cancel_wrapper,
+    responses_get_or_create_wrapper,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
 )
@@ -10,33 +30,6 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
 from lmnr.sdk.log import get_default_logger
-from ..shared.chat_wrappers import (
-    achat_wrapper,
-    chat_wrapper,
-)
-from ..shared.completion_wrappers import (
-    acompletion_wrapper,
-    completion_wrapper,
-)
-from ..shared.embeddings_wrappers import (
-    aembeddings_wrapper,
-    embeddings_wrapper,
-)
-from .assistant_wrappers import (
-    assistants_create_wrapper,
-    messages_list_wrapper,
-    runs_create_and_stream_wrapper,
-    runs_create_wrapper,
-    runs_retrieve_wrapper,
-)
-
-from .responses_wrappers import (
-    async_responses_cancel_wrapper,
-    async_responses_get_or_create_wrapper,
-    responses_cancel_wrapper,
-    responses_get_or_create_wrapper,
-)
-
 
 _instruments = ("openai >= 1.0.0",)
 logger = get_default_logger(__name__)
@@ -112,13 +105,6 @@ WRAPPED_FUNCTIONS: list[WrappedFunctionSpec] = [
     # instrumentor swallows AttributeError / ModuleNotFoundError / ImportError
     # per row, which is what the old `_try_wrap` helper did by hand.
     WrappedFunctionSpec(
-        package_name="openai.resources.beta.assistants",
-        object_name="Assistants",
-        method_name="create",
-        is_async=False,
-        wrapper_function=assistants_create_wrapper,
-    ),
-    WrappedFunctionSpec(
         package_name="openai.resources.beta.chat.completions",
         object_name="Completions",
         method_name="parse",
@@ -133,36 +119,6 @@ WRAPPED_FUNCTIONS: list[WrappedFunctionSpec] = [
         span_name="openai.chat",
         is_async=True,
         wrapper_function=achat_wrapper,
-    ),
-    WrappedFunctionSpec(
-        package_name="openai.resources.beta.threads.runs",
-        object_name="Runs",
-        method_name="create",
-        is_async=False,
-        wrapper_function=runs_create_wrapper,
-    ),
-    WrappedFunctionSpec(
-        package_name="openai.resources.beta.threads.runs",
-        object_name="Runs",
-        method_name="retrieve",
-        is_async=False,
-        wrapper_function=runs_retrieve_wrapper,
-    ),
-    WrappedFunctionSpec(
-        package_name="openai.resources.beta.threads.runs",
-        object_name="Runs",
-        method_name="create_and_stream",
-        span_name="openai.assistant.run_stream",
-        is_async=False,
-        wrapper_function=runs_create_and_stream_wrapper,
-    ),
-    WrappedFunctionSpec(
-        package_name="openai.resources.beta.threads.messages",
-        object_name="Messages",
-        method_name="list",
-        span_name="openai.assistant.run",
-        is_async=False,
-        wrapper_function=messages_list_wrapper,
     ),
     WrappedFunctionSpec(
         package_name="openai.resources.responses",
@@ -220,16 +176,18 @@ class OpenAIV1Instrumentor(BaseLaminarInstrumentor):
 
     def __init__(self):
         super().__init__()
-        self.instrumentor_config = LaminarInstrumentorConfig(
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 {**spec, "instrumentation_scope": self.instrumentation_scope()}
                 for spec in WRAPPED_FUNCTIONS
             ]
         )
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is None:
             try:

@@ -14,11 +14,12 @@ opens the span and builds `TracedData` post-hoc) and only borrows
 `cached_response_to_responses` from here to turn a cached envelope into an
 `openai.types.responses.Response`.
 """
+from __future__ import annotations
 
 import json
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Sequence
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from opentelemetry.sdk.trace import Span as SDKSpan
 from opentelemetry.trace import Span
@@ -44,13 +45,8 @@ from openai.types.chat.chat_completion_message_function_tool_call import (
     Function as ToolCallFunction,
 )
 
-try:
+if TYPE_CHECKING:
     from openai.types.responses import Response
-
-    _RESPONSES_AVAILABLE = True
-except ImportError:
-    Response = Any
-    _RESPONSES_AVAILABLE = False
 
 from lmnr.sdk.debug.replay import (
     acache_outcome_for,
@@ -81,7 +77,7 @@ class OpenAIRolloutWrapper:
                 if not raw:
                     logger.warning("Cached span type='raw' has no response field")
                     return None
-                response_dict = raw if isinstance(raw, dict) else json.loads(raw)
+                response_dict = raw if isinstance(raw, dict) else json.loads(raw)  # pyright: ignore[reportUnknownVariableType]
                 return ChatCompletion.model_validate(response_dict)
             except Exception:
                 logger.debug("Failed to parse raw OpenAI response", exc_info=True)
@@ -89,14 +85,14 @@ class OpenAIRolloutWrapper:
 
         # envelope_type == "genAi"
         try:
-            messages = cached_span.get("messages")
+            messages: list[dict[str, Any]] | None = cached_span.get("messages")
             if not isinstance(messages, list):
                 logger.warning("Cached span type='genAi' has no messages list")
                 return None
             model = cached_span.get("model", "unknown")
             finish_reasons = cached_span.get("finishReasons", [])
 
-            choices = []
+            choices: list[Choice] = []
             for i, choice_data in enumerate(messages):
                 msg = choice_data.get("message", {})
                 finish_reason = finish_reasons[i] if i < len(finish_reasons) else "stop"
@@ -117,8 +113,9 @@ class OpenAIRolloutWrapper:
 
                 function_call = None
                 if raw_fc := msg.get("function_call"):
+                    raw_fc = cast(dict[str, Any], raw_fc)
                     function_call = FunctionCall(
-                        name=raw_fc.get("name", ""),
+                        name=cast(str, raw_fc.get("name", "")),
                         arguments=raw_fc.get("arguments", ""),
                     )
 
@@ -130,7 +127,7 @@ class OpenAIRolloutWrapper:
                             role=msg.get("role", "assistant"),
                             content=msg.get("content"),
                             refusal=msg.get("refusal"),
-                            tool_calls=tool_calls,
+                            tool_calls=cast(list[Any], tool_calls),
                             function_call=function_call,
                             annotations=msg.get("annotations", []),
                         ),
@@ -155,7 +152,7 @@ class OpenAIRolloutWrapper:
 
     def cached_response_to_responses(
         self, cached_span: dict[str, Any]
-    ) -> "Response | None":
+    ) -> Response | None:
         """Convert a cached span envelope to an OpenAI Responses-API `Response`.
 
         Mirrors `cached_response_to_openai` but targets
@@ -165,7 +162,9 @@ class OpenAIRolloutWrapper:
         has the `{type, ...}` shape `Response.output` expects (message /
         function_call / reasoning / *_call blocks). Streaming is out of scope.
         """
-        if not _RESPONSES_AVAILABLE:
+        try:
+            from openai.types.responses import Response
+        except ImportError:
             logger.warning(
                 "openai.types.responses.Response unavailable; cannot serve cached " +
                 "Responses-API response"
@@ -183,7 +182,7 @@ class OpenAIRolloutWrapper:
                 if not raw:
                     logger.warning("Cached span type='raw' has no response field")
                     return None
-                response_dict = raw if isinstance(raw, dict) else json.loads(raw)
+                response_dict = raw if isinstance(raw, dict) else json.loads(raw)  # pyright: ignore[reportUnknownVariableType]
                 return Response.model_validate(response_dict)
             except Exception:
                 logger.debug(
@@ -194,7 +193,7 @@ class OpenAIRolloutWrapper:
 
         # envelope_type == "genAi"
         try:
-            messages = cached_span.get("messages")
+            messages: list[dict[str, Any]] | None = cached_span.get("messages")
             if not isinstance(messages, list):
                 logger.warning("Cached span type='genAi' has no messages list")
                 return None
@@ -204,7 +203,7 @@ class OpenAIRolloutWrapper:
             # response's output blocks — optionally preceded by a reasoning item —
             # as the OTel output messages. They already carry the discriminated
             # `type` field Response.output validates against, so pass them through.
-            output_items = [item for item in messages if isinstance(item, dict)]
+            output_items = [item for item in messages if isinstance(item, dict)]  # pyright: ignore[reportUnnecessaryIsInstance]
 
             response_dict = {
                 # Unique per reconstruction: the Responses instrumentation keys
@@ -292,7 +291,7 @@ class OpenAIRolloutWrapper:
         """Yield a cached response as a single streaming chunk."""
         response_dict = response.model_dump()
 
-        choices = []
+        choices: list[ChunkChoice] = []
         for choice in response_dict.get("choices", []):
             message = dict(choice.get("message", {}))
             # Streaming tool_calls require an `index` field that the message

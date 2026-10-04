@@ -33,7 +33,7 @@ def async_groq_client():
 
 @pytest.fixture(scope="function")
 def instrument_legacy(tracer_provider):
-    instrumentor = GroqInstrumentor(enrich_token_usage=True)
+    instrumentor = GroqInstrumentor()
     instrumentor.instrument(
         tracer_provider=tracer_provider,
     )

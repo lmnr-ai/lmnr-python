@@ -17,9 +17,7 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
 from opentelemetry.trace import Span
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.event_models import Usage
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.utils import (
-    should_send_prompts,
-)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import should_send_prompts
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     model_as_dict,

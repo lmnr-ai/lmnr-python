@@ -26,8 +26,8 @@ from .event_models import AnthropicResponseMessage
 from .utils import (
     aextract_response_data,
     extract_response_data,
-    should_send_prompts,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import should_send_prompts
 
 logger = logging.getLogger(__name__)
 

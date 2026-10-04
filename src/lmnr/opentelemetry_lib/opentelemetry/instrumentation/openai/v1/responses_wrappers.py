@@ -1,16 +1,52 @@
 import json
 import re
 import time
+from collections.abc import Awaitable, Callable, Sequence
+from typing import TYPE_CHECKING, Any, cast
 
 import pydantic
+from opentelemetry import context as context_api
+from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
+from opentelemetry.sdk.trace import Span as SDKSpan
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_REQUEST_MODEL,
+    GEN_AI_RESPONSE_ID,
+    GEN_AI_RESPONSE_MODEL,
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
+)
+from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
+from opentelemetry.trace import Span, SpanKind, StatusCode
+from typing_extensions import NotRequired, TypeVar
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.helpers import (
     DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    WrappedFunctionSpec,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    dont_throw,
+    model_as_dict,
+    safe_start_span,
+    set_span_attribute,
+    should_send_prompts,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    stamp_instrumentation_scope,
+)
+from lmnr.opentelemetry_lib.tracing.context import (
+    get_current_context,
+    get_event_attributes_from_context,
+)
+from lmnr.sdk.debug.outcome import CacheOutcome
+from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.utils import json_dumps
 from openai import AsyncStream, Stream
+from openai._legacy_response import LegacyAPIResponse
 
-# Conditional imports for backward compatibility
-try:
+# real types (first branch); the runtime fallback below keeps old SDKs working.
+if TYPE_CHECKING:
     from openai.types.responses import (
         FunctionToolParam,
         Response,
@@ -25,61 +61,38 @@ try:
     )
 
     RESPONSES_AVAILABLE = True
-except ImportError:
-    # Fallback types for older OpenAI SDK versions
-    from typing import Any, Dict, List, Union
+else:
+    try:
+        from openai.types.responses import (
+            FunctionToolParam,
+            Response,
+            ResponseInputItemParam,
+            ResponseInputParam,
+            ResponseOutputItem,
+            ResponseUsage,
+            ToolParam,
+        )
+        from openai.types.responses.response_output_message_param import (
+            ResponseOutputMessageParam,
+        )
 
-    # Create basic fallback types
-    FunctionToolParam = Dict[str, Any]
-    Response = Any
-    ResponseInputItemParam = Dict[str, Any]
-    ResponseInputParam = Union[str, List[Dict[str, Any]]]
-    ResponseOutputItem = Dict[str, Any]
-    ResponseUsage = Dict[str, Any]
-    ToolParam = Dict[str, Any]
-    ResponseOutputMessageParam = Dict[str, Any]
-    RESPONSES_AVAILABLE = False
+        RESPONSES_AVAILABLE = True
+    except ImportError:
+        # Fallback types for older OpenAI SDK versions
+        FunctionToolParam = dict[str, Any]
+        Response = Any
+        ResponseInputItemParam = dict[str, Any]
+        ResponseInputParam = str | list[dict[str, Any]]
+        ResponseOutputItem = dict[str, Any]
+        ResponseUsage = dict[str, Any]
+        ToolParam = dict[str, Any]
+        ResponseOutputMessageParam = dict[str, Any]
+        RESPONSES_AVAILABLE = False
 
-from typing import Any, Optional, Union
-
-from opentelemetry import context as context_api
-from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
-from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
-    GEN_AI_REQUEST_MODEL,
-    GEN_AI_RESPONSE_ID,
-    GEN_AI_RESPONSE_MODEL,
-    GEN_AI_USAGE_INPUT_TOKENS,
-    GEN_AI_USAGE_OUTPUT_TOKENS,
-)
-from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
-from opentelemetry.trace import Span, SpanKind, StatusCode
-from typing_extensions import NotRequired
-
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
-    WrappedFunctionSpec,
-)
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
-    safe_start_span,
-    set_span_attribute,
-)
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
-    stamp_instrumentation_scope,
-)
-from lmnr.opentelemetry_lib.tracing.context import (
-    get_current_context,
-    get_event_attributes_from_context,
-)
-from lmnr.sdk.utils import json_dumps
-from openai._legacy_response import LegacyAPIResponse
-
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import model_as_dict
-from ..utils import (
-    should_send_prompts,
-)
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw
 
 SPAN_NAME = "openai.response"
-
+logger = get_default_logger(__name__)
+T = TypeVar("T")
 
 def _replay_enabled() -> bool:
     """True on a debug run with replay configured. Imported lazily to keep the
@@ -103,21 +116,20 @@ def prepare_input_param(input_param: ResponseInputItemParam) -> ResponseInputIte
         d = model_as_dict(input_param)
         if "type" not in d:
             d["type"] = "message"
-        if RESPONSES_AVAILABLE:
-            return ResponseInputItemParam(**d)
-        else:
-            return d
+        # ResponseInputItemParam is a Union of TypedDicts, so it cannot be
+        # instantiated; `d` already has the right runtime shape.
+        return cast(Any, d)
     except Exception:
         return input_param
 
 
 def process_input(inp: ResponseInputParam) -> ResponseInputParam:
-    if not isinstance(inp, list):
+    if not isinstance(inp, list):  # pyright: ignore[reportUnnecessaryIsInstance]
         return inp
     return [prepare_input_param(item) for item in inp]
 
 
-def is_validator_iterator(content):
+def is_validator_iterator(content: Any) -> re.Match[str] | None:
     """
     Some OpenAI objects contain fields typed as Iterable, which pydantic
     internally converts to a ValidatorIterator, and they cannot be trivially
@@ -125,7 +137,7 @@ def is_validator_iterator(content):
 
     See: https://github.com/pydantic/pydantic/issues/9541#issuecomment-2189045051
     """
-    return re.search(r"pydantic.*ValidatorIterator'>$", str(type(content)))
+    return re.search(r"pydantic.*ValidatorIterator'>$", str(type(content)))  # pyright: ignore[reportUnknownArgumentType]
 
 
 # OpenAI API accepts output messages without an ID in its inputs, but
@@ -133,11 +145,11 @@ def is_validator_iterator(content):
 if RESPONSES_AVAILABLE:
 
     class ResponseOutputMessageParamWithoutId(ResponseOutputMessageParam):
-        id: NotRequired[str]
+        id: NotRequired[str]  # pyright: ignore[reportGeneralTypeIssues]
 
 else:
     # Fallback for older SDK versions
-    ResponseOutputMessageParamWithoutId = dict
+    ResponseOutputMessageParamWithoutId = dict  # pyright: ignore[reportAssignmentType]
 
 
 class TracedData(pydantic.BaseModel):
@@ -147,37 +159,38 @@ class TracedData(pydantic.BaseModel):
     # but this only works properly in Python 3.10+ / newer pydantic
     input: Any
     # system message
-    instructions: Optional[str] = pydantic.Field(default=None)
-    # TODO: remove Any with newer Python / pydantic
-    tools: Optional[list[Union[Any, ToolParam]]] = pydantic.Field(default=None)
-    output_blocks: Optional[dict[str, ResponseOutputItem]] = pydantic.Field(
+    instructions: str | None = pydantic.Field(default=None)
+    # Any: pydantic would otherwise validate against the ToolParam union, which
+    # rejects valid user tools (e.g. FunctionToolParam requires `strict`).
+    tools: list[Any | ToolParam] | None = pydantic.Field(default=None)
+    output_blocks: dict[str, ResponseOutputItem] | None = pydantic.Field(
         default=None
     )
-    usage: Optional[ResponseUsage] = pydantic.Field(default=None)
-    output_text: Optional[str] = pydantic.Field(default=None)
-    request_model: Optional[str] = pydantic.Field(default=None)
-    response_model: Optional[str] = pydantic.Field(default=None)
+    usage: ResponseUsage | None = pydantic.Field(default=None)
+    output_text: str | None = pydantic.Field(default=None)
+    request_model: str | None = pydantic.Field(default=None)
+    response_model: str | None = pydantic.Field(default=None)
 
     # Reasoning attributes
-    request_reasoning_summary: Optional[str] = pydantic.Field(default=None)
-    request_reasoning_effort: Optional[str] = pydantic.Field(default=None)
+    request_reasoning_summary: str | None = pydantic.Field(default=None)
+    request_reasoning_effort: str | None = pydantic.Field(default=None)
 
-    request_service_tier: Optional[str] = pydantic.Field(default=None)
-    response_service_tier: Optional[str] = pydantic.Field(default=None)
+    request_service_tier: str | None = pydantic.Field(default=None)
+    response_service_tier: str | None = pydantic.Field(default=None)
 
 
 responses: dict[str, TracedData] = {}
 
 
-def parse_response(response: Union[LegacyAPIResponse, Response]) -> Response:
+def parse_response(response: LegacyAPIResponse[Any] | Response) -> Response:
     if isinstance(response, LegacyAPIResponse):
         return response.parse()
     return response
 
 
-def get_tools_from_kwargs(kwargs: dict) -> list[ToolParam]:
+def get_tools_from_kwargs(kwargs: dict[str, Any]) -> list[ToolParam]:
     tools_input = kwargs.get("tools", [])
-    tools = []
+    tools: list[Any] = []
 
     for tool in tools_input:
         if tool.get("type") == "function":
@@ -189,7 +202,7 @@ def get_tools_from_kwargs(kwargs: dict) -> list[ToolParam]:
     return tools
 
 
-def build_genai_input_messages(input_param: Any) -> Optional[list[dict[str, Any]]]:
+def build_genai_input_messages(input_param: Any) -> list[dict[str, Any]] | None:
     """Build the `gen_ai.input.messages` array for a Responses-API request.
 
     Mirrors the LiteLLM responses path (`process_responses_inputs`): each input
@@ -207,12 +220,12 @@ def build_genai_input_messages(input_param: Any) -> Optional[list[dict[str, Any]
     if isinstance(input_param, str):
         return [{"role": "user", "content": input_param}]
     if isinstance(input_param, list):
-        return [model_as_dict(item) for item in input_param]
+        return [model_as_dict(item) for item in cast(list[dict[str, Any]], input_param)]
     return None
 
 
 def build_genai_output_messages(
-    output_blocks: Optional[dict[str, Any]],
+    output_blocks: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
     """Build the `gen_ai.output.messages` array from a response's output blocks.
 
@@ -343,10 +356,10 @@ def set_data_attributes(traced_response: TracedData, span: Span):
             for block in traced_response.input:
                 block_dict = model_as_dict(block)
                 if block_dict.get("type", "message") == "message":
-                    content = block_dict.get("content")
+                    content: Any | None = block_dict.get("content")
                     if is_validator_iterator(content):
                         # we're after the actual call here, so we can consume the iterator
-                        content = [process_content_block(block) for block in content]
+                        content = [process_content_block(block) for block in cast(list[dict[str, Any]], content or [])]
                     try:
                         stringified_content = (
                             content if isinstance(content, str) else json.dumps(content)
@@ -376,7 +389,7 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                     try:
                         output_image_url = block_dict.get("output", {}).get("image_url")
                     except Exception:
-                        pass
+                        logger.debug("failed to get output image url", exc_info=True)
                     if output_image_url:
                         set_span_attribute(
                             span,
@@ -419,10 +432,11 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                 elif block_dict.get("type") == "reasoning":
                     reasoning_summary = block_dict.get("summary")
                     if reasoning_summary and isinstance(reasoning_summary, list):
+                        reasoning_summary = cast(list[dict[str, str]], reasoning_summary)
                         processed_chunks = [
-                            {"type": "text", "text": chunk.get("text")}
+                            {"type": "text", "text": chunk.get("text") or ""}
                             for chunk in reasoning_summary
-                            if isinstance(chunk, dict)
+                            if isinstance(chunk, dict)  # pyright: ignore[reportUnnecessaryIsInstance]
                             and chunk.get("type") == "summary_text"
                         ]
                         set_span_attribute(
@@ -445,7 +459,7 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                 span, "gen_ai.completion.0.content", traced_response.output_text
             )
         tool_call_index = 0
-        for block in traced_response.output_blocks.values():
+        for block in (traced_response.output_blocks or {}).values():
             block_dict = model_as_dict(block)
             if block_dict.get("type") == "message":
                 # either a refusal or handled in output_text above
@@ -511,10 +525,11 @@ def set_data_attributes(traced_response: TracedData, span: Span):
             elif block_dict.get("type") == "reasoning":
                 reasoning_summary = block_dict.get("summary")
                 if reasoning_summary and isinstance(reasoning_summary, list):
+                    reasoning_summary = cast(list[dict[str, str]], reasoning_summary)
                     processed_chunks = [
                         {"type": "text", "text": chunk.get("text")}
                         for chunk in reasoning_summary
-                        if isinstance(chunk, dict)
+                        if isinstance(chunk, dict)  # pyright: ignore[reportUnnecessaryIsInstance]
                         and chunk.get("type") == "summary_text"
                     ]
                     set_span_attribute(
@@ -527,8 +542,12 @@ def set_data_attributes(traced_response: TracedData, span: Span):
 
 @dont_throw
 def responses_get_or_create_wrapper(
-    to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs
-):
+    to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., T],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T | Response | Stream[Any]:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
     if context_api.get_value(
@@ -540,7 +559,7 @@ def responses_get_or_create_wrapper(
     # Debugger replay (non-streaming only): probe the server-side cache before
     # the live call. Streaming responses fall through to the live path below.
     if _replay_enabled() and not kwargs.get("stream", False):
-        return _replay_response_sync(to_wrap, start_time, wrapped, args, kwargs)
+        return _replay_response_sync(to_wrap, start_time, cast(Callable[..., Any], wrapped), args, kwargs)
 
     try:
         response = wrapped(*args, **kwargs)
@@ -554,8 +573,12 @@ def responses_get_or_create_wrapper(
 
 @dont_throw
 async def async_responses_get_or_create_wrapper(
-    to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs
-):
+    to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., Awaitable[T]],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T | Response | AsyncStream[Any] | Stream[Any]:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
     if context_api.get_value(
@@ -578,7 +601,7 @@ async def async_responses_get_or_create_wrapper(
 
 
 def _open_replay_span(
-    to_wrap: WrappedFunctionSpec, start_time: int, kwargs
+    to_wrap: WrappedFunctionSpec, start_time: int, kwargs: dict[str, Any]
 ) -> Span | None:
     """Open the Responses-API span up front (before the live call) and stamp
     `gen_ai.input.messages` so the replay cache can hash the input.
@@ -598,7 +621,7 @@ def _open_replay_span(
         return None
     stamp_instrumentation_scope(span, to_wrap)
     if should_send_prompts():
-        processed_input = process_input(kwargs.get("input"))
+        processed_input = process_input(cast(ResponseInputParam, kwargs.get("input")))
         input_messages = build_genai_input_messages(processed_input)
         if input_messages is not None:
             set_span_attribute(
@@ -607,7 +630,7 @@ def _open_replay_span(
     return span
 
 
-def _record_raw_response(span: Span, response) -> None:
+def _record_raw_response(span: Span, response: Any):
     """Stamp `lmnr.sdk.raw.response` (the raw provider response) so the source
     trace is cacheable as a `type="raw"` envelope, mirroring the chat path."""
     try:
@@ -616,12 +639,17 @@ def _record_raw_response(span: Span, response) -> None:
                 span, "lmnr.sdk.raw.response", response.model_dump_json()
             )
     except Exception:
-        pass
+        logger.debug("Failed to record raw Responses response")
 
 
-def _finish_live_replay(start_time: int, span: Span, response, kwargs):
+def _finish_live_replay(
+    start_time: int,
+    span: Span,
+    response: T,
+    kwargs: dict[str, Any],
+) -> T:
     """Process a live response onto the pre-opened replay span and end it."""
-    parsed_response = parse_response(response)
+    parsed_response = parse_response(cast(Response, response))
     traced_data = _build_traced_data(start_time, parsed_response, kwargs)
     if traced_data is not None:
         set_data_attributes(traced_data, span)
@@ -630,7 +658,12 @@ def _finish_live_replay(start_time: int, span: Span, response, kwargs):
     return response
 
 
-def _serve_cached_response(start_time: int, span: Span, outcome, kwargs):
+def _serve_cached_response(
+    start_time: int,
+    span: Span,
+    outcome: CacheOutcome,
+    kwargs: dict[str, Any]
+) -> Response | None:
     """On a cache HIT, reconstruct + serve an OpenAI `Response`. Returns the
     served response, or None to fall through to the live path."""
     from ..rollout import get_openai_rollout_wrapper
@@ -638,7 +671,7 @@ def _serve_cached_response(start_time: int, span: Span, outcome, kwargs):
     rollout_wrapper = get_openai_rollout_wrapper()
     if rollout_wrapper is None:
         return None
-    cached = rollout_wrapper.cached_response_to_responses(outcome.cached)
+    cached = rollout_wrapper.cached_response_to_responses(outcome.cached or {})
     if cached is None:
         return None
 
@@ -647,18 +680,24 @@ def _serve_cached_response(start_time: int, span: Span, outcome, kwargs):
     traced_data = _build_traced_data(start_time, cached, kwargs)
     if traced_data is not None:
         set_data_attributes(traced_data, span)
-    mark_span_cached(span)
+    mark_span_cached(cast(SDKSpan, span))
     span.end()
     return cached
 
 
-def _replay_response_sync(to_wrap: WrappedFunctionSpec, start_time, wrapped, args, kwargs):
+def _replay_response_sync(
+    to_wrap: WrappedFunctionSpec,
+    start_time: int,
+    wrapped: Callable[..., Response],
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> Response | Stream[Any]:
     from lmnr.sdk.debug.replay import cache_outcome_for
 
     span = _open_replay_span(to_wrap, start_time, kwargs)
     if span is None:
         return wrapped(*args, **kwargs)
-    outcome = cache_outcome_for(span)
+    outcome = cache_outcome_for(cast(SDKSpan, span))
     if outcome is not None and outcome.kind == "hit":
         served = _serve_cached_response(start_time, span, outcome, kwargs)
         if served is not None:
@@ -679,14 +718,18 @@ def _replay_response_sync(to_wrap: WrappedFunctionSpec, start_time, wrapped, arg
 
 
 async def _replay_response_async(
-    to_wrap: WrappedFunctionSpec, start_time, wrapped, args, kwargs
-):
+    to_wrap: WrappedFunctionSpec,
+    start_time: int,
+    wrapped: Callable[..., Awaitable[T]],
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T | Response | Stream[Any] | AsyncStream[Any]:
     from lmnr.sdk.debug.replay import acache_outcome_for
 
     span = _open_replay_span(to_wrap, start_time, kwargs)
     if span is None:
         return await wrapped(*args, **kwargs)
-    outcome = await acache_outcome_for(span)
+    outcome = await acache_outcome_for(cast(SDKSpan, span))
     if outcome is not None and outcome.kind == "hit":
         served = _serve_cached_response(start_time, span, outcome, kwargs)
         if served is not None:
@@ -707,7 +750,7 @@ async def _replay_response_async(
 
 
 @dont_throw
-def _process_exception(to_wrap: WrappedFunctionSpec, start_time, kwargs, e):
+def _process_exception(to_wrap: WrappedFunctionSpec, start_time: int, kwargs: dict[str, Any], e: Exception):
     response_id = kwargs.get("response_id")
     existing_data = {}
     if response_id and response_id in responses:
@@ -719,11 +762,11 @@ def _process_exception(to_wrap: WrappedFunctionSpec, start_time, kwargs, e):
         try:
             request_reasoning_summary = request_reasoning.get("summary")
         except Exception:
-            pass
+            logger.debug("failed to get request reasoning summary", exc_info=True)
         try:
             request_reasoning_effort = request_reasoning.get("effort")
         except Exception:
-            pass
+            logger.debug("failed to get request reasoning effort", exc_info=True)
         traced_data = TracedData(
             start_time=existing_data.get("start_time", start_time),
             response_id=response_id or "",
@@ -765,7 +808,11 @@ def _process_exception(to_wrap: WrappedFunctionSpec, start_time, kwargs, e):
     span.end()
 
 
-def _build_traced_data(start_time, parsed_response, kwargs) -> Optional[TracedData]:
+def _build_traced_data(
+    start_time: int,
+    parsed_response: Any,
+    kwargs: dict[str, Any]
+) -> TracedData | None:
     """Accumulate a `TracedData` for a parsed response, merging any prior data
     stashed under its id. Returns None if construction fails."""
     response_id = getattr(parsed_response, "id", None)
@@ -788,19 +835,19 @@ def _build_traced_data(start_time, parsed_response, kwargs) -> Optional[TracedDa
         try:
             request_reasoning_summary = request_reasoning.get("summary")
         except Exception:
-            pass
+            logger.debug("failed to get response reasoning summary", exc_info=True)
         try:
             request_reasoning_effort = request_reasoning.get("effort")
         except Exception:
-            pass
+            logger.debug("failed to get response reasoning effort", exc_info=True)
         try:
             response_service_tier = parsed_response.service_tier
         except Exception:
-            pass
+            logger.debug("failed to get response service tier", exc_info=True)
         traced_data = TracedData(
             start_time=existing_data.get("start_time", start_time),
             response_id=response_id,
-            input=process_input(existing_data.get("input", kwargs.get("input"))),
+            input=process_input(cast(Any, existing_data.get("input", kwargs.get("input")))),
             instructions=existing_data.get("instructions", kwargs.get("instructions")),
             tools=merged_tools if merged_tools else None,
             output_blocks={block.id: block for block in parsed_response.output}
@@ -830,7 +877,12 @@ def _build_traced_data(start_time, parsed_response, kwargs) -> Optional[TracedDa
 
 
 @dont_throw
-def _process_response(to_wrap: WrappedFunctionSpec, start_time, response, kwargs):
+def _process_response(
+    to_wrap: WrappedFunctionSpec,
+    start_time: int,
+    response: Any,
+    kwargs: dict[str, Any]
+) -> Any:
     parsed_response = parse_response(response)
 
     response_id = getattr(parsed_response, "id", None)
@@ -859,8 +911,12 @@ def _process_response(to_wrap: WrappedFunctionSpec, start_time, response, kwargs
 
 @dont_throw
 def responses_cancel_wrapper(
-    to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs
-):
+    to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., T],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T | Stream[Any]:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
@@ -872,7 +928,7 @@ def responses_cancel_wrapper(
     response = wrapped(*args, **kwargs)
     if isinstance(response, Stream):
         return response
-    parsed_response = parse_response(response)
+    parsed_response = parse_response(cast(Response, response))
     response_id = getattr(parsed_response, "id", None)
     if not response_id:
         return response
@@ -898,8 +954,12 @@ def responses_cancel_wrapper(
 
 @dont_throw
 async def async_responses_cancel_wrapper(
-    to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs
-):
+    to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., Awaitable[T]],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T | Stream[Any] | AsyncStream[Any]:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
@@ -911,7 +971,7 @@ async def async_responses_cancel_wrapper(
     response = await wrapped(*args, **kwargs)
     if isinstance(response, (Stream, AsyncStream)):
         return response
-    parsed_response = parse_response(response)
+    parsed_response = parse_response(cast(Response, response))
     response_id = getattr(parsed_response, "id", None)
     if not response_id:
         return response
@@ -935,16 +995,17 @@ async def async_responses_cancel_wrapper(
     return response
 
 
-def _get_output_text(parsed_response: Response) -> Optional[str]:
+def _get_output_text(parsed_response: Response) -> str | None:
     output_text = None
     if hasattr(parsed_response, "output_text"):
         output_text = parsed_response.output_text
     else:
         try:
-            output_text = parsed_response.output[0].content[0].text
+            if output := parsed_response.output:
+               content = output[0]
+               output_text = getattr(content, "text", None)
         except Exception:
-            pass
+            logger.debug("failed to get output text from Response", exc_info=True)
     return output_text
-
 
 # TODO: build streaming responses
