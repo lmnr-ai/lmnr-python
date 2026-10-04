@@ -64,13 +64,13 @@ class LaminarTracer(trace.Tracer):
         self._instance = instance
 
     @override
-    def start_span(self, *args: Any, **kwargs: Any) -> trace.Span:  # pyright: ignore[reportExplicitAny, reportAny]
-        span = self._instance.start_span(*args, **kwargs)  # pyright: ignore[reportAny]
+    def start_span(self, *args: Any, **kwargs: Any) -> trace.Span:
+        span = self._instance.start_span(*args, **kwargs)
         return LaminarSpan(cast(SDKSpan, span))
 
     @contextmanager
-    def start_as_current_span(self, *args: Any, **kwargs: Any) -> Generator[trace.Span]:  # pyright: ignore[reportIncompatibleMethodOverride, reportExplicitAny, reportAny]
-        with self._instance.start_as_current_span(*args, **kwargs) as span:  # pyright: ignore[reportAny]
+    def start_as_current_span(self, *args: Any, **kwargs: Any) -> Generator[trace.Span]:  # pyright: ignore[reportIncompatibleMethodOverride]
+        with self._instance.start_as_current_span(*args, **kwargs) as span:
             _new_context = push_span(span)
             try:
                 yield LaminarSpan(cast(SDKSpan, span))

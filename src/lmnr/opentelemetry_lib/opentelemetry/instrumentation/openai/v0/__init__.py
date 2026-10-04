@@ -1,6 +1,20 @@
+from collections.abc import Collection
 from importlib.metadata import version
-from typing import Collection
 
+from typing_extensions import override
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.shared.chat_wrappers import (
+    achat_wrapper,
+    chat_wrapper,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.shared.completion_wrappers import (
+    acompletion_wrapper,
+    completion_wrapper,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.shared.embeddings_wrappers import (
+    aembeddings_wrapper,
+    embeddings_wrapper,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
 )
@@ -10,18 +24,6 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
 from lmnr.sdk.log import get_default_logger
-from ..shared.chat_wrappers import (
-    achat_wrapper,
-    chat_wrapper,
-)
-from ..shared.completion_wrappers import (
-    acompletion_wrapper,
-    completion_wrapper,
-)
-from ..shared.embeddings_wrappers import (
-    aembeddings_wrapper,
-    embeddings_wrapper,
-)
 
 _instruments = ("openai >= 0.27.0", "openai < 1.0.0")
 logger = get_default_logger(__name__)
@@ -84,16 +86,18 @@ class OpenAIV0Instrumentor(BaseLaminarInstrumentor):
 
     def __init__(self):
         super().__init__()
-        self.instrumentor_config = LaminarInstrumentorConfig(
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 {**spec, "instrumentation_scope": self.instrumentation_scope()}
                 for spec in WRAPPED_FUNCTIONS
             ]
         )
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is None:
             try:

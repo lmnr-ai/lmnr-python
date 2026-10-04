@@ -1,71 +1,17 @@
 import asyncio
-import inspect
 import json
 import logging
-import os
 import threading
-import traceback
-from collections.abc import Awaitable, Callable
-from importlib.metadata import version
-from typing import cast
 
-from opentelemetry import context as context_api
-from opentelemetry.trace import Span
-from opentelemetry.util.types import AttributeValue
 from typing_extensions import TypeVar
 
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.config import Config
 from lmnr.sdk.log import get_default_logger
-
-_PYDANTIC_VERSION = version("pydantic")
-
-LMNR_TRACE_CONTENT = "LMNR_TRACE_CONTENT"
 
 
 logger = get_default_logger(__name__)
 
 
 T = TypeVar("T")
-
-
-def set_span_attribute(span: Span, name: str, value: AttributeValue | None):
-    if value is not None and value != "":
-        span.set_attribute(name, value)
-
-
-def should_send_prompts() -> bool:
-    return (
-        os.getenv(LMNR_TRACE_CONTENT) or "true"
-    ).lower() == "true" or cast(bool, context_api.get_value("override_enable_content_tracing"))
-
-
-def dont_throw(func: Callable[..., T | Awaitable[T]]) -> Callable[..., T | Awaitable[T]] | None:  # pyright: ignore[reportExplicitAny]
-    """
-    A decorator that wraps the passed in function and logs exceptions instead of throwing them.
-    Works for both synchronous and asynchronous functions.
-    """
-    async def async_wrapper(*args, **kwargs):
-        try:
-            return await func(*args, **kwargs)
-        except Exception as e:
-            _handle_exception(e, func, logger)
-
-    def sync_wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            _handle_exception(e, func, logger)
-
-    def _handle_exception(e, func, logger):
-        logger.debug(
-            "OpenLLMetry failed to trace in %s, error: %s",
-            func.__name__,
-            traceback.format_exc(),
-        )
-        if Config.exception_logger:
-            Config.exception_logger(e)
-
-    return async_wrapper if inspect.iscoroutinefunction(func) else sync_wrapper
 
 
 async def aextract_response_data(response):
@@ -171,15 +117,3 @@ class JSONEncoder(json.JSONEncoder):
             return ""
 
 
-def model_as_dict(model):
-    if isinstance(model, dict):
-        return model
-    if _PYDANTIC_VERSION < "2.0.0" and hasattr(model, "dict"):
-        return model.dict()
-    if hasattr(model, "model_dump"):
-        return model.model_dump()
-    else:
-        try:
-            return dict(model)
-        except Exception:
-            return model

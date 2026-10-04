@@ -76,7 +76,7 @@ def is_truthy_env(value: str | bool | None) -> bool:
     return value.strip().lower() in ("1", "true", "yes", "on")
 
 
-def _load_settings_file(path: Path) -> dict[str, Any] | None:  # pyright: ignore[reportExplicitAny]
+def _load_settings_file(path: Path) -> dict[str, Any] | None:
     """
     Load a Claude settings JSON file, or ``None`` when it could not be read.
 
@@ -86,7 +86,7 @@ def _load_settings_file(path: Path) -> dict[str, Any] | None:  # pyright: ignore
     """
     try:
         with path.open(encoding="utf-8") as f:
-            data = json.load(f)  # pyright: ignore[reportAny]
+            data = json.load(f)
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) else None  # pyright: ignore[reportUnknownVariableType]
@@ -112,7 +112,7 @@ def flag_settings_env(
     stripped = existing.strip()
     if stripped.startswith("{") and stripped.endswith("}"):
         try:
-            parsed = json.loads(stripped)  # pyright: ignore[reportAny]
+            parsed = json.loads(stripped)
         except ValueError:
             return {}
         return _settings_env_block(parsed) if isinstance(parsed, dict) else {}  # pyright: ignore[reportUnknownArgumentType]
@@ -123,7 +123,7 @@ def flag_settings_env(
     return _settings_env_block(_load_settings_file(path) or {})
 
 
-def _settings_env_block(data: dict[str, Any]) -> dict[str, str]:  # pyright: ignore[reportExplicitAny]
+def _settings_env_block(data: dict[str, Any]) -> dict[str, str]:
     """Normalize a settings object's ``env`` block to a str -> str mapping."""
     env = data.get("env")
     if not isinstance(env, dict):
@@ -424,12 +424,12 @@ def build_proxy_flag_settings(
     the caller's existing value is a file path we could not read (in that case
     the path must be left alone so the CLI can still resolve it itself).
     """
-    settings_obj: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
+    settings_obj: dict[str, Any] = {}
     if existing:
         stripped = existing.strip()
         if stripped.startswith("{") and stripped.endswith("}"):
             try:
-                parsed = json.loads(stripped)  # pyright: ignore[reportAny]
+                parsed = json.loads(stripped)
             except ValueError:
                 return None
             if not isinstance(parsed, dict):

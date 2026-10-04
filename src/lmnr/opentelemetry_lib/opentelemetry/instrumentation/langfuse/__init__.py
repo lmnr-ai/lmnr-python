@@ -154,9 +154,9 @@ class LangfuseInstrumentor(BaseInstrumentor):
         return ("langfuse >= 3.0.0",)
 
     @override
-    def _instrument(self, **kwargs: Any) -> None:  # pyright: ignore[reportAny, reportExplicitAny]
-        lmnr_tracer_provider: SdkTracerProvider = kwargs["lmnr_tracer_provider"]  # pyright: ignore[reportAny]
-        lmnr_span_processor: SpanProcessor = kwargs["lmnr_span_processor"]  # pyright: ignore[reportAny]
+    def _instrument(self, **kwargs: Any) -> None:
+        lmnr_tracer_provider: SdkTracerProvider = kwargs["lmnr_tracer_provider"]
+        lmnr_span_processor: SpanProcessor = kwargs["lmnr_span_processor"]
 
         # 1. Translator lives on Laminar's own provider so it sees every
         #    Langfuse span that reaches the Laminar exporter (including spans
@@ -320,7 +320,7 @@ class LangfuseInstrumentor(BaseInstrumentor):
         self._litellm_bridge = None
 
     @override
-    def _uninstrument(self, **kwargs: Any) -> None:  # pyright: ignore[reportAny, reportExplicitAny]
+    def _uninstrument(self, **kwargs: Any) -> None:
         self._teardown()
 
 

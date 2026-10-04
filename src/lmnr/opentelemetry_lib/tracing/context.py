@@ -250,7 +250,7 @@ def setup_thread_context_inheritance() -> None:
 
     _original_thread_init = threading.Thread.__init__
 
-    def patched_thread_init(thread_self: threading.Thread, *args: Any, **kwargs: Any):  # pyright: ignore[reportExplicitAny, reportAny]
+    def patched_thread_init(thread_self: threading.Thread, *args: Any, **kwargs: Any):
         # Capture current isolated context and token stack for inheritance
         current_context = get_current_context()
         current_token_stack = get_token_stack()
@@ -258,17 +258,17 @@ def setup_thread_context_inheritance() -> None:
         # Get the original target function
         original_target = kwargs.get("target")
         if not original_target and args:
-            original_target = args[0]  # pyright: ignore[reportAny]
+            original_target = args[0]
 
         # Only inherit if we have a target function
         if original_target:
             # Create a wrapper function that sets up context
-            def thread_wrapper(*target_args: Any, **target_kwargs: Any):  # pyright: ignore[reportExplicitAny, reportAny]
+            def thread_wrapper(*target_args: Any, **target_kwargs: Any):
                 # Set inherited context and token stack in the new thread
                 _attach_token = attach_context(current_context)
                 set_token_stack(current_token_stack)
                 # Run original target
-                return original_target(*target_args, **target_kwargs)  # pyright: ignore[reportAny]
+                return original_target(*target_args, **target_kwargs)
 
             # Replace the target with our wrapper
             if "target" in kwargs:

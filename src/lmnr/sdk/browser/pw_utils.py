@@ -60,7 +60,7 @@ class _ExposesAsyncEvents(Protocol):
     async def expose_function(
         self,
         name: str,
-        callback: Callable[[ChunkMessage], Coroutine[Any, Any, None]],  # pyright: ignore[reportExplicitAny]
+        callback: Callable[[ChunkMessage], Coroutine[Any, Any, None]],
     ) -> None: ...
 
 
@@ -70,7 +70,7 @@ def create_send_events_handler(
     trace_id: str,
     client: AsyncLaminarClient,
     background_loop: asyncio.AbstractEventLoop,
-) -> Callable[[ChunkMessage], Coroutine[Any, Any, None]]:  # pyright: ignore[reportExplicitAny]
+) -> Callable[[ChunkMessage], Coroutine[Any, Any, None]]:
     """
     Create an async event handler for sending browser events.
 
@@ -117,7 +117,7 @@ def create_send_events_handler(
 
                 # Parse the JSON. The individual event shape is rrweb's, not
                 # ours, so `Any` here is a genuine external contract.
-                events = cast(list[dict[str, Any]], orjson.loads(full_data))  # pyright: ignore[reportExplicitAny]
+                events = cast(list[dict[str, Any]], orjson.loads(full_data))
 
                 # Send to server in background loop (independent of Playwright's loop)
                 if events and len(events) > 0:

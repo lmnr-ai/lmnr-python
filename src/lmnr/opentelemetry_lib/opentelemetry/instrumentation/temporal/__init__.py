@@ -67,9 +67,9 @@ def _has_laminar_interceptor(
 
 def _wrap_client_init(
     wrapped: Callable[..., T],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> T:
     """Inject a Laminar interceptor into every ``Client`` construction.
 
@@ -97,7 +97,7 @@ class TemporalInstrumentor(BaseInstrumentor):
         return _instruments
 
     @override
-    def _instrument(self, **kwargs: Any):  # pyright: ignore[reportAny, reportExplicitAny]
+    def _instrument(self, **kwargs: Any):
         if self._options is not None:
             global _interceptor_options
             _interceptor_options = self._options
@@ -111,7 +111,7 @@ class TemporalInstrumentor(BaseInstrumentor):
             logger.debug("failed to instrument temporalio client", exc_info=True)
 
     @override
-    def _uninstrument(self, **kwargs: Any):  # pyright: ignore[reportAny, reportExplicitAny]
+    def _uninstrument(self, **kwargs: Any):
         try:
             unwrap("temporalio.client.Client", "__init__")
         except (ModuleNotFoundError, AttributeError):

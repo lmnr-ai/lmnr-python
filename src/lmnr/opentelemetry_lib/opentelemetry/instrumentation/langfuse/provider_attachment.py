@@ -182,7 +182,7 @@ class ProviderAttachment:
         self._original_initialize_instance = original
         provider_attachment = self
 
-        def patched(self_rm: LangfuseResourceManager, *args: Any, **kwargs: Any):  # pyright: ignore[reportAny, reportExplicitAny]
+        def patched(self_rm: LangfuseResourceManager, *args: Any, **kwargs: Any):
             result = original(self_rm, *args, **kwargs)
             try:
                 provider_attachment.attach(getattr(self_rm, "tracer_provider", None))

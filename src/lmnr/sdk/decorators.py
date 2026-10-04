@@ -27,8 +27,8 @@ class _ObserveDecorator(Protocol):
     @overload
     def __call__(
         self,
-        func: Callable[P, Coroutine[Any, Any, R]],  # pyright: ignore[reportExplicitAny]
-    ) -> Callable[P, Coroutine[Any, Any, R]]: ...  # pyright: ignore[reportExplicitAny]
+        func: Callable[P, Coroutine[Any, Any, R]],
+    ) -> Callable[P, Coroutine[Any, Any, R]]: ...
     @overload
     def __call__(self, func: Callable[P, R]) -> Callable[P, R]: ...
 
@@ -45,7 +45,7 @@ def observe(
     ignore_inputs: list[str] | None = None,
     input_formatter: Callable[..., str] | None = None,
     output_formatter: Callable[..., str] | None = None,
-    metadata: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
+    metadata: dict[str, Any] | None = None,
     tags: list[str] | None = None,
     preserve_global_context: bool = False,
 ) -> _ObserveDecorator:
@@ -98,11 +98,11 @@ def observe(
     """
 
     def decorator(
-        func: Callable[P, R] | Callable[P, Coroutine[Any, Any, R]], # pyright: ignore[reportExplicitAny]
-    ) -> Callable[P, R] | Callable[P, Coroutine[Any, Any, R]]:  # pyright: ignore[reportExplicitAny]
+        func: Callable[P, R] | Callable[P, Coroutine[Any, Any, R]],
+    ) -> Callable[P, R] | Callable[P, Coroutine[Any, Any, R]]:
         func_name = getattr(func, "__name__", "unknown")
 
-        association_properties: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
+        association_properties: dict[str, Any] = {}
         if session_id is not None:
             association_properties["session_id"] = session_id
         if user_id is not None:

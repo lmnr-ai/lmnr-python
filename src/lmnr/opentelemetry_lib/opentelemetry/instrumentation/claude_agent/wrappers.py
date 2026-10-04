@@ -61,9 +61,9 @@ T = TypeVar("T")
 def wrap_sync(
     to_wrap: ClaudeAgentSpec,
     wrapped: Callable[..., T],
-    _instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> T:
     """Wrapper for synchronous methods."""
 
@@ -88,9 +88,9 @@ def wrap_sync(
 async def wrap_async(
     to_wrap: ClaudeAgentSpec,
     wrapped: Callable[..., Awaitable[T]],
-    instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> T:
     """Wrapper for async methods."""
 
@@ -102,8 +102,8 @@ async def wrap_async(
         record_input(span, wrapped, args, kwargs)
 
         # Get transport from instance (ClaudeSDKClient._transport)
-        if to_wrap.get("should_publish_span_context") and hasattr(instance, "_transport"):  # pyright: ignore[reportAny]
-            publish_span_context_for_transport(instance._transport)  # pyright: ignore[reportAny]
+        if to_wrap.get("should_publish_span_context") and hasattr(instance, "_transport"):
+            publish_span_context_for_transport(instance._transport)
 
         try:
             result = await wrapped(*args, **kwargs)
@@ -119,10 +119,10 @@ async def wrap_async(
 
 def wrap_async_gen(
     to_wrap: ClaudeAgentSpec,
-    wrapped: Callable[..., AsyncGenerator[Any, Any]],  # pyright: ignore[reportExplicitAny]
-    instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    wrapped: Callable[..., AsyncGenerator[Any, Any]],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ):
     """Wrapper for async generator methods (streaming)."""
 
@@ -137,8 +137,8 @@ def wrap_async_gen(
 
         if to_wrap.get("should_publish_span_context"):
             with Laminar.use_span(span):
-                if hasattr(instance, "_transport"):  # pyright: ignore[reportAny]
-                    publish_span_context_for_transport(instance._transport)  # pyright: ignore[reportAny]
+                if hasattr(instance, "_transport"):
+                    publish_span_context_for_transport(instance._transport)
 
         try:
             with Laminar.use_span(span):
@@ -155,8 +155,8 @@ def wrap_async_gen(
                     with Laminar.use_span(
                         span, record_exception=False, set_status_on_exception=False
                     ):
-                        item = await async_iter.__anext__()  # pyright: ignore[reportAny]
-                        collected.append(item) # pyright: ignore[reportUnknownMemberType, reportAny]
+                        item = await async_iter.__anext__()
+                        collected.append(item) # pyright: ignore[reportUnknownMemberType]
                 except StopAsyncIteration:
                     break
                 yield item
@@ -182,7 +182,7 @@ def wrap_async_gen(
 
 
 async def _cleanup_async_iter(
-    async_iter: AsyncGenerator[Any, Any] | AsyncIterator[Any] | None,  # pyright: ignore[reportExplicitAny]
+    async_iter: AsyncGenerator[Any, Any] | AsyncIterator[Any] | None,
     span: Span,
 ) -> None:
     """
@@ -199,7 +199,7 @@ async def _cleanup_async_iter(
         with Laminar.use_span(span):
             # Shield from cancellation and add timeout to prevent hanging
             await asyncio.wait_for(
-                asyncio.shield(cast(AsyncGenerator[Any, Any], async_iter).aclose()),  # pyright: ignore[reportExplicitAny]
+                asyncio.shield(cast(AsyncGenerator[Any, Any], async_iter).aclose()),
                 timeout=DEFAULT_CLEANUP_TIMEOUT,
             )
     except BaseException:
@@ -213,9 +213,9 @@ async def _cleanup_async_iter(
 async def wrap_transport_connect(
     _to_wrap: ClaudeAgentSpec,
     wrapped: Callable[..., Awaitable[T]],
-    instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 )-> T:
     """Wrap Transport.connect to start proxy before connecting."""
     try:
@@ -229,8 +229,8 @@ async def wrap_transport_connect(
         return await wrapped(*args, **kwargs)
 
     # Read options.env BEFORE modifying to avoid circular proxy config
-    options = getattr(instance, "_options", None)  # pyright: ignore[reportAny]
-    env_dict = options.env if options is not None else {}  # pyright: ignore[reportUnknownVariableType, reportAny]
+    options = getattr(instance, "_options", None)
+    env_dict = options.env if options is not None else {}  # pyright: ignore[reportUnknownVariableType]
     session_cwd = getattr(options, "cwd", None)
     # Read the DOCUMENTED options.setting_sources only. Do not try to infer
     # the SDK's private skills-based default (_apply_skills_defaults narrows
@@ -257,7 +257,7 @@ async def wrap_transport_connect(
     is_custom = not isinstance(instance, SubprocessCLITransport)
 
     options_env_snapshot = {}
-    original_settings: Any = None  # pyright: ignore[reportExplicitAny]
+    original_settings: Any = None
     settings_overridden = False
     if is_custom:
         original_env = setup_proxy_env(proxy_url, session_cwd)
@@ -266,7 +266,7 @@ async def wrap_transport_connect(
         if options is not None:
             options_env_snapshot = snapshot_options_env_for_proxy(options)
             update_options_env_for_proxy(options, proxy_url, target_url)
-            original_settings = getattr(options, "settings", None)  # pyright: ignore[reportAny]
+            original_settings = getattr(options, "settings", None)
             settings_overridden = apply_settings_proxy_override(options, proxy_url)
 
         original_env = {}
@@ -316,7 +316,7 @@ async def wrap_transport_connect(
             options.settings = original_settings
 
         try:
-            delattr(instance, "__lmnr_context")  # pyright: ignore[reportAny]
+            delattr(instance, "__lmnr_context")
         except Exception:
             logger.debug("Failed to remove `__lmnr_context` from CC proxy instance", exc_info=True)
         raise
@@ -325,9 +325,9 @@ async def wrap_transport_connect(
 async def wrap_transport_close(
     _to_wrap: ClaudeAgentSpec,
     wrapped: Callable[..., Awaitable[T]],
-    instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 )-> T:
     """Wrap Transport.close to stop proxy after closing."""
     try:
@@ -336,14 +336,14 @@ async def wrap_transport_close(
         await _cleanup_transport_context(instance)
 
 
-async def _cleanup_transport_context(instance: Any) -> None:  # pyright: ignore[reportAny, reportExplicitAny]
+async def _cleanup_transport_context(instance: Any) -> None:
     """
     Cleanup proxy and restore environment when transport closes.
 
     Shields from cancellation and adds timeout to prevent hanging. Runs proxy stop
     in thread pool to avoid blocking event loop while ensuring cleanup completes.
     """
-    context: CASLaminarContext | None = getattr(instance, "__lmnr_context", None)  # pyright: ignore[reportAny]
+    context: CASLaminarContext | None = getattr(instance, "__lmnr_context", None)
     if not context:
         return
 
@@ -355,7 +355,7 @@ async def _cleanup_transport_context(instance: Any) -> None:  # pyright: ignore[
                     context.get("env_set_keys", set()),
                 )
 
-            options = getattr(instance, "_options", None)  # pyright: ignore[reportAny]
+            options = getattr(instance, "_options", None)
             if context.get("settings_overridden") and options is not None:
                 options.settings = context.get("original_settings")
 
@@ -378,7 +378,7 @@ async def _cleanup_transport_context(instance: Any) -> None:  # pyright: ignore[
                         logger.debug("failed to stop CAS proxy", exc_info=True)
         finally:
             try:
-                delattr(instance, "__lmnr_context")  # pyright: ignore[reportAny]
+                delattr(instance, "__lmnr_context")
             except Exception:
                 logger.debug("failed to delete `__lmnr_context` from CAS proxy instance", exc_info=True)
 
@@ -391,7 +391,7 @@ async def _cleanup_transport_context(instance: Any) -> None:  # pyright: ignore[
         logger.debug("Expected `BaseException` during CAS proxy cleanup", exc_info=True)
 
 
-def snapshot_options_env_for_proxy(options: Any) -> dict[str, str | None]:  # pyright: ignore[reportAny, reportExplicitAny]
+def snapshot_options_env_for_proxy(options: Any) -> dict[str, str | None]:
     """
     Snapshot keys in options.env that will be modified by update_options_env_for_proxy.
 
@@ -421,12 +421,12 @@ def snapshot_options_env_for_proxy(options: Any) -> dict[str, str | None]:  # py
 
     snapshot = {}
     for key in keys_to_snapshot:
-        snapshot[key] = options.env.get(key)  # pyright: ignore[reportAny]
+        snapshot[key] = options.env.get(key)
 
     return snapshot  # pyright: ignore [reportUnknownVariableType]
 
 
-def restore_options_env_from_snapshot(options: Any, snapshot: dict[str, str | None]) -> None:  # pyright: ignore[reportAny, reportExplicitAny]
+def restore_options_env_from_snapshot(options: Any, snapshot: dict[str, str | None]) -> None:
     """
     Restore options.env from a snapshot created by snapshot_options_env_for_proxy.
 
@@ -437,13 +437,13 @@ def restore_options_env_from_snapshot(options: Any, snapshot: dict[str, str | No
     for key, value in snapshot.items():
         if value is None:
             # Key was not present originally, remove it
-            options.env.pop(key, None)  # pyright: ignore[reportAny]
+            options.env.pop(key, None)
         else:
             # Restore original value
-            options.env[key] = value  # pyright: ignore[reportAny]
+            options.env[key] = value
 
 
-def apply_settings_proxy_override(options: Any, proxy_url: str) -> bool:  # pyright: ignore[reportAny, reportExplicitAny]
+def apply_settings_proxy_override(options: Any, proxy_url: str) -> bool:
     """
     Point ``options.settings`` at the proxy so settings.json can't bypass it.
 
@@ -456,21 +456,21 @@ def apply_settings_proxy_override(options: Any, proxy_url: str) -> bool:  # pyri
     previous value itself, so restoring on error does not have to distinguish
     "the original was ``None``" from "we never touched it".
     """
-    if not hasattr(options, "settings"):  # pyright: ignore[reportAny]
+    if not hasattr(options, "settings"):
         return False
 
-    session_cwd = getattr(options, "cwd", None)  # pyright: ignore[reportAny]
-    setting_sources = getattr(options, "setting_sources", None)  # pyright: ignore[reportAny]
+    session_cwd = getattr(options, "cwd", None)
+    setting_sources = getattr(options, "setting_sources", None)
 
-    original = options.settings  # pyright: ignore[reportAny]
+    original = options.settings
     updated = build_proxy_flag_settings(
-        original, proxy_url, cwd=session_cwd, setting_sources=setting_sources,  # pyright: ignore[reportAny]
+        original, proxy_url, cwd=session_cwd, setting_sources=setting_sources,
     )
     if updated is None:
         logger.warning(
             "Could not read options.settings %r; Claude Code settings that define " +
             "a base URL will bypass the Laminar proxy and produce no LLM spans.",
-            original,  # pyright: ignore[reportAny]
+            original,
         )
         return False
 
@@ -495,7 +495,7 @@ def apply_settings_proxy_override(options: Any, proxy_url: str) -> bool:  # pyri
     return True
 
 
-def update_options_env_for_proxy(options: Any, proxy_url: str, target_url: str) -> None:  # pyright: ignore[reportAny, reportExplicitAny]
+def update_options_env_for_proxy(options: Any, proxy_url: str, target_url: str) -> None:
     """
     Update options.env to point subprocess to proxy.
 
@@ -521,47 +521,47 @@ def update_options_env_for_proxy(options: Any, proxy_url: str, target_url: str) 
     """
 
     settings_env = read_claude_settings_env(
-        getattr(options, "cwd", None), getattr(options, "setting_sources", None)  # pyright: ignore[reportAny]
+        getattr(options, "cwd", None), getattr(options, "setting_sources", None)
     )
 
     def get_env_value(key: str) -> str | None:
-        return options.env.get(key) or os.environ.get(key) or settings_env.get(key)  # pyright: ignore[reportAny]
+        return options.env.get(key) or os.environ.get(key) or settings_env.get(key)
 
     foundry_enabled = is_truthy_env(get_env_value("CLAUDE_CODE_USE_FOUNDRY"))
 
-    options.env["ANTHROPIC_BASE_URL"] = proxy_url  # pyright: ignore[reportAny]
-    options.env["ANTHROPIC_ORIGINAL_BASE_URL"] = target_url  # pyright: ignore[reportAny]
+    options.env["ANTHROPIC_BASE_URL"] = proxy_url
+    options.env["ANTHROPIC_ORIGINAL_BASE_URL"] = target_url
 
     for proxy_var in PROXY_ENV_KEYS:
-        options.env.pop(proxy_var, None)  # pyright: ignore[reportAny]
+        options.env.pop(proxy_var, None)
 
-    if FOUNDRY_RESOURCE_ENV in options.env:  # pyright: ignore[reportAny]
-        options.env.pop(FOUNDRY_RESOURCE_ENV)  # pyright: ignore[reportAny]
+    if FOUNDRY_RESOURCE_ENV in options.env:
+        options.env.pop(FOUNDRY_RESOURCE_ENV)
 
     if foundry_enabled:
-        if "CLAUDE_CODE_USE_FOUNDRY" not in options.env:  # pyright: ignore[reportAny]
-            options.env["CLAUDE_CODE_USE_FOUNDRY"] = "1"  # pyright: ignore[reportAny]
-        options.env[FOUNDRY_BASE_URL_ENV] = proxy_url  # pyright: ignore[reportAny]
+        if "CLAUDE_CODE_USE_FOUNDRY" not in options.env:
+            options.env["CLAUDE_CODE_USE_FOUNDRY"] = "1"
+        options.env[FOUNDRY_BASE_URL_ENV] = proxy_url
 
     bedrock_enabled = is_truthy_env(get_env_value(BEDROCK_USE_ENV))
     if bedrock_enabled:
-        if BEDROCK_USE_ENV not in options.env:  # pyright: ignore[reportAny]
-            options.env[BEDROCK_USE_ENV] = "1"  # pyright: ignore[reportAny]
-        options.env[BEDROCK_BASE_URL_ENV] = proxy_url  # pyright: ignore[reportAny]
+        if BEDROCK_USE_ENV not in options.env:
+            options.env[BEDROCK_USE_ENV] = "1"
+        options.env[BEDROCK_BASE_URL_ENV] = proxy_url
 
     vertex_enabled = is_truthy_env(get_env_value(VERTEX_USE_ENV))
     if vertex_enabled:
-        if VERTEX_USE_ENV not in options.env:  # pyright: ignore[reportAny]
-            options.env[VERTEX_USE_ENV] = "1"  # pyright: ignore[reportAny]
-        options.env[VERTEX_BASE_URL_ENV] = proxy_url  # pyright: ignore[reportAny]
+        if VERTEX_USE_ENV not in options.env:
+            options.env[VERTEX_USE_ENV] = "1"
+        options.env[VERTEX_BASE_URL_ENV] = proxy_url
 
 
 def wrap_query(
     to_wrap: ClaudeAgentSpec,
     wrapped: Callable[..., AsyncGenerator[T]],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> AsyncGenerator[T]:
     """Wrap query() function - handles custom transport wrapping."""
     transport = kwargs.get("transport")
@@ -577,7 +577,7 @@ def wrap_query(
         except (ImportError, ModuleNotFoundError):
             wrap_custom_transport_if_needed(transport)
 
-    async def generator() -> AsyncGenerator[Any, None]:  # pyright: ignore[reportExplicitAny]
+    async def generator() -> AsyncGenerator[Any, None]:
         with Laminar.start_as_current_span(
             span_name(to_wrap),
             span_type=cast(LaminarSpanType, to_wrap.get("span_type") or "DEFAULT"),
@@ -611,9 +611,9 @@ def wrap_query(
 def wrap_client_init(
     _to_wrap: ClaudeAgentSpec,
     wrapped: Callable[..., T],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> T:
     """Wrap ClaudeSDKClient.__init__ to handle custom transport wrapping."""
     try:
@@ -626,9 +626,9 @@ def wrap_client_init(
 
     transport = None
     if args and len(args) > 1:
-        transport = args[1]  # pyright: ignore[reportAny]
+        transport = args[1]
     if "transport" in kwargs:
-        transport = kwargs["transport"]  # pyright: ignore[reportAny]
+        transport = kwargs["transport"]
 
     # If user provided a custom transport, wrap it for proxy lifecycle
     # SubprocessCLITransport is already wrapped globally
@@ -642,7 +642,7 @@ def wrap_client_init(
     return wrapped(*args, **kwargs)
 
 
-def wrap_custom_transport_if_needed(transport: Any):  # pyright: ignore[reportAny, reportExplicitAny]
+def wrap_custom_transport_if_needed(transport: Any):
     """
     Dynamically wrap custom transport's connect/close methods.
 
@@ -650,7 +650,7 @@ def wrap_custom_transport_if_needed(transport: Any):  # pyright: ignore[reportAn
     and should be handled before calling this function to avoid double wrapping.
     """
     # Skip if already wrapped
-    if hasattr(transport, "__lmnr_wrapped"):  # pyright: ignore[reportAny]
+    if hasattr(transport, "__lmnr_wrapped"):
         return
 
     transport.__lmnr_wrapped = True
@@ -678,14 +678,14 @@ def wrap_custom_transport_if_needed(transport: Any):  # pyright: ignore[reportAn
         ),
     )
 
-    original_connect = transport.connect  # pyright: ignore[reportAny]
-    original_close = transport.close  # pyright: ignore[reportAny]
+    original_connect = transport.connect
+    original_close = transport.close
 
-    async def wrapped_connect_custom():  # pyright: ignore[reportAny]
-        return await connect_wrapper(original_connect, transport, (), {})  # pyright: ignore[reportAny]
+    async def wrapped_connect_custom():
+        return await connect_wrapper(original_connect, transport, (), {})
 
-    async def wrapped_close_custom():  # pyright: ignore[reportAny]
-        return await close_wrapper(original_close, transport, (), {})  # pyright: ignore[reportAny]
+    async def wrapped_close_custom():
+        return await close_wrapper(original_close, transport, (), {})
 
     transport.connect = wrapped_connect_custom
     transport.close = wrapped_close_custom

@@ -1,14 +1,9 @@
 import json
-import logging
 import types
-from importlib.metadata import version
+from typing import Any, cast
 
-from lmnr.sdk.utils import json_dumps
-from ..utils import (
-    dont_throw,
-    is_openai_v1,
-    should_record_stream_token_usage,
-)
+import pydantic
+from httpx import URL
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_REQUEST_FREQUENCY_PENALTY,
     GEN_AI_REQUEST_MAX_TOKENS,
@@ -25,34 +20,33 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
 from opentelemetry.semconv._incubating.attributes.openai_attributes import (
     OPENAI_RESPONSE_SYSTEM_FINGERPRINT,
 )
+from opentelemetry.trace import Span
 from opentelemetry.trace.propagation import set_span_in_context
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+
 import openai
-import pydantic
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
+    is_openai_v1,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    dont_throw,
+    set_span_attribute,
+)
+from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.utils import json_dumps
 
 OPENAI_LLM_USAGE_TOKEN_TYPES = ["prompt_tokens", "completion_tokens"]
 PROMPT_FILTER_KEY = "prompt_filter_results"
 PROMPT_ERROR = "prompt_error"
 
-_PYDANTIC_VERSION = version("pydantic")
 
-# tiktoken encodings map for different model, key is model_name, value is tiktoken encoding
-tiktoken_encodings = {}
-
-logger = logging.getLogger(__name__)
+logger = get_default_logger(__name__)
 
 
-def set_span_attribute(span, name, value):
-    if value is None or value == "":
-        return
-
-    if hasattr(openai, "NOT_GIVEN") and value == openai.NOT_GIVEN:
-        return
-
-    span.set_attribute(name, value)
-
-
-def _set_client_attributes(span, instance):
+def set_client_attributes(
+    span: Span,
+    instance: Any,
+):
     if not span.is_recording():
         return
 
@@ -63,17 +57,19 @@ def _set_client_attributes(span, instance):
     if isinstance(client, (openai.AsyncOpenAI, openai.OpenAI)):
         set_span_attribute(span, "gen_ai.request.base_url", str(client.base_url))
     if isinstance(client, (openai.AsyncAzureOpenAI, openai.AzureOpenAI)):
-        set_span_attribute(span, "gen_ai.openai.api_version", client._api_version)  # pylint: disable=protected-access
+        set_span_attribute(span, "gen_ai.openai.api_version", client._api_version)
 
 
-def _set_api_attributes(span):
+def _set_api_attributes(span: Span):
     if not span.is_recording():
         return
 
     if is_openai_v1():
         return
 
-    base_url = openai.base_url if hasattr(openai, "base_url") else openai.api_base
+    base_url = openai.base_url if hasattr(openai, "base_url") else getattr(openai, "api_base", "https://api.openai.com")
+    if isinstance(base_url, URL):
+        base_url = str(base_url)
 
     set_span_attribute(span, "gen_ai.request.base_url", base_url)
     set_span_attribute(span, "gen_ai.request.api_type", openai.api_type)
@@ -82,7 +78,10 @@ def _set_api_attributes(span):
     return
 
 
-def set_tools_attributes(span, tools):
+def set_tools_attributes(
+    span: Span,
+    tools: list[dict[str, Any]] | None,
+):
     if not tools:
         return
 
@@ -93,7 +92,11 @@ def set_tools_attributes(span, tools):
     )
 
 
-def _set_request_attributes(span, kwargs, instance=None):
+def set_request_attributes(
+    span: Span,
+    kwargs: dict[str, Any],
+    instance: Any | None = None,
+):
     if not span.is_recording():
         return
 
@@ -138,10 +141,10 @@ def _set_request_attributes(span, kwargs, instance=None):
         # openai.types.shared_params.response_format_json_schema.ResponseFormatJSONSchema
         if (
             isinstance(response_format, dict)
-            and response_format.get("type") == "json_schema"
-            and response_format.get("json_schema")
+            and response_format.get("type") == "json_schema"  # pyright: ignore[reportUnknownMemberType]
+            and response_format.get("json_schema")  # pyright: ignore[reportUnknownMemberType]
         ):
-            schema = dict(response_format.get("json_schema")).get("schema")
+            schema = dict(cast(dict[str, Any], response_format.get("json_schema"))).get("schema")  # pyright: ignore[reportUnknownMemberType]
             if schema:
                 set_span_attribute(
                     span,
@@ -150,13 +153,19 @@ def _set_request_attributes(span, kwargs, instance=None):
                 )
         else:
             try:
+                from openai import Omit
                 from openai.lib._parsing._completions import (
                     type_to_response_format_param,
                 )
+                from openai.types.chat.completion_create_params import ResponseFormat
 
-                response_format_param = type_to_response_format_param(response_format)
+
+                response_format_param = type_to_response_format_param(cast(ResponseFormat, response_format))
+                if isinstance(response_format_param, Omit):
+                    logger.debug("response_format is omitted")
+                    return
                 if response_format_param.get("type") == "json_schema":
-                    schema = response_format_param.get("json_schema").get("schema")
+                    schema = (response_format_param.get("json_schema") or {}).get("schema")
                     if schema:
                         set_span_attribute(
                             span,
@@ -167,13 +176,13 @@ def _set_request_attributes(span, kwargs, instance=None):
                 # if we fail to import from openai.lib._parsing._completions,
                 # we fallback to the pydantic-based approach
                 if isinstance(response_format, pydantic.BaseModel) or (
-                    hasattr(response_format, "model_json_schema")
-                    and callable(response_format.model_json_schema)
+                    hasattr(response_format, "model_json_schema")  # pyright: ignore[reportUnknownArgumentType]
+                    and callable(cast(pydantic.BaseModel, response_format).model_json_schema)
                 ):
                     set_span_attribute(
                         span,
                         "gen_ai.request.structured_output_schema",
-                        json.dumps(response_format.model_json_schema()),
+                        json.dumps(cast(pydantic.BaseModel, response_format).model_json_schema()),
                     )
                 else:
                     schema = None
@@ -185,7 +194,7 @@ def _set_request_attributes(span, kwargs, instance=None):
                         try:
                             schema = json.dumps(response_format)
                         except Exception:
-                            pass
+                            logger.debug("Failed to stringify openai response format schema", exc_info=True)
 
                     if schema:
                         set_span_attribute(
@@ -196,7 +205,10 @@ def _set_request_attributes(span, kwargs, instance=None):
 
 
 @dont_throw
-def _set_response_attributes(span, response):
+def set_response_attributes(
+    span: Span,
+    response: dict[str, Any],
+):
     if not span.is_recording():
         return
 
@@ -230,21 +242,23 @@ def _set_response_attributes(span, response):
     if is_openai_v1() and not isinstance(usage, dict):
         usage = usage.__dict__
 
-    set_span_attribute(span, "llm.usage.total_tokens", usage.get("total_tokens"))
+    usage = cast(dict[str, int | dict[str, int]], usage)
+
+    set_span_attribute(span, "llm.usage.total_tokens", cast(int, usage.get("total_tokens") or 0))
     set_span_attribute(
         span,
         GEN_AI_USAGE_OUTPUT_TOKENS,
-        usage.get("completion_tokens"),
+        cast(int, usage.get("completion_tokens") or 0),
     )
-    set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, usage.get("prompt_tokens"))
-    prompt_tokens_details = dict(usage.get("prompt_tokens_details", {}))
+    set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, cast(int, usage.get("prompt_tokens") or 0))
+    prompt_tokens_details = dict(cast(dict[str, int], usage.get("prompt_tokens_details", {})))
     set_span_attribute(
         span,
         "gen_ai.usage.cache_read_input_tokens",
         prompt_tokens_details.get("cached_tokens", 0),
     )
 
-    if completion_token_details := dict(usage.get("completion_tokens_details", {})):
+    if completion_token_details := dict(cast(dict[str, int], usage.get("completion_tokens_details", {}))):
         reasoning_tokens = completion_token_details.get("reasoning_tokens")
         set_span_attribute(
             span,
@@ -255,7 +269,7 @@ def _set_response_attributes(span, response):
     return
 
 
-def _log_prompt_filter(span, response_dict):
+def _log_prompt_filter(span: Span, response_dict: dict[str, Any]):
     if response_dict.get("prompt_filter_results"):
         set_span_attribute(
             span,
@@ -265,7 +279,7 @@ def _log_prompt_filter(span, response_dict):
 
 
 @dont_throw
-def _set_span_stream_usage(span, prompt_tokens, completion_tokens):
+def _set_span_stream_usage(span: Span, prompt_tokens: int | None, completion_tokens: int | None):
     if not span.is_recording():
         return
 
@@ -287,16 +301,16 @@ def _set_span_stream_usage(span, prompt_tokens, completion_tokens):
         )
 
 
-def _get_openai_base_url(instance):
+def _get_openai_base_url(instance: Any):
     if hasattr(instance, "_client"):
-        client = instance._client  # pylint: disable=protected-access
+        client = instance._client
         if isinstance(client, (openai.AsyncOpenAI, openai.OpenAI)):
             return str(client.base_url)
 
     return ""
 
 
-def _get_vendor_from_url(base_url):
+def _get_vendor_from_url(base_url: str) -> str:
     if not base_url:
         return "openai"
 
@@ -312,7 +326,7 @@ def _get_vendor_from_url(base_url):
     return "openai"
 
 
-def _cross_region_check(value):
+def _cross_region_check(value: str) -> str:
     if not value or "." not in value:
         return value
 
@@ -324,11 +338,11 @@ def _cross_region_check(value):
         else:
             return value
     else:
-        vendor, model = value.split(".", 1)
+        _vendor, model = value.split(".", 1)
         return model
 
 
-def is_streaming_response(response):
+def is_streaming_response(response: Any) -> bool:
     if is_openai_v1():
         return isinstance(
             response,
@@ -340,78 +354,13 @@ def is_streaming_response(response):
             ),
         )
 
-    return isinstance(response, types.GeneratorType) or isinstance(
-        response, types.AsyncGeneratorType
-    )
+    return isinstance(response, (types.GeneratorType, types.AsyncGeneratorType))
 
 
-def model_as_dict(model):
-    if isinstance(model, dict):
-        return model
-    if _PYDANTIC_VERSION < "2.0.0":
-        try:
-            return model.dict()
-        except Exception:
-            logger.warning(f"Failed to convert model to dict: {model}", exc_info=True)
-            return {}
-    if hasattr(model, "model_dump"):
-        try:
-            return model.model_dump()
-        except Exception:
-            logger.warning(f"Failed to convert model to dict: {model}", exc_info=True)
-            return {}
-    elif hasattr(model, "parse"):
-        try:
-            return model_as_dict(model.parse())
-        except Exception:
-            logger.warning(f"Failed to convert model to dict: {model}", exc_info=True)
-            return {}
-    else:
-        return model
-
-
-def get_token_count_from_string(string: str, model_name: str):
-    if not should_record_stream_token_usage():
-        return None
-
-    import tiktoken
-
-    if tiktoken_encodings.get(model_name) is None:
-        try:
-            encoding = tiktoken.encoding_for_model(model_name)
-        except KeyError:
-            # no such model_name in tiktoken
-            logger.warning(
-                "Failed to get tiktoken encoding for model_name {model_name}",
-                exc_info=True,
-            )
-            return None
-        except Exception:
-            # Other exceptions in tiktoken
-            logger.warning(
-                "Failed to get tiktoken encoding for model_name {model_name}",
-                exc_info=True,
-            )
-            return None
-
-        tiktoken_encodings[model_name] = encoding
-    else:
-        encoding = tiktoken_encodings.get(model_name)
-
-    token_count = len(encoding.encode(string))
-    return token_count
-
-
-def _token_type(token_type: str):
-    if token_type == "prompt_tokens":
-        return "input"
-    elif token_type == "completion_tokens":
-        return "output"
-
-    return None
-
-
-def propagate_trace_context(span, kwargs):
+def propagate_trace_context(
+    span: Span,
+    kwargs: dict[str, Any],
+):
     if is_openai_v1():
         extra_headers = kwargs.get("extra_headers", {})
         ctx = set_span_in_context(span)

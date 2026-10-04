@@ -22,12 +22,12 @@ from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
 
-WrappedFunction = Callable[..., Any]  # pyright: ignore[reportExplicitAny]
+WrappedFunction = Callable[..., Any]
 
 #: The shape wrapt's `wrap_function_wrapper` expects.
 InstrumentedWrapper = Callable[
-    [WrappedFunction, Any, tuple[Any, ...], dict[str, Any]],  # pyright: ignore[reportExplicitAny]
-    Any,  # pyright: ignore[reportExplicitAny]
+    [WrappedFunction, Any, tuple[Any, ...], dict[str, Any]],
+    Any,
 ]
 
 #: Deliberately UNBOUND. `to_wrap` has no single shape across the legacy
@@ -39,7 +39,7 @@ ToWrapT = TypeVar("ToWrapT")
 
 @dataclasses.dataclass
 class _WrappedCallable:
-    __wrapped__: Callable[..., Any]  # pyright: ignore[reportExplicitAny]
+    __wrapped__: Callable[..., Any]
 
 #: `wrapt`'s wrapper contract is genuinely untyped -- `instance`/`args`/`kwargs`
 #: (and the wrapped call's return value) can be anything, for any wrapped
@@ -51,11 +51,11 @@ def with_tracer_wrapper(
             Tracer,
             ToWrapT,
             WrappedFunction,
-            Any,  # pyright: ignore[reportExplicitAny]
-            tuple[Any, ...],  # pyright: ignore[reportExplicitAny]
-            dict[str, Any],  # pyright: ignore[reportExplicitAny]
+            Any,
+            tuple[Any, ...],
+            dict[str, Any],
         ],
-        Any,  # pyright: ignore[reportExplicitAny]
+        Any,
     ],
 ) -> Callable[[Tracer, ToWrapT], InstrumentedWrapper]:
     """Bind a tracer and a per-instrumented-method config into an instrumentation
@@ -72,13 +72,13 @@ def with_tracer_wrapper(
 
     def _with_tracer(tracer: Tracer, to_wrap: ToWrapT) -> InstrumentedWrapper:
         @functools.wraps(func)
-        def wrapper(  # pyright: ignore[reportAny]
+        def wrapper(
             wrapped: WrappedFunction,
-            instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-            args: tuple[Any, ...],  # pyright: ignore[reportExplicitAny]
-            kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
-        ) -> Any:  # pyright: ignore[reportExplicitAny]
-            return func(  # pyright: ignore[reportAny]
+            instance: Any,
+            args: tuple[Any, ...],
+            kwargs: dict[str, Any],
+        ) -> Any:
+            return func(
                 tracer, to_wrap, wrapped, instance, args, kwargs
             )
 
@@ -92,11 +92,11 @@ def with_tracer_only_wrapper(
         [
             Tracer,
             WrappedFunction,
-            Any,  # pyright: ignore[reportExplicitAny]
-            tuple[Any, ...],  # pyright: ignore[reportExplicitAny]
-            dict[str, Any],  # pyright: ignore[reportExplicitAny]
+            Any,
+            tuple[Any, ...],
+            dict[str, Any],
         ],
-        Any,  # pyright: ignore[reportExplicitAny]
+        Any,
     ],
 ) -> Callable[[Tracer], InstrumentedWrapper]:
     """`with_tracer_wrapper` for instrumentations with no per-method config.
@@ -108,13 +108,13 @@ def with_tracer_only_wrapper(
 
     def _with_tracer(tracer: Tracer) -> InstrumentedWrapper:
         @functools.wraps(func)
-        def wrapper(  # pyright: ignore[reportAny]
+        def wrapper(
             wrapped: WrappedFunction,
-            instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-            args: tuple[Any, ...],  # pyright: ignore[reportExplicitAny]
-            kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
-        ) -> Any:  # pyright: ignore[reportExplicitAny]
-            return func(tracer, wrapped, instance, args, kwargs)  # pyright: ignore[reportAny]
+            instance: Any,
+            args: tuple[Any, ...],
+            kwargs: dict[str, Any],
+        ) -> Any:
+            return func(tracer, wrapped, instance, args, kwargs)
 
         return wrapper
 
@@ -173,8 +173,8 @@ def is_iterator(o: object) -> bool:
 JsonValue = None | bool | int | float | str | list["JsonValue"] | dict["JsonValue", "JsonValue"]
 
 
-def serialize(obj: Any) -> JsonValue:  # pyright: ignore[reportExplicitAny, reportAny]
-    def serialize_inner(o: Any) -> JsonValue:  # pyright: ignore[reportExplicitAny, reportAny]
+def serialize(obj: Any) -> JsonValue:
+    def serialize_inner(o: Any) -> JsonValue:
         if isinstance(o, (datetime.datetime, datetime.date)):
             return o.strftime("%Y-%m-%dT%H:%M:%S.%f%z")
         elif o is None:
@@ -184,8 +184,8 @@ def serialize(obj: Any) -> JsonValue:  # pyright: ignore[reportExplicitAny, repo
         elif isinstance(o, uuid.UUID):
             return str(o)  # same as in final return, but explicit
         elif isinstance(o, enum.Enum):
-            return o.value  # pyright: ignore[reportAny]
-        elif dataclasses.is_dataclass(o) and not isinstance(o, type):  # pyright: ignore[reportAny]
+            return o.value
+        elif dataclasses.is_dataclass(o) and not isinstance(o, type):
             # `asdict` only recurses into nested dataclasses, so its dict/list
             # values aren't necessarily `JsonValue` (e.g. a `datetime` field
             # stays a `datetime`) -- this cast doesn't change that pre-existing
@@ -196,13 +196,13 @@ def serialize(obj: Any) -> JsonValue:  # pyright: ignore[reportExplicitAny, repo
         elif isinstance(o, pydantic.BaseModel):
             return serialize(o.model_dump())
         elif isinstance(o, (tuple, set, frozenset, list)):
-            items = cast(Iterable[Any], o)  # pyright: ignore[reportExplicitAny]
-            return [serialize_inner(item) for item in items]  # pyright: ignore[reportAny]
+            items = cast(Iterable[Any], o)
+            return [serialize_inner(item) for item in items]
         elif isinstance(o, dict):
-            mapping = cast(dict[Any, Any], o)  # pyright: ignore[reportExplicitAny]
+            mapping = cast(dict[Any, Any], o)
             return {
                 serialize_inner(k): serialize_inner(v)
-                for k, v in mapping.items()  # pyright: ignore[reportAny]
+                for k, v in mapping.items()
             }
         elif isinstance(o, queue.Queue):
             return type(o).__name__  # pyright: ignore[reportUnknownArgumentType]
@@ -213,12 +213,12 @@ def serialize(obj: Any) -> JsonValue:  # pyright: ignore[reportExplicitAny, repo
 
 
 def get_input_from_func_args(
-    func: Callable[..., Any],  # pyright: ignore[reportExplicitAny]
+    func: Callable[..., Any],
     is_method: bool = False,
-    func_args: Sequence[Any] | None = None,  # pyright: ignore[reportExplicitAny]
-    func_kwargs: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
+    func_args: Sequence[Any] | None = None,
+    func_kwargs: dict[str, Any] | None = None,
     ignore_inputs: list[str] | None = None,
-) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
+) -> dict[str, Any]:
     normalized_args = list(func_args if func_args is not None else [])
     normalized_kwargs = func_kwargs if func_kwargs is not None else {}
     # Remove implicitly passed "self" or "cls" argument for
@@ -226,7 +226,7 @@ def get_input_from_func_args(
     try:
         res = {
             k: v
-            for k, v in normalized_kwargs.items()  # pyright: ignore[reportAny]
+            for k, v in normalized_kwargs.items()
             if not (ignore_inputs and k in ignore_inputs)
         }
         for i, k in enumerate(inspect.signature(func).parameters.keys()):
@@ -379,13 +379,13 @@ def format_id(id_value: str | int | uuid.UUID | object) -> str:
         raise TypeError(f"Invalid ID type: {type(id_value)}")
 
 
-DEFAULT_PLACEHOLDER: dict[Any, Any] = {}  # pyright: ignore[reportExplicitAny]
+DEFAULT_PLACEHOLDER: dict[Any, Any] = {}
 
 
 _UNWRAP_MISS = object()
 
 
-def _unwrap_container(o: object) -> dict[Any, Any] | list[Any] | object:  # pyright: ignore[reportExplicitAny]
+def _unwrap_container(o: object) -> dict[Any, Any] | list[Any] | object:
     """Open a container into a plain dict/list, or return `_UNWRAP_MISS`.
 
     Single source of truth for "what counts as a container", shared by
@@ -401,17 +401,17 @@ def _unwrap_container(o: object) -> dict[Any, Any] | list[Any] | object:  # pyri
     if isinstance(o, pydantic.BaseModel):
         return o.model_dump()
     if isinstance(o, Mapping):
-        return dict(cast(Mapping[Any, Any], o))  # pyright: ignore[reportExplicitAny]
+        return dict(cast(Mapping[Any, Any], o))
     if isinstance(o, (set, frozenset)):
-        return list(cast("set[Any] | frozenset[Any]", o))  # pyright: ignore[reportExplicitAny]
+        return list(cast("set[Any] | frozenset[Any]", o))
     if isinstance(o, Sequence) and not isinstance(
         o, (str, bytes, bytearray)
     ):
-        return list(cast(Sequence[Any], o))  # pyright: ignore[reportExplicitAny]
+        return list(cast(Sequence[Any], o))
     return _UNWRAP_MISS
 
 
-def default_json(o: object) -> str | dict[Any, Any] | list[Any]:  # pyright: ignore[reportExplicitAny]
+def default_json(o: object) -> str | dict[Any, Any] | list[Any]:
     # STANDARD base64 (`+`/`/`), not pydantic's URL-safe `ser_json_bytes`
     # alphabet: consumers decode with `base64.b64decode`, which defaults to
     # `validate=False` and silently DROPS out-of-alphabet characters instead of
@@ -426,7 +426,7 @@ def default_json(o: object) -> str | dict[Any, Any] | list[Any]:  # pyright: ign
     # SINGLE quotes — "{'a': 1}" — which is not JSON and no consumer can parse.
     unwrapped = _unwrap_container(o)
     if unwrapped is not _UNWRAP_MISS:
-        return cast("dict[Any, Any] | list[Any]", unwrapped)  # pyright: ignore[reportExplicitAny]
+        return cast("dict[Any, Any] | list[Any]", unwrapped)
 
     try:
         return str(o)
@@ -480,7 +480,7 @@ _ORJSON_NATIVE_KEY_TYPES = (
 )
 
 
-def _stringify_dict_keys(value: JsonValue | Sequence[Any] | dict[Any, Any]) -> JsonValue:  # pyright: ignore[reportExplicitAny]
+def _stringify_dict_keys(value: JsonValue | Sequence[Any] | dict[Any, Any]) -> JsonValue:
     """Coerce the mapping keys orjson cannot encode into strings.
 
     `OPT_NON_STR_KEYS` only covers a fixed set of scalar key types, and orjson
@@ -500,7 +500,7 @@ def _stringify_dict_keys(value: JsonValue | Sequence[Any] | dict[Any, Any]) -> J
     opened = _unwrap_container(value)
     if opened is _UNWRAP_MISS:
         return cast(JsonValue, value)
-    opened = cast("dict[Any, Any] | list[Any]", opened)  # pyright: ignore[reportExplicitAny]
+    opened = cast("dict[Any, Any] | list[Any]", opened)
 
     if isinstance(opened, dict):
         # Keys can stay non-`str` (e.g. `uuid.UUID`/`datetime`) here -- they're
@@ -516,19 +516,19 @@ def _stringify_dict_keys(value: JsonValue | Sequence[Any] | dict[Any, Any]) -> J
                     else (
                         base64.b64encode(key).decode("utf-8")
                         if isinstance(key, (bytes, bytearray))
-                        else str(key)  # pyright: ignore[reportAny]
+                        else str(key)
                     )
-                ): _stringify_dict_keys(inner)  # pyright: ignore[reportAny]
-                for key, inner in opened.items()  # pyright: ignore[reportAny]
+                ): _stringify_dict_keys(inner)
+                for key, inner in opened.items()
             },
         )
     return [
-        _stringify_dict_keys(item)  # pyright: ignore[reportAny]
-        for item in opened  # pyright: ignore[reportAny]
+        _stringify_dict_keys(item)
+        for item in opened
     ]
 
 
-def json_dumps(data: JsonValue | dict[str, Any] | Sequence[Any]) -> str:  # pyright: ignore[reportExplicitAny]
+def json_dumps(data: JsonValue | dict[str, Any] | Sequence[Any]) -> str:
     try:
         return orjson.dumps(
             data,

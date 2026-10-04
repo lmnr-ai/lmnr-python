@@ -45,7 +45,7 @@ def decode_payload(payload: Payload | None) -> str | None:
     if payload is None:
         return None
     try:
-        value = _payload_converter.from_payloads([payload])[0]  # pyright: ignore[reportAny]
+        value = _payload_converter.from_payloads([payload])[0]
         return value if isinstance(value, str) else None
     except Exception:
         return None

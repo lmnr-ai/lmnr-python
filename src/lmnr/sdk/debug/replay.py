@@ -46,7 +46,7 @@ def replay_enabled() -> bool:
     return runtime is not None and runtime.replay_configured
 
 
-def input_messages_from_span(span: Span | LaminarSpan | None) -> list[Any] | None:  # pyright: ignore[reportExplicitAny]
+def input_messages_from_span(span: Span | LaminarSpan | None) -> list[Any] | None:
     """Read and parse the `gen_ai.input.messages` JSON off a live span.
 
     Every provider sets this attribute (via `json_dumps`) before the rollout

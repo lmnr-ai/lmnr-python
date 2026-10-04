@@ -30,17 +30,17 @@ _instruments = ("cua-agent >= 0.4.0",)
 
 def _wrap_run(
     to_wrap: WrappedFunctionSpec,
-    wrapped: Callable[..., AsyncGenerator[dict[str, Any], None]],  # pyright: ignore[reportExplicitAny]
-    instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
-) -> AsyncGenerator[dict[str, Any], None]:  # pyright: ignore[reportExplicitAny]
+    wrapped: Callable[..., AsyncGenerator[dict[str, Any], None]],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> AsyncGenerator[dict[str, Any], None]:
     parent_span = Laminar.start_span(to_wrap.get("span_name") or "ComputerAgent.run")
     stamp_instrumentation_scope(parent_span, to_wrap)
     instance._lmnr_parent_span = parent_span
 
     try:
-        result: AsyncGenerator[dict[str, Any], None] = wrapped(*args, **kwargs)  # pyright: ignore[reportExplicitAny]
+        result: AsyncGenerator[dict[str, Any], None] = wrapped(*args, **kwargs)
         return _abuild_from_streaming_response(to_wrap, parent_span, result)
     except Exception as e:
         if parent_span.is_recording():
@@ -53,8 +53,8 @@ def _wrap_run(
 async def _abuild_from_streaming_response(
     to_wrap: WrappedFunctionSpec,
     parent_span: Span,
-    response: AsyncGenerator[dict[str, Any], None],  # pyright: ignore[reportExplicitAny]
-) -> AsyncGenerator[dict[str, Any], None]:  # pyright: ignore[reportExplicitAny]
+    response: AsyncGenerator[dict[str, Any], None],
+) -> AsyncGenerator[dict[str, Any], None]:
     with Laminar.use_span(parent_span, end_on_exit=True):
         response_iter = aiter(response)
         while True:
@@ -69,7 +69,7 @@ async def _abuild_from_streaming_response(
                         # When processing tool calls, each output item is processed separately,
                         # if the output is message, agent.step returns an empty array
                         # https://github.com/trycua/cua/blob/17d670962970a1d1774daaec029ebf92f1f9235e/libs/python/agent/agent/agent.py#L459
-                        if len(step.get("output", [])) == 0:  # pyright: ignore[reportAny]
+                        if len(step.get("output", [])) == 0:
                             continue
                     except Exception:
                         logger.debug("Failed to process output tool calls", exc_info=True)

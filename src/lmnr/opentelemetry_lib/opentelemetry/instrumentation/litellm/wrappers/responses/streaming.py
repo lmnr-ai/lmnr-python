@@ -24,15 +24,15 @@ class _Usage(TypedDict, total=False):
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
-    input_tokens_details: dict[str, Any]  # pyright: ignore[reportExplicitAny]
+    input_tokens_details: dict[str, Any]
 
 
 class _FinalResponse(TypedDict, total=False):
     id: str
     model: str
     usage: _Usage
-    reasoning: dict[str, Any]  # pyright: ignore[reportExplicitAny]
-    output: list[Any]  # pyright: ignore[reportExplicitAny]
+    reasoning: dict[str, Any]
+    output: list[Any]
 
 
 @dont_throw
@@ -65,12 +65,12 @@ def _set_final_response_attributes(
                 )
 
         # Handle output messages/items
-        final_items: list[dict[str, Any]] = []  # pyright: ignore[reportExplicitAny]
+        final_items: list[dict[str, Any]] = []
         if reasoning := final_response.get("reasoning"):
             reasoning_dict = to_dict(reasoning)
             if reasoning_dict.get("summary") or reasoning_dict.get("effort"):
                 final_items.append(reasoning_dict)
-        for item in final_response.get("output") or []:  # pyright: ignore[reportAny]
+        for item in final_response.get("output") or []:
             final_items.append(to_dict(item))
 
         span.set_attribute("gen_ai.output.messages", json_dumps(final_items))

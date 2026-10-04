@@ -41,9 +41,9 @@ T = TypeVar("T")
 async def _wrap(
     to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., Awaitable[T]],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> T:
     span_name = to_wrap.get("span_name") or "Skyvern.span"
     attributes = {
@@ -77,9 +77,9 @@ async def _wrap(
             raise
 
 
-def instrument_llm_handler(  # pyright: ignore[reportAny]
+def instrument_llm_handler(
     scope: LaminarInstrumentationScopeAttributes | None = None,
-) -> Any:  # pyright: ignore[reportExplicitAny]
+) -> Any:
     """Wrap skyvern's global LLM handler, returning the original for restoration.
 
     Reading `app.LLM_API_HANDLER` raises `RuntimeError` until skyvern's forge app
@@ -91,9 +91,9 @@ def instrument_llm_handler(  # pyright: ignore[reportAny]
     # Store the original handler
     original_handler = app.LLM_API_HANDLER  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
 
-    async def wrapped_llm_handler(*args: Any, **kwargs: Any) -> Any:   # pyright: ignore[reportAny, reportExplicitAny]
+    async def wrapped_llm_handler(*args: Any, **kwargs: Any) -> Any:
 
-        prompt_name = kwargs.get("prompt_name", "")  # pyright: ignore[reportAny]
+        prompt_name = kwargs.get("prompt_name", "")
 
         if prompt_name:
             span_name = f"{prompt_name}"
@@ -198,7 +198,7 @@ class SkyvernInstrumentor(BaseLaminarInstrumentor):
 
     def __init__(self):
         super().__init__()
-        self._original_llm_handler: Callable[..., Any] | None = None  # pyright: ignore[reportExplicitAny]
+        self._original_llm_handler: Callable[..., Any] | None = None
         self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 {**spec, "instrumentation_scope": self.instrumentation_scope()}
@@ -225,7 +225,7 @@ class SkyvernInstrumentor(BaseLaminarInstrumentor):
         return self._scope
 
     @override
-    def _instrument(self, **kwargs: Any):  # pyright: ignore[reportAny, reportExplicitAny]
+    def _instrument(self, **kwargs: Any):
         # Guarded: `app.LLM_API_HANDLER` raises RuntimeError until skyvern's
         # forge app is started, which is the normal state during
         # `Laminar.initialize()`. Unguarded, that exception propagated out of
@@ -238,10 +238,10 @@ class SkyvernInstrumentor(BaseLaminarInstrumentor):
         except Exception:
             logger.debug("Failed to instrument skyvern LLM_API_HANDLER", exc_info=True)
 
-        super()._instrument(**kwargs)  # pyright: ignore[reportAny]
+        super()._instrument(**kwargs)
 
     @override
-    def _uninstrument(self, **kwargs: Any):  # pyright: ignore[reportExplicitAny, reportAny]
+    def _uninstrument(self, **kwargs: Any):
         # `instrument_llm_handler` swaps a module-level global, which `unwrap`
         # cannot undo — without this the handler stayed wrapped forever and each
         # instrument/uninstrument cycle layered another wrapper on it.
@@ -254,4 +254,4 @@ class SkyvernInstrumentor(BaseLaminarInstrumentor):
                 logger.debug("Failed to restore skyvern LLM_API_HANDLER", exc_info=True)
             self._original_llm_handler = None
 
-        super()._uninstrument(**kwargs)  # pyright: ignore[reportAny]
+        super()._uninstrument(**kwargs)

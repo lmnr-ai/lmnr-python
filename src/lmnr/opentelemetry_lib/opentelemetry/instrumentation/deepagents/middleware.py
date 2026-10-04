@@ -15,10 +15,10 @@ logger = get_default_logger(__name__)
 T = TypeVar("T")
 
 
-def summarize_messages(messages: Any) -> Any:  # pyright: ignore[reportAny, reportExplicitAny]
+def summarize_messages(messages: Any) -> Any:
     """Extract role + content pairs from langchain/langgraph message objects."""
     if not isinstance(messages, list):
-        return messages  # pyright: ignore[reportAny]
+        return messages
     out = []
     for m in messages:  # pyright: ignore[reportUnknownVariableType]
         role = getattr(m, "type", None) or getattr(m, "role", None)  # pyright: ignore[reportUnknownArgumentType]
@@ -30,34 +30,34 @@ def summarize_messages(messages: Any) -> Any:  # pyright: ignore[reportAny, repo
     return out  # pyright: ignore[reportUnknownVariableType]
 
 
-def _tool_result_to_json(result: Any) -> Any:  # pyright: ignore[reportAny, reportExplicitAny]:
+def _tool_result_to_json(result: Any) -> Any:
     """Return a JSON-friendly view of a ToolMessage / Command."""
-    if hasattr(result, "content"):  # pyright: ignore[reportAny]
-        return getattr(result, "content", None)  # pyright: ignore[reportAny]
+    if hasattr(result, "content"):
+        return getattr(result, "content", None)
     # A langgraph `Command` exposes `.update` as a data attribute, but
     # `dict` (and other mapping types) expose it as a callable method —
     # skip those to avoid serializing the bound method as the tool output.
-    update_attr = getattr(result, "update", None)  # pyright: ignore[reportAny]
-    if update_attr is not None and not callable(update_attr):  # pyright: ignore[reportAny]
+    update_attr = getattr(result, "update", None)
+    if update_attr is not None and not callable(update_attr):
         try:
             return {"update": update_attr}
         except Exception:
-            return repr(result)  # pyright: ignore[reportAny]
-    return result  # pyright: ignore[reportAny]
+            return repr(result)
+    return result
 
 
-def _tool_span_name(request: Any) -> str:  # pyright: ignore[reportAny, reportExplicitAny]::
-    call = getattr(request, "tool_call", None) or {}  # pyright: ignore[reportAny, reportUnknownVariableType]
+def _tool_span_name(request: Any) -> str:
+    call = getattr(request, "tool_call", None) or {}  # pyright: ignore[reportUnknownVariableType]
     if isinstance(call, dict):
         name = call.get("name")  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
         if name:
             return f"{name}"
-    tool = getattr(request, "tool", None)  # pyright: ignore[reportAny]
+    tool = getattr(request, "tool", None)
     return getattr(tool, "name", None) or "tool"
 
 
-def _tool_span_input(request: Any) -> Any:  # pyright: ignore[reportAny, reportExplicitAny]:
-    call = getattr(request, "tool_call", None) or {}  # pyright: ignore[reportAny, reportUnknownVariableType]
+def _tool_span_input(request: Any) -> Any:
+    call = getattr(request, "tool_call", None) or {}  # pyright: ignore[reportUnknownVariableType]
     if isinstance(call, dict):
         return call.get("args")  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
     return None
@@ -84,7 +84,7 @@ try:
         @override
         def wrap_tool_call(
             self,
-            request: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+            request: Any,
             handler: Callable[..., T],
         ) -> T:
             with Laminar.start_as_current_span(
@@ -99,7 +99,7 @@ try:
         @override
         async def awrap_tool_call(
             self,
-            request: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+            request: Any,
             handler: Callable[..., Awaitable[T]],
         ) -> T:
             with Laminar.start_as_current_span(

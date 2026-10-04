@@ -1,13 +1,5 @@
-from collections.abc import (
-    AsyncGenerator,
-    AsyncIterator,
-    Callable,
-    Generator,
-    Iterator,
-    Sequence,
-)
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Generator, Sequence
 from inspect import iscoroutine
-from types import CoroutineType
 from typing import Any, TypedDict, cast
 
 from opentelemetry.trace import Status, StatusCode
@@ -81,10 +73,10 @@ def _get_rollout_wrapper()-> tuple[object | None, bool]:  # object == LiteLLMRol
 def wrap_completion(
     to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., T],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any] | None = None,  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
-) -> T | Generator[T] | CoroutineType[None, None, T] | AsyncGenerator[T] | DualIteratorWrapper:
+    _instance: Any,
+    args: Sequence[Any] | None = None,
+    kwargs: dict[str, Any] | None = None,
+) -> Any:
     if kwargs is None:
         kwargs = {}
     if args is None:
@@ -99,7 +91,7 @@ def wrap_completion(
         metadata=cast(dict[str, AttributeValue], meta),  # pyright: ignore[reportInvalidCast]
     )
     stamp_instrumentation_scope(span, to_wrap)
-    messages = args[1] if len(args) > 1 else kwargs.get("messages", [])  # pyright: ignore[reportAny]
+    messages = args[1] if len(args) > 1 else kwargs.get("messages", [])
     process_completion_inputs(span, messages, kwargs.get("tools", []))
     process_completion_kwargs(span, args, kwargs)
     streaming_handled = False
@@ -142,23 +134,25 @@ def wrap_completion(
                 # For streaming, we need to return an async generator function
                 # that awaits the coroutine and then delegates to the streaming processor
                 # We need to maintain the litellm context through the async generator
-                async def process_streaming_coroutine():
+                async def process_streaming_coroutine() -> AsyncGenerator[Any]:
                     # Set the litellm context flag for the duration of this generator
                     token = set_in_litellm_context(True)
                     try:
-                        actual_result = await result  # pyright: ignore[reportAny]
-                        if hasattr(actual_result, "__aiter__"):  # pyright: ignore[reportAny]
+                        actual_result = await result
+                        if hasattr(actual_result, "__aiter__"):
                             # Delegate to async streaming processor by yielding from it
-                            async for (  # pyright: ignore[reportAny]
-                                item
-                            ) in process_completion_async_streaming_response(
-                                span, actual_result, record_raw_response=is_rollout,  # pyright: ignore[reportAny]
-                            ):
+                            processed: AsyncGenerator[Any] = cast(
+                                Any,
+                                process_completion_async_streaming_response(
+                                    span, actual_result, record_raw_response=is_rollout,
+                                ),
+                            )
+                            async for item in processed:
                                 yield item
-                        elif hasattr(actual_result, "__iter__"):  # pyright: ignore[reportAny]
+                        elif hasattr(actual_result, "__iter__"):
                             # Sync iterator from async context - yield from sync processor
-                            for item in process_completion_streaming_response(  # pyright: ignore[reportAny]
-                                span, actual_result, record_raw_response=is_rollout,  # pyright: ignore[reportAny]
+                            for item in process_completion_streaming_response(
+                                span, actual_result, record_raw_response=is_rollout,
                             ):
                                 yield item
                         else:
@@ -183,11 +177,11 @@ def wrap_completion(
                 async def process_non_streaming_coroutine() -> T:
                     token = set_in_litellm_context(True)
                     try:
-                        actual_result = await result  # pyright: ignore[reportAny]
+                        actual_result = await result
                         _processed_response = process_completion_response(
                             span, actual_result, record_raw_response=is_rollout
                         )
-                        return actual_result  # pyright: ignore[reportAny]
+                        return actual_result
                     except Exception as e:
                         span.record_exception(e)
                         span.set_status(Status(StatusCode.ERROR, str(e)))
@@ -200,8 +194,6 @@ def wrap_completion(
 
         if kwargs.get("stream"):
             # Check if this is our DualIteratorWrapper - if so, set attributes and return directly
-            from ..rollout import DualIteratorWrapper
-
             if isinstance(result, DualIteratorWrapper):
                 # Set span attributes directly without consuming the iterator
                 result.set_span_attributes(span, record_raw_response=is_rollout)
@@ -211,12 +203,12 @@ def wrap_completion(
             elif hasattr(result, "__iter__"):
                 streaming_handled = True
                 return process_completion_streaming_response(
-                    span, cast(Generator[Any], result), record_raw_response=is_rollout,  # pyright: ignore[reportExplicitAny]
+                    span, cast(Generator[Any], result), record_raw_response=is_rollout,
                 )
             elif hasattr(result, "__aiter__"):
                 streaming_handled = True
                 return process_completion_async_streaming_response(
-                    span, cast(AsyncGenerator[Any], result), record_raw_response=is_rollout,  # pyright: ignore[reportExplicitAny]
+                    span, cast(AsyncGenerator[Any], result), record_raw_response=is_rollout,
                 )
             else:
                 logger.warning(
@@ -238,10 +230,10 @@ def wrap_completion(
 def wrap_responses(
     to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., T],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any] | None = None,  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
-) -> T | Iterator[T] | CoroutineType[None, None, T] | AsyncIterator[T] | DualIteratorWrapper:
+    _instance: Any,
+    args: Sequence[Any] | None = None,
+    kwargs: dict[str, Any] | None = None,
+) -> Any:
     if kwargs is None:
         kwargs = {}
     if args is None:
@@ -293,22 +285,24 @@ def wrap_responses(
                 # For streaming, we need to return an async generator function
                 # that awaits the coroutine and then delegates to the streaming processor
                 # We need to maintain the litellm context through the async generator
-                async def process_streaming_coroutine():
+                async def process_streaming_coroutine() -> AsyncGenerator[Any]:
                     token = set_in_litellm_context(True)
                     try:
-                        actual_result = await result  # pyright: ignore[reportAny]
-                        if hasattr(actual_result, "__aiter__"):  # pyright: ignore[reportAny]
+                        actual_result = await result
+                        if hasattr(actual_result, "__aiter__"):
                             # Delegate to async streaming processor by yielding from it
-                            async for (  # pyright: ignore[reportAny]
-                                item
-                            ) in process_responses_async_streaming_response(
-                                span, actual_result, record_raw_response=is_rollout,  # pyright: ignore[reportAny]
-                            ):
+                            processed: AsyncIterator[Any] = cast(
+                                Any,
+                                process_responses_async_streaming_response(
+                                    span, actual_result, record_raw_response=is_rollout,
+                                ),
+                            )
+                            async for item in processed:
                                 yield item
-                        elif hasattr(actual_result, "__iter__"):  # pyright: ignore[reportAny]
+                        elif hasattr(actual_result, "__iter__"):
                             # Sync iterator from async context - yield from sync processor
-                            for item in process_responses_streaming_response(  # pyright: ignore[reportAny]
-                                span, actual_result, record_raw_response=is_rollout,  # pyright: ignore[reportAny]
+                            for item in process_responses_streaming_response(
+                                span, actual_result, record_raw_response=is_rollout,
                             ):
                                 yield item
                         else:
@@ -333,11 +327,11 @@ def wrap_responses(
                 async def process_non_streaming_coroutine() -> T:
                     token = set_in_litellm_context(True)
                     try:
-                        actual_result = await result  # pyright: ignore[reportAny]
+                        actual_result = await result
                         process_responses_response(
                             span, actual_result, record_raw_response=is_rollout
                         )
-                        return actual_result  # pyright: ignore[reportAny]
+                        return actual_result
                     except Exception as e:
                         span.record_exception(e)
                         span.set_status(Status(StatusCode.ERROR, str(e)))
@@ -350,8 +344,6 @@ def wrap_responses(
 
         if kwargs.get("stream"):
             # Check if this is our DualIteratorWrapper - if so, set attributes and return directly
-            from ..rollout import DualIteratorWrapper
-
             if isinstance(result, DualIteratorWrapper):
                 # Set span attributes directly without consuming the iterator
                 result.set_span_attributes(span, record_raw_response=is_rollout)
@@ -361,12 +353,12 @@ def wrap_responses(
             elif hasattr(result, "__iter__"):
                 streaming_handled = True
                 return process_responses_streaming_response(
-                    span, cast(Generator[Any], result), record_raw_response=is_rollout,  # pyright: ignore[reportExplicitAny]
+                    span, cast(Generator[Any], result), record_raw_response=is_rollout,
                 )
             elif hasattr(result, "__aiter__"):
                 streaming_handled = True
                 return process_responses_async_streaming_response(
-                    span, cast(AsyncGenerator[Any], result), record_raw_response=is_rollout,  # pyright: ignore[reportExplicitAny]
+                    span, cast(AsyncGenerator[Any], result), record_raw_response=is_rollout,
                 )
             else:
                 logger.warning(

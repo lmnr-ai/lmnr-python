@@ -49,7 +49,7 @@ logger = get_default_logger(__name__)
 @dataclass
 class _SpanEntry:
     lmnr_span: LaminarSpan
-    agents_span: AgentsSpan[Any] | None = None  # pyright: ignore[reportExplicitAny]
+    agents_span: AgentsSpan[Any] | None = None
 
 
 @dataclass
@@ -124,7 +124,7 @@ class LaminarAgentsTraceProcessor(_Base):
             _popped_state = self._traces.pop(trace_id, None)
 
     @override
-    def on_span_start(self, span: AgentsSpan[Any]) -> None:  # pyright: ignore[reportExplicitAny]
+    def on_span_start(self, span: AgentsSpan[Any]) -> None:
         if self._disabled:
             return
         trace_id = span.trace_id
@@ -136,7 +136,7 @@ class LaminarAgentsTraceProcessor(_Base):
 
             parent_ctx: LaminarSpanContext | None = None
 
-            span_data = span.span_data  # pyright: ignore[reportAny]
+            span_data = span.span_data
             span_type = map_span_type(span_data)
             name = span_name(span, span_data)
 
@@ -146,7 +146,7 @@ class LaminarAgentsTraceProcessor(_Base):
             if span_kind(span_data) == "agent":
                 this_agent = name_from_span_data(
                     export_span_data(span_data).get("name")
-                    or getattr(span_data, "name", None)  # pyright: ignore[reportAny]
+                    or getattr(span_data, "name", None)
                 )
                 with self._lock:
                     handoff_ctx = state.pending_handoff_ctxs.pop(this_agent, None)
@@ -185,7 +185,7 @@ class LaminarAgentsTraceProcessor(_Base):
                     logger.debug("failed to end Laminar span", exc_info=True)
 
     @override
-    def on_span_end(self, span: AgentsSpan[Any]) -> None:  # pyright: ignore[reportExplicitAny]
+    def on_span_end(self, span: AgentsSpan[Any]) -> None:
         if self._disabled:
             return
         trace_id = span.trace_id
@@ -206,7 +206,7 @@ class LaminarAgentsTraceProcessor(_Base):
         if not entry or not state:
             return
 
-        span_data = span.span_data  # pyright: ignore[reportAny]
+        span_data = span.span_data
         try:
             try:
                 apply_span_data(entry.lmnr_span, span_data)
@@ -222,13 +222,13 @@ class LaminarAgentsTraceProcessor(_Base):
                 try:
                     to_agent = name_from_span_data(
                         export_span_data(span_data).get("to_agent")
-                        or getattr(span_data, "to_agent", None)  # pyright: ignore[reportAny]
+                        or getattr(span_data, "to_agent", None)
                     )
                     if to_agent:
                         parent_id = getattr(span, "parent_id", None)
                         with self._lock:
                             parent_entry = (
-                                state.spans.get(parent_id) if parent_id else None  # pyright: ignore[reportAny]
+                                state.spans.get(parent_id) if parent_id else None
                             )
                         parent_lmnr_span = (
                             parent_entry.lmnr_span
@@ -317,7 +317,7 @@ class LaminarAgentsTraceProcessor(_Base):
             logger.debug("Failed to end root span", exc_info=True)
 
     def _get_or_create_trace(
-        self, trace_or_span: Trace | AgentsSpan[Any],   # pyright: ignore[reportExplicitAny]
+        self, trace_or_span: Trace | AgentsSpan[Any],
     ) -> _TraceState:
         trace_id = getattr(trace_or_span, "trace_id", None)
         if not trace_id:
@@ -355,7 +355,7 @@ class LaminarAgentsTraceProcessor(_Base):
     ) -> None:
         if root_span is None:
             return
-        metadata: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
+        metadata: dict[str, Any] = {}
         trace_metadata = getattr(trace, "metadata", None)
         if isinstance(trace_metadata, dict):
             metadata.update(trace_metadata)  # pyright: ignore[reportUnknownArgumentType]

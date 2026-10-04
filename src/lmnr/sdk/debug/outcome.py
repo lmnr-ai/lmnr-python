@@ -22,4 +22,4 @@ logger = get_default_logger(__name__)
 @dataclass(frozen=True)
 class CacheOutcome:
     kind: Literal["hit", "miss", "live"]
-    cached: dict[str, Any] | None = None  # pyright: ignore[reportExplicitAny]
+    cached: dict[str, Any] | None = None

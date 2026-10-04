@@ -1,54 +1,75 @@
-import logging
+from __future__ import annotations
+
 import threading
+from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Sequence
+from types import TracebackType
+from typing import Any, TypedDict, cast
 
 from opentelemetry import context as context_api
-from ..shared import (
-    _set_client_attributes,
-    _set_request_attributes,
-    _set_response_attributes,
-    set_span_attribute,
+from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
+from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
+from opentelemetry.trace import Span
+from opentelemetry.trace.status import Status, StatusCode
+from typing_extensions import Never, NotRequired, Self, TypeVar, override
+from wrapt import ObjectProxy
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.shared import (
     is_streaming_response,
-    model_as_dict,
     propagate_trace_context,
+    set_client_attributes,
+    set_request_attributes,
+    set_response_attributes,
     set_tools_attributes,
 )
-from lmnr.sdk.utils import json_dumps
-from ..shared.config import Config
-from ..utils import (
-    dont_throw,
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
     is_openai_v1,
-    should_send_prompts,
-)
-from lmnr.opentelemetry_lib.tracing.context import (
-    get_event_attributes_from_context,
-    is_in_litellm_context,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    dont_throw,
+    model_as_dict,
     safe_start_span,
+    set_span_attribute,
+    should_send_prompts,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     stamp_instrumentation_scope,
 )
-from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
-from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
-from opentelemetry.trace.status import Status, StatusCode
-from wrapt import ObjectProxy
+from lmnr.opentelemetry_lib.tracing.context import (
+    get_event_attributes_from_context,
+    is_in_litellm_context,
+)
+from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.utils import json_dumps
 
 SPAN_NAME = "openai.chat"
 
-logger = logging.getLogger(__name__)
+logger = get_default_logger(__name__)
+T = TypeVar("T")
+
+
+class ChatStreamResponse(TypedDict):
+    choices: list[dict[str, Any]]
+    model: str
+    id: str
+    service_tier: str | None
+    created: NotRequired[int]
+    object: NotRequired[str]
+    system_fingerprint: NotRequired[str | None]
+    moderation: NotRequired[Any]
+    usage: NotRequired[Any]
+    prompt_filter_results: NotRequired[Any]
 
 
 def chat_wrapper(
     to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance,
-    args,
-    kwargs,
-):
+    wrapped: Callable[..., T],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T | Generator[Any] | ChatStream | None:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
     # span needs to be opened and closed manually because the response is a generator
@@ -87,7 +108,7 @@ def chat_wrapper(
             rollout_wrapper = get_openai_rollout_wrapper()
             if rollout_wrapper:
                 response = rollout_wrapper.wrap_chat_completion(
-                    wrapped,
+                    cast(Callable[..., Any], wrapped),  # rollout wrapper is typed stricter than this file
                     instance,
                     args,
                     kwargs,
@@ -121,7 +142,7 @@ def chat_wrapper(
                 response,
             )
 
-    _handle_response(
+    _returned_response = _handle_response(
         response,
         span,
         record_raw_response=is_rollout,
@@ -129,16 +150,16 @@ def chat_wrapper(
 
     span.end()
 
-    return response
+    return cast(T, response)
 
 
 async def achat_wrapper(
     to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance,
-    args,
-    kwargs,
-):
+    wrapped: Callable[..., Awaitable[T]],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T | AsyncGenerator[Any, Never] | None:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
@@ -175,7 +196,7 @@ async def achat_wrapper(
             rollout_wrapper = get_openai_rollout_wrapper()
             if rollout_wrapper:
                 result = rollout_wrapper.wrap_chat_completion(
-                    wrapped,
+                    cast(Callable[..., Any], wrapped),  # rollout wrapper is typed stricter than this file
                     instance,
                     args,
                     kwargs,
@@ -215,7 +236,7 @@ async def achat_wrapper(
                 response,
             )
 
-    _handle_response(
+    _response = _handle_response(
         response,
         span,
         record_raw_response=is_rollout,
@@ -223,35 +244,38 @@ async def achat_wrapper(
 
     span.end()
 
-    return response
+    return cast(T, response)
 
 
 @dont_throw
-def _handle_request(span, kwargs, instance):
-    _set_request_attributes(span, kwargs, instance)
-    _set_client_attributes(span, instance)
+def _handle_request(
+    span: Span,
+    kwargs: dict[str, Any],
+    instance: Any,
+):
+    set_request_attributes(span, kwargs, instance)
+    set_client_attributes(span, instance)
     if should_send_prompts():
         _set_prompts(span, kwargs.get("messages"))
         if kwargs.get("functions"):
             set_tools_attributes(span, kwargs.get("functions"))
         elif kwargs.get("tools"):
             set_tools_attributes(span, kwargs.get("tools"))
-    if Config.enable_trace_context_propagation:
-        propagate_trace_context(span, kwargs)
+    propagate_trace_context(span, kwargs)
 
 
 @dont_throw
 def _handle_response(
-    response,
-    span,
-    record_raw_response=False,
+    response: Any,
+    span: Span,
+    record_raw_response: bool = False,
 ):
     if is_openai_v1():
         response_dict = model_as_dict(response)
     else:
         response_dict = response
 
-    _set_response_attributes(span, response_dict)
+    set_response_attributes(span, response_dict)
 
     if should_send_prompts():
         _set_completions(span, response_dict.get("choices"))
@@ -267,65 +291,53 @@ def _handle_response(
                     span, "lmnr.sdk.raw.response", json_dumps(response_dict)
                 )
         except Exception:
-            pass
+            logger.debug("Failed to record raw response", exc_info=True)
 
     return response
 
 
-def _set_choice_counter_metrics(choice_counter, choices, shared_attributes):
-    choice_counter.add(len(choices), attributes=shared_attributes)
-    for choice in choices:
-        attributes_with_reason = {**shared_attributes}
-        if choice.get("finish_reason"):
-            attributes_with_reason["llm.response.finish_reason"] = choice.get(
-                "finish_reason"
-            )
-        choice_counter.add(1, attributes=attributes_with_reason)
-
-
 @dont_throw
-def _set_prompts(span, messages):
+def _set_prompts(span: Span, messages: list[Any] | None):
     if not span.is_recording() or messages is None:
         return
 
     processed_messages = []
     for msg in messages:
-        msg = msg if isinstance(msg, dict) else model_as_dict(msg)
-        processed_msg = dict(msg)
+        msg = msg if isinstance(msg, dict) else model_as_dict(msg)  # pyright: ignore[reportUnknownVariableType]
+        processed_msg = dict(msg)  # pyright: ignore[reportUnknownArgumentType]
 
         if processed_msg.get("tool_calls"):
             processed_msg["tool_calls"] = [
                 model_as_dict(tc) for tc in processed_msg["tool_calls"]
             ]
 
-        processed_messages.append(processed_msg)
+        processed_messages.append(processed_msg)  # pyright: ignore[reportUnknownMemberType]
 
-    set_span_attribute(span, "gen_ai.input.messages", json_dumps(processed_messages))
+    set_span_attribute(span, "gen_ai.input.messages", json_dumps(processed_messages))  # pyright: ignore[reportUnknownArgumentType]
 
 
-def _set_completions(span, choices):
+def _set_completions(span: Span, choices: list[dict[str, Any]] | None):
     if choices is None:
         return
 
     set_span_attribute(span, "gen_ai.output.messages", json_dumps(choices))
 
 
-class ChatStream(ObjectProxy):
-    _span = None
-    _record_raw_response = False
-    _complete_response = None
-    _cleanup_completed = False
-    _cleanup_lock = None
+class ChatStream(ObjectProxy):  # pyright: ignore[reportUntypedBaseClass]
+    _record_raw_response: bool = False
+    _complete_response: ChatStreamResponse
+    _cleanup_completed: bool = False
 
+    @override
     def __init__(
         self,
-        span,
-        response,
-        record_raw_response=False,
+        span: Span,
+        response: Any,
+        record_raw_response: bool = False,
     ):
-        super().__init__(response)
+        super().__init__(response)    # pyright: ignore[reportUnknownMemberType]
 
-        self._span = span
+        self._span: Span = span
         self._record_raw_response = record_raw_response
         self._complete_response = {
             "choices": [],
@@ -338,17 +350,22 @@ class ChatStream(ObjectProxy):
         }
 
         self._cleanup_completed = False
-        self._cleanup_lock = threading.Lock()
+        self._cleanup_lock: threading.Lock = threading.Lock()
 
     def __del__(self):
         """Cleanup when object is garbage collected"""
         if hasattr(self, "_cleanup_completed") and not self._cleanup_completed:
             self._ensure_cleanup()
 
-    def __enter__(self):
+    def __enter__(self) -> Self:  # pyright: ignore[reportMissingSuperCall]
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(  # pyright: ignore[reportMissingSuperCall]
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool | None:
         cleanup_exception = None
         try:
             self._ensure_cleanup()
@@ -356,6 +373,7 @@ class ChatStream(ObjectProxy):
             cleanup_exception = e
             # Don't re-raise to avoid masking original exception
 
+        result: bool | None
         if hasattr(self.__wrapped__, "__exit__"):
             result = self.__wrapped__.__exit__(exc_type, exc_val, exc_tb)
         else:
@@ -369,20 +387,25 @@ class ChatStream(ObjectProxy):
 
         return result
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> Self:
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         if hasattr(self.__wrapped__, "__aexit__"):
             await self.__wrapped__.__aexit__(exc_type, exc_val, exc_tb)
 
-    def __iter__(self):
+    def __iter__(self) -> Self:
         return self
 
-    def __aiter__(self):
+    def __aiter__(self) -> Self:
         return self
 
-    def __next__(self):
+    def __next__(self) -> Any:
         try:
             chunk = self.__wrapped__.__next__()
         except Exception as e:
@@ -414,7 +437,7 @@ class ChatStream(ObjectProxy):
             self._process_item(chunk)
             return chunk
 
-    def _process_item(self, item):
+    def _process_item(self, item: Any):
         self._span.add_event(name="llm.content.completion.chunk")
         self._complete_response["id"] = getattr(item, "id", "")
         self._complete_response["service_tier"] = getattr(item, "service_tier", "")
@@ -430,19 +453,19 @@ class ChatStream(ObjectProxy):
 
     @dont_throw
     def _process_complete_response(self):
-        _set_response_attributes(self._span, self._complete_response)
+        set_response_attributes(self._span, cast(Any, self._complete_response))
         if should_send_prompts():
-            _set_completions(self._span, self._complete_response.get("choices"))
+            _set_completions(self._span, self._complete_response["choices"])
 
         if self._record_raw_response:
             try:
                 set_span_attribute(
                     self._span,
                     "lmnr.sdk.raw.response",
-                    json_dumps(self._complete_response),
+                    json_dumps(cast(Any, self._complete_response)),
                 )
             except Exception:
-                pass
+                logger.debug("Failed to set raw response attribute", exc_info=True)
 
         self._span.set_status(Status(StatusCode.OK))
         self._span.end()
@@ -490,10 +513,15 @@ class ChatStream(ObjectProxy):
 
 @dont_throw
 def _build_from_streaming_response(
-    span,
-    response,
-):
-    complete_response = {"choices": [], "model": "", "id": "", "service_tier": None}
+    span: Span,
+    response: Any,
+) -> Generator[Any]:
+    complete_response: ChatStreamResponse = {
+        "choices": [],
+        "model": "",
+        "id": "",
+        "service_tier": None,
+    }
 
     for item in response:
         span.add_event(name="llm.content.completion.chunk")
@@ -504,9 +532,9 @@ def _build_from_streaming_response(
 
         yield item_to_yield
 
-    _set_response_attributes(span, complete_response)
+    set_response_attributes(span, cast(Any, complete_response))
     if should_send_prompts():
-        _set_completions(span, complete_response.get("choices"))
+        _set_completions(span, complete_response["choices"])
 
     span.set_status(Status(StatusCode.OK))
     span.end()
@@ -514,10 +542,15 @@ def _build_from_streaming_response(
 
 @dont_throw
 async def _abuild_from_streaming_response(
-    span,
-    response,
-):
-    complete_response = {"choices": [], "model": "", "id": "", "service_tier": None}
+    span: Span,
+    response: Any,
+) -> AsyncGenerator[Any]:
+    complete_response: ChatStreamResponse = {
+        "choices": [],
+        "model": "",
+        "id": "",
+        "service_tier": None,
+    }
 
     async for item in response:
         span.add_event(name="llm.content.completion.chunk")
@@ -528,20 +561,23 @@ async def _abuild_from_streaming_response(
 
         yield item_to_yield
 
-    _set_response_attributes(span, complete_response)
+    set_response_attributes(span, cast(Any, complete_response))
     if should_send_prompts():
-        _set_completions(span, complete_response.get("choices"))
+        _set_completions(span, complete_response["choices"])
 
     span.set_status(Status(StatusCode.OK))
     span.end()
 
 
-def _accumulate_stream_items(item, complete_response):
+def _accumulate_stream_items(
+    item: Any,
+    complete_response: ChatStreamResponse,
+):
     if is_openai_v1():
         item = model_as_dict(item)
 
-    complete_response["model"] = item.get("model")
-    complete_response["id"] = item.get("id")
+    complete_response["model"] = item.get("model") or ""
+    complete_response["id"] = item.get("id") or ""
     complete_response["service_tier"] = item.get("service_tier")
     if item.get("created"):
         complete_response["created"] = item.get("created")
@@ -559,39 +595,39 @@ def _accumulate_stream_items(item, complete_response):
     if item.get("prompt_filter_results"):
         complete_response["prompt_filter_results"] = item.get("prompt_filter_results")
 
-    for choice in item.get("choices") or []:
-        index = choice.get("index")
-        if len(complete_response.get("choices")) <= index:
+    for choice in item.get("choices") or []:  # pyright: ignore[reportUnknownVariableType]
+        index = choice.get("index")  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
+        if len(complete_response["choices"]) <= index:
             complete_response["choices"].append(
                 {"index": index, "message": {"content": "", "role": ""}}
             )
-        complete_choice = complete_response.get("choices")[index]
-        if choice.get("finish_reason"):
-            complete_choice["finish_reason"] = choice.get("finish_reason")
-        if choice.get("content_filter_results"):
-            complete_choice["content_filter_results"] = choice.get(
+        complete_choice = complete_response["choices"][index]  # pyright: ignore[reportUnknownVariableType]
+        if choice.get("finish_reason"):  # pyright: ignore[reportUnknownMemberType]
+            complete_choice["finish_reason"] = choice.get("finish_reason")  # pyright: ignore[reportUnknownMemberType]
+        if choice.get("content_filter_results"):  # pyright: ignore[reportUnknownMemberType]
+            complete_choice["content_filter_results"] = choice.get(  # pyright: ignore[reportUnknownMemberType]
                 "content_filter_results"
             )
 
-        delta = choice.get("delta")
+        delta = choice.get("delta")  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
 
-        if delta and delta.get("content"):
-            complete_choice["message"]["content"] += delta.get("content")
+        if delta and delta.get("content"):  # pyright: ignore[reportUnknownMemberType]
+            complete_choice["message"]["content"] += delta.get("content")  # pyright: ignore[reportUnknownMemberType]
 
-        if delta and delta.get("role"):
-            complete_choice["message"]["role"] = delta.get("role")
-        if delta and delta.get("tool_calls"):
-            tool_calls = delta.get("tool_calls")
-            if not isinstance(tool_calls, list) or len(tool_calls) == 0:
+        if delta and delta.get("role"):  # pyright: ignore[reportUnknownMemberType]
+            complete_choice["message"]["role"] = delta.get("role")  # pyright: ignore[reportUnknownMemberType]
+        if delta and delta.get("tool_calls"):  # pyright: ignore[reportUnknownMemberType]
+            tool_calls = delta.get("tool_calls")  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+            if not isinstance(tool_calls, list) or len(tool_calls) == 0:   # pyright: ignore[reportUnknownArgumentType]
                 continue
 
-            if not complete_choice["message"].get("tool_calls"):
+            if not complete_choice["message"].get("tool_calls"):  # pyright: ignore[reportUnknownMemberType]
                 complete_choice["message"]["tool_calls"] = []
 
-            for tool_call in tool_calls:
-                i = int(tool_call["index"])
-                if len(complete_choice["message"]["tool_calls"]) <= i:
-                    complete_choice["message"]["tool_calls"].append(
+            for tool_call in tool_calls:  # pyright: ignore[reportUnknownVariableType]
+                i = int(tool_call["index"])  # pyright: ignore[reportUnknownArgumentType]
+                if len(complete_choice["message"]["tool_calls"]) <= i:  # pyright: ignore[reportUnknownArgumentType]
+                    complete_choice["message"]["tool_calls"].append(  # pyright: ignore[reportUnknownMemberType]
                         {
                             "id": "",
                             "type": "function",
@@ -599,13 +635,13 @@ def _accumulate_stream_items(item, complete_response):
                         }
                     )
 
-                span_tool_call = complete_choice["message"]["tool_calls"][i]
-                span_function = span_tool_call["function"]
-                tool_call_function = tool_call.get("function")
+                span_tool_call = complete_choice["message"]["tool_calls"][i]  # pyright: ignore[reportUnknownVariableType]
+                span_function = span_tool_call["function"]  # pyright: ignore[reportUnknownVariableType]
+                tool_call_function = tool_call.get("function")  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
 
-                if tool_call.get("id"):
-                    span_tool_call["id"] = tool_call.get("id")
-                if tool_call_function and tool_call_function.get("name"):
-                    span_function["name"] = tool_call_function.get("name")
-                if tool_call_function and tool_call_function.get("arguments"):
-                    span_function["arguments"] += tool_call_function.get("arguments")
+                if tool_call.get("id"):  # pyright: ignore[reportUnknownMemberType]
+                    span_tool_call["id"] = tool_call.get("id")  # pyright: ignore[reportUnknownMemberType]
+                if tool_call_function and tool_call_function.get("name"):  # pyright: ignore[reportUnknownMemberType]
+                    span_function["name"] = tool_call_function.get("name")  # pyright: ignore[reportUnknownMemberType]
+                if tool_call_function and tool_call_function.get("arguments"):  # pyright: ignore[reportUnknownMemberType]
+                    span_function["arguments"] += tool_call_function.get("arguments")  # pyright: ignore[reportUnknownMemberType]

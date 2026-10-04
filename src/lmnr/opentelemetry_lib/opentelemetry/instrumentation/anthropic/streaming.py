@@ -8,16 +8,15 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
 )
 from opentelemetry.trace.status import Status, StatusCode
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    set_span_attribute,
+)
 from lmnr.sdk.utils import json_dumps
 
-from .config import Config
 from .span_utils import (
     set_streaming_response_attributes,
 )
-from .utils import (
-    dont_throw,
-    set_span_attribute,
-)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw
 
 logger = logging.getLogger(__name__)
 
@@ -151,17 +150,6 @@ def build_from_streaming_response(
         prompt_tokens = (usage.get("input_tokens", 0) or 0) if usage else 0
         completion_tokens = (usage.get("output_tokens", 0) or 0) if usage else 0
 
-        if not usage and Config.enrich_token_usage:
-            completion_content = ""
-            if complete_response.get("events"):
-                model_name = complete_response.get("model") or None
-                for event in complete_response.get("events") or []:
-                    if event.get("text"):
-                        completion_content += event.get("text")
-
-                if model_name and hasattr(instance, "count_tokens"):
-                    completion_tokens = instance.count_tokens(completion_content)
-
         _set_token_usage(
             span,
             complete_response,
@@ -208,17 +196,6 @@ async def abuild_from_streaming_response(
         usage = complete_response.get("usage")
         prompt_tokens = (usage.get("input_tokens", 0) or 0) if usage else 0
         completion_tokens = (usage.get("output_tokens", 0) or 0) if usage else 0
-
-        if not usage and Config.enrich_token_usage:
-            completion_content = ""
-            if complete_response.get("events"):
-                model_name = complete_response.get("model") or None
-                for event in complete_response.get("events") or []:
-                    if event.get("text"):
-                        completion_content += event.get("text")
-
-                if model_name and hasattr(instance, "count_tokens"):
-                    completion_tokens = instance.count_tokens(completion_content)
 
         _set_token_usage(
             span,

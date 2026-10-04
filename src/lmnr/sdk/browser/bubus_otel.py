@@ -30,9 +30,9 @@ T = TypeVar("T")
 def wrap_dispatch(
     _to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., T],
-    _instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> T:
     event = args[0] if args and len(args) > 0 else kwargs.get("event", None)
     if event and hasattr(event, "event_id"):
@@ -45,10 +45,10 @@ def wrap_dispatch(
 
 async def wrap_process_event(
     _to_wrap: WrappedFunctionSpec,
-    wrapped: Callable[..., Coroutine[Any, Any, T]],  # pyright: ignore[reportExplicitAny]
-    _instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    wrapped: Callable[..., Coroutine[Any, Any, T]],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> T:
     event = args[0] if args and len(args) > 0 else kwargs.get("event", None)
     span_context = None
@@ -120,7 +120,7 @@ class BubusInstrumentor(BaseLaminarInstrumentor):
         )
 
     @override
-    def _uninstrument(self, **kwargs: dict[str, Any]):  # pyright: ignore[reportExplicitAny]
+    def _uninstrument(self, **kwargs: dict[str, Any]):
         super()._uninstrument(**kwargs)
         # This map is the whole point of the instrumentation, so it must not
         # outlive it — a stale entry would re-parent a later event onto a span

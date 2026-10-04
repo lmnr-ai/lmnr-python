@@ -17,18 +17,18 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
 from opentelemetry.trace import Span
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.event_models import Usage
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.utils import (
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import should_send_prompts
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     model_as_dict,
     set_span_attribute,
-    should_send_prompts,
 )
 
 CONTENT_FILTER_KEY = "content_filter_results"
 
 
 @dont_throw
-def set_input_attributes(span: Span, kwargs: dict[str, Any]):  # pyright: ignore[reportExplicitAny]
+def set_input_attributes(span: Span, kwargs: dict[str, Any]):
     if not span.is_recording():
         return
 
@@ -38,7 +38,7 @@ def set_input_attributes(span: Span, kwargs: dict[str, Any]):  # pyright: ignore
             set_span_attribute(span, "gen_ai.prompt.0.content", kwargs.get("prompt"))
 
         elif kwargs.get("messages") is not None and isinstance(kwargs.get("messages"), Iterable):
-            for i, message in enumerate(cast(Iterable[dict[str, Any]], kwargs.get("messages"))):  # pyright: ignore[reportExplicitAny]
+            for i, message in enumerate(cast(Iterable[dict[str, Any]], kwargs.get("messages"))):
                 set_span_attribute(
                     span,
                     f"gen_ai.prompt.{i}.content",
@@ -48,7 +48,7 @@ def set_input_attributes(span: Span, kwargs: dict[str, Any]):  # pyright: ignore
 
 
 @dont_throw
-def set_model_input_attributes(span: Span, kwargs: dict[str, Any]):  # pyright: ignore[reportExplicitAny]
+def set_model_input_attributes(span: Span, kwargs: dict[str, Any]):
     if not span.is_recording():
         return
 
@@ -69,7 +69,7 @@ def set_model_input_attributes(span: Span, kwargs: dict[str, Any]):  # pyright: 
 
 def set_streaming_response_attributes(
     span: Span,
-    accumulated_content: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    accumulated_content: Any,
     finish_reason: str | None = None,
     usage: Any=None  # TODO: set usage on attributes
 ):
@@ -100,30 +100,30 @@ def set_model_streaming_response_attributes(
 @dont_throw
 def set_model_response_attributes(
     span: Span,
-    response: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    response: Any,
 ):
     if not span.is_recording():
         return
     response = model_as_dict(response)
-    set_span_attribute(span, GEN_AI_RESPONSE_MODEL, response.get("model"))  # pyright: ignore[reportAny]
-    set_span_attribute(span, GEN_AI_RESPONSE_ID, response.get("id"))  # pyright: ignore[reportAny]
+    set_span_attribute(span, GEN_AI_RESPONSE_MODEL, response.get("model"))
+    set_span_attribute(span, GEN_AI_RESPONSE_ID, response.get("id"))
 
-    usage = cast(dict[str, int | float], response.get("usage") or {})  # pyright: ignore[reportAny]
+    usage = cast(dict[str, int | float], response.get("usage") or {})
     if usage:
         set_span_attribute(span, "llm.usage.total_tokens", usage.get("total_tokens"))
         set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, usage.get("completion_tokens"))
         set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, usage.get("prompt_tokens"))
 
 
-def set_response_attributes(span: Span, response: Any):  # pyright: ignore[reportAny, reportExplicitAny]
+def set_response_attributes(span: Span, response: Any):
     if not span.is_recording():
         return
     choices = model_as_dict(response).get("choices")
     if should_send_prompts() and choices:
-        _set_completions(span, choices)  # pyright: ignore[reportAny]
+        _set_completions(span, choices)
 
 
-def _set_completions(span: Span, choices: list[dict[str, Any]] | None):  # pyright: ignore[reportExplicitAny]
+def _set_completions(span: Span, choices: list[dict[str, Any]] | None):
     if choices is None or not should_send_prompts():
         return
 
@@ -188,7 +188,7 @@ def _set_completions(span: Span, choices: list[dict[str, Any]] | None):  # pyrig
                 )
 
 
-def _dump_content(content: Any) -> str:  # pyright: ignore[reportAny, reportExplicitAny]
+def _dump_content(content: Any) -> str:
     if isinstance(content, str):
         return content
     json_serializable = []

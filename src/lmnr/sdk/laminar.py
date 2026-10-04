@@ -890,7 +890,7 @@ class Laminar:
     def start_as_current_span(
         cls,
         name: str,
-        input: Any = None,  # pyright: ignore[reportExplicitAny, reportAny]
+        input: Any = None,
         span_type: LaminarSpanType = "DEFAULT",
         context: Context | None = None,
         labels: list[str] | None = None,
@@ -1089,7 +1089,7 @@ class Laminar:
     def start_span(
         cls,
         name: str,
-        input: Any = None,  # pyright: ignore[reportExplicitAny, reportAny]
+        input: Any = None,
         span_type: LaminarSpanType = "DEFAULT",
         context: Context | None = None,
         parent_span_context: LaminarSpanContext | None = None,
@@ -1492,7 +1492,7 @@ class Laminar:
     def start_active_span(
         cls,
         name: str,
-        input: Any = None,  # pyright: ignore[reportAny, reportExplicitAny]
+        input: Any = None,
         span_type: LaminarSpanType = "DEFAULT",
         context: Context | None = None,
         parent_span_context: LaminarSpanContext | None = None,
@@ -1617,7 +1617,7 @@ class Laminar:
         return span
 
     @classmethod
-    def set_span_output(cls, output: Any = None):  # pyright: ignore[reportExplicitAny, reportAny]
+    def set_span_output(cls, output: Any = None):
         """Set the output of the current span. Useful for manual
         instrumentation.
 
@@ -1633,7 +1633,7 @@ class Laminar:
     @classmethod
     def set_span_attributes(
         cls,
-        attributes: dict[Attributes | str, Any],  # pyright: ignore[reportExplicitAny]
+        attributes: dict[Attributes | str, Any],
     ):
         """Set attributes for the current span. Useful for manual
         instrumentation.
@@ -1661,13 +1661,13 @@ class Laminar:
         if span == trace.INVALID_SPAN or span is None:
             return
 
-        for key, value in attributes.items():  # pyright: ignore[reportAny]
+        for key, value in attributes.items():
             if isinstance(key, Attributes):
                 key = key.value
-            if not is_otel_attribute_value_type(value):  # pyright: ignore[reportAny]:
-                span.set_attribute(key, json_dumps(value))  # pyright: ignore[reportAny])
+            if not is_otel_attribute_value_type(value):
+                span.set_attribute(key, json_dumps(value))
             else:
-                span.set_attribute(key, value)  # pyright: ignore[reportAny])
+                span.set_attribute(key, value)
 
     @classmethod
     def get_laminar_span_context(
@@ -2079,7 +2079,7 @@ class Laminar:
         trace_type: TraceType | None = None,
         metadata: MetadataType | None = None,
     ) -> dict[str, AttributeValue]:
-        association_properties: dict[str, Any] = {}  # pyright: ignore[reportExplicitAny]
+        association_properties: dict[str, Any] = {}
         if user_id is not None:
             association_properties[f"{ASSOCIATION_PROPERTIES}.{USER_ID}"] = user_id
         if session_id is not None:

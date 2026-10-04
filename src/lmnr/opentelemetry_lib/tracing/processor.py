@@ -210,9 +210,9 @@ class LaminarSpanProcessor(SpanProcessor):
                     )
 
         if span.name == "LangGraph.workflow":
-            graph_context = cast(dict[Any, Any], get_value("lmnr.langgraph.graph")) or {}  # pyright: ignore[reportExplicitAny]
-            for key, value in graph_context.items():  # pyright: ignore[reportAny]
-                span.set_attribute(f"lmnr.association.properties.{key}", value)  # pyright: ignore[reportAny]
+            graph_context = cast(dict[Any, Any], get_value("lmnr.langgraph.graph")) or {}
+            for key, value in graph_context.items():
+                span.set_attribute(f"lmnr.association.properties.{key}", value)
 
         with self._instance_lock:
             self.instance.on_start(span, parent_context)

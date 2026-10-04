@@ -1,8 +1,10 @@
-import traceback
-from collections.abc import Callable
+import functools
+import os
+from collections.abc import Awaitable, Callable
 from copy import deepcopy
-from typing import Any
+from typing import Any, ParamSpec, cast, overload
 
+from opentelemetry import context as context_api
 from opentelemetry.context import Context
 from opentelemetry.trace import Span, SpanKind
 from opentelemetry.util.types import AttributeValue
@@ -14,21 +16,60 @@ from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import LaminarSpanType
+from lmnr.sdk.utils import is_async
 
 logger = get_default_logger(__name__)
+LMNR_TRACE_CONTENT = "LMNR_TRACE_CONTENT"
 T = TypeVar("T")
+P = ParamSpec("P")
 
 
-def dont_throw(func: Callable[..., T]) -> Callable[..., T | None]:
-    def wrapper(*args: Any, **kwargs: Any) -> T | None:  # pyright: ignore[reportAny, reportExplicitAny]
-        logger = get_default_logger(func.__module__)
+def should_send_prompts() -> bool:
+    return (
+        os.getenv(LMNR_TRACE_CONTENT) or "true"
+    ).lower() == "true" or cast(
+        bool, context_api.get_value("override_enable_content_tracing")
+    )
+
+
+@overload
+def dont_throw(
+    func: Callable[P, Awaitable[T]],
+) -> Callable[P, Awaitable[T | None]]: ...
+
+
+@overload
+def dont_throw(func: Callable[P, T]) -> Callable[P, T | None]: ...
+
+
+def dont_throw(func: Callable[P, Any]) -> Callable[P, Any]:
+    """
+    A decorator that wraps the passed in function and logs exceptions instead of
+    throwing them. Works for both synchronous and asynchronous functions.
+    """
+    func_logger = get_default_logger(func.__module__)
+
+    if is_async(func):
+
+        @functools.wraps(func)
+        async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
+            try:
+                return await func(*args, **kwargs)
+            except Exception:
+                func_logger.debug(
+                    "Laminar failed to trace in %s", func.__name__, exc_info=True
+                )
+                return None
+
+        return async_wrapper
+
+    @functools.wraps(func)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
         try:
             return func(*args, **kwargs)
         except Exception:
-            logger.debug(
-                "Laminar failed to trace in %s, error: %s",
-                func.__name__,
-                traceback.format_exc(),
+            func_logger.debug(
+                "Laminar failed to trace in %s", func.__name__, exc_info=True
             )
             return None
 
@@ -42,7 +83,7 @@ def set_span_attribute(
         span.set_attribute(attribute_name, attribute_value)
 
 
-def to_dict(obj: Any) -> dict[str, Any]:  # pyright: ignore[reportAny, reportExplicitAny]
+def to_dict(obj: Any) -> dict[str, Any]:
     try:
         if isinstance(obj, BaseModel):
             return obj.model_dump()
@@ -51,13 +92,32 @@ def to_dict(obj: Any) -> dict[str, Any]:  # pyright: ignore[reportAny, reportExp
         elif obj is None:
             return {}
         else:
-            return dict(obj)  # pyright: ignore[reportAny]
+            return dict(obj)
     except Exception:
         logger.debug(f"Error converting to dict: {obj}", exc_info=True)
         return {}
 
 
-def extract_json_schema(schema: dict[str, Any] | BaseModel) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
+def model_as_dict(model: Any) -> dict[str, Any]:
+    """Convert a pydantic model or raw API response (`.parse()`) to a dict.
+
+    Dicts are returned as-is (no copy). Returns `{}` if conversion fails.
+    """
+    try:
+        if isinstance(model, dict):
+            return model  # pyright: ignore[reportUnknownVariableType]
+        if hasattr(model, "model_dump"):
+            return model.model_dump()
+        if hasattr(model, "parse"):
+            # Raw API response
+            return model_as_dict(model.parse())
+        return dict(model)
+    except Exception:
+        logger.debug(f"Failed to convert model to dict: {model}", exc_info=True)
+        return {}
+
+
+def extract_json_schema(schema: dict[str, Any] | BaseModel) -> dict[str, Any]:
     if isinstance(schema, dict):
         return schema
     elif hasattr(schema, "model_json_schema") and callable(schema.model_json_schema):

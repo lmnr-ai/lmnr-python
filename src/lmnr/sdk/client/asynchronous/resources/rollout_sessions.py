@@ -21,12 +21,12 @@ def _parse_cache_outcome(data: object) -> CacheOutcome:
         # wrappers call cached_response_to_*(cached), which does cached.get().
         # A response-less HIT (omitted/null `response`) is malformed — degrade
         # to `live` so the call runs live (no latch) instead of raising.
-        data_dict = cast(dict[str, Any], data)  # pyright: ignore[reportExplicitAny]
+        data_dict = cast(dict[str, Any], data)
         response = data_dict.get("response")
         if response is None:
             logger.debug("Cache HIT without response body; running call live")
             return CacheOutcome(kind="live")
-        return CacheOutcome(kind="hit", cached=response) # pyright: ignore[reportAny])
+        return CacheOutcome(kind="hit", cached=response)
     if outcome == "miss":
         return CacheOutcome(kind="miss")
     return CacheOutcome(kind="live")

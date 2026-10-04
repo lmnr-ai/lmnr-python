@@ -18,9 +18,9 @@ from opentelemetry.trace import SpanContext, TraceFlags
 def _wrap_span_context(
     _to_wrap: WrappedFunctionSpec,
     fn: Callable[..., SpanContext],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> SpanContext:
     """
     DataDog does something to the OpenTelemetry Contexts, so that when any code

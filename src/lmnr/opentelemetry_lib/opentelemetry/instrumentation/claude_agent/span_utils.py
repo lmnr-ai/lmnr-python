@@ -33,9 +33,9 @@ def span_name(to_wrap: ClaudeAgentSpec) -> str:
 
 def record_input(
     span: Span,
-    wrapped: Callable[..., Any],  # pyright: ignore[reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    wrapped: Callable[..., Any],
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ):
     """Record function input as span attribute."""
     try:
@@ -57,11 +57,11 @@ def record_input(
 def record_output(
     span: Span,
     _to_wrap: ClaudeAgentSpec,
-    value: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    value: Any,
 ):
     """Record function output as span attribute."""
     try:
-        span.set_attribute("lmnr.span.output", json_dumps(value))  # pyright: ignore[reportAny]
+        span.set_attribute("lmnr.span.output", json_dumps(value))
     except Exception:
         logger.debug("Failed to record output on CAS span", exc_info=True)
 
@@ -97,14 +97,14 @@ def get_span_context_payload() -> ProxyContext | None:
     }
 
 
-def publish_span_context_for_transport(transport: Any) -> None:  # pyright: ignore[reportAny, reportExplicitAny]
+def publish_span_context_for_transport(transport: Any) -> None:
     """Publish span context to transport's dedicated proxy."""
     if transport is None:
         logger.debug("No transport found")
         return
 
     # Get context from transport instance
-    context: dict[str, Any] | None = getattr(transport, "__lmnr_context", None)  # pyright: ignore[reportExplicitAny, reportAny]
+    context: dict[str, Any] | None = getattr(transport, "__lmnr_context", None)
     if not context or not context.get("proxy"):
         logger.debug("No proxy found for transport")
         return

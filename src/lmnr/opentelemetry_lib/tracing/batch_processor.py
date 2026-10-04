@@ -143,9 +143,9 @@ class SizeLimitedBatchSpanProcessor(BatchSpanProcessor):
         self,
         span_exporter: SpanExporter,
         max_export_batch_size_bytes: int | None = None,
-        **kwargs: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+        **kwargs: Any,
     ):
-        super().__init__(span_exporter, **kwargs)  # pyright: ignore[reportAny]
+        super().__init__(span_exporter, **kwargs)
         self._max_export_batch_size_bytes: int = (
             max_export_batch_size_bytes or DEFAULT_MAX_EXPORT_BATCH_SIZE_BYTES
         )

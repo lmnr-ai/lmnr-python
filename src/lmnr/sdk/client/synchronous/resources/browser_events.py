@@ -15,7 +15,7 @@ class BrowserEvents(BaseResource):
         self,
         session_id: str,
         trace_id: str,
-        events: list[dict[str, Any]],  # pyright:ignore[reportExplicitAny] rrweb event format
+        events: list[dict[str, Any]],  # rrweb event format
     ):
         url = self._base_url + "/v1/browser-sessions/events"
         payload = {

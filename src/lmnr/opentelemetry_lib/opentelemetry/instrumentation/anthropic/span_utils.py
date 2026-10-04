@@ -15,17 +15,19 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    dont_throw,
+    model_as_dict,
+    set_span_attribute,
+)
 from lmnr.sdk.utils import json_dumps
 
 from .event_models import AnthropicResponseMessage
 from .utils import (
     aextract_response_data,
-    dont_throw,
     extract_response_data,
-    model_as_dict,
-    set_span_attribute,
-    should_send_prompts,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import should_send_prompts
 
 logger = logging.getLogger(__name__)
 
@@ -86,8 +88,6 @@ def _process_content_for_message(content):
 
 @dont_throw
 async def aset_input_attributes(span, kwargs):
-    from .utils import set_span_attribute
-
     set_span_attribute(span, GEN_AI_REQUEST_MODEL, kwargs.get("model"))
     set_span_attribute(
         span, GEN_AI_REQUEST_MAX_TOKENS, kwargs.get("max_tokens_to_sample")
@@ -186,7 +186,6 @@ async def _aset_span_completions(span, response):
 def _set_span_completions(span, response):
     if not should_send_prompts():
         return
-    from .utils import set_span_attribute
 
     output = _build_output_from_response(response)
     set_span_attribute(span, "gen_ai.output.messages", json_dumps(output))

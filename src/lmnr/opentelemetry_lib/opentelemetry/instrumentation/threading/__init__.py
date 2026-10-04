@@ -84,13 +84,13 @@ class ThreadingInstrumentor(BaseInstrumentor):
         return _instruments
 
     @override
-    def _instrument(self, **kwargs: Any):  # pyright: ignore[reportAny, reportExplicitAny]
+    def _instrument(self, **kwargs: Any):
         self._instrument_thread()
         self._instrument_timer()
         self._instrument_thread_pool()
 
     @override
-    def _uninstrument(self, **kwargs: Any):  # pyright: ignore[reportAny, reportExplicitAny]
+    def _uninstrument(self, **kwargs: Any):
         self._uninstrument_thread()
         self._uninstrument_timer()
         self._uninstrument_thread_pool()
@@ -151,7 +151,7 @@ class ThreadingInstrumentor(BaseInstrumentor):
         call_wrapped: Callable[[], None],
         instance: HasOtelContext,
         args: tuple[()],
-        kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+        kwargs: dict[str, Any],
     ) -> None:
         instance._lmnr_otel_context = get_current_context()
         return call_wrapped(*args, **kwargs)
@@ -160,8 +160,8 @@ class ThreadingInstrumentor(BaseInstrumentor):
     def __wrap_threading_run(
         call_wrapped: Callable[..., R],
         instance: HasOtelContext,
-        args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-        kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
     ) -> R:
         token = None
         try:
@@ -182,22 +182,22 @@ class ThreadingInstrumentor(BaseInstrumentor):
     def __wrap_thread_pool_submit(
         call_wrapped: Callable[..., R],
         _instance: futures.ThreadPoolExecutor,
-        args: tuple[Callable[..., Any], ...],  # pyright: ignore[reportExplicitAny]
-        kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+        args: tuple[Callable[..., Any], ...],
+        kwargs: dict[str, Any],
     ) -> R:
         # obtain the original function and wrapped kwargs
         original_func = args[0]
         otel_context = get_current_context()
 
-        def wrapped_func(*func_args: Any, **func_kwargs: Any) -> R:  # pyright: ignore[reportAny, reportExplicitAny]
+        def wrapped_func(*func_args: Any, **func_kwargs: Any) -> R:
             token = None
             try:
                 token = attach_context(otel_context)
-                return original_func(*func_args, **func_kwargs)  # pyright: ignore[reportAny]
+                return original_func(*func_args, **func_kwargs)
             finally:
                 if token is not None:
                     detach_context(token)
 
         # replace the original function with the wrapped function
-        new_args: tuple[Callable[..., Any], ...] = (wrapped_func,) + args[1:]  # pyright: ignore[reportExplicitAny]
+        new_args: tuple[Callable[..., Any], ...] = (wrapped_func,) + args[1:]
         return call_wrapped(*new_args, **kwargs)

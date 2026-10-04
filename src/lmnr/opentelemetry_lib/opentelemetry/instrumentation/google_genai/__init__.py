@@ -2,7 +2,6 @@
 
 import json
 import logging
-import os
 from collections import defaultdict
 from collections.abc import (
     AsyncGenerator,
@@ -32,7 +31,11 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    dont_throw,
     safe_start_span,
+    set_span_attribute,
+    should_send_prompts,
+    to_dict,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     stamp_instrumentation_scope,
@@ -46,12 +49,9 @@ from lmnr.sdk.utils import json_dumps
 from .schema_utils import SchemaJSONEncoder, process_schema
 from .utils import (
     content_union_to_dict,
-    dont_throw,
     merge_text_parts,
     model_to_json_safe_dict,
     process_stream_chunk,
-    set_span_attribute,
-    to_dict,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,19 +59,13 @@ T = TypeVar("T")
 
 _instruments = ("google-genai >= 1.0.0",)
 
-def should_send_prompts():
-    return (
-        os.getenv("LAMINAR_TRACE_CONTENT") or "true"
-    ).lower() == "true" or cast(bool, context_api.get_value("override_enable_content_tracing"))
-
-
 @dont_throw
 def _set_request_attributes(
     span: Span,
-    _args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _args: Sequence[Any],
+    kwargs: dict[str, Any],
 ):
-    config_dict = to_dict(kwargs.get("config", {}))  # pyright: ignore[reportAny]
+    config_dict = to_dict(kwargs.get("config", {}))
     set_span_attribute(
         span, gen_ai_attributes.GEN_AI_REQUEST_MODEL, kwargs.get("model")
     )
@@ -129,7 +123,7 @@ def _set_request_attributes(
             set_span_attribute(
                 span,
                 "gen_ai.request.structured_output_schema",
-                json_dumps(json_schema),  # pyright: ignore[reportAny]
+                json_dumps(json_schema),
             )
         except Exception:
             logger.debug("Failed to set response schema span attribute", exc_info=True)
@@ -137,7 +131,7 @@ def _set_request_attributes(
     tools: list[types.FunctionDeclaration] = []
     arg_tools = config_dict.get("tools", kwargs.get("tools"))
     if arg_tools:
-        for tool in arg_tools:  # pyright: ignore[reportAny]
+        for tool in arg_tools:
             if isinstance(tool, types.Tool):
                 tools.extend(tool.function_declarations or [])
             elif isinstance(tool, dict) and isinstance(
@@ -151,11 +145,11 @@ def _set_request_attributes(
         messages = []
         system_instruction = config_dict.get("system_instruction")
         if system_instruction:
-            msg = content_union_to_dict(system_instruction, default_role="system")  # pyright: ignore[reportAny]
+            msg = content_union_to_dict(system_instruction, default_role="system")
             msg["role"] = "system"
             messages.append(msg)  # pyright: ignore[reportUnknownMemberType]
 
-        contents = kwargs.get("contents", [])  # pyright: ignore[reportAny]
+        contents = kwargs.get("contents", [])
         if not isinstance(contents, list):
             contents = [contents]
         for content in contents:  # pyright: ignore[reportUnknownVariableType]
@@ -260,7 +254,7 @@ def _build_from_streaming_response(
 ) -> Generator[types.GenerateContentResponse, None, None]:
     final_parts: list[types.Part | None] = []
     role = "model"
-    aggregated_usage_metadata: defaultdict[Any, int] = defaultdict(int)  # pyright: ignore[reportExplicitAny]
+    aggregated_usage_metadata: defaultdict[Any, int] = defaultdict(int)
     model_version = None
     for chunk in response:
         try:
@@ -286,7 +280,7 @@ def _build_from_streaming_response(
             model_version = chunk_result["model_version"]
         yield chunk
 
-    fp = cast(list[Any], [p for p in final_parts if p is not None])  # pyright: ignore[reportExplicitAny]
+    fp = cast(list[Any], [p for p in final_parts if p is not None])
     try:
         compound_response = types.GenerateContentResponse(
             candidates=[
@@ -320,7 +314,7 @@ async def _abuild_from_streaming_response(
 ) -> AsyncGenerator[types.GenerateContentResponse, None]:
     final_parts: list[types.Part | None] = []
     role = "model"
-    aggregated_usage_metadata: defaultdict[Any, int] = defaultdict(int)  # pyright: ignore[reportExplicitAny]
+    aggregated_usage_metadata: defaultdict[Any, int] = defaultdict(int)
     model_version = None
     async for chunk in response:
         try:
@@ -346,7 +340,7 @@ async def _abuild_from_streaming_response(
             model_version = chunk_result["model_version"]
         yield chunk
 
-    fp = cast(list[Any], [p for p in final_parts if p is not None])  # pyright: ignore[reportExplicitAny]
+    fp = cast(list[Any], [p for p in final_parts if p is not None])
     try:
         compound_response = types.GenerateContentResponse(
             candidates=[
@@ -375,9 +369,9 @@ async def _abuild_from_streaming_response(
 def _wrap(
     to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., types.GenerateContentResponse],
-    instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> types.GenerateContentResponse | Generator[types.GenerateContentResponse] | Awaitable[types.GenerateContentResponse |  AsyncGenerator[types.GenerateContentResponse]] | None:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
@@ -426,11 +420,11 @@ def _wrap(
 
         if to_wrap.get("is_streaming"):
             return _build_from_streaming_response(
-                span, response, record_raw_response=is_rollout
+                span, cast(Generator[types.GenerateContentResponse], response), record_raw_response=is_rollout
             )
         if span.is_recording():
-            _set_raw_response_attribute(span, response, record_raw_response=is_rollout)
-            _set_response_attributes(span, response)
+            _set_raw_response_attribute(span, cast(types.GenerateContentResponse, response), record_raw_response=is_rollout)
+            _set_response_attributes(span, cast(types.GenerateContentResponse, response))
         span.end()
         return response
     except Exception as e:
@@ -445,9 +439,9 @@ def _wrap(
 async def _awrap(
     to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., Awaitable[types.GenerateContentResponse]],
-    instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> types.GenerateContentResponse | Generator[types.GenerateContentResponse] | AsyncGenerator[types.GenerateContentResponse] | Awaitable[AsyncGenerator[types.GenerateContentResponse] | types.GenerateContentResponse] | None:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
@@ -495,7 +489,7 @@ async def _awrap(
                 import inspect
 
                 if inspect.iscoroutine(result):
-                    response = await result  # pyright: ignore[reportAny]
+                    response = await result
                 elif inspect.isasyncgen(result):
                     # It's an async generator (cached streaming response)
                     response = result
@@ -509,14 +503,14 @@ async def _awrap(
 
         if to_wrap.get("is_streaming"):
             return _abuild_from_streaming_response(
-                span, response, record_raw_response=is_rollout
+                span, cast(AsyncGenerator[types.GenerateContentResponse], response), record_raw_response=is_rollout
             )
         else:
             if span.is_recording():
                 _set_raw_response_attribute(
-                    span, response, record_raw_response=is_rollout
+                    span, cast(types.GenerateContentResponse, response), record_raw_response=is_rollout
                 )
-                _set_response_attributes(span, response)
+                _set_response_attributes(span, cast(types.GenerateContentResponse, response))
 
             span.end()
             return response

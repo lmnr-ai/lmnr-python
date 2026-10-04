@@ -33,15 +33,15 @@ from lmnr.sdk.utils import (
 
 logger = get_default_logger(__name__)
 
-F = TypeVar("F", bound=Callable[..., Any])  # pyright: ignore[reportExplicitAny]
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 def _setup_span(
     span_name: str,
     span_type: str,
-    association_properties: dict[str, Any] | None,  # pyright: ignore[reportExplicitAny]
+    association_properties: dict[str, Any] | None,
     preserve_global_context: bool = False,
-    metadata: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
+    metadata: dict[str, Any] | None = None,
 ) -> Span | None:
     """Set up a span with the given name, type, and association properties."""
     span = None
@@ -54,24 +54,24 @@ def _setup_span(
                 attributes={SPAN_TYPE: span_type},
             )
 
-            ctx_metadata = cast(dict[str, Any], context_api.get_value(CONTEXT_METADATA_KEY, isolated_context))  # pyright: ignore[reportExplicitAny]
+            ctx_metadata = cast(dict[str, Any], context_api.get_value(CONTEXT_METADATA_KEY, isolated_context))
             merged_metadata = {
                 **(ctx_metadata or {}),
                 **(metadata or {}),
             }
-            for key, value in merged_metadata.items():  # pyright: ignore[reportAny]
+            for key, value in merged_metadata.items():
                 span.set_attribute(
                     f"{ASSOCIATION_PROPERTIES}.{METADATA}.{key}",
                     (
                         value
-                        if is_otel_attribute_value_type(value)  # pyright: ignore[reportAny]
-                        else json_dumps(value)  # pyright: ignore[reportAny]
+                        if is_otel_attribute_value_type(value)
+                        else json_dumps(value)
                     ),
                 )
 
             if association_properties is not None:
-                for key, value in association_properties.items():  # pyright: ignore[reportAny]
-                    span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)  # pyright: ignore[reportAny]
+                for key, value in association_properties.items():
+                    span.set_attribute(f"{ASSOCIATION_PROPERTIES}.{key}", value)
 
             return span
     except Exception:
@@ -81,9 +81,9 @@ def _setup_span(
 
 def _process_input(
     span: Span,
-    fn: Callable[..., Any],  # pyright: ignore[reportExplicitAny]
-    args: tuple[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    fn: Callable[..., Any],
+    args: tuple[Any],
+    kwargs: dict[str, Any],
     ignore_input: bool,
     ignore_inputs: list[str] | None,
     input_formatter: Callable[..., str] | None,
@@ -119,7 +119,7 @@ def _process_input(
 
 def _process_output(
     span: Span,
-    result: Any,  # pyright: ignore[reportExplicitAny, reportAny]
+    result: Any,
     ignore_output: bool,
     output_formatter: Callable[..., str] | None,
 ):
@@ -131,7 +131,7 @@ def _process_output(
         if output_formatter is not None:
             output = output_formatter(result)
         else:
-            output = result  # pyright: ignore[reportAny]
+            output = result
 
         if not isinstance(span, LaminarSpan):
             span = LaminarSpan(cast(SdkSpan, span))
@@ -175,17 +175,17 @@ def observe_base(
         "HUMAN_EVALUATOR",
         "EVALUATION",
     ] = "DEFAULT",
-    metadata: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
-    association_properties: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
+    metadata: dict[str, Any] | None = None,
+    association_properties: dict[str, Any] | None = None,
     input_formatter: Callable[..., str] | None = None,
     output_formatter: Callable[..., str] | None = None,
     preserve_global_context: bool = False,
 ) -> Callable[[F], F]:
     def decorate(fn: F) -> F:
         @wraps(fn)
-        def wrap(*args: Any, **kwargs: Any):   # pyright: ignore[reportExplicitAny, reportAny]:
+        def wrap(*args: Any, **kwargs: Any):
             if not is_tracing_initialized():
-                return fn(*args, **kwargs)  # pyright: ignore[reportAny]
+                return fn(*args, **kwargs)
 
             span_name = name or getattr(fn, "__name__", "unknown")
 
@@ -198,7 +198,7 @@ def observe_base(
             )
 
             if span is None:
-                return fn(*args, **kwargs)  # pyright: ignore[reportAny])
+                return fn(*args, **kwargs)
 
             # Set association props in context before push_span_context
             # so child spans inherit them
@@ -231,7 +231,7 @@ def observe_base(
             )
 
             try:
-                res = fn(*args, **kwargs)  # pyright: ignore[reportAny]
+                res = fn(*args, **kwargs)
             except Exception as e:
                 _process_exception(span, e)
                 _cleanup_span(span, did_push_context)
@@ -280,7 +280,7 @@ def observe_base(
 
             _process_output(span, res, ignore_output, output_formatter)
             _cleanup_span(span, did_push_context)
-            return res  # pyright: ignore[reportAny]
+            return res
 
         return cast(F, wrap)
 
@@ -303,17 +303,17 @@ def async_observe_base(
         "HUMAN_EVALUATOR",
         "EVALUATION",
     ] = "DEFAULT",
-    metadata: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
-    association_properties: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
+    metadata: dict[str, Any] | None = None,
+    association_properties: dict[str, Any] | None = None,
     input_formatter: Callable[..., str] | None = None,
     output_formatter: Callable[..., str] | None = None,
     preserve_global_context: bool = False,
 ) -> Callable[[F], F]:
     def decorate(fn: F) -> F:
         @wraps(fn)
-        async def wrap(*args: Any, **kwargs: Any):  # pyright: ignore[reportExplicitAny, reportAny]
+        async def wrap(*args: Any, **kwargs: Any):
             if not is_tracing_initialized():
-                return await fn(*args, **kwargs)  # pyright: ignore[reportAny]
+                return await fn(*args, **kwargs)
 
             span_name = name or getattr(fn, "__name__", "unknown")
 
@@ -326,7 +326,7 @@ def async_observe_base(
             )
 
             if span is None:
-                return await fn(*args, **kwargs)  # pyright: ignore[reportAny]
+                return await fn(*args, **kwargs)
 
             # Set association props in context before push_span_context
             # so child spans inherit them
@@ -359,7 +359,7 @@ def async_observe_base(
             )
 
             try:
-                res = await fn(*args, **kwargs)   # pyright: ignore[reportAny]
+                res = await fn(*args, **kwargs)
             except Exception as e:
                 _process_exception(span, e)
                 _cleanup_span(span, did_push_context)
@@ -396,7 +396,7 @@ def async_observe_base(
 
             _process_output(span, res, ignore_output, output_formatter)
             _cleanup_span(span, did_push_context)
-            return res  # pyright: ignore[reportAny]
+            return res
 
         return cast(F, wrap)
 
@@ -405,15 +405,15 @@ def async_observe_base(
 
 def _handle_generator(
     span: Span,
-    res: types.GeneratorType[Any, Any, Any],  # pyright: ignore[reportExplicitAny]
+    res: types.GeneratorType[Any, Any, Any],
     ignore_output: bool = False,
     output_formatter: Callable[..., str] | None = None,
     did_push_context: bool = True,
 ):
     results = []
     try:
-        for part in res:  # pyright: ignore[reportAny]
-            results.append(part)  # pyright: ignore[reportAny, reportUnknownMemberType]
+        for part in res:
+            results.append(part)  # pyright: ignore[reportUnknownMemberType]
             yield part
     except Exception as e:
         _process_exception(span, e)
@@ -425,15 +425,15 @@ def _handle_generator(
 
 async def _ahandle_generator(
     span: Span,
-    res: types.AsyncGeneratorType[Any, Any],  # pyright: ignore[reportExplicitAny]
+    res: types.AsyncGeneratorType[Any, Any],
     ignore_output: bool = False,
     output_formatter: Callable[..., str] | None = None,
     did_push_context: bool = True,
 ):
     results = []
     try:
-        async for part in res:  # pyright: ignore[reportAny]
-            results.append(part)  # pyright: ignore[reportAny, reportUnknownMemberType]
+        async for part in res:
+            results.append(part)  # pyright: ignore[reportUnknownMemberType]
             yield part
     except Exception as e:
         _process_exception(span, e)

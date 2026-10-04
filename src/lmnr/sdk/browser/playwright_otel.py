@@ -54,8 +54,8 @@ def _wrap_new_browser_sync(
     _to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., SyncBrowser],
     _instance: SyncBrowserType,
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
     *,
     client: AsyncLaminarClient,
 ) -> SyncBrowser:
@@ -81,10 +81,10 @@ def _wrap_new_browser_sync(
 
 async def _wrap_new_browser_async(
     _to_wrap: WrappedFunctionSpec,
-    wrapped: Callable[..., Coroutine[Any, Any, Browser]],  # pyright: ignore[reportExplicitAny]
+    wrapped: Callable[..., Coroutine[Any, Any, Browser]],
     _instance: BrowserType,
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
     *,
     client: AsyncLaminarClient,
 ) -> Browser:
@@ -93,7 +93,7 @@ async def _wrap_new_browser_async(
 
     def create_page_handler(
         session_id: str, client: AsyncLaminarClient
-    ) -> Callable[[Page], Coroutine[Any, Any, None]]:  # pyright: ignore[reportExplicitAny]
+    ) -> Callable[[Page], Coroutine[Any, Any, None]]:
         async def page_handler(page: Page) -> None:
             await start_recording_events_async(page, session_id, client)
 
@@ -111,8 +111,8 @@ def _wrap_new_context_sync(
     _to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., SyncBrowserContext],
     _instance: SyncBrowser | SyncBrowserType,
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
     *,
     client: AsyncLaminarClient,
 ) -> SyncBrowserContext:
@@ -137,10 +137,10 @@ def _wrap_new_context_sync(
 
 async def _wrap_new_context_async(
     _to_wrap: WrappedFunctionSpec,
-    wrapped: Callable[..., Coroutine[Any, Any, BrowserContext]],  # pyright: ignore[reportExplicitAny]
+    wrapped: Callable[..., Coroutine[Any, Any, BrowserContext]],
     _instance: Browser | BrowserType,
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
     *,
     client: AsyncLaminarClient,
 ) -> BrowserContext:
@@ -149,7 +149,7 @@ async def _wrap_new_context_async(
 
     def create_page_handler(
         session_id: str, client: AsyncLaminarClient
-    ) -> Callable[[Page], Coroutine[Any, Any, None]]:  # pyright: ignore[reportExplicitAny]
+    ) -> Callable[[Page], Coroutine[Any, Any, None]]:
         async def page_handler(page: Page) -> None:
             await start_recording_events_async(page, session_id, client)
 
@@ -167,8 +167,8 @@ def _wrap_bring_to_front_sync(
     _to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., None],
     instance: SyncPage,
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
     *,
     client: AsyncLaminarClient,  #pyright: ignore[reportUnusedParameter] set for compatibility with common wrappers though unused
 ) -> None:
@@ -178,10 +178,10 @@ def _wrap_bring_to_front_sync(
 
 async def _wrap_bring_to_front_async(
     _to_wrap: WrappedFunctionSpec,
-    wrapped: Callable[..., Coroutine[Any, Any, None]],  # pyright: ignore[reportExplicitAny]
+    wrapped: Callable[..., Coroutine[Any, Any, None]],
     instance: Page,
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
     *,
     client: AsyncLaminarClient,  #pyright: ignore[reportUnusedParameter] set for compatibility with common wrappers though unused
 ) -> None:
@@ -193,8 +193,8 @@ def _wrap_browser_new_page_sync(
     _to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., SyncPage],
     _instance: SyncBrowser,
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
     *,
     client: AsyncLaminarClient,
 ) -> SyncPage:
@@ -206,10 +206,10 @@ def _wrap_browser_new_page_sync(
 
 async def _wrap_browser_new_page_async(
     _to_wrap: WrappedFunctionSpec,
-    wrapped: Callable[..., Coroutine[Any, Any, Page]],  # pyright: ignore[reportExplicitAny]
+    wrapped: Callable[..., Coroutine[Any, Any, Page]],
     _instance: Browser,
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
     *,
     client: AsyncLaminarClient,
 ) -> Page:

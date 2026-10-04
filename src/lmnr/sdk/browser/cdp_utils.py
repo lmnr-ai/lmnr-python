@@ -64,7 +64,7 @@ with open(os.path.join(current_dir, "inject_script.js"), "r") as f:
     INJECT_SCRIPT_CONTENT = f.read()
 
 
-async def should_skip_page(cdp_session: Any):  # pyright: ignore[reportExplicitAny, reportAny]
+async def should_skip_page(cdp_session: Any):
     """Checks if the page url is an error page or an empty page.
     This function returns True in case of any error in our code, because
     it is safer to not record events than to try to inject the recorder
@@ -181,7 +181,7 @@ def get_mask_input_setting() -> MaskInputOptions:
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
-async def get_isolated_context_id(cdp_session: Any) -> int | None:  # pyright: ignore[reportExplicitAny, reportAny]
+async def get_isolated_context_id(cdp_session: Any) -> int | None:
     async with get_lock():
         tree = {}
         try:
@@ -232,7 +232,7 @@ async def get_isolated_context_id(cdp_session: Any) -> int | None:  # pyright: i
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
-async def inject_session_recorder(cdp_session: Any) -> int | None:  # pyright: ignore[reportExplicitAny, reportAny]
+async def inject_session_recorder(cdp_session: Any) -> int | None:
     """Injects the session recorder base as well as the recorder itself.
     Returns the isolated context id if successful.
     """
@@ -318,7 +318,7 @@ async def inject_session_recorder(cdp_session: Any) -> int | None:  # pyright: i
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 @observe(name="cdp_use.session", ignore_input=True, ignore_output=True)
 async def start_recording_events(
-    cdp_session: Any,  # pyright: ignore[reportExplicitAny]
+    cdp_session: Any,
     lmnr_session_id: str,
     client: AsyncLaminarClient,
 ):
@@ -363,7 +363,7 @@ async def start_recording_events(
 
                 # Parse the JSON. The individual event shape is rrweb's, not
                 # ours, so `Any` here is a genuine external contract.
-                events = cast(list[dict[str, Any]], orjson.loads(full_data))  # pyright: ignore[reportExplicitAny]
+                events = cast(list[dict[str, Any]], orjson.loads(full_data))
 
                 # Send to server in background loop (independent of CDP's loop)
                 if events and len(events) > 0:
@@ -398,7 +398,7 @@ async def start_recording_events(
 
     # cdp_use.cdp.runtime.events.BindingCalledEvent
     async def send_events_callback(
-        event: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+        event: dict[str, Any],
         _cdp_session_id: str | None = None,
     ):
         if event["name"] != "lmnrSendEvents":
@@ -456,7 +456,7 @@ async def start_recording_events(
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
-async def enable_target_discovery(cdp_session: Any):  # pyright: ignore[reportExplicitAny]
+async def enable_target_discovery(cdp_session: Any):
     cdp_client = cdp_session.cdp_client
     await cdp_client.send.Target.setDiscoverTargets(
         {
@@ -468,7 +468,7 @@ async def enable_target_discovery(cdp_session: Any):  # pyright: ignore[reportEx
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 def register_on_target_created(
-    cdp_session: Any, _lmnr_session_id: str, _client: AsyncLaminarClient  # pyright: ignore[reportExplicitAny, reportAny]
+    cdp_session: Any, _lmnr_session_id: str, _client: AsyncLaminarClient
 ):
     # cdp_use.cdp.target.events.TargetCreatedEvent - coerced down to only what we use here
     def on_target_created(event: dict[str, dict[str, str]], _cdp_session_id: str | None = None):
@@ -485,7 +485,7 @@ def register_on_target_created(
 
 
 def register_on_frame_navigated(
-    cdp_session: Any, on_navigated: Callable[[], Coroutine[Any, Any, None]]  # pyright: ignore[reportExplicitAny, reportAny]
+    cdp_session: Any, on_navigated: Callable[[], Coroutine[Any, Any, None]]
 ):
     """Re-inject recorder after page navigation.
 
@@ -523,7 +523,7 @@ def register_on_frame_navigated(
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
 async def is_recorder_present(
-    cdp_session: Any, isolated_context_id: int | None = None  # pyright: ignore[reportExplicitAny, reportAny]
+    cdp_session: Any, isolated_context_id: int | None = None
 ) -> bool:
     # This function returns True on any error, because it is safer to not record
     # events than to try to inject the recorder into a broken context.
@@ -556,7 +556,7 @@ async def is_recorder_present(
         return True
 
 
-async def take_full_snapshot(cdp_session: Any) -> bool:  # pyright: ignore[reportExplicitAny, reportAny]
+async def take_full_snapshot(cdp_session: Any) -> bool:
     cdp_client = cdp_session.cdp_client
     isolated_context_id = await get_isolated_context_id(cdp_session)
     if isolated_context_id is None:

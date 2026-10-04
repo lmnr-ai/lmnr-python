@@ -254,9 +254,9 @@ def _promote_trace_attributes(
             continue
         for prefix in (_TRACE_METADATA_PREFIX, _OBSERVATION_METADATA_PREFIX):
             if k == prefix:
-                parsed = parse_json(v)  # pyright: ignore[reportAny]
+                parsed = parse_json(v)
                 if isinstance(parsed, dict):
-                    for mk, mv in (cast(dict[str, Any], parsed)).items():  # pyright: ignore[reportAny, reportExplicitAny]
+                    for mk, mv in (cast(dict[str, Any], parsed)).items():
                         new_attrs[f"{ASSOCIATION_PROPERTIES}.metadata.{mk}"] = (
                             mv
                             if isinstance(mv, (str, int, float, bool))
@@ -336,12 +336,12 @@ def _translate(span: ReadableSpan) -> None:
     if is_llm and input_raw is not None:
         split = genai_input_from_langfuse(input_raw)
         if split is not None:
-            messages, tools = split  # pyright: ignore[reportAny]
-            messages, lc_tools = split_messages_and_tool_defs_langchain(messages)  # pyright: ignore[reportAny]
-            messages = convert_openai_tool_calls_to_content_parts(messages, False)  # pyright: ignore[reportAny]
+            messages, tools = split
+            messages, lc_tools = split_messages_and_tool_defs_langchain(messages)
+            messages = convert_openai_tool_calls_to_content_parts(messages, False)
             new_attrs[_GEN_AI_INPUT_MESSAGES] = json_dumps(messages)
             if tools:
-                new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(tools)  # pyright: ignore[reportAny]
+                new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(tools)
             elif lc_tools:
                 new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(lc_tools)
             input_handled = True

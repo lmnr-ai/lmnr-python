@@ -39,7 +39,7 @@ C = TypeVar("C")
 
 class _CompletionChoice(TypedDict):
     index: int
-    message: dict[str, Any]  # pyright: ignore[reportExplicitAny]
+    message: dict[str, Any]
     finish_reason: str | None
 
 
@@ -56,7 +56,7 @@ class _CompletionResponseDict(TypedDict):
 
 class _ChunkChoice(TypedDict):
     index: int
-    delta: dict[str, Any]  # pyright: ignore[reportExplicitAny]
+    delta: dict[str, Any]
     finish_reason: str | None
 
 
@@ -75,15 +75,15 @@ class _ResponsesResponseDict(TypedDict):
 
     id: str
     model: str
-    output: list[dict[str, Any]]  # pyright: ignore[reportExplicitAny]
+    output: list[dict[str, Any]]
     usage: None
     created_at: int
-    reasoning: NotRequired[dict[str, Any]]  # pyright: ignore[reportExplicitAny]
+    reasoning: NotRequired[dict[str, Any]]
 
 
 class _ResponseCompletedEventDict(TypedDict):
     type: str
-    response: Any  # pyright: ignore[reportExplicitAny]
+    response: Any
 
 
 class DualIteratorWrapper:
@@ -95,17 +95,17 @@ class DualIteratorWrapper:
     def __init__(
         self,
         sync_iterator: Iterator[C],
-        cached_response: Any = None,  # pyright: ignore[reportAny, reportExplicitAny]
+        cached_response: Any = None,
     ):
         """
         Args:
             sync_iterator: A sync iterator/generator to wrap
             cached_response: Optional cached response object for setting span attributes
         """
-        self._sync_iterator: Iterator[Any] = sync_iterator  # pyright: ignore[reportExplicitAny]
+        self._sync_iterator: Iterator[Any] = sync_iterator
         # Cache items for potential reuse
-        self._items: list[Any] | None = None  # pyright: ignore[reportExplicitAny]
-        self._cached_response: Any = cached_response  # pyright: ignore[reportExplicitAny]
+        self._items: list[Any] | None = None
+        self._cached_response: Any = cached_response
 
     def set_span_attributes(self, span: Span, record_raw_response: bool = False):
         """
@@ -115,11 +115,11 @@ class DualIteratorWrapper:
             span: The span to set attributes on
             record_raw_response: Whether to record raw response
         """
-        if not self._cached_response:  # pyright: ignore[reportAny]
+        if not self._cached_response:
             return
 
 
-        response_dict = to_dict(self._cached_response)  # pyright: ignore[reportAny]
+        response_dict = to_dict(self._cached_response)
 
         # Set common attributes based on response type
         set_span_attribute(span, "gen_ai.response.id", response_dict.get("id"))
@@ -133,7 +133,7 @@ class DualIteratorWrapper:
                 response_dict.get("system_fingerprint"),
             )
             messages = [
-                choice.get("message", {}) for choice in response_dict.get("choices", [])  # pyright: ignore[reportAny]
+                choice.get("message", {}) for choice in response_dict.get("choices", [])
             ]
             span.set_attribute("gen_ai.output.messages", json_dumps(messages))
 
@@ -157,13 +157,13 @@ class DualIteratorWrapper:
         """Sync iteration support."""
         if self._items is not None:
             # If we already consumed it, replay from cache
-            for item in self._items:  # pyright: ignore[reportAny]
+            for item in self._items:
                 yield item
             return
 
         # First time iteration - consume and cache
         self._items = []
-        for item in self._sync_iterator:  # pyright: ignore[reportAny]
+        for item in self._sync_iterator:
             self._items.append(item)
             yield item
 
@@ -171,19 +171,19 @@ class DualIteratorWrapper:
         """Async iteration support."""
         if self._items is not None:
             # If we already consumed it, replay from cache
-            for item in self._items:  # pyright: ignore[reportAny]
+            for item in self._items:
                 yield item
         else:
             # First time iteration - consume and cache
             self._items = []
-            for item in self._sync_iterator:  # pyright: ignore[reportAny]
+            for item in self._sync_iterator:
                 self._items.append(item)
                 yield item
 
 
 def _import_litellm_types():
     """Lazy import litellm types to avoid import errors."""
-    types: dict[str, Any] = {  # pyright: ignore[reportExplicitAny]
+    types: dict[str, Any] = {
         "ModelResponse": None,
         "ResponsesAPIResponse": None,
         "Delta": None,
@@ -224,10 +224,10 @@ def _import_litellm_types():
 class LiteLLMRolloutWrapper:
     """Serves cached LiteLLM responses on a debug run; runs live otherwise."""
 
-    def cached_response_to_completion(self, cached_span: dict[str, Any]) -> Any:  # pyright: ignore[reportAny, reportExplicitAny]
+    def cached_response_to_completion(self, cached_span: dict[str, Any]) -> Any:
         """Convert cached span envelope to LiteLLM ModelResponse format."""
         types_dict = _import_litellm_types()
-        ModelResponse = types_dict["ModelResponse"]  # pyright: ignore[reportAny]
+        ModelResponse = types_dict["ModelResponse"]
 
         envelope_type = cached_span.get("type")
         if envelope_type not in ("raw", "genAi"):
@@ -240,10 +240,10 @@ class LiteLLMRolloutWrapper:
                 if not raw:
                     logger.warning("Cached span type='raw' has no response field")
                     return None
-                raw_dict = raw if isinstance(raw, dict) else json.loads(raw)  # pyright: ignore[reportAny, reportUnknownVariableType]
+                raw_dict = raw if isinstance(raw, dict) else json.loads(raw)  # pyright: ignore[reportUnknownVariableType]
                 if ModelResponse:
                     try:
-                        return ModelResponse.model_validate(raw_dict)  # pyright: ignore[reportAny]
+                        return ModelResponse.model_validate(raw_dict)
                     except Exception:
                         logger.debug("Failed to validate ModelResponse, returning dict", exc_info=True)
                         return raw_dict  # pyright: ignore[reportUnknownVariableType]
@@ -262,7 +262,7 @@ class LiteLLMRolloutWrapper:
             finish_reasons = cast(list[str], cached_span.get("finishReasons", []))
 
             choices: list[_CompletionChoice] = []
-            for i, message in enumerate(cast(list[dict[str, Any]], messages)):  # pyright: ignore[reportExplicitAny]
+            for i, message in enumerate(cast(list[dict[str, Any]], messages)):
                 finish_reason = finish_reasons[i] if i < len(finish_reasons) else "stop"
                 choices.append({"index": i, "message": message, "finish_reason": finish_reason})
 
@@ -277,7 +277,7 @@ class LiteLLMRolloutWrapper:
 
             if ModelResponse:
                 try:
-                    return ModelResponse.model_validate(response_dict)  # pyright: ignore[reportAny]
+                    return ModelResponse.model_validate(response_dict)
                 except Exception:
                     logger.debug("Failed to validate ModelResponse, returning dict", exc_info=True)
                     return response_dict
@@ -290,10 +290,10 @@ class LiteLLMRolloutWrapper:
             )
             return None
 
-    def cached_response_to_responses(self, cached_span: dict[str, Any]) -> Any:  # pyright: ignore[reportExplicitAny, reportAny]
+    def cached_response_to_responses(self, cached_span: dict[str, Any]) -> Any:
         """Convert cached span envelope to LiteLLM ResponsesAPIResponse format."""
         types_dict = _import_litellm_types()
-        ResponsesAPIResponse = types_dict["ResponsesAPIResponse"]  # pyright: ignore[reportAny]
+        ResponsesAPIResponse = types_dict["ResponsesAPIResponse"]
 
         envelope_type = cached_span.get("type")
         if envelope_type not in ("raw", "genAi"):
@@ -306,10 +306,10 @@ class LiteLLMRolloutWrapper:
                 if not raw:
                     logger.warning("Cached span type='raw' has no response field")
                     return None
-                raw_dict = raw if isinstance(raw, dict) else json.loads(raw)  # pyright: ignore[reportUnknownVariableType, reportAny]
+                raw_dict = raw if isinstance(raw, dict) else json.loads(raw)  # pyright: ignore[reportUnknownVariableType]
                 if ResponsesAPIResponse:
                     try:
-                        return ResponsesAPIResponse.model_validate(raw_dict)  # pyright: ignore[reportAny]
+                        return ResponsesAPIResponse.model_validate(raw_dict)
                     except Exception:
                         logger.debug("Failed to validate ResponsesAPIResponse, returning dict", exc_info=True)
                         return raw_dict  # pyright: ignore[reportUnknownVariableType]
@@ -326,9 +326,9 @@ class LiteLLMRolloutWrapper:
                 return None
             model = cast(str, cached_span.get("model", "unknown"))
 
-            reasoning: dict[str, Any] | None = None  # pyright: ignore[reportExplicitAny]
-            output_items: list[dict[str, Any]] = []  # pyright: ignore[reportExplicitAny]
-            for item in cast(list[dict[str, Any]], messages):  # pyright: ignore[reportExplicitAny]
+            reasoning: dict[str, Any] | None = None
+            output_items: list[dict[str, Any]] = []
+            for item in cast(list[dict[str, Any]], messages):
                 if item.get("summary") or item.get("effort"):
                     reasoning = item
                 else:
@@ -346,7 +346,7 @@ class LiteLLMRolloutWrapper:
 
             if ResponsesAPIResponse:
                 try:
-                    return ResponsesAPIResponse.model_validate(response_dict)  # pyright: ignore[reportAny]
+                    return ResponsesAPIResponse.model_validate(response_dict)
                 except Exception:
                     logger.debug("Failed to validate ResponsesAPIResponse, returning dict", exc_info=True)
                     return response_dict
@@ -360,8 +360,8 @@ class LiteLLMRolloutWrapper:
             return None
 
     def _create_cached_completion_stream(
-        self, response: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    ) -> Generator[Any, None, None]:  # pyright: ignore[reportExplicitAny]
+        self, response: Any,
+    ) -> Generator[Any, None, None]:
         """
         Create a generator that yields a cached completion response as a single chunk.
 
@@ -372,14 +372,14 @@ class LiteLLMRolloutWrapper:
             Chunk object or dict: The cached response formatted as a chunk
         """
         types = _import_litellm_types()
-        ModelResponse = types["ModelResponse"]  # pyright: ignore[reportAny]
-        Delta = types["Delta"]  # pyright: ignore[reportAny]
+        ModelResponse = types["ModelResponse"]
+        Delta = types["Delta"]
 
         # Convert response to dict if needed
-        if hasattr(response, "model_dump"):  # pyright: ignore[reportAny]
-            response_dict = response.model_dump()  # pyright: ignore[reportAny]
+        if hasattr(response, "model_dump"):
+            response_dict = response.model_dump()
         else:
-            response_dict = response  # pyright: ignore[reportAny]
+            response_dict = response
 
         response_dict = cast(_CompletionResponseDict, response_dict)
 
@@ -404,11 +404,11 @@ class LiteLLMRolloutWrapper:
         # Try to validate as ModelResponse if available
         if ModelResponse:
             try:
-                chunk = ModelResponse.model_validate(chunk_dict)  # pyright: ignore[reportAny]
+                chunk = ModelResponse.model_validate(chunk_dict)
                 if Delta:
-                    for choice in chunk.choices:  # pyright: ignore[reportAny]
-                        if hasattr(choice, "delta"):  # pyright: ignore[reportAny]
-                            choice.delta = Delta.model_validate(choice.delta)  # pyright: ignore[reportAny]
+                    for choice in chunk.choices:
+                        if hasattr(choice, "delta"):
+                            choice.delta = Delta.model_validate(choice.delta)
                 yield chunk
                 return
             except Exception:
@@ -417,8 +417,8 @@ class LiteLLMRolloutWrapper:
         yield chunk_dict
 
     async def _create_async_cached_completion_stream(
-        self, response: Any,   # pyright: ignore[reportAny, reportExplicitAny]
-    ) -> AsyncGenerator[Any, None]:  # pyright: ignore[reportExplicitAny]
+        self, response: Any,
+    ) -> AsyncGenerator[Any, None]:
         """
         Create an async generator that yields a cached completion response as a single chunk.
 
@@ -429,14 +429,14 @@ class LiteLLMRolloutWrapper:
             Chunk object or dict: The cached response formatted as a chunk
         """
         types = _import_litellm_types()
-        ModelResponse = types["ModelResponse"]  # pyright: ignore[reportAny]
-        Delta = types["Delta"]  # pyright: ignore[reportAny]
+        ModelResponse = types["ModelResponse"]
+        Delta = types["Delta"]
 
         # Convert response to dict if needed
-        if hasattr(response, "model_dump"):  # pyright: ignore[reportAny]
-            response_dict = response.model_dump()  # pyright: ignore[reportAny]
+        if hasattr(response, "model_dump"):
+            response_dict = response.model_dump()
         else:
-            response_dict = response  # pyright: ignore[reportAny]
+            response_dict = response
         response_dict = cast(_CompletionResponseDict, response_dict)
 
         # Convert the full response to a streaming chunk format
@@ -460,11 +460,11 @@ class LiteLLMRolloutWrapper:
         # Try to validate as ModelResponse if available
         if ModelResponse:
             try:
-                chunk = ModelResponse.model_validate(chunk_dict)  # pyright: ignore[reportAny]
+                chunk = ModelResponse.model_validate(chunk_dict)
                 if Delta:
-                    for choice in chunk.choices:  # pyright: ignore[reportAny]
-                        if hasattr(choice, "delta"):  # pyright: ignore[reportAny]
-                            choice.delta = Delta.model_validate(choice.delta)  # pyright: ignore[reportAny]
+                    for choice in chunk.choices:
+                        if hasattr(choice, "delta"):
+                            choice.delta = Delta.model_validate(choice.delta)
                 yield chunk
                 return
             except Exception:
@@ -473,8 +473,8 @@ class LiteLLMRolloutWrapper:
         yield chunk_dict
 
     def _create_cached_responses_stream(
-        self, response: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    ) -> Generator[Any, None, None]:  # pyright: ignore[reportExplicitAny]
+        self, response: Any,
+    ) -> Generator[Any, None, None]:
         """
         Create a generator that yields a cached responses response as a completed event.
 
@@ -485,7 +485,7 @@ class LiteLLMRolloutWrapper:
             ResponseCompletedEvent or dict: The cached response formatted as a response.completed event
         """
         types = _import_litellm_types()
-        ResponseCompletedEvent = types["ResponseCompletedEvent"]  # pyright: ignore[reportAny]
+        ResponseCompletedEvent = types["ResponseCompletedEvent"]
 
         event_dict: _ResponseCompletedEventDict = {
             "type": "response.completed",
@@ -495,7 +495,7 @@ class LiteLLMRolloutWrapper:
         # Try to validate as ResponseCompletedEvent if available
         if ResponseCompletedEvent:
             try:
-                event = ResponseCompletedEvent.model_validate(event_dict)  # pyright: ignore[reportAny]
+                event = ResponseCompletedEvent.model_validate(event_dict)
                 yield event
                 return
             except Exception:
@@ -504,8 +504,8 @@ class LiteLLMRolloutWrapper:
         yield event_dict
 
     async def _create_async_cached_responses_stream(
-        self, response: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    ) -> AsyncGenerator[Any, None]:  # pyright: ignore[reportExplicitAny]
+        self, response: Any,
+    ) -> AsyncGenerator[Any, None]:
         """
         Create an async generator that yields a cached responses response as a completed event.
 
@@ -516,7 +516,7 @@ class LiteLLMRolloutWrapper:
             ResponseCompletedEvent or dict: The cached response formatted as a response.completed event
         """
         types = _import_litellm_types()
-        ResponseCompletedEvent = types["ResponseCompletedEvent"]  # pyright: ignore[reportAny]
+        ResponseCompletedEvent = types["ResponseCompletedEvent"]
 
         event_dict: _ResponseCompletedEventDict = {
             "type": "response.completed",
@@ -526,7 +526,7 @@ class LiteLLMRolloutWrapper:
         # Try to validate as ResponseCompletedEvent if available
         if ResponseCompletedEvent:
             try:
-                event = ResponseCompletedEvent.model_validate(event_dict)  # pyright: ignore[reportAny]
+                event = ResponseCompletedEvent.model_validate(event_dict)
                 yield event
                 return
             except Exception:
@@ -537,44 +537,44 @@ class LiteLLMRolloutWrapper:
     def wrap_completion(
         self,
         wrapped: Callable[..., T],
-        args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-        kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
         is_streaming: bool = False,
     ) -> T | DualIteratorWrapper:
         """Serve a cached completion response if available, else run live."""
         span = Laminar.get_current_span()
         outcome = cache_outcome_for(span)
         if outcome is not None and outcome.kind == "hit" and outcome.cached is not None:
-            response = self.cached_response_to_completion(outcome.cached)  # pyright: ignore[reportAny]
+            response = self.cached_response_to_completion(outcome.cached)
             if response is not None:
                 logger.debug("Serving cached LiteLLM completion from replay cache")
                 mark_span_cached(span)
                 if is_streaming:
                     sync_gen = self._create_cached_completion_stream(response)
                     return DualIteratorWrapper(sync_gen, cached_response=response)
-                return response  # pyright: ignore[reportAny]
+                return response
 
         return wrapped(*args, **kwargs)
 
     def wrap_responses(
         self,
         wrapped: Callable[..., T],
-        args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-        kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
         is_streaming: bool = False,
     ) -> T | DualIteratorWrapper:
         """Serve a cached responses-API response if available, else run live."""
         span = Laminar.get_current_span()
         outcome = cache_outcome_for(span)
         if outcome is not None and outcome.kind == "hit" and outcome.cached is not None:
-            response = self.cached_response_to_responses(outcome.cached)  # pyright: ignore[reportAny]
+            response = self.cached_response_to_responses(outcome.cached)
             if response is not None:
                 logger.debug("Serving cached LiteLLM responses from replay cache")
                 mark_span_cached(span)
                 if is_streaming:
                     sync_gen = self._create_cached_responses_stream(response)
                     return DualIteratorWrapper(sync_gen, cached_response=response)
-                return response  # pyright: ignore[reportAny]
+                return response
 
         return wrapped(*args, **kwargs)
 

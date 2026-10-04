@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from lmnr.sdk.utils import json_dumps
 
 
-def screenshot_tool_output_formatter(_output: Any) -> str:  # pyright: ignore[reportAny, reportExplicitAny]
+def screenshot_tool_output_formatter(_output: Any) -> str:
     # output is of type BinaryAPIResponse, which implements
     # the iter_bytes method from httpx.Response
 
@@ -25,13 +25,13 @@ def screenshot_tool_output_formatter(_output: Any) -> str:  # pyright: ignore[re
     # return f"data:image/png;base64,{response_base64}"
 
 
-def process_tool_output_formatter(output: Any) -> str:  # pyright: ignore[reportAny, reportExplicitAny]
+def process_tool_output_formatter(output: Any) -> str:
     if not isinstance(output, (dict, BaseModel)):
-        return json_dumps(output)  # pyright: ignore[reportAny]
+        return json_dumps(output)
 
-    output = cast(dict[str, Any], output.model_dump() if isinstance(output, BaseModel) else deepcopy(output))  # pyright: ignore[reportUnknownArgumentType, reportExplicitAny]
+    output = cast(dict[str, Any], output.model_dump() if isinstance(output, BaseModel) else deepcopy(output))  # pyright: ignore[reportUnknownArgumentType]
     if "stderr_b64" in output:
-        output["stderr"] = base64.b64decode(output["stderr_b64"]).decode("utf-8")  # pyright: ignore[reportAny]
+        output["stderr"] = base64.b64decode(output["stderr_b64"]).decode("utf-8")
     if "stdout_b64" in output:
-        output["stdout"] = base64.b64decode(output["stdout_b64"]).decode("utf-8")  # pyright: ignore[reportAny]
-    return json_dumps(output)  # pyright: ignore[reportAny]
+        output["stdout"] = base64.b64decode(output["stdout_b64"]).decode("utf-8")
+    return json_dumps(output)
