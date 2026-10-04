@@ -20,9 +20,9 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.event_models impo
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.utils import (
     should_send_prompts,
 )
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import model_as_dict
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    dont_throw,
+    model_as_dict,
     set_span_attribute,
 )
 

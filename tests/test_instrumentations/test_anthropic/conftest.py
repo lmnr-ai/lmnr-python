@@ -4,11 +4,12 @@ import os
 
 import pytest
 from anthropic import Anthropic, AsyncAnthropic
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic import (
     AnthropicInstrumentor,
 )
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
 
 @pytest.fixture(scope="function", name="tracer_provider")
@@ -30,9 +31,7 @@ def async_anthropic_client():
 
 @pytest.fixture(scope="function")
 def instrument_legacy(tracer_provider):
-    instrumentor = AnthropicInstrumentor(
-        enrich_token_usage=True,
-    )
+    instrumentor = AnthropicInstrumentor()
     instrumentor.instrument(
         tracer_provider=tracer_provider,
     )

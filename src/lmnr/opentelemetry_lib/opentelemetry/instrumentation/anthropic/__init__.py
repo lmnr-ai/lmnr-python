@@ -1,11 +1,12 @@
 """OpenTelemetry Anthropic instrumentation"""
 
 import logging
+from collections.abc import Collection, Sequence
 from importlib.metadata import version
-from typing import Any, Callable, Collection, Sequence
+from typing import Any
 
 from opentelemetry import context as context_api
-from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
+from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
@@ -23,6 +24,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    dont_throw,
     safe_start_span,
     set_span_attribute,
 )
@@ -30,7 +32,6 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers
     stamp_instrumentation_scope,
 )
 
-from .config import Config
 from .rollout import get_anthropic_rollout_wrapper
 from .span_utils import (
     aset_input_attributes,
@@ -46,7 +47,6 @@ from .streaming import (
 from .utils import (
     run_async,
 )
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw
 
 logger = logging.getLogger(__name__)
 
@@ -219,9 +219,10 @@ def _handle_response(span: Span, response, record_raw_response=False):
 
     if record_raw_response:
         try:
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+                model_as_dict,
+            )
             from lmnr.sdk.utils import json_dumps
-
-            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import model_as_dict
 
             from .utils import extract_response_data
 
@@ -582,19 +583,9 @@ class AnthropicInstrumentor(BaseLaminarInstrumentor):
 
     _scope: LaminarInstrumentationScopeAttributes | None = None
 
-    def __init__(
-        self,
-        enrich_token_usage: bool = False,
-        exception_logger=None,
-        use_legacy_attributes: bool = True,
-        get_common_metrics_attributes: Callable[[], dict] = lambda: {},
-    ):
+    def __init__(self):
         super().__init__()
-        Config.exception_logger = exception_logger
-        Config.enrich_token_usage = enrich_token_usage
-        Config.get_common_metrics_attributes = get_common_metrics_attributes
-        Config.use_legacy_attributes = use_legacy_attributes
-        self.instrumentor_config = LaminarInstrumentorConfig(
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 {**spec, "instrumentation_scope": self.instrumentation_scope()}
                 for spec in WRAPPED_FUNCTIONS

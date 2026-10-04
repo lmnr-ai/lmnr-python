@@ -9,14 +9,14 @@ live. The decision is made by `cache_outcome_for` (sync) / `acache_outcome_for`
 """
 
 import json
-from typing import Any, AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Generator
+from typing import Any
 
 from opentelemetry.trace import Span
 
 from anthropic.types import (
-    Message,
-    RawMessageStreamEvent,
     InputJSONDelta,
+    Message,
     MessageDeltaUsage,
     RawContentBlockDeltaEvent,
     RawContentBlockStartEvent,
@@ -24,11 +24,11 @@ from anthropic.types import (
     RawMessageDeltaEvent,
     RawMessageStartEvent,
     RawMessageStopEvent,
+    RawMessageStreamEvent,
     TextDelta,
     ThinkingDelta,
     Usage,
 )
-
 from anthropic.types.raw_message_delta_event import Delta
 from lmnr.sdk.debug.replay import (
     acache_outcome_for,

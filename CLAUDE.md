@@ -21,12 +21,6 @@ uv run pytest tests/test_initialize.py
 # Run specific test
 uv run pytest tests/test_initialize.py::test_laminar_initialize_url_parsing -v
 
-# Lint
-uv run flake8 src/
-
-# Format
-uv run autopep8 --in-place --aggressive src/lmnr/**/*.py
-
 # CLI commands
 lmnr eval <file.py>           # Run evaluations
 lmnr datasets pull <id>       # Pull dataset

@@ -20,7 +20,6 @@ from opentelemetry.trace.status import Status, StatusCode
 from typing_extensions import TypeVar, override
 
 from groq._streaming import AsyncStream, Stream
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.config import Config
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.event_models import Usage
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.span_utils import (
     set_input_attributes,
@@ -279,14 +278,8 @@ class GroqInstrumentor(BaseLaminarInstrumentor):
     _scope: LaminarInstrumentationScopeAttributes | None = None
 
     @override
-    def __init__(
-        self,
-        enrich_token_usage: bool = False,
-        use_legacy_attributes: bool = True,
-    ):
+    def __init__(self):
         super().__init__()
-        Config.enrich_token_usage = enrich_token_usage
-        Config.use_legacy_attributes = use_legacy_attributes
         self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 {**spec, "instrumentation_scope": self.instrumentation_scope()}

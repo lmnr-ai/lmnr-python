@@ -16,6 +16,8 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
 )
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    dont_throw,
+    model_as_dict,
     set_span_attribute,
 )
 from lmnr.sdk.utils import json_dumps
@@ -26,8 +28,6 @@ from .utils import (
     extract_response_data,
     should_send_prompts,
 )
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import model_as_dict
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw
 
 logger = logging.getLogger(__name__)
 
