@@ -31,8 +31,11 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    dont_throw,
     safe_start_span,
     set_span_attribute,
+    should_send_prompts,
+    to_dict,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     stamp_instrumentation_scope,
@@ -50,14 +53,13 @@ from .utils import (
     model_to_json_safe_dict,
     process_stream_chunk,
 )
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import to_dict
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw, should_send_prompts
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 _instruments = ("google-genai >= 1.0.0",)
 
+@dont_throw
 def _set_request_attributes(
     span: Span,
     _args: Sequence[Any],
@@ -418,11 +420,11 @@ def _wrap(
 
         if to_wrap.get("is_streaming"):
             return _build_from_streaming_response(
-                span, response, record_raw_response=is_rollout
+                span, cast(Generator[types.GenerateContentResponse], response), record_raw_response=is_rollout
             )
         if span.is_recording():
-            _set_raw_response_attribute(span, response, record_raw_response=is_rollout)
-            _set_response_attributes(span, response)
+            _set_raw_response_attribute(span, cast(types.GenerateContentResponse, response), record_raw_response=is_rollout)
+            _set_response_attributes(span, cast(types.GenerateContentResponse, response))
         span.end()
         return response
     except Exception as e:
@@ -501,14 +503,14 @@ async def _awrap(
 
         if to_wrap.get("is_streaming"):
             return _abuild_from_streaming_response(
-                span, response, record_raw_response=is_rollout
+                span, cast(AsyncGenerator[types.GenerateContentResponse], response), record_raw_response=is_rollout
             )
         else:
             if span.is_recording():
                 _set_raw_response_attribute(
-                    span, response, record_raw_response=is_rollout
+                    span, cast(types.GenerateContentResponse, response), record_raw_response=is_rollout
                 )
-                _set_response_attributes(span, response)
+                _set_response_attributes(span, cast(types.GenerateContentResponse, response))
 
             span.end()
             return response
