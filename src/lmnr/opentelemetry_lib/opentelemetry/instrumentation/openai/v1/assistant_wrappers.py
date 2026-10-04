@@ -2,37 +2,34 @@ import logging
 import time
 
 from opentelemetry import context as context_api
-from ..shared import (
-    set_span_attribute,
-    model_as_dict,
-)
-from ..utils import (
-    dont_throw,
-)
-from lmnr.opentelemetry_lib.tracing.context import (
-    get_event_attributes_from_context,
-)
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
-    WrappedFunctionSpec,
-)
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
-    safe_start_span,
-)
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
-    stamp_instrumentation_scope,
-)
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
-from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_REQUEST_MODEL,
     GEN_AI_RESPONSE_MODEL,
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
+from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.trace import Status, StatusCode
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    WrappedFunctionSpec,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    safe_start_span,
+    set_span_attribute,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    stamp_instrumentation_scope,
+)
+from lmnr.opentelemetry_lib.tracing.context import (
+    get_event_attributes_from_context,
+)
 from openai._legacy_response import LegacyAPIResponse
 from openai.types.beta.threads.run import Run
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import model_as_dict
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw
 
 logger = logging.getLogger(__name__)
 

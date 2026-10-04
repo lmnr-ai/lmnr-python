@@ -24,6 +24,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     safe_start_span,
+    set_span_attribute,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     stamp_instrumentation_scope,
@@ -43,10 +44,9 @@ from .streaming import (
     build_from_streaming_response,
 )
 from .utils import (
-    dont_throw,
     run_async,
-    set_span_attribute,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw
 
 logger = logging.getLogger(__name__)
 
@@ -221,7 +221,9 @@ def _handle_response(span: Span, response, record_raw_response=False):
         try:
             from lmnr.sdk.utils import json_dumps
 
-            from .utils import extract_response_data, model_as_dict
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import model_as_dict
+
+            from .utils import extract_response_data
 
             response_data = extract_response_data(response)
             response_dict = model_as_dict(response_data)
@@ -240,7 +242,9 @@ async def _ahandle_response(span: Span, response, record_raw_response=False):
         try:
             from lmnr.sdk.utils import json_dumps
 
-            from .utils import aextract_response_data, model_as_dict
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import model_as_dict
+
+            from .utils import aextract_response_data
 
             response_data = await aextract_response_data(response)
             response_dict = model_as_dict(response_data)

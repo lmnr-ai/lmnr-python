@@ -1,17 +1,12 @@
 import asyncio
-import inspect
-import logging
 import os
 import threading
-import traceback
 from importlib.metadata import version
 
 from opentelemetry import context as context_api
 from packaging.version import parse
 
 import openai
-
-from .shared.config import Config
 
 _OPENAI_VERSION = version("openai")
 
@@ -39,41 +34,6 @@ def is_azure_openai(instance):
 
 def is_metrics_enabled() -> bool:
     return False
-
-
-def should_record_stream_token_usage():
-    return Config.enrich_token_usage
-
-
-def dont_throw(func):
-    """
-    A decorator that wraps the passed in function and logs exceptions instead of throwing them.
-    Works for both synchronous and asynchronous functions.
-    """
-    logger = logging.getLogger(func.__module__)
-
-    async def async_wrapper(*args, **kwargs):
-        try:
-            return await func(*args, **kwargs)
-        except Exception as e:
-            _handle_exception(e, func, logger)
-
-    def sync_wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            _handle_exception(e, func, logger)
-
-    def _handle_exception(e, func, logger):
-        logger.debug(
-            "OpenLLMetry failed to trace in %s, error: %s",
-            func.__name__,
-            traceback.format_exc(),
-        )
-        if Config.exception_logger:
-            Config.exception_logger(e)
-
-    return async_wrapper if inspect.iscoroutinefunction(func) else sync_wrapper
 
 
 def run_async(method):

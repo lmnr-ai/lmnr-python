@@ -65,10 +65,7 @@ def fixture_tracer_provider(span_exporter):
 
 @pytest.fixture(scope="function")
 def instrument_legacy(tracer_provider):
-    instrumentor = OpenAIInstrumentor(
-        enrich_assistant=True,
-        enrich_token_usage=True,
-    )
+    instrumentor = OpenAIInstrumentor()
     was_already_instrumented = instrumentor.is_instrumented_by_opentelemetry
     if not was_already_instrumented:
         instrumentor.instrument(

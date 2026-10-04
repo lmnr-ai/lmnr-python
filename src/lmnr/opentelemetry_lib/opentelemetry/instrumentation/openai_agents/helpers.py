@@ -1,11 +1,10 @@
 """Span naming, type mapping, and utility helpers for OpenAI Agents instrumentation."""
 
 import contextvars
-from typing import Any, cast
+from typing import Any
 
 from agents.tracing import Span
 from opentelemetry.context import create_key
-from pydantic import BaseModel
 
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import LaminarSpanType
@@ -172,22 +171,3 @@ def get_attr_not_none(obj: Any, *attrs: str) -> Any:  # pyright: ignore[reportAn
     return None
 
 
-def to_dict(
-    obj: BaseModel | dict[str, Any] | Any | None,  # pyright: ignore[reportExplicitAny]
-    pydantic_kwargs: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
-) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
-    try:
-        if isinstance(obj, BaseModel):
-            return obj.model_dump(**(pydantic_kwargs or {}))  # pyright: ignore[reportAny]
-        elif isinstance(obj, dict):
-            return obj  # pyright: ignore[reportUnknownVariableType]
-        elif obj is None:
-            return {}
-        else:
-            return dict(obj)  # pyright: ignore[reportAny]
-    except Exception:
-        logger.debug(f"Error converting to dict: {obj}", exc_info=True)
-        try:
-            return dict(cast(dict[str, Any], obj))  # pyright: ignore[reportExplicitAny]
-        except Exception:
-            return {}

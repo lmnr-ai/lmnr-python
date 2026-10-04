@@ -1,14 +1,12 @@
 from collections import defaultdict
-from collections.abc import Callable
 from typing import Any, cast
 
 import pydantic
 from google.genai import types
 from google.genai._common import BaseModel
-from opentelemetry.trace import Span
-from opentelemetry.util.types import AttributeValue
 from typing_extensions import TypedDict, TypeVar
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw, to_dict
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
@@ -74,57 +72,6 @@ def merge_text_parts(
         merged_parts.append(types.Part(text=accumulated_text))
 
     return merged_parts
-
-
-def set_span_attribute(span: Span, name: str, value: AttributeValue | None):
-    if value is not None and value != "":
-        span.set_attribute(name, value)
-
-
-def dont_throw(func: Callable[..., T]) -> Callable[..., T | None]:
-    """
-    A decorator that wraps the passed in function and logs exceptions instead of throwing them.
-
-    @param func: The function to wrap
-    @return: The wrapper function
-    """
-    # Obtain a logger specific to the function's module
-    func_logger = get_default_logger(func.__module__)
-
-    def wrapper(*args: Any, **kwargs: Any) -> T | None:  # pyright: ignore[reportAny, reportExplicitAny]
-        try:
-            return func(*args, **kwargs)
-        except Exception:
-            func_logger.debug(
-                "Laminar failed to trace in %s",
-                func.__name__,
-                exc_info=True,
-            )
-
-    return wrapper
-
-
-def to_dict(
-    obj: BaseModel | pydantic.BaseModel | dict[str, Any] | None,  # pyright: ignore[reportExplicitAny]
-    pydantic_kwargs: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
-) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
-    defaulted_pydantic_kwargs = pydantic_kwargs or {}
-    try:
-        if isinstance(obj, BaseModel):
-            return obj.model_dump()
-        elif isinstance(obj, pydantic.BaseModel):
-            return obj.model_dump(**defaulted_pydantic_kwargs)  # pyright: ignore[reportAny]
-        elif isinstance(obj, dict):
-            return obj
-        elif obj is None:
-            return {}
-        else:
-            return dict(obj)
-    except Exception:
-        logger.debug(f"Error converting to dict: {obj}", exc_info=True)
-        if obj is None:
-            return {}
-        return dict(obj)
 
 
 @dont_throw

@@ -17,8 +17,8 @@ from typing_extensions import TypeVar
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
     is_model_valid,
-    to_dict,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import to_dict
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from lmnr.sdk.debug.replay import (
     acache_outcome_for,

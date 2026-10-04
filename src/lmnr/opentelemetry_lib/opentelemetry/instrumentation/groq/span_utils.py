@@ -18,10 +18,12 @@ from opentelemetry.trace import Span
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.event_models import Usage
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.utils import (
-    dont_throw,
-    model_as_dict,
-    set_span_attribute,
     should_send_prompts,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import model_as_dict
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    set_span_attribute,
 )
 
 CONTENT_FILTER_KEY = "content_filter_results"

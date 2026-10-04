@@ -55,30 +55,28 @@ from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.trace import Span, SpanKind, StatusCode
 from typing_extensions import NotRequired
 
-from lmnr.opentelemetry_lib.tracing.context import (
-    get_current_context,
-    get_event_attributes_from_context,
-)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     safe_start_span,
+    set_span_attribute,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     stamp_instrumentation_scope,
 )
+from lmnr.opentelemetry_lib.tracing.context import (
+    get_current_context,
+    get_event_attributes_from_context,
+)
 from lmnr.sdk.utils import json_dumps
 from openai._legacy_response import LegacyAPIResponse
 
-from ..shared import (
-    model_as_dict,
-    set_span_attribute,
-)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import model_as_dict
 from ..utils import (
-    dont_throw,
     should_send_prompts,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw
 
 SPAN_NAME = "openai.response"
 

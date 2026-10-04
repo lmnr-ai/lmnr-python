@@ -8,16 +8,16 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
 )
 from opentelemetry.trace.status import Status, StatusCode
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    set_span_attribute,
+)
 from lmnr.sdk.utils import json_dumps
 
 from .config import Config
 from .span_utils import (
     set_streaming_response_attributes,
 )
-from .utils import (
-    dont_throw,
-    set_span_attribute,
-)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw
 
 logger = logging.getLogger(__name__)
 

@@ -3,10 +3,10 @@ Initially copied over from openllmetry, commit
 b3a18c9f7e6ff2368c8fb0bc35fd9123f11121c4
 """
 
-from typing import Callable, Collection
+from collections.abc import Collection
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from .shared.config import Config
+
 from .utils import is_openai_v1
 
 _instruments = ("openai >= 0.27.0",)
@@ -15,22 +15,8 @@ _instruments = ("openai >= 0.27.0",)
 class OpenAIInstrumentor(BaseInstrumentor):
     """An instrumentor for OpenAI's client library."""
 
-    def __init__(
-        self,
-        enrich_assistant: bool = False,
-        enrich_token_usage: bool = False,
-        exception_logger=None,
-        get_common_metrics_attributes: Callable[[], dict] = lambda: {},
-        enable_trace_context_propagation: bool = True,
-        use_legacy_attributes: bool = True,
-    ):
+    def __init__(self):
         super().__init__()
-        Config.enrich_assistant = enrich_assistant
-        Config.enrich_token_usage = enrich_token_usage
-        Config.exception_logger = exception_logger
-        Config.get_common_metrics_attributes = get_common_metrics_attributes
-        Config.enable_trace_context_propagation = enable_trace_context_propagation
-        Config.use_legacy_attributes = use_legacy_attributes
 
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments

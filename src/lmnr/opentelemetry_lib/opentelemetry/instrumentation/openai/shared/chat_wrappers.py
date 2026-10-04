@@ -2,40 +2,41 @@ import logging
 import threading
 
 from opentelemetry import context as context_api
-from ..shared import (
-    _set_client_attributes,
-    _set_request_attributes,
-    _set_response_attributes,
-    set_span_attribute,
-    is_streaming_response,
-    model_as_dict,
-    propagate_trace_context,
-    set_tools_attributes,
-)
-from lmnr.sdk.utils import json_dumps
-from ..shared.config import Config
-from ..utils import (
-    dont_throw,
-    is_openai_v1,
-    should_send_prompts,
-)
-from lmnr.opentelemetry_lib.tracing.context import (
-    get_event_attributes_from_context,
-    is_in_litellm_context,
-)
+from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
+from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
+from opentelemetry.trace.status import Status, StatusCode
+from wrapt import ObjectProxy
+
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     safe_start_span,
+    set_span_attribute,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     stamp_instrumentation_scope,
 )
-from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
-from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
-from opentelemetry.trace.status import Status, StatusCode
-from wrapt import ObjectProxy
+from lmnr.opentelemetry_lib.tracing.context import (
+    get_event_attributes_from_context,
+    is_in_litellm_context,
+)
+from lmnr.sdk.utils import json_dumps
+
+from ..shared import (
+    _set_request_attributes,
+    _set_response_attributes,
+    is_streaming_response,
+    propagate_trace_context,
+    set_client_attributes,
+    set_tools_attributes,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import model_as_dict
+from ..utils import (
+    is_openai_v1,
+    should_send_prompts,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw
 
 SPAN_NAME = "openai.chat"
 
@@ -229,15 +230,14 @@ async def achat_wrapper(
 @dont_throw
 def _handle_request(span, kwargs, instance):
     _set_request_attributes(span, kwargs, instance)
-    _set_client_attributes(span, instance)
+    set_client_attributes(span, instance)
     if should_send_prompts():
         _set_prompts(span, kwargs.get("messages"))
         if kwargs.get("functions"):
             set_tools_attributes(span, kwargs.get("functions"))
         elif kwargs.get("tools"):
             set_tools_attributes(span, kwargs.get("tools"))
-    if Config.enable_trace_context_propagation:
-        propagate_trace_context(span, kwargs)
+    propagate_trace_context(span, kwargs)
 
 
 @dont_throw

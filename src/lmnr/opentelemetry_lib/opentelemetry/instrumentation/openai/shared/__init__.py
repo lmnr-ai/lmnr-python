@@ -1,14 +1,8 @@
 import json
 import logging
 import types
-from importlib.metadata import version
 
-from lmnr.sdk.utils import json_dumps
-from ..utils import (
-    dont_throw,
-    is_openai_v1,
-    should_record_stream_token_usage,
-)
+import pydantic
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_REQUEST_FREQUENCY_PENALTY,
     GEN_AI_REQUEST_MAX_TOKENS,
@@ -27,32 +21,27 @@ from opentelemetry.semconv._incubating.attributes.openai_attributes import (
 )
 from opentelemetry.trace.propagation import set_span_in_context
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+
 import openai
-import pydantic
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    set_span_attribute,
+)
+from lmnr.sdk.utils import json_dumps
+
+from ..utils import (
+    is_openai_v1,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw
 
 OPENAI_LLM_USAGE_TOKEN_TYPES = ["prompt_tokens", "completion_tokens"]
 PROMPT_FILTER_KEY = "prompt_filter_results"
 PROMPT_ERROR = "prompt_error"
 
-_PYDANTIC_VERSION = version("pydantic")
-
-# tiktoken encodings map for different model, key is model_name, value is tiktoken encoding
-tiktoken_encodings = {}
 
 logger = logging.getLogger(__name__)
 
 
-def set_span_attribute(span, name, value):
-    if value is None or value == "":
-        return
-
-    if hasattr(openai, "NOT_GIVEN") and value == openai.NOT_GIVEN:
-        return
-
-    span.set_attribute(name, value)
-
-
-def _set_client_attributes(span, instance):
+def set_client_attributes(span, instance):
     if not span.is_recording():
         return
 
@@ -324,7 +313,7 @@ def _cross_region_check(value):
         else:
             return value
     else:
-        vendor, model = value.split(".", 1)
+        _vendor, model = value.split(".", 1)
         return model
 
 
@@ -340,75 +329,7 @@ def is_streaming_response(response):
             ),
         )
 
-    return isinstance(response, types.GeneratorType) or isinstance(
-        response, types.AsyncGeneratorType
-    )
-
-
-def model_as_dict(model):
-    if isinstance(model, dict):
-        return model
-    if _PYDANTIC_VERSION < "2.0.0":
-        try:
-            return model.dict()
-        except Exception:
-            logger.warning(f"Failed to convert model to dict: {model}", exc_info=True)
-            return {}
-    if hasattr(model, "model_dump"):
-        try:
-            return model.model_dump()
-        except Exception:
-            logger.warning(f"Failed to convert model to dict: {model}", exc_info=True)
-            return {}
-    elif hasattr(model, "parse"):
-        try:
-            return model_as_dict(model.parse())
-        except Exception:
-            logger.warning(f"Failed to convert model to dict: {model}", exc_info=True)
-            return {}
-    else:
-        return model
-
-
-def get_token_count_from_string(string: str, model_name: str):
-    if not should_record_stream_token_usage():
-        return None
-
-    import tiktoken
-
-    if tiktoken_encodings.get(model_name) is None:
-        try:
-            encoding = tiktoken.encoding_for_model(model_name)
-        except KeyError:
-            # no such model_name in tiktoken
-            logger.warning(
-                "Failed to get tiktoken encoding for model_name {model_name}",
-                exc_info=True,
-            )
-            return None
-        except Exception:
-            # Other exceptions in tiktoken
-            logger.warning(
-                "Failed to get tiktoken encoding for model_name {model_name}",
-                exc_info=True,
-            )
-            return None
-
-        tiktoken_encodings[model_name] = encoding
-    else:
-        encoding = tiktoken_encodings.get(model_name)
-
-    token_count = len(encoding.encode(string))
-    return token_count
-
-
-def _token_type(token_type: str):
-    if token_type == "prompt_tokens":
-        return "input"
-    elif token_type == "completion_tokens":
-        return "output"
-
-    return None
+    return isinstance(response, (types.GeneratorType, types.AsyncGeneratorType))
 
 
 def propagate_trace_context(span, kwargs):

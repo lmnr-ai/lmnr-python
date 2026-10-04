@@ -1,13 +1,15 @@
-from lmnr.opentelemetry_lib.tracing.context import get_event_attributes_from_context
-from ..shared import set_span_attribute
-from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
+from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.trace import Status, StatusCode
 from typing_extensions import override
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    set_span_attribute,
+)
+from lmnr.opentelemetry_lib.tracing.context import get_event_attributes_from_context
 from openai import AssistantEventHandler
 
 

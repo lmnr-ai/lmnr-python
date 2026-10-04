@@ -33,6 +33,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     safe_start_span,
+    set_span_attribute,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     stamp_instrumentation_scope,
@@ -46,13 +47,12 @@ from lmnr.sdk.utils import json_dumps
 from .schema_utils import SchemaJSONEncoder, process_schema
 from .utils import (
     content_union_to_dict,
-    dont_throw,
     merge_text_parts,
     model_to_json_safe_dict,
     process_stream_chunk,
-    set_span_attribute,
-    to_dict,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import to_dict
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")

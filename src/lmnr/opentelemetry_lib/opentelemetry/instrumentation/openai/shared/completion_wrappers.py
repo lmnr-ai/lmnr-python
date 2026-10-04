@@ -1,41 +1,39 @@
 import logging
 
 from opentelemetry import context as context_api
-from ..shared import (
-    _set_client_attributes,
-    set_tools_attributes,
-    _set_request_attributes,
-    _set_response_attributes,
-    set_span_attribute,
-    _set_span_stream_usage,
-    get_token_count_from_string,
-    is_streaming_response,
-    model_as_dict,
-    propagate_trace_context,
-    should_record_stream_token_usage,
-)
-from ..shared.config import Config
-from ..utils import (
-    dont_throw,
-    is_openai_v1,
-    should_send_prompts,
-)
-from lmnr.sdk.utils import json_dumps
-from lmnr.opentelemetry_lib.tracing.context import (
-    get_event_attributes_from_context,
-)
+from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
+from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
+from opentelemetry.trace.status import Status, StatusCode
+
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     safe_start_span,
+    set_span_attribute,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     stamp_instrumentation_scope,
 )
-from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
-from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
-from opentelemetry.trace.status import Status, StatusCode
+from lmnr.opentelemetry_lib.tracing.context import (
+    get_event_attributes_from_context,
+)
+from lmnr.sdk.utils import json_dumps
+
+from ..shared import (
+    _set_request_attributes,
+    _set_response_attributes,
+    is_streaming_response,
+    propagate_trace_context,
+    set_client_attributes,
+    set_tools_attributes,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import model_as_dict
+from ..utils import (
+    is_openai_v1,
+    should_send_prompts,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw
 
 SPAN_NAME = "openai.completion"
 
@@ -121,9 +119,8 @@ def _handle_request(span, kwargs, instance):
     if should_send_prompts():
         _set_prompts(span, kwargs.get("prompt"))
         set_tools_attributes(span, kwargs.get("functions"))
-    _set_client_attributes(span, instance)
-    if Config.enable_trace_context_propagation:
-        propagate_trace_context(span, kwargs)
+    set_client_attributes(span, instance)
+    propagate_trace_context(span, kwargs)
 
 
 @dont_throw
@@ -166,8 +163,6 @@ def _build_from_streaming_response(span, request_kwargs, response):
 
     _set_response_attributes(span, complete_response)
 
-    _set_token_usage(span, request_kwargs, complete_response)
-
     if should_send_prompts():
         _set_completions(span, complete_response.get("choices"))
 
@@ -184,46 +179,11 @@ async def _abuild_from_streaming_response(span, request_kwargs, response):
 
     _set_response_attributes(span, complete_response)
 
-    _set_token_usage(span, request_kwargs, complete_response)
-
     if should_send_prompts():
         _set_completions(span, complete_response.get("choices"))
 
     span.set_status(Status(StatusCode.OK))
     span.end()
-
-
-@dont_throw
-def _set_token_usage(span, request_kwargs, complete_response):
-    # use tiktoken calculate token usage
-    if should_record_stream_token_usage():
-        prompt_usage = -1
-        completion_usage = -1
-
-        # prompt_usage
-        if request_kwargs and request_kwargs.get("prompt"):
-            prompt_content = request_kwargs.get("prompt")
-            model_name = complete_response.get("model") or None
-
-            if model_name:
-                prompt_usage = get_token_count_from_string(prompt_content, model_name)
-
-        # completion_usage
-        if complete_response.get("choices"):
-            completion_content = ""
-            model_name = complete_response.get("model") or None
-
-            for choice in complete_response.get("choices"):
-                if choice.get("text"):
-                    completion_content += choice.get("text")
-
-            if model_name:
-                completion_usage = get_token_count_from_string(
-                    completion_content, model_name
-                )
-
-        # span record
-        _set_span_stream_usage(span, prompt_usage, completion_usage)
 
 
 @dont_throw

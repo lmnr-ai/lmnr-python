@@ -12,8 +12,8 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.helpers 
     get_first_not_none,
     model_as_dict,
     normalize_messages,
-    to_dict,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import to_dict
 from lmnr.opentelemetry_lib.tracing.attributes import Attributes
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import json_dumps

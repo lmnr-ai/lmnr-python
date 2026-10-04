@@ -17,12 +17,15 @@ opens the span and builds `TracedData` post-hoc) and only borrows
 
 import json
 import uuid
-from typing import Any, AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Generator
+from typing import Any
 
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_chunk import (
     Choice as ChunkChoice,
+)
+from openai.types.chat.chat_completion_chunk import (
     ChoiceDelta,
 )
 from openai.types.chat.chat_completion_message import (
@@ -31,6 +34,8 @@ from openai.types.chat.chat_completion_message import (
 )
 from openai.types.chat.chat_completion_message_function_tool_call import (
     ChatCompletionMessageFunctionToolCall,
+)
+from openai.types.chat.chat_completion_message_function_tool_call import (
     Function as ToolCallFunction,
 )
 
