@@ -17,9 +17,14 @@ opens the span and builds `TracedData` post-hoc) and only borrows
 
 import json
 import uuid
-from collections.abc import AsyncGenerator, Generator
-from typing import Any
+from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Sequence
+from typing import Any, cast
 
+from opentelemetry.sdk.trace import Span as SDKSpan
+from opentelemetry.trace import Span
+from typing_extensions import TypeVar
+
+from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 from openai.types.chat.chat_completion import Choice
 from openai.types.chat.chat_completion_chunk import (
@@ -56,7 +61,7 @@ from lmnr.sdk.debug.replay import (
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
-
+T = TypeVar("T")
 
 class OpenAIRolloutWrapper:
     """Serves cached OpenAI responses on a debug run; runs live otherwise."""
@@ -162,7 +167,7 @@ class OpenAIRolloutWrapper:
         """
         if not _RESPONSES_AVAILABLE:
             logger.warning(
-                "openai.types.responses.Response unavailable; cannot serve cached "
+                "openai.types.responses.Response unavailable; cannot serve cached " +
                 "Responses-API response"
             )
             return None
@@ -228,24 +233,27 @@ class OpenAIRolloutWrapper:
 
     def wrap_chat_completion(
         self,
-        wrapped,
-        instance,
-        args,
-        kwargs,
-        span: Any = None,
+        wrapped: Callable[..., ChatCompletion | Awaitable[ChatCompletion]],
+        _instance: Any,
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
+        span: Span,
         is_streaming: bool = False,
         is_async: bool = False,
-    ) -> Any:
+    ) -> ChatCompletion | Generator[ChatCompletionChunk] | Awaitable[ChatCompletion | AsyncGenerator[ChatCompletionChunk]]:
         # Async path: hand back the coroutine so the call site (which checks
         # inspect.iscoroutine) awaits the cache lookup off the event loop.
         if is_async:
             return self._awrap_chat_completion(
-                wrapped, args, kwargs, span, is_streaming
+                cast(Callable[..., Awaitable[ChatCompletion]], wrapped),
+                args, kwargs, span, is_streaming
             )
 
+        if not isinstance(span, LaminarSpan):
+            span = LaminarSpan(cast(SDKSpan, span))
         outcome = cache_outcome_for(span)
         if outcome is not None and outcome.kind == "hit":
-            response = self.cached_response_to_openai(outcome.cached)
+            response = self.cached_response_to_openai(outcome.cached or {})
             if response is not None:
                 logger.debug("Serving cached OpenAI response from replay cache")
                 mark_span_cached(span)
@@ -256,12 +264,19 @@ class OpenAIRolloutWrapper:
         return wrapped(*args, **kwargs)
 
     async def _awrap_chat_completion(
-        self, wrapped, args, kwargs, span, is_streaming
-    ) -> Any:
+        self,
+        wrapped: Callable[..., Awaitable[ChatCompletion]],
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
+        span: Span,
+        is_streaming: bool = False,
+    ) -> ChatCompletion | AsyncGenerator[ChatCompletionChunk]:
         """Async cache lookup; on a HIT serve cached, else run the call live."""
+        if not isinstance(span, LaminarSpan):
+            span = LaminarSpan(cast(SDKSpan, span))
         outcome = await acache_outcome_for(span)
         if outcome is not None and outcome.kind == "hit":
-            response = self.cached_response_to_openai(outcome.cached)
+            response = self.cached_response_to_openai(outcome.cached or {})
             if response is not None:
                 logger.debug("Serving cached OpenAI response from replay cache")
                 mark_span_cached(span)
@@ -273,7 +288,7 @@ class OpenAIRolloutWrapper:
 
     def _create_cached_stream(
         self, response: ChatCompletion
-    ) -> Generator[ChatCompletionChunk, None, None]:
+    ) -> Generator[ChatCompletionChunk]:
         """Yield a cached response as a single streaming chunk."""
         response_dict = response.model_dump()
 
@@ -304,7 +319,7 @@ class OpenAIRolloutWrapper:
 
     async def _create_async_cached_stream(
         self, response: ChatCompletion
-    ) -> AsyncGenerator[ChatCompletionChunk, None]:
+    ) -> AsyncGenerator[ChatCompletionChunk]:
         """Yield a cached response as a single async streaming chunk."""
         for chunk in self._create_cached_stream(response):
             yield chunk

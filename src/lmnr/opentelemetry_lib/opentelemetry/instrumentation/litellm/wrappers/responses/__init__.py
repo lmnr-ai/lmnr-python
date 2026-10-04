@@ -23,8 +23,8 @@ from lmnr.sdk.utils import json_dumps
 @dont_throw
 def process_responses_kwargs(
     span: Span,
-    args: Sequence[Any] | None = None,  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
+    args: Sequence[Any] | None = None,
+    kwargs: dict[str, Any] | None = None,
 ):
     """Process responses kwargs and set span attributes."""
     if kwargs is None:
@@ -62,7 +62,7 @@ def process_responses_kwargs(
         set_span_attribute(
             span,
             "gen_ai.request.structured_output_schema",
-            json_dumps(extract_json_schema(text_format)),  # pyright: ignore[reportAny]
+            json_dumps(extract_json_schema(text_format)),
         )
 
     # Other responses-specific parameters
@@ -78,8 +78,8 @@ def process_responses_kwargs(
 @dont_throw
 def process_responses_inputs(
     span: Span,
-    input_param: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-    tools: list[dict[str, Any]] | None = None,  # pyright: ignore[reportExplicitAny]
+    input_param: Any,
+    tools: list[dict[str, Any]] | None = None,
 ):
     """Process responses input and tools."""
     # this for loop replicates `litellm.utils.validate_and_fix_openai_messages`
@@ -99,7 +99,7 @@ def process_responses_inputs(
 @dont_throw
 def process_responses_response(
     span: Span,
-    response: BaseModel,
+    response: BaseModel | object,
     record_raw_response: bool = False,
 ):
     """Process responses response."""
@@ -132,7 +132,7 @@ def process_responses_response(
         if reasoning_dict.get("summary") or reasoning_dict.get("effort"):
             final_items.append(reasoning_dict)  # pyright: ignore[reportUnknownMemberType]
     if isinstance(response_dict.get("output"), list):
-        for item in cast(list[Any], response_dict.get("output")):  # pyright: ignore[reportExplicitAny, reportAny]
+        for item in cast(list[Any], response_dict.get("output")):
             item = to_dict(item)
             final_items.append(item)  # pyright: ignore[reportUnknownMemberType]
 

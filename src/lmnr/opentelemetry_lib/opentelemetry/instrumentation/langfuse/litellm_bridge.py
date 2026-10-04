@@ -76,12 +76,12 @@ class LiteLLMLangfuseBridge:
     ) -> None:
         self._provider_attachment: ProviderAttachment = provider_attachment
         self._is_llm_span: Callable[[Span], bool] = is_llm_span
-        self._original_litellm_init_logger: Callable[..., Any] | None = None  # pyright: ignore[reportExplicitAny]
+        self._original_litellm_init_logger: Callable[..., Any] | None = None
         #: LiteLLM `langfuse_otel` loggers we wrapped, keyed by logger id(),
         #: mapping to `(logger, original_get_tracer, original_get_span_context)`.
         #: Lets `unwrap_loggers` restore both bound methods.
         self._wrapped_litellm_loggers: dict[
-            int, tuple[LangfuseOtelLogger, Callable[..., Any], Callable[..., Any]]  # pyright: ignore[reportExplicitAny]
+            int, tuple[LangfuseOtelLogger, Callable[..., Any], Callable[..., Any]]
         ] = {}
 
     def attach_to_existing_loggers(self) -> None:
@@ -128,7 +128,7 @@ class LiteLLMLangfuseBridge:
         self._provider_attachment.attach(getattr(logger_obj, "_tracer_provider", None))
 
         orig_get_tracer: Callable[[dict[str, str]], Tracer] | None = getattr(logger_obj, "_get_tracer_with_dynamic_headers", None)
-        orig_get_ctx: Callable[[dict[str, Any], Span | None], tuple[Context, Span]] | None = getattr(logger_obj, "_get_span_context", None)  # pyright: ignore[reportExplicitAny]
+        orig_get_ctx: Callable[[dict[str, Any], Span | None], tuple[Context, Span]] | None = getattr(logger_obj, "_get_span_context", None)
         if not callable(orig_get_tracer) or not callable(orig_get_ctx):
             return
 
@@ -141,7 +141,7 @@ class LiteLLMLangfuseBridge:
             # keyed by credential set, so per-team keys each get a provider;
             # `attach()`'s id() guard makes repeats a no-op.
             try:
-                cache: dict[Any, TracerProvider] = getattr(logger_obj, "_tracer_provider_cache", None) or {}  # pyright: ignore[reportExplicitAny]
+                cache: dict[Any, TracerProvider] = getattr(logger_obj, "_tracer_provider_cache", None) or {}
                 for provider in list(cache.values()):
                     provider_attachment.attach(provider)
             except Exception:
@@ -149,9 +149,9 @@ class LiteLLMLangfuseBridge:
             return tracer
 
         def patched_get_ctx(
-            kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+            kwargs: dict[str, Any],
             default_span: Span | None=None,
-            _orig: Callable[[dict[str, Any], Span | None], tuple[Context, Span]]=orig_get_ctx  # pyright: ignore[reportExplicitAny]
+            _orig: Callable[[dict[str, Any], Span | None], tuple[Context, Span]]=orig_get_ctx
         ) -> GetCtxReturnType:
             ctx, parent_span = _orig(kwargs, default_span)
             # Only force primary-span creation when folding would corrupt the
@@ -205,7 +205,7 @@ class LiteLLMLangfuseBridge:
         self._original_litellm_init_logger = original
         bridge = self
 
-        def patched(*args: Any, **kwargs: Any):  # pyright: ignore[reportExplicitAny, reportAny]
+        def patched(*args: Any, **kwargs: Any):
             result = original(*args, **kwargs)
             try:
                 # Only the `langfuse_otel` callback should be bridged. The

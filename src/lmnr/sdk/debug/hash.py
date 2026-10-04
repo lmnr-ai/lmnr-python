@@ -31,7 +31,7 @@ from typing import Any, cast
 from blake3 import blake3
 
 
-def _canonical_json(value: Any) -> str:  # pyright: ignore[reportExplicitAny, reportAny]
+def _canonical_json(value: Any) -> str:
     """Reproduce app-server's `canonical_json` (input_dedup.rs).
 
     Objects → keys sorted lexicographically (recursive); arrays → order
@@ -53,7 +53,7 @@ def _canonical_json(value: Any) -> str:  # pyright: ignore[reportExplicitAny, re
     return json.dumps(value, ensure_ascii=False)
 
 
-def _extract_system_remaining(messages: Any) -> list[Any] | None:  # pyright: ignore[reportExplicitAny, reportAny]
+def _extract_system_remaining(messages: Any) -> list[Any] | None:
     """Return the message array without its system message, or None.
 
     Mirrors `extract_system_message` (prompt_hash.rs): find the first
@@ -83,7 +83,7 @@ def _extract_system_remaining(messages: Any) -> list[Any] | None:  # pyright: ig
     return [m for i, m in enumerate(messages) if i != sys_idx] # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
 
 
-def _system_text(sys_msg: dict[str, Any]) -> str:  # pyright: ignore[reportExplicitAny]
+def _system_text(sys_msg: dict[str, Any]) -> str:
     """Extract the system prompt text (priority order matches prompt_hash.rs)."""
     content = sys_msg.get("content")
     # "content": "plain string" (OpenAI format)
@@ -112,7 +112,7 @@ def _system_text(sys_msg: dict[str, Any]) -> str:  # pyright: ignore[reportExpli
     return ""
 
 
-def debug_input_hash(messages: Any) -> str:  # pyright: ignore[reportExplicitAny, reportAny]
+def debug_input_hash(messages: Any) -> str:
     """Hex blake3 of the canonical, system-excluded input messages (shared §5)."""
     remaining = _extract_system_remaining(messages)
     target = remaining if remaining is not None else messages

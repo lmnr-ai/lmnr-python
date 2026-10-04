@@ -112,7 +112,7 @@ class _LaminarClientOutboundInterceptor(temporalio.client.OutboundInterceptor):
     @override
     async def start_workflow(
         self, input: temporalio.client.StartWorkflowInput
-    ) -> temporalio.client.WorkflowHandle[Any, Any]:  # pyright: ignore[reportExplicitAny]
+    ) -> temporalio.client.WorkflowHandle[Any, Any]:
         # A dedicated workflow-lifecycle span: it nests under any active Laminar
         # span (start_span uses the current context as parent), and its context
         # is what worker-side activities parent to.
@@ -141,18 +141,18 @@ class _LaminarClientOutboundInterceptor(temporalio.client.OutboundInterceptor):
         return await super().signal_workflow(input)
 
     @override
-    async def query_workflow(  # pyright: ignore[reportAny]
+    async def query_workflow(
         self, input: temporalio.client.QueryWorkflowInput
-    ) -> Any:  # pyright: ignore[reportExplicitAny]
+    ) -> Any:
         input.headers = build_headers(
             dict(input.headers or {}), Laminar.get_laminar_span_context()
         )
-        return await super().query_workflow(input)  # pyright: ignore[reportAny]
+        return await super().query_workflow(input)
 
     @override
     async def start_workflow_update(
         self, input: temporalio.client.StartWorkflowUpdateInput
-    ) -> temporalio.client.WorkflowUpdateHandle[Any]:  # pyright: ignore[reportExplicitAny]
+    ) -> temporalio.client.WorkflowUpdateHandle[Any]:
         input.headers = build_headers(
             dict(input.headers or {}), Laminar.get_laminar_span_context()
         )
@@ -160,7 +160,7 @@ class _LaminarClientOutboundInterceptor(temporalio.client.OutboundInterceptor):
 
 
 def _wrap_workflow_handle(
-    handle: temporalio.client.WorkflowHandle[Any, Any], span: Span,  # pyright: ignore[reportExplicitAny]
+    handle: temporalio.client.WorkflowHandle[Any, Any], span: Span,
 ) -> None:
     """Wrap a workflow handle so the lifecycle span ends on the FIRST terminal
     call — ``result()`` resolving/raising, ``cancel()`` or ``terminate()``.
@@ -180,11 +180,11 @@ def _wrap_workflow_handle(
     orig_cancel = handle.cancel
     orig_terminate = handle.terminate
 
-    async def result(*args: Any, **kwargs: Any) -> Any:  # pyright: ignore[reportAny, reportExplicitAny]
+    async def result(*args: Any, **kwargs: Any) -> Any:
         if state["closed"]:
-            return await orig_result(*args, **kwargs)  # pyright: ignore[reportAny]
+            return await orig_result(*args, **kwargs)
         try:
-            res = await orig_result(*args, **kwargs)  # pyright: ignore[reportAny]
+            res = await orig_result(*args, **kwargs)
         except Exception as e:
             span.record_exception(e)
             close()
@@ -195,13 +195,13 @@ def _wrap_workflow_handle(
             except Exception:
                 logger.debug("failed to set workflow span output", exc_info=True)
         close()
-        return res  # pyright: ignore[reportAny]
+        return res
 
     def _wrap_terminating(
         name: str,
-        orig: Callable[..., CoroutineType[Any, Any, T]],  # pyright: ignore[reportExplicitAny]
-    ) -> Callable[..., CoroutineType[Any, Any, T]]:  # pyright: ignore[reportExplicitAny]
-        async def terminating(*args: Any, **kwargs: Any) -> T:  # pyright: ignore[reportAny, reportExplicitAny]
+        orig: Callable[..., CoroutineType[Any, Any, T]],
+    ) -> Callable[..., CoroutineType[Any, Any, T]]:
+        async def terminating(*args: Any, **kwargs: Any) -> T:
             if state["closed"]:
                 return await orig(*args, **kwargs)
             child = Laminar.start_span(
@@ -239,12 +239,12 @@ class _LaminarActivityInboundInterceptor(
         self.root: LaminarTracingInterceptor = root
 
     @override
-    async def execute_activity(  # pyright: ignore[reportAny]
+    async def execute_activity(
         self, input: temporalio.worker.ExecuteActivityInput
-    ) -> Any:  # pyright: ignore[reportExplicitAny]
+    ) -> Any:
         restored = restore_context_from_headers(dict(input.headers or {}))
         if restored is None:
-            return await super().execute_activity(input)  # pyright: ignore[reportAny]
+            return await super().execute_activity(input)
 
         # When the wrapper span is disabled, still activate the propagated
         # context as the parent so spans created inside the activity (manual
@@ -252,7 +252,7 @@ class _LaminarActivityInboundInterceptor(
         # client trace — and a propagated debug block still arms the runtime.
         if not self.root.options.create_activity_span:
             with Laminar.use_span_context(restored):
-                return await super().execute_activity(input)  # pyright: ignore[reportAny]
+                return await super().execute_activity(input)
 
         info = temporalio.activity.info()
         name = info.activity_type or "temporal.activity"
@@ -264,7 +264,7 @@ class _LaminarActivityInboundInterceptor(
             input=input.args if self.root.options.record_activity_args else None,
         )
         with Laminar.use_span(span, end_on_exit=True):
-            res = await super().execute_activity(input)  # pyright: ignore[reportAny]
+            res = await super().execute_activity(input)
             if self.root.options.record_activity_output and isinstance(
                 span, LaminarSpan
             ):
@@ -272,4 +272,4 @@ class _LaminarActivityInboundInterceptor(
                     span.set_output(res)
                 except Exception:
                     logger.debug("failed to set activity span output", exc_info=True)
-            return res  # pyright: ignore[reportAny]
+            return res

@@ -33,7 +33,7 @@ class AsyncEvals(BaseAsyncResource):
         self,
         name: str | None = None,
         group_name: str | None = None,
-        metadata: dict[str, Any] | None = None,  # pyright:ignore[reportExplicitAny]
+        metadata: dict[str, Any] | None = None,
     ) -> InitEvaluationResponse:
         """Initialize a new evaluation.
 
@@ -69,7 +69,7 @@ class AsyncEvals(BaseAsyncResource):
         self,
         name: str | None = None,
         group_name: str | None = None,
-        metadata: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
+        metadata: dict[str, Any] | None = None,
     ) -> uuid.UUID:
         """
         Create a new evaluation and return its ID.
@@ -91,7 +91,7 @@ class AsyncEvals(BaseAsyncResource):
         self,
         eval_id: uuid.UUID,
         name: str | None = None,
-        metadata: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
+        metadata: dict[str, Any] | None = None,
     ) -> InitEvaluationResponse:
         """Update an evaluation's name and/or metadata. The group ID is
         immutable. Fields left as None are kept unchanged.
@@ -129,9 +129,9 @@ class AsyncEvals(BaseAsyncResource):
     async def create_datapoint(
         self,
         eval_id: uuid.UUID,
-        data: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-        target: Any = None,  # pyright: ignore[reportExplicitAny, reportAny]
-        metadata: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
+        data: Any,
+        target: Any = None,
+        metadata: dict[str, Any] | None = None,
         index: int | None = None,
         trace_id: uuid.UUID | None = None,
     ) -> uuid.UUID:
@@ -157,7 +157,7 @@ class AsyncEvals(BaseAsyncResource):
         partial_datapoint = PartialEvaluationDatapoint(
             id=datapoint_id,
             data=data,
-            target=target,  # pyright: ignore[reportAny],
+            target=target,  # ,
             index=index or 0,
             trace_id=trace_id or uuid.uuid4(),
             executor_span_id=uuid.uuid4(),  # Will be updated when executor runs
@@ -208,7 +208,7 @@ class AsyncEvals(BaseAsyncResource):
         eval_id: uuid.UUID,
         datapoint_id: uuid.UUID,
         scores: dict[str, float | int],
-        executor_output: Any | None = None,  # pyright: ignore[reportExplicitAny]
+        executor_output: Any | None = None,
         trace_id: uuid.UUID | None = None,
     ) -> None:
         """Update a datapoint with evaluation results.

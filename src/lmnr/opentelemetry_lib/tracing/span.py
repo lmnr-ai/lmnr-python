@@ -203,16 +203,16 @@ class LaminarSpanInterfaceMixin:
         self.logger.warning(f"Invalid format: {format}. Returning int.")  # pyright: ignore[reportUnreachable]
         return parent_span_id
 
-    def set_output(self, output: Any = None) -> None:  # pyright: ignore[reportAny, reportExplicitAny]
+    def set_output(self, output: Any = None) -> None:
         if output is not None:
             self.span.set_attribute(
-                SPAN_OUTPUT, _truncate_payload(json_dumps(output), "output")  # pyright: ignore[reportAny]
+                SPAN_OUTPUT, _truncate_payload(json_dumps(output), "output")
             )
 
-    def set_input(self, input: Any = None) -> None:  # pyright: ignore[reportAny, reportExplicitAny]
+    def set_input(self, input: Any = None) -> None:
         if input is not None:
             self.span.set_attribute(
-                SPAN_INPUT, _truncate_payload(json_dumps(input), "input")  # pyright: ignore[reportAny]
+                SPAN_INPUT, _truncate_payload(json_dumps(input), "input")
             )
 
     def add_tags(self, tags: list[str]) -> None:

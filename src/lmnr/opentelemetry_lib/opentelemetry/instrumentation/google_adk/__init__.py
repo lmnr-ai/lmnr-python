@@ -83,8 +83,8 @@ _GENAI_DETECTOR = (
 T = TypeVar("T")
 
 def _resolve_span(
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str,Any],  # pyright: ignore[reportExplicitAny]
+    args: Sequence[Any],
+    kwargs: dict[str,Any],
     position: int,
 ) -> trace.Span | None:
     """Mirrors ADK's own resolution: explicit span argument, else current."""
@@ -109,7 +109,7 @@ def _copy_content_attribute(
     attributes = getattr(span, "attributes", None)
     if not attributes:
         return
-    value = attributes.get(source)  # pyright: ignore[reportAny]
+    value = attributes.get(source)
     if not isinstance(value, str) or not value:
         return
     if value == "{}" and not actual_is_empty:
@@ -117,33 +117,33 @@ def _copy_content_attribute(
     span.set_attribute(target, value)
 
 
-def _tool_call_args(args: Sequence[Any], kwargs: dict[str, Any]) -> Any:  # pyright: ignore[reportExplicitAny, reportAny]
+def _tool_call_args(args: Sequence[Any], kwargs: dict[str, Any]) -> Any:
     if "args" in kwargs:
-        return kwargs["args"]  # pyright: ignore[reportAny]
+        return kwargs["args"]
     if len(args) > 1:
-        return args[1]  # pyright: ignore[reportAny]
+        return args[1]
     return None
 
 
-def _tool_response(args: Sequence[Any], kwargs: dict[str, Any]) -> Any:  # pyright: ignore[reportExplicitAny, reportAny]
+def _tool_response(args: Sequence[Any], kwargs: dict[str, Any]) -> Any:
     """Extracts the tool response the same way trace_tool_call does:
     ``function_response_event.content.parts[0].function_response.response``."""
     event = kwargs.get("function_response_event")
     if event is None and len(args) > 2:
-        event = args[2]  # pyright: ignore[reportAny]
+        event = args[2]
     if event is None:
         return None
     try:
-        return event.content.parts[0].function_response.response  # pyright: ignore[reportAny]
+        return event.content.parts[0].function_response.response
     except (AttributeError, IndexError, TypeError):
         return None
 
 
 def _wrap_trace_tool_call(
     wrapped: Callable[..., T],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> T:
     result = wrapped(*args, **kwargs)
     try:
@@ -156,13 +156,13 @@ def _wrap_trace_tool_call(
             span,
             _TOOL_ARGS_ATTRIBUTE,
             SPAN_INPUT,
-            actual_is_empty=_tool_call_args(args, kwargs) == {},  # pyright: ignore[reportAny]
+            actual_is_empty=_tool_call_args(args, kwargs) == {},
         )
         _copy_content_attribute(
             span,
             _TOOL_RESPONSE_ATTRIBUTE,
             SPAN_OUTPUT,
-            actual_is_empty=_tool_response(args, kwargs) == {},  # pyright: ignore[reportAny]
+            actual_is_empty=_tool_response(args, kwargs) == {},
         )
     except Exception:
         logger.debug("Failed to enrich ADK tool span", exc_info=True)
@@ -171,9 +171,9 @@ def _wrap_trace_tool_call(
 
 def _wrap_trace_merged_tool_calls(
     wrapped: Callable[..., T],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> T:
     result = wrapped(*args, **kwargs)
     try:
@@ -190,9 +190,9 @@ def _wrap_trace_merged_tool_calls(
 
 def _wrap_trace_agent_invocation(
     wrapped: Callable[..., T],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> T:
     result = wrapped(*args, **kwargs)
     try:
@@ -201,7 +201,7 @@ def _wrap_trace_agent_invocation(
             return result
         ctx = kwargs.get("ctx") if "ctx" in kwargs else None
         if ctx is None and len(args) > 2:
-            ctx = args[2]  # pyright: ignore[reportAny]
+            ctx = args[2]
         session = getattr(ctx, "session", None)
         # An id already on the span was set explicitly through Laminar;
         # the derived ADK id must not override it (context < parent <
@@ -210,17 +210,17 @@ def _wrap_trace_agent_invocation(
         session_key = f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}"
         session_id = getattr(session, "id", None)
         if session_id and session_key not in existing:
-            span.set_attribute(session_key, str(session_id))  # pyright: ignore[reportAny]
+            span.set_attribute(session_key, str(session_id))
         user_key = f"{ASSOCIATION_PROPERTIES}.{USER_ID}"
         user_id = getattr(session, "user_id", None)
         if user_id and user_key not in existing:
-            span.set_attribute(user_key, str(user_id))  # pyright: ignore[reportAny]
+            span.set_attribute(user_key, str(user_id))
     except Exception:
         logger.debug("Failed to enrich ADK agent span", exc_info=True)
     return result
 
 
-def _tool_declarations_from_config(config: Any) -> list[Any]:  # pyright: ignore[reportExplicitAny, reportAny]
+def _tool_declarations_from_config(config: Any) -> list[Any]:
     """Flattens `config.tools` (a list of `types.Tool` and/or dicts shaped
     like `{"function_declarations": [...]}`) into a flat list of function
     declarations, mirroring the flattening the google_genai instrumentor does
@@ -228,7 +228,7 @@ def _tool_declarations_from_config(config: Any) -> list[Any]:  # pyright: ignore
     from google.genai import types
 
     declarations = []
-    for tool in getattr(config, "tools", None) or []:  # pyright: ignore[reportUnknownVariableType, reportAny]
+    for tool in getattr(config, "tools", None) or []:  # pyright: ignore[reportUnknownVariableType]
         if isinstance(tool, types.Tool):
             declarations.extend(tool.function_declarations or [])  # pyright: ignore[reportUnknownMemberType]
         elif isinstance(tool, dict) and isinstance(
@@ -238,7 +238,7 @@ def _tool_declarations_from_config(config: Any) -> list[Any]:  # pyright: ignore
     return declarations  # pyright: ignore[reportUnknownVariableType]
 
 
-def _enrich_call_llm_span(span: trace.Span, llm_request: Any, llm_response: Any) -> None:  # pyright: ignore[reportExplicitAny, reportAny]
+def _enrich_call_llm_span(span: trace.Span, llm_request: Any, llm_response: Any) -> None:
     """Stamps `gen_ai.*` attributes onto ADK's own `call_llm` span from the
     real `LlmRequest`/`LlmResponse` objects, so the span carries the same
     shape the frontend already parses for every other provider, instead of
@@ -258,15 +258,15 @@ def _enrich_call_llm_span(span: trace.Span, llm_request: Any, llm_response: Any)
         to_dict,  # pyright: ignore[reportUnknownVariableType]
     )
 
-    config = getattr(llm_request, "config", None)  # pyright: ignore[reportAny]
+    config = getattr(llm_request, "config", None)
 
     messages = []
     system_instruction = getattr(config, "system_instruction", None)
     if system_instruction:
-        msg = content_union_to_dict(system_instruction, default_role="system")  # pyright: ignore[reportAny]
+        msg = content_union_to_dict(system_instruction, default_role="system")
         msg["role"] = "system"
         messages.append(msg)  # pyright: ignore[reportUnknownMemberType]
-    for content in getattr(llm_request, "contents", None) or []:  # pyright: ignore[reportUnknownVariableType, reportAny]
+    for content in getattr(llm_request, "contents", None) or []:  # pyright: ignore[reportUnknownVariableType]
         messages.append(content_union_to_dict(content))  # pyright: ignore[reportUnknownMemberType]
     if messages:
         span.set_attribute("gen_ai.input.messages", json_dumps(messages))  # pyright: ignore[reportUnknownArgumentType]
@@ -275,20 +275,20 @@ def _enrich_call_llm_span(span: trace.Span, llm_request: Any, llm_response: Any)
     if declarations:
         span.set_attribute(
             "gen_ai.tool.definitions",
-            json_dumps([to_dict(declaration) for declaration in declarations]),  # pyright: ignore[reportAny]
+            json_dumps([to_dict(declaration) for declaration in declarations]),
         )
 
-    response_content = getattr(llm_response, "content", None)  # pyright: ignore[reportAny]
+    response_content = getattr(llm_response, "content", None)
     output_messages = (
-        [content_union_to_dict(response_content, default_role="model")]  # pyright: ignore[reportAny]
+        [content_union_to_dict(response_content, default_role="model")]
         if response_content is not None
         else []
     )
     span.set_attribute("gen_ai.output.messages", json_dumps(output_messages))
 
-    model_version = getattr(llm_response, "model_version", None)  # pyright: ignore[reportAny]
+    model_version = getattr(llm_response, "model_version", None)
     if model_version:
-        span.set_attribute("gen_ai.response.model", model_version)  # pyright: ignore[reportAny]
+        span.set_attribute("gen_ai.response.model", model_version)
 
 
 def _detach_from_current_context(span: trace.Span) -> None:
@@ -320,9 +320,9 @@ def _detach_from_current_context(span: trace.Span) -> None:
 
 def _wrap_trace_call_llm(
     wrapped: Callable[..., T],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> T:
     result = wrapped(*args, **kwargs)
     # trace_call_llm(invocation_context, event_id, llm_request, llm_response,
@@ -332,10 +332,10 @@ def _wrap_trace_call_llm(
         return result
     llm_request = kwargs.get("llm_request")
     if llm_request is None and len(args) > 2:
-        llm_request = args[2]  # pyright: ignore[reportAny]
+        llm_request = args[2]
     llm_response = kwargs.get("llm_response")
     if llm_response is None and len(args) > 3:
-        llm_response = args[3]  # pyright: ignore[reportAny]
+        llm_response = args[3]
     try:
         _enrich_call_llm_span(span, llm_request, llm_response)
     except Exception:
@@ -381,12 +381,12 @@ def _noop_context():
     yield
 
 
-def _wrap_use_extra_generate_content_attributes(  # pyright: ignore[reportAny]
+def _wrap_use_extra_generate_content_attributes(
     wrapped: Callable[..., T],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
-) -> Any:  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> Any:
     """ADK forwards agent/session attributes to a delegated genai span
     through a context key imported from the otel-contrib package, and logs a
     bogus "insufficient version" warning on every LLM call when that package
@@ -417,7 +417,7 @@ def _wrap_genai_detection(wrapped, instance, args, kwargs):
     return True
 
 
-_wrapped_functions: list[tuple[str, str, Callable[..., Any]]] = []  # pyright: ignore[reportExplicitAny]
+_wrapped_functions: list[tuple[str, str, Callable[..., Any]]] = []
 class GoogleAdkInstrumentor(BaseInstrumentor):
     # Not set in __init__: BaseInstrumentor is a singleton whose __init__
     # runs again on every construction, which would clear the tracking while
@@ -431,7 +431,7 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
         return ("google-adk >= 2.0.0, < 3.0.0",)
 
     @override
-    def _instrument(self, **kwargs: Any):  # pyright: ignore[reportAny, reportExplicitAny]
+    def _instrument(self, **kwargs: Any):
         global _wrapped_functions
         _wrapped_functions = []
         # trace_merged_tool_calls is bound by name at import time in
@@ -504,7 +504,7 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
                 )
 
     @override
-    def _uninstrument(self, **kwargs: Any):  # pyright: ignore[reportAny, reportExplicitAny]
+    def _uninstrument(self, **kwargs: Any):
         import importlib
         global _wrapped_functions
 

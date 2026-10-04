@@ -1,14 +1,31 @@
-import logging
+from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Sequence
+from typing import Any, TypedDict, cast
 
 from opentelemetry import context as context_api
 from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
+from opentelemetry.trace import Span
 from opentelemetry.trace.status import Status, StatusCode
+from typing_extensions import TypeVar
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.shared import (
+    is_streaming_response,
+    propagate_trace_context,
+    set_client_attributes,
+    set_request_attributes,
+    set_response_attributes,
+    set_tools_attributes,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
+    is_openai_v1,
+    should_send_prompts,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    dont_throw,
+    model_as_dict,
     safe_start_span,
     set_span_attribute,
 )
@@ -18,29 +35,28 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers
 from lmnr.opentelemetry_lib.tracing.context import (
     get_event_attributes_from_context,
 )
+from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import json_dumps
-
-from ..shared import (
-    _set_request_attributes,
-    _set_response_attributes,
-    is_streaming_response,
-    propagate_trace_context,
-    set_client_attributes,
-    set_tools_attributes,
-)
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import model_as_dict
-from ..utils import (
-    is_openai_v1,
-    should_send_prompts,
-)
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw
 
 SPAN_NAME = "openai.completion"
 
-logger = logging.getLogger(__name__)
+logger = get_default_logger(__name__)
+T = TypeVar("T")
 
 
-def completion_wrapper(to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs):
+class CompletionStreamResponse(TypedDict):
+    choices: list[dict[str, Any]]
+    model: str
+    id: str
+
+
+def completion_wrapper(
+    to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., T],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T | Generator[T] | None:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
@@ -77,8 +93,12 @@ def completion_wrapper(to_wrap: WrappedFunctionSpec, wrapped, instance, args, kw
 
 
 async def acompletion_wrapper(
-    to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs
-):
+    to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., Awaitable[T]],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T | AsyncGenerator[T] | None:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
@@ -114,28 +134,38 @@ async def acompletion_wrapper(
 
 
 @dont_throw
-def _handle_request(span, kwargs, instance):
-    _set_request_attributes(span, kwargs, instance)
+def _handle_request(
+    span: Span,
+    kwargs: dict[str, Any],
+    instance: Any,
+):
+    set_request_attributes(span, kwargs, instance)
     if should_send_prompts():
-        _set_prompts(span, kwargs.get("prompt"))
+        _set_prompts(span, kwargs.get("prompt") or "")
         set_tools_attributes(span, kwargs.get("functions"))
     set_client_attributes(span, instance)
     propagate_trace_context(span, kwargs)
 
 
 @dont_throw
-def _handle_response(response, span):
+def _handle_response(
+    response: Any,
+    span: Span,
+):
     if is_openai_v1():
         response_dict = model_as_dict(response)
     else:
         response_dict = response
 
-    _set_response_attributes(span, response_dict)
+    set_response_attributes(span, response_dict)
     if should_send_prompts():
-        _set_completions(span, response_dict.get("choices"))
+        _set_completions(span, response_dict.get("choices") or [])
 
 
-def _set_prompts(span, prompt):
+def _set_prompts(
+    span: Span,
+    prompt: str | list[str]
+):
     if not span.is_recording() or not prompt:
         return
 
@@ -147,7 +177,10 @@ def _set_prompts(span, prompt):
 
 
 @dont_throw
-def _set_completions(span, choices):
+def _set_completions(
+    span: Span,
+    choices: list[dict[str, Any]],
+):
     if not span.is_recording() or not choices:
         return
 
@@ -155,49 +188,60 @@ def _set_completions(span, choices):
 
 
 @dont_throw
-def _build_from_streaming_response(span, request_kwargs, response):
-    complete_response = {"choices": [], "model": "", "id": ""}
+def _build_from_streaming_response(
+    span: Span,
+    _request_kwargs: dict[str, Any],
+    response: Any,
+) -> Generator[Any]:
+    complete_response: CompletionStreamResponse = {"choices": [], "model": "", "id": ""}
     for item in response:
         yield item
-        _accumulate_streaming_response(complete_response, item)
+        _accumultated_response = _accumulate_streaming_response(complete_response, item)
 
-    _set_response_attributes(span, complete_response)
+    set_response_attributes(span, cast(Any, complete_response))
 
     if should_send_prompts():
-        _set_completions(span, complete_response.get("choices"))
+        _set_completions(span, complete_response["choices"])
 
     span.set_status(Status(StatusCode.OK))
     span.end()
 
 
 @dont_throw
-async def _abuild_from_streaming_response(span, request_kwargs, response):
-    complete_response = {"choices": [], "model": "", "id": ""}
+async def _abuild_from_streaming_response(
+  span: Span,
+  _request_kwargs: dict[str, Any],
+  response: Any,
+) -> AsyncGenerator[Any]:
+    complete_response: CompletionStreamResponse = {"choices": [], "model": "", "id": ""}
     async for item in response:
         yield item
-        _accumulate_streaming_response(complete_response, item)
+        _accumulated_response = _accumulate_streaming_response(complete_response, item)
 
-    _set_response_attributes(span, complete_response)
+    set_response_attributes(span, cast(Any, complete_response))
 
     if should_send_prompts():
-        _set_completions(span, complete_response.get("choices"))
+        _set_completions(span, complete_response["choices"])
 
     span.set_status(Status(StatusCode.OK))
     span.end()
 
 
 @dont_throw
-def _accumulate_streaming_response(complete_response, item):
+def _accumulate_streaming_response(
+    complete_response: CompletionStreamResponse,
+    item: Any,
+) -> CompletionStreamResponse:
     if is_openai_v1():
         item = model_as_dict(item)
 
-    complete_response["model"] = item.get("model")
-    complete_response["id"] = item.get("id")
+    complete_response["model"] = item.get("model") or ""
+    complete_response["id"] = item.get("id") or ""
     for choice in item.get("choices"):
         index = choice.get("index")
-        if len(complete_response.get("choices")) <= index:
+        if len(complete_response["choices"]) <= index:
             complete_response["choices"].append({"index": index, "text": ""})
-        complete_choice = complete_response.get("choices")[index]
+        complete_choice = complete_response["choices"][index]  # pyright: ignore[reportUnknownVariableType]
         if choice.get("finish_reason"):
             complete_choice["finish_reason"] = choice.get("finish_reason")
 

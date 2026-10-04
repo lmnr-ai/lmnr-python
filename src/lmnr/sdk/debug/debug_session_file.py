@@ -45,7 +45,7 @@ class DebugSessionFile(TypedDict):
     started_at: str
 
 
-def _str(value: Any) -> str | None:  # pyright: ignore[reportExplicitAny, reportAny]
+def _str(value: Any) -> str | None:
     """Coerce an unknown field to a non-empty string, else None.
 
     The file is best-effort local state that an agent may hand-edit, so every
@@ -65,7 +65,7 @@ def read_debug_session_file(directory: str | None = None) -> DebugSessionFile | 
     try:
         path = os.path.join(directory, DEBUG_SESSION_DIR, DEBUG_SESSION_FILE)
         with open(path, "r", encoding="utf-8") as f:
-            r = json.load(f)  # pyright: ignore[reportAny]
+            r = json.load(f)
         if not isinstance(r, dict):
             return None
         r = cast(dict[str, str], r)

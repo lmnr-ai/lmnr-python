@@ -37,16 +37,16 @@ OIValue: TypeAlias = str | bool | int | float | None | dict[str, "OIValue"] | li
 
 
 
-def parse_json(raw: Any) -> Any:  # pyright: ignore[reportAny, reportExplicitAny]
+def parse_json(raw: Any) -> Any:
     if not isinstance(raw, str):
-        return raw  # pyright: ignore[reportAny]
+        return raw
     try:
-        return json.loads(raw)  # pyright: ignore[reportAny]
+        return json.loads(raw)
     except (ValueError, TypeError):
         return raw
 
 
-def genai_input_from_langfuse(input_raw: Any) -> tuple[list[Any], Any] | None:  # pyright: ignore[reportAny, reportExplicitAny]
+def genai_input_from_langfuse(input_raw: Any) -> tuple[list[Any], Any] | None:
     """Split a Langfuse LLM input into (messages, tool_definitions).
 
     Langfuse's OpenAI integration ships the call input in one of two shapes
@@ -65,11 +65,11 @@ def genai_input_from_langfuse(input_raw: Any) -> tuple[list[Any], Any] | None:  
     raw input). Langchain-style inputs share the OpenAI message shape, so the
     same split applies.
     """
-    parsed = parse_json(input_raw)  # pyright: ignore[reportAny]
+    parsed = parse_json(input_raw)
     if isinstance(parsed, list):
         return parsed, None  # pyright: ignore[reportUnknownVariableType]
-    if isinstance(parsed, dict) and isinstance(cast(dict[str, Any], parsed).get("messages"), list):  # pyright: ignore[reportExplicitAny]
-        tools = cast(dict[str, Any], parsed).get("tools")  # pyright: ignore[reportExplicitAny]
+    if isinstance(parsed, dict) and isinstance(cast(dict[str, Any], parsed).get("messages"), list):
+        tools = cast(dict[str, Any], parsed).get("tools")
         if tools is None:
             tools = parsed.get("functions")  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
         return parsed["messages"], tools  # pyright: ignore[reportUnknownVariableType]
@@ -77,8 +77,8 @@ def genai_input_from_langfuse(input_raw: Any) -> tuple[list[Any], Any] | None:  
 
 
 def split_messages_and_tool_defs_langchain(
-    messages: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-) -> tuple[Any, list[Any] | None]:  # pyright: ignore[reportExplicitAny]
+    messages: Any,
+) -> tuple[Any, list[Any] | None]:
     """Splits langfuse.langchain input into the actual messages and tool definitions
 
     The callback inlines tool definitions into the message array as messages with
@@ -113,7 +113,7 @@ def split_messages_and_tool_defs_langchain(
     return (new_msgs, tool_defs)  # pyright: ignore[reportUnknownVariableType]
 
 
-def genai_output_from_langfuse(output_raw: Any) -> Any | None:  # pyright: ignore[reportAny, reportExplicitAny]
+def genai_output_from_langfuse(output_raw: Any) -> Any | None:
     """Normalize a Langfuse LLM output into a `gen_ai.output.messages` array.
 
     Langfuse's OpenAI integration emits the response as a single message dict
@@ -124,7 +124,7 @@ def genai_output_from_langfuse(output_raw: Any) -> Any | None:  # pyright: ignor
     passed through. Returns `None` for any other shape so the caller falls back
     to `lmnr.span.output`.
     """
-    parsed = parse_json(output_raw)  # pyright: ignore[reportAny]
+    parsed = parse_json(output_raw)
     if isinstance(parsed, list):
         return parsed  # pyright: ignore[reportUnknownVariableType]
     if isinstance(parsed, dict):
@@ -133,8 +133,8 @@ def genai_output_from_langfuse(output_raw: Any) -> Any | None:  # pyright: ignor
 
 
 def convert_openai_tool_calls_to_content_parts(
-    messages: list[Any], is_output: bool  # pyrgiht: ignore[reportExplicitAny]
-) -> list[Any]:  # pyright: ignore[reportExplicitAny]
+    messages: list[Any], is_output: bool
+) -> list[Any]:
     """The output of LangChain integration looks a lot like OpenAI's output,
     i.e. separate tool_calls and content keys. This function extracts the tool
     calls and converts them to a more generic content-part style.
@@ -155,23 +155,23 @@ def convert_openai_tool_calls_to_content_parts(
       This is only relevant to the output messages.
     """
 
-    def is_assistant(msg: Any) -> bool:  # pyright: ignore[reportAny, reportExplicitAny]
+    def is_assistant(msg: Any) -> bool:
         return isinstance(msg, dict) and msg.get("role") == "assistant"  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
 
-    def has_inlined_tool_calls(content: Any) -> bool:  # pyright: ignore[reportAny, reportExplicitAny]
+    def has_inlined_tool_calls(content: Any) -> bool:
         return isinstance(content, list) and any(
             isinstance(part, dict) and part.get("type") in ("tool_use", "tool_call")  # pyright: ignore[reportUnknownMemberType]
             for part in content  # pyright: ignore[reportUnknownVariableType]
         )
 
-    def is_raw_openai_tool_call_format(tc: Any) -> bool:  # pyright: ignore[reportExplicitAny, reportAny]
+    def is_raw_openai_tool_call_format(tc: Any) -> bool:
         return (  # pyright: ignore[reportUnknownVariableType]
             isinstance(tc, dict)
             and tc.get("type") == "function"  # pyright: ignore[reportUnknownMemberType]
             and isinstance(tc.get("function"), dict)  # pyright: ignore[reportUnknownMemberType]
         )
 
-    def normalize(msg: dict[str, Any]) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
+    def normalize(msg: dict[str, Any]) -> dict[str, Any]:
         content = msg.get("content")
         tool_calls = msg.get("tool_calls")
         if not isinstance(tool_calls, list):
@@ -189,7 +189,7 @@ def convert_openai_tool_calls_to_content_parts(
         # Anthropic: calls already embedded in the content blocks — drop the
         # redundant mirror to avoid double rendering.
         if has_inlined_tool_calls(content):
-            return {k: v for k, v in msg.items() if k != "tool_calls"}  # pyright: ignore[reportAny]
+            return {k: v for k, v in msg.items() if k != "tool_calls"}
         # OpenAI tool calls as "function" in input convert to tool_call block
         if not is_output:
             new_tool_calls = []
@@ -221,10 +221,10 @@ def convert_openai_tool_calls_to_content_parts(
             "content": [*new_cnt, *tool_calls],
         }
 
-    return [normalize(msg) if is_assistant(msg) else msg for msg in messages]  # pyright: ignore[reportAny]
+    return [normalize(msg) if is_assistant(msg) else msg for msg in messages]
 
 
-def usage_field(usage: Any, *keys: str) -> int | None:  # pyright: ignore[reportExplicitAny, reportAny]
+def usage_field(usage: Any, *keys: str) -> int | None:
     if not isinstance(usage, dict):
         return None
     for k in keys:
@@ -234,7 +234,7 @@ def usage_field(usage: Any, *keys: str) -> int | None:  # pyright: ignore[report
     return None
 
 
-def cost_field(cost: Any, *keys: str) -> float | None:  # pyright: ignore[reportExplicitAny, reportAny]
+def cost_field(cost: Any, *keys: str) -> float | None:
     if not isinstance(cost, dict):
         return None
     for k in keys:
@@ -448,7 +448,7 @@ def is_llm_span(span: Span) -> bool:
 
 def is_langfuse_span(span: ReadableSpan) -> bool:
     scope = getattr(span, "instrumentation_scope", None)
-    if scope is not None and scope.name == LANGFUSE_TRACER_NAME:  # pyright: ignore[reportAny]
+    if scope is not None and scope.name == LANGFUSE_TRACER_NAME:
         return True
     attrs = span.attributes or {}
     return any(isinstance(k, str) and k.startswith("langfuse.") for k in attrs)  # pyright: ignore[reportUnnecessaryIsInstance]

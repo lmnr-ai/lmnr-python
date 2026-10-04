@@ -27,19 +27,19 @@ logger = get_default_logger(__name__)
 
 def set_lmnr_span_io(
     lmnr_span: LaminarSpan,
-    input_data: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    output_data: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    input_data: Any,
+    output_data: Any,
 ) -> None:
     """Set gen_ai.input.messages and gen_ai.output.messages on the span."""
     if input_data is not None:
-        lmnr_span.set_attribute("lmnr.span.input", json_dumps(input_data))  # pyright: ignore[reportAny]
+        lmnr_span.set_attribute("lmnr.span.input", json_dumps(input_data))
     if output_data is not None:
-        lmnr_span.set_attribute("lmnr.span.output", json_dumps(output_data))  # pyright: ignore[reportAny]
+        lmnr_span.set_attribute("lmnr.span.output", json_dumps(output_data))
 
 
 def set_gen_ai_input_messages(
     lmnr_span: LaminarSpan,
-    input_data: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    input_data: Any,
     system_instructions: str | None = None,
 ) -> None:
     """Set gen_ai.input.messages on the span.
@@ -62,7 +62,7 @@ def set_gen_ai_input_messages(
         lmnr_span.set_attribute("gen_ai.input.messages", json_dumps(messages))
 
 
-def set_gen_ai_output_messages(lmnr_span: LaminarSpan, output_data: Any) -> None:  # pyright: ignore[reportAny, reportExplicitAny]
+def set_gen_ai_output_messages(lmnr_span: LaminarSpan, output_data: Any) -> None:
     """Set gen_ai.output.messages on the span."""
     if output_data is None:
         return
@@ -72,17 +72,17 @@ def set_gen_ai_output_messages(lmnr_span: LaminarSpan, output_data: Any) -> None
 
 
 def set_gen_ai_output_messages_from_response(
-    lmnr_span: LaminarSpan, response: Any,  # pyright: ignore[reportAny, reportExplicitAny]
+    lmnr_span: LaminarSpan, response: Any,
 ) -> None:
     """Extract and set gen_ai.output.messages from a Response object."""
     if response is None:
         return
 
-    output_items = getattr(response, "output", None)  # pyright: ignore[reportAny]
+    output_items = getattr(response, "output", None)
     if not output_items:
         return
 
-    id = getattr(response, "id", None)  # pyright: ignore[reportAny]
+    id = getattr(response, "id", None)
 
     if not isinstance(output_items, list):
         logger.debug(
@@ -106,15 +106,15 @@ def set_gen_ai_output_messages_from_response(
 
 def set_tool_definitions_from_response(
     lmnr_span: LaminarSpan,
-    response: Any,   # pyright: ignore[reportAny, reportExplicitAny]
+    response: Any,
 ) -> None:
     """Extract gen_ai.tool.definitions from a Response object's tools field."""
-    tools = getattr(response, "tools", None)  # pyright: ignore[reportAny]
+    tools = getattr(response, "tools", None)
     if not tools:
         return
 
     tool_defs = []
-    for tool in tools:  # pyright: ignore[reportAny]
+    for tool in tools:
         tool_dict = model_as_dict(tool)
         if not tool_dict:
             continue
@@ -152,15 +152,15 @@ def set_tool_definitions_from_response(
 
 def apply_llm_attributes(
     lmnr_span: LaminarSpan,
-    data: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    data: dict[str, Any],
 ) -> None:
     if not data:
         return
 
     model = data.get("model")
     if model:
-        lmnr_span.set_attribute(Attributes.REQUEST_MODEL.value, model)  # pyright: ignore[reportAny]
-        lmnr_span.set_attribute(Attributes.RESPONSE_MODEL.value, model)  # pyright: ignore[reportAny]
+        lmnr_span.set_attribute(Attributes.REQUEST_MODEL.value, model)
+        lmnr_span.set_attribute(Attributes.RESPONSE_MODEL.value, model)
         lmnr_span.set_attribute(Attributes.PROVIDER.value, "openai")
 
     usage = data.get("usage")
@@ -171,10 +171,10 @@ def apply_llm_attributes(
     if response_id is None:
         response_id = data.get("id")
     if response_id is not None:
-        lmnr_span.set_attribute(Attributes.RESPONSE_ID.value, response_id)  # pyright: ignore[reportAny]
+        lmnr_span.set_attribute(Attributes.RESPONSE_ID.value, response_id)
 
 
-def _apply_usage(lmnr_span: LaminarSpan, usage: Any) -> None:  # pyright: ignore[reportAny, reportExplicitAny]
+def _apply_usage(lmnr_span: LaminarSpan, usage: Any) -> None:
     """Extract token usage from a usage object or dict, handling zero correctly."""
     if usage is None:
         return
@@ -186,17 +186,17 @@ def _apply_usage(lmnr_span: LaminarSpan, usage: Any) -> None:  # pyright: ignore
     if isinstance(usage, dict):
         usage = cast(dict[str, int | dict[str, int]], usage)
         input_tokens = cast(int | None, get_first_not_none(
-            usage, "input_tokens", "prompt_tokens", "input",  # pyright: ignore[reportAny]
+            usage, "input_tokens", "prompt_tokens", "input",
         ))
         output_tokens = cast(int | None, get_first_not_none(
-            usage, "output_tokens", "completion_tokens", "output",  # pyright: ignore[reportAny]
+            usage, "output_tokens", "completion_tokens", "output",
         ))
-        total_tokens = cast(int | None, get_first_not_none(usage, "total_tokens", "total"))  # pyright: ignore[reportAny]
+        total_tokens = cast(int | None, get_first_not_none(usage, "total_tokens", "total"))
         input_tokens_details = cast(dict[str, int] | None, get_first_not_none(
-            usage, "input_tokens_details", "prompt_tokens_details",  # pyright: ignore[reportAny]
+            usage, "input_tokens_details", "prompt_tokens_details",
         ))
         output_tokens_details = cast(dict[str, int] | None, get_first_not_none(
-            usage, "output_tokens_details", "completion_tokens_details",  # pyright: ignore[reportAny]
+            usage, "output_tokens_details", "completion_tokens_details",
         ))
     else:
         # Object with attributes (e.g. ResponseUsage)
@@ -234,11 +234,11 @@ def _apply_usage(lmnr_span: LaminarSpan, usage: Any) -> None:  # pyright: ignore
         )
 
 
-def response_to_llm_data(response: Any) -> dict[str, Any]:  # pyright: ignore[reportAny, reportExplicitAny]
+def response_to_llm_data(response: Any) -> dict[str, Any]:
     if response is None:
         return {}
     return {
-        "model": getattr(response, "model", None),  # pyright: ignore[reportAny]
-        "usage": getattr(response, "usage", None),  # pyright: ignore[reportAny]
-        "response_id": getattr(response, "id", None),  # pyright: ignore[reportAny]
+        "model": getattr(response, "model", None),
+        "usage": getattr(response, "usage", None),
+        "response_id": getattr(response, "id", None),
     }

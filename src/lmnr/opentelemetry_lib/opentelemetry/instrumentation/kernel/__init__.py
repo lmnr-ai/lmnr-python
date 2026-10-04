@@ -52,9 +52,9 @@ T = TypeVar("T")
 def _wrap(
     to_wrap: KernelSpec,
     wrapped: Callable[..., T],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> T:
     with Laminar.start_as_current_span(
         f"{to_wrap.get('class_name')}.{to_wrap['method_name']}",
@@ -86,9 +86,9 @@ def _wrap(
 async def _wrap_async(
     to_wrap: KernelSpec,
     wrapped: Callable[..., Awaitable[T]],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> T:
     with Laminar.start_as_current_span(
         f"{to_wrap.get('class_name')}.{to_wrap['method_name']}",
@@ -120,9 +120,9 @@ async def _wrap_async(
 def _wrap_app_action(
     _to_wrap: KernelSpec,
     wrapped: Callable[..., Callable[..., T]],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> Callable[..., T]:
     """
     Wraps app.action() decorator factory to add tracing to action handlers.
@@ -138,7 +138,7 @@ def _wrap_app_action(
     original_decorator = wrapped(*args, **kwargs)
 
     # Get the action name from args
-    action_name = args[0] if args else kwargs.get("name", "unknown")  # pyright: ignore[reportAny]
+    action_name = args[0] if args else kwargs.get("name", "unknown")
 
     # Create a wrapper for the decorator that intercepts the handler
     def tracing_decorator(handler: Callable[..., Awaitable[Callable[..., T]] | Callable[..., T]]) -> T:
@@ -152,7 +152,7 @@ def _wrap_app_action(
         if is_async(handler):
 
             @functools.wraps(handler)
-            async def async_wrapper_with_flush(*handler_args: Any, **handler_kwargs: Any) -> Callable[..., T]:  # pyright: ignore[reportAny, reportExplicitAny]
+            async def async_wrapper_with_flush(*handler_args: Any, **handler_kwargs: Any) -> Callable[..., T]:
                 # Execute the observed handler (tracing happens here)
                 result = await cast(
                     Awaitable[Callable[..., T]], observed_handler(*handler_args, **handler_kwargs)
@@ -167,7 +167,7 @@ def _wrap_app_action(
         else:
 
             @functools.wraps(handler)
-            def sync_wrapper_with_flush(*handler_args: Any, **handler_kwargs: Any) -> Callable[..., T]:  # pyright: ignore[reportAny, reportExplicitAny]:
+            def sync_wrapper_with_flush(*handler_args: Any, **handler_kwargs: Any) -> Callable[..., T]:
                 # Execute the observed handler (tracing happens here)
                 result = cast(
                     Callable[..., T], observed_handler(*handler_args, **handler_kwargs)

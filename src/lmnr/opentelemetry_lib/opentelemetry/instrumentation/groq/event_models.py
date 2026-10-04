@@ -4,7 +4,7 @@ from typing import Any, Literal, TypedDict
 
 class _FunctionToolCall(TypedDict):
     function_name: str
-    arguments: dict[str, Any] | None  # pyright: ignore[reportExplicitAny]
+    arguments: dict[str, Any] | None
 
 
 class ToolCall(TypedDict):
@@ -18,7 +18,7 @@ class ToolCall(TypedDict):
 class CompletionMessage(TypedDict):
     """Represents a message in the AI model."""
 
-    content: Any  # pyright: ignore[reportExplicitAny]
+    content: Any
     role: Literal["assistant"]
 
 
@@ -26,7 +26,7 @@ class CompletionMessage(TypedDict):
 class MessageEvent:
     """Represents an input event for the AI model."""
 
-    content: Any  # pyright: ignore[reportExplicitAny]
+    content: Any
     role: str = "user"
     tool_calls: list[ToolCall] | None = None
 

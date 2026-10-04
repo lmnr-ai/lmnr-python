@@ -48,8 +48,8 @@ _initialized_sessions: set[str] = set()
 
 
 async def process_wrapped_result(
-    result: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-    instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
+    result: Any,
+    instance: Any,
     client: AsyncLaminarClient,
     to_wrap: BrowserUseCdpSpec,
 ):
@@ -77,10 +77,10 @@ async def process_wrapped_result(
 
 async def _wrap(
     to_wrap: BrowserUseCdpSpec,
-    wrapped: Callable[..., Coroutine[Any, Any, T]],  # pyright: ignore[reportExplicitAny]
-    instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    wrapped: Callable[..., Coroutine[Any, Any, T]],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
     *,
     client: AsyncLaminarClient,
 ) -> T:
@@ -153,7 +153,7 @@ class BrowserUseInstrumentor(BaseLaminarInstrumentor):
         return {"client": self.async_client}
 
     @override
-    def _uninstrument(self, **kwargs: dict[str, Any]):  # pyright: ignore[reportExplicitAny]
+    def _uninstrument(self, **kwargs: dict[str, Any]):
         super()._uninstrument(**kwargs)
         # Session ids must not outlive the instrumentation: a stale entry would
         # make a later run skip recorder injection for a reused session id.

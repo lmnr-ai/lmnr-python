@@ -62,21 +62,21 @@ _root_active: contextvars.ContextVar[bool] = contextvars.ContextVar(
 )
 
 
-def _extract_messages(input_payload: Any) -> Any:  # pyright: ignore[reportAny, reportExplicitAny]
+def _extract_messages(input_payload: Any) -> Any:
     if isinstance(input_payload, dict):
         return input_payload.get("messages") # pyright: ignore[reportUnknownMemberType, reportUnknownMemberType, reportUnknownVariableType]
     return None
 
 
-def _span_input(input_payload: Any) -> Any:  # pyright: ignore[reportAny, reportExplicitAny]
-    messages = _extract_messages(input_payload)  # pyright: ignore[reportAny]
+def _span_input(input_payload: Any) -> Any:
+    messages = _extract_messages(input_payload)
     if messages is None:
         return None
     return {"messages": summarize_messages(messages)}
 
 
-def _set_output_from_result(span: LaminarSpan, result: Any) -> None:  # pyright: ignore[reportAny, reportExplicitAny]
-    out_messages = _extract_messages(result)  # pyright: ignore[reportAny]
+def _set_output_from_result(span: LaminarSpan, result: Any) -> None:
+    out_messages = _extract_messages(result)
     if not out_messages:
         return
     last = out_messages[-1] if isinstance(out_messages, list) else None  # pyright: ignore[reportUnknownVariableType]
@@ -88,9 +88,9 @@ def _set_output_from_result(span: LaminarSpan, result: Any) -> None:  # pyright:
 
 def _wrap_graph_invoke(
     wrapped: Callable[..., T],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 )-> T:
     if _root_active.get():
         return wrapped(*args, **kwargs)
@@ -111,9 +111,9 @@ def _wrap_graph_invoke(
 
 async def _awrap_graph_invoke(
     wrapped: Callable[..., Awaitable[T]],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 )-> T:
     if _root_active.get():
         return await wrapped(*args, **kwargs)
@@ -134,9 +134,9 @@ async def _awrap_graph_invoke(
 
 def _wrap_graph_stream(
     wrapped: Callable[..., Generator[T]],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 )-> Generator[T]:
     # The `_root_active` sentinel is set only by `_wrap_graph_invoke`, and
     # only within its own (non-generator) function frame. That's enough to
@@ -164,7 +164,7 @@ def _wrap_graph_stream(
             input=_span_input(input_payload),
             span_type="DEFAULT",
         ))
-        last_chunk: Any = None  # pyright: ignore[reportExplicitAny]
+        last_chunk: Any = None
         with Laminar.use_span(span, end_on_exit=True):
             for chunk in wrapped(*args, **kwargs):
                 last_chunk = chunk
@@ -177,9 +177,9 @@ def _wrap_graph_stream(
 
 def _awrap_graph_stream(
     wrapped: Callable[..., AsyncGenerator[T]],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 )-> AsyncGenerator[T]:
     # See `_wrap_graph_stream` — the sentinel is intentionally not set
     # inside the generator body to avoid cross-stream leakage.
@@ -193,7 +193,7 @@ def _awrap_graph_stream(
             input=_span_input(input_payload),
             span_type="DEFAULT",
         ))
-        last_chunk: Any = None  # pyright: ignore[reportExplicitAny]
+        last_chunk: Any = None
         with Laminar.use_span(span, end_on_exit=True):
             async for chunk in wrapped(*args, **kwargs):
                 last_chunk = chunk
@@ -207,35 +207,35 @@ def _awrap_graph_stream(
 _INSTRUMENTED_GRAPH_FLAG = "_lmnr_deepagents_instrumented"
 
 
-def _wrap_graph_methods(graph: Any) -> None:  # pyright: ignore[reportExplicitAny, reportAny]
-    if getattr(graph, _INSTRUMENTED_GRAPH_FLAG, False):  # pyright: ignore[reportAny]
+def _wrap_graph_methods(graph: Any) -> None:
+    if getattr(graph, _INSTRUMENTED_GRAPH_FLAG, False):
         return
-    cls = graph.__class__  # pyright: ignore[reportAny]
+    cls = graph.__class__
     # Wrap on the instance rather than the class so we don't affect every
     # other Pregel graph in the process (LangGraph is also used by plain
     # LangChain agents, and we don't want to double-wrap those).
-    if hasattr(cls, "invoke"):  # pyright: ignore[reportAny]
-        wrap_function_wrapper(graph, "invoke", _wrap_graph_invoke)  # pyright: ignore[reportAny]
-    if hasattr(cls, "ainvoke"):  # pyright: ignore[reportAny]
-        wrap_function_wrapper(graph, "ainvoke", _awrap_graph_invoke)  # pyright: ignore[reportAny]
-    if hasattr(cls, "stream"):  # pyright: ignore[reportAny]
-        wrap_function_wrapper(graph, "stream", _wrap_graph_stream)  # pyright: ignore[reportAny]
-    if hasattr(cls, "astream"):  # pyright: ignore[reportAny]
-        wrap_function_wrapper(graph, "astream", _awrap_graph_stream)  # pyright: ignore[reportAny]
+    if hasattr(cls, "invoke"):
+        wrap_function_wrapper(graph, "invoke", _wrap_graph_invoke)
+    if hasattr(cls, "ainvoke"):
+        wrap_function_wrapper(graph, "ainvoke", _awrap_graph_invoke)
+    if hasattr(cls, "stream"):
+        wrap_function_wrapper(graph, "stream", _wrap_graph_stream)
+    if hasattr(cls, "astream"):
+        wrap_function_wrapper(graph, "astream", _awrap_graph_stream)
     try:
-        setattr(graph, _INSTRUMENTED_GRAPH_FLAG, True)  # pyright: ignore[reportAny]
+        setattr(graph, _INSTRUMENTED_GRAPH_FLAG, True)
     except Exception:
         logger.debug("Failed to wrap Langgraph methods for deepagents", exc_info=True)
 
 
 def _inject_middleware(
     wrapped: Callable[..., T],
-    _instance: Any,   # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> T:
     existing = kwargs.get("middleware") or ()
-    if not any(isinstance(m, LaminarMiddleware) for m in existing):  # pyright: ignore[reportAny]
+    if not any(isinstance(m, LaminarMiddleware) for m in existing):
         kwargs["middleware"] = (LaminarMiddleware(), *existing)
     graph = wrapped(*args, **kwargs)
     try:
@@ -245,7 +245,7 @@ def _inject_middleware(
     return graph
 
 
-_WRAPPED_TARGETS: tuple[tuple[str, str, Callable[..., Any]], ...] = (  # pyright: ignore[reportExplicitAny]
+_WRAPPED_TARGETS: tuple[tuple[str, str, Callable[..., Any]], ...] = (
     ("deepagents.graph", "create_deep_agent", _inject_middleware),
     ("deepagents", "create_deep_agent", _inject_middleware),
 )
@@ -269,7 +269,7 @@ class DeepagentsInstrumentor(BaseInstrumentor):
         return instruments
 
     @override
-    def _instrument(self, **kwargs: dict[str, Any]):  # pyright: ignore[reportExplicitAny]
+    def _instrument(self, **kwargs: dict[str, Any]):
         for module, name, wrapper in _WRAPPED_TARGETS:
             try:
                 wrap_function_wrapper(module, name, wrapper)
@@ -277,10 +277,10 @@ class DeepagentsInstrumentor(BaseInstrumentor):
                 logger.debug("Failed to wrap %s.%s", module, name)
 
     @override
-    def _uninstrument(self, **kwargs: dict[str, Any]):  # pyright: ignore[reportExplicitAny]
+    def _uninstrument(self, **kwargs: dict[str, Any]):
         for module, name, _ in _WRAPPED_TARGETS:
             try:
-                mod = __import__(module, fromlist=[name])  # pyright: ignore[reportAny]
-                unwrap(mod, name)  # pyright: ignore[reportAny]
+                mod = __import__(module, fromlist=[name])
+                unwrap(mod, name)
             except Exception:
                 logger.debug("Failed to unwrap %s.%s", module, name)

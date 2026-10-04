@@ -9,21 +9,21 @@ from opentelemetry.trace.span import Span
 from typing_extensions import TypeVar
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.shared import (
-    _set_request_attributes,
-    _set_response_attributes,
     propagate_trace_context,
     set_client_attributes,
+    set_request_attributes,
+    set_response_attributes,
 )
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import model_as_dict
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
     is_openai_v1,
     should_send_prompts,
 )
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    dont_throw,
+    model_as_dict,
     safe_start_span,
     set_span_attribute,
 )
@@ -42,9 +42,9 @@ T = TypeVar("T")
 def embeddings_wrapper(
     to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., T],
-    instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> T:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
@@ -79,9 +79,9 @@ def embeddings_wrapper(
 async def aembeddings_wrapper(
     to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., Awaitable[T]],
-    instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> T:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
@@ -118,10 +118,10 @@ async def aembeddings_wrapper(
 @dont_throw
 def _handle_request(
     span: Span,
-    kwargs: dict[str, Any], # pyright: ignore[reportExplicitAny]
-    instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
+    kwargs: dict[str, Any],
+    instance: Any,
 ):
-    _set_request_attributes(span, kwargs, instance)
+    set_request_attributes(span, kwargs, instance)
 
     if should_send_prompts():
         _set_prompts(span, cast(str|list[str], kwargs.get("input")))
@@ -133,7 +133,7 @@ def _handle_request(
 
 @dont_throw
 def _handle_response(
-    response: Any,  # pyright: ignore[reportExplicitAny, reportAny],
+    response: Any,  # ,
     span: Span,
 ):
     if is_openai_v1():
@@ -141,7 +141,7 @@ def _handle_response(
     else:
         response_dict = response
     # span attributes
-    _set_response_attributes(span, response_dict)
+    set_response_attributes(span, response_dict)
 
 
 def _set_prompts(

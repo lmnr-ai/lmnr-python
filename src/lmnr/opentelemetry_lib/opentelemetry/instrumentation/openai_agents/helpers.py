@@ -45,10 +45,10 @@ def reset_current_system_instructions(
     _current_system_instructions.reset(token)
 
 
-def span_name(span: Span[Any], span_data: Any) -> str:  # pyright: ignore[reportAny, reportExplicitAny]
+def span_name(span: Span[Any], span_data: Any) -> str:
     name = getattr(span, "name", None)
     if name:
-        return name  # pyright: ignore[reportAny]
+        return name
     kind = span_kind(span_data)
     if kind:
         if kind in ["agent", "custom", "function", "tool"]:
@@ -57,13 +57,13 @@ def span_name(span: Span[Any], span_data: Any) -> str:  # pyright: ignore[report
     return "agents.span"
 
 
-def span_kind(span_data: Any) -> str:  # pyright: ignore[reportAny, reportExplicitAny]
+def span_kind(span_data: Any) -> str:
     if span_data is None:
         return ""
-    return getattr(span_data, "type", "")  # pyright: ignore[reportAny]
+    return getattr(span_data, "type", "")
 
 
-def map_span_type(span_data: Any) -> LaminarSpanType:  # pyright: ignore[reportAny, reportExplicitAny]
+def map_span_type(span_data: Any) -> LaminarSpanType:
     kind = span_kind(span_data)
     if kind in {"generation", "response", "transcription", "speech", "speech_group"}:
         return "LLM"
@@ -72,12 +72,12 @@ def map_span_type(span_data: Any) -> LaminarSpanType:  # pyright: ignore[reportA
     return "DEFAULT"
 
 
-def export_span_data(span_data: Any) -> dict[str, Any]:  # pyright: ignore[reportAny, reportExplicitAny]
+def export_span_data(span_data: Any) -> dict[str, Any]:
     if span_data is None:
         return {}
-    if hasattr(span_data, "export"):  # pyright: ignore[reportAny]
+    if hasattr(span_data, "export"):
         try:
-            exported = span_data.export()  # pyright: ignore[reportAny]
+            exported = span_data.export()
             if isinstance(exported, dict):
                 return exported  # pyright: ignore[reportUnknownVariableType]
         except Exception:
@@ -85,7 +85,7 @@ def export_span_data(span_data: Any) -> dict[str, Any]:  # pyright: ignore[repor
     return {}
 
 
-def normalize_messages(data: Any, role: str = "user") -> list[dict[str, Any]]:  # pyright: ignore[reportAny, reportExplicitAny]
+def normalize_messages(data: Any, role: str = "user") -> list[dict[str, Any]]:
     """Normalize various input/output formats into a list of message dicts."""
     if data is None:
         return []
@@ -119,55 +119,55 @@ def normalize_messages(data: Any, role: str = "user") -> list[dict[str, Any]]:  
     if as_dict:
         return [as_dict]
 
-    return [{"content": str(data)}]  # pyright: ignore[reportAny]
+    return [{"content": str(data)}]
 
 
-def model_as_dict(obj: Any) -> dict[str, Any] | None:  # pyright: ignore[reportAny, reportExplicitAny]
+def model_as_dict(obj: Any) -> dict[str, Any] | None:
     """Convert a pydantic model or similar object to a dict."""
     if obj is None:
         return None
     if isinstance(obj, dict):
         return obj  # pyright: ignore[reportUnknownVariableType]
-    if hasattr(obj, "model_dump"):  # pyright: ignore[reportAny]
+    if hasattr(obj, "model_dump"):
         try:
-            return obj.model_dump()  # pyright: ignore[reportAny]
+            return obj.model_dump()
         except Exception:
             logger.debug("failed to dump openai agents model", exc_info=True)
-    if hasattr(obj, "dict"):  # pyright: ignore[reportAny]
+    if hasattr(obj, "dict"):
         try:
-            return obj.dict()  # pyright: ignore[reportAny]
+            return obj.dict()
         except Exception:
             logger.debug("failed to dump openai agents model", exc_info=True)
-    if hasattr(obj, "__dict__"):  # pyright: ignore[reportAny]
-        return {k: v for k, v in obj.__dict__.items() if not k.startswith("_")}  # pyright: ignore[reportAny]
+    if hasattr(obj, "__dict__"):
+        return {k: v for k, v in obj.__dict__.items() if not k.startswith("_")}
     return None
 
 
-def name_from_span_data(agent: Any) -> str:  # pyright: ignore[reportAny, reportExplicitAny]
+def name_from_span_data(agent: Any) -> str:
     if isinstance(agent, dict):
         return agent.get("name") or "" ## pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
     if isinstance(agent, str):
         return agent
-    if hasattr(agent, "name"):  # pyright: ignore[reportAny]
-        return getattr(agent, "name", "") or ""  # pyright: ignore[reportAny]
+    if hasattr(agent, "name"):
+        return getattr(agent, "name", "") or ""
     return ""
 
 
-def get_first_not_none(d: dict[str, Any], *keys: str) -> Any:  # pyright: ignore[reportExplicitAny, reportAny]
+def get_first_not_none(d: dict[str, Any], *keys: str) -> Any:
     """Get the first key whose value is not None from a dict."""
     for key in keys:
         val = d.get(key)
         if val is not None:
-            return val  # pyright: ignore[reportAny]
+            return val
     return None
 
 
-def get_attr_not_none(obj: Any, *attrs: str) -> Any:  # pyright: ignore[reportAny, reportExplicitAny]
+def get_attr_not_none(obj: Any, *attrs: str) -> Any:
     """Get the first attribute whose value is not None from an object."""
     for attr in attrs:
-        val = getattr(obj, attr, None)  # pyright: ignore[reportAny]
+        val = getattr(obj, attr, None)
         if val is not None:
-            return val  # pyright: ignore[reportAny]
+            return val
     return None
 
 

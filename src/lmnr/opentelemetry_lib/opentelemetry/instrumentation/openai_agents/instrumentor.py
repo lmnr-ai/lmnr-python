@@ -26,24 +26,24 @@ instruments = ("openai-agents >= 0.7.0",)
 T = TypeVar("T")
 
 
-def _extract_system_instructions(  # pyright: ignore[reportAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],   # pyright: ignore[reportExplicitAny]
-) -> Any:  # pyright: ignore[reportExplicitAny]
+def _extract_system_instructions(
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> Any:
     if "system_instructions" in kwargs:
-        return kwargs["system_instructions"]  # pyright: ignore[reportAny]
+        return kwargs["system_instructions"]
     if args:
-        return args[0]  # pyright: ignore[reportAny]
+        return args[0]
     return None
 
 
 async def _wrap_get_response(
     wrapped: Callable[..., Awaitable[T]],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> T:
-    token = set_current_system_instructions(_extract_system_instructions(args, kwargs))  # pyright: ignore[reportAny]
+    token = set_current_system_instructions(_extract_system_instructions(args, kwargs))
     try:
         return await wrapped(*args, **kwargs)
     finally:
@@ -52,17 +52,17 @@ async def _wrap_get_response(
 
 def _wrap_stream_response(
     wrapped: Callable[..., AsyncIterable[T]],
-    _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> AsyncIterable[T]:
     # wrapped(*args, **kwargs) returns an async generator; wrap iteration so the
     # ContextVar stays set while generation_span / response_span exits (which is
     # where on_span_end fires and we read the system instructions).
-    system_instructions = _extract_system_instructions(args, kwargs)  # pyright: ignore[reportAny]
+    system_instructions = _extract_system_instructions(args, kwargs)
 
     async def _gen():
-        token = set_current_system_instructions(system_instructions)  # pyright: ignore[reportAny]
+        token = set_current_system_instructions(system_instructions)
         try:
             async for chunk in wrapped(*args, **kwargs):
                 yield chunk
@@ -72,7 +72,7 @@ def _wrap_stream_response(
     return _gen()
 
 
-_WRAPPED_TARGETS: tuple[tuple[str, str, Callable[..., Any]], ...] = (  # pyright: ignore[reportExplicitAny]
+_WRAPPED_TARGETS: tuple[tuple[str, str, Callable[..., Any]], ...] = (
     (
         "agents.models.openai_responses",
         "OpenAIResponsesModel.get_response",
@@ -104,7 +104,7 @@ class OpenAIAgentsInstrumentor(BaseInstrumentor):
         return instruments
 
     @override
-    def _instrument(self, **kwargs: Any):  # pyright: ignore[reportExplicitAny, reportAny]
+    def _instrument(self, **kwargs: Any):
         try:
             from agents.tracing import add_trace_processor
         except Exception:
@@ -128,14 +128,14 @@ class OpenAIAgentsInstrumentor(BaseInstrumentor):
         logger.debug("Laminar OpenAI Agents trace processor registered")
 
     @override
-    def _uninstrument(self, **kwargs: Any):  # pyright: ignore[reportAny, reportExplicitAny]
+    def _uninstrument(self, **kwargs: Any):
         for module, name, _ in _WRAPPED_TARGETS:
             try:
                 cls_name, func_name = name.split(".", 1)
-                mod = __import__(module, fromlist=[cls_name])  # pyright: ignore[reportAny]
-                cls = getattr(mod, cls_name, None)  # pyright: ignore[reportAny]
+                mod = __import__(module, fromlist=[cls_name])
+                cls = getattr(mod, cls_name, None)
                 if cls is not None:
-                    unwrap(cls, func_name)  # pyright: ignore[reportAny]
+                    unwrap(cls, func_name)
             except Exception:
                 logger.debug("Failed to unwrap %s.%s", module, name)
 
@@ -150,8 +150,8 @@ class OpenAIAgentsInstrumentor(BaseInstrumentor):
             # internal list and write back via the public set_processors.
             mp = getattr(provider, "_multi_processor", None)
             if mp is not None:
-                current = getattr(mp, "_processors", ())  # pyright: ignore[reportAny]
-                provider.set_processors([p for p in current if p is not processor])  # pyright: ignore[reportAny]
+                current = getattr(mp, "_processors", ())
+                provider.set_processors([p for p in current if p is not processor])
         except Exception:
             logger.debug("Failed to set OpenAI agents processor", exc_info=True)
         processor.shutdown()

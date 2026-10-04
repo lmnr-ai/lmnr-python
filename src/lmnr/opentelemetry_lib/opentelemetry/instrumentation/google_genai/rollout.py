@@ -36,7 +36,7 @@ T = TypeVar("T")
 class GoogleGenAIRolloutWrapper:
     """Serves cached Google GenAI responses on a debug run; runs live otherwise."""
 
-    def _parse_output_json(self, output_str: str) -> Any:  # pyright: ignore[reportAny, reportExplicitAny]
+    def _parse_output_json(self, output_str: str) -> Any:
         """
         Parse output JSON, handling potential double-stringification.
 
@@ -47,11 +47,11 @@ class GoogleGenAIRolloutWrapper:
             Parsed JSON object
         """
         try:
-            parsed = json.loads(output_str)  # pyright: ignore[reportAny]
+            parsed = json.loads(output_str)
             # Try parsing again if it's still a string (double-stringified)
             while isinstance(parsed, str):
-                parsed = json.loads(parsed)  # pyright: ignore[reportAny]
-            return parsed  # pyright: ignore[reportAny]
+                parsed = json.loads(parsed)
+            return parsed
         except (json.JSONDecodeError, TypeError):
             logger.exception("Failed to parse output JSON")
             return None
@@ -59,8 +59,8 @@ class GoogleGenAIRolloutWrapper:
     def _add_parsed_to_response(
         self,
         response: types.GenerateContentResponse,
-        parts: list[dict[str, Any] | types.Part | None],  # pyright: ignore[reportExplicitAny]
-        config: types.GenerateContentConfig | dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
+        parts: list[dict[str, Any] | types.Part | None],
+        config: types.GenerateContentConfig | dict[str, Any] | None = None,
     ):
         # Handle structured output (parsed field)
         if config:
@@ -79,11 +79,11 @@ class GoogleGenAIRolloutWrapper:
                     response.parsed = parsed_value
 
     def cached_response_to_google_genai(
-        self, cached_span: dict[str, Any], config: Any | None = None  # pyright: ignore[reportExplicitAny]
+        self, cached_span: dict[str, Any], config: Any | None = None
     ) -> types.GenerateContentResponse | None:
         """Convert cached span envelope to Google GenAI GenerateContentResponse."""
 
-        def is_raw_genai_candidate_like(candidate: dict[str, Any]) -> bool:  # pyright: ignore[reportExplicitAny]
+        def is_raw_genai_candidate_like(candidate: dict[str, Any]) -> bool:
             if not isinstance(candidate, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
                 return False
             if content := candidate.get("content"):
@@ -92,7 +92,7 @@ class GoogleGenAIRolloutWrapper:
                     and isinstance(content.get("role"), str)  # pyright: ignore[reportUnknownMemberType]
                     and isinstance(content.get("parts"), list)  # pyright: ignore[reportUnknownMemberType]
                     and all(
-                        is_model_valid(part, cast(types.BaseModel, types.Part))  # pyright: ignore[reportAny]
+                        is_model_valid(part, cast(types.BaseModel, types.Part))
                         for part in content.get("parts", [])  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
                     )
                 )
@@ -114,7 +114,7 @@ class GoogleGenAIRolloutWrapper:
                 elif isinstance(raw, str):
                     response = types.GenerateContentResponse.model_validate_json(raw)
                 else:
-                    logger.warning(f"Unexpected raw response type: {type(raw)}")  # pyright: ignore[reportAny]
+                    logger.warning(f"Unexpected raw response type: {type(raw)}")
                     return None
                 if response.candidates is None or len(response.candidates) == 0:
                     logger.debug("No candidates on the response")
@@ -124,7 +124,7 @@ class GoogleGenAIRolloutWrapper:
                 if response:
                     self._add_parsed_to_response(
                         response,
-                        cast(list[types.Part | dict[str, Any] | None], parts),  # pyright: ignore[reportExplicitAny]
+                        cast(list[types.Part | dict[str, Any] | None], parts),
                         config,
                     )
                     return response
@@ -194,9 +194,9 @@ class GoogleGenAIRolloutWrapper:
 
     def _parse_structured_output(
         self,
-        content_blocks: list[dict[str, Any] | types.Part | None],  # pyright:ignore[reportExplicitAny]
-        response_schema: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-    ) -> Any | None:  # pyright: ignore[reportExplicitAny]
+        content_blocks: list[dict[str, Any] | types.Part | None],
+        response_schema: Any,
+    ) -> Any | None:
         """
         Parse structured output from content blocks.
 
@@ -215,36 +215,36 @@ class GoogleGenAIRolloutWrapper:
                     to_dict(block).get("type") == "text"
                     or to_dict(block).get("text") is not None
                 ):
-                    text_content += to_dict(block).get("text", "")  # pyright: ignore[reportAny]
+                    text_content += to_dict(block).get("text", "")
 
             if not text_content:
                 return None
 
             # Try to parse as JSON first
             try:
-                json_data = json.loads(text_content)  # pyright: ignore[reportAny]
+                json_data = json.loads(text_content)
             except json.JSONDecodeError:
                 return None
 
             # If response_schema is a pydantic model, try to validate
-            if hasattr(response_schema, "model_validate"):  # pyright: ignore[reportAny]
+            if hasattr(response_schema, "model_validate"):
                 try:
-                    return response_schema.model_validate(json_data)  # pyright: ignore[reportAny]
+                    return response_schema.model_validate(json_data)
                 except Exception:
                     logger.debug("Failed to validate with pydantic model", exc_info=True)
                     # Fall back to returning the dict
-                    return json_data  # pyright: ignore[reportAny]
+                    return json_data
 
             # If it's an Enum, try to construct it
-            if hasattr(response_schema, "__members__"):  # pyright: ignore[reportAny]
+            if hasattr(response_schema, "__members__"):
                 try:
-                    return response_schema(json_data)  # pyright: ignore[reportAny]
+                    return response_schema(json_data)
                 except Exception:
                     logger.debug("Failed to construct Enum", exc_info=True)
-                    return json_data  # pyright: ignore[reportAny]
+                    return json_data
 
             # Otherwise, return the parsed JSON dict/list
-            return json_data  # pyright: ignore[reportAny]
+            return json_data
 
         except Exception:
             logger.debug("Failed to parse structured output", exc_info=True)
@@ -253,9 +253,9 @@ class GoogleGenAIRolloutWrapper:
     def wrap_generate_content(
         self,
         wrapped: Callable[..., types.GenerateContentResponse | Awaitable[types.GenerateContentResponse]],
-        _instance: Any,  # pyright: ignore[reportAny, reportExplicitAny]
-        args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-        kwargs: dict[str, Any],    # pyright: ignore[reportExplicitAny]
+        _instance: Any,
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
         is_streaming: bool = False,
         is_async: bool = False,
     ) -> types.GenerateContentResponse | Generator[types.GenerateContentResponse] | Awaitable[types.GenerateContentResponse | AsyncGenerator[types.GenerateContentResponse]]:
@@ -302,8 +302,8 @@ class GoogleGenAIRolloutWrapper:
     async def _awrap_generate_content(
         self,
         wrapped: Callable[..., Awaitable[types.GenerateContentResponse]],
-        args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-        kwargs: dict[str, Any],    # pyright: ignore[reportExplicitAny]
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
         span: LaminarSpan | None,
         is_streaming: bool = False,
     ) -> types.GenerateContentResponse | AsyncGenerator[types.GenerateContentResponse]:

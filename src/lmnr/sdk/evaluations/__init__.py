@@ -17,12 +17,12 @@ from lmnr.sdk.types import Datapoint
 
 
 def evaluate(
-    data: EvaluationDataset | list[Datapoint | dict[Any, Any]],  # pyright:ignore[reportExplicitAny]
+    data: EvaluationDataset | list[Datapoint | dict[Any, Any]],
     executor: ExecutorFunction,
     evaluators: dict[str, EvaluatorFunction],
     name: str | None = None,
     group_name: str | None = None,
-    metadata: dict[str, Any] | None = None,  # pyright:ignore[reportExplicitAny]
+    metadata: dict[str, Any] | None = None,
     concurrency_limit: int = DEFAULT_BATCH_SIZE,
     project_api_key: str | None = None,
     base_url: str | None = None,
@@ -38,7 +38,7 @@ def evaluate(
     ) = None,
     max_export_batch_size: int | None = MAX_EXPORT_BATCH_SIZE,
     trace_export_timeout_seconds: int | None = None,
-) -> EvaluationRunResult | CoroutineType[Any, Any, EvaluationRunResult] | None:  # pyright: ignore[reportExplicitAny]
+) -> EvaluationRunResult | CoroutineType[Any, Any, EvaluationRunResult] | None:
     """
     If added to the file which is called through `lmnr eval` command, then
     registers the evaluation; otherwise, runs the evaluation.

@@ -42,10 +42,10 @@ def _collect_files(paths: list[Path], recursive: bool = False) -> list[Path]:
     return collected_files
 
 
-def _read_file(file: Path) -> list[dict[str, Any]]:  # pyright: ignore[reportExplicitAny]
+def _read_file(file: Path) -> list[dict[str, Any]]:
     """Read data from a single file and return as a list of dictionaries."""
     if file.suffix == ".json":
-        result = orjson.loads(file.read_bytes())  # pyright: ignore[reportAny])
+        result = orjson.loads(file.read_bytes())
         if isinstance(result, list):
             return result  # pyright: ignore[reportUnknownVariableType])
         else:
@@ -60,7 +60,7 @@ def _read_file(file: Path) -> list[dict[str, Any]]:  # pyright: ignore[reportExp
         raise ValueError(f"Unsupported file type: {file.suffix}")
 
 
-def load_from_paths(paths: list[Path], recursive: bool = False) -> list[dict[str, Any]]:  # pyright:ignore[reportExplicitAny]
+def load_from_paths(paths: list[Path], recursive: bool = False) -> list[dict[str, Any]]:
     """
     Load data from all files in the specified paths.
 
@@ -74,7 +74,7 @@ def load_from_paths(paths: list[Path], recursive: bool = False) -> list[dict[str
 
     LOG.info(f"Found {len(files)} file(s) to read")
 
-    result: list[dict[str, Any]] = []  # pyright:ignore[reportExplicitAny]
+    result: list[dict[str, Any]] = []
     for file in files:
         try:
             data = _read_file(file)

@@ -31,7 +31,7 @@ def dont_throw(
 def dont_throw(func: Callable[P, T]) -> Callable[P, T | None]: ...
 
 
-def dont_throw(func: Callable[P, Any]) -> Callable[P, Any]:  # pyright: ignore[reportExplicitAny]
+def dont_throw(func: Callable[P, Any]) -> Callable[P, Any]:
     """
     A decorator that wraps the passed in function and logs exceptions instead of
     throwing them. Works for both synchronous and asynchronous functions.
@@ -41,7 +41,7 @@ def dont_throw(func: Callable[P, Any]) -> Callable[P, Any]:  # pyright: ignore[r
     if is_async(func):
 
         @functools.wraps(func)
-        async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:  # pyright: ignore[reportExplicitAny]
+        async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
             try:
                 return await func(*args, **kwargs)
             except Exception:
@@ -53,7 +53,7 @@ def dont_throw(func: Callable[P, Any]) -> Callable[P, Any]:  # pyright: ignore[r
         return async_wrapper
 
     @functools.wraps(func)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:  # pyright: ignore[reportExplicitAny]
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
         try:
             return func(*args, **kwargs)
         except Exception:
@@ -72,7 +72,7 @@ def set_span_attribute(
         span.set_attribute(attribute_name, attribute_value)
 
 
-def to_dict(obj: Any) -> dict[str, Any]:  # pyright: ignore[reportAny, reportExplicitAny]
+def to_dict(obj: Any) -> dict[str, Any]:
     try:
         if isinstance(obj, BaseModel):
             return obj.model_dump()
@@ -81,13 +81,13 @@ def to_dict(obj: Any) -> dict[str, Any]:  # pyright: ignore[reportAny, reportExp
         elif obj is None:
             return {}
         else:
-            return dict(obj)  # pyright: ignore[reportAny]
+            return dict(obj)
     except Exception:
         logger.debug(f"Error converting to dict: {obj}", exc_info=True)
         return {}
 
 
-def model_as_dict(model: Any) -> dict[str, Any]:  # pyright: ignore[reportAny, reportExplicitAny]
+def model_as_dict(model: Any) -> dict[str, Any]:
     """Convert a pydantic model or raw API response (`.parse()`) to a dict.
 
     Dicts are returned as-is (no copy). Returns `{}` if conversion fails.
@@ -95,18 +95,18 @@ def model_as_dict(model: Any) -> dict[str, Any]:  # pyright: ignore[reportAny, r
     try:
         if isinstance(model, dict):
             return model  # pyright: ignore[reportUnknownVariableType]
-        if hasattr(model, "model_dump"):  # pyright: ignore[reportAny]
-            return model.model_dump()  # pyright: ignore[reportAny]
-        if hasattr(model, "parse"):  # pyright: ignore[reportAny]
+        if hasattr(model, "model_dump"):
+            return model.model_dump()
+        if hasattr(model, "parse"):
             # Raw API response
-            return model_as_dict(model.parse())  # pyright: ignore[reportAny]
-        return dict(model)  # pyright: ignore[reportAny]
+            return model_as_dict(model.parse())
+        return dict(model)
     except Exception:
         logger.debug(f"Failed to convert model to dict: {model}", exc_info=True)
         return {}
 
 
-def extract_json_schema(schema: dict[str, Any] | BaseModel) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
+def extract_json_schema(schema: dict[str, Any] | BaseModel) -> dict[str, Any]:
     if isinstance(schema, dict):
         return schema
     elif hasattr(schema, "model_json_schema") and callable(schema.model_json_schema):

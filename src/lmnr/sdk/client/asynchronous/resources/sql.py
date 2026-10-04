@@ -18,8 +18,8 @@ class AsyncSql(BaseAsyncResource):
     async def query(
         self,
         sql: str,
-        parameters: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
-    ) -> list[dict[str, Any]]:  # pyright: ignore[reportExplicitAny]
+        parameters: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Execute a SQL query against the Laminar backend.
 
@@ -46,5 +46,5 @@ class AsyncSql(BaseAsyncResource):
 
         _ = response.raise_for_status()
 
-        result = cast(dict[str, list[Any]], response.json())  # pyright: ignore[reportExplicitAny]
+        result = cast(dict[str, list[Any]], response.json())
         return result.get("data", [])

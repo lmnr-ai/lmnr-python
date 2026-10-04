@@ -16,7 +16,7 @@ class Traces(BaseResource):
     def push_metadata(
         self,
         trace_id: str | int | uuid.UUID,
-        metadata: dict[str, Any],  # pyright:ignore[reportExplicitAny],
+        metadata: dict[str, Any],  # ,
     ) -> None:
         """Push a metadata patch to an existing trace.
 

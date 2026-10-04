@@ -48,7 +48,7 @@ def merge_text_parts(
             )
         # Handle Part and PartDict (dicts)
         else:
-            part_dict = to_dict(cast(dict[str, Any] | BaseModel, part))  # pyright: ignore[reportExplicitAny]
+            part_dict = to_dict(cast(dict[str, Any] | BaseModel, part))
 
             # Check if this is a text part
             if part_dict.get("text") is not None:
@@ -65,7 +65,7 @@ def merge_text_parts(
                     merged_parts.append(part)
                 elif isinstance(part, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
                     # Convert dict to Part object
-                    merged_parts.append(types.Part(**part_dict))  # pyright: ignore[reportAny]
+                    merged_parts.append(types.Part(**part_dict))
 
     # Don't forget to add any remaining accumulated text
     if accumulated_text:
@@ -122,7 +122,7 @@ def process_stream_chunk(
     )
 
 
-def is_model_valid(obj: Any, model: BaseModel) -> bool:  # pyright: ignore[reportAny, reportExplicitAny]
+def is_model_valid(obj: Any, model: BaseModel) -> bool:
     try:
         _validated_model = model.model_validate(obj)
         return True
@@ -130,15 +130,15 @@ def is_model_valid(obj: Any, model: BaseModel) -> bool:  # pyright: ignore[repor
         return False
 
 
-def strip_none_values(obj: dict[str, Any]) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
+def strip_none_values(obj: dict[str, Any]) -> dict[str, Any]:
     return {
         k: strip_none_values(v) if isinstance(v, dict) else v  # pyright: ignore[reportUnknownArgumentType]
-        for k, v in obj.items()  # pyright: ignore[reportAny]
+        for k, v in obj.items()
         if v is not None
     }
 
 
-def model_to_json_safe_dict(model: pydantic.BaseModel, **kwargs: Any) -> dict[str, Any]:  # pyright: ignore[reportAny, reportExplicitAny]
+def model_to_json_safe_dict(model: pydantic.BaseModel, **kwargs: Any) -> dict[str, Any]:
     """Dump a pydantic model to a dict safe to hand to `json_dumps`.
 
     Deliberately `mode="python"` rather than `mode="json"`: google-genai's models
@@ -164,24 +164,24 @@ def model_to_json_safe_dict(model: pydantic.BaseModel, **kwargs: Any) -> dict[st
     attribute — every message in the conversation, not just the odd value.
     Python mode hands the value to `json_dumps`, which degrades just that leaf.
     """
-    return model.model_dump(mode="python", **kwargs)  # pyright: ignore[reportAny]
+    return model.model_dump(mode="python", **kwargs)
 
 
-def part_to_dict(part: Any) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny, reportAny]
+def part_to_dict(part: Any) -> dict[str, Any]:
     """Convert a Part-like object to a serializable dict."""
     if isinstance(part, str):
         return {"text": part}
     if isinstance(part, dict):
         return strip_none_values(part)  # pyright: ignore[reportUnknownArgumentType]
-    if hasattr(part, "model_dump"):  # pyright: ignore[reportAny]
-        return model_to_json_safe_dict(part, exclude_unset=True, exclude_none=True)  # pyright: ignore[reportAny]
-    return strip_none_values(to_dict(part))  # pyright: ignore[reportAny]
+    if hasattr(part, "model_dump"):
+        return model_to_json_safe_dict(part, exclude_unset=True, exclude_none=True)
+    return strip_none_values(to_dict(part))
 
 
 def content_union_to_dict(
     content: types.ContentUnion | types.ContentUnionDict,  # pyright: ignore[reportUnknownMemberType, reportUnknownParameterType]
     default_role: str = "user",
-) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
+) -> dict[str, Any]:
     """Convert a ContentUnion to a Gemini Content dict with 'parts' and 'role'."""
     if isinstance(content, types.Content):
         result = model_to_json_safe_dict(content, exclude_unset=True, exclude_none=True)
@@ -193,7 +193,7 @@ def content_union_to_dict(
     elif isinstance(content, dict):
         if "parts" in content:
             result = dict(content)  # pyright: ignore[reportUnknownArgumentType]
-            result["parts"] = [part_to_dict(p) for p in cast(list[Any], result["parts"])]  # pyright: ignore[reportExplicitAny, reportAny]
+            result["parts"] = [part_to_dict(p) for p in cast(list[Any], result["parts"])]
             if "role" not in result:
                 result["role"] = default_role
             return result

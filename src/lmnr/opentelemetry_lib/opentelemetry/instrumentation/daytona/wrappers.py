@@ -77,7 +77,7 @@ def _set_request_attributes(span: Span, session_id: str, request: SessionExecute
 def _serialize_response(response: SessionExecuteResponse) -> str:
     if hasattr(response, "model_dump_json") and isinstance(response.model_dump_json, Callable):  # pyright: ignore[reportUnnecessaryIsInstance]
         return response.model_dump_json()
-    return json_dumps(cast(Any, response))  # pyright: ignore[reportExplicitAny, reportAny]
+    return json_dumps(cast(Any, response))
 
 
 @dont_throw
@@ -309,8 +309,8 @@ def wrap(
     to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., SessionExecuteResponse],
     instance: Process,
-    args: Sequence[Any] | None,  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any] | None,  # pyright: ignore[reportExplicitAny]
+    args: Sequence[Any] | None,
+    kwargs: dict[str, Any] | None,
 ) -> SessionExecuteResponse:
     """Wrapper for sync execute_session_command.
 
@@ -380,8 +380,8 @@ async def awrap(
     to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., Awaitable[SessionExecuteResponse]],
     instance: AsyncProcess,
-    args: Sequence[Any] | None,  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any] | None,  # pyright: ignore[reportExplicitAny]
+    args: Sequence[Any] | None,
+    kwargs: dict[str, Any] | None,
 )-> SessionExecuteResponse:
     """Wrapper for async execute_session_command.
 
@@ -478,7 +478,7 @@ def _emit_exec_logs_from_response(
     stdout = getattr(response, "result", None)
     if stdout:
         _emit_log(
-            logger, LogStream.STDOUT, stdout, ctx,  # pyright: ignore[reportAny]
+            logger, LogStream.STDOUT, stdout, ctx,
             extra_attributes={"daytona.command": command},
         )
 
@@ -487,8 +487,8 @@ def wrap_exec(
     to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., SessionExecuteResponse],
     _instance: Process,
-    args: Sequence[Any] | None,  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any] | None,  # pyright: ignore[reportExplicitAny]
+    args: Sequence[Any] | None,
+    kwargs: dict[str, Any] | None,
 )-> SessionExecuteResponse:
     """Wrapper for sync Process.exec.
 
@@ -552,8 +552,8 @@ async def awrap_exec(
     to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., Awaitable[SessionExecuteResponse]],
     _instance: AsyncProcess,
-    args: Sequence[Any] | None,  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any] | None,  # pyright: ignore[reportExplicitAny]
+    args: Sequence[Any] | None,
+    kwargs: dict[str, Any] | None,
 )-> SessionExecuteResponse:
     """Wrapper for async AsyncProcess.exec.
 

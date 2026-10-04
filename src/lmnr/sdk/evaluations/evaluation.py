@@ -46,8 +46,8 @@ from lmnr.sdk.utils import from_env, is_async
 SESSION_METADATA_KEY = "rollout.session_id"
 
 def _with_debugger_session_metadata(
-    metadata: dict[str, Any] | None,  # pyright: ignore[reportExplicitAny]
-) -> dict[str, Any] | None:  # pyright: ignore[reportExplicitAny]
+    metadata: dict[str, Any] | None,
+) -> dict[str, Any] | None:
     """Stamp the debug session id into eval metadata when running under debug.
 
     When this eval runs under a debug session, auto-stamp the session id into
@@ -75,12 +75,12 @@ def _with_debugger_session_metadata(
 class Evaluation:
     def __init__(
         self,
-        data: EvaluationDataset | list[Datapoint | dict[Any, Any]],  # pyright: ignore[reportExplicitAny]
-        executor: Callable[..., Any],  # pyright: ignore[reportExplicitAny]
+        data: EvaluationDataset | list[Datapoint | dict[Any, Any]],
+        executor: Callable[..., Any],
         evaluators: dict[str, EvaluatorFunction],
         name: str | None = None,
         group_name: str | None = None,
-        metadata: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
+        metadata: dict[str, Any] | None = None,
         concurrency_limit: int = DEFAULT_BATCH_SIZE,
         project_api_key: str | None = None,
         base_url: str | None = None,
@@ -190,11 +190,11 @@ class Evaluation:
         # The underlying remote source (through any depth of subsampling
         # chaining), resolved in _run. None for in-memory data.
         self._source_dataset: LaminarDataset | None = None
-        self.executor: Callable[..., Any] = executor  # pyright: ignore[reportExplicitAny]
+        self.executor: Callable[..., Any] = executor
         self.evaluators: dict[str, EvaluatorFunction] = evaluators
         self.group_name: str | None = group_name
         self.name: str | None = name
-        self.metadata: dict[str, Any] | None = metadata  # pyright: ignore[reportExplicitAny]
+        self.metadata: dict[str, Any] | None = metadata
         self.concurrency_limit: int = concurrency_limit
         self.batch_size: int = concurrency_limit
         self._logger: Logger = get_default_logger(self.__class__.__name__)
@@ -360,7 +360,7 @@ class Evaluation:
                 L._set_trace_type(trace_type=TraceType.EVALUATION)  # pyright: ignore[reportPrivateUsage]
                 evaluation_span.set_attribute(SPAN_TYPE, SpanType.EVALUATION.value)
                 with L.start_as_current_span(
-                    "executor", input={"data": datapoint.data}  # pyright: ignore[reportAny]
+                    "executor", input={"data": datapoint.data}
                 ) as executor_span:
                     executor_span_id = uuid.UUID(
                         int=executor_span.get_span_context().span_id
@@ -371,7 +371,7 @@ class Evaluation:
 
                     partial_datapoint = PartialEvaluationDatapoint(
                         id=evaluation_id,
-                        data=datapoint.data,  # pyright: ignore[reportAny]
+                        data=datapoint.data,
                         target=datapoint.target,
                         index=index,
                         trace_id=trace_id,
@@ -394,11 +394,11 @@ class Evaluation:
                     # Run synchronous executors in a thread pool to avoid blocking
                     if not is_async(self.executor):
                         loop = asyncio.get_event_loop()
-                        output = await loop.run_in_executor(    # pyright: ignore[reportAny]
-                            None, self.executor, datapoint.data   # pyright: ignore[reportAny]
+                        output = await loop.run_in_executor(
+                            None, self.executor, datapoint.data
                         )
                     else:
-                        output = await self.executor(datapoint.data)  # pyright: ignore[reportAny]
+                        output = await self.executor(datapoint.data)
 
                     L.set_span_output(output)
                 target = datapoint.target
@@ -439,7 +439,7 @@ class Evaluation:
 
         eval_datapoint = EvaluationResultDatapoint(
             id=evaluation_id,
-            data=datapoint.data,  # pyright: ignore[reportAny]
+            data=datapoint.data,
             target=target,
             executor_output=output,
             scores=scores,

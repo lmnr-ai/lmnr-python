@@ -26,13 +26,13 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
     logger: Logger = get_default_logger(__name__)
 
     # Store original functions for alias replacement and uninstrumentation
-    _module_function_originals: dict[tuple[str, str], Callable[..., Any]] | None = None  # pyright: ignore[reportExplicitAny]
+    _module_function_originals: dict[tuple[str, str], Callable[..., Any]] | None = None
 
     @abstractmethod
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         pass
 
-    def wrapper_kwargs(self) -> dict[str, Any]:  # pyright: ignore[reportExplicitAny]
+    def wrapper_kwargs(self) -> dict[str, Any]:
         """Extra keyword arguments handed to every wrapper on every call.
 
         Override when a wrapper needs an instrumentor-level collaborator that is
@@ -45,8 +45,8 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
 
     @staticmethod
     def _replace_function_aliases(
-        original: Callable[..., Any],  # pyright: ignore[reportExplicitAny]
-        wrapped: Callable[..., Any],  # pyright: ignore[reportExplicitAny]
+        original: Callable[..., Any],
+        wrapped: Callable[..., Any],
     ) -> None:
         """
         Replace all references to the original function across ALL loaded modules.
@@ -67,10 +67,10 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
             module_dict = getattr(module, "__dict__", None)
             if not module_dict:
                 continue
-            for attr, value in list(module_dict.items()):  # pyright: ignore[reportAny]
+            for attr, value in list(module_dict.items()):
                 if value is original:
                     try:
-                        setattr(module, attr, wrapped)  # pyright: ignore[reportAny]
+                        setattr(module, attr, wrapped)
                     except (AttributeError, TypeError):
                         # Some modules may have read-only attributes
                         pass
@@ -97,7 +97,7 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
             return False
 
         try:
-            original = getattr(module, function_name)  # pyright: ignore[reportAny]
+            original = getattr(module, function_name)
         except AttributeError:
             return False
 
@@ -111,7 +111,7 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
         setattr(module, function_name, wrapped_function)
 
         # Replace all existing references to the original function across ALL loaded modules
-        self._replace_function_aliases(original, wrapped_function)  # pyright: ignore[reportUnknownArgumentType, reportAny]
+        self._replace_function_aliases(original, wrapped_function)  # pyright: ignore[reportUnknownArgumentType]
 
         return True
 
@@ -137,13 +137,13 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
         current = getattr(module, function_name, None)
         setattr(module, function_name, original)
         if current is not None:
-            self._replace_function_aliases(current, original)  # pyright: ignore[reportAny]
+            self._replace_function_aliases(current, original)
         if self._module_function_originals is not None:
             del self._module_function_originals[key]
 
     # default implementation, can be overridden by subclasses
     @override
-    def _instrument(self, **kwargs: dict[str, Any]):  #pyright: ignore[reportExplicitAny]
+    def _instrument(self, **kwargs: dict[str, Any]):
         handler_kwargs = self.wrapper_kwargs()
         for wrapped_function_spec in self.instrumentor_config["wrapped_functions"]:
             package_name = wrapped_function_spec["package_name"]
@@ -189,7 +189,7 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
 
     # default implementation, can be overridden by subclasses
     @override
-    def _uninstrument(self, **kwargs: dict[str, Any]):  #pyright: ignore[reportExplicitAny]
+    def _uninstrument(self, **kwargs: dict[str, Any]):
         for wrapped_function_spec in self.instrumentor_config["wrapped_functions"]:
             package_name = wrapped_function_spec["package_name"]
             object_name = wrapped_function_spec.get("object_name")

@@ -29,9 +29,9 @@ def parse_iso_datetime(value: str) -> datetime.datetime:
 Numeric = int | float
 NumericTypes = (int, float)  # for use with isinstance
 
-EvaluationDatapointData = Any  # pyright: ignore[reportExplicitAny] non-null, must be JSON-serializable
-EvaluationDatapointTarget = Any | None  # pyright: ignore[reportExplicitAny] must be JSON-serializable
-EvaluationDatapointMetadata = Any | None  # pyright: ignore[reportExplicitAny] must be JSON-serializable
+EvaluationDatapointData = Any  # non-null, must be JSON-serializable
+EvaluationDatapointTarget = Any | None  # must be JSON-serializable
+EvaluationDatapointMetadata = Any | None  # must be JSON-serializable
 LaminarSpanType = Literal[
     "DEFAULT",
     "LLM",
@@ -45,10 +45,10 @@ LaminarSpanType = Literal[
 # EvaluationDatapoint is a single data point in the evaluation
 class Datapoint(BaseModel):
     # input to the executor function.
-    data: EvaluationDatapointData  # pyright: ignore[reportExplicitAny]
+    data: EvaluationDatapointData
     # input to the evaluator function (alongside the executor output).
-    target: EvaluationDatapointTarget = Field(default_factory=dict)  # pyright: ignore[reportAny]
-    metadata: EvaluationDatapointMetadata = Field(default_factory=dict)  # pyright: ignore[reportAny]
+    target: EvaluationDatapointTarget = Field(default_factory=dict)
+    metadata: EvaluationDatapointMetadata = Field(default_factory=dict)
     id: uuid.UUID | None = Field(default=None)
     created_at: datetime.datetime | None = Field(default=None, alias="createdAt")
 
@@ -99,12 +99,12 @@ class GetDatapointsResponse(TypedDict):
     total_count: int
 
 
-def parse_get_datapoints_response(data: dict[str, int | list[dict[str, Any]]]) -> GetDatapointsResponse:  # pyright: ignore[reportExplicitAny]
+def parse_get_datapoints_response(data: dict[str, int | list[dict[str, Any]]]) -> GetDatapointsResponse:
     """Parse a `GetDatapointsResponse` from a `GET /v1/datasets/datapoints`
     response. Each item still goes through `Datapoint.model_validate` for its
     own uuid/datetime coercion."""
     return GetDatapointsResponse(
-        items=[Datapoint.model_validate(item) for item in cast(list[dict[str, Any]], data["items"])],  # pyright: ignore[reportExplicitAny]
+        items=[Datapoint.model_validate(item) for item in cast(list[dict[str, Any]], data["items"])],
         total_count=cast(int, data["totalCount"]),
     )
 
@@ -168,7 +168,7 @@ class SessionBlock(TypedDict):
     # Block type; one of `SessionBlockType` for known blocks.
     type: str
     # Type-specific payload; narrow via the `*BlockContent` shapes.
-    content: dict[str, Any]  # pyright: ignore[reportExplicitAny]
+    content: dict[str, Any]
 
 
 class DebugContext(TypedDict, total=False):
@@ -199,7 +199,7 @@ class DebugContext(TypedDict, total=False):
     cache_until: str | None
 
 
-def deserialize_debug_context(data: dict[str, Any] | DebugContext) -> DebugContext:  # pyright: ignore[reportExplicitAny]
+def deserialize_debug_context(data: dict[str, Any] | DebugContext) -> DebugContext:
     """Parse a debug block from a dict, accepting camelCase and snake_case.
 
     All ids are kept VERBATIM: the producer emits the run's exact session /
@@ -335,7 +335,7 @@ class LaminarSpanContext(BaseModel):
             }
             return cls.model_validate(converted_data)
         elif isinstance(data, str):  # pyright: ignore[reportUnnecessaryIsInstance]
-            return cls.deserialize(json.loads(data))  # pyright: ignore[reportAny]
+            return cls.deserialize(json.loads(data))
         else:
             raise TypeError("Invalid span_context provided")  # pyright: ignore[reportUnreachable]
 

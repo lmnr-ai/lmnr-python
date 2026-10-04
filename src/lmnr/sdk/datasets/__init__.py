@@ -43,7 +43,7 @@ def _require_dataset_integer(value: object, message: str) -> None:
 
 class EvaluationDataset(ABC):
     @abstractmethod
-    def __init__(self, *args: list[Any], **kwargs: dict[str, Any]):  # pyright: ignore[reportExplicitAny]
+    def __init__(self, *args: list[Any], **kwargs: dict[str, Any]):
         pass
 
     @abstractmethod

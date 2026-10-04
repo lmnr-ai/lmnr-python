@@ -29,11 +29,11 @@ T = TypeVar("T")
 def wrap_pregel_stream(
     _to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., Iterable[T]],
-    instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 )-> Iterable[T]:
-    graph = cast(Graph, instance.get_graph())  # pyright: ignore[reportAny]
+    graph = cast(Graph, instance.get_graph())
     nodes = [
         {
             "id": node.id,
@@ -63,11 +63,11 @@ def wrap_pregel_stream(
 async def async_wrap_pregel_stream(
     _to_wrap: WrappedFunctionSpec,
     wrapped: Callable[..., AsyncIterable[T]],
-    instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 )-> AsyncIterable[T]:
-    graph = cast(Graph, await instance.aget_graph())  # pyright: ignore[reportAny]
+    graph = cast(Graph, await instance.aget_graph())
     nodes = [
         {
             "id": node.id,

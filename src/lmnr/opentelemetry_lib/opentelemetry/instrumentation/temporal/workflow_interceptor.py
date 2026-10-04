@@ -48,7 +48,7 @@ def _decode(payload: temporalio.api.common.v1.Payload | None) -> str | None:
     if payload is None:
         return None
     try:
-        value = _payload_converter.from_payloads([payload])[0]  # pyright: ignore[reportAny]
+        value = _payload_converter.from_payloads([payload])[0]
         return value if isinstance(value, str) else None
     except Exception:
         return None
@@ -96,11 +96,11 @@ class LaminarWorkflowInboundInterceptor(temporalio.worker.WorkflowInboundInterce
         super().init(_LaminarWorkflowOutboundInterceptor(outbound, self))
 
     @override
-    async def execute_workflow(  # pyright: ignore[reportAny]
+    async def execute_workflow(
         self, input: temporalio.worker.ExecuteWorkflowInput
-    ) -> Any:  # pyright: ignore[reportExplicitAny]
+    ) -> Any:
         self._start_headers = dict(input.headers or {})
-        return await super().execute_workflow(input)  # pyright: ignore[reportAny]
+        return await super().execute_workflow(input)
 
     @override
     async def handle_signal(
@@ -116,15 +116,15 @@ class LaminarWorkflowInboundInterceptor(temporalio.worker.WorkflowInboundInterce
             _handler_headers.reset(token)
 
     @override
-    async def handle_update_handler(  # pyright: ignore[reportAny]
+    async def handle_update_handler(
         self, input: temporalio.worker.HandleUpdateInput
-    ) -> Any:  # pyright: ignore[reportExplicitAny]
+    ) -> Any:
         headers = dict(input.headers or {})
         if not _has_trace_headers(headers):
-            return await super().handle_update_handler(input)  # pyright: ignore[reportAny]
+            return await super().handle_update_handler(input)
         token = _handler_headers.set(headers)
         try:
-            return await super().handle_update_handler(input)  # pyright: ignore[reportAny]
+            return await super().handle_update_handler(input)
         finally:
             _handler_headers.reset(token)
 
@@ -147,28 +147,28 @@ class _LaminarWorkflowOutboundInterceptor(
         super().__init__(next)
         self.root: LaminarWorkflowInboundInterceptor = root
 
-    def _merge(self, input: Any) -> None:  # pyright: ignore[reportAny, reportExplicitAny]
+    def _merge(self, input: Any) -> None:
         # Caller-supplied headers win over the propagated trace headers.
-        input.headers = {**self.root.active_headers(), **dict(input.headers or {})}  # pyright: ignore[reportAny]
+        input.headers = {**self.root.active_headers(), **dict(input.headers or {})}
 
     @override
     def start_activity(
         self, input: temporalio.worker.StartActivityInput
-    ) -> temporalio.workflow.ActivityHandle[Any]:  # pyright: ignore[reportExplicitAny]
+    ) -> temporalio.workflow.ActivityHandle[Any]:
         self._merge(input)
         return super().start_activity(input)
 
     @override
     def start_local_activity(
         self, input: temporalio.worker.StartLocalActivityInput
-    ) -> temporalio.workflow.ActivityHandle[Any]:  # pyright: ignore[reportExplicitAny]
+    ) -> temporalio.workflow.ActivityHandle[Any]:
         self._merge(input)
         return super().start_local_activity(input)
 
     @override
     async def start_child_workflow(
         self, input: temporalio.worker.StartChildWorkflowInput
-    ) -> temporalio.workflow.ChildWorkflowHandle[Any, Any]:  # pyright: ignore[reportExplicitAny]
+    ) -> temporalio.workflow.ChildWorkflowHandle[Any, Any]:
         self._merge(input)
         return await super().start_child_workflow(input)
 

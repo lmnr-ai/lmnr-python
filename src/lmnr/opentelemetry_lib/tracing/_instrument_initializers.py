@@ -16,13 +16,13 @@ logger = get_default_logger(__name__)
 
 class InstrumentorInitializer(abc.ABC):
     @abc.abstractmethod
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         pass
 
 
 class AlephAlphaInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("aleph_alpha_client"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-alephalpha"):
@@ -35,7 +35,7 @@ class AlephAlphaInstrumentorInitializer(InstrumentorInitializer):
 
 class AnthropicInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("anthropic"):
             return None
 
@@ -46,7 +46,7 @@ class AnthropicInstrumentorInitializer(InstrumentorInitializer):
 
 class BedrockInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("boto3"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-bedrock"):
@@ -71,7 +71,7 @@ class BrowserUseInstrumentorInitializer(InstrumentorInitializer):
     """
 
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("browser-use"):
             return None
 
@@ -91,8 +91,8 @@ class BrowserUseSessionInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(
         self,
         async_client: AsyncLaminarClient | None,
-        *args: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-        **kwargs: Any,  # pyright: ignore[reportExplicitAny, reportAny]
+        *args: Any,
+        **kwargs: Any,
     ) -> BaseInstrumentor | None:
         if not is_package_installed("browser-use"):
             return None
@@ -113,7 +113,7 @@ class BrowserUseSessionInstrumentorInitializer(InstrumentorInitializer):
 
 class BubusInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("bubus"):
             return None
 
@@ -124,7 +124,7 @@ class BubusInstrumentorInitializer(InstrumentorInitializer):
 
 class ChromaInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("chromadb"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-chromadb"):
@@ -137,7 +137,7 @@ class ChromaInstrumentorInitializer(InstrumentorInitializer):
 
 class ClaudeAgentInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("claude-agent-sdk"):
             return None
 
@@ -151,7 +151,7 @@ class ClaudeAgentInstrumentorInitializer(InstrumentorInitializer):
 
 class CohereInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("cohere"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-cohere"):
@@ -164,7 +164,7 @@ class CohereInstrumentorInitializer(InstrumentorInitializer):
 
 class CrewAIInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("crewai"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-crewai"):
@@ -177,7 +177,7 @@ class CrewAIInstrumentorInitializer(InstrumentorInitializer):
 
 class CuaAgentInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("cua-agent"):
             return None
 
@@ -188,7 +188,7 @@ class CuaAgentInstrumentorInitializer(InstrumentorInitializer):
 
 class CuaComputerInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("cua-computer"):
             return None
 
@@ -199,7 +199,7 @@ class CuaComputerInstrumentorInitializer(InstrumentorInitializer):
 
 class DaytonaSDKInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("daytona"):
             return None
 
@@ -210,7 +210,7 @@ class DaytonaSDKInstrumentorInitializer(InstrumentorInitializer):
 
 class DeepagentsInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("deepagents"):
             return None
         # deepagents ships its own `AgentMiddleware` API (via langchain.agents);
@@ -225,7 +225,7 @@ class DeepagentsInstrumentorInitializer(InstrumentorInitializer):
 
 class GoogleADKInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("google-adk"):
             return None
 
@@ -238,7 +238,7 @@ class GoogleADKInstrumentorInitializer(InstrumentorInitializer):
 
 class GoogleGenAIInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("google-genai"):
             return None
 
@@ -251,7 +251,7 @@ class GoogleGenAIInstrumentorInitializer(InstrumentorInitializer):
 
 class GroqInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("groq"):
             return None
 
@@ -262,7 +262,7 @@ class GroqInstrumentorInitializer(InstrumentorInitializer):
 
 class HaystackInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("haystack"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-haystack"):
@@ -275,7 +275,7 @@ class HaystackInstrumentorInitializer(InstrumentorInitializer):
 
 class KernelInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("kernel"):
             return None
 
@@ -286,7 +286,7 @@ class KernelInstrumentorInitializer(InstrumentorInitializer):
 
 class LanceDBInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("lancedb"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-lancedb"):
@@ -299,7 +299,7 @@ class LanceDBInstrumentorInitializer(InstrumentorInitializer):
 
 class LangchainInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("langchain"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-langchain"):
@@ -312,7 +312,7 @@ class LangchainInstrumentorInitializer(InstrumentorInitializer):
 
 class LangfuseInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportAny, reportExplicitAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("langfuse"):
             return None
 
@@ -358,7 +358,7 @@ class LangfuseInstrumentorInitializer(InstrumentorInitializer):
 
 class LanggraphInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("langgraph"):
             return None
         if not is_package_installed("langchain-core"):
@@ -371,7 +371,7 @@ class LanggraphInstrumentorInitializer(InstrumentorInitializer):
 
 class LitellmInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("litellm"):
             return None
 
@@ -382,7 +382,7 @@ class LitellmInstrumentorInitializer(InstrumentorInitializer):
 
 class LlamaIndexInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not (
             is_package_installed(
                 "llama-index") or is_package_installed("llama_index")
@@ -399,7 +399,7 @@ class LlamaIndexInstrumentorInitializer(InstrumentorInitializer):
 
 class MarqoInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("marqo"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-marqo"):
@@ -412,7 +412,7 @@ class MarqoInstrumentorInitializer(InstrumentorInitializer):
 
 class MCPInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("mcp"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-mcp"):
@@ -425,7 +425,7 @@ class MCPInstrumentorInitializer(InstrumentorInitializer):
 
 class MilvusInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("pymilvus"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-milvus"):
@@ -438,7 +438,7 @@ class MilvusInstrumentorInitializer(InstrumentorInitializer):
 
 class MistralInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("mistralai"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-mistralai"):
@@ -451,7 +451,7 @@ class MistralInstrumentorInitializer(InstrumentorInitializer):
 
 class OllamaInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("ollama"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-ollama"):
@@ -464,7 +464,7 @@ class OllamaInstrumentorInitializer(InstrumentorInitializer):
 
 class OpenAIInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("openai"):
             return None
 
@@ -475,7 +475,7 @@ class OpenAIInstrumentorInitializer(InstrumentorInitializer):
 
 class OpenAIAgentsInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("openai-agents"):
             return None
 
@@ -488,7 +488,7 @@ class OpenAIAgentsInstrumentorInitializer(InstrumentorInitializer):
 
 class OpenTelemetryInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         from ..opentelemetry.instrumentation.opentelemetry import (
             OpentelemetryInstrumentor,
         )
@@ -501,8 +501,8 @@ class PatchrightInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(
         self,
         async_client: AsyncLaminarClient | None,
-        *args: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-        **kwargs: Any,  # pyright: ignore[reportExplicitAny, reportAny]
+        *args: Any,
+        **kwargs: Any,
     ) -> BaseInstrumentor | None:
         if not is_package_installed("patchright"):
             return None
@@ -517,7 +517,7 @@ class PatchrightInstrumentorInitializer(InstrumentorInitializer):
 
 class PineconeInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("pinecone"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-pinecone"):
@@ -533,8 +533,8 @@ class PlaywrightInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(
         self,
         async_client: AsyncLaminarClient | None,
-        *args: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-        **kwargs: Any,  # pyright: ignore[reportExplicitAny, reportAny]
+        *args: Any,
+        **kwargs: Any,
     ) -> BaseInstrumentor | None:
         if not is_package_installed("playwright"):
             return None
@@ -549,7 +549,7 @@ class PlaywrightInstrumentorInitializer(InstrumentorInitializer):
 
 class PydanticAIInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not (
             is_package_installed("pydantic-ai-slim")
             or is_package_installed("pydantic-ai")
@@ -565,7 +565,7 @@ class PydanticAIInstrumentorInitializer(InstrumentorInitializer):
 
 class QdrantInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("qdrant_client"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-qdrant"):
@@ -578,7 +578,7 @@ class QdrantInstrumentorInitializer(InstrumentorInitializer):
 
 class ReplicateInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("replicate"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-replicate"):
@@ -591,7 +591,7 @@ class ReplicateInstrumentorInitializer(InstrumentorInitializer):
 
 class SageMakerInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("boto3"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-sagemaker"):
@@ -604,7 +604,7 @@ class SageMakerInstrumentorInitializer(InstrumentorInitializer):
 
 class SkyvernInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("skyvern"):
             return None
 
@@ -615,7 +615,7 @@ class SkyvernInstrumentorInitializer(InstrumentorInitializer):
 
 class TemporalInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("temporalio"):
             return None
 
@@ -626,7 +626,7 @@ class TemporalInstrumentorInitializer(InstrumentorInitializer):
 
 class TogetherInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("together"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-together"):
@@ -639,7 +639,7 @@ class TogetherInstrumentorInitializer(InstrumentorInitializer):
 
 class TransformersInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("transformers"):
             return None
         if not is_package_installed(
@@ -653,7 +653,7 @@ class TransformersInstrumentorInitializer(InstrumentorInitializer):
 
 class VertexAIInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("vertexai"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-vertexai"):
@@ -666,7 +666,7 @@ class VertexAIInstrumentorInitializer(InstrumentorInitializer):
 
 class WatsonxInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not (
             is_package_installed("ibm-watsonx-ai")
             or is_package_installed("ibm-watson-machine-learning")
@@ -682,7 +682,7 @@ class WatsonxInstrumentorInitializer(InstrumentorInitializer):
 
 class WeaviateInstrumentorInitializer(InstrumentorInitializer):
     @override
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:  # pyright: ignore[reportExplicitAny, reportAny]
+    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("weaviate"):
             return None
         if not is_package_installed("opentelemetry-instrumentation-weaviate"):

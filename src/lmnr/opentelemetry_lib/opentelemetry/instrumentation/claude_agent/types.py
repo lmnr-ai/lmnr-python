@@ -38,5 +38,5 @@ class CASLaminarContext(TypedDict):
     original_env: dict[str, str | None]
     env_set_keys: set[str]
     options_env_snapshot: dict[str, str | None]
-    original_settings: dict[str, Any]  # pyright: ignore[reportExplicitAny]
+    original_settings: dict[str, Any]
     settings_overridden: bool

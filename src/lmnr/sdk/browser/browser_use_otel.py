@@ -54,10 +54,10 @@ T = TypeVar("T")
 
 async def _wrap(
     to_wrap: BrowserUseSpec,
-    wrapped: Callable[..., Coroutine[Any, Any, T]],  # pyright: ignore[reportExplicitAny]
-    instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-    args: Sequence[Any],  # pyright: ignore[reportExplicitAny]
-    kwargs: dict[str, Any],  # pyright: ignore[reportExplicitAny]
+    wrapped: Callable[..., Coroutine[Any, Any, T]],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ) -> T:
     span_name = to_wrap.get("span_name")
     attributes = {

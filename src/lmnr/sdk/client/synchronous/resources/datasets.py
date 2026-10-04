@@ -130,4 +130,4 @@ class Datasets(BaseResource):
             raise ValueError(
                 f"Error pulling data from dataset: [{response.status_code}] {response.text}"
             )
-        return parse_get_datapoints_response(cast(dict[str, int | list[dict[str, Any]]], response.json()))  # pyright: ignore[reportExplicitAny]
+        return parse_get_datapoints_response(cast(dict[str, int | list[dict[str, Any]]], response.json()))

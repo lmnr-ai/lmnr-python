@@ -18,7 +18,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
 def add_spec_wrapper(
     wrapt_handler: WrapperHandler[SpecT],
     wrapped_spec: SpecT,
-    **handler_kwargs: Any,  # pyright: ignore[reportExplicitAny, reportAny]
+    **handler_kwargs: Any,
 ) -> WraptWrapper:
     """Creates a wrapt-compatible wrapper function.
 
@@ -60,16 +60,16 @@ def add_spec_wrapper(
         WraptWrapper: function that can be passed into wrapt.wrap_function_wrapper.
     """
 
-    def wrapper(  # pyright: ignore[reportAny]
-        wrapped: Callable[..., Any],  # pyright: ignore[reportExplicitAny]
-        instance: Any,  # pyright: ignore[reportExplicitAny, reportAny]
-        args: Sequence[Any] | None = None,  # pyright: ignore[reportExplicitAny]
-        kwargs: dict[str, Any] | None = None,  # pyright: ignore[reportExplicitAny]
-    ) -> Any:  # pyright: ignore[reportExplicitAny]
+    def wrapper(
+        wrapped: Callable[..., Any],
+        instance: Any,
+        args: Sequence[Any] | None = None,
+        kwargs: dict[str, Any] | None = None,
+    ) -> Any:
         # wrapt always passes args/kwargs, but the parameters are declared
         # optional for direct callers; normalize so the handler's signature does
         # not have to admit None.
-        return wrapt_handler(  # pyright: ignore[reportAny]
+        return wrapt_handler(
             wrapped_spec, wrapped, instance, args or (), kwargs or {}, **handler_kwargs
         )
 
