@@ -9,7 +9,7 @@ from weakref import WeakKeyDictionary
 import orjson
 from opentelemetry import trace
 
-from lmnr.opentelemetry_lib.tracing import get_session_recording_options
+from lmnr.opentelemetry_lib.tracing.wrapper import get_session_recording_options
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.sdk.browser.background_send_events import (
     get_background_loop,

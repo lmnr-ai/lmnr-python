@@ -9,7 +9,7 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import Span as SDKSpan
 from opentelemetry.trace.span import Span
 
-from lmnr import Laminar
+from lmnr.sdk.laminar import Laminar
 from lmnr.opentelemetry_lib.tracing.attributes import SPAN_IDS_PATH, SPAN_PATH
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.sdk.log import get_default_logger

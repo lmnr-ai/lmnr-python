@@ -9,7 +9,7 @@ from typing import Any, cast
 from opentelemetry.trace.status import Status, StatusCode
 from typing_extensions import TypeVar, override
 
-from lmnr import Laminar
+from lmnr.sdk.laminar import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.kernel.utils import (
     process_tool_output_formatter,
     screenshot_tool_output_formatter,

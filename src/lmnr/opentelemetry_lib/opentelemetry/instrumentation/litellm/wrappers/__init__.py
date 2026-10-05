@@ -6,7 +6,7 @@ from opentelemetry.trace import Status, StatusCode
 from opentelemetry.util.types import AttributeValue
 from typing_extensions import TypeVar
 
-from lmnr import Laminar
+from lmnr.sdk.laminar import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.litellm.rollout import (
     DualIteratorWrapper,
 )

@@ -5,7 +5,7 @@ from typing import Any, TypeVar
 import pydantic
 from typing_extensions import override
 
-from lmnr import Laminar
+from lmnr.sdk.laminar import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
 )

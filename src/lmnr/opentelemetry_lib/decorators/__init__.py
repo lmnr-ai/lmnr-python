@@ -8,7 +8,7 @@ from opentelemetry import context as context_api
 from opentelemetry.sdk.trace import Span as SdkSpan
 from opentelemetry.trace import Span, Status, StatusCode
 
-from lmnr.opentelemetry_lib.tracing import is_tracing_initialized
+from lmnr.opentelemetry_lib.tracing.wrapper import is_tracing_initialized
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     METADATA,

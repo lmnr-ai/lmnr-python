@@ -9,7 +9,7 @@ from opentelemetry.trace import Status, StatusCode
 from opentelemetry.trace.span import Span
 from typing_extensions import TypeVar
 
-from lmnr import Laminar
+from lmnr.sdk.laminar import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.proxy import (
     create_proxy_for_transport,
     release_port,

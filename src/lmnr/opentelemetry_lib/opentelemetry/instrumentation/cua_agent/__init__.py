@@ -9,7 +9,7 @@ from opentelemetry.trace import Span
 from opentelemetry.trace.status import Status, StatusCode
 from typing_extensions import override
 
-from lmnr import Laminar
+from lmnr.sdk.laminar import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
 )

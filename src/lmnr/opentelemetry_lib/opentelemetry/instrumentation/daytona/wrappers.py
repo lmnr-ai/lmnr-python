@@ -14,7 +14,7 @@ from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.trace import Span, Status, StatusCode
 from typing_extensions import TypeVar
 
-from lmnr import Laminar
+from lmnr.sdk.laminar import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
