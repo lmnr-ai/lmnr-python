@@ -7,7 +7,7 @@ from opentelemetry.context import Context
 from opentelemetry.sdk.trace import Span as SDKSpan
 from typing_extensions import override
 
-from lmnr.opentelemetry_lib.tracing import TRACER_NAME, get_tracer_wrapper
+from lmnr.opentelemetry_lib.tracing.wrapper import TRACER_NAME, get_tracer_wrapper
 from lmnr.opentelemetry_lib.tracing.context import (
     get_current_context,
     pop_span_context,
