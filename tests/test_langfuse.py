@@ -1870,7 +1870,7 @@ def test_bridge_is_rebound_to_the_new_processor_after_a_reinit(span_exporter):
     )
 
     import lmnr.sdk.laminar as laminar_mod
-    from lmnr.opentelemetry_lib import tracing as tracing_mod
+    from lmnr.opentelemetry_lib.tracing import wrapper as wrapper_mod
     from lmnr.opentelemetry_lib.tracing import init_tracing, reset_tracing
 
     def boot(exporter):
@@ -1889,11 +1889,11 @@ def test_bridge_is_rebound_to_the_new_processor_after_a_reinit(span_exporter):
     def processors(provider):
         return provider._active_span_processor._span_processors
 
-    saved_wrapper = tracing_mod._tracer_wrapper
-    saved_options = tracing_mod._session_recording_options
+    saved_wrapper = wrapper_mod._tracer_wrapper
+    saved_options = wrapper_mod._session_recording_options
     saved_initialized = Laminar.is_initialized()
-    tracing_mod._tracer_wrapper = None
-    tracing_mod._session_recording_options = None
+    wrapper_mod._tracer_wrapper = None
+    wrapper_mod._session_recording_options = None
     _reset_langfuse_bridge()
 
     try:
@@ -1929,8 +1929,8 @@ def test_bridge_is_rebound_to_the_new_processor_after_a_reinit(span_exporter):
         get_langfuse_instrumentor().uninstrument()
         _reset_langfuse_bridge()
         reset_tracing()
-        tracing_mod._tracer_wrapper = saved_wrapper
-        tracing_mod._session_recording_options = saved_options
+        wrapper_mod._tracer_wrapper = saved_wrapper
+        wrapper_mod._session_recording_options = saved_options
         Laminar._Laminar__initialized = saved_initialized
 
 

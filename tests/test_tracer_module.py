@@ -7,7 +7,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 
-from lmnr.opentelemetry_lib import tracing as tracing_mod
+from lmnr.opentelemetry_lib.tracing import wrapper as wrapper_mod
 from lmnr.opentelemetry_lib.tracing import (
     get_session_recording_options,
     get_tracer_wrapper,
@@ -39,7 +39,7 @@ def test_tracer_helpers_do_not_initialize_tracing(span_exporter, monkeypatch):
     """`get_tracer()` and `get_laminar_tracer_provider()` used to call
     `TracerWrapper()`, which silently built a full API-key-less tracer (exporter
     threads and an atexit hook included) when tracing was not initialized."""
-    monkeypatch.setattr(tracing_mod, "_tracer_wrapper", None)
+    monkeypatch.setattr(wrapper_mod, "_tracer_wrapper", None)
 
     assert is_tracing_initialized() is False
 
@@ -53,13 +53,13 @@ def test_tracer_helpers_do_not_initialize_tracing(span_exporter, monkeypatch):
 
 
 def test_session_recording_options_default_before_init(monkeypatch):
-    monkeypatch.setattr(tracing_mod, "_session_recording_options", None)
+    monkeypatch.setattr(wrapper_mod, "_session_recording_options", None)
     assert get_session_recording_options() == {"mask_input_options": None}
 
 
 def test_reset_tracing_is_idempotent(monkeypatch):
-    monkeypatch.setattr(tracing_mod, "_tracer_wrapper", None)
-    monkeypatch.setattr(tracing_mod, "_session_recording_options", None)
+    monkeypatch.setattr(wrapper_mod, "_tracer_wrapper", None)
+    monkeypatch.setattr(wrapper_mod, "_session_recording_options", None)
 
     reset_tracing()
     reset_tracing()
@@ -75,16 +75,16 @@ def isolated_tracing():
     The providers are process-lifetime by design and are deliberately NOT
     saved/restored — sharing them across cycles is the behavior under test.
     """
-    saved_wrapper = tracing_mod._tracer_wrapper
-    saved_options = tracing_mod._session_recording_options
-    tracing_mod._tracer_wrapper = None
-    tracing_mod._session_recording_options = None
+    saved_wrapper = wrapper_mod._tracer_wrapper
+    saved_options = wrapper_mod._session_recording_options
+    wrapper_mod._tracer_wrapper = None
+    wrapper_mod._session_recording_options = None
     try:
         yield
     finally:
         reset_tracing()
-        tracing_mod._tracer_wrapper = saved_wrapper
-        tracing_mod._session_recording_options = saved_options
+        wrapper_mod._tracer_wrapper = saved_wrapper
+        wrapper_mod._session_recording_options = saved_options
 
 
 def _names(exporter):

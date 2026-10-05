@@ -6,7 +6,10 @@ from google.genai import types
 from google.genai._common import BaseModel
 from typing_extensions import TypedDict, TypeVar
 
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import dont_throw, to_dict
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    dont_throw,
+    to_dict,
+)
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 import orjson
 from opentelemetry import trace
 
-from lmnr.opentelemetry_lib.tracing import get_session_recording_options
+from lmnr.opentelemetry_lib.tracing.wrapper import get_session_recording_options
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from lmnr.sdk.browser.background_send_events import (

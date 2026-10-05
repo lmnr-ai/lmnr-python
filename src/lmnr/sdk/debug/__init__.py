@@ -224,6 +224,22 @@ class DebugRuntime:
 
 _runtime: DebugRuntime | None = None
 _initialized = False
+# Process-wide "run live" latch for v2 debugger replay (shared spec §7.3). Set
+# True on the first cache MISS so every later LLM call in this process skips the
+# cache endpoint and runs live; reset by `Laminar.shutdown()`. Lives here (not on
+# `Laminar`) so `replay.py` does not need to import `laminar`.
+_run_live = False
+
+
+def is_debug_run_live() -> bool:
+    """True once any LLM call in this run has seen a cache MISS."""
+    return _run_live
+
+
+def set_debug_run_live(value: bool) -> None:
+    """Latch (or reset) the process-wide debugger run-live flag."""
+    global _run_live
+    _run_live = value
 # Serializes the check-and-set of the one-shot init globals. Span creation runs
 # `init_debug_runtime_from_context` from arbitrary worker threads, so the
 # `_initialized` read and the `_runtime` write must be atomic or two threads

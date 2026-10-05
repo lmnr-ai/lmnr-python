@@ -22,7 +22,6 @@ from opentelemetry.trace import INVALID_TRACE_ID, Span, Status, StatusCode, use_
 from opentelemetry.util.types import AttributeValue
 from typing_extensions import TypedDict
 
-from lmnr import AsyncLaminarClient
 from lmnr.opentelemetry_lib.tracing import (
     flush_tracing,
     force_reinit_processor,
@@ -59,6 +58,7 @@ from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.utils import set_association_props_in_context
+from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.utils import (
     JsonValue,
     from_env,
@@ -206,21 +206,19 @@ class Laminar:
     # from-context path has no access to initialize()'s args).
     __base_url_for_debug: str | None = None
     __http_port_for_debug: int | None = None
-    # Process-wide "run live" latch for v2 debugger replay (shared spec §7.3).
-    # Set True on the first cache MISS so every later LLM call in this process
-    # skips the cache endpoint and runs live; reset in shutdown(). Mirrors the
-    # TS `Laminar.debugRunLive`.
-    __debug_run_live: bool = False
-
     @classmethod
     def is_debug_run_live(cls) -> bool:
         """True once any LLM call in this run has seen a cache MISS."""
-        return cls.__debug_run_live
+        from lmnr.sdk.debug import is_debug_run_live
+
+        return is_debug_run_live()
 
     @classmethod
     def set_debug_run_live(cls, value: bool) -> None:
         """Latch (or reset) the process-wide debugger run-live flag."""
-        cls.__debug_run_live = value
+        from lmnr.sdk.debug import set_debug_run_live
+
+        set_debug_run_live(value)
 
     @classmethod
     def initialize(

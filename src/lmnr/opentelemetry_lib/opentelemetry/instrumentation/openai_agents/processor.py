@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 
     from lmnr.sdk.types import LaminarSpanContext
 
-from lmnr import Laminar
+from lmnr.sdk.laminar import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.helpers import (
     DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY,
     export_span_data,

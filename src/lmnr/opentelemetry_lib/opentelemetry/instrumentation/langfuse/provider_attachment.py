@@ -63,7 +63,7 @@ class ProviderAttachment:
 
         # Skip the Laminar provider itself — our processor and translator are
         # already attached there.
-        from lmnr.opentelemetry_lib.tracing import get_tracer_wrapper
+        from lmnr.opentelemetry_lib.tracing.wrapper import get_tracer_wrapper
 
         lmnr_wrapper = get_tracer_wrapper()
         if lmnr_wrapper is not None and lmnr_wrapper.tracer_provider is provider:
