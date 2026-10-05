@@ -17,7 +17,7 @@ from typing import Any
 from opentelemetry.sdk.trace import Span
 
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
-from lmnr.sdk.debug import get_runtime
+from lmnr.sdk.debug import get_runtime, is_debug_run_live, set_debug_run_live
 from lmnr.sdk.debug.hash import debug_input_hash
 from lmnr.sdk.debug.outcome import CacheOutcome
 from lmnr.sdk.log import get_default_logger
@@ -85,10 +85,7 @@ def cache_outcome_for(span: Span | LaminarSpan | None) -> CacheOutcome | None:
     runtime = get_runtime()
     if runtime is None or not runtime.replay_configured:
         return None
-    # Function-local import to avoid the laminar <-> debug import cycle.
-    from lmnr.sdk.laminar import Laminar
-
-    if Laminar.is_debug_run_live():
+    if is_debug_run_live():
         return CacheOutcome(kind="live")
     input_messages = input_messages_from_span(span)
     if input_messages is None:
@@ -101,7 +98,7 @@ def cache_outcome_for(span: Span | LaminarSpan | None) -> CacheOutcome | None:
         input_hash=input_hash,
     )
     if outcome.kind == "miss":
-        Laminar.set_debug_run_live(True)
+        set_debug_run_live(True)
     return outcome
 
 
@@ -115,9 +112,7 @@ async def acache_outcome_for(span: Span | LaminarSpan | None) -> CacheOutcome | 
     runtime = get_runtime()
     if runtime is None or not runtime.replay_configured:
         return None
-    from lmnr.sdk.laminar import Laminar
-
-    if Laminar.is_debug_run_live():
+    if is_debug_run_live():
         return CacheOutcome(kind="live")
     input_messages = input_messages_from_span(span)
     if input_messages is None:
@@ -130,7 +125,7 @@ async def acache_outcome_for(span: Span | LaminarSpan | None) -> CacheOutcome | 
         input_hash=input_hash,
     )
     if outcome.kind == "miss":
-        Laminar.set_debug_run_live(True)
+        set_debug_run_live(True)
     return outcome
 
 

@@ -206,21 +206,19 @@ class Laminar:
     # from-context path has no access to initialize()'s args).
     __base_url_for_debug: str | None = None
     __http_port_for_debug: int | None = None
-    # Process-wide "run live" latch for v2 debugger replay (shared spec §7.3).
-    # Set True on the first cache MISS so every later LLM call in this process
-    # skips the cache endpoint and runs live; reset in shutdown(). Mirrors the
-    # TS `Laminar.debugRunLive`.
-    __debug_run_live: bool = False
-
     @classmethod
     def is_debug_run_live(cls) -> bool:
         """True once any LLM call in this run has seen a cache MISS."""
-        return cls.__debug_run_live
+        from lmnr.sdk.debug import is_debug_run_live
+
+        return is_debug_run_live()
 
     @classmethod
     def set_debug_run_live(cls, value: bool) -> None:
         """Latch (or reset) the process-wide debugger run-live flag."""
-        cls.__debug_run_live = value
+        from lmnr.sdk.debug import set_debug_run_live
+
+        set_debug_run_live(value)
 
     @classmethod
     def initialize(
