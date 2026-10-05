@@ -1,10 +1,13 @@
 import logging
+from collections.abc import Mapping
 from enum import Enum
 from typing import TYPE_CHECKING
 
 from opentelemetry.trace import TracerProvider
 
-import lmnr.opentelemetry_lib.tracing._instrument_initializers as initializers
+from lmnr.opentelemetry_lib.tracing.instrumentor_initializer import (
+    InstrumentorInitializer,
+)
 from lmnr.opentelemetry_lib.utils.package_check import (
     get_package_version,
     is_package_installed,
@@ -96,57 +99,17 @@ class Instruments(Enum):
     WEAVIATE = "weaviate"
 
 
-INSTRUMENTATION_INITIALIZERS: dict[
-    Instruments, initializers.InstrumentorInitializer
-] = {
-    Instruments.ALEPHALPHA: initializers.AlephAlphaInstrumentorInitializer(),
-    Instruments.ANTHROPIC: initializers.AnthropicInstrumentorInitializer(),
-    Instruments.BEDROCK: initializers.BedrockInstrumentorInitializer(),
-    Instruments.BROWSER_USE: initializers.BrowserUseInstrumentorInitializer(),
-    Instruments.BROWSER_USE_SESSION: initializers.BrowserUseSessionInstrumentorInitializer(),
-    Instruments.BUBUS: initializers.BubusInstrumentorInitializer(),
-    Instruments.CHROMA: initializers.ChromaInstrumentorInitializer(),
-    Instruments.CLAUDE_AGENT: initializers.ClaudeAgentInstrumentorInitializer(),
-    Instruments.COHERE: initializers.CohereInstrumentorInitializer(),
-    Instruments.CREWAI: initializers.CrewAIInstrumentorInitializer(),
-    Instruments.CUA_AGENT: initializers.CuaAgentInstrumentorInitializer(),
-    Instruments.CUA_COMPUTER: initializers.CuaComputerInstrumentorInitializer(),
-    Instruments.DAYTONA_SDK: initializers.DaytonaSDKInstrumentorInitializer(),
-    Instruments.DEEPAGENTS: initializers.DeepagentsInstrumentorInitializer(),
-    Instruments.GOOGLE_ADK: initializers.GoogleADKInstrumentorInitializer(),
-    Instruments.GOOGLE_GENAI: initializers.GoogleGenAIInstrumentorInitializer(),
-    Instruments.GROQ: initializers.GroqInstrumentorInitializer(),
-    Instruments.HAYSTACK: initializers.HaystackInstrumentorInitializer(),
-    Instruments.KERNEL: initializers.KernelInstrumentorInitializer(),
-    Instruments.LANCEDB: initializers.LanceDBInstrumentorInitializer(),
-    Instruments.LANGCHAIN: initializers.LangchainInstrumentorInitializer(),
-    Instruments.LANGFUSE: initializers.LangfuseInstrumentorInitializer(),
-    Instruments.LANGGRAPH: initializers.LanggraphInstrumentorInitializer(),
-    Instruments.LITELLM: initializers.LitellmInstrumentorInitializer(),
-    Instruments.LLAMA_INDEX: initializers.LlamaIndexInstrumentorInitializer(),
-    Instruments.MARQO: initializers.MarqoInstrumentorInitializer(),
-    Instruments.MCP: initializers.MCPInstrumentorInitializer(),
-    Instruments.MILVUS: initializers.MilvusInstrumentorInitializer(),
-    Instruments.MISTRAL: initializers.MistralInstrumentorInitializer(),
-    Instruments.OLLAMA: initializers.OllamaInstrumentorInitializer(),
-    Instruments.OPENAI: initializers.OpenAIInstrumentorInitializer(),
-    Instruments.OPENAI_AGENTS: initializers.OpenAIAgentsInstrumentorInitializer(),
-    Instruments.OPENTELEMETRY: initializers.OpenTelemetryInstrumentorInitializer(),
-    Instruments.PATCHRIGHT: initializers.PatchrightInstrumentorInitializer(),
-    Instruments.PINECONE: initializers.PineconeInstrumentorInitializer(),
-    Instruments.PLAYWRIGHT: initializers.PlaywrightInstrumentorInitializer(),
-    Instruments.PYDANTIC_AI: initializers.PydanticAIInstrumentorInitializer(),
-    Instruments.QDRANT: initializers.QdrantInstrumentorInitializer(),
-    Instruments.REPLICATE: initializers.ReplicateInstrumentorInitializer(),
-    Instruments.SAGEMAKER: initializers.SageMakerInstrumentorInitializer(),
-    Instruments.SKYVERN: initializers.SkyvernInstrumentorInitializer(),
-    Instruments.TEMPORAL: initializers.TemporalInstrumentorInitializer(),
-    Instruments.TOGETHER: initializers.TogetherInstrumentorInitializer(),
-    Instruments.TRANSFORMERS: initializers.TransformersInstrumentorInitializer(),
-    Instruments.VERTEXAI: initializers.VertexAIInstrumentorInitializer(),
-    Instruments.WATSONX: initializers.WatsonxInstrumentorInitializer(),
-    Instruments.WEAVIATE: initializers.WeaviateInstrumentorInitializer(),
-}
+#: `Instruments` -> initializer. Populated by `register_initializers` (the
+#: built-ins via `default_initializers.register_default_initializers`, called
+#: from `lmnr/__init__.py`), so this module never imports the concrete
+#: initializers and stays out of the import cycle through the instrumentors.
+INSTRUMENTATION_INITIALIZERS: dict[Instruments, InstrumentorInitializer] = {}
+
+
+def register_initializers(
+    initializers: Mapping[Instruments, InstrumentorInitializer],
+) -> None:
+    INSTRUMENTATION_INITIALIZERS.update(initializers)
 
 
 #: Provider instrumentors that would produce spans overlapping with pydantic_ai's
@@ -231,6 +194,15 @@ def init_instrumentations(
     async_client: AsyncLaminarClient | None = None,
     lmnr_span_processor: "SpanProcessor | None" = None,
 ):
+    if not INSTRUMENTATION_INITIALIZERS:
+        # Filled by `lmnr/__init__.py` (see `register_initializers`). Empty means
+        # this ran while the package was still importing, before that call.
+        module_logger.error(
+            "No instrumentation initializers are registered, so nothing will be "
+            "auto-instrumented. Is Laminar being initialized while `lmnr` is "
+            "still being imported?"
+        )
+        return
     block_instruments = block_instruments or set()
     if instruments is None:
         # The Langfuse bridge is opt-in: it is NEVER part of the default set,

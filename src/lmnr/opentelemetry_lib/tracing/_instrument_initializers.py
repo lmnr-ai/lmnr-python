@@ -1,9 +1,11 @@
-import abc
 from typing import Any
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from typing_extensions import override
 
+from lmnr.opentelemetry_lib.tracing.instrumentor_initializer import (
+    InstrumentorInitializer,
+)
 from lmnr.opentelemetry_lib.utils.package_check import (
     get_package_version,
     is_package_installed,
@@ -12,12 +14,6 @@ from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
-
-
-class InstrumentorInitializer(abc.ABC):
-    @abc.abstractmethod
-    def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
-        pass
 
 
 class AlephAlphaInstrumentorInitializer(InstrumentorInitializer):

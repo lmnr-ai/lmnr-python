@@ -1,5 +1,8 @@
 from .opentelemetry_lib.litellm import LaminarLiteLLMCallback
 from .opentelemetry_lib.tracing.attributes import Attributes
+from .opentelemetry_lib.tracing.default_initializers import (
+    register_default_initializers,
+)
 from .opentelemetry_lib.tracing.instruments import Instruments
 from .opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from .opentelemetry_lib.tracing.span import LaminarSpan
@@ -15,6 +18,10 @@ from .sdk.types import (
     MaskInputOptions,
     SessionRecordingOptions,
 )
+
+# Registered here, outside the instruments <-> instrumentors <-> Laminar import
+# loop; see `tracing/default_initializers.py`.
+register_default_initializers()
 
 __all__ = [
     "AsyncLaminarClient",

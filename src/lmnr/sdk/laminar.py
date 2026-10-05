@@ -22,7 +22,6 @@ from opentelemetry.trace import INVALID_TRACE_ID, Span, Status, StatusCode, use_
 from opentelemetry.util.types import AttributeValue
 from typing_extensions import TypedDict
 
-from lmnr import AsyncLaminarClient
 from lmnr.opentelemetry_lib.tracing import (
     flush_tracing,
     force_reinit_processor,
@@ -59,6 +58,7 @@ from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.utils import set_association_props_in_context
+from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
 from lmnr.sdk.utils import (
     JsonValue,
     from_env,
