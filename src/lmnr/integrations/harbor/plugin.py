@@ -66,7 +66,9 @@ class _TrialState:
     root_span: Any = None
     trace_id: uuid.UUID | None = None
     cancelled: bool = False
-    partial_upload: asyncio.Task | None = None
+    # The trial's latest upload. Every upload waits for it, since saves upsert
+    # by datapoint id and a retry must not be overwritten by an earlier attempt.
+    last_upload: asyncio.Task | None = None
 
 
 class LaminarPlugin:
@@ -107,10 +109,14 @@ class LaminarPlugin:
         self.base_url = base_url or from_env("LMNR_BASE_URL")
         self.http_port = int(http_port) if http_port is not None else None
         self.grpc_port = int(grpc_port) if grpc_port is not None else None
-        evaluation_name = evaluation_name or from_env("HARBOR_LAMINAR_EVALUATION")
-        self.evaluation_name = str(evaluation_name) if evaluation_name else None
-        group_name = group_name or from_env("HARBOR_LAMINAR_GROUP")
-        self.group_name = str(group_name) if group_name else None
+        resolved_evaluation_name = evaluation_name or from_env(
+            "HARBOR_LAMINAR_EVALUATION"
+        )
+        self.evaluation_name = (
+            str(resolved_evaluation_name) if resolved_evaluation_name else None
+        )
+        resolved_group_name = group_name or from_env("HARBOR_LAMINAR_GROUP")
+        self.group_name = str(resolved_group_name) if resolved_group_name else None
         self.trajectory_spans = (
             True if trajectory_spans is None else _parse_bool(trajectory_spans)
         )
@@ -135,6 +141,7 @@ class LaminarPlugin:
         try:
             await self._start_evaluation(job)
         except Exception as e:
+            await self._close_client()
             self._handle_error("Failed to create Laminar evaluation", e)
             return
 
@@ -157,10 +164,13 @@ class LaminarPlugin:
         except Exception as e:
             self._handle_error("Failed to finish Laminar evaluation", e)
         finally:
-            if self._client is not None:
-                await self._client.close()
-                self._client = None
+            await self._close_client()
         logger.info(f"Laminar evaluation: {self.evaluation_url}")
+
+    async def _close_client(self) -> None:
+        if self._client is not None:
+            client, self._client = self._client, None
+            await client.close()
 
     # Job setup
 
@@ -288,7 +298,7 @@ class LaminarPlugin:
             executor_span_id=_uuid(span_context.span_id),
             metadata=state.metadata,
         )
-        state.partial_upload = self._upload([partial])
+        state.last_upload = self._upload([partial], after=state.last_upload)
 
     def _end_trial(self, event: "TrialHookEvent") -> None:
         state = self._trials.get(event.trial_name)
@@ -345,7 +355,7 @@ class LaminarPlugin:
             executor_span_id=_uuid(executor_span_id),
             metadata=metadata,
         )
-        self._upload([datapoint], after=state.partial_upload)
+        state.last_upload = self._upload([datapoint], after=state.last_upload)
 
     def _emit_agent(self, parent: Any, event: "TrialHookEvent") -> Any:
         result = event.result
@@ -425,7 +435,7 @@ class LaminarPlugin:
 
         async def upload() -> None:
             if after is not None:
-                # Upserts by id: the full datapoint must land after the partial.
+                # Upserts by id: saves of a datapoint must land in order.
                 await asyncio.gather(after, return_exceptions=True)
             await client.evals.save_datapoints(
                 eval_id, datapoints, self._resolved_group_name

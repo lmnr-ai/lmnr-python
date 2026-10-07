@@ -554,3 +554,55 @@ def test_helpers():
     )
     assert parse_timestamp_ns("2026-01-01T12:00:00Z") == parse_timestamp_ns(T0)
     assert parse_timestamp_ns("not a date") is None
+
+
+@pytest.mark.asyncio
+async def test_retry_uploads_wait_for_earlier_attempt(
+    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+):
+    import asyncio
+
+    saved = []
+    calls = []
+    release_first = asyncio.Event()
+
+    async def save(eval_id, datapoints, group_name):
+        calls.append(datapoints)
+        # The first attempt's partial upload is slow.
+        if len(calls) == 1:
+            await release_first.wait()
+        saved.extend(datapoints)
+
+    client.evals.save_datapoints.side_effect = save
+    job = FakeJob(tmp_path / "job")
+    task_dir = make_task_dir(tmp_path, "t")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+
+    first = make_event(job, task_dir, "flaky", rewards={"reward": 0})
+    await job.emit("start", first)
+    await job.emit("end", first)
+    retry = make_event(job, task_dir, "flaky", rewards={"reward": 1})
+    await job.emit("start", retry)
+    await job.emit("end", retry)
+    await asyncio.sleep(0)
+    release_first.set()
+    await plugin.on_job_end(SimpleNamespace())
+
+    assert len(saved) == 4
+    assert isinstance(saved[-1], EvaluationResultDatapoint)
+    assert saved[-1].scores == {"reward": 1}
+
+
+@pytest.mark.asyncio
+async def test_failed_evaluation_init_closes_client(
+    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+):
+    client.evals.init.side_effect = RuntimeError("unauthorized")
+    job = FakeJob(tmp_path / "job")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    assert job.hooks == {}
+    client.close.assert_awaited_once()
+    await plugin.on_job_end(SimpleNamespace())
+    client.close.assert_awaited_once()
