@@ -2,6 +2,7 @@
 
 import inspect
 import re
+from typing import Any
 import uuid
 from unittest.mock import MagicMock, patch
 
@@ -10,7 +11,10 @@ import pytest
 from lmnr.sdk.client.asynchronous.resources import evals as async_evals
 from lmnr.sdk.client.synchronous.resources import evals as sync_evals
 from lmnr.sdk.client.synchronous.sync_client import LaminarClient
-from lmnr.sdk.evaluations.models import PartialEvaluationDatapoint
+from lmnr.sdk.evaluations.models import (
+    EvaluationResultDatapoint,
+    PartialEvaluationDatapoint,
+)
 from lmnr.sdk.utils import MAX_ERROR_BODY_CHARS, describe_response
 
 
@@ -74,33 +78,35 @@ class TestDescribeResponse:
 
 class TestSaveDatapoints413:
     def test_persistent_413_reports_status_and_server_message(
-        self, sync_client, sample_datapoints
+        self,
+        sync_client: LaminarClient,
+        sample_datapoints: list[EvaluationResultDatapoint],
     ):
         """On a persistent 413 the user used to get a bare 'Error saving evaluation
         datapoints' with no status code and no server body."""
         eval_id = uuid.uuid4()
         response = _response(413, SERVER_413_BODY)
 
-        with patch.object(sync_client.evals._client, "post", return_value=response):
-            with pytest.raises(ValueError) as excinfo:
-                sync_client.evals.save_datapoints(eval_id, sample_datapoints)
+        with patch.object(sync_client.evals._client, "post", return_value=response), pytest.raises(ValueError) as excinfo:
+            sync_client.evals.save_datapoints(eval_id, sample_datapoints)
 
         message = str(excinfo.value)
         assert "[413]" in message
         assert "HTTP_PAYLOAD_LIMIT" in message
 
     def test_shrinking_to_nothing_reports_the_server_message(
-        self, sync_client, sample_datapoints
+        self,
+        sync_client: LaminarClient,
+        sample_datapoints: list[EvaluationResultDatapoint]
     ):
         """The length==0 branch: data was truncated away and the server still says 413."""
         eval_id = uuid.uuid4()
         response = _response(413, SERVER_413_BODY)
 
-        with patch.object(sync_client.evals._client, "post", return_value=response):
-            with pytest.raises(ValueError) as excinfo:
-                sync_client.evals._retry_save_datapoints(
-                    eval_id, sample_datapoints, initial_length=2
-                )
+        with patch.object(sync_client.evals._client, "post", return_value=response), pytest.raises(ValueError) as excinfo:
+            sync_client.evals._retry_save_datapoints(
+                eval_id, sample_datapoints, initial_length=2
+            )
 
         message = str(excinfo.value)
         assert "truncating datapoint data to nothing" in message
@@ -108,7 +114,9 @@ class TestSaveDatapoints413:
         assert "HTTP_PAYLOAD_LIMIT" in message
 
     def test_shrinking_to_nothing_before_any_request_does_not_crash(
-        self, sync_client, sample_datapoints
+        self,
+        sync_client: LaminarClient,
+        sample_datapoints: list[EvaluationResultDatapoint]
     ):
         """Regression guard: the length==0 branch can be reached on the first iteration,
         when no response exists yet — it must report that, not raise UnboundLocalError."""
@@ -120,13 +128,14 @@ class TestSaveDatapoints413:
             mock_post.assert_not_called()
 
     def test_non_413_failure_reports_status_and_body(
-        self, sync_client, sample_datapoints
+        self,
+        sync_client: LaminarClient,
+        sample_datapoints: list[EvaluationResultDatapoint]
     ):
         eval_id = uuid.uuid4()
         response = _response(500, "internal error")
 
-        with patch.object(sync_client.evals._client, "post", return_value=response):
-            with pytest.raises(ValueError, match=r"\[500\] internal error"):
+        with patch.object(sync_client.evals._client, "post", return_value=response), pytest.raises(ValueError, match=r"\[500\] internal error"):
                 sync_client.evals.save_datapoints(eval_id, sample_datapoints)
 
 
@@ -146,7 +155,7 @@ class TestSyncAsyncLockstep:
             )
 
     def test_both_mirrors_raise_the_same_error_messages(self):
-        def messages(module) -> set[str]:
+        def messages(module: Any) -> set[str]:
             return set(
                 re.findall(
                     r'"([^"]*describe_response\(response\)[^"]*)"',
@@ -158,12 +167,11 @@ class TestSyncAsyncLockstep:
 
 
 class TestInitEval413:
-    def test_init_reports_status_code_and_plain_text_body(self, sync_client):
+    def test_init_reports_status_code_and_plain_text_body(self, sync_client: LaminarClient):
         response = _response(413, SERVER_413_BODY)
 
-        with patch.object(sync_client.evals._client, "post", return_value=response):
-            with pytest.raises(ValueError) as excinfo:
-                sync_client.evals.init(name="too-big")
+        with patch.object(sync_client.evals._client, "post", return_value=response), pytest.raises(ValueError) as excinfo:
+            _init_response = sync_client.evals.init(name="too-big")
 
         message = str(excinfo.value)
         assert "[413]" in message

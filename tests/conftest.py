@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -21,7 +22,7 @@ def span_exporter() -> SpanExporter:
 
     # Partially mock init_tracing to inject our exporter. Patch the name as
     # imported into laminar.py — that is where the lookup happens.
-    def mock_init_tracing(*args, **kwargs):
+    def mock_init_tracing(*args: Any, **kwargs: Any):
         new_kwargs = kwargs.copy()
         new_kwargs["exporter"] = exporter
         return init_tracing(*args, **new_kwargs)
@@ -106,7 +107,7 @@ def clear_span_exporter(span_exporter: InMemorySpanExporter):
     except Exception:
         print("Test warning: failed to detach context token on clearing span exporter")
     fresh_context = Context()
-    context_api.attach(fresh_context)
+    _token = context_api.attach(fresh_context)
 
 
 @pytest.fixture(scope="module")

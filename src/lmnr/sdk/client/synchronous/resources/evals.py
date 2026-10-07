@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, cast
 
 from lmnr.sdk.client.synchronous.resources.base import BaseResource
@@ -168,7 +169,7 @@ class Evals(BaseResource):
     def save_datapoints(
         self,
         eval_id: uuid.UUID,
-        datapoints: list[EvaluationResultDatapoint | PartialEvaluationDatapoint],
+        datapoints: Sequence[EvaluationResultDatapoint | PartialEvaluationDatapoint],
         group_name: str | None = None,
     ):
         """Save evaluation datapoints.
@@ -243,7 +244,7 @@ class Evals(BaseResource):
     def _retry_save_datapoints(
         self,
         eval_id: uuid.UUID,
-        datapoints: list[EvaluationResultDatapoint | PartialEvaluationDatapoint],
+        datapoints: Sequence[EvaluationResultDatapoint | PartialEvaluationDatapoint],
         group_name: str | None = None,
         initial_length: int = INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH,
         max_retries: int = 20,
