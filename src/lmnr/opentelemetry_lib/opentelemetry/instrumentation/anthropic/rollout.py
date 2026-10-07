@@ -8,19 +8,12 @@ live. The decision is made by `cache_outcome_for` (sync) / `acache_outcome_for`
 (async); there is no in-process cache anymore.
 """
 
-<<<<<<< HEAD
 from __future__ import annotations
 
 import json
 from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Sequence
 from typing import TYPE_CHECKING, Any, cast
 
-=======
-import json
-from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Sequence
-from typing import Any, cast
-
->>>>>>> 6638945 (fix pyright issues in anthropic instrumentation and remaining small pyright issues)
 from opentelemetry.sdk.trace import Span as SDKSpan
 from opentelemetry.trace import Span
 
