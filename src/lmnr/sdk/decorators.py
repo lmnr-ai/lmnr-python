@@ -41,7 +41,7 @@ def observe(
     user_id: str | None = None,
     ignore_input: bool = False,
     ignore_output: bool = False,
-    span_type: Literal["DEFAULT", "LLM", "TOOL"] = "DEFAULT",
+    span_type: Literal["DEFAULT", "LLM", "TOOL", "EVALUATION"] = "DEFAULT",
     ignore_inputs: list[str] | None = None,
     input_formatter: Callable[..., str] | None = None,
     output_formatter: Callable[..., str] | None = None,

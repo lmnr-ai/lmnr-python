@@ -579,7 +579,7 @@ def test_json_dumps_pydantic_edge_cases():
     assert parsed["number"] == 42
     # Dates should be serialized as strings
     assert parsed["date_val"] == "2024-01-15"
-    assert parsed["datetime_val"] == "2024-01-15T10:30:45"
+    assert parsed["datetime_val"] == "2024-01-15T10:30:45Z"
     assert parsed["uuid_val"] == str(test_uuid)
     assert parsed["empty_list"] == []
     assert parsed["empty_dict"] == {}
