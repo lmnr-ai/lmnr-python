@@ -198,8 +198,8 @@ def init_instrumentations(
         # Filled by `lmnr/__init__.py` (see `register_initializers`). Empty means
         # this ran while the package was still importing, before that call.
         module_logger.error(
-            "No instrumentation initializers are registered, so nothing will be "
-            "auto-instrumented. Is Laminar being initialized while `lmnr` is "
+            "No instrumentation initializers are registered, so nothing will be " +
+            "auto-instrumented. Is Laminar being initialized while `lmnr` is " +
             "still being imported?"
         )
         return

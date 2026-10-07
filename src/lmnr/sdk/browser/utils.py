@@ -1,10 +1,11 @@
 import asyncio
-import logging
 import time
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
-logger = logging.getLogger(__name__)
+from lmnr.sdk.log import get_default_logger
+
+logger = get_default_logger(__name__)
 
 T = TypeVar("T")
 

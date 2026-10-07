@@ -1656,7 +1656,7 @@ class Laminar:
             attributes (dict[Attributes | str, Any]): attributes to set for the span
         """
         span = cls.get_current_span()
-        if span == trace.INVALID_SPAN or span is None:
+        if span is None or span.get_span_context() == trace.INVALID_SPAN.get_span_context() :
             return
 
         for key, value in attributes.items():
@@ -1803,7 +1803,7 @@ class Laminar:
         # `initialize()`, so we cannot rely on it here — this method is
         # reachable before initialization. Fall back to a module-level
         # logger instead.
-        logger = logging.getLogger(__name__)
+        logger = get_default_logger(__name__)
         if not cls.is_initialized():
             logger.warning(
                 "Laminar is not initialized. Call Laminar.initialize() first."

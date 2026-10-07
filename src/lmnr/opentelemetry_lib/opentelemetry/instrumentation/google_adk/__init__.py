@@ -44,7 +44,6 @@ skipped, and a wrapper failure never breaks the traced call.
 """
 
 import contextlib
-import logging
 from collections.abc import Callable, Collection, Sequence
 from typing import Any, cast
 
@@ -65,9 +64,10 @@ from lmnr.opentelemetry_lib.tracing.attributes import (
     USER_ID,
 )
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
+from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import json_dumps
 
-logger = logging.getLogger(__name__)
+logger = get_default_logger(__name__)
 
 _TRACING_MODULE = "google.adk.telemetry.tracing"
 _TELEMETRY_PACKAGE = "google.adk.telemetry"
@@ -406,7 +406,12 @@ def _wrap_use_extra_generate_content_attributes(
         return _noop_context()
 
 
-def _wrap_genai_detection(wrapped, instance, args, kwargs):
+def _wrap_genai_detection(
+    _wrapped: Any,
+    _instance: Any,
+    _args: Sequence[Any],
+    _kwargs: dict[str, Any]
+):
     """ADK's own native `generate_content <model>` span is always redundant
     while this instrumentor is active: by default `call_llm` is enriched
     directly (GOOGLE_GENAI is auto-removed from the default set — see

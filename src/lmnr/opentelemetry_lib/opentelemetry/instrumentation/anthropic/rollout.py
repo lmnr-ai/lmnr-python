@@ -9,9 +9,10 @@ live. The decision is made by `cache_outcome_for` (sync) / `acache_outcome_for`
 """
 
 import json
-from collections.abc import AsyncGenerator, Generator
-from typing import Any
+from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Sequence
+from typing import Any, cast
 
+from opentelemetry.sdk.trace import Span as SDKSpan
 from opentelemetry.trace import Span
 
 from anthropic.types import (
@@ -59,7 +60,7 @@ class AnthropicRolloutWrapper:
                 if not raw:
                     logger.warning("Cached span type='raw' has no response field")
                     return None
-                response_dict = raw if isinstance(raw, dict) else json.loads(raw)
+                response_dict = cast(dict[str, Any], raw if isinstance(raw, dict) else json.loads(raw))
                 if "usage" in response_dict:
                     response_dict["usage"] = {"input_tokens": 0, "output_tokens": 0}
                 return Message.model_validate(response_dict)
@@ -76,7 +77,7 @@ class AnthropicRolloutWrapper:
             model = cached_span.get("model", "unknown")
             finish_reasons = cached_span.get("finishReasons", [])
             stop_reason = finish_reasons[0] if finish_reasons else "end_turn"
-            content_blocks = messages[0].get("content", [])
+            content_blocks = cast(list[Any], cast(dict[str, Any], messages[0]).get("content", []))
             return Message(
                 id="cached",
                 model=model,
@@ -95,10 +96,10 @@ class AnthropicRolloutWrapper:
 
     def wrap_create(
         self,
-        wrapped,
-        instance,
-        args,
-        kwargs,
+        wrapped: Callable[..., Any],
+        _instance: Any,
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
         span: Span | None = None,
         is_streaming: bool = False,
         is_async: bool = False,
@@ -108,9 +109,10 @@ class AnthropicRolloutWrapper:
         if is_async:
             return self._awrap_create(wrapped, args, kwargs, span, is_streaming)
 
+        span = cast(SDKSpan, span)
         outcome = cache_outcome_for(span)
         if outcome is not None and outcome.kind == "hit":
-            response = self.cached_response_to_anthropic(outcome.cached)
+            response = self.cached_response_to_anthropic(outcome.cached or {})
             if response is not None:
                 logger.debug("Serving cached Anthropic response from replay cache")
                 mark_span_cached(span)
@@ -120,11 +122,19 @@ class AnthropicRolloutWrapper:
 
         return wrapped(*args, **kwargs)
 
-    async def _awrap_create(self, wrapped, args, kwargs, span, is_streaming) -> Any:
+    async def _awrap_create(
+        self,
+        wrapped: Callable[..., Awaitable[Any]],
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
+        span: Span | None = None,
+        is_streaming: bool = False,
+    ) -> Any:
         """Async cache lookup; on a HIT serve cached, else run the call live."""
+        span = cast(SDKSpan, span)
         outcome = await acache_outcome_for(span)
         if outcome is not None and outcome.kind == "hit":
-            response = self.cached_response_to_anthropic(outcome.cached)
+            response = self.cached_response_to_anthropic(outcome.cached or {})
             if response is not None:
                 logger.debug("Serving cached Anthropic response from replay cache")
                 mark_span_cached(span)

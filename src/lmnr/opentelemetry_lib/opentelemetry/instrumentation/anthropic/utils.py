@@ -1,20 +1,20 @@
 import asyncio
 import json
-import logging
 import threading
+from collections.abc import Awaitable
+from types import CoroutineType
+from typing import Any
 
-from typing_extensions import TypeVar
+from typing_extensions import TypeVar, override
 
 from lmnr.sdk.log import get_default_logger
 
-
 logger = get_default_logger(__name__)
-
 
 T = TypeVar("T")
 
 
-async def aextract_response_data(response):
+async def aextract_response_data(response: Any) -> dict[str, Any]:
     """Async version of _extract_response_data that can await coroutines."""
     import inspect
 
@@ -27,7 +27,7 @@ async def aextract_response_data(response):
             return {}
 
     if isinstance(response, dict):
-        return response
+        return response  # pyright: ignore[reportUnknownVariableType]
 
     # Handle with_raw_response wrapped responses
     if hasattr(response, "parse") and callable(response.parse):
@@ -36,7 +36,7 @@ async def aextract_response_data(response):
             parsed_response = response.parse()
             if not isinstance(parsed_response, dict):
                 parsed_response = parsed_response.__dict__
-            return parsed_response
+            return parsed_response  # pyright: ignore[reportUnknownVariableType]
         except Exception:
             logger.debug(
                 f"Failed to parse response, response type: {type(response)}",
@@ -51,7 +51,7 @@ async def aextract_response_data(response):
     return {}
 
 
-def extract_response_data(response):
+def extract_response_data(response: Any) -> dict[str, Any]:
     """Extract the actual response data from both regular and with_raw_response wrapped responses."""
     import inspect
 
@@ -63,7 +63,7 @@ def extract_response_data(response):
         return {}
 
     if isinstance(response, dict):
-        return response
+        return response  # pyright: ignore[reportUnknownVariableType]
 
     # Handle with_raw_response wrapped responses
     if hasattr(response, "parse") and callable(response.parse):
@@ -72,7 +72,7 @@ def extract_response_data(response):
             parsed_response = response.parse()
             if not isinstance(parsed_response, dict):
                 parsed_response = parsed_response.__dict__
-            return parsed_response
+            return parsed_response  # pyright: ignore[reportUnknownVariableType]
         except Exception:
             logger.debug(
                 f"Failed to parse response, response type: {type(response)}",
@@ -87,7 +87,7 @@ def extract_response_data(response):
     return {}
 
 
-def run_async(method):
+def run_async(method: CoroutineType[Any, Any, Any] | Awaitable[None]):
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
@@ -102,7 +102,8 @@ def run_async(method):
 
 
 class JSONEncoder(json.JSONEncoder):
-    def default(self, o):
+    @override
+    def default(self, o: Any):
         if hasattr(o, "to_json"):
             return o.to_json()
 
@@ -112,8 +113,5 @@ class JSONEncoder(json.JSONEncoder):
         try:
             return str(o)
         except Exception:
-            logger = logging.getLogger(__name__)
             logger.debug("Failed to serialize object of type: %s", type(o).__name__)
             return ""
-
-

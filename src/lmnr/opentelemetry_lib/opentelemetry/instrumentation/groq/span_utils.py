@@ -17,11 +17,11 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
 from opentelemetry.trace import Span
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.event_models import Usage
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import should_send_prompts
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     model_as_dict,
     set_span_attribute,
+    should_send_prompts,
 )
 
 CONTENT_FILTER_KEY = "content_filter_results"
@@ -149,42 +149,47 @@ def _set_completions(span: Span, choices: list[dict[str, Any]] | None):
         if not message or not isinstance(message, Mapping):
             return
 
-        set_span_attribute(span, f"{prefix}.role", message.get("role"))  # pyright: ignore[reportUnknownMemberType]
-        set_span_attribute(span, f"{prefix}.content", message.get("content"))  # pyright: ignore[reportUnknownMemberType]
+        message = cast(dict[str, str | dict[str, Any]], message)
 
-        function_call = message.get("function_call")  # pyright: ignore[reportUnknownMemberType]
+        set_span_attribute(span, f"{prefix}.role", cast(str | None, message.get("role")))
+        set_span_attribute(span, f"{prefix}.content", cast(str | None, message.get("content")))
+
+        function_call = message.get("function_call")
         if function_call and isinstance(function_call, dict):
+            function_call = cast(dict[str, str], function_call)
             set_span_attribute(
-                span, f"{prefix}.tool_calls.0.name", function_call.get("name")  # pyright: ignore[reportUnknownMemberType]
+                span, f"{prefix}.tool_calls.0.name", function_call.get("name")
             )
             set_span_attribute(
                 span,
                 f"{prefix}.tool_calls.0.arguments",
-                function_call.get("arguments"),  # pyright: ignore[reportUnknownMemberType]
+                function_call.get("arguments"),
             )
 
-        tool_calls = message.get("tool_calls")  # pyright: ignore[reportUnknownMemberType]
-        if tool_calls and isinstance(tool_calls, Iterable):
+        message = cast(dict[str, list[dict[str, Any]]], message)
+        tool_calls = message.get("tool_calls")
+        if tool_calls and isinstance(tool_calls, Iterable):  # pyright: ignore[reportUnnecessaryIsInstance]
             for i, tool_call in enumerate(tool_calls):
-                if not isinstance(tool_call, Mapping):
+                if not isinstance(tool_call, Mapping):  # pyright: ignore[reportUnnecessaryIsInstance]
                     continue
-                function = tool_call.get("function")  # pyright: ignore[reportUnknownMemberType]
+                function = tool_call.get("function")
                 if not isinstance(function, Mapping):
                     continue
+                function = cast(dict[str, str], tool_call.get("function"))
                 set_span_attribute(
                     span,
                     f"{prefix}.tool_calls.{i}.id",
-                    tool_call.get("id"),  # pyright: ignore[reportUnknownMemberType]
+                    tool_call.get("id"),
                 )
                 set_span_attribute(
                     span,
                     f"{prefix}.tool_calls.{i}.name",
-                    function.get("name"),  # pyright: ignore[reportUnknownMemberType]
+                    function.get("name"),
                 )
                 set_span_attribute(
                     span,
                     f"{prefix}.tool_calls.{i}.arguments",
-                    function.get("arguments"),  # pyright: ignore[reportUnknownMemberType]
+                    function.get("arguments"),
                 )
 
 

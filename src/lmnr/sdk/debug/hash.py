@@ -92,7 +92,7 @@ def _system_text(sys_msg: dict[str, Any]) -> str:
     # "content": [{"text": "...", "type": "text"}, ...] (Anthropic format)
     if isinstance(content, list):
         joined = " ".join(
-            block["text"]
+            block["text"]  # pyright: ignore[reportUnknownArgumentType]
             for block in content  # pyright: ignore[reportUnknownVariableType]
             if isinstance(block, dict) and isinstance(cast(dict[str, str], block).get("text"), str)
         )

@@ -1,7 +1,6 @@
 """OpenTelemetry Kernel instrumentation"""
 
 import functools
-import logging
 from collections.abc import Awaitable, Callable, Collection, Sequence
 from importlib.metadata import version
 from typing import Any, cast
@@ -9,7 +8,6 @@ from typing import Any, cast
 from opentelemetry.trace.status import Status, StatusCode
 from typing_extensions import TypeVar, override
 
-from lmnr.sdk.laminar import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.kernel.utils import (
     process_tool_output_formatter,
     screenshot_tool_output_formatter,
@@ -26,10 +24,12 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers
     stamp_instrumentation_scope,
 )
 from lmnr.sdk.decorators import observe
+from lmnr.sdk.laminar import Laminar
+from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import LaminarSpanType
 from lmnr.sdk.utils import get_input_from_func_args, is_async, json_dumps
 
-logger = logging.getLogger(__name__)
+logger = get_default_logger(__name__)
 
 _instruments = ("kernel >= 0.2.0",)
 

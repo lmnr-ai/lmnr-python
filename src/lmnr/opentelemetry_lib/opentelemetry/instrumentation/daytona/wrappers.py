@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import threading
 import time
 from collections.abc import Awaitable, Callable, Sequence
@@ -14,7 +13,6 @@ from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.trace import Span, Status, StatusCode
 from typing_extensions import TypeVar
 
-from lmnr.sdk.laminar import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
@@ -30,11 +28,13 @@ from lmnr.opentelemetry_lib.tracing.context import (
     get_current_context,
     get_event_attributes_from_context,
 )
+from lmnr.sdk.laminar import Laminar
+from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import LaminarSpanType
 from lmnr.sdk.utils import json_dumps
 from lmnr.version import __version__
 
-log = logging.getLogger(__name__)
+log = get_default_logger(__name__)
 
 try:
     from daytona import SessionExecuteRequest, SessionExecuteResponse
@@ -58,11 +58,13 @@ class LogStream(Enum):
 
 
 @dont_throw
-def _set_request_attributes(span: Span, session_id: str, request: SessionExecuteRequest):
+def _set_request_attributes(span: Span, session_id: str | None, request: SessionExecuteRequest | None):
     """Set span attributes from the execute_session_command request."""
     set_span_attribute(span, "daytona.session_id", session_id)
 
     input_data = {"session_id": session_id}
+    if not request:
+        return
     if hasattr(request, "command"):
         set_span_attribute(span, "daytona.command", request.command)
         input_data["command"] = request.command
