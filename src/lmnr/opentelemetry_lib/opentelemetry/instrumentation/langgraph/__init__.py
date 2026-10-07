@@ -1,7 +1,6 @@
 """OpenTelemetry Langgraph instrumentation"""
 
 import json
-import logging
 from collections.abc import AsyncIterable, Callable, Collection, Iterable, Sequence
 from importlib.metadata import version
 from typing import Any, cast
@@ -18,8 +17,9 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     LaminarInstrumentorConfig,
     WrappedFunctionSpec,
 )
+from lmnr.sdk.log import get_default_logger
 
-logger = logging.getLogger(__name__)
+logger = get_default_logger(__name__)
 
 _instruments = ("langgraph >= 0.1.0",)
 

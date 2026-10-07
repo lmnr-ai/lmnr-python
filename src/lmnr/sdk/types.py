@@ -12,6 +12,8 @@ from opentelemetry.trace import SpanContext, TraceFlags
 from pydantic import BaseModel, Field
 from typing_extensions import TypedDict, override  # compatibility with python < 3.12
 
+from lmnr.sdk.log import get_default_logger
+
 
 def parse_iso_datetime(value: str) -> datetime.datetime:
     """Parse an ISO-8601 timestamp from the API, tolerating a trailing 'Z'.
@@ -268,7 +270,7 @@ class LaminarSpanContext(BaseModel):
         logger: logging.Logger | None = None,
     ) -> SpanContext:
         if logger is None:
-            logger = logging.getLogger(__name__)
+            logger = get_default_logger(__name__)
 
         if isinstance(span_context, LaminarSpanContext):
             return SpanContext(

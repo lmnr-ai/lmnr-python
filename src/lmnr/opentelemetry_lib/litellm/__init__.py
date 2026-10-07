@@ -1,5 +1,7 @@
 """LiteLLM callback logger for Laminar (deprecated no-op)"""
 
+from typing import Any
+
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from lmnr.sdk.log import get_default_logger
 
@@ -20,21 +22,21 @@ else:
 class LaminarLiteLLMCallback(_Base):  # pyright: ignore[reportGeneralTypeIssues]
     """Deprecated no-op. LiteLLM is instrumented automatically by Laminar."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any):
         if _Base is object:
             super().__init__()
         else:
             super().__init__(**kwargs)
         logger.warning(_DEPRECATION_MESSAGE)
 
-    def log_success_event(self, *args, **kwargs):
+    def log_success_event(self, *args: Any, **kwargs: Any):
         pass
 
-    def log_failure_event(self, *args, **kwargs):
+    def log_failure_event(self, *args: Any, **kwargs: Any):
         pass
 
-    async def async_log_success_event(self, *args, **kwargs):
+    async def async_log_success_event(self, *args: Any, **kwargs: Any):
         pass
 
-    async def async_log_failure_event(self, *args, **kwargs):
+    async def async_log_failure_event(self, *args: Any, **kwargs: Any):
         pass

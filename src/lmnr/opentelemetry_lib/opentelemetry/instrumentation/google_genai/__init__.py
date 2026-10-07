@@ -1,7 +1,6 @@
 """OpenTelemetry Google Generative AI API instrumentation"""
 
 import json
-import logging
 from collections import defaultdict
 from collections.abc import (
     AsyncGenerator,
@@ -22,6 +21,16 @@ from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
 from opentelemetry.trace import Span, Status, StatusCode
 from typing_extensions import TypeVar, override
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.schema_utils import (
+    SchemaJSONEncoder,
+    process_schema,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
+    content_union_to_dict,
+    merge_text_parts,
+    model_to_json_safe_dict,
+    process_stream_chunk,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
 )
@@ -44,17 +53,10 @@ from lmnr.opentelemetry_lib.tracing.context import (
     get_event_attributes_from_context,
 )
 from lmnr.sdk.laminar import Laminar
+from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import json_dumps
 
-from .schema_utils import SchemaJSONEncoder, process_schema
-from .utils import (
-    content_union_to_dict,
-    merge_text_parts,
-    model_to_json_safe_dict,
-    process_stream_chunk,
-)
-
-logger = logging.getLogger(__name__)
+logger = get_default_logger(__name__)
 T = TypeVar("T")
 
 _instruments = ("google-genai >= 1.0.0",)

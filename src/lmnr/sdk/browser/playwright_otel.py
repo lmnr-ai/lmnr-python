@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import uuid
 from collections.abc import Callable, Collection, Coroutine, Sequence
 from importlib.metadata import version
@@ -24,6 +23,7 @@ from lmnr.sdk.browser.pw_utils import (
     take_full_snapshot_async,
 )
 from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
+from lmnr.sdk.log import get_default_logger
 
 if TYPE_CHECKING:
     # `from __future__ import annotations` makes every annotation in this file a
@@ -47,7 +47,7 @@ if not (is_package_installed("playwright") or is_package_installed("patchright")
 
 # all available versions at https://pypi.org/project/playwright/#history
 _instruments = ("playwright >= 1.9.0",)
-logger = logging.getLogger(__name__)
+logger = get_default_logger(__name__)
 
 
 def _wrap_new_browser_sync(

@@ -1,6 +1,5 @@
 """OpenTelemetry CUA instrumentation"""
 
-import logging
 from collections.abc import Awaitable, Callable, Collection, Sequence
 from importlib.metadata import version
 from typing import Any, TypeVar
@@ -10,7 +9,9 @@ from opentelemetry.trace import Span
 from opentelemetry.trace.status import Status, StatusCode
 from typing_extensions import override
 
-from lmnr.sdk.laminar import Laminar
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.cua_computer.utils import (
+    payload_to_placeholder,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
 )
@@ -23,12 +24,11 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers
     stamp_instrumentation_scope,
 )
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
-from lmnr.sdk.log import levelToName
+from lmnr.sdk.laminar import Laminar
+from lmnr.sdk.log import get_default_logger, levelToName
 from lmnr.sdk.utils import get_input_from_func_args, json_dumps
 
-from .utils import payload_to_placeholder
-
-logger = logging.getLogger(__name__)
+logger = get_default_logger(__name__)
 
 _instruments = ("cua-computer >= 0.4.0",)
 

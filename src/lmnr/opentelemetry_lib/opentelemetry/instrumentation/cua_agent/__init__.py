@@ -1,6 +1,5 @@
 """OpenTelemetry CUA instrumentation"""
 
-import logging
 from collections.abc import AsyncGenerator, Callable, Collection, Sequence
 from importlib.metadata import version
 from typing import Any
@@ -9,7 +8,6 @@ from opentelemetry.trace import Span
 from opentelemetry.trace.status import Status, StatusCode
 from typing_extensions import override
 
-from lmnr.sdk.laminar import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
 )
@@ -21,9 +19,11 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     stamp_instrumentation_scope,
 )
+from lmnr.sdk.laminar import Laminar
+from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import json_dumps
 
-logger = logging.getLogger(__name__)
+logger = get_default_logger(__name__)
 
 _instruments = ("cua-agent >= 0.4.0",)
 

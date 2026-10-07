@@ -1,9 +1,17 @@
 """OpenTelemetry Anthropic instrumentation"""
 
-import logging
-from collections.abc import Collection, Sequence
+from __future__ import annotations
+
+from collections.abc import (
+    AsyncGenerator,
+    Awaitable,
+    Callable,
+    Collection,
+    Generator,
+    Sequence,
+)
 from importlib.metadata import version
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from opentelemetry import context as context_api
 from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
@@ -13,8 +21,25 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
 )
 from opentelemetry.trace import Span
 from opentelemetry.trace.status import Status, StatusCode
+from typing_extensions import TypeVar, override
 
-from anthropic._streaming import AsyncStream, Stream
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.rollout import (
+    get_anthropic_rollout_wrapper,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.span_utils import (
+    aset_input_attributes,
+    aset_response_attributes,
+    set_response_attributes,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.streaming import (
+    WrappedAsyncMessageStreamManager,
+    WrappedMessageStreamManager,
+    abuild_from_streaming_response,
+    build_from_streaming_response,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.utils import (
+    run_async,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
 )
@@ -31,31 +56,34 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     stamp_instrumentation_scope,
 )
+from lmnr.sdk.log import get_default_logger
 
-from .rollout import get_anthropic_rollout_wrapper
-from .span_utils import (
-    aset_input_attributes,
-    aset_response_attributes,
-    set_response_attributes,
-)
-from .streaming import (
-    WrappedAsyncMessageStreamManager,
-    WrappedMessageStreamManager,
-    abuild_from_streaming_response,
-    build_from_streaming_response,
-)
-from .utils import (
-    run_async,
-)
+# `anthropic` may be missing or older than the names below; keep these imports
+# annotation-only (safe under `from __future__ import annotations`). Runtime
+# checks import lazily inside the functions that need them.
+if TYPE_CHECKING:
+    from anthropic.lib.streaming import (
+        AsyncMessageStream,
+        AsyncMessageStreamManager,
+        MessageStream,
+        MessageStreamManager,
+        ParsedMessageStreamEvent,
+    )
 
-logger = logging.getLogger(__name__)
-
+logger = get_default_logger(__name__)
+T = TypeVar("T")
 _instruments = ("anthropic >= 0.3.11",)
 
 
-def is_streaming_response(response):
-    if isinstance(response, (Stream, AsyncStream)):
-        return True
+def is_streaming_response(response: Any) -> bool:
+    obj: object = response
+    try:
+        from anthropic._streaming import AsyncStream, Stream
+
+        if isinstance(obj, (Stream, AsyncStream)):
+            return True
+    except ImportError:
+        pass
 
     # For cached streams, they are generators, not Message objects.
     # We check for __next__ and __iter__ for sync generators,
@@ -66,7 +94,7 @@ def is_streaming_response(response):
     )
 
 
-def is_stream_manager(response):
+def is_stream_manager(response: Any) -> bool:
     """Check if response is a MessageStreamManager or AsyncMessageStreamManager"""
     try:
         from anthropic.lib.streaming._messages import (
@@ -85,10 +113,10 @@ def is_stream_manager(response):
 
 @dont_throw
 async def _aset_token_usage(
-    span,
-    anthropic,
-    request,
-    response,
+    span: Span,
+    anthropic: Any,
+    _request: Any,
+    response: Any,
 ):
     # Handle with_raw_response wrapped responses first
     if response and hasattr(response, "parse") and callable(response.parse):
@@ -142,10 +170,10 @@ async def _aset_token_usage(
 
 @dont_throw
 def _set_token_usage(
-    span,
-    anthropic,
-    request,
-    response,
+    span: Span,
+    anthropic: Any,
+    _request: Any,
+    response: Any,
 ):
     # Handle with_raw_response wrapped responses first
     if response and hasattr(response, "parse") and callable(response.parse):
@@ -198,69 +226,72 @@ def _set_token_usage(
 
 
 @dont_throw
-def _handle_input(span: Span, kwargs):
+def _handle_input(span: Span, kwargs: dict[str, Any]):
     if not span.is_recording():
         return
     run_async(aset_input_attributes(span, kwargs))
 
 
 @dont_throw
-async def _ahandle_input(span: Span, kwargs):
+async def _ahandle_input(span: Span, kwargs: dict[str, Any]):
     if not span.is_recording():
         return
     await aset_input_attributes(span, kwargs)
 
 
 @dont_throw
-def _handle_response(span: Span, response, record_raw_response=False):
+def _handle_response(span: Span, response: Any, record_raw_response: bool = False):
     if not span.is_recording():
         return
     set_response_attributes(span, response)
 
     if record_raw_response:
         try:
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.utils import (
+                extract_response_data,
+            )
             from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
                 model_as_dict,
             )
             from lmnr.sdk.utils import json_dumps
 
-            from .utils import extract_response_data
-
             response_data = extract_response_data(response)
             response_dict = model_as_dict(response_data)
             set_span_attribute(span, "lmnr.sdk.raw.response", json_dumps(response_dict))
         except Exception:
-            pass
+            logger.debug("Failed to record raw response", exc_info=True)
 
 
 @dont_throw
-async def _ahandle_response(span: Span, response, record_raw_response=False):
+async def _ahandle_response(span: Span, response: Any, record_raw_response: bool = False):
     if not span.is_recording():
         return
     await aset_response_attributes(span, response)
 
     if record_raw_response:
         try:
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.utils import (
+                aextract_response_data,
+            )
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+                model_as_dict,
+            )
             from lmnr.sdk.utils import json_dumps
-
-            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import model_as_dict
-
-            from .utils import aextract_response_data
 
             response_data = await aextract_response_data(response)
             response_dict = model_as_dict(response_data)
             set_span_attribute(span, "lmnr.sdk.raw.response", json_dumps(response_dict))
         except Exception:
-            pass
+            logger.debug("Failed to record raw response async", exc_info=True)
 
 
 def _wrap(
     to_wrap: WrappedFunctionSpec,
-    wrapped,
+    wrapped: Callable[..., T],
     instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-):
+) -> T | Generator[ParsedMessageStreamEvent] | WrappedAsyncMessageStreamManager | WrappedMessageStreamManager | None:
     """Instruments and calls every function defined in WRAPPED_FUNCTIONS."""
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
@@ -297,7 +328,7 @@ def _wrap(
     if kwargs.get("stream") or is_streaming_response(response):
         return build_from_streaming_response(
             span,
-            response,
+            cast("MessageStream", response),
             instance._client,
             kwargs,
             record_raw_response=is_rollout,
@@ -305,7 +336,7 @@ def _wrap(
     elif is_stream_manager(response):
         if response.__class__.__name__ == "AsyncMessageStreamManager":
             return WrappedAsyncMessageStreamManager(
-                response,
+                cast("AsyncMessageStreamManager", response),
                 span,
                 instance._client,
                 kwargs,
@@ -313,7 +344,7 @@ def _wrap(
             )
         else:
             return WrappedMessageStreamManager(
-                response,
+                cast("MessageStreamManager", response),
                 span,
                 instance._client,
                 kwargs,
@@ -343,11 +374,11 @@ def _wrap(
 
 async def _awrap(
     to_wrap: WrappedFunctionSpec,
-    wrapped,
+    wrapped: Callable[..., Awaitable[T]],
     instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-):
+) -> T | AsyncGenerator[ParsedMessageStreamEvent] | WrappedAsyncMessageStreamManager | WrappedMessageStreamManager | None:
     """Instruments and calls every function defined in WRAPPED_FUNCTIONS."""
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
@@ -384,7 +415,7 @@ async def _awrap(
     if kwargs.get("stream") or is_streaming_response(response):
         return abuild_from_streaming_response(
             span,
-            response,
+            cast("AsyncMessageStream", response),
             instance._client,
             kwargs,
             record_raw_response=is_rollout,
@@ -392,7 +423,7 @@ async def _awrap(
     elif is_stream_manager(response):
         if response.__class__.__name__ == "AsyncMessageStreamManager":
             return WrappedAsyncMessageStreamManager(
-                response,
+                cast("AsyncMessageStreamManager", response),
                 span,
                 instance._client,
                 kwargs,
@@ -400,7 +431,7 @@ async def _awrap(
             )
         else:
             return WrappedMessageStreamManager(
-                response,
+                cast("MessageStreamManager", response),
                 span,
                 instance._client,
                 kwargs,
@@ -592,9 +623,11 @@ class AnthropicInstrumentor(BaseLaminarInstrumentor):
             ]
         )
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is None:
             try:

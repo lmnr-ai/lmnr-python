@@ -6,7 +6,6 @@ import pydantic
 from opentelemetry.util.types import AttributeValue
 from typing_extensions import TypeVar, override
 
-from lmnr.sdk.laminar import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
 )
@@ -19,6 +18,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers
     set_instrumentation_scope_attributes,
     stamp_instrumentation_scope,
 )
+from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import JsonValue, get_input_from_func_args, json_dumps
 

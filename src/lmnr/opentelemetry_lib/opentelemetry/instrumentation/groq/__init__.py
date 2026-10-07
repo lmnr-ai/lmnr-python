@@ -44,8 +44,9 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     stamp_instrumentation_scope,
 )
+from lmnr.sdk.log import get_default_logger
 
-logger = logging.getLogger(__name__)
+logger = get_default_logger(__name__)
 
 _instruments = ("groq >= 0.9.0",)
 

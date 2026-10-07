@@ -39,13 +39,12 @@ def merge_text_parts(
             if accumulated_text:
                 merged_parts.append(types.Part(text=accumulated_text))
                 accumulated_text = ""
-            file = cast(types.File, part)
             merged_parts.append(
                 types.Part(
                     file_data=types.FileData(
-                        display_name=file.display_name,
-                        file_uri=file.uri,
-                        mime_type=file.mime_type
+                        display_name=part.display_name,
+                        file_uri=part.uri,
+                        mime_type=part.mime_type
                     )
                 )
             )

@@ -1,4 +1,3 @@
-import logging
 import os
 import threading
 import weakref
@@ -11,7 +10,9 @@ from opentelemetry.trace.status import StatusCode
 from opentelemetry.util.types import Attributes, AttributeValue
 from typing_extensions import override
 
-logger = logging.getLogger(__name__)
+from lmnr.sdk.log import get_default_logger
+
+logger = get_default_logger(__name__)
 
 
 def _call_if_alive(weak_method: weakref.WeakMethod[Callable[..., None]]) -> None:
