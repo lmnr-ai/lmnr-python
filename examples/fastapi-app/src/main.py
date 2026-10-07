@@ -1,10 +1,12 @@
-from fastapi import FastAPI, HTTPException
-from schemas import Ticket, TicketClassification
 from dotenv import load_dotenv
-from lmnr import Laminar
-from llm import model_classify_ticket
+from fastapi import FastAPI, HTTPException
 
-load_dotenv(override=True)
+from lmnr import Laminar
+
+from .llm import model_classify_ticket
+from .schemas import Ticket, TicketClassification
+
+_success = load_dotenv(override=True)
 
 Laminar.initialize()
 
