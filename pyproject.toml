@@ -54,6 +54,9 @@ classifiers = [
 [project.scripts]
 lmnr = "lmnr.cli:cli"
 
+[project.entry-points."harbor.plugins"]
+laminar = "lmnr.integrations.harbor:LaminarPlugin"
+
 [project.optional-dependencies]
 # List of all possible extras. You can specify one or more of these extras
 # when installing the package, using any of the following examples:
