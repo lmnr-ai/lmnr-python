@@ -25,3 +25,8 @@ jobs:
         run: uv sync --all-extras --dev
       - name: Run tests
         run: uv run pytest
+
+      # openai>=3 isn't installable alongside the dev deps (litellm caps openai<3),
+      # so the Decisions API tests run against an overlay of the newer SDK.
+      - name: Run Decisions API tests (openai 3.x)
+        run: uv run --with openai==3.26.0 pytest tests/test_instrumentations/test_openai/traces/test_decisions.py

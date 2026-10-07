@@ -23,6 +23,10 @@ from .assistant_wrappers import (
     runs_retrieve_wrapper,
 )
 
+from .decisions_wrappers import (
+    async_decisions_create_wrapper,
+    decisions_create_wrapper,
+)
 from .responses_wrappers import (
     async_responses_cancel_wrapper,
     async_responses_get_or_create_wrapper,
@@ -192,6 +196,17 @@ class OpenAIV1Instrumentor(BaseInstrumentor):
             "AsyncResponses.cancel",
             async_responses_cancel_wrapper(tracer),
         )
+        # Decisions API, openai>=3.26.0
+        self._try_wrap(
+            "openai.resources.decisions",
+            "Decisions.create",
+            decisions_create_wrapper(tracer),
+        )
+        self._try_wrap(
+            "openai.resources.decisions",
+            "AsyncDecisions.create",
+            async_decisions_create_wrapper(tracer),
+        )
 
     def _uninstrument(self, **kwargs):
         self.try_unwrap("openai.resources.chat.completions.Completions", "create")
@@ -218,6 +233,8 @@ class OpenAIV1Instrumentor(BaseInstrumentor):
         self.try_unwrap("openai.resources.responses.AsyncResponses", "create")
         self.try_unwrap("openai.resources.responses.AsyncResponses", "retrieve")
         self.try_unwrap("openai.resources.responses.AsyncResponses", "cancel")
+        self.try_unwrap("openai.resources.decisions.Decisions", "create")
+        self.try_unwrap("openai.resources.decisions.AsyncDecisions", "create")
 
     def try_unwrap(self, module, function):
         try:
