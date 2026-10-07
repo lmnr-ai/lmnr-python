@@ -480,7 +480,7 @@ _ORJSON_NATIVE_KEY_TYPES = (
 )
 
 
-def _stringify_dict_keys(value: JsonValue | Sequence[Any] | dict[Any, Any]) -> JsonValue:
+def _stringify_dict_keys(value: pydantic.BaseModel | JsonValue | Sequence[Any] | dict[Any, Any] | set[Any]) -> JsonValue:
     """Coerce the mapping keys orjson cannot encode into strings.
 
     `OPT_NON_STR_KEYS` only covers a fixed set of scalar key types, and orjson
@@ -528,7 +528,7 @@ def _stringify_dict_keys(value: JsonValue | Sequence[Any] | dict[Any, Any]) -> J
     ]
 
 
-def json_dumps(data: JsonValue | dict[str, Any] | Sequence[Any]) -> str:
+def json_dumps(data: pydantic.BaseModel | JsonValue | dict[str, Any] | Sequence[Any] | set[Any]) -> str:
     try:
         return orjson.dumps(
             data,

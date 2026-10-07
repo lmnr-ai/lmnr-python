@@ -2,8 +2,8 @@
 
 import inspect
 import re
-from typing import Any
 import uuid
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest

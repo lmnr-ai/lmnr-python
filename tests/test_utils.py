@@ -1,14 +1,22 @@
+from __future__ import annotations
+
 import base64
 import dataclasses
 import json
-import pytest
 import uuid
+from collections import OrderedDict
+from collections.abc import Iterator, Mapping, Sequence
+from datetime import UTC, date, datetime
+from typing import Any, ClassVar, cast
 
-from typing import Any, Dict, List, cast
+import pytest
 from pydantic import BaseModel, ConfigDict
+from typing_extensions import TypeVar, overload, override
 
-from lmnr.sdk.utils import is_otel_attribute_value_type, format_id, json_dumps
+from lmnr.sdk.utils import format_id, is_otel_attribute_value_type, json_dumps
 
+K = TypeVar("K")
+T = TypeVar("T")
 
 class SimplePydanticModel(BaseModel):
     name: str
@@ -18,8 +26,8 @@ class SimplePydanticModel(BaseModel):
 
 class NestedPydanticModel(BaseModel):
     simple: SimplePydanticModel
-    items: List[str]
-    metadata: Dict[str, Any] = {}
+    items: list[str]
+    metadata: dict[str, Any] = {}
 
 
 class PydanticModelWithCustomMethods(BaseModel):
@@ -28,16 +36,17 @@ class PydanticModelWithCustomMethods(BaseModel):
     def to_json(self):
         return f'{{"custom_name": "{self.name}_custom"}}'
 
-    def json(self):
+    @override
+    def json(self, **kwargs: Any):
         return f'{{"json_name": "{self.name}_json"}}'
 
 
 class ComplexPydanticModel(BaseModel):
-    model_config = ConfigDict(validate_by_name=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(validate_by_name=True)
     id: int
     user: SimplePydanticModel
-    tags: List[str]
-    settings: Dict[str, Any]
+    tags: list[str]
+    settings: dict[str, Any]
 
 
 # Test dataclasses
@@ -50,24 +59,26 @@ class SimpleDataClass:
 @dataclasses.dataclass
 class NestedDataClass:
     simple: SimpleDataClass
-    items: List[str]
+    items: list[str]
 
 
 class CircularRef:
     def __init__(self, name: str):
-        self.name = name
-        self.ref = None
+        self.name: str = name
+        self.ref: CircularRef | None = None
 
 
 class FailingStr:
     """Class that raises an exception in __str__ method"""
 
     def __init__(self, name: str):
-        self.name = name
+        self.name: str = name
 
+    @override
     def __str__(self):
         raise RuntimeError("__str__ method failed")
 
+    @override
     def __repr__(self):
         return f"FailingStr(name='{self.name}')"
 
@@ -76,11 +87,13 @@ class FailingRepr:
     """Class that raises an exception in __repr__ method"""
 
     def __init__(self, name: str):
-        self.name = name
+        self.name: str = name
 
+    @override
     def __repr__(self):
         raise RuntimeError("__repr__ method failed")
 
+    @override
     def __str__(self):
         return f"FailingRepr with name: {self.name}"
 
@@ -89,11 +102,13 @@ class FailingBoth:
     """Class that raises exceptions in both __str__ and __repr__ methods"""
 
     def __init__(self, name: str):
-        self.name = name
+        self.name: str = name
 
+    @override
     def __str__(self):
         raise RuntimeError("__str__ method failed")
 
+    @override
     def __repr__(self):
         raise RuntimeError("__repr__ method failed")
 
@@ -102,15 +117,48 @@ class ComplexFailingObject:
     """Class that fails in str() but has other attributes"""
 
     def __init__(self, value: int):
-        self.value = value
-        self.data = {"key": "value"}
+        self.value: int = value
+        self.data: dict[str, str] = {"key": "value"}
 
+    @override
     def __str__(self):
         raise ValueError("Cannot convert to string")
 
+    @override
     def __repr__(self):
         raise ValueError("Cannot create repr")
 
+class ReadOnlyMapping(Mapping[K, T]):
+    def __init__(self, data: Mapping[K, T]):
+        self._data: Mapping[K, T] = data
+
+    @override
+    def __getitem__(self, key: K) -> T:
+        return self._data[key]
+
+    @override
+    def __iter__(self) -> Iterator[K]:
+        return iter(self._data)
+
+    @override
+    def __len__(self) -> int:
+        return len(self._data)
+
+class CustomSequence(Sequence[T]):
+    def __init__(self, items: Sequence[T]):
+        self._items: Sequence[T] = items
+
+    @overload
+    def __getitem__(self, index: int) -> T: ...
+    @overload
+    def __getitem__(self, index: slice[int | None]) -> Sequence[T]: ...
+    @override
+    def __getitem__(self, index: int | slice[int | None]) -> T | Sequence[T]:
+        return self._items[index]
+
+    @override
+    def __len__(self):
+        return len(self._items)
 
 def test_is_otel_attribute_value_type():
     # primitive types
@@ -126,7 +174,6 @@ def test_is_otel_attribute_value_type():
     # empty sequences
     assert is_otel_attribute_value_type([])
     assert is_otel_attribute_value_type(())
-    assert is_otel_attribute_value_type(tuple())
 
     # non-empty sequences of same type
     assert is_otel_attribute_value_type([1, 2, 3])
@@ -183,13 +230,13 @@ def test_json_dumps_sequence_types():
 def test_json_dumps_dataclass():
     """Test dataclass serialization"""
     simple = SimpleDataClass(name="test", value=42)
-    result = json_dumps(simple)
+    result = json_dumps(cast(Any, simple))
     parsed = json.loads(result)
     assert parsed == {"name": "test", "value": 42}
 
     # Nested dataclass
     nested = NestedDataClass(simple=simple, items=["a", "b"])
-    result = json_dumps(nested)
+    result = json_dumps(cast(Any, nested))
     parsed = json.loads(result)
     assert parsed["simple"]["name"] == "test"
     assert parsed["simple"]["value"] == 42
@@ -204,7 +251,7 @@ def test_json_dumps_circular_reference():
     obj2.ref = obj1
 
     # This should not cause infinite recursion
-    result = json_dumps(obj1)
+    result = json_dumps(cast(Any, obj1))
     assert isinstance(result, str)
     # Should fallback to string representation or handle gracefully
 
@@ -241,12 +288,12 @@ def test_json_dumps_unsupported_types():
     def sample_func():
         pass
 
-    result = json_dumps(sample_func)
+    result = json_dumps(cast(Any, sample_func))
     parsed = json.loads(result)
     assert isinstance(parsed, str)  # Should fallback to string representation
 
     # Lambda
-    result = json_dumps(lambda x: x)
+    result = json_dumps(cast(Any, lambda x: x))  # pyright: ignore[reportUnknownLambdaType]
     parsed = json.loads(result)
     assert isinstance(parsed, str)
 
@@ -260,7 +307,7 @@ def test_json_dumps_generators_and_iterators():
         yield 2
         yield 3
 
-    result = json_dumps(gen())
+    result = json_dumps(cast(Any, gen()))
     parsed = json.loads(result)
     assert isinstance(
         parsed, str
@@ -268,7 +315,7 @@ def test_json_dumps_generators_and_iterators():
 
     # Iterator
     iterator = iter([1, 2, 3])
-    result = json_dumps(iterator)
+    result = json_dumps(cast(Any, iterator))
     parsed = json.loads(result)
     assert isinstance(
         parsed, str
@@ -488,12 +535,10 @@ def test_json_dumps_deeply_nested_pydantic():
 
 def test_json_dumps_pydantic_with_none_values():
     """Test pydantic model with None values"""
-    from typing import Optional
-
     class ModelWithOptional(BaseModel):
         name: str
-        optional_value: Optional[int] = None
-        optional_string: Optional[str] = None
+        optional_value: int | None = None
+        optional_string: str | None = None
 
     model = ModelWithOptional(name="test")
     result = json_dumps(model)
@@ -506,21 +551,18 @@ def test_json_dumps_pydantic_with_none_values():
 
 def test_json_dumps_pydantic_edge_cases():
     """Test pydantic models with edge cases"""
-    from datetime import datetime, date
-    import uuid
-
     class EdgeCaseModel(BaseModel):
         text: str
         number: int
         date_val: date
         datetime_val: datetime
         uuid_val: uuid.UUID
-        empty_list: List[str] = []
-        empty_dict: Dict[str, Any] = {}
+        empty_list: list[str] = []
+        empty_dict: dict[str, Any] = {}
 
     test_uuid = uuid.uuid4()
     test_date = date(2024, 1, 15)
-    test_datetime = datetime(2024, 1, 15, 10, 30, 45)
+    test_datetime = datetime(2024, 1, 15, 10, 30, 45, tzinfo=UTC)
 
     model = EdgeCaseModel(
         text="test",
@@ -546,7 +588,7 @@ def test_json_dumps_pydantic_edge_cases():
 def test_json_dumps_failing_str():
     """Test object that fails in __str__ but works in __repr__"""
     obj = FailingStr("test")
-    result = json_dumps(obj)
+    result = json_dumps(cast(Any, obj))
 
     # When serialization completely fails, json_dumps returns "{}"
     assert result == "{}"
@@ -555,7 +597,7 @@ def test_json_dumps_failing_str():
 def test_json_dumps_failing_repr():
     """Test object that fails in __repr__ but works in __str__"""
     obj = FailingRepr("test")
-    result = json_dumps(obj)
+    result = json_dumps(cast(Any, obj))
 
     # Should succeed using __str__ method as fallback
     parsed = json.loads(result)
@@ -566,7 +608,7 @@ def test_json_dumps_failing_repr():
 def test_json_dumps_failing_both():
     """Test object that fails in both __str__ and __repr__"""
     obj = FailingBoth("test")
-    result = json_dumps(obj)
+    result = json_dumps(cast(Any, obj))
 
     # When serialization completely fails, json_dumps returns "{}"
     assert result == "{}"
@@ -575,7 +617,7 @@ def test_json_dumps_failing_both():
 def test_json_dumps_complex_failing_object():
     """Test complex object that fails in string conversion"""
     obj = ComplexFailingObject(42)
-    result = json_dumps(obj)
+    result = json_dumps(cast(Any, obj))
 
     # When serialization completely fails, json_dumps returns "{}"
     assert result == "{}"
@@ -618,13 +660,13 @@ def test_json_dumps_fallback_hierarchy():
     ]
 
     for obj in failing_cases:
-        result = json_dumps(obj)
+        result = json_dumps(cast(Any, obj))
         # Should produce the fallback empty JSON object
         assert result == "{}"
 
     # This should succeed using __str__ method
     succeeding_case = FailingRepr("test2")  # __repr__ fails but __str__ works
-    result = json_dumps(succeeding_case)
+    result = json_dumps(cast(Any, succeeding_case))
     parsed = json.loads(result)
     assert isinstance(parsed, str)
     assert "FailingRepr with name: test2" in parsed
@@ -674,14 +716,15 @@ def test_json_dumps_encoder_fallback_success():
 
     # Test with a custom object that has a good __str__ method
     class GoodCustomObject:
-        def __init__(self, name):
-            self.name = name
+        def __init__(self, name: str):
+            self.name: str = name
 
+        @override
         def __str__(self):
             return f"GoodCustomObject({self.name})"
 
     obj = GoodCustomObject("test")
-    result = json_dumps(obj)
+    result = json_dumps(cast(Any, obj))
     parsed = json.loads(result)
 
     # Should successfully serialize to a string
@@ -704,7 +747,7 @@ def test_format_id_with_int():
     result = format_id(test_int)
 
     # Verify it's a valid UUID string
-    uuid.UUID(result)
+    _resulting_id = uuid.UUID(result)
     assert isinstance(result, str)
 
     # Test with zero
@@ -734,40 +777,40 @@ def test_format_id_with_uuid_string_no_hyphens():
 def test_format_id_with_invalid_string():
     """Test format_id with invalid string values."""
     with pytest.raises(ValueError):
-        format_id("not-a-valid-uuid")
+        _formatted = format_id("not-a-valid-uuid")
 
     with pytest.raises(ValueError):
-        format_id("12345")  # Too short
+        _formatted = format_id("12345")  # Too short
 
     with pytest.raises(ValueError):
-        format_id("invalid-uuid-string-format")
+        _formatted = format_id("invalid-uuid-string-format")
 
     # String that's too long for UUID
     with pytest.raises(ValueError):
-        format_id("12345678901234567890123456789012345678901234567890")
+        _formatted = format_id("12345678901234567890123456789012345678901234567890")
 
     # String with invalid characters for UUID
     with pytest.raises(ValueError):
-        format_id("gggggggg-1234-5678-9abc-123456789abc")
+        _formatted = format_id("gggggggg-1234-5678-9abc-123456789abc")
 
     # Decimal number as string (no longer supported)
     with pytest.raises(ValueError):
-        format_id("123456789012345678901234567890123456")
+        _formatted = format_id("123456789012345678901234567890123456")
 
 
 def test_format_id_with_invalid_types():
     """Test format_id with invalid input types."""
     with pytest.raises(TypeError, match="Invalid ID type"):
-        format_id(None)
+        _formatted = format_id(None)
 
     with pytest.raises(TypeError, match="Invalid ID type"):
-        format_id([])
+        _formatted = format_id([])
 
     with pytest.raises(TypeError, match="Invalid ID type"):
-        format_id({})
+        _formatted = format_id({})
 
     with pytest.raises(TypeError, match="Invalid ID type"):
-        format_id(1.5)
+        _formatted = format_id(1.5)
 
 
 def test_format_id_consistency():
@@ -803,7 +846,7 @@ def test_format_id_clear_behavior():
 
     # Invalid strings -> ValueError (no guessing)
     with pytest.raises(ValueError):
-        format_id("not a uuid at all")
+        _formatted = format_id("not a uuid at all")
 
 
 def test_json_dumps_bytes_use_standard_base64():
@@ -905,31 +948,7 @@ def test_json_dumps_dict_like_objects_do_not_stringify_to_python_reprs():
     Falling through to `str(o)` yields a Python repr with SINGLE quotes —
     "{'a': 1}" — which is not JSON and no consumer can parse it.
     """
-    import collections
-    import collections.abc
 
-    class ReadOnlyMapping(collections.abc.Mapping):
-        def __init__(self, data):
-            self._data = data
-
-        def __getitem__(self, key):
-            return self._data[key]
-
-        def __iter__(self):
-            return iter(self._data)
-
-        def __len__(self):
-            return len(self._data)
-
-    class CustomSequence(collections.abc.Sequence):
-        def __init__(self, items):
-            self._items = items
-
-        def __getitem__(self, index):
-            return self._items[index]
-
-        def __len__(self):
-            return len(self._items)
 
     mapping = ReadOnlyMapping({"a": 1, "b": [1, {"c": 2}]})
     assert json.loads(json_dumps({"m": mapping}))["m"] == {"a": 1, "b": [1, {"c": 2}]}
@@ -946,6 +965,7 @@ def test_json_dumps_dict_like_objects_do_not_stringify_to_python_reprs():
 
     # A genuinely opaque object still degrades to its repr, as before.
     class Opaque:
+        @override
         def __repr__(self):
             return "Opaque()"
 
@@ -953,7 +973,7 @@ def test_json_dumps_dict_like_objects_do_not_stringify_to_python_reprs():
 
     # dict subclasses were already fine; pin them so the new branches can't
     # accidentally reorder or lose them.
-    assert json.loads(json_dumps({"d": collections.OrderedDict(a=1)}))["d"] == {"a": 1}
+    assert json.loads(json_dumps({"d": OrderedDict(a=1)}))["d"] == {"a": 1}
 
 
 def test_json_dumps_recovers_bad_keys_nested_in_non_builtin_containers():
@@ -964,32 +984,6 @@ def test_json_dumps_recovers_bad_keys_nested_in_non_builtin_containers():
     takes every sibling field down with it. Reachable via google-genai's
     `FunctionResponse.response`, typed `dict[str, Any]`.
     """
-    import collections.abc
-
-    class ReadOnlyMapping(collections.abc.Mapping):
-        def __init__(self, data):
-            self._data = data
-
-        def __getitem__(self, key):
-            return self._data[key]
-
-        def __iter__(self):
-            return iter(self._data)
-
-        def __len__(self):
-            return len(self._data)
-
-    class CustomSequence(collections.abc.Sequence):
-        def __init__(self, items):
-            self._items = items
-
-        def __getitem__(self, index):
-            return self._items[index]
-
-        def __len__(self):
-            return len(self._items)
-
-    # Bad key directly inside a Mapping.
     parsed = json.loads(json_dumps({"keep": "me", "v": ReadOnlyMapping({(0, 1): "x"})}))
     assert parsed["keep"] == "me"
     assert parsed["v"] == {"(0, 1)": "x"}
@@ -1027,7 +1021,7 @@ def test_json_dumps_recovers_bad_keys_nested_in_pydantic_models():
     """
 
     class Inner(BaseModel):
-        payload: Dict[Any, Any] = {}
+        payload: dict[Any, Any] = {}
 
     bad = {(0, 1): "hit"}
 
@@ -1058,25 +1052,26 @@ def test_unwrap_container_is_the_single_source_of_truth_for_containers():
     re-testing each type: anything the unwrapper opens must survive a retry with
     its bad keys repaired.
     """
-    import collections.abc
-
     from lmnr.sdk.utils import _UNWRAP_MISS, _unwrap_container
 
-    class Mapped(collections.abc.Mapping):
-        def __init__(self, d):
-            self._d = d
+    class Mapped(Mapping[K, T]):
+        def __init__(self, d: Mapping[K, T]):
+            self._d: Mapping[K, T] = d
 
-        def __getitem__(self, key):
+        @override
+        def __getitem__(self, key: K) -> T:
             return self._d[key]
 
-        def __iter__(self):
+        @override
+        def __iter__(self) -> Iterator[K]:
             return iter(self._d)
 
-        def __len__(self):
+        @override
+        def __len__(self) -> int:
             return len(self._d)
 
     class Model(BaseModel):
-        payload: Dict[Any, Any] = {}
+        payload: dict[Any, Any] = {}
 
     # Opened -> a bad key inside is repairable.
     openable = [{"a": 1}, [1], (1,), {1}, frozenset([1]), Mapped({"a": 1}), Model()]
@@ -1089,11 +1084,11 @@ def test_unwrap_container_is_the_single_source_of_truth_for_containers():
 
     # The contract that matters: for every openable container holding a bad key,
     # siblings survive and the key is coerced.
-    for wrap in (
-        lambda bad: {"v": bad},
-        lambda bad: [bad],
-        lambda bad: Mapped({"v": bad}),
-        lambda bad: Model(payload=bad),
+    for wrap in (  # pyright: ignore[reportUnknownVariableType]
+        lambda bad: {"v": bad},  # pyright: ignore[reportUnknownLambdaType]
+        lambda bad: [bad],  # pyright: ignore[reportUnknownLambdaType]
+        lambda bad: Mapped({"v": bad}),  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+        lambda bad: Model(payload=bad),  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
     ):
         out = json_dumps({"keep": "me", "c": wrap({(0, 1): "x"})})
         assert '"keep":"me"' in out.replace(", ", ",")
