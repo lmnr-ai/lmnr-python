@@ -10,6 +10,7 @@ Two pieces, both non-streaming (streaming is out of scope for the v2 cache):
 """
 
 import json
+from typing import Any, cast
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.rollout import (
     OpenAIRolloutWrapper,
@@ -20,7 +21,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.v1 import (
 from lmnr.sdk.debug.hash import debug_input_hash
 
 
-def _genai_envelope():
+def _genai_envelope() -> dict[str, Any]:
     return {
         "type": "genAi",
         "model": "gpt-4o",
@@ -54,12 +55,13 @@ def test_cached_genai_responses_have_unique_ids():
     wrapper = OpenAIRolloutWrapper()
     a = wrapper.cached_response_to_responses(_genai_envelope())
     b = wrapper.cached_response_to_responses(_genai_envelope())
+    assert a is not None and b is not None
     assert a.id != b.id
 
 
 def test_cached_response_to_responses_raw():
     wrapper = OpenAIRolloutWrapper()
-    raw = {
+    raw: dict[str, Any] = {
         "id": "resp_123",
         "created_at": 0,
         "model": "gpt-4o",
@@ -80,7 +82,7 @@ def test_cached_response_to_responses_raw():
         "tools": [],
         "status": "completed",
     }
-    envelope = {"type": "raw", "response": raw}
+    envelope : dict[str, Any] = {"type": "raw", "response": raw}
     response = wrapper.cached_response_to_responses(envelope)
     assert response is not None
     assert response.id == "resp_123"
@@ -89,7 +91,7 @@ def test_cached_response_to_responses_raw():
 
 def test_cached_response_to_responses_raw_accepts_json_string():
     wrapper = OpenAIRolloutWrapper()
-    raw = {
+    raw: dict[str, Any] = {
         "id": "resp_str",
         "created_at": 0,
         "model": "gpt-4o",
@@ -144,7 +146,7 @@ def test_recording_and_replay_input_hash_match():
         {"role": "user", "content": "What is the capital of France?"},
         {"role": "user", "content": "And Italy?"},
     ]
-    recorded = rw.build_genai_input_messages(rw.process_input(kwargs_input))
-    prestamp = rw.build_genai_input_messages(rw.process_input(kwargs_input))
+    recorded = rw.build_genai_input_messages(rw.process_input(cast(Any, kwargs_input)))
+    prestamp = rw.build_genai_input_messages(rw.process_input(cast(Any, kwargs_input)))
     assert recorded == prestamp
     assert debug_input_hash(recorded) == debug_input_hash(prestamp)

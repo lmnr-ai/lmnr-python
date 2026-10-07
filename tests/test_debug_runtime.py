@@ -1,18 +1,49 @@
-import pytest
-from unittest.mock import patch
+import asyncio
+import atexit
+import json
+import logging
+import os
+import threading
+import time
+import uuid
+from collections.abc import Callable, Sequence
+from pathlib import Path
+from typing import Any, Literal, cast
+from unittest.mock import MagicMock, patch
 
+import pytest
+from opentelemetry import trace
+from opentelemetry.context import get_value, set_value
+from opentelemetry.sdk.trace import ReadableSpan
+from opentelemetry.sdk.trace.export import SpanExportResult
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.util.types import AttributeValue
+
+from lmnr import LaminarSpanProcessor
+from lmnr.opentelemetry_lib.tracing.context import (
+    CONTEXT_METADATA_KEY,
+    attach_context,
+    detach_context,
+    get_current_context,
+)
+from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
+from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.debug import (
     DebugRuntime,
     get_runtime,
     init_debug_runtime,
+    init_debug_runtime_from_context,
     reset_debug_runtime,
 )
-from lmnr.sdk.debug.config import DebugConfig
+from lmnr.sdk.debug.config import DebugConfig, build_debug_config_from_context
 from lmnr.sdk.debug.outcome import CacheOutcome
+from lmnr.sdk.laminar import Laminar
+from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.types import DebugContext, LaminarSpanContext
 
 
 @pytest.fixture
-def no_browser(monkeypatch):
+def no_browser(monkeypatch: MagicMock):
     """Prevent _init_debug_runtime from opening a browser tab during tests."""
     monkeypatch.setenv("LMNR_DEBUG_SESSION_ID", "test-session")
 
@@ -22,59 +53,92 @@ def _reset_runtime():
 
 
 class _NoopExporter:
-    def export(self, spans):
-        from opentelemetry.sdk.trace.export import SpanExportResult
-
+    def export(self, _spans: list[ReadableSpan]) -> Literal[SpanExportResult.SUCCESS]:
         return SpanExportResult.SUCCESS
 
     def shutdown(self):
         pass
 
-    def force_flush(self, timeout_millis=30000):
+    def force_flush(self, _timeout_millis: int=30000):
         return True
 
 
-def _config(**kwargs) -> DebugConfig:
+class _FakeSpan:
+    """Minimal span double for `LaminarSpanProcessor.on_start`."""
+
+    def __init__(self, name: str = "openai.chat", trace_id: int = 1):
+        self.parent: Any = None
+        self.name: str = name
+        self.attributes: dict[str, AttributeValue] = {}
+        self._ctx: trace.SpanContext = trace.SpanContext(
+            trace_id=trace_id,
+            span_id=0x0123456789ABCDEF,
+            is_remote=False,
+        )
+
+    def get_span_context(self) -> trace.SpanContext:
+        return self._ctx
+
+    def set_attribute(self, key: str, value: AttributeValue):
+        self.attributes[key] = value
+
+
+def _config(**kwargs: Any) -> DebugConfig:
     base = {
         "session_id": "s",
         "replay_trace_id": "r",
         "cache_until_span_id": "abcdef",
     }
     base.update(kwargs)
-    return DebugConfig(**base)
+    return DebugConfig(**cast(Any, base))
 
 
-def _runtime(
-    *, debugger_url=None, client=None, async_client=None, **cfg
-) -> DebugRuntime:
-    """Construct a DebugRuntime with the v2 two-client signature.
-
-    Most tests don't exercise the cache clients (no live LLM call), so they
-    default to None; the cache-lookup paths are covered in test_debug_replay.py.
-    """
-    return DebugRuntime(_config(**cfg), client, async_client, debugger_url)
+@pytest.fixture
+def sync_client():
+    client = LaminarClient(project_api_key="test-123")
+    yield client
+    client.close()
 
 
-def test_replay_configured_reflects_config():
+@pytest.fixture
+def async_client():
+    client = AsyncLaminarClient(project_api_key="test-123")
+    yield client
+    asyncio.run(client.close())
+
+
+@pytest.fixture
+def make_runtime(sync_client: LaminarClient, async_client: AsyncLaminarClient) -> Callable[..., DebugRuntime]:
+    """Factory for `DebugRuntime`s sharing the per-test clients above."""
+
+    def _make(*, debugger_url: str | None = None, **cfg: Any) -> DebugRuntime:
+        return DebugRuntime(_config(**cfg), sync_client, async_client, debugger_url)
+
+    return _make
+
+
+def test_replay_configured_reflects_config(make_runtime: Callable[..., DebugRuntime]):
     # v2 has no synchronous cache build, so replay_configured collapses to the
     # config's replay_enabled (source trace + cache_until span-id needle).
-    assert _runtime().replay_configured is True
-    assert _runtime(replay_trace_id=None).replay_configured is False
-    assert _runtime(cache_until_span_id=None).replay_configured is False
+    assert make_runtime().replay_configured is True
+    assert make_runtime(replay_trace_id=None).replay_configured is False
+    assert make_runtime(cache_until_span_id=None).replay_configured is False
 
 
-def test_runtime_retains_both_clients():
-    sync_client = object()
-    async_client = object()
-    runtime = _runtime(client=sync_client, async_client=async_client)
+def test_runtime_retains_both_clients(
+    make_runtime: Callable[..., DebugRuntime],
+    sync_client: LaminarClient,
+    async_client: AsyncLaminarClient,
+):
+    runtime = make_runtime()
     assert runtime.client is sync_client
     assert runtime.async_client is async_client
 
 
-def test_update_context_config_moves_coordinates_keeps_identity():
+def test_update_context_config_moves_coordinates_keeps_identity(make_runtime: Callable[..., DebugRuntime]):
     # The dynamic coordinates (session / replay / cache-until) follow the live
     # request; local_origin / session_minted are run identity and must NOT change.
-    runtime = _runtime(
+    runtime = make_runtime(
         session_id="sess-a",
         replay_trace_id="trace-a",
         cache_until_span_id="aaaa",
@@ -100,10 +164,10 @@ def test_update_context_config_moves_coordinates_keeps_identity():
     assert runtime.should_open_browser is False
 
 
-def test_update_context_config_reports_change_for_moved_replay_coords():
+def test_update_context_config_reports_change_for_moved_replay_coords(make_runtime: Callable[..., DebugRuntime]):
     # The flag tracks ANY moved dynamic coordinate (per-run), not only the
     # session id: a replay-trace change on the same session still reports True.
-    runtime = _runtime(session_id="sess", local_origin=False)
+    runtime = make_runtime(session_id="sess", local_origin=False)
     changed = runtime.update_context_config(
         _config(session_id="sess", replay_trace_id="other", local_origin=False)
     )
@@ -112,55 +176,54 @@ def test_update_context_config_reports_change_for_moved_replay_coords():
     assert runtime.replay_trace_id == "other"
 
 
-def test_record_trace_id_first_wins():
-    runtime = _runtime()
+def test_record_trace_id_first_wins(make_runtime: Callable[..., DebugRuntime]):
+    runtime = make_runtime()
     runtime.record_trace_id("trace-a")
     runtime.record_trace_id("trace-b")
     assert runtime._trace_id == "trace-a"
 
 
-def test_record_project_id_first_wins():
-    runtime = _runtime(debugger_url="https://x")
+def test_record_project_id_first_wins(make_runtime: Callable[..., DebugRuntime]):
+    runtime = make_runtime(debugger_url="https://x")
     runtime.record_project_id("proj-a")
     runtime.record_project_id("proj-b")
     assert runtime._project_id == "proj-a"
 
 
-def test_debugger_session_url_falls_back_to_base_without_project_id():
+def test_debugger_session_url_falls_back_to_base_without_project_id(make_runtime: Callable[..., DebugRuntime]):
     # Before register resolves a project id, the URL is just the base.
-    runtime = _runtime(debugger_url="https://app.x")
+    runtime = make_runtime(debugger_url="https://app.x")
     assert runtime.debugger_session_url() == "https://app.x"
 
 
-def test_debugger_session_url_is_none_without_base():
-    runtime = _runtime(debugger_url=None)
+def test_debugger_session_url_is_none_without_base(make_runtime: Callable[..., DebugRuntime]):
+    runtime = make_runtime(debugger_url=None)
     assert runtime.debugger_session_url() is None
 
 
-def test_debugger_session_url_full_with_project_id():
-    runtime = _runtime(session_id="sess-1", debugger_url="https://app.x")
+def test_debugger_session_url_full_with_project_id(make_runtime: Callable[..., DebugRuntime]):
+    runtime = make_runtime(session_id="sess-1", debugger_url="https://app.x")
     runtime.record_project_id("proj-1")
     assert runtime.debugger_session_url() == (
         "https://app.x/project/proj-1/debugger-sessions/sess-1"
     )
 
 
-def test_record_debug_trace_id_from_env_populates_pointer(monkeypatch):
+def test_record_debug_trace_id_from_env_populates_pointer(\
+    monkeypatch: MagicMock,
+    make_runtime: Callable[..., DebugRuntime]
+):
     # A run attached via LMNR_SPAN_CONTEXT never opens a root span, so the
     # pointer would emit an empty trace_id unless the inherited trace id is
     # recorded at env-attach time.
-    import uuid as _uuid
 
-    from opentelemetry import trace as _trace
-
-    from lmnr.sdk.laminar import Laminar
 
     _reset_runtime()
-    runtime = _runtime()
+    runtime = make_runtime()
     monkeypatch.setattr("lmnr.sdk.debug._runtime", runtime)
 
-    trace_id = _uuid.UUID("01234567-89ab-cdef-0123-456789abcdef")
-    span_context = _trace.SpanContext(
+    trace_id = uuid.UUID("01234567-89ab-cdef-0123-456789abcdef")
+    span_context = trace.SpanContext(
         trace_id=trace_id.int,
         span_id=0x0123456789ABCDEF,
         is_remote=True,
@@ -171,28 +234,23 @@ def test_record_debug_trace_id_from_env_populates_pointer(monkeypatch):
     _reset_runtime()
 
 
-def test_env_context_arms_debug_runtime_from_block(monkeypatch):
+def test_env_context_arms_debug_runtime_from_block(monkeypatch: MagicMock):
     # A debug block carried by LMNR_SPAN_CONTEXT must arm the debug runtime: an
     # LMNR_SPAN_CONTEXT-attached run parents off the pushed context with
     # parent_span_context=None, so the span-creation funnels never see the block
     # and only _initialize_context_from_env can activate replay downstream.
-    import uuid as _uuid
-
-    from lmnr.sdk.laminar import Laminar
-    from lmnr.sdk.types import DebugContext, LaminarSpanContext
-
     _reset_runtime()
 
-    session_id = str(_uuid.uuid4())
+    session_id = str(uuid.uuid4())
     ctx = LaminarSpanContext(
-        trace_id=_uuid.UUID("01234567-89ab-cdef-0123-456789abcdef"),
-        span_id=_uuid.UUID("00000000-0000-0000-0123-456789abcdef"),
+        trace_id=uuid.UUID("01234567-89ab-cdef-0123-456789abcdef"),
+        span_id=uuid.UUID("00000000-0000-0000-0123-456789abcdef"),
         debug=DebugContext(enabled=True, session_id=session_id),
     )
 
     armed_with = {}
 
-    def _fake_arm(debug):
+    def _fake_arm(debug: Any):
         armed_with["debug"] = debug
 
     monkeypatch.setattr(Laminar, "_arm_debug_runtime_from_context", _fake_arm)
@@ -207,132 +265,67 @@ def test_env_context_arms_debug_runtime_from_block(monkeypatch):
     _reset_runtime()
 
 
-def test_processor_records_trace_id_when_tracing_disabled(monkeypatch):
+def test_processor_records_trace_id_when_tracing_disabled(
+    monkeypatch: MagicMock,
+    make_runtime: Callable[..., DebugRuntime]
+):
     # Even with LMNR_DISABLE_TRACING=true the processor must record the root
     # trace id, otherwise the shutdown pointer emits an empty trace_id while
     # replay (gated only on get_runtime() is not None) may still be active.
-    import uuid as _uuid
-
-    from opentelemetry import trace as _trace
-
-    from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
-
     _reset_runtime()
-    runtime = _runtime()
+    runtime = make_runtime()
     monkeypatch.setattr("lmnr.sdk.debug._runtime", runtime)
     monkeypatch.setenv("LMNR_DISABLE_TRACING", "true")
 
-    trace_id = _uuid.UUID("01234567-89ab-cdef-0123-456789abcdef")
+    trace_id = uuid.UUID("01234567-89ab-cdef-0123-456789abcdef")
 
-    class _FakeSpan:
-        def __init__(self):
-            self.parent = None
-            self.name = "root"
-            self.attributes = {}
-            self._ctx = _trace.SpanContext(
-                trace_id=trace_id.int,
-                span_id=0x0123456789ABCDEF,
-                is_remote=False,
-            )
-
-        def get_span_context(self):
-            return self._ctx
-
-        def set_attribute(self, key, value):
-            self.attributes[key] = value
-
-    processor = LaminarSpanProcessor(exporter=_NoopExporter(), disable_batch=True)
-    processor.on_start(_FakeSpan())
+    processor = LaminarSpanProcessor(exporter=cast(Any, _NoopExporter()), disable_batch=True)
+    processor.on_start(cast(Any, _FakeSpan("root", trace_id.int)))
 
     assert runtime._trace_id == str(trace_id)
     _reset_runtime()
 
 
-def test_processor_keeps_real_span_path_for_replay_when_disabled(monkeypatch):
+def test_processor_keeps_real_span_path_for_replay_when_disabled(
+    monkeypatch: MagicMock,
+    make_runtime: Callable[..., DebugRuntime]
+):
     # With replay active, LMNR_DISABLE_TRACING=true must NOT mask span names to
     # "_" in lmnr.span.path: the replay wrapper reads that in-process path to
     # match the cache (keyed on the source trace's real dotted paths). Masking
     # would never match, so replay would silently run live.
-    import uuid as _uuid
-
-    from opentelemetry import trace as _trace
-
-    from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
-
     _reset_runtime()
     # replay_trace_id + cache_until span-id => replay_configured is True.
-    runtime = _runtime()
+    runtime = make_runtime()
     monkeypatch.setattr("lmnr.sdk.debug._runtime", runtime)
     monkeypatch.setenv("LMNR_DISABLE_TRACING", "true")
 
-    class _FakeSpan:
-        def __init__(self):
-            self.parent = None
-            self.name = "openai.chat"
-            self.attributes = {}
-            self._ctx = _trace.SpanContext(
-                trace_id=_uuid.UUID(int=1).int,
-                span_id=0x0123456789ABCDEF,
-                is_remote=False,
-            )
-
-        def get_span_context(self):
-            return self._ctx
-
-        def set_attribute(self, key, value):
-            self.attributes[key] = value
-
-    span = _FakeSpan()
-    processor = LaminarSpanProcessor(exporter=_NoopExporter(), disable_batch=True)
-    processor.on_start(span)
+    span = _FakeSpan(trace_id=uuid.UUID(int=1).int)
+    processor = LaminarSpanProcessor(exporter=cast(Any, _NoopExporter()), disable_batch=True)
+    processor.on_start(cast(Any, span))
 
     assert span.attributes["lmnr.span.path"] == ["openai.chat"]
     _reset_runtime()
 
 
-def test_processor_masks_span_path_when_disabled_without_replay(monkeypatch):
+def test_processor_masks_span_path_when_disabled_without_replay(monkeypatch: MagicMock):
     # No debug runtime: disabled tracing still masks span names to "_" (privacy).
-    import uuid as _uuid
-
-    from opentelemetry import trace as _trace
-
-    from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
-
     _reset_runtime()
     monkeypatch.setenv("LMNR_DISABLE_TRACING", "true")
 
-    class _FakeSpan:
-        def __init__(self):
-            self.parent = None
-            self.name = "openai.chat"
-            self.attributes = {}
-            self._ctx = _trace.SpanContext(
-                trace_id=_uuid.UUID(int=2).int,
-                span_id=0x0123456789ABCDEF,
-                is_remote=False,
-            )
-
-        def get_span_context(self):
-            return self._ctx
-
-        def set_attribute(self, key, value):
-            self.attributes[key] = value
-
-    span = _FakeSpan()
-    processor = LaminarSpanProcessor(exporter=_NoopExporter(), disable_batch=True)
-    processor.on_start(span)
+    span = _FakeSpan(trace_id=uuid.UUID(int=2).int)
+    processor = LaminarSpanProcessor(exporter=cast(Any, _NoopExporter()), disable_batch=True)
+    processor.on_start(cast(Any, span))
 
     assert span.attributes["lmnr.span.path"] == ["_"]
     _reset_runtime()
 
 
-def test_record_debug_trace_id_from_env_noop_without_runtime(monkeypatch):
-    from opentelemetry import trace as _trace
-
+def test_record_debug_trace_id_from_env_noop_without_runtime():
     from lmnr.sdk.laminar import Laminar
 
     _reset_runtime()
-    span_context = _trace.SpanContext(
+    span_context = trace.SpanContext(
         trace_id=0x0123456789ABCDEF0123456789ABCDEF,
         span_id=0x0123456789ABCDEF,
         is_remote=True,
@@ -341,15 +334,17 @@ def test_record_debug_trace_id_from_env_noop_without_runtime(monkeypatch):
     Laminar._record_debug_trace_id_from_env(span_context)
 
 
-def test_emit_pointer_uses_construction_time_started_at(tmp_path, monkeypatch, capsys):
+def test_emit_pointer_uses_construction_time_started_at(
+    tmp_path: Path,
+    monkeypatch: MagicMock,
+    capsys: MagicMock,
+    make_runtime: Callable[..., DebugRuntime],
+):
     # started_at must reflect when the run began (runtime construction at SDK
     # init), not when the pointer is emitted (shutdown). Sleep between the two so
     # an emit-time timestamp would differ from the captured one.
-    import json
-    import time
-
     monkeypatch.chdir(tmp_path)
-    runtime = _runtime()
+    runtime = make_runtime()
     captured = runtime._started_at
     time.sleep(0.01)
     runtime.record_trace_id("trace-a")
@@ -364,13 +359,18 @@ def test_emit_pointer_uses_construction_time_started_at(tmp_path, monkeypatch, c
     assert payload["started_at"] == captured
 
 
-def test_emit_pointer_persists_cache_until_span_id(tmp_path, monkeypatch, capsys):
+def test_emit_pointer_persists_cache_until_span_id(
+    tmp_path: Path,
+    monkeypatch: MagicMock,
+    capsys: MagicMock,
+    make_runtime: Callable[..., DebugRuntime],
+):
     # v2 persists the raw span-id needle in the record's cache_until (no
     # resolution step), so a later replay re-sends the needle.
     import json
 
     monkeypatch.chdir(tmp_path)
-    runtime = _runtime(cache_until_span_id="0123456789abcdef")
+    runtime = make_runtime(cache_until_span_id="0123456789abcdef")
     runtime.record_trace_id("trace-a")
     runtime.emit_pointer()
 
@@ -383,9 +383,14 @@ def test_emit_pointer_persists_cache_until_span_id(tmp_path, monkeypatch, capsys
     assert payload["cache_until"] == "0123456789abcdef"
 
 
-def test_emit_pointer_only_once(tmp_path, monkeypatch, capsys):
+def test_emit_pointer_only_once(
+    tmp_path: Path,
+    monkeypatch: MagicMock,
+    capsys: MagicMock,
+    make_runtime: Callable[..., DebugRuntime]
+):
     monkeypatch.chdir(tmp_path)
-    runtime = _runtime()
+    runtime = make_runtime()
     runtime.record_trace_id("trace-a")
     runtime.emit_pointer()
     runtime.emit_pointer()
@@ -397,12 +402,17 @@ def test_emit_pointer_only_once(tmp_path, monkeypatch, capsys):
     assert len(lines) == 1
 
 
-def test_emit_pointer_noop_for_downstream_run(tmp_path, monkeypatch, capsys):
+def test_emit_pointer_noop_for_downstream_run(
+    tmp_path: Path,
+    monkeypatch: MagicMock,
+    capsys: MagicMock,
+    make_runtime: Callable[..., DebugRuntime],
+):
     # A runtime armed from a propagated DebugContext (local_origin=False) joins
     # the upstream replay session and must NOT write a run pointer — the origin
     # owns it. Gated inside emit_pointer so shutdown()/atexit stay safe.
     monkeypatch.chdir(tmp_path)
-    runtime = _runtime(local_origin=False)
+    runtime = make_runtime(local_origin=False)
     runtime.record_trace_id("trace-downstream")
     runtime.emit_pointer()
 
@@ -415,14 +425,19 @@ def test_emit_pointer_noop_for_downstream_run(tmp_path, monkeypatch, capsys):
     assert not (tmp_path / ".lmnr" / "debug-session.json").exists()
 
 
-def test_emit_pointer_uses_full_debugger_url(tmp_path, monkeypatch, capsys):
+def test_emit_pointer_uses_full_debugger_url(
+    tmp_path: Path,
+    monkeypatch: MagicMock,
+    capsys: MagicMock,
+    make_runtime: Callable[..., DebugRuntime],
+):
     # The pointer's debugger_url must carry the SAME full per-session URL the
     # console prints, not just the base — built via the shared
     # debugger_session_url code path once the project id is recorded.
     import json
 
     monkeypatch.chdir(tmp_path)
-    runtime = _runtime(session_id="sess-1", debugger_url="https://app.x")
+    runtime = make_runtime(session_id="sess-1", debugger_url="https://app.x")
     runtime.record_project_id("proj-1")
     runtime.record_trace_id("trace-a")
     runtime.emit_pointer()
@@ -438,14 +453,14 @@ def test_emit_pointer_uses_full_debugger_url(tmp_path, monkeypatch, capsys):
     )
 
 
-def test_init_disabled_returns_none(monkeypatch):
+def test_init_disabled_returns_none(monkeypatch: MagicMock, sync_client: LaminarClient, async_client: AsyncLaminarClient):
     _reset_runtime()
     monkeypatch.delenv("LMNR_DEBUG", raising=False)
-    assert init_debug_runtime(client=object(), async_client=object()) is None
+    assert init_debug_runtime(client=sync_client, async_client=async_client) is None
     assert get_runtime() is None
 
 
-def test_init_debug_runtime_skips_client_when_debug_off(monkeypatch):
+def test_init_debug_runtime_skips_client_when_debug_off(monkeypatch: MagicMock):
     # When LMNR_DEBUG is off, Laminar._init_debug_runtime must NOT construct a
     # LaminarClient (and its httpx.Client) — that would leak unclosed on every
     # normal initialize().
@@ -454,10 +469,10 @@ def test_init_debug_runtime_skips_client_when_debug_off(monkeypatch):
     _reset_runtime()
     monkeypatch.delenv("LMNR_DEBUG", raising=False)
 
-    constructed = []
+    constructed: list[tuple[Sequence[Any], dict[str, Any]]] = []
 
     class _SpyClient:
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: Any, **kwargs: Any):
             constructed.append((args, kwargs))
 
     monkeypatch.setattr(
@@ -472,52 +487,68 @@ def test_init_debug_runtime_skips_client_when_debug_off(monkeypatch):
     _reset_runtime()
 
 
-def test_init_off_does_not_latch_flag(monkeypatch):
+def test_init_off_does_not_latch_flag(
+    monkeypatch: MagicMock,
+    sync_client: LaminarClient,
+    async_client: AsyncLaminarClient
+):
     # When debug is off, init must NOT spend the one-shot flag: a later init
     # after the env flips LMNR_DEBUG on must still build a runtime without an
     # intervening reset_debug_runtime().
     _reset_runtime()
     monkeypatch.delenv("LMNR_DEBUG", raising=False)
-    assert init_debug_runtime(client=object(), async_client=object()) is None
+    assert init_debug_runtime(client=sync_client, async_client=async_client) is None
 
     monkeypatch.setenv("LMNR_DEBUG", "true")
     monkeypatch.delenv("LMNR_DEBUG_REPLAY_TRACE_ID", raising=False)
     monkeypatch.delenv("LMNR_DEBUG_CACHE_UNTIL", raising=False)
-    runtime = init_debug_runtime(client=object(), async_client=object())
+    runtime = init_debug_runtime(client=sync_client, async_client=async_client)
     assert runtime is not None
     assert get_runtime() is runtime
     _reset_runtime()
 
 
-def test_init_is_idempotent(monkeypatch):
+def test_init_is_idempotent(
+    monkeypatch: MagicMock,
+    sync_client: LaminarClient,
+    async_client: AsyncLaminarClient
+):
     _reset_runtime()
     monkeypatch.setenv("LMNR_DEBUG", "true")
     monkeypatch.delenv("LMNR_DEBUG_REPLAY_TRACE_ID", raising=False)
     monkeypatch.delenv("LMNR_DEBUG_CACHE_UNTIL", raising=False)
-    first = init_debug_runtime(client=object(), async_client=object())
-    second = init_debug_runtime(client=object(), async_client=object())
+    first = init_debug_runtime(client=sync_client, async_client=async_client)
+    second = init_debug_runtime(client=sync_client, async_client=async_client)
     assert first is second is get_runtime()
     _reset_runtime()
 
 
-def test_reset_allows_reinit_to_reread_env(monkeypatch):
+def test_reset_allows_reinit_to_reread_env(
+    monkeypatch: MagicMock,
+    sync_client: LaminarClient,
+    async_client: AsyncLaminarClient
+):
     # A shutdown/initialize cycle must re-read LMNR_DEBUG*: reset clears the
     # one-shot flag so a previously-off run can turn debug on (and vice versa).
     _reset_runtime()
     monkeypatch.delenv("LMNR_DEBUG", raising=False)
-    assert init_debug_runtime(client=object(), async_client=object()) is None
+    assert init_debug_runtime(client=sync_client, async_client=async_client) is None
 
     reset_debug_runtime()
     monkeypatch.setenv("LMNR_DEBUG", "true")
     monkeypatch.delenv("LMNR_DEBUG_REPLAY_TRACE_ID", raising=False)
     monkeypatch.delenv("LMNR_DEBUG_CACHE_UNTIL", raising=False)
-    runtime = init_debug_runtime(client=object(), async_client=object())
+    runtime = init_debug_runtime(client=sync_client, async_client=async_client)
     assert runtime is not None
     assert get_runtime() is runtime
     _reset_runtime()
 
 
-def test_init_builds_replay_runtime_from_env(monkeypatch):
+def test_init_builds_replay_runtime_from_env(
+    monkeypatch: MagicMock,
+    sync_client: LaminarClient,
+    async_client: AsyncLaminarClient
+):
     # A replay-configured run (source trace + cache_until span id) builds a
     # runtime that reports replay configured. v2 builds no cache synchronously.
     _reset_runtime()
@@ -526,7 +557,7 @@ def test_init_builds_replay_runtime_from_env(monkeypatch):
     monkeypatch.setenv("LMNR_DEBUG_CACHE_UNTIL", "0123-456789abcdef")
 
     runtime = init_debug_runtime(
-        client=object(), async_client=object(), debugger_url="https://www.lmnr.ai"
+        client=sync_client, async_client=async_client, debugger_url="https://www.lmnr.ai"
     )
     assert runtime is not None
     assert runtime.replay_configured is True
@@ -536,58 +567,66 @@ def test_init_builds_replay_runtime_from_env(monkeypatch):
 
 
 class _SpyRolloutSessions:
-    def __init__(self, raises=False, project_id=None):
-        self.registered = []
-        self._raises = raises
-        self._project_id = project_id
+    def __init__(self, raises: bool = False, project_id: str | None = None):
+        self.registered: list[tuple[str, str | None]] = []
+        self._raises: bool= raises
+        self._project_id: str | None = project_id
 
-    def register(self, session_id, name=None):
+    def register(self, session_id: str, name: str | None=None) -> str | None:
         self.registered.append((session_id, name))
         if self._raises:
             raise RuntimeError("backend down")
         return self._project_id
 
-    def cache(self, **kwargs):
+    def cache(self, **kwargs: Any):
         return CacheOutcome(kind="live")
 
 
 class _SpyDebugClient:
-    def __init__(self, *args, raises=False, project_id=None, **kwargs):
-        self.rollout_sessions = _SpyRolloutSessions(
+    def __init__(
+        self,
+        *args: Any,
+        raises: bool = False,
+        project_id: str | None = None,
+        **kwargs: Any
+    ):
+        self.rollout_sessions: _SpyRolloutSessions = _SpyRolloutSessions(
             raises=raises, project_id=project_id
         )
-        self.closed = False
+        self.closed: bool = False
 
     def close(self):
         self.closed = True
 
 
 class _SpyAsyncDebugClient:
-    def __init__(self, *args, **kwargs):
-        self.rollout_sessions = _SpyRolloutSessions()
-        self.closed = False
+    def __init__(self, *args: Any, **kwargs: Any):
+        self.rollout_sessions: _SpyRolloutSessions = _SpyRolloutSessions()
+        self.closed: bool = False
 
     async def close(self):
         self.closed = True
 
 
-def _patch_clients(monkeypatch, sync_client, async_client=None):
+def _patch_clients(
+    monkeypatch: MagicMock,
+    sync_client: _SpyDebugClient,
+    async_client: _SpyAsyncDebugClient | None = None
+):
     """Patch both retained client classes used by _init_debug_runtime."""
     monkeypatch.setattr(
         "lmnr.sdk.client.synchronous.sync_client.LaminarClient",
-        lambda *a, **k: sync_client,
+        lambda *a, **k: sync_client,  # pyright: ignore[reportUnknownLambdaType]
     )
     monkeypatch.setattr(
         "lmnr.sdk.client.asynchronous.async_client.AsyncLaminarClient",
-        lambda *a, **k: async_client or _SpyAsyncDebugClient(),
+        lambda *a, **k: async_client or _SpyAsyncDebugClient(),  # pyright: ignore[reportUnknownLambdaType]
     )
 
 
-def test_init_registers_session_with_backend(monkeypatch):
+def test_init_registers_session_with_backend(monkeypatch: MagicMock):
     # A bare LMNR_DEBUG=true run must POST its SDK-minted session id to the
     # backend so the session shows up in the UI.
-    from lmnr.sdk.laminar import Laminar
-
     _reset_runtime()
     monkeypatch.setenv("LMNR_DEBUG", "true")
     monkeypatch.delenv("LMNR_DEBUG_REPLAY_TRACE_ID", raising=False)
@@ -611,14 +650,12 @@ def test_init_registers_session_with_backend(monkeypatch):
 
 
 def test_init_logs_debugger_url_when_project_id_returned(
-    no_browser, monkeypatch, caplog
+    no_browser: Any,
+    monkeypatch: MagicMock,
+    caplog: MagicMock,
 ):
     # When the backend returns a project id, init must log the human-facing
     # debugger session URL at INFO, respecting LMNR_FRONTEND_URL.
-    import logging
-
-    from lmnr.sdk.laminar import Laminar
-
     _reset_runtime()
     monkeypatch.setenv("LMNR_DEBUG", "true")
     monkeypatch.setenv("LMNR_FRONTEND_URL", "https://app.example.com")
@@ -632,7 +669,7 @@ def test_init_logs_debugger_url_when_project_id_returned(
     # Laminar's loggers set propagate=False (they attach their own handler, so
     # propagating would double-emit through the app's root handler), and caplog
     # only sees records that reach the root. Re-enable it just for this assertion.
-    laminar_logger = logging.getLogger("lmnr.sdk.laminar")
+    laminar_logger = get_default_logger("lmnr.sdk.laminar")
     monkeypatch.setattr(laminar_logger, "propagate", True)
 
     with caplog.at_level(logging.INFO, logger="lmnr.sdk.laminar"):
@@ -648,7 +685,7 @@ def test_init_logs_debugger_url_when_project_id_returned(
     _reset_runtime()
 
 
-def test_init_survives_registration_failure(monkeypatch):
+def test_init_survives_registration_failure(monkeypatch: MagicMock):
     # Registration is best-effort: a backend error must never crash init.
     from lmnr.sdk.laminar import Laminar
 
@@ -669,13 +706,10 @@ def test_init_survives_registration_failure(monkeypatch):
     _reset_runtime()
 
 
-def test_init_does_not_build_debug_runtime_when_tracing_fails(monkeypatch):
+def test_init_does_not_build_debug_runtime_when_tracing_fails(monkeypatch: MagicMock):
     # If init_tracing() raises, initialize() must abort BEFORE any debug
     # side effects: no backend session registration and no debug runtime left
     # live on a process whose tracing never came up.
-    import os
-
-    from lmnr.sdk.laminar import Laminar
 
     _reset_runtime()
     monkeypatch.setenv("LMNR_DEBUG", "true")
@@ -685,7 +719,7 @@ def test_init_does_not_build_debug_runtime_when_tracing_fails(monkeypatch):
     spy = _SpyDebugClient()
     _patch_clients(monkeypatch, spy)
 
-    def _boom(*args, **kwargs):
+    def _boom(*args: Any, **kwargs: Any):
         raise RuntimeError("tracer down")
 
     monkeypatch.setattr("lmnr.sdk.laminar.init_tracing", _boom)
@@ -705,7 +739,7 @@ def test_init_does_not_build_debug_runtime_when_tracing_fails(monkeypatch):
 
 
 def test_initialize_captures_debug_connection_args_before_marking_initialized(
-    monkeypatch,
+    monkeypatch: MagicMock,
 ):
     # The from-context arm path (_arm_debug_runtime_from_context) builds its own
     # cache clients from __base_url_for_debug / __http_port_for_debug. Those are
@@ -716,21 +750,17 @@ def test_initialize_captures_debug_connection_args_before_marking_initialized(
     # initialize() must therefore capture the args itself, BEFORE __initialized.
     # We stub _init_debug_runtime to a no-op so ONLY the initialize()-level
     # capture can populate the fields, and assert they hold the parsed values.
-    import os
-
-    from lmnr.sdk.laminar import Laminar
-
     _reset_runtime()
     monkeypatch.setattr(Laminar, "_Laminar__initialized", False, raising=False)
     monkeypatch.setattr(Laminar, "_Laminar__base_url_for_debug", None, raising=False)
     monkeypatch.setattr(Laminar, "_Laminar__http_port_for_debug", None, raising=False)
     monkeypatch.setattr(
-        "lmnr.sdk.laminar.init_tracing", lambda *a, **k: None
+        "lmnr.sdk.laminar.init_tracing", lambda *a, **k: None  # pyright: ignore[reportUnknownLambdaType]
     )
     # No-op the debug-runtime build so the only thing that can set the static
     # connection fields is the capture in initialize() itself.
     monkeypatch.setattr(
-        Laminar, "_init_debug_runtime", classmethod(lambda cls, **k: None)
+        Laminar, "_init_debug_runtime", classmethod(lambda cls, **k: None)  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
     )
 
     with patch.dict(os.environ, {"LMNR_PROJECT_API_KEY": "k"}, clear=True):
@@ -740,33 +770,29 @@ def test_initialize_captures_debug_connection_args_before_marking_initialized(
             http_port=1234,
         )
 
-    assert Laminar._Laminar__base_url_for_debug == "https://custom.example.com"
-    assert Laminar._Laminar__http_port_for_debug == 1234
+    assert Laminar._Laminar__base_url_for_debug == "https://custom.example.com"  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+    assert Laminar._Laminar__http_port_for_debug == 1234  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
     monkeypatch.setattr(Laminar, "_Laminar__initialized", False, raising=False)
     _reset_runtime()
 
 
-def test_exit_hook_does_not_accumulate_across_cycles(tmp_path, monkeypatch):
+def test_exit_hook_does_not_accumulate_across_cycles(tmp_path: Path, monkeypatch: MagicMock):
     # atexit holds a strong ref to whatever it registers, so each debug-mode
     # init must unregister the previous pointer hook on shutdown — otherwise an
     # init/shutdown loop pins every retired DebugRuntime alive and leaks one
     # atexit handler per cycle.
-    import atexit
-
-    from lmnr.sdk.laminar import Laminar
-
     _reset_runtime()
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("LMNR_DEBUG", "true")
     monkeypatch.delenv("LMNR_DEBUG_REPLAY_TRACE_ID", raising=False)
     monkeypatch.delenv("LMNR_DEBUG_CACHE_UNTIL", raising=False)
 
-    registered: list = []
-    monkeypatch.setattr(atexit, "register", lambda fn, *a, **k: registered.append(fn))
+    registered: list[Callable[..., Any]] = []
+    monkeypatch.setattr(atexit, "register", lambda fn, *a, **k: registered.append(fn))  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
     monkeypatch.setattr(
         atexit,
         "unregister",
-        lambda fn: registered.remove(fn) if fn in registered else None,
+        lambda fn: registered.remove(fn) if fn in registered else None,  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
     )
 
     _patch_clients(monkeypatch, _SpyDebugClient())
@@ -783,11 +809,9 @@ def test_exit_hook_does_not_accumulate_across_cycles(tmp_path, monkeypatch):
     monkeypatch.setattr(Laminar, "_Laminar__initialized", False, raising=False)
 
 
-def test_shutdown_closes_retained_clients(tmp_path, monkeypatch):
+def test_shutdown_closes_retained_clients(tmp_path: Path, monkeypatch: MagicMock):
     # v2 keeps both cache clients open for the run; shutdown must close both so
     # their httpx connection pools aren't leaked across init/shutdown cycles.
-    from lmnr.sdk.laminar import Laminar
-
     _reset_runtime()
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("LMNR_DEBUG", "true")
@@ -811,11 +835,9 @@ def test_shutdown_closes_retained_clients(tmp_path, monkeypatch):
     monkeypatch.setattr(Laminar, "_Laminar__initialized", False, raising=False)
 
 
-def test_shutdown_resets_run_live_latch(tmp_path, monkeypatch):
+def test_shutdown_resets_run_live_latch(tmp_path: Path, monkeypatch: MagicMock):
     # A MISS latches the process-wide run-live flag; shutdown must clear it so a
     # fresh debug run in the same process starts from a clean cache state.
-    from lmnr.sdk.laminar import Laminar
-
     _reset_runtime()
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("LMNR_DEBUG", "true")
@@ -838,7 +860,7 @@ def test_shutdown_resets_run_live_latch(tmp_path, monkeypatch):
     monkeypatch.setattr(Laminar, "_Laminar__initialized", False, raising=False)
 
 
-def test_shutdown_completes_cleanup_when_emit_pointer_raises(tmp_path, monkeypatch):
+def test_shutdown_completes_cleanup_when_emit_pointer_raises(tmp_path: Path, monkeypatch: MagicMock):
     # emit_pointer prints to stdout, which can raise OSError/BrokenPipeError
     # (closed stdout in daemons/containers, notebook kernel restarts). That must
     # never abort shutdown's cleanup: shutdown_tracing(), the reset, and
@@ -854,7 +876,7 @@ def test_shutdown_completes_cleanup_when_emit_pointer_raises(tmp_path, monkeypat
     _patch_clients(monkeypatch, _SpyDebugClient())
     monkeypatch.setattr(Laminar, "_Laminar__project_api_key", "k", raising=False)
 
-    shutdown_calls: list = []
+    shutdown_calls: list[bool] = []
     monkeypatch.setattr(
         "lmnr.sdk.laminar.shutdown_tracing",
         lambda: shutdown_calls.append(True),
@@ -883,7 +905,7 @@ def _raise_broken_pipe():
     raise BrokenPipeError("stdout closed")
 
 
-def test_arm_from_context_closes_clients_when_losing_race(monkeypatch):
+def test_arm_from_context_closes_clients_when_losing_race(monkeypatch: MagicMock):
     # _arm_debug_runtime_from_context allocates fresh sync/async clients BEFORE
     # consulting init_debug_runtime_from_context, which is first-wins. Under a
     # concurrent arm, both callers pass the get_runtime() fast path, both
@@ -892,10 +914,6 @@ def test_arm_from_context_closes_clients_when_losing_race(monkeypatch):
     # are orphaned and must be closed, or their httpx pools leak. We simulate the
     # lost race by patching init_*_from_context to return a winner runtime built
     # from different clients (get_runtime() stays None at the fast-path check).
-    from lmnr.sdk.debug.config import DebugConfig
-    from lmnr.sdk.laminar import Laminar
-    from lmnr.sdk.types import DebugContext
-
     _reset_runtime()
     SESSION = "00000000-0000-0000-0000-0000000000aa"
     block = DebugContext(enabled=True, session_id=SESSION)
@@ -906,12 +924,17 @@ def test_arm_from_context_closes_clients_when_losing_race(monkeypatch):
     winner_async = _SpyAsyncDebugClient()
     winner = DebugRuntime(
         DebugConfig(session_id=SESSION, replay_trace_id=None, local_origin=False),
-        winner_sync,
-        winner_async,
+        cast(Any, winner_sync),
+        cast(Any, winner_async),
         None,
     )
 
-    def _fake_init_from_context(dbg, client, async_client, debugger_url=None):
+    def _fake_init_from_context(
+        dbg: Any,
+        client: LaminarClient,
+        async_client: AsyncLaminarClient,
+        debugger_url: str | None = None
+    ) -> tuple[DebugRuntime, bool]:
         # Mimic the lost-race outcome: return the winner runtime, ignoring the
         # clients this caller passed (init is first-arm and already armed). The
         # session changed (a runtime was just published), so report True.
@@ -942,7 +965,7 @@ def test_arm_from_context_closes_clients_when_losing_race(monkeypatch):
     _reset_runtime()
 
 
-def test_init_closes_clients_when_runtime_already_armed_from_context(monkeypatch):
+def test_init_closes_clients_when_runtime_already_armed_from_context(monkeypatch: MagicMock):
     # _init_debug_runtime (the env path) allocates fresh sync/async clients
     # BEFORE consulting init_debug_runtime, which is first-wins. If a propagated
     # DebugContext armed the runtime first (deep in span creation, before
@@ -966,12 +989,12 @@ def test_init_closes_clients_when_runtime_already_armed_from_context(monkeypatch
     existing_async = _SpyAsyncDebugClient()
     existing = DebugRuntime(
         DebugConfig(session_id=SESSION, replay_trace_id=None, local_origin=False),
-        existing_sync,
-        existing_async,
+        cast(Any, existing_sync),
+        cast(Any, existing_async),
         None,
     )
 
-    def _fake_init(client, async_client, debugger_url=None):
+    def _fake_init(client: LaminarClient, async_client: AsyncLaminarClient, debugger_url: str | None = None):
         # Mimic first-wins: a context already armed the runtime, so return the
         # existing instance, ignoring the clients this caller passed.
         return existing
@@ -995,7 +1018,7 @@ def test_init_closes_clients_when_runtime_already_armed_from_context(monkeypatch
     _reset_runtime()
 
 
-def test_init_preempts_context_runtime_when_env_debug_set(monkeypatch):
+def test_init_preempts_context_runtime_when_env_debug_set(monkeypatch: MagicMock):
     # initialize() flips __initialized BEFORE _init_debug_runtime runs, and the
     # span funnels gate only on is_initialized() — so a span carrying a
     # propagated debug block can arm a context runtime (local_origin=False) in
@@ -1006,8 +1029,6 @@ def test_init_preempts_context_runtime_when_env_debug_set(monkeypatch):
     # preempt, init_debug_runtime would idempotently return the context runtime
     # and the `runtime.client is not client` guard would bail — leaving the
     # local debug run with no session registration at all.
-    from lmnr.sdk.laminar import Laminar
-
     _reset_runtime()
     CONTEXT_SESSION = "00000000-0000-0000-0000-0000000000c1"
     monkeypatch.setenv("LMNR_DEBUG", "true")
@@ -1027,8 +1048,8 @@ def test_init_preempts_context_runtime_when_env_debug_set(monkeypatch):
             replay_trace_id=None,
             local_origin=False,
         ),
-        ctx_sync,
-        ctx_async,
+        cast(Any, ctx_sync),
+        cast(Any, ctx_async),
         None,
     )
     debug_mod._initialized = True
@@ -1058,23 +1079,12 @@ def test_init_preempts_context_runtime_when_env_debug_set(monkeypatch):
     _reset_runtime()
 
 
-def test_arm_from_context_refreshes_isolated_context_metadata(monkeypatch):
+def test_arm_from_context_refreshes_isolated_context_metadata(monkeypatch: MagicMock):
     # `LaminarSpanProcessor.on_start` reads `rollout.session_id` from
     # CONTEXT_METADATA_KEY on the parent context (NOT from __global_metadata), so
     # arming the debug runtime from a propagated block must also re-stamp the
     # ambient isolated context — otherwise auto-instrumented spans on a
     # downstream joined run omit `rollout.session_id`.
-    from opentelemetry.context import get_value
-
-    from lmnr.opentelemetry_lib.tracing.context import (
-        CONTEXT_METADATA_KEY,
-        attach_context,
-        detach_context,
-        get_current_context,
-    )
-    from lmnr.sdk.laminar import Laminar
-    from lmnr.sdk.types import DebugContext
-
     _reset_runtime()
     SESSION = "00000000-0000-0000-0000-0000000000aa"
     block = DebugContext(enabled=True, session_id=SESSION)
@@ -1090,7 +1100,7 @@ def test_arm_from_context_refreshes_isolated_context_metadata(monkeypatch):
     # Start from a clean ambient context that carries no rollout.session_id.
     token = attach_context(get_current_context())
     try:
-        assert (get_value(CONTEXT_METADATA_KEY, get_current_context()) or {}).get(
+        assert cast(dict[str, str], get_value(CONTEXT_METADATA_KEY, get_current_context()) or {}).get(
             "rollout.session_id"
         ) is None
 
@@ -1098,22 +1108,22 @@ def test_arm_from_context_refreshes_isolated_context_metadata(monkeypatch):
 
         runtime = get_runtime()
         assert runtime is not None
-        ctx_metadata = get_value(CONTEXT_METADATA_KEY, get_current_context()) or {}
+        ctx_metadata = cast(dict[str, str], get_value(CONTEXT_METADATA_KEY, get_current_context()) or {})
         assert ctx_metadata.get("rollout.session_id") == runtime.session_id
     finally:
         detach_context(token)
         _reset_runtime()
 
 
-def test_init_from_context_refreshes_context_runtime_reusing_clients(monkeypatch):
+def test_init_from_context_refreshes_context_runtime_reusing_clients(
+    monkeypatch: MagicMock,
+    sync_client: LaminarClient,
+    async_client: AsyncLaminarClient
+):
     # A context-armed runtime must REFRESH its dynamic coordinates on a new
     # context (the transport is reused; only the coordinates move) instead of
     # bailing first-wins. A different client pair on the refresh must be IGNORED.
-    from lmnr.sdk.debug import init_debug_runtime_from_context
-    from lmnr.sdk.types import DebugContext
-
     _reset_runtime()
-    sync_client, async_client = object(), object()
     first, first_changed = init_debug_runtime_from_context(
         DebugContext(enabled=True, session_id="sess-a", replay_trace_id="trace-a"),
         sync_client,
@@ -1124,64 +1134,61 @@ def test_init_from_context_refreshes_context_runtime_reusing_clients(monkeypatch
 
     # A different client pair on the refresh must be IGNORED — the transport
     # built on first arm is reused; only the coordinates move.
-    second, second_changed = init_debug_runtime_from_context(
-        DebugContext(enabled=True, session_id="sess-b", replay_trace_id="trace-b"),
-        object(),
-        object(),
-    )
+    other_sync, other_async = LaminarClient(project_api_key="test-123"), AsyncLaminarClient(project_api_key="test-123")
+    try:
+        second, second_changed = init_debug_runtime_from_context(
+            DebugContext(enabled=True, session_id="sess-b", replay_trace_id="trace-b"),
+            other_sync,
+            other_async,
+        )
+    finally:
+        other_sync.close()
+        asyncio.run(other_async.close())
     assert second is first
     assert second_changed is True
+    assert second is not None
     assert second.session_id == "sess-b"
     assert second.client is sync_client
     assert second.async_client is async_client
     _reset_runtime()
 
 
-def test_init_from_context_never_overrides_env_origin_runtime(monkeypatch):
+def test_init_from_context_never_overrides_env_origin_runtime(
+    monkeypatch: MagicMock,
+    sync_client: LaminarClient,
+    async_client: AsyncLaminarClient
+):
     # An env-origin runtime owns the process: a propagated context must not
     # hijack it — neither its coordinates nor its clients change.
-    from lmnr.sdk.debug import init_debug_runtime
-    from lmnr.sdk.debug import init_debug_runtime_from_context
-    from lmnr.sdk.types import DebugContext
-
     _reset_runtime()
     monkeypatch.setenv("LMNR_DEBUG", "true")
     monkeypatch.setenv("LMNR_DEBUG_SESSION_ID", "env-sess")
     monkeypatch.delenv("LMNR_DEBUG_REPLAY_TRACE_ID", raising=False)
     monkeypatch.delenv("LMNR_DEBUG_CACHE_UNTIL", raising=False)
 
-    env = init_debug_runtime(client=object(), async_client=object())
+    env = init_debug_runtime(client=sync_client, async_client=async_client)
     assert env is not None
     assert env.local_origin is True
 
     runtime, changed = init_debug_runtime_from_context(
         DebugContext(enabled=True, session_id="ctx-sess", replay_trace_id="trace"),
-        object(),
-        object(),
+        sync_client,
+        async_client,
     )
     # Env config owns the process: the context must not hijack it.
     assert runtime is env
     assert changed is False
-    assert get_runtime().session_id == "env-sess"
+    rt = get_runtime()
+    assert rt is not None
+    assert rt.session_id == "env-sess"
     _reset_runtime()
 
 
-def test_arm_from_context_refreshes_session_on_new_context(monkeypatch):
+def test_arm_from_context_refreshes_session_on_new_context(monkeypatch: MagicMock):
     # The coordinates in a propagated debug block are DYNAMIC: a long-lived
     # downstream service must follow each request's session id, not freeze on the
     # first context it ever saw. A second block with a different session must
     # update the runtime in place (clients reused) and re-stamp the metadata.
-    from opentelemetry.context import get_value
-
-    from lmnr.opentelemetry_lib.tracing.context import (
-        CONTEXT_METADATA_KEY,
-        attach_context,
-        detach_context,
-        get_current_context,
-    )
-    from lmnr.sdk.laminar import Laminar
-    from lmnr.sdk.types import DebugContext
-
     _reset_runtime()
     SESSION_A = "00000000-0000-0000-0000-0000000000a1"
     SESSION_B = "00000000-0000-0000-0000-0000000000b2"
@@ -1212,14 +1219,16 @@ def test_arm_from_context_refreshes_session_on_new_context(monkeypatch):
             DebugContext(enabled=True, session_id=SESSION_B)
         )
         # Same runtime instance (clients reused), refreshed coordinates.
-        assert get_runtime() is runtime_a
-        assert get_runtime().session_id == SESSION_B
+        rt = get_runtime()
+        assert rt is not None
+        assert rt is runtime_a
+        assert rt.session_id == SESSION_B
         # Both sessions were registered (one per change), the new one re-stamped.
         assert spy.rollout_sessions.registered == [
             (SESSION_A, None),
             (SESSION_B, None),
         ]
-        ctx_metadata = get_value(CONTEXT_METADATA_KEY, get_current_context()) or {}
+        ctx_metadata = cast(dict[str, str], get_value(CONTEXT_METADATA_KEY, get_current_context()) or {})
         assert ctx_metadata.get("rollout.session_id") == SESSION_B
         # The new session reset the process-wide run-live latch.
         assert Laminar.is_debug_run_live() is False
@@ -1229,7 +1238,10 @@ def test_arm_from_context_refreshes_session_on_new_context(monkeypatch):
         _reset_runtime()
 
 
-def test_span_uses_freshly_armed_session_over_stale_context(monkeypatch, span_exporter):
+def test_span_uses_freshly_armed_session_over_stale_context(
+    monkeypatch: MagicMock,
+    span_exporter: InMemorySpanExporter,
+):
     # Regression: in start_span / start_as_current_span the parent `ctx` is
     # snapshot BEFORE arming the debug runtime. Arming the session attaches a
     # refreshed isolated context carrying that session's `rollout.session_id`, but
@@ -1238,18 +1250,6 @@ def test_span_uses_freshly_armed_session_over_stale_context(monkeypatch, span_ex
     # context would override the just-armed session on the emitted span. The fix
     # re-reads the isolated context after arming; the span must carry the armed
     # session, not the stale one.
-    import uuid
-
-    from lmnr.opentelemetry_lib.tracing.context import (
-        CONTEXT_METADATA_KEY,
-        attach_context,
-        detach_context,
-        get_current_context,
-    )
-    from lmnr.sdk.laminar import Laminar
-    from lmnr.sdk.types import DebugContext, LaminarSpanContext
-    from opentelemetry.context import set_value
-
     _reset_runtime()
     span_exporter.clear()
     STALE_SESSION = "00000000-0000-0000-0000-0000000000a1"
@@ -1285,24 +1285,21 @@ def test_span_uses_freshly_armed_session_over_stale_context(monkeypatch, span_ex
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert (
-        spans[0].attributes["lmnr.association.properties.metadata.rollout.session_id"]
+        (spans[0].attributes or {})["lmnr.association.properties.metadata.rollout.session_id"]
         == ARMED_SESSION
     )
 
 
-def test_arm_from_context_reuses_clients_on_same_session(monkeypatch):
+def test_arm_from_context_reuses_clients_on_same_session(monkeypatch: MagicMock):
     # A steady stream of requests on the SAME session must not allocate new
     # clients per span, nor re-register or re-stamp metadata on every span.
-    from lmnr.sdk.laminar import Laminar
-    from lmnr.sdk.types import DebugContext
-
     _reset_runtime()
     SESSION = "00000000-0000-0000-0000-0000000000aa"
     block = DebugContext(enabled=True, session_id=SESSION)
 
-    built = []
+    built: list[_SpyDebugClient] = []
 
-    def _spy_factory(*a, **k):
+    def _spy_factory(*a: Any, **k: Any):
         c = _SpyDebugClient()
         built.append(c)
         return c
@@ -1330,11 +1327,15 @@ def test_arm_from_context_reuses_clients_on_same_session(monkeypatch):
     # A sync client was built exactly once (first arm), reused thereafter.
     assert len(built) == 1
     # The session was registered exactly once (no re-register on unchanged id).
-    assert runtime.client.rollout_sessions.registered == [(SESSION, None)]
+    assert cast(Any, runtime.client.rollout_sessions).registered == [(SESSION, None)]
     _reset_runtime()
 
 
-def test_init_from_context_publishes_single_runtime_under_concurrency(monkeypatch):
+def test_init_from_context_publishes_single_runtime_under_concurrency(
+    monkeypatch: MagicMock,
+    sync_client: LaminarClient,
+    async_client: AsyncLaminarClient,
+):
     # Span creation calls init_debug_runtime_from_context from arbitrary worker
     # threads. The check-and-set of the one-shot globals must be atomic, or two
     # threads both pass the _initialized check, both build a DebugRuntime, and
@@ -1342,13 +1343,7 @@ def test_init_from_context_publishes_single_runtime_under_concurrency(monkeypatc
     # passes its own pair) returned to a caller whose `runtime.client is client`
     # cleanup guard then fails to recognize the win and leaks them. With the lock,
     # exactly one runtime is built and published and every caller gets it back.
-    import threading
-    import time
-
     import lmnr.sdk.debug as debug_mod
-    from lmnr.sdk.debug import init_debug_runtime_from_context
-    from lmnr.sdk.types import DebugContext
-
     _reset_runtime()
     SESSION = "00000000-0000-0000-0000-0000000000aa"
     block = DebugContext(enabled=True, session_id=SESSION)
@@ -1365,15 +1360,15 @@ def test_init_from_context_publishes_single_runtime_under_concurrency(monkeypatc
     real_runtime_cls = debug_mod.DebugRuntime
 
     class _CountingRuntime(real_runtime_cls):
-        def __init__(self, *args, **kwargs):
+        def __init__(self, *args: Any, **kwargs: Any):
             nonlocal constructed
             with construct_lock:
                 constructed += 1
             super().__init__(*args, **kwargs)
 
-    real_build = debug_mod.build_debug_config_from_context
+    real_build = build_debug_config_from_context
 
-    def _slow_build(dbg):
+    def _slow_build(dbg: Any) -> DebugConfig | None:
         time.sleep(0.02)
         return real_build(dbg)
 
@@ -1385,11 +1380,11 @@ def test_init_from_context_publishes_single_runtime_under_concurrency(monkeypatc
 
     def _arm():
         # Each thread brings its own client pair, like _arm_debug_runtime_from_context.
-        client, async_client = object(), object()
-        start.wait()
-        runtime, _ = init_debug_runtime_from_context(block, client, async_client)
+        _success = start.wait()
+        runtime, _ = init_debug_runtime_from_context(block, sync_client, async_client)
         with returned_lock:
-            returned.append(runtime)
+            if runtime:
+                returned.append(runtime)
 
     threads = [threading.Thread(target=_arm) for _ in range(n)]
     for t in threads:
