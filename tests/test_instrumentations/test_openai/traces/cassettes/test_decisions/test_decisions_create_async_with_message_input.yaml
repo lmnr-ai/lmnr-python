@@ -1,0 +1,109 @@
+interactions:
+- request:
+    body: '{"model":"gpt-6-luna","input":[{"role":"user","content":[{"type":"input_text","text":"Review:
+      The movie was wonderful, though the popcorn was stale."},{"type":"input_image","image_url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="}]}],"questions":[{"type":"predicate","name":"positive","instructions":"Is
+      it positive?"},{"type":"choice","name":"topic","instructions":"What is the main
+      topic?","choices":[{"value":"movies"},{"value":"food"}]},{"type":"score","name":"intensity","instructions":"How
+      strong is the sentiment?","levels":[{"label":"weak"},{"label":"moderate"},{"label":"strong"}]}]}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      content-length:
+      - '668'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      user-agent:
+      - AsyncOpenAI/Python 3.26.0
+      x-stainless-arch:
+      - x64
+      x-stainless-async:
+      - async:asyncio
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - Linux
+      x-stainless-package-version:
+      - 3.26.0
+      x-stainless-read-timeout:
+      - '600'
+      x-stainless-retry-count:
+      - '0'
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.12.10
+    method: POST
+    uri: https://api.openai.com/v1/decisions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAA/31Q227CMAz9lzwX1LJp3forE6rc1BSLEFeJC0Ko/76k6yCFbY8+Pjf7qo7colGV
+        6npZva3MYEFlCqw/o/Oq+rwqufQY9r3DljQIhrWF4wSxJ6FTRHrHDTRkSC6qytfl65jdlHrPpBOZ
+        cE86jDNehQonQr9wiXMMP4EZ/qCEoGKdx5wf0o65fe6Sj9uQxXZHLdqYN6vmdl6zS8qRFbQ+SrN5
+        Ffkf/3TLM2WgmX54Rjj8UmCTlCzu7Ph59/3QB8V7mSg2d4UXx7Z75hfF443BY8IGD10Yr+GufpBa
+        +BCuU9VLWWYLqG5RgIyPVA16j+2NG+6bkPrsSPAOj5niQVLX/AFJTR2CZ0u2WxgIC5i01Th+ATgY
+        wamSAgAA
+    headers:
+      access-control-allow-origin:
+      - '*'
+      access-control-expose-headers:
+      - x-request-id,retry-after,server-timing-total
+      - CF-Ray
+      alt-svc:
+      - h3=":443"; ma=86400
+      cf-cache-status:
+      - DYNAMIC
+      cf-ray:
+      - a46d0ded5d82fe3b-IAD
+      connection:
+      - keep-alive
+      content-encoding:
+      - gzip
+      content-type:
+      - application/json
+      date:
+      - Wed, 07 Oct 2026 12:54:26 GMT
+      openai-processing-ms:
+      - '181'
+      server:
+      - cloudflare
+      server-timing-total:
+      - '181.799'
+      set-cookie:
+      - __cf_bm=jU5pm_eURVl25f5t4g1cyvuU_noxyEyicPX8REIeQ_c-1791377666.1352394-1.0.1.1-hznCVkkW7hJ4LlBTGAJ_fKCDdZRWPRjh5ZXLhvF3JWbZeYWsctIdsGyn_F9_QLvZQirwScCvZTMm42ry9AtuSg6aQs01uDRaB2.eT_h2zohU9SA5GRF25jWwi0CMNU8H;
+        HttpOnly; SameSite=None; Secure; Path=/; Domain=api.openai.com; Expires=Wed,
+        07 Oct 2026 13:24:26 GMT
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      transfer-encoding:
+      - chunked
+      vary:
+      - origin, access-control-request-method, access-control-request-headers
+      x-content-type-options:
+      - nosniff
+      x-openai-proxy-wasm:
+      - v0.1
+      x-ratelimit-limit-requests:
+      - '30000'
+      x-ratelimit-limit-tokens:
+      - '180000000'
+      x-ratelimit-remaining-requests:
+      - '29998'
+      x-ratelimit-remaining-tokens:
+      - '179999250'
+      x-ratelimit-reset-requests:
+      - 4ms
+      x-ratelimit-reset-tokens:
+      - 0s
+      x-request-id:
+      - req_75f9e80942804ccdba99e4e804f3140b
+    status:
+      code: 200
+      message: OK
+version: 1

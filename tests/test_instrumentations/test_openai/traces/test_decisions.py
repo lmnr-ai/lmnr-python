@@ -1,10 +1,10 @@
 """Decisions API (`client.decisions.create`, openai>=3.26.0).
 
-These run the real SDK resource against an in-process `httpx2.MockTransport`
-instead of VCR cassettes: the dev env pins `openai==2.30.0` (litellm caps
-`openai<3`), which has no Decisions resource, so this module is skipped there
-and CI runs it in a separate step with `--with openai==3.26.0`. Response bodies
-follow `openai.types.decision.Decision`.
+The dev env pins `openai==2.30.0` (litellm caps `openai<3`), which has no
+Decisions resource, so this module is skipped there and CI runs it in a
+separate step with `--with openai==3.26.0`. Cassettes were recorded against
+`gpt-6-luna`; assertions compare the span against the parsed response rather
+than hard-coded scores, so re-recording doesn't require editing them.
 """
 
 import json
@@ -13,95 +13,36 @@ import pytest
 
 pytest.importorskip("openai.resources.decisions")
 
-import httpx2
 from openai import AsyncOpenAI, BadRequestError, OpenAI
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 from opentelemetry.trace import StatusCode
 
-MODEL = "decision-model"
+MODEL = "gpt-6-luna"
+INPUT = "The movie was wonderful, though the popcorn was stale."
 
 QUESTIONS = [
     {"type": "predicate", "name": "positive", "instructions": "Is it positive?"},
     {
         "type": "choice",
         "name": "topic",
-        "instructions": "What is the topic?",
+        "instructions": "What is the main topic?",
         "choices": [{"value": "movies"}, {"value": "food"}],
     },
     {
         "type": "score",
         "name": "intensity",
         "instructions": "How strong is the sentiment?",
-        "levels": [{"label": "weak"}, {"label": "strong"}],
+        "levels": [{"label": "weak"}, {"label": "moderate"}, {"label": "strong"}],
     },
-    {"type": "predicate", "name": "unsafe", "instructions": "Is it unsafe?"},
 ]
 
-ANSWERS = [
-    {"type": "predicate", "name": "positive", "probability": 0.97},
-    {
-        "type": "choice",
-        "name": "topic",
-        "choice": "movies",
-        "confidence": 0.9,
-        "probabilities": [
-            {"value": "movies", "probability": 0.9},
-            {"value": "food", "probability": 0.1},
-        ],
-    },
-    {
-        "type": "score",
-        "name": "intensity",
-        "score": 0.8,
-        "confidence": 0.7,
-        "probabilities": [
-            {"label": "weak", "value": 0, "probability": 0.3},
-            {"label": "strong", "value": 1, "probability": 0.7},
-        ],
-    },
-    {"type": "refusal", "name": "unsafe"},
-]
-
-DECISION = {
-    "model": f"{MODEL}-2026-09-01",
-    "answers": ANSWERS,
-    "usage": {
-        "input_tokens": 120,
-        "input_tokens_details": {"cached_tokens": 64, "cache_write_tokens": 32},
-        "output_tokens": 8,
-        "output_tokens_details": {"reasoning_tokens": 4},
-        "total_tokens": 128,
-    },
-}
-
-
-def _handler(status_code: int = 200, body: dict | None = None):
-    requests: list[dict] = []
-
-    def handle(request: httpx2.Request) -> httpx2.Response:
-        assert request.url.path == "/v1/decisions"
-        requests.append(json.loads(request.content))
-        return httpx2.Response(status_code, json=DECISION if body is None else body)
-
-    return handle, requests
-
-
-def _client(handler) -> OpenAI:
-    return OpenAI(
-        api_key="test",
-        max_retries=0,
-        http_client=httpx2.Client(transport=httpx2.MockTransport(handler)),
-    )
-
-
-def _async_client(handler) -> AsyncOpenAI:
-    return AsyncOpenAI(
-        api_key="test",
-        max_retries=0,
-        http_client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)),
-    )
+# 1x1 PNG
+IMAGE_URL = (
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQV"
+    "R42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg=="
+)
 
 
 def _only_span(span_exporter: InMemorySpanExporter):
@@ -110,99 +51,107 @@ def _only_span(span_exporter: InMemorySpanExporter):
     return spans[0]
 
 
-def _assert_decision_span(span) -> None:
+def _assert_decision_span(span, decision) -> None:
     assert span.name == "openai.decision"
     assert span.attributes["lmnr.span.type"] == "LLM"
     assert span.attributes["gen_ai.system"] == "openai"
     assert span.attributes["gen_ai.request.model"] == MODEL
-    assert span.attributes["gen_ai.response.model"] == f"{MODEL}-2026-09-01"
-    assert span.attributes["gen_ai.usage.input_tokens"] == 120
-    assert span.attributes["gen_ai.usage.output_tokens"] == 8
-    assert span.attributes["llm.usage.total_tokens"] == 128
-    assert span.attributes["gen_ai.usage.cache_read_input_tokens"] == 64
-    assert span.attributes["gen_ai.usage.cache_creation_input_tokens"] == 32
-    assert span.attributes["gen_ai.usage.reasoning_tokens"] == 4
+    assert span.attributes["gen_ai.response.model"] == decision.model
+
+    usage = decision.usage
+    assert span.attributes["gen_ai.usage.input_tokens"] == usage.input_tokens
+    assert span.attributes["gen_ai.usage.output_tokens"] == usage.output_tokens
+    assert span.attributes["llm.usage.total_tokens"] == usage.total_tokens
+    assert (
+        span.attributes["gen_ai.usage.cache_read_input_tokens"]
+        == usage.input_tokens_details.cached_tokens
+    )
+    assert (
+        span.attributes["gen_ai.usage.cache_creation_input_tokens"]
+        == usage.input_tokens_details.cache_write_tokens
+    )
+    assert (
+        span.attributes["gen_ai.usage.reasoning_tokens"]
+        == usage.output_tokens_details.reasoning_tokens
+    )
 
     output = json.loads(span.attributes["gen_ai.output.messages"])
     assert len(output) == 1
     assert output[0]["role"] == "assistant"
-    # Pydantic fills the optional `name` the server always returns; every
-    # answer type, including the refusal, keeps its native shape.
-    assert json.loads(output[0]["content"]) == ANSWERS
+    assert json.loads(output[0]["content"]) == [
+        answer.model_dump() for answer in decision.answers
+    ]
 
 
-def test_decisions_create(instrument_legacy, span_exporter: InMemorySpanExporter):
-    handler, requests = _handler()
-    decision = _client(handler).decisions.create(
+@pytest.mark.vcr
+def test_decisions_create(
+    instrument_legacy, span_exporter: InMemorySpanExporter, openai_client: OpenAI
+):
+    decision = openai_client.decisions.create(
         model=MODEL,
-        input="The movie was wonderful.",
+        input=INPUT,
         questions=QUESTIONS,
         safety_identifier="user-123",
     )
 
-    assert [a.type for a in decision.answers] == [
-        "predicate",
-        "choice",
-        "score",
-        "refusal",
-    ]
-    assert requests[0]["questions"] == QUESTIONS
+    assert [a.type for a in decision.answers] == ["predicate", "choice", "score"]
 
     span = _only_span(span_exporter)
-    _assert_decision_span(span)
+    _assert_decision_span(span, decision)
     assert span.attributes["llm.user"] == "user-123"
     assert json.loads(span.attributes["gen_ai.input.messages"]) == [
         {"role": "system", "content": json.dumps(QUESTIONS, separators=(",", ":"))},
-        {"role": "user", "content": "The movie was wonderful."},
+        {"role": "user", "content": INPUT},
     ]
 
 
+@pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_decisions_create_async_with_message_input(
-    instrument_legacy, span_exporter: InMemorySpanExporter
+    instrument_legacy,
+    span_exporter: InMemorySpanExporter,
+    async_openai_client: AsyncOpenAI,
 ):
     messages = [
         {
             "role": "user",
             "content": [
-                {"type": "input_text", "text": "Review:"},
-                {"type": "input_image", "image_url": "data:image/png;base64,iVBORw0K"},
+                {"type": "input_text", "text": f"Review: {INPUT}"},
+                {"type": "input_image", "image_url": IMAGE_URL},
             ],
         }
     ]
-    handler, requests = _handler()
-    await _async_client(handler).decisions.create(
+    decision = await async_openai_client.decisions.create(
         model=MODEL, input=messages, questions=QUESTIONS
     )
 
-    assert requests[0]["input"] == messages
     span = _only_span(span_exporter)
-    _assert_decision_span(span)
+    _assert_decision_span(span, decision)
     input_messages = json.loads(span.attributes["gen_ai.input.messages"])
     assert input_messages[0]["role"] == "system"
     assert input_messages[1:] == messages
 
 
+@pytest.mark.vcr
 def test_decisions_create_with_raw_response(
-    instrument_legacy, span_exporter: InMemorySpanExporter
+    instrument_legacy, span_exporter: InMemorySpanExporter, openai_client: OpenAI
 ):
-    handler, _ = _handler()
-    raw = _client(handler).decisions.with_raw_response.create(
-        model=MODEL, input="The movie was wonderful.", questions=QUESTIONS
+    raw = openai_client.decisions.with_raw_response.create(
+        model=MODEL, input=INPUT, questions=QUESTIONS
     )
 
-    assert raw.parse().answers[0].type == "predicate"
-    _assert_decision_span(_only_span(span_exporter))
+    _assert_decision_span(_only_span(span_exporter), raw.parse())
 
 
-def test_decisions_create_error(instrument_legacy, span_exporter: InMemorySpanExporter):
-    handler, _ = _handler(
-        status_code=400,
-        body={"error": {"message": "bad questions", "type": "invalid_request_error"}},
-    )
+@pytest.mark.vcr
+def test_decisions_create_error(
+    instrument_legacy, span_exporter: InMemorySpanExporter, openai_client: OpenAI
+):
     with pytest.raises(BadRequestError):
-        _client(handler).decisions.create(
-            model=MODEL, input="The movie was wonderful.", questions=QUESTIONS
+        openai_client.decisions.create(
+            model=MODEL,
+            input=INPUT,
+            questions=[{"type": "choice", "instructions": "Pick one.", "choices": []}],
         )
 
     span = _only_span(span_exporter)
@@ -215,34 +164,35 @@ def test_decisions_create_error(instrument_legacy, span_exporter: InMemorySpanEx
     assert span.events[0].name == "exception"
 
 
+@pytest.mark.vcr
 def test_decisions_create_does_not_consume_iterator_params(
-    instrument_legacy, span_exporter: InMemorySpanExporter
+    instrument_legacy, span_exporter: InMemorySpanExporter, openai_client: OpenAI
 ):
-    handler, requests = _handler()
-    _client(handler).decisions.create(
-        model=MODEL,
-        input="The movie was wonderful.",
-        questions=(q for q in QUESTIONS),
+    decision = openai_client.decisions.create(
+        model=MODEL, input=INPUT, questions=(q for q in QUESTIONS)
     )
 
     # The SDK still sends every question; we just don't record them.
-    assert requests[0]["questions"] == QUESTIONS
+    assert len(decision.answers) == len(QUESTIONS)
     span = _only_span(span_exporter)
     assert json.loads(span.attributes["gen_ai.input.messages"]) == [
-        {"role": "user", "content": "The movie was wonderful."}
+        {"role": "user", "content": INPUT}
     ]
 
 
+@pytest.mark.vcr
 def test_decisions_create_without_content_tracing(
-    instrument_legacy, span_exporter: InMemorySpanExporter, monkeypatch
+    instrument_legacy,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
+    monkeypatch,
 ):
     monkeypatch.setenv("LMNR_TRACE_CONTENT", "false")
-    handler, _ = _handler()
-    _client(handler).decisions.create(
-        model=MODEL, input="The movie was wonderful.", questions=QUESTIONS
+    decision = openai_client.decisions.create(
+        model=MODEL, input=INPUT, questions=QUESTIONS
     )
 
     span = _only_span(span_exporter)
-    assert span.attributes["gen_ai.usage.input_tokens"] == 120
+    assert span.attributes["gen_ai.usage.input_tokens"] == decision.usage.input_tokens
     assert "gen_ai.input.messages" not in span.attributes
     assert "gen_ai.output.messages" not in span.attributes

@@ -1,0 +1,87 @@
+interactions:
+- request:
+    body: '{"model":"gpt-6-luna","input":"The movie was wonderful, though the popcorn
+      was stale.","questions":[{"type":"choice","instructions":"Pick one.","choices":[]}]}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate
+      connection:
+      - keep-alive
+      content-length:
+      - '159'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      user-agent:
+      - OpenAI/Python 3.26.0
+      x-stainless-arch:
+      - x64
+      x-stainless-async:
+      - 'false'
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - Linux
+      x-stainless-package-version:
+      - 3.26.0
+      x-stainless-read-timeout:
+      - '600'
+      x-stainless-retry-count:
+      - '0'
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.12.10
+    method: POST
+    uri: https://api.openai.com/v1/decisions
+  response:
+    body:
+      string: '{"error":{"message":"Invalid ''questions[0].choices'': empty array.
+        Expected an array with minimum length 2, but got an empty array instead.","type":"invalid_request_error","param":"questions[0].choices","code":"empty_array"}}'
+    headers:
+      access-control-allow-origin:
+      - '*'
+      access-control-expose-headers:
+      - x-request-id,retry-after,server-timing-total
+      - CF-Ray
+      alt-svc:
+      - h3=":443"; ma=86400
+      cf-cache-status:
+      - DYNAMIC
+      cf-ray:
+      - a46d0df02ca592a0-IAD
+      connection:
+      - keep-alive
+      content-length:
+      - '224'
+      content-type:
+      - application/json
+      date:
+      - Wed, 07 Oct 2026 12:54:26 GMT
+      openai-processing-ms:
+      - '1'
+      server:
+      - cloudflare
+      server-timing-total:
+      - '1.465'
+      set-cookie:
+      - __cf_bm=xTl4GTtD2qY70jIQFQRwldIl.xTYDXsgVLrzadTiHIY-1791377666.5815697-1.0.1.1-7AqjawFWSJdaH07fsvD0jcFmqWwWcDXdyiDj.dHsL8Sw6rlozhpY81UtJYSf6AAAghLGJnSw1S_yY7YxcV9lw40NMlqzHmpEvD3gVD4q7R1UOXyRQECuH90fD_pXbv5D;
+        HttpOnly; SameSite=None; Secure; Path=/; Domain=api.openai.com; Expires=Wed,
+        07 Oct 2026 13:24:26 GMT
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      vary:
+      - origin, access-control-request-method, access-control-request-headers
+      x-content-type-options:
+      - nosniff
+      x-openai-proxy-wasm:
+      - v0.1
+      x-request-id:
+      - req_872c610f3f684593805a699bf1d55d25
+    status:
+      code: 400
+      message: Bad Request
+version: 1
