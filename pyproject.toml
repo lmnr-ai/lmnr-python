@@ -118,6 +118,8 @@ all = [
 [dependency-groups]
 dev = [
   "anthropic[bedrock]==0.95.0",
+  "agent-framework-core==1.20.0",
+  "agent-framework-openai==1.15.0",
   "autopep8==2.3.2",
   "claude-agent-sdk==0.2.128",
   "flake8==7.3.0",

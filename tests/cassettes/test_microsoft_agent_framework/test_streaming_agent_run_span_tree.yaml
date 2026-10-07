@@ -1,0 +1,312 @@
+interactions:
+- request:
+    body: '{"include":["reasoning.encrypted_content"],"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"Weather
+      in Paris?"}]}],"instructions":"You are a weather assistant. Always use tools.
+      One sentence.","model":"gpt-5-mini","stream":true,"tool_choice":"auto","tools":[{"name":"get_weather","parameters":{"properties":{"city":{"description":"City
+      name","title":"City","type":"string"}},"required":["city"],"title":"get_weather_input","type":"object","additionalProperties":false},"strict":false,"type":"function","description":"Get
+      the weather for a city."}]}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate, zstd
+      agent-framework-version:
+      - python/1.20.0
+      connection:
+      - keep-alive
+      content-length:
+      - '580'
+      content-type:
+      - application/json
+      host:
+      - api.openai.com
+      user-agent:
+      - agent-framework-python/1.20.0
+      x-stainless-arch:
+      - x64
+      x-stainless-async:
+      - async:asyncio
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - Linux
+      x-stainless-package-version:
+      - 2.30.0
+      x-stainless-raw-response:
+      - 'true'
+      x-stainless-read-timeout:
+      - '600'
+      x-stainless-retry-count:
+      - '0'
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.12.10
+    method: POST
+    uri: https://api.openai.com/v1/responses
+  response:
+    body:
+      string: 'event: response.created
+
+        data: {"type":"response.created","response":{"id":"resp_0f2c70253d77a3bf006ac68da6115887d2bfae75324a78cd85","object":"response","created_at":1791397286,"status":"in_progress","access_programs":null,"background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":"You
+        are a weather assistant. Always use tools. One sentence.","max_output_tokens":null,"max_tool_calls":null,"model":"gpt-5-mini-2025-08-07","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"medium","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"type":"function","description":"Get
+        the weather for a city.","name":"get_weather","output_schema":null,"parameters":{"properties":{"city":{"description":"City
+        name","title":"City","type":"string"}},"required":["city"],"title":"get_weather_input","type":"object","additionalProperties":false},"strict":false}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":0}
+
+
+        event: response.in_progress
+
+        data: {"type":"response.in_progress","response":{"id":"resp_0f2c70253d77a3bf006ac68da6115887d2bfae75324a78cd85","object":"response","created_at":1791397286,"status":"in_progress","access_programs":null,"background":false,"completed_at":null,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":"You
+        are a weather assistant. Always use tools. One sentence.","max_output_tokens":null,"max_tool_calls":null,"model":"gpt-5-mini-2025-08-07","moderation":null,"output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"medium","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"auto","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"type":"function","description":"Get
+        the weather for a city.","name":"get_weather","output_schema":null,"parameters":{"properties":{"city":{"description":"City
+        name","title":"City","type":"string"}},"required":["city"],"title":"get_weather_input","type":"object","additionalProperties":false},"strict":false}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":null,"user":null,"metadata":{}},"sequence_number":1}
+
+
+        event: response.output_item.added
+
+        data: {"type":"response.output_item.added","item":{"id":"rs_0f2c70253d77a3bf006ac68da67adc87d2823b885c44bcd1ac","type":"reasoning","content":[],"encrypted_content":"gAAAAABqxo2mluu4dZICakuW65uW_EDEPlXXRqq3WgUfr0vkmKGN9PWNrUTJsMdFhZl01piCjvzUAFfUR3wD3V5QOjRYuMxZ1oBARHSLlra6mQuiJ_9r3BbEQZN8NOJNvh6pcyWUfe06PJ3sa5zPjIu4Hz7vqYKDbrPkw-121OZqnp4Wz_U5TGTKRRnvbl0Rhbw-2TOCAGTZ2zuNt1kEyZKsf4EoB7Y1e8xL6YXsbgyI8-TmWJxM2cKbAolVvpH-wvU2ten_zM-Hph7rME8P5nzMa-qiOTCOBsEieJObpd2YGEKCSQBdXIbSVG412Lo-ZrqQGbbtTvdO72TXLm7dgBcKFi_LFvTgNnYnVGwuj9NHifAlCVQ5Bggi3BXmdiIXmcfSNMh7J-w-MdQjC_aLVQ5wkh523qJBxcO7vrJKcq-VTWMX1fB-_ub6LCZuaxE_3r1O-FHFVMzZCYg5N3vpoN1V0RuDc7ZAqu3lisd1Ythz8Znuenv2UhKjb-ay8jr_8JegtwYV59aBKle4aQqbVH1iFB4wzCoyuMHcQDnPA8RDvfGiZLX8hxHcYgud9oVDcJq8o2Sfk4KPImcWvhg0prxYWaJmGHE-T5Mg30H4Hus3ikaqYSUv9c4wxImlpyd0NwFLT1ujBK-kQrhGNATrmswoZ-iUZGoAThKKssIC6D4IHDYoMCfhIhTeNeWd2GDB-lRWbiVXYzxAKGRrr92_W4iqRlXROZqjSigzPe4KNwYt1v0DNiSBLS3jHn8Oz3mvlN8gyTwTHbRl1Ya6jqISmVWBdfwOL5p52JLPq-7zyXJym2a2nlR-hN-hnDTBaXLMj6HxVTUAI4TuK-CqgGP2PWQRgyudVGbZU6NLXcEZ12Y1Go4qxvMn6W8h0uykV9WGAbi75VikEtSCkc_omvcdh6ARC8wQgpreCBlz0whXfeNRQz1qCIbsxAEaNAkei82kWyNce8uMhkLvpNEKFlNVIRxs7lH6TZ9he8qHWS8WlyDBTsBl1gXYQlmFCKc8_i5PGAoOvs_TjITb6vRZS1DHzGQ15jNIMBBB665IETWmbM815D-rHC-XoCsjyQc8DGCOG71ROEsbYLS3h6QNeU8IfFc5_nARdJlsCZly0DIoZLvrz7vCcBvGy_gS3_3Vv48Ski4YnMv_zcygu4apBzIiXoBSb9osoPvSJgjMJxBADKeZPC-F-d-Zmk4=","summary":[]},"output_index":0,"sequence_number":2}
+
+
+        event: response.output_item.done
+
+        data: {"type":"response.output_item.done","item":{"id":"rs_0f2c70253d77a3bf006ac68da67adc87d2823b885c44bcd1ac","type":"reasoning","content":[],"encrypted_content":"gAAAAABqxo2nyqrNPMG_VlmS_PZ0S6zaS3QRAmWY_XMLhk07XgphEwdlxPceG9BfF3L0Yyse4PfG7bOKZrFc0P1A1BCY2Up9bB8q7bBUfuTBjz8cHvK_JFdYu9Eqv03OZpOQr0HR1po-_t0FBXzo2_BTV0qieEj7tLfRbVoh3iYpZ1t236HpBpMRkb6V6FCsFaT3Q851ddi8Qi4MrRP4HrphkWOV1I1dG7ht4qNV5sXvwM0iKgXcR-kFhTLGhh505x6WuraZTtu99wqD0HcFRSMnEuyHVauFRUimGcmGWcBokIhizBjtxMmcprHiIhszdrlUQ3xIZYLbCBpQ8JkMHDBAMXxxpTqCyPfnlzzgqDYAY47yysM9Vg8qGfTmj3x4CKKyTH94Mb1QI09-zrwX4Gg3Lj-rUERX1Ep1gS7bTc6oddv7rGDBIRNCAY-S1-cYFXPgJli7PrrTySylzKCHn6iCAlX4woNpUpHkhkoPtLz_2WXNUWTFRv4ukaE5Q1JJa7ui7Lw7J0YD8t9_xQxgsx8AQnR8DslyAGIo5jc51idpeyBn0hvqQOUVBJuzSjbkwRI5fQ5jYD_pL8P3CPhrhjDxWL5XA369_9xIR1RTT7zSc3J3VbpWk7kaX9dbiKn9cFAIDokvTB_VBlwyL_MMDbF-T5TEsQupVvenLNZkuMdRCRRuGZzclXXgWx0hQ14UNLMB-JJ27ufW0_BcDJCixm7KyiRLJ_WdU819Pb_gZOaFEaJCKuX_lCiRxsJS_vtwlW5A5_wj-FnwL_mn1ir5QGtttHjtXft2tLQfWg9SilzByJBZE_ieXRZPo5-q0VQWqMlxZ6GBNP4YcjYdDz3oFpfK3oKQE_vzf-LQkDS2IsEYxNURFCbaIqY1Z906f2Bg3bj0T-nLWGelB1Pyba0MqjNhYikjyJ9lQhS2Gn0Xg5JiWIUGw2pSxu7CmQOVjt97WKnGMJhlWTOuKJ2oUlTAr78YnBxiupT9MkwpLDtpTfrZCqcrHxd10vqVd7iwStG1LvZKT6LNerGcqzr-2xsL5JLiMlOyQMew8Uj7IsO0jofTNsU-_jdv6scv-fYR6QsKO46pYOr8YNjtza7G2lrSbg5oYyN2euhKSknyKAwUVRgZEtgItgq57WzhtcJ5JnSkJ-DDDo_EZo0q1LH6pX232N1IFAwd53LVTm8Mem78oo28XRkdmNXa_9GpMeGwQW2oQhhBHZm7c995zCE7vRGcoXXJJfcUxP2DoaR5eWYuffNpLAdivq5hxs40kLvAV0Nl_1lznoT4zzV9yncF9PGKuT04K3C9V2PE3VHMo-ZMOggXW864pMfnRoAvManhy49-ccbjbJvCDLV3YnRS49y-SU_SSVgOnkS3LT5eAX0Ix6VEPWn5SUoj79EDbjg_x7rE4th8MPnkJEd232f3s6lTNExZ_VgpU-XMg0-pkYg9ejnu78A42Vp1EooHbK46tvhEKJGKnpJXuqTYHKQo5FZQI501RiK6UG7_89D2v6UsZ436kOLJOGkZhOJHJk4FDam31h_uxu2CDbwBDrKxLLMJTBc4YhabbvfIhA==","summary":[]},"output_index":0,"sequence_number":3}
+
+
+        event: response.output_item.added
+
+        data: {"type":"response.output_item.added","item":{"id":"fc_0f2c70253d77a3bf006ac68da7128c87d286a826552a441424","type":"function_call","status":"in_progress","arguments":"","call_id":"call_7GeRA0B8sZNO6t9YGZaAX44j","name":"get_weather"},"output_index":1,"sequence_number":4}
+
+
+        event: response.function_call_arguments.delta
+
+        data: {"type":"response.function_call_arguments.delta","delta":"{\"","item_id":"fc_0f2c70253d77a3bf006ac68da7128c87d286a826552a441424","obfuscation":"qFo6ty1a5iKS2e","output_index":1,"sequence_number":5}
+
+
+        event: response.function_call_arguments.delta
+
+        data: {"type":"response.function_call_arguments.delta","delta":"city","item_id":"fc_0f2c70253d77a3bf006ac68da7128c87d286a826552a441424","obfuscation":"4OvCUTzDvRSD","output_index":1,"sequence_number":6}
+
+
+        event: response.function_call_arguments.delta
+
+        data: {"type":"response.function_call_arguments.delta","delta":"\":\"","item_id":"fc_0f2c70253d77a3bf006ac68da7128c87d286a826552a441424","obfuscation":"NkNKplO9p8qb8","output_index":1,"sequence_number":7}
+
+
+        event: response.function_call_arguments.delta
+
+        data: {"type":"response.function_call_arguments.delta","delta":"Paris","item_id":"fc_0f2c70253d77a3bf006ac68da7128c87d286a826552a441424","obfuscation":"rcDm2gT6jWU","output_index":1,"sequence_number":8}
+
+
+        event: response.function_call_arguments.delta
+
+        data: {"type":"response.function_call_arguments.delta","delta":"\"}","item_id":"fc_0f2c70253d77a3bf006ac68da7128c87d286a826552a441424","obfuscation":"jB9rXjqD4ap5rQ","output_index":1,"sequence_number":9}
+
+
+        event: response.function_call_arguments.done
+
+        data: {"type":"response.function_call_arguments.done","arguments":"{\"city\":\"Paris\"}","item_id":"fc_0f2c70253d77a3bf006ac68da7128c87d286a826552a441424","output_index":1,"sequence_number":10}
+
+
+        event: response.output_item.done
+
+        data: {"type":"response.output_item.done","item":{"id":"fc_0f2c70253d77a3bf006ac68da7128c87d286a826552a441424","type":"function_call","status":"completed","arguments":"{\"city\":\"Paris\"}","call_id":"call_7GeRA0B8sZNO6t9YGZaAX44j","name":"get_weather"},"output_index":1,"sequence_number":11}
+
+
+        event: response.completed
+
+        data: {"type":"response.completed","response":{"id":"resp_0f2c70253d77a3bf006ac68da6115887d2bfae75324a78cd85","object":"response","created_at":1791397286,"status":"completed","access_programs":null,"background":false,"completed_at":1791397287,"error":null,"frequency_penalty":0.0,"incomplete_details":null,"instructions":"You
+        are a weather assistant. Always use tools. One sentence.","max_output_tokens":null,"max_tool_calls":null,"model":"gpt-5-mini-2025-08-07","moderation":null,"output":[{"id":"rs_0f2c70253d77a3bf006ac68da67adc87d2823b885c44bcd1ac","type":"reasoning","content":[],"encrypted_content":"gAAAAABqxo2nXF_susVCFYRAQlfivJ8GLXIJ0ivYiI03PxrgTX5sWfUeMcEQfH0EJagEOoTBzKo3YcBNjD3V0NozCwugy3MXYtzEiJKCSISlpGJ3pFvf69xS6KNblPns5dYXxNkKqmHd7j64TdFX3yEpl4SoEPPRjY-AFM9hLYL6QlETYDL3694UVHCCN4Zt5MmMIbSJN42CieRopSCl4JQQrhshhAt5yp-Xm5ZiSLqkVKY-o28bxotAewwD8M7KOlWBYrN1cVFG6AT4XhkPg-DFdOBjEWJaTe2CzqTTytpDW9knWTW0AYR9voFU-Yo234d6GUkJz5BJ1PchOssJjTk5Ui9mSvlCtKDZmQdHrn0x3AuYiT0ZqFOMbkVGH88WoV7FzCVbKMzxhFdKK-1tejlvCqDXsogxyHN8inytRB44wcPTXXZ6_sPN4DFWDerKsng39UJMzqSOYIjdOObRoH0pplPSO8EIqu7lydive1ynMy89WuvvgfmbJdk5EYa9iVr_R9Ms8Cl5Fv97IJWwXjcwst-Li57AsgRjaXcEepZpcJKtPBSfd7_U6V8rFG76XirOM2hnXmGUIq24My_wbnip3ca1Vwjfr34nRt5OczvAyBbMd-3Xai94Kc3hLQBzI37d1-2JQ1PFjU3Mfj_N7JeSsg-E8TneMQwTBFp8PMC1kibeiBmd9Lnt0T8tKcsxuWdsdW216A0FXtkdrIHcEOHiiTVf1gUSk2Fz1D9YMV29StUtKLlrRcjgSKS0OMAicsDlUWxzw7vrrdalCRAEaQ9TjtWj3iAXRBMD7Q5s8wXY3v8FIq8BCymCNZ10Yt7Nv17-N0afI4ac7DIfwWcMsgfi8DV95V5ZvSlgXDHwEaz_prKRwarAW9cNUZJSU94a9tYNF1BOeF47yruZyG9J0OWbe83EcKd0uQMh7_YVulzw_OMbKUaBg0yyFTFcqtYHlFr13zio_g0KomK8Y-p5qWYgu6T2BBJ3tJJGNwwoV_Y9nwhAJFfxW6ABNr60fs4qf6_ogJv3nQ0kCv-FWq1IRSIfa7EJjqvAbiyywR0JdTTFY5xIcCa784xC7Z8WB3t5Mcmy8upd_aB39ufgNR9RXhTnBGfu4cVuSjYiwHESg5gHj2uMgOQ3r2xD3NoR72P7bgzMILT36SF-kZzon3GXFFhDi422Fk1PQaoItGdz5WHm1lSROqUibiBhQKlV5FTHgYy8Y0SKFwS0uo5IX6cEUxyDuhqSKUth2Rs7S45UkAtoDIvZo5jIVmPDPceJIZ2dxBY1rBgixWnK6kXJCBFoV6-wzsYN5JdP6cf3ex3t0MKJkbc3Z9gt-F8HpyeI8VtrZf7jdkTlFxrHEpPPw2s_b6cf2ReA35x6GuJm3250cRoMmS9wMKmeTx1O0PBMLvim6zfvZm2P7urWXqp1WBI-jgWlEmIvWJuDwS-xIgfZ4jEonaaYqpkZ_yUJ8e0OKhRv92iwXt6Xn203F4HOHMcS1zgonNyhfHqdc6Nz9MONQEU8ypu90DyjBZ15CSVXa4mifm9mxxNJv52hv3RYqSzM3J5Akv0NaJTzJw==","summary":[]},{"id":"fc_0f2c70253d77a3bf006ac68da7128c87d286a826552a441424","type":"function_call","status":"completed","arguments":"{\"city\":\"Paris\"}","call_id":"call_7GeRA0B8sZNO6t9YGZaAX44j","name":"get_weather"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"prompt_cache_retention":"in_memory","reasoning":{"context":"current_turn","effort":"medium","mode":"standard","summary":null},"safety_identifier":null,"service_tier":"default","store":true,"temperature":1.0,"text":{"format":{"type":"text"},"verbosity":"medium"},"tool_choice":"auto","tool_usage":{"image_gen":{"input_tokens":0,"input_tokens_details":{"image_tokens":0,"text_tokens":0},"output_tokens":0,"output_tokens_details":{"image_tokens":0,"text_tokens":0},"total_tokens":0},"web_search":{"num_requests":0}},"tools":[{"type":"function","description":"Get
+        the weather for a city.","name":"get_weather","output_schema":null,"parameters":{"properties":{"city":{"description":"City
+        name","title":"City","type":"string"}},"required":["city"],"title":"get_weather_input","type":"object","additionalProperties":false},"strict":false}],"top_logprobs":0,"top_p":1.0,"truncation":"disabled","usage":{"input_tokens":76,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":0},"output_tokens":82,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":158},"user":null,"metadata":{}},"sequence_number":12}
+
+
+        '
+    headers:
+      access-control-expose-headers:
+      - X-Request-ID
+      - CF-Ray
+      - CF-Ray
+      alt-svc:
+      - h3=":443"; ma=86400
+      cf-cache-status:
+      - DYNAMIC
+      cf-ray:
+      - a46eeced3bbd72ad-EWR
+      connection:
+      - keep-alive
+      content-type:
+      - text/event-stream; charset=utf-8
+      date:
+      - Wed, 07 Oct 2026 18:21:26 GMT
+      openai-organization:
+      - user-xzaeeoqlanzncr8pomspsknu
+      openai-processing-ms:
+      - '316'
+      openai-project:
+      - proj_aT4OgTR5NJ9iNjg4xWc82hiE
+      openai-version:
+      - '2020-10-01'
+      server:
+      - cloudflare
+      set-cookie:
+      - __cf_bm=kePhubUp6SqQC75BkZxywP3i3BMmzlsS_tiMcWW26Fo-1791397285.9524877-1.0.1.1-U8ci.k5vQRNxCnjoQRwYqu3gfh5zVu2Tjm5sdv3FrXE3anSXnuNYKUxLtY_qzKmmtGrLE_vYNhO9PnAgiB07n1XFjJkhwmwApklL.NufdwddGI.vLxm8U9A8enJGjNVL;
+        HttpOnly; SameSite=None; Secure; Path=/; Domain=api.openai.com; Expires=Wed,
+        07 Oct 2026 18:51:26 GMT
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      transfer-encoding:
+      - chunked
+      x-content-type-options:
+      - nosniff
+      x-ratelimit-limit-requests:
+      - '30000'
+      x-ratelimit-limit-tokens:
+      - '180000000'
+      x-ratelimit-remaining-requests:
+      - '29998'
+      x-ratelimit-remaining-tokens:
+      - '179999070'
+      x-ratelimit-reset-requests:
+      - 4ms
+      x-ratelimit-reset-tokens:
+      - 0s
+      x-request-id:
+      - req_79a40f21e519473fbe38effb379472dc
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"input":[{"call_id":"call_7GeRA0B8sZNO6t9YGZaAX44j","type":"function_call_output","output":"Sunny,
+      22C in Paris"}],"instructions":"You are a weather assistant. Always use tools.
+      One sentence.","model":"gpt-5-mini","previous_response_id":"resp_0f2c70253d77a3bf006ac68da6115887d2bfae75324a78cd85","stream":true,"tool_choice":"auto","tools":[{"name":"get_weather","parameters":{"properties":{"city":{"description":"City
+      name","title":"City","type":"string"}},"required":["city"],"title":"get_weather_input","type":"object","additionalProperties":false},"strict":false,"type":"function","description":"Get
+      the weather for a city."}]}'
+    headers:
+      accept:
+      - application/json
+      accept-encoding:
+      - gzip, deflate, zstd
+      agent-framework-version:
+      - python/1.20.0
+      connection:
+      - keep-alive
+      content-length:
+      - '630'
+      content-type:
+      - application/json
+      cookie:
+      - __cf_bm=kePhubUp6SqQC75BkZxywP3i3BMmzlsS_tiMcWW26Fo-1791397285.9524877-1.0.1.1-U8ci.k5vQRNxCnjoQRwYqu3gfh5zVu2Tjm5sdv3FrXE3anSXnuNYKUxLtY_qzKmmtGrLE_vYNhO9PnAgiB07n1XFjJkhwmwApklL.NufdwddGI.vLxm8U9A8enJGjNVL
+      host:
+      - api.openai.com
+      user-agent:
+      - agent-framework-python/1.20.0
+      x-stainless-arch:
+      - x64
+      x-stainless-async:
+      - async:asyncio
+      x-stainless-lang:
+      - python
+      x-stainless-os:
+      - Linux
+      x-stainless-package-version:
+      - 2.30.0
+      x-stainless-raw-response:
+      - 'true'
+      x-stainless-read-timeout:
+      - '600'
+      x-stainless-retry-count:
+      - '0'
+      x-stainless-runtime:
+      - CPython
+      x-stainless-runtime-version:
+      - 3.12.10
+    method: POST
+    uri: https://api.openai.com/v1/responses
+  response:
+    body:
+      string: "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_0f2c70253d77a3bf006ac68da7980c87d2a0e3b547bede4992\",\"object\":\"response\",\"created_at\":1791397287,\"status\":\"in_progress\",\"access_programs\":null,\"background\":false,\"completed_at\":null,\"error\":null,\"frequency_penalty\":0.0,\"incomplete_details\":null,\"instructions\":\"You
+        are a weather assistant. Always use tools. One sentence.\",\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-5-mini-2025-08-07\",\"moderation\":null,\"output\":[],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":\"resp_0f2c70253d77a3bf006ac68da6115887d2bfae75324a78cd85\",\"prompt_cache_key\":null,\"prompt_cache_retention\":\"in_memory\",\"reasoning\":{\"context\":\"current_turn\",\"effort\":\"medium\",\"mode\":\"standard\",\"summary\":null},\"safety_identifier\":null,\"service_tier\":\"auto\",\"store\":true,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"input_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0},\"output_tokens\":0,\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0},\"total_tokens\":0},\"web_search\":{\"num_requests\":0}},\"tools\":[{\"type\":\"function\",\"description\":\"Get
+        the weather for a city.\",\"name\":\"get_weather\",\"output_schema\":null,\"parameters\":{\"properties\":{\"city\":{\"description\":\"City
+        name\",\"title\":\"City\",\"type\":\"string\"}},\"required\":[\"city\"],\"title\":\"get_weather_input\",\"type\":\"object\",\"additionalProperties\":false},\"strict\":false}],\"top_logprobs\":0,\"top_p\":1.0,\"truncation\":\"disabled\",\"usage\":null,\"user\":null,\"metadata\":{}},\"sequence_number\":0}\n\nevent:
+        response.in_progress\ndata: {\"type\":\"response.in_progress\",\"response\":{\"id\":\"resp_0f2c70253d77a3bf006ac68da7980c87d2a0e3b547bede4992\",\"object\":\"response\",\"created_at\":1791397287,\"status\":\"in_progress\",\"access_programs\":null,\"background\":false,\"completed_at\":null,\"error\":null,\"frequency_penalty\":0.0,\"incomplete_details\":null,\"instructions\":\"You
+        are a weather assistant. Always use tools. One sentence.\",\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-5-mini-2025-08-07\",\"moderation\":null,\"output\":[],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":\"resp_0f2c70253d77a3bf006ac68da6115887d2bfae75324a78cd85\",\"prompt_cache_key\":null,\"prompt_cache_retention\":\"in_memory\",\"reasoning\":{\"context\":\"current_turn\",\"effort\":\"medium\",\"mode\":\"standard\",\"summary\":null},\"safety_identifier\":null,\"service_tier\":\"auto\",\"store\":true,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"input_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0},\"output_tokens\":0,\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0},\"total_tokens\":0},\"web_search\":{\"num_requests\":0}},\"tools\":[{\"type\":\"function\",\"description\":\"Get
+        the weather for a city.\",\"name\":\"get_weather\",\"output_schema\":null,\"parameters\":{\"properties\":{\"city\":{\"description\":\"City
+        name\",\"title\":\"City\",\"type\":\"string\"}},\"required\":[\"city\"],\"title\":\"get_weather_input\",\"type\":\"object\",\"additionalProperties\":false},\"strict\":false}],\"top_logprobs\":0,\"top_p\":1.0,\"truncation\":\"disabled\",\"usage\":null,\"user\":null,\"metadata\":{}},\"sequence_number\":1}\n\nevent:
+        response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"item\":{\"id\":\"msg_0f2c70253d77a3bf006ac68da7f62c87d2a33a33cd508960e8\",\"type\":\"message\",\"status\":\"in_progress\",\"content\":[],\"role\":\"assistant\"},\"output_index\":0,\"sequence_number\":2}\n\nevent:
+        response.content_part.added\ndata: {\"type\":\"response.content_part.added\",\"content_index\":0,\"item_id\":\"msg_0f2c70253d77a3bf006ac68da7f62c87d2a33a33cd508960e8\",\"output_index\":0,\"part\":{\"type\":\"output_text\",\"annotations\":[],\"logprobs\":[],\"text\":\"\"},\"sequence_number\":3}\n\nevent:
+        response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"It's\",\"item_id\":\"msg_0f2c70253d77a3bf006ac68da7f62c87d2a33a33cd508960e8\",\"logprobs\":[],\"obfuscation\":\"ny3pgSSE0ez7\",\"output_index\":0,\"sequence_number\":4}\n\nevent:
+        response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"
+        sunny\",\"item_id\":\"msg_0f2c70253d77a3bf006ac68da7f62c87d2a33a33cd508960e8\",\"logprobs\":[],\"obfuscation\":\"HZyfiFnanz\",\"output_index\":0,\"sequence_number\":5}\n\nevent:
+        response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"
+        and\",\"item_id\":\"msg_0f2c70253d77a3bf006ac68da7f62c87d2a33a33cd508960e8\",\"logprobs\":[],\"obfuscation\":\"yDodkwQ5supn\",\"output_index\":0,\"sequence_number\":6}\n\nevent:
+        response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"
+        \",\"item_id\":\"msg_0f2c70253d77a3bf006ac68da7f62c87d2a33a33cd508960e8\",\"logprobs\":[],\"obfuscation\":\"bVAX5DJdPhgIHc0\",\"output_index\":0,\"sequence_number\":7}\n\nevent:
+        response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"22\",\"item_id\":\"msg_0f2c70253d77a3bf006ac68da7f62c87d2a33a33cd508960e8\",\"logprobs\":[],\"obfuscation\":\"ET8C5OENTvowB1\",\"output_index\":0,\"sequence_number\":8}\n\nevent:
+        response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"\xB0C\",\"item_id\":\"msg_0f2c70253d77a3bf006ac68da7f62c87d2a33a33cd508960e8\",\"logprobs\":[],\"obfuscation\":\"BXI5DebiyGJuPc\",\"output_index\":0,\"sequence_number\":9}\n\nevent:
+        response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"
+        in\",\"item_id\":\"msg_0f2c70253d77a3bf006ac68da7f62c87d2a33a33cd508960e8\",\"logprobs\":[],\"obfuscation\":\"EtFIO1uMg8cfI\",\"output_index\":0,\"sequence_number\":10}\n\nevent:
+        response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\"
+        Paris\",\"item_id\":\"msg_0f2c70253d77a3bf006ac68da7f62c87d2a33a33cd508960e8\",\"logprobs\":[],\"obfuscation\":\"8rhDuH1xJi\",\"output_index\":0,\"sequence_number\":11}\n\nevent:
+        response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"content_index\":0,\"delta\":\".\",\"item_id\":\"msg_0f2c70253d77a3bf006ac68da7f62c87d2a33a33cd508960e8\",\"logprobs\":[],\"obfuscation\":\"ScKbALA4eJI8AZP\",\"output_index\":0,\"sequence_number\":12}\n\nevent:
+        response.output_text.done\ndata: {\"type\":\"response.output_text.done\",\"content_index\":0,\"item_id\":\"msg_0f2c70253d77a3bf006ac68da7f62c87d2a33a33cd508960e8\",\"logprobs\":[],\"output_index\":0,\"sequence_number\":13,\"text\":\"It's
+        sunny and 22\xB0C in Paris.\"}\n\nevent: response.content_part.done\ndata:
+        {\"type\":\"response.content_part.done\",\"content_index\":0,\"item_id\":\"msg_0f2c70253d77a3bf006ac68da7f62c87d2a33a33cd508960e8\",\"output_index\":0,\"part\":{\"type\":\"output_text\",\"annotations\":[],\"logprobs\":[],\"text\":\"It's
+        sunny and 22\xB0C in Paris.\"},\"sequence_number\":14}\n\nevent: response.output_item.done\ndata:
+        {\"type\":\"response.output_item.done\",\"item\":{\"id\":\"msg_0f2c70253d77a3bf006ac68da7f62c87d2a33a33cd508960e8\",\"type\":\"message\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"annotations\":[],\"logprobs\":[],\"text\":\"It's
+        sunny and 22\xB0C in Paris.\"}],\"role\":\"assistant\"},\"output_index\":0,\"sequence_number\":15}\n\nevent:
+        response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_0f2c70253d77a3bf006ac68da7980c87d2a0e3b547bede4992\",\"object\":\"response\",\"created_at\":1791397287,\"status\":\"completed\",\"access_programs\":null,\"background\":false,\"completed_at\":1791397288,\"error\":null,\"frequency_penalty\":0.0,\"incomplete_details\":null,\"instructions\":\"You
+        are a weather assistant. Always use tools. One sentence.\",\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-5-mini-2025-08-07\",\"moderation\":null,\"output\":[{\"id\":\"msg_0f2c70253d77a3bf006ac68da7f62c87d2a33a33cd508960e8\",\"type\":\"message\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"annotations\":[],\"logprobs\":[],\"text\":\"It's
+        sunny and 22\xB0C in Paris.\"}],\"role\":\"assistant\"}],\"parallel_tool_calls\":true,\"presence_penalty\":0.0,\"previous_response_id\":\"resp_0f2c70253d77a3bf006ac68da6115887d2bfae75324a78cd85\",\"prompt_cache_key\":null,\"prompt_cache_retention\":\"in_memory\",\"reasoning\":{\"context\":\"current_turn\",\"effort\":\"medium\",\"mode\":\"standard\",\"summary\":null},\"safety_identifier\":null,\"service_tier\":\"default\",\"store\":true,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tool_usage\":{\"image_gen\":{\"input_tokens\":0,\"input_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0},\"output_tokens\":0,\"output_tokens_details\":{\"image_tokens\":0,\"text_tokens\":0},\"total_tokens\":0},\"web_search\":{\"num_requests\":0}},\"tools\":[{\"type\":\"function\",\"description\":\"Get
+        the weather for a city.\",\"name\":\"get_weather\",\"output_schema\":null,\"parameters\":{\"properties\":{\"city\":{\"description\":\"City
+        name\",\"title\":\"City\",\"type\":\"string\"}},\"required\":[\"city\"],\"title\":\"get_weather_input\",\"type\":\"object\",\"additionalProperties\":false},\"strict\":false}],\"top_logprobs\":0,\"top_p\":1.0,\"truncation\":\"disabled\",\"usage\":{\"input_tokens\":176,\"input_tokens_details\":{\"cache_write_tokens\":0,\"cached_tokens\":0},\"output_tokens\":13,\"output_tokens_details\":{\"reasoning_tokens\":0},\"total_tokens\":189},\"user\":null,\"metadata\":{}},\"sequence_number\":16}\n\n"
+    headers:
+      access-control-expose-headers:
+      - X-Request-ID
+      - CF-Ray
+      - CF-Ray
+      alt-svc:
+      - h3=":443"; ma=86400
+      cf-cache-status:
+      - DYNAMIC
+      cf-ray:
+      - a46eecf6fd0372ad-EWR
+      connection:
+      - keep-alive
+      content-type:
+      - text/event-stream; charset=utf-8
+      date:
+      - Wed, 07 Oct 2026 18:21:27 GMT
+      openai-organization:
+      - user-xzaeeoqlanzncr8pomspsknu
+      openai-processing-ms:
+      - '259'
+      openai-project:
+      - proj_aT4OgTR5NJ9iNjg4xWc82hiE
+      openai-version:
+      - '2020-10-01'
+      server:
+      - cloudflare
+      strict-transport-security:
+      - max-age=31536000; includeSubDomains; preload
+      transfer-encoding:
+      - chunked
+      x-content-type-options:
+      - nosniff
+      x-ratelimit-limit-requests:
+      - '30000'
+      x-ratelimit-limit-tokens:
+      - '180000000'
+      x-ratelimit-remaining-requests:
+      - '29999'
+      x-ratelimit-remaining-tokens:
+      - '179999328'
+      x-ratelimit-reset-requests:
+      - 2ms
+      x-ratelimit-reset-tokens:
+      - 0s
+      x-request-id:
+      - req_1810345c41e041febf28b82893acd4f6
+    status:
+      code: 200
+      message: OK
+version: 1

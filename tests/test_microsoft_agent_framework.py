@@ -1,0 +1,190 @@
+"""Tests for the Microsoft Agent Framework instrumentation.
+
+The end-to-end tests drive real `Agent` runs against gpt-5-mini through the
+framework's OpenAI client. The real key was used during recording and the
+requests/responses were saved to the VCR cassettes, so the asserted spans are
+the ones the framework produces for real model turns.
+"""
+
+import asyncio
+import json
+import os
+from typing import Annotated
+from unittest.mock import patch
+
+import pytest
+
+pytest.importorskip("agent_framework")
+
+from agent_framework import Agent, tool  # noqa: E402
+from agent_framework.openai import OpenAIChatClient  # noqa: E402
+from opentelemetry import trace  # noqa: E402
+
+from lmnr import Laminar, observe  # noqa: E402
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation import (  # noqa: E402
+    microsoft_agent_framework as maf_instrumentation,
+)
+
+MODEL = "gpt-5-mini"
+
+
+@pytest.fixture(autouse=True)
+def openai_env(monkeypatch):
+    # Real key from the environment while recording; the placeholder is
+    # enough for replay because vcr_config filters the key out of matches.
+    monkeypatch.setenv("OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY", "test"))
+
+
+@observe(name="lookup_weather")
+def lookup_weather(city: str) -> str:
+    return f"Sunny, 22C in {city}"
+
+
+@tool
+def get_weather(city: Annotated[str, "City name"]) -> str:
+    """Get the weather for a city."""
+    return lookup_weather(city)
+
+
+def make_agent() -> Agent:
+    return Agent(
+        client=OpenAIChatClient(model=MODEL),
+        name="WeatherAgent",
+        instructions="You are a weather assistant. Always use tools. One sentence.",
+        tools=[get_weather],
+    )
+
+
+def run_agent(stream: bool = False, session_id: str | None = None) -> str:
+    @observe(name="root")
+    async def main() -> str:
+        if session_id:
+            Laminar.set_trace_session_id(session_id)
+        agent = make_agent()
+        if stream:
+            text = ""
+            async for update in agent.run("Weather in Paris?", stream=True):
+                text += update.text or ""
+            return text
+        return (await agent.run("Weather in Paris?")).text
+
+    return asyncio.run(main())
+
+
+def spans_by_name(spans, name):
+    return [s for s in spans if s.name == name]
+
+
+def assert_agent_tree(spans):
+    [root] = spans_by_name(spans, "root")
+    [agent] = spans_by_name(spans, "invoke_agent WeatherAgent")
+    chats = spans_by_name(spans, f"chat {MODEL}")
+    [tool_span] = spans_by_name(spans, "execute_tool get_weather")
+    [lookup] = spans_by_name(spans, "lookup_weather")
+
+    assert agent.parent.span_id == root.context.span_id
+    assert len(chats) == 2
+    assert all(c.parent.span_id == agent.context.span_id for c in chats)
+    assert tool_span.parent.span_id == agent.context.span_id
+    # An @observe function called from a tool nests under the tool span.
+    assert lookup.parent.span_id == tool_span.context.span_id
+    assert len({s.context.trace_id for s in spans}) == 1
+    # The framework's chat span is the LLM span: the OpenAI SDK call made
+    # underneath it is not traced a second time.
+    assert not [s for s in spans if s.name.startswith("openai.")]
+    return chats, tool_span
+
+
+@pytest.mark.vcr
+def test_agent_run_span_tree(span_exporter):
+    assert "Paris" in run_agent()
+    spans = span_exporter.get_finished_spans()
+    chats, tool_span = assert_agent_tree(spans)
+
+    for chat in chats:
+        assert chat.attributes["gen_ai.operation.name"] == "chat"
+        assert chat.attributes["gen_ai.system"] == "openai"
+        assert chat.attributes["gen_ai.request.model"] == MODEL
+        assert chat.attributes["gen_ai.usage.input_tokens"] > 0
+        assert json.loads(chat.attributes["gen_ai.input.messages"])
+        assert json.loads(chat.attributes["gen_ai.output.messages"])
+        [definition] = json.loads(chat.attributes["gen_ai.tool.definitions"])
+        assert definition["name"] == "get_weather"
+
+    assert json.loads(tool_span.attributes["gen_ai.tool.call.arguments"]) == {
+        "city": "Paris"
+    }
+    assert "Sunny" in tool_span.attributes["gen_ai.tool.call.result"]
+
+
+@pytest.mark.vcr
+def test_streaming_agent_run_span_tree(span_exporter):
+    assert "Paris" in run_agent(stream=True)
+    chats, _ = assert_agent_tree(span_exporter.get_finished_spans())
+    assert all(json.loads(c.attributes["gen_ai.output.messages"]) for c in chats)
+
+
+@pytest.mark.vcr
+def test_session_id_propagates_to_framework_spans(span_exporter):
+    run_agent(session_id="maf-session")
+    framework_spans = [
+        s
+        for s in span_exporter.get_finished_spans()
+        if s.instrumentation_scope.name == "agent_framework"
+    ]
+    assert framework_spans
+    for span in framework_spans:
+        assert (
+            span.attributes["lmnr.association.properties.session_id"]
+            == "maf-session"
+        )
+
+
+@pytest.mark.vcr
+def test_direct_openai_call_outside_agent_is_traced(span_exporter):
+    from openai import OpenAI
+
+    OpenAI().responses.create(model=MODEL, input="Say hi in one word.")
+    assert spans_by_name(span_exporter.get_finished_spans(), "openai.response")
+
+
+def test_framework_spans_use_laminar_provider_without_global_provider():
+    # With `set_global_tracer_provider=False` the framework's own lookup
+    # would land on a no-op provider.
+    from agent_framework.observability import get_tracer
+
+    with patch(
+        "opentelemetry.trace.get_tracer_provider",
+        return_value=trace.NoOpTracerProvider(),
+    ):
+        span = get_tracer().start_span("probe")
+    assert span.is_recording()
+    span.end()
+
+
+def test_content_capture_respects_opt_outs(monkeypatch):
+    monkeypatch.delenv("ENABLE_SENSITIVE_DATA", raising=False)
+    monkeypatch.delenv("LMNR_TRACE_CONTENT", raising=False)
+    assert maf_instrumentation._should_enable_sensitive_data()
+
+    monkeypatch.setenv("LMNR_TRACE_CONTENT", "false")
+    assert not maf_instrumentation._should_enable_sensitive_data()
+
+    monkeypatch.delenv("LMNR_TRACE_CONTENT")
+    monkeypatch.setenv("ENABLE_SENSITIVE_DATA", "false")
+    assert not maf_instrumentation._should_enable_sensitive_data()
+
+
+def test_instrumentation_respects_explicit_setting(monkeypatch):
+    monkeypatch.delenv("ENABLE_INSTRUMENTATION", raising=False)
+    assert maf_instrumentation._should_enable_instrumentation()
+
+    monkeypatch.setenv("ENABLE_INSTRUMENTATION", "false")
+    assert not maf_instrumentation._should_enable_instrumentation()
+
+
+def test_instrumentation_enables_content_capture():
+    from agent_framework.observability import OBSERVABILITY_SETTINGS
+
+    assert OBSERVABILITY_SETTINGS.ENABLED
+    assert OBSERVABILITY_SETTINGS.SENSITIVE_DATA_ENABLED

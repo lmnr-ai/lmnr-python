@@ -63,6 +63,7 @@ class Instruments(Enum):
     LLAMA_INDEX = "llama_index"
     MARQO = "marqo"
     MCP = "mcp"
+    MICROSOFT_AGENT_FRAMEWORK = "microsoft_agent_framework"
     MILVUS = "milvus"
     MISTRAL = "mistral"
     OLLAMA = "ollama"
@@ -128,6 +129,9 @@ INSTRUMENTATION_INITIALIZERS: dict[
     Instruments.LLAMA_INDEX: initializers.LlamaIndexInstrumentorInitializer(),
     Instruments.MARQO: initializers.MarqoInstrumentorInitializer(),
     Instruments.MCP: initializers.MCPInstrumentorInitializer(),
+    Instruments.MICROSOFT_AGENT_FRAMEWORK: (
+        initializers.MicrosoftAgentFrameworkInstrumentorInitializer()
+    ),
     Instruments.MILVUS: initializers.MilvusInstrumentorInitializer(),
     Instruments.MISTRAL: initializers.MistralInstrumentorInitializer(),
     Instruments.OLLAMA: initializers.OllamaInstrumentorInitializer(),
