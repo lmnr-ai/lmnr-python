@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from collections.abc import AsyncGenerator, Generator
 from types import TracebackType
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_RESPONSE_ID,
@@ -11,13 +13,6 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
 from opentelemetry.trace.span import Span
 from opentelemetry.trace.status import Status, StatusCode
 
-from anthropic.lib.streaming import (
-    AsyncMessageStream,
-    AsyncMessageStreamManager,
-    MessageStream,
-    MessageStreamManager,
-    ParsedMessageStreamEvent,
-)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.event_models import (
     AnthropicUsage,
     CompleteResponse,
@@ -32,6 +27,16 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
 )
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import json_dumps
+
+# Annotation-only: `anthropic` may be missing or older than these names.
+if TYPE_CHECKING:
+    from anthropic.lib.streaming import (
+        AsyncMessageStream,
+        AsyncMessageStreamManager,
+        MessageStream,
+        MessageStreamManager,
+        ParsedMessageStreamEvent,
+    )
 
 logger = get_default_logger(__name__)
 

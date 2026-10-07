@@ -1,10 +1,18 @@
 """OpenTelemetry Anthropic instrumentation"""
 
-from collections.abc import AsyncGenerator, Awaitable, Callable, Collection, Generator, Sequence
-from importlib.metadata import version
-from typing import Any, cast
+from __future__ import annotations
 
-from anthropic.lib.streaming import AsyncMessageStream, AsyncMessageStreamManager, MessageStream, MessageStreamManager, ParsedMessageStreamEvent
+from collections.abc import (
+    AsyncGenerator,
+    Awaitable,
+    Callable,
+    Collection,
+    Generator,
+    Sequence,
+)
+from importlib.metadata import version
+from typing import TYPE_CHECKING, Any, cast
+
 from opentelemetry import context as context_api
 from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
@@ -15,7 +23,6 @@ from opentelemetry.trace import Span
 from opentelemetry.trace.status import Status, StatusCode
 from typing_extensions import TypeVar, override
 
-from anthropic._streaming import AsyncStream, Stream
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.rollout import (
     get_anthropic_rollout_wrapper,
 )
@@ -51,14 +58,32 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers
 )
 from lmnr.sdk.log import get_default_logger
 
+# `anthropic` may be missing or older than the names below; keep these imports
+# annotation-only (safe under `from __future__ import annotations`). Runtime
+# checks import lazily inside the functions that need them.
+if TYPE_CHECKING:
+    from anthropic.lib.streaming import (
+        AsyncMessageStream,
+        AsyncMessageStreamManager,
+        MessageStream,
+        MessageStreamManager,
+        ParsedMessageStreamEvent,
+    )
+
 logger = get_default_logger(__name__)
 T = TypeVar("T")
 _instruments = ("anthropic >= 0.3.11",)
 
 
 def is_streaming_response(response: Any) -> bool:
-    if isinstance(response, (Stream, AsyncStream)):
-        return True
+    obj: object = response
+    try:
+        from anthropic._streaming import AsyncStream, Stream
+
+        if isinstance(obj, (Stream, AsyncStream)):
+            return True
+    except ImportError:
+        pass
 
     # For cached streams, they are generators, not Message objects.
     # We check for __next__ and __iter__ for sync generators,
@@ -303,7 +328,7 @@ def _wrap(
     if kwargs.get("stream") or is_streaming_response(response):
         return build_from_streaming_response(
             span,
-            cast(MessageStream, response),
+            cast("MessageStream", response),
             instance._client,
             kwargs,
             record_raw_response=is_rollout,
@@ -311,7 +336,7 @@ def _wrap(
     elif is_stream_manager(response):
         if response.__class__.__name__ == "AsyncMessageStreamManager":
             return WrappedAsyncMessageStreamManager(
-                cast(AsyncMessageStreamManager, response),
+                cast("AsyncMessageStreamManager", response),
                 span,
                 instance._client,
                 kwargs,
@@ -319,7 +344,7 @@ def _wrap(
             )
         else:
             return WrappedMessageStreamManager(
-                cast(MessageStreamManager, response),
+                cast("MessageStreamManager", response),
                 span,
                 instance._client,
                 kwargs,
@@ -390,7 +415,7 @@ async def _awrap(
     if kwargs.get("stream") or is_streaming_response(response):
         return abuild_from_streaming_response(
             span,
-            cast(AsyncMessageStream, response),
+            cast("AsyncMessageStream", response),
             instance._client,
             kwargs,
             record_raw_response=is_rollout,
@@ -398,7 +423,7 @@ async def _awrap(
     elif is_stream_manager(response):
         if response.__class__.__name__ == "AsyncMessageStreamManager":
             return WrappedAsyncMessageStreamManager(
-                cast(AsyncMessageStreamManager, response),
+                cast("AsyncMessageStreamManager", response),
                 span,
                 instance._client,
                 kwargs,
@@ -406,7 +431,7 @@ async def _awrap(
             )
         else:
             return WrappedMessageStreamManager(
-                cast(MessageStreamManager, response),
+                cast("MessageStreamManager", response),
                 span,
                 instance._client,
                 kwargs,

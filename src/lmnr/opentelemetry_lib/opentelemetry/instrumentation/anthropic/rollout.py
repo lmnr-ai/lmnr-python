@@ -8,29 +8,15 @@ live. The decision is made by `cache_outcome_for` (sync) / `acache_outcome_for`
 (async); there is no in-process cache anymore.
 """
 
+from __future__ import annotations
+
 import json
 from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Sequence
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from opentelemetry.sdk.trace import Span as SDKSpan
 from opentelemetry.trace import Span
 
-from anthropic.types import (
-    InputJSONDelta,
-    Message,
-    MessageDeltaUsage,
-    RawContentBlockDeltaEvent,
-    RawContentBlockStartEvent,
-    RawContentBlockStopEvent,
-    RawMessageDeltaEvent,
-    RawMessageStartEvent,
-    RawMessageStopEvent,
-    RawMessageStreamEvent,
-    TextDelta,
-    ThinkingDelta,
-    Usage,
-)
-from anthropic.types.raw_message_delta_event import Delta
 from lmnr.sdk.debug.replay import (
     acache_outcome_for,
     cache_outcome_for,
@@ -38,6 +24,11 @@ from lmnr.sdk.debug.replay import (
     replay_enabled,
 )
 from lmnr.sdk.log import get_default_logger
+
+# `anthropic` may be missing or older than these names, so only annotation uses
+# are imported here; constructors are imported lazily where they are called.
+if TYPE_CHECKING:
+    from anthropic.types import Message, RawMessageStreamEvent
 
 logger = get_default_logger(__name__)
 
@@ -49,6 +40,8 @@ class AnthropicRolloutWrapper:
         self, cached_span: dict[str, Any]
     ) -> Message | None:
         """Convert cached span envelope to Anthropic Message response."""
+        from anthropic.types import Message, Usage
+
         envelope_type = cached_span.get("type")
         if envelope_type not in ("raw", "genAi"):
             logger.warning(f"Unknown cached span type: {envelope_type!r}")
@@ -148,6 +141,21 @@ class AnthropicRolloutWrapper:
         self, response: Message
     ) -> Generator[RawMessageStreamEvent, None, None]:
         """Yield a cached response as a sequence of streaming events."""
+        from anthropic.types import (
+            InputJSONDelta,
+            Message,
+            MessageDeltaUsage,
+            RawContentBlockDeltaEvent,
+            RawContentBlockStartEvent,
+            RawContentBlockStopEvent,
+            RawMessageDeltaEvent,
+            RawMessageStartEvent,
+            RawMessageStopEvent,
+            TextDelta,
+            ThinkingDelta,
+            Usage,
+        )
+        from anthropic.types.raw_message_delta_event import Delta
 
         # 1. Message Start
         yield RawMessageStartEvent(
