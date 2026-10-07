@@ -48,7 +48,6 @@ and a hook failure never breaks the framework call.
 """
 
 import inspect
-import logging
 import os
 from contextvars import ContextVar
 from contextlib import contextmanager
@@ -70,8 +69,9 @@ from lmnr.opentelemetry_lib.tracing.context import (
     pop_span_context,
     push_span_context,
 )
+from lmnr.sdk.log import get_default_logger
 
-logger = logging.getLogger(__name__)
+logger = get_default_logger(__name__)
 
 _OBSERVABILITY_MODULE = "agent_framework.observability"
 _MCP_MODULE = "agent_framework._mcp"
