@@ -19,6 +19,15 @@ DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY = create_key(
     DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY_RAW
 )
 
+# Same idea as the key above, for `LitellmModel`: the generation span this
+# processor emits already carries the whole model call, so the nested
+# `litellm.completion` span the litellm instrumentor would open is a duplicate
+# of it - same tokens, same cost, counted twice.
+DISABLE_LITELLM_INSTRUMENTATION_CONTEXT_KEY_RAW = "LMNR_DISABLE_LITELLM_INSTRUMENTATION"
+DISABLE_LITELLM_INSTRUMENTATION_CONTEXT_KEY = create_key(
+    DISABLE_LITELLM_INSTRUMENTATION_CONTEXT_KEY_RAW
+)
+
 
 # Task-local system instructions for the currently-executing model call.
 # Set by the wrapped get_response / stream_response methods in instrumentor.py

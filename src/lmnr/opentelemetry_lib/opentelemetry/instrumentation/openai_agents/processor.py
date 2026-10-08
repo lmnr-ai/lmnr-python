@@ -25,6 +25,7 @@ from lmnr import Laminar
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
 
 from .helpers import (
+    DISABLE_LITELLM_INSTRUMENTATION_CONTEXT_KEY,
     DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY,
     name_from_span_data,
     export_span_data,
@@ -144,6 +145,14 @@ class LaminarAgentsTraceProcessor(_Base):
             ctx = set_value(
                 DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY, True, otel_ctx
             )
+            # A generation span IS the model call - `LitellmModel` opens one
+            # around `litellm.acompletion`, so letting the litellm instrumentor
+            # open its own span underneath would report the same tokens and the
+            # same cost twice. Scoped to generation spans only: everything else
+            # in a run (tools, handoffs, MCP) may legitimately call an LLM
+            # through litellm, and those spans must still be traced.
+            if span_kind(span_data) == "generation":
+                ctx = set_value(DISABLE_LITELLM_INSTRUMENTATION_CONTEXT_KEY, True, ctx)
 
             lmnr_span = Laminar.start_active_span(
                 name=name,
