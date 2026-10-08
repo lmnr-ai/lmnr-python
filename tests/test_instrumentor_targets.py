@@ -12,9 +12,23 @@ the migration actually moves.
 
 import importlib
 import sys
+import types
+from collections.abc import Callable, Generator, Sequence
+from typing import Any, cast
 
 import pytest
-from wrapt import ObjectProxy
+from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
+from opentelemetry.instrumentation.utils import unwrap
+from typing_extensions import TypeVar
+from wrapt import ObjectProxy, wrap_function_wrapper
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    WrappedFunctionSpec,
+    WrapperHandler,
+)
+from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
+
+T = TypeVar("T")
 
 # (instrumentor import path, class name, {(module, "Object.method" | "func"), ...})
 #
@@ -175,7 +189,7 @@ def _reachable(targets: set[tuple[str, str]]) -> set[tuple[str, str]]:
     `anthropic.lib.bedrock._beta_messages.Messages` has no `stream` or `parse`
     even though the regular and beta `Messages` do.
     """
-    ok = set()
+    ok: set[tuple[str, str]] = set()
     for module_name, target in targets:
         try:
             holder, attr = _resolve(module_name, target)
@@ -187,14 +201,14 @@ def _reachable(targets: set[tuple[str, str]]) -> set[tuple[str, str]]:
     return ok
 
 
-def _instrumentor(key: str):
+def _instrumentor(key: str) -> tuple[BaseInstrumentor, set[tuple[str, str]]]:
     module_path, class_name, targets = INSTRUMENTOR_TARGETS[key]
     module = importlib.import_module(module_path)
     return getattr(module, class_name)(), targets
 
 
 @pytest.fixture
-def reinstrumented(request):
+def reinstrumented(request: Any) -> Generator[tuple[BaseInstrumentor, set[tuple[str, str]]]]:
     """Yield a (instrumentor, targets) pair, restoring instrumented state after.
 
     `BaseInstrumentor` is a singleton and the session-scoped conftest fixture has
@@ -220,7 +234,7 @@ def reinstrumented(request):
 @pytest.mark.parametrize(
     "reinstrumented", sorted(INSTRUMENTOR_TARGETS), indirect=True
 )
-def test_instrument_wraps_exactly_the_declared_targets(reinstrumented):
+def test_instrument_wraps_exactly_the_declared_targets(reinstrumented: tuple[BaseInstrumentor, set[tuple[str, str]]]):
     instrumentor, targets = reinstrumented
     targets = _reachable(targets)
     if not targets:
@@ -242,7 +256,7 @@ def test_instrument_wraps_exactly_the_declared_targets(reinstrumented):
 @pytest.mark.parametrize(
     "reinstrumented", sorted(INSTRUMENTOR_TARGETS), indirect=True
 )
-def test_uninstrument_restores_the_original_attribute(reinstrumented):
+def test_uninstrument_restores_the_original_attribute(reinstrumented: tuple[BaseInstrumentor, set[tuple[str, str]]]):
     """A migration that wraps correctly but leaks on teardown would still break
     any host that re-initializes Laminar (test suites, notebooks)."""
     instrumentor, targets = reinstrumented
@@ -251,7 +265,7 @@ def test_uninstrument_restores_the_original_attribute(reinstrumented):
         pytest.skip("no declared target is importable in this environment")
 
     instrumentor.uninstrument()
-    originals = {}
+    originals: dict[tuple[str, str], BaseInstrumentor] = {}
     for module_name, target in targets:
         holder, attr = _resolve(module_name, target)
         originals[(module_name, target)] = getattr(holder, attr)
@@ -286,11 +300,8 @@ def test_claude_agent_alias_replacement_reaches_prior_from_imports():
         if was_instrumented:
             instrumentor.uninstrument()
 
-        # a module that grabbed its own reference before we instrumented
-        import types
-
         consumer = types.ModuleType("_lmnr_claude_consumer")
-        consumer.query = claude_agent_sdk.query
+        consumer.query = claude_agent_sdk.query  # pyright: ignore[reportAttributeAccessIssue]
         sys.modules["_lmnr_claude_consumer"] = consumer
         original = consumer.query
 
@@ -305,7 +316,7 @@ def test_claude_agent_alias_replacement_reaches_prior_from_imports():
             "alias replacement did not restore the pre-existing reference"
         )
     finally:
-        sys.modules.pop("_lmnr_claude_consumer", None)
+        _popped_val = sys.modules.pop("_lmnr_claude_consumer", None)
         if instrumentor.is_instrumented_by_opentelemetry:
             instrumentor.uninstrument()
         if was_instrumented:
@@ -317,29 +328,29 @@ def test_claude_agent_alias_replacement_reaches_prior_from_imports():
 # ---------------------------------------------------------------------------
 
 
-def test_playwright_wraps_and_restores_every_target():
+def test_playwright_wraps_and_restores_every_target(async_client: AsyncLaminarClient):
     """playwright is installed here, so this is a real round trip. It also needs
     a client, which reaches the wrappers through `wrapper_kwargs()` rather than
     through the per-method spec."""
     from lmnr.sdk.browser.playwright_otel import (
-        PlaywrightInstrumentor,
         WRAPPED_FUNCTIONS,
+        PlaywrightInstrumentor,
     )
 
     targets = _reachable(
         {
-            (r["package_name"], f"{r['object_name']}.{r['method_name']}")
+            (r["package_name"], f"{r.get('object_name')}.{r['method_name']}")
             for r in WRAPPED_FUNCTIONS
         }
     )
     assert targets, "expected at least one playwright target to be importable"
 
-    instrumentor = PlaywrightInstrumentor(object())
+    instrumentor = PlaywrightInstrumentor(async_client)
     was_instrumented = instrumentor.is_instrumented_by_opentelemetry
     try:
         if was_instrumented:
             instrumentor.uninstrument()
-        originals = {}
+        originals: dict[tuple[str, str], BaseInstrumentor] = {}
         for module_name, target in targets:
             holder, attr = _resolve(module_name, target)
             originals[(module_name, target)] = getattr(holder, attr)
@@ -361,7 +372,9 @@ def test_playwright_wraps_and_restores_every_target():
             instrumentor.instrument()
 
 
-def test_wrapper_kwargs_delivers_the_client_to_a_browser_wrapper():
+def test_wrapper_kwargs_delivers_the_client_to_a_browser_wrapper(
+    async_client: AsyncLaminarClient,
+):
     """The client is instrumentor-level state, not per-method config, so it rides
     the base's handler-kwargs channel. If that link broke, every browser wrapper
     would raise TypeError on its keyword-only `client` argument."""
@@ -370,19 +383,30 @@ def test_wrapper_kwargs_delivers_the_client_to_a_browser_wrapper():
     )
     from lmnr.sdk.browser.playwright_otel import PlaywrightInstrumentor
 
-    sentinel = object()
-    instrumentor = PlaywrightInstrumentor(sentinel)
-    assert instrumentor.wrapper_kwargs() == {"client": sentinel}
+    instrumentor = PlaywrightInstrumentor(async_client)
+    assert instrumentor.wrapper_kwargs() == {"client": async_client}
 
     seen = {}
 
-    def handler(to_wrap, wrapped, instance, args, kwargs, *, client):
+    def handler(
+        to_wrap: WrappedFunctionSpec,
+        wrapped: Callable[..., T],
+        instance: Any,
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
+        *,
+        client: AsyncLaminarClient
+    ):
         seen["client"] = client
         return wrapped(*args, **kwargs)
 
-    wrapper = add_spec_wrapper(handler, {}, **instrumentor.wrapper_kwargs())
+    wrapper = add_spec_wrapper(
+        cast(WrapperHandler[WrappedFunctionSpec], handler),
+        cast(Any, {}),
+        **instrumentor.wrapper_kwargs()
+    )
     assert wrapper(lambda: "ok", None, (), {}) == "ok"
-    assert seen["client"] is sentinel
+    assert seen["client"] is async_client
 
 
 def test_patchright_table_is_derived_from_playwright_and_covers_new_page():
@@ -397,10 +421,10 @@ def test_patchright_table_is_derived_from_playwright_and_covers_new_page():
 
     # identical except for the package they target
     assert {
-        (r["object_name"], r["method_name"], r["is_async"], r["wrapper_function"])
+        (r.get("object_name"), r["method_name"], r["is_async"], r["wrapper_function"])
         for r in PATCHRIGHT
     } == {
-        (r["object_name"], r["method_name"], r["is_async"], r["wrapper_function"])
+        (r.get("object_name"), r["method_name"], r["is_async"], r["wrapper_function"])
         for r in PLAYWRIGHT
     }
     assert {r["package_name"] for r in PATCHRIGHT} == {
@@ -427,32 +451,26 @@ def test_unwrap_silently_no_ops_on_the_wrapt_argument_split():
     literally named "Object.method", find nothing, and return WITHOUT raising.
     The instrumentor looks like it uninstrumented; the method stays wrapped.
     """
-    import sys
-    import types
-
-    from opentelemetry.instrumentation.utils import unwrap
-    from wrapt import wrap_function_wrapper
-
     # A throwaway package so this is hermetic: the real instrumentors have
     # already wrapped their own targets session-wide via conftest, and layering
     # a second wrap on those would make the assertions ambiguous. It needs two
     # levels because `unwrap` rsplits the string it is given.
     parent = types.ModuleType("_lmnr_probe")
     child = types.ModuleType("_lmnr_probe.mod")
-    parent.mod = child
+    parent.mod = child  # pyright: ignore[reportAttributeAccessIssue]
 
     class Target:
         def method(self):
             return "original"
 
-    child.Target = Target
+    child.Target = Target  # pyright: ignore[reportAttributeAccessIssue]
     sys.modules["_lmnr_probe"] = parent
     sys.modules["_lmnr_probe.mod"] = child
     try:
         wrap_function_wrapper(
             "_lmnr_probe.mod",
             "Target.method",
-            lambda wrapped, instance, args, kwargs: wrapped(*args, **kwargs),
+            lambda wrapped, instance, args, kwargs: wrapped(*args, **kwargs),  # pyright: ignore[reportUnknownLambdaType]
         )
         assert hasattr(Target.method, "__wrapped__")
 
@@ -490,7 +508,7 @@ def test_kernel_table_covers_the_sync_async_and_app_action_wraps():
     sync = [
         r
         for r in WRAPPED_FUNCTIONS
-        if not r["is_async"] and r["object_name"] != "KernelApp"
+        if not r["is_async"] and r.get("object_name") != "KernelApp"
     ]
     async_ = [r for r in WRAPPED_FUNCTIONS if r["is_async"]]
     assert len(sync) == 20
@@ -499,11 +517,11 @@ def test_kernel_table_covers_the_sync_async_and_app_action_wraps():
     # each async row is the `Async`-prefixed twin of a sync row, on the same
     # package and method — that is exactly what the second pass used to build.
     assert {
-        (r["package_name"], f"Async{r['object_name']}", r["method_name"])
+        (r["package_name"], f"Async{r.get('object_name')}", r["method_name"])
         for r in sync
-    } == {(r["package_name"], r["object_name"], r["method_name"]) for r in async_}
+    } == {(r["package_name"], r.get("object_name"), r["method_name"]) for r in async_}
 
-    app_action = [r for r in WRAPPED_FUNCTIONS if r["object_name"] == "KernelApp"]
+    app_action = [r for r in WRAPPED_FUNCTIONS if r.get("object_name") == "KernelApp"]
     assert [r["method_name"] for r in app_action] == ["action"]
 
 
@@ -550,7 +568,7 @@ def test_cua_computer_merged_table_preserves_every_row():
 
     # every row targets a distinct (package, object, method)
     targets = {
-        (r["package_name"], r["object_name"], r["method_name"])
+        (r["package_name"], r.get("object_name"), r["method_name"])
         for r in WRAPPED_FUNCTIONS
     }
     assert len(targets) == len(WRAPPED_FUNCTIONS)

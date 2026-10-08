@@ -94,20 +94,6 @@ def _config(**kwargs: Any) -> DebugConfig:
 
 
 @pytest.fixture
-def sync_client():
-    client = LaminarClient(project_api_key="test-123")
-    yield client
-    client.close()
-
-
-@pytest.fixture
-def async_client():
-    client = AsyncLaminarClient(project_api_key="test-123")
-    yield client
-    asyncio.run(client.close())
-
-
-@pytest.fixture
 def make_runtime(sync_client: LaminarClient, async_client: AsyncLaminarClient) -> Callable[..., DebugRuntime]:
     """Factory for `DebugRuntime`s sharing the per-test clients above."""
 

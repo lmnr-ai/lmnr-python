@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Generator
 from typing import Any
 from unittest.mock import patch
@@ -12,6 +13,8 @@ from lmnr import Laminar
 from lmnr.opentelemetry_lib.litellm import LaminarLiteLLMCallback
 from lmnr.opentelemetry_lib.tracing import clear_tracing_state, init_tracing
 from lmnr.opentelemetry_lib.tracing.instruments import Instruments
+from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
+from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 
 pytest_plugins = ("pytest_asyncio",)
 
@@ -81,6 +84,20 @@ def litellm_callback() -> Generator[LaminarLiteLLMCallback, None, None]:
         wrapper = get_tracer_wrapper()
         if wrapper is not None:
             instrumentor.instrument(tracer_provider=wrapper.tracer_provider)
+
+
+@pytest.fixture
+def sync_client() -> Generator[LaminarClient, None, None]:
+    client = LaminarClient(project_api_key="test-123")
+    yield client
+    client.close()
+
+
+@pytest.fixture
+def async_client() -> Generator[AsyncLaminarClient, None, None]:
+    client = AsyncLaminarClient(project_api_key="test-123")
+    yield client
+    asyncio.run(client.close())
 
 
 @pytest.fixture(scope="function", autouse=True)

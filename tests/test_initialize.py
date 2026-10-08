@@ -1,35 +1,72 @@
 import os
-import pytest
+from typing import TypedDict
 from unittest.mock import patch
 
+import pytest
+
+from lmnr.sdk.evaluations.evaluation import Evaluation
 from lmnr.sdk.laminar import Laminar
-from lmnr.sdk.evaluations import Evaluation
+
+
+class LaminarInitParams(TypedDict, total=False):
+    base_url: str
+    base_http_url: str
+    http_port: int
+    grpc_port: int
+
+
+class LaminarInitExpected(TypedDict):
+    base_url: str | None
+    http_port: int
+    port: int
+    base_http_url: str
+
+
+class LaminarInitCase(TypedDict):
+    name: str
+    params: LaminarInitParams
+    env_vars: dict[str, str]
+    expected: LaminarInitExpected
+
+
+class EvaluationInitExpected(TypedDict):
+    base_url: str
+    base_http_url: str
+    http_port: int | None
+    grpc_port: int | None
+
+
+class EvaluationInitCase(TypedDict):
+    name: str
+    params: LaminarInitParams
+    env_vars: dict[str, str]
+    expected: EvaluationInitExpected
 
 
 @pytest.fixture(autouse=True)
 def setup_and_teardown():
     """Reset Laminar state before each test."""
     # Save the current state
-    original_initialized = Laminar._Laminar__initialized
-    original_base_http_url = Laminar._Laminar__base_http_url
-    original_project_api_key = Laminar._Laminar__project_api_key
+    original_initialized = Laminar._Laminar__initialized  # pyright:ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownVariableType]
+    original_base_http_url = Laminar._Laminar__base_http_url  # pyright:ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownVariableType]
+    original_project_api_key = Laminar._Laminar__project_api_key  # pyright:ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownVariableType]
 
     # Reset the initialized state for the test
-    Laminar._Laminar__initialized = False
-    Laminar._Laminar__base_http_url = None
-    Laminar._Laminar__project_api_key = None
+    Laminar._Laminar__initialized = False  # pyright:ignore[reportAttributeAccessIssue]
+    Laminar._Laminar__base_http_url = None  # pyright:ignore[reportAttributeAccessIssue]
+    Laminar._Laminar__project_api_key = None  # pyright:ignore[reportAttributeAccessIssue]
 
     yield
 
     # Restore the original state after test
-    Laminar._Laminar__initialized = original_initialized
-    Laminar._Laminar__base_http_url = original_base_http_url
-    Laminar._Laminar__project_api_key = original_project_api_key
+    Laminar._Laminar__initialized = original_initialized  # pyright:ignore[reportAttributeAccessIssue]
+    Laminar._Laminar__base_http_url = original_base_http_url  # pyright:ignore[reportAttributeAccessIssue]
+    Laminar._Laminar__project_api_key = original_project_api_key  # pyright:ignore[reportAttributeAccessIssue]
 
 
 def test_laminar_initialize_url_parsing():
     """Test various combinations of URL parameters for Laminar.initialize."""
-    test_cases = [
+    test_cases: list[LaminarInitCase] = [
         # Test case format: {
         #     'name': 'description',
         #     'params': {'base_url': ..., 'base_http_url': ..., 'http_port': ..., 'grpc_port': ...},
@@ -201,19 +238,15 @@ def test_laminar_initialize_url_parsing():
     ]
 
     for test_case in test_cases:
-        with patch.dict(os.environ, test_case["env_vars"], clear=True):
-            with patch("lmnr.sdk.laminar.init_tracing") as mock_tracer_init:
+        with patch.dict(os.environ, test_case["env_vars"], clear=True), patch("lmnr.sdk.laminar.init_tracing") as mock_tracer_init:
                 # Reset state for each test
-                Laminar._Laminar__initialized = False
-                Laminar._Laminar__base_http_url = None
-                Laminar._Laminar__project_api_key = None
+                Laminar._Laminar__initialized = False  # pyright:ignore[reportAttributeAccessIssue]
+                Laminar._Laminar__base_http_url = None  # pyright:ignore[reportAttributeAccessIssue]
+                Laminar._Laminar__project_api_key = None  # pyright:ignore[reportAttributeAccessIssue]
 
                 # Add required project_api_key
-                params = test_case["params"].copy()
-                params["project_api_key"] = "test-key"
-
                 # Call initialize
-                Laminar.initialize(**params)
+                Laminar.initialize(**test_case["params"], project_api_key="test-key")
 
                 # Verify init_tracing was called with expected args
                 mock_tracer_init.assert_called_once()
@@ -234,14 +267,14 @@ def test_laminar_initialize_url_parsing():
 
                 # Verify internal state
                 assert (
-                    Laminar._Laminar__base_http_url
+                    Laminar._Laminar__base_http_url  # pyright:ignore[reportAttributeAccessIssue]
                     == test_case["expected"]["base_http_url"]
-                ), f"Test '{test_case['name']}': __base_http_url mismatch. Expected: {test_case['expected']['base_http_url']}, Got: {Laminar._Laminar__base_http_url}"
+                ), f"Test '{test_case['name']}': __base_http_url mismatch. Expected: {test_case['expected']['base_http_url']}, Got: {Laminar._Laminar__base_http_url}"  # pyright:ignore[reportAttributeAccessIssue]
 
 
 def test_evaluation_initialize_url_parsing():
     """Test various combinations of URL parameters for Evaluation.__init__."""
-    test_cases = [
+    test_cases: list[EvaluationInitCase] = [
         # Default case - no params, no env vars
         {
             "name": "default_case",
@@ -376,51 +409,47 @@ def test_evaluation_initialize_url_parsing():
     ]
 
     for test_case in test_cases:
-        with patch.dict(os.environ, test_case["env_vars"], clear=True):
-            with patch("lmnr.sdk.laminar.Laminar.initialize") as mock_laminar_init:
-                with patch(
+        with (patch.dict(os.environ, test_case["env_vars"], clear=True),
+            patch("lmnr.sdk.laminar.Laminar.initialize") as mock_laminar_init,
+            patch(
                     "lmnr.sdk.laminar.Laminar.is_initialized", return_value=False
-                ):
-                    # Reset Laminar state
-                    Laminar._Laminar__initialized = False
+                )
+        ):
+            # Reset Laminar state
+            Laminar._Laminar__initialized = False  # pyright:ignore[reportAttributeAccessIssue]
 
-                    # Create minimal evaluation params
-                    params = test_case["params"].copy()
-                    params.update(
-                        {
-                            "data": [{"data": "test", "target": "test"}],
-                            "executor": lambda x: x,
-                            "evaluators": {"test": lambda x, y: 1.0},
-                            "project_api_key": "test-key",
-                        }
-                    )
+            # Create Evaluation instance with minimal params
+            evaluation = Evaluation(
+                **test_case["params"],
+                data=[{"data": "test", "target": "test"}],
+                executor=lambda x: x,  # pyright:ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+                evaluators={"test": lambda x, y: 1.0},
+                project_api_key="test-key",
+            )
 
-                    # Create Evaluation instance
-                    evaluation = Evaluation(**params)
+            # Verify the base_http_url was set correctly
+            assert (
+                evaluation.base_http_url
+                == test_case["expected"]["base_http_url"]
+            ), f"Test '{test_case['name']}': base_http_url mismatch. Expected: {test_case['expected']['base_http_url']}, Got: {evaluation.base_http_url}"
 
-                    # Verify the base_http_url was set correctly
-                    assert (
-                        evaluation.base_http_url
-                        == test_case["expected"]["base_http_url"]
-                    ), f"Test '{test_case['name']}': base_http_url mismatch. Expected: {test_case['expected']['base_http_url']}, Got: {evaluation.base_http_url}"
+            # Verify Laminar.initialize was called with expected args
+            mock_laminar_init.assert_called_once()
+            call_args = mock_laminar_init.call_args[1]
 
-                    # Verify Laminar.initialize was called with expected args
-                    mock_laminar_init.assert_called_once()
-                    call_args = mock_laminar_init.call_args[1]
-
-                    assert (
-                        call_args["base_url"] == test_case["expected"]["base_url"]
-                    ), f"Test '{test_case['name']}': base_url mismatch. Expected: {test_case['expected']['base_url']}, Got: {call_args['base_url']}"
-                    assert (
-                        call_args["base_http_url"]
-                        == test_case["expected"]["base_http_url"]
-                    ), f"Test '{test_case['name']}': base_http_url mismatch. Expected: {test_case['expected']['base_http_url']}, Got: {call_args['base_http_url']}"
-                    assert (
-                        call_args["http_port"] == test_case["expected"]["http_port"]
-                    ), f"Test '{test_case['name']}': http_port mismatch. Expected: {test_case['expected']['http_port']}, Got: {call_args['http_port']}"
-                    assert (
-                        call_args["grpc_port"] == test_case["expected"]["grpc_port"]
-                    ), f"Test '{test_case['name']}': grpc_port mismatch. Expected: {test_case['expected']['grpc_port']}, Got: {call_args['grpc_port']}"
-                    assert (
-                        call_args["project_api_key"] == "test-key"
-                    ), f"Test '{test_case['name']}': project_api_key mismatch"
+            assert (
+                call_args["base_url"] == test_case["expected"]["base_url"]
+            ), f"Test '{test_case['name']}': base_url mismatch. Expected: {test_case['expected']['base_url']}, Got: {call_args['base_url']}"
+            assert (
+                call_args["base_http_url"]
+                == test_case["expected"]["base_http_url"]
+            ), f"Test '{test_case['name']}': base_http_url mismatch. Expected: {test_case['expected']['base_http_url']}, Got: {call_args['base_http_url']}"
+            assert (
+                call_args["http_port"] == test_case["expected"]["http_port"]
+            ), f"Test '{test_case['name']}': http_port mismatch. Expected: {test_case['expected']['http_port']}, Got: {call_args['http_port']}"
+            assert (
+                call_args["grpc_port"] == test_case["expected"]["grpc_port"]
+            ), f"Test '{test_case['name']}': grpc_port mismatch. Expected: {test_case['expected']['grpc_port']}, Got: {call_args['grpc_port']}"
+            assert (
+                call_args["project_api_key"] == "test-key"
+            ), f"Test '{test_case['name']}': project_api_key mismatch"
