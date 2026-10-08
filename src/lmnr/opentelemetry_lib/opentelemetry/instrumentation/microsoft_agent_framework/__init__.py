@@ -53,7 +53,9 @@ instrumentor closes them:
 exported even with `set_global_tracer_provider=False`, and the tracer copies
 Laminar's association properties (session id, user id, metadata, trace type)
 into the context each span starts in, so they are stamped on framework spans
-like on any other Laminar span.
+like on any other Laminar span. The tracer also stamps
+`lmnr.span.instrumentation_scope.{name,version}` (the installed
+`agent-framework-core` version) on every framework span.
 
 All hooks are module-level helpers in `agent_framework.observability` that
 the framework looks up by global name at call time, so patching the module
@@ -65,15 +67,21 @@ import inspect
 import os
 from contextvars import ContextVar
 from contextlib import contextmanager
+from importlib.metadata import version
 from typing import Any, Collection, Iterator
 
 from opentelemetry import context as context_api
 from opentelemetry import trace
 from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry.instrumentation.utils import unwrap
-from wrapt import wrap_function_wrapper
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (  # noqa: E501
+    BaseLaminarInstrumentor,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WrappedFunctionSpec,
+)
 from lmnr.opentelemetry_lib.tracing.context import (
     CONTEXT_METADATA_KEY,
     CONTEXT_SESSION_ID_KEY,
@@ -98,6 +106,8 @@ _OUTPUT_TOKENS = "gen_ai.usage.output_tokens"
 _REASONING_TOKENS = "gen_ai.usage.reasoning_tokens"
 # `gen_ai.provider.name` prefix of the framework's Gemini clients ("gcp.gemini").
 _GEMINI_PROVIDER_PREFIX = "gcp."
+_SCOPE_NAME = "lmnr.span.instrumentation_scope.name"
+_SCOPE_VERSION = "lmnr.span.instrumentation_scope.version"
 # Operations whose span already represents the model call. The provider SDK
 # call made underneath is suppressed so it is not traced a second time.
 _MODEL_CALL_OPERATIONS = ("chat", "embeddings")
@@ -155,11 +165,11 @@ def _bridge_span_cm(cm: Any, span: Any = None) -> Iterator[Any]:
             yield value
 
 
-def _wrap_span_cm(wrapped, instance, args, kwargs):
+def _wrap_span_cm(to_wrap, wrapped, instance, args, kwargs):
     return _bridge_span_cm(wrapped(*args, **kwargs))
 
 
-def _wrap_mcp_client_span(wrapped, instance, args, kwargs):
+def _wrap_mcp_client_span(to_wrap, wrapped, instance, args, kwargs):
     try:
         attributes = kwargs.get("attributes")
         if isinstance(attributes, dict) and _OPERATION_NAME in attributes:
@@ -174,12 +184,12 @@ def _wrap_mcp_client_span(wrapped, instance, args, kwargs):
     return _bridge_span_cm(wrapped(*args, **kwargs))
 
 
-def _wrap_activate_span(wrapped, instance, args, kwargs):
+def _wrap_activate_span(to_wrap, wrapped, instance, args, kwargs):
     span = kwargs.get("span", args[0] if args else None)
     return _bridge_span_cm(wrapped(*args, **kwargs), span=span)
 
 
-def _wrap_chat_get_response(wrapped, instance, args, kwargs):
+def _wrap_chat_get_response(to_wrap, wrapped, instance, args, kwargs):
     tools = None
     try:
         options = kwargs.get("options")
@@ -196,7 +206,7 @@ def _wrap_chat_get_response(wrapped, instance, args, kwargs):
         _request_tools.reset(token)
 
 
-def _wrap_get_span_attributes(wrapped, instance, args, kwargs):
+def _wrap_get_span_attributes(to_wrap, wrapped, instance, args, kwargs):
     attributes = wrapped(*args, **kwargs)
     if not isinstance(attributes, dict):
         return attributes
@@ -223,7 +233,7 @@ def _wrap_get_span_attributes(wrapped, instance, args, kwargs):
     return attributes
 
 
-def _wrap_get_response_attributes(wrapped, instance, args, kwargs):
+def _wrap_get_response_attributes(to_wrap, wrapped, instance, args, kwargs):
     attributes = wrapped(*args, **kwargs)
     try:
         _add_gemini_reasoning_tokens(attributes, args, kwargs)
@@ -278,15 +288,25 @@ def _with_plain_name(args: tuple, kwargs: dict[str, Any]) -> tuple[tuple, dict]:
 
 class _LaminarActivatingTracer(trace.Tracer):
     """Tracer handed to the framework: spans come from Laminar's tracer
-    provider, and `start_as_current_span` also activates the span in
-    Laminar's context (tool and workflow spans go through this path)."""
+    provider, are stamped with the instrumentation scope, and
+    `start_as_current_span` also activates the span in Laminar's context
+    (tool and workflow spans go through this path)."""
 
-    def __init__(self, tracer: trace.Tracer):
+    def __init__(
+        self, tracer: trace.Tracer, scope: LaminarInstrumentationScopeAttributes
+    ):
         self._tracer = tracer
+        self._scope = scope
+
+    def _stamp_scope(self, span: trace.Span) -> None:
+        span.set_attribute(_SCOPE_NAME, self._scope["name"])
+        span.set_attribute(_SCOPE_VERSION, self._scope["version"])
 
     def start_span(self, *args: Any, **kwargs: Any) -> trace.Span:
         args, kwargs = _with_plain_name(args, kwargs)
-        return self._tracer.start_span(*args, **_with_association_context(args, kwargs))
+        span = self._tracer.start_span(*args, **_with_association_context(args, kwargs))
+        self._stamp_scope(span)
+        return span
 
     @contextmanager
     def start_as_current_span(self, *args: Any, **kwargs: Any) -> Iterator[trace.Span]:
@@ -294,6 +314,7 @@ class _LaminarActivatingTracer(trace.Tracer):
         kwargs = _with_association_context(args, kwargs)
         cm = self._tracer.start_as_current_span(*args, **kwargs)
         with _bridge_span_cm(cm) as span:
+            self._stamp_scope(span)
             yield span
 
 
@@ -346,60 +367,99 @@ def _should_enable_sensitive_data() -> bool:
     return (os.getenv("LMNR_TRACE_CONTENT") or "true").lower() == "true"
 
 
-class MicrosoftAgentFrameworkInstrumentor(BaseInstrumentor):
-    _wrapped: list[tuple[str, str]] = []
+# (package_name, object_name, method_name, wrapper_function)
+_WRAPPED_FUNCTIONS = (
+    (_OBSERVABILITY_MODULE, None, "_get_span", _wrap_span_cm),
+    (_OBSERVABILITY_MODULE, None, "_activate_span", _wrap_activate_span),
+    (_OBSERVABILITY_MODULE, None, "_get_span_attributes", _wrap_get_span_attributes),
+    (
+        _OBSERVABILITY_MODULE,
+        None,
+        "_get_response_attributes",
+        _wrap_get_response_attributes,
+    ),
+    (
+        _OBSERVABILITY_MODULE,
+        "ChatTelemetryLayer",
+        "get_response",
+        _wrap_chat_get_response,
+    ),
+    # Imported by name into `_mcp`, so patch that binding too. `_mcp` goes
+    # first: importing it after the `observability` binding is wrapped would
+    # copy the wrapper, and the second patch would wrap it twice.
+    (_MCP_MODULE, None, "create_mcp_client_span", _wrap_mcp_client_span),
+    (_OBSERVABILITY_MODULE, None, "create_mcp_client_span", _wrap_mcp_client_span),
+)
+
+
+class MicrosoftAgentFrameworkInstrumentor(BaseLaminarInstrumentor):
+    _scope: LaminarInstrumentationScopeAttributes | None = None
+    _tracer_provider: Any = None
     # Framework settings we changed, with their previous values.
     _previous_settings: dict[str, bool] = {}
 
     def instrumentation_dependencies(self) -> Collection[str]:
         return ("agent-framework-core >= 1.0.0, < 2.0.0",)
 
+    def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
+        if self._scope is None:
+            try:
+                framework_version = version("agent-framework-core")
+            except Exception:
+                framework_version = "unknown"
+            self._scope = LaminarInstrumentationScopeAttributes(
+                name="agent-framework", version=framework_version
+            )
+        return self._scope
+
+    def __init__(self):
+        super().__init__()
+        self.instrumentor_config = LaminarInstrumentorConfig(
+            wrapped_functions=[
+                WrappedFunctionSpec(
+                    package_name=_OBSERVABILITY_MODULE,
+                    method_name="get_tracer",
+                    is_async=False,
+                    instrumentation_scope=self.instrumentation_scope(),
+                    wrapper_function=self._wrap_get_tracer,
+                ),
+                *(
+                    WrappedFunctionSpec(
+                        package_name=package_name,
+                        object_name=object_name,
+                        method_name=method_name,
+                        is_async=False,
+                        instrumentation_scope=self.instrumentation_scope(),
+                        wrapper_function=wrapper_function,
+                    )
+                    for package_name, object_name, method_name, wrapper_function in (
+                        _WRAPPED_FUNCTIONS
+                    )
+                ),
+            ]
+        )
+
+    def _wrap_get_tracer(self, to_wrap, wrapped, instance, args, kwargs):
+        tracer = None
+        if self._tracer_provider is not None:
+            try:
+                # The framework calls `get_tracer()` with no arguments and
+                # relies on its own defaults (name, version), which the SDK
+                # provider's `get_tracer` does not have.
+                bound = inspect.signature(wrapped).bind(*args, **kwargs)
+                bound.apply_defaults()
+                tracer = self._tracer_provider.get_tracer(*bound.args, **bound.kwargs)
+            except Exception:
+                logger.debug("Failed to get Laminar tracer", exc_info=True)
+        if tracer is None:
+            tracer = wrapped(*args, **kwargs)
+        return _LaminarActivatingTracer(tracer, to_wrap["instrumentation_scope"])
+
     def _instrument(self, **kwargs: Any):
         import agent_framework.observability as observability
 
-        tracer_provider = kwargs.get("tracer_provider")
-
-        def _wrap_get_tracer(wrapped, instance, args, call_kwargs):
-            tracer = None
-            if tracer_provider is not None:
-                try:
-                    # The framework calls `get_tracer()` with no arguments and
-                    # relies on its own defaults (name, version), which the
-                    # SDK provider's `get_tracer` does not have.
-                    bound = inspect.signature(wrapped).bind(*args, **call_kwargs)
-                    bound.apply_defaults()
-                    tracer = tracer_provider.get_tracer(*bound.args, **bound.kwargs)
-                except Exception:
-                    logger.debug("Failed to get Laminar tracer", exc_info=True)
-            if tracer is None:
-                tracer = wrapped(*args, **call_kwargs)
-            return _LaminarActivatingTracer(tracer)
-
-        self._wrapped = []
-        for module, name, wrapper in (
-            (_OBSERVABILITY_MODULE, "get_tracer", _wrap_get_tracer),
-            (_OBSERVABILITY_MODULE, "_get_span", _wrap_span_cm),
-            (_OBSERVABILITY_MODULE, "_activate_span", _wrap_activate_span),
-            (_OBSERVABILITY_MODULE, "_get_span_attributes", _wrap_get_span_attributes),
-            (
-                _OBSERVABILITY_MODULE,
-                "_get_response_attributes",
-                _wrap_get_response_attributes,
-            ),
-            (
-                _OBSERVABILITY_MODULE,
-                "ChatTelemetryLayer.get_response",
-                _wrap_chat_get_response,
-            ),
-            # Imported by name into `_mcp`, so patch that binding too.
-            (_OBSERVABILITY_MODULE, "create_mcp_client_span", _wrap_mcp_client_span),
-            (_MCP_MODULE, "create_mcp_client_span", _wrap_mcp_client_span),
-        ):
-            try:
-                wrap_function_wrapper(module, name, wrapper)
-                self._wrapped.append((module, name))
-            except (AttributeError, ImportError, ModuleNotFoundError):
-                logger.debug("Agent Framework hook %s.%s not found", module, name)
+        self._tracer_provider = kwargs.get("tracer_provider")
+        super()._instrument(**kwargs)
 
         self._previous_settings = {}
         for setting, should_enable in (
@@ -417,18 +477,8 @@ class MicrosoftAgentFrameworkInstrumentor(BaseInstrumentor):
                 logger.debug("Failed to set Agent Framework %s", setting, exc_info=True)
 
     def _uninstrument(self, **kwargs: Any):
-        import importlib
-
-        for module, name in self._wrapped:
-            try:
-                owner = importlib.import_module(module)
-                *parents, attribute = name.split(".")
-                for parent in parents:
-                    owner = getattr(owner, parent)
-                unwrap(owner, attribute)
-            except Exception:
-                pass
-        self._wrapped = []
+        super()._uninstrument(**kwargs)
+        self._tracer_provider = None
 
         try:
             from agent_framework.observability import OBSERVABILITY_SETTINGS

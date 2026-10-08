@@ -9,6 +9,7 @@ the ones the framework produces for real model turns.
 import asyncio
 import json
 import os
+from importlib.metadata import version
 from typing import Annotated
 from unittest.mock import patch
 
@@ -116,6 +117,17 @@ def test_agent_run_span_tree(span_exporter):
     }
     assert "Sunny" in tool_span.attributes["gen_ai.tool.call.result"]
 
+    framework_spans = [
+        s for s in spans if s.instrumentation_scope.name == "agent_framework"
+    ]
+    assert framework_spans
+    for span in framework_spans:
+        attributes = span.attributes
+        assert attributes["lmnr.span.instrumentation_scope.name"] == "agent-framework"
+        assert attributes["lmnr.span.instrumentation_scope.version"] == version(
+            "agent-framework-core"
+        )
+
 
 @pytest.mark.vcr
 def test_streaming_agent_run_span_tree(span_exporter):
@@ -160,6 +172,46 @@ def test_framework_spans_use_laminar_provider_without_global_provider():
         span = get_tracer().start_span("probe")
     assert span.is_recording()
     span.end()
+
+
+def test_uninstrument_restores_every_hook():
+    import agent_framework._mcp as mcp
+    import agent_framework.observability as observability
+    from wrapt import ObjectProxy
+
+    def wrapped_hooks():
+        return {
+            name
+            for name, value in (
+                *(
+                    (name, getattr(observability, name))
+                    for name in (
+                        "get_tracer",
+                        "_get_span",
+                        "_activate_span",
+                        "_get_span_attributes",
+                        "_get_response_attributes",
+                        "create_mcp_client_span",
+                    )
+                ),
+                (
+                    "ChatTelemetryLayer.get_response",
+                    observability.ChatTelemetryLayer.__dict__["get_response"],
+                ),
+                ("_mcp.create_mcp_client_span", mcp.create_mcp_client_span),
+            )
+            if isinstance(value, ObjectProxy)
+        }
+
+    instrumentor = maf_instrumentation.MicrosoftAgentFrameworkInstrumentor()
+    tracer_provider = instrumentor._tracer_provider
+    assert len(wrapped_hooks()) == 8
+    instrumentor.uninstrument()
+    try:
+        assert wrapped_hooks() == set()
+    finally:
+        instrumentor.instrument(tracer_provider=tracer_provider)
+    assert len(wrapped_hooks()) == 8
 
 
 def test_content_capture_respects_opt_outs(monkeypatch):
