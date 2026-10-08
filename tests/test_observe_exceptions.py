@@ -112,7 +112,7 @@ def test_process_input_get_func_args_failure_sync(span_exporter: InMemorySpanExp
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "observed_foo"
-    assert "lmnr.span.input" not in spans[0].attributes
+    assert "lmnr.span.input" not in (spans[0].attributes or {})
 
 
 @pytest.mark.asyncio
@@ -132,7 +132,7 @@ async def test_process_input_get_func_args_failure_async(
     assert result == "foo"
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert "lmnr.span.input" not in spans[0].attributes
+    assert "lmnr.span.input" not in (spans[0].attributes or {})
 
 
 # =============================================================================
@@ -153,7 +153,7 @@ def test_process_input_set_input_failure_sync(span_exporter: InMemorySpanExporte
     assert result == "foo"
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert "lmnr.span.input" not in spans[0].attributes
+    assert "lmnr.span.input" not in (spans[0].attributes or {})
 
 
 @pytest.mark.asyncio
@@ -168,7 +168,7 @@ async def test_process_input_set_input_failure_async(span_exporter: InMemorySpan
     assert result == "foo"
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert "lmnr.span.input" not in spans[0].attributes
+    assert "lmnr.span.input" not in (spans[0].attributes or {})
 
 
 # =============================================================================
@@ -190,7 +190,7 @@ def test_process_output_set_output_failure_sync(span_exporter: InMemorySpanExpor
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "observed_foo"
-    assert "lmnr.span.output" not in spans[0].attributes
+    assert "lmnr.span.output" not in (spans[0].attributes or {})
 
 
 @pytest.mark.asyncio
@@ -205,7 +205,7 @@ async def test_process_output_set_output_failure_async(span_exporter: InMemorySp
     assert result == "foo"
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert "lmnr.span.output" not in spans[0].attributes
+    assert "lmnr.span.output" not in (spans[0].attributes or {})
 
 
 # =============================================================================
@@ -513,7 +513,7 @@ def test_metadata_copy_failure_sync(span_exporter: InMemorySpanExporter):
     assert len(spans) == 1
     assert spans[0].name == "observed_foo"
     assert not any(
-        k.startswith("lmnr.association.properties.metadata") for k in spans[0].attributes
+        k.startswith("lmnr.association.properties.metadata") for k in (spans[0].attributes or {})
     )
 
 
@@ -530,7 +530,7 @@ async def test_metadata_copy_failure_async(span_exporter: InMemorySpanExporter):
     assert len(spans) == 1
     assert spans[0].name == "observed_foo"
     assert not any(
-        k.startswith("lmnr.association.properties.metadata") for k in spans[0].attributes
+        k.startswith("lmnr.association.properties.metadata") for k in (spans[0].attributes or {})
     )
 
 
@@ -649,7 +649,7 @@ def test_generator_process_output_failure(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "observed_foo"
-    assert "lmnr.span.output" not in spans[0].attributes
+    assert "lmnr.span.output" not in (spans[0].attributes or {})
 
 
 @pytest.mark.asyncio
@@ -666,4 +666,4 @@ async def test_async_generator_process_output_failure(span_exporter: InMemorySpa
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "observed_foo"
-    assert "lmnr.span.output" not in spans[0].attributes
+    assert "lmnr.span.output" not in (spans[0].attributes or {})

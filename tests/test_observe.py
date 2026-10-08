@@ -6,6 +6,20 @@ import pytest
 from lmnr import Laminar, observe, LaminarSpanContext
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry import trace
+from typing import cast
+from opentelemetry.sdk.trace import ReadableSpan
+from opentelemetry.trace import SpanContext
+
+
+def _ctx(span: ReadableSpan) -> SpanContext:
+    ctx = span.get_span_context()
+    assert ctx is not None
+    return ctx
+
+
+def _parent(span: ReadableSpan) -> SpanContext:
+    assert span.parent is not None
+    return span.parent
 
 
 def test_observe(span_exporter: InMemorySpanExporter):
@@ -19,7 +33,7 @@ def test_observe(span_exporter: InMemorySpanExporter):
     assert result == "foo"
     assert len(spans) == 1
     assert spans[0].name == "observed_foo"
-    assert json.loads(spans[0].attributes["lmnr.span.input"]) == {
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == {
         "x": "arg",
         "y": "arg2",
         "z": "arg3",
@@ -27,9 +41,9 @@ def test_observe(span_exporter: InMemorySpanExporter):
         "b": 2,
         "c": 3,
     }
-    assert json.loads(spans[0].attributes["lmnr.span.output"]) == "foo"
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.output"])) == "foo"
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("observed_foo",)
 
 
 def test_observe_name(span_exporter: InMemorySpanExporter):
@@ -42,8 +56,8 @@ def test_observe_name(span_exporter: InMemorySpanExporter):
     assert len(spans) == 1
     assert spans[0].name == "custom_name"
     assert result == "foo"
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("custom_name",)
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("custom_name",)
 
 
 def test_observe_session_id(span_exporter: InMemorySpanExporter):
@@ -55,9 +69,9 @@ def test_observe_session_id(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert result == "foo"
     assert len(spans) == 1
-    assert spans[0].attributes["lmnr.association.properties.session_id"] == "123"
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
+    assert (spans[0].attributes or {})["lmnr.association.properties.session_id"] == "123"
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("observed_foo",)
 
 
 def test_observe_user_id(span_exporter: InMemorySpanExporter):
@@ -69,9 +83,9 @@ def test_observe_user_id(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert result == "foo"
     assert len(spans) == 1
-    assert spans[0].attributes["lmnr.association.properties.user_id"] == "123"
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
+    assert (spans[0].attributes or {})["lmnr.association.properties.user_id"] == "123"
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("observed_foo",)
 
 
 def test_observe_metadata(span_exporter: InMemorySpanExporter):
@@ -83,12 +97,12 @@ def test_observe_metadata(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert result == "foo"
     assert len(spans) == 1
-    assert spans[0].attributes["lmnr.association.properties.metadata.key"] == "value"
+    assert (spans[0].attributes or {})["lmnr.association.properties.metadata.key"] == "value"
     assert json.loads(
-        spans[0].attributes["lmnr.association.properties.metadata.nested"]
-    ) == {"key2": "value2"}
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
+        cast(str, (spans[0].attributes or {})["lmnr.association.properties.metadata.nested"]
+    )) == {"key2": "value2"}
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("observed_foo",)
 
 
 def test_observe_exception(span_exporter: InMemorySpanExporter):
@@ -101,13 +115,13 @@ def test_observe_exception(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "observed_foo"
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
     events = spans[0].events
     assert len(events) == 1
     assert events[0].name == "exception"
-    assert events[0].attributes["exception.type"] == "ValueError"
-    assert events[0].attributes["exception.message"] == "test"
-    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
+    assert (events[0].attributes or {})["exception.type"] == "ValueError"
+    assert (events[0].attributes or {})["exception.message"] == "test"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("observed_foo",)
 
 
 def test_observe_exception_with_session_id_and_name(
@@ -122,16 +136,16 @@ def test_observe_exception_with_session_id_and_name(
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert spans[0].attributes["lmnr.association.properties.session_id"] == "123"
+    assert (spans[0].attributes or {})["lmnr.association.properties.session_id"] == "123"
     assert spans[0].name == "custom_name"
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("custom_name",)
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("custom_name",)
 
     events = spans[0].events
     assert len(events) == 1
     assert events[0].name == "exception"
-    assert events[0].attributes["exception.type"] == "ValueError"
-    assert events[0].attributes["exception.message"] == "test"
+    assert (events[0].attributes or {})["exception.type"] == "ValueError"
+    assert (events[0].attributes or {})["exception.message"] == "test"
 
 
 # At the time of writing this test, an erroring observed function would break the context for
@@ -171,8 +185,8 @@ def test_observe_exception_preserves_context(span_exporter: InMemorySpanExporter
     assert getattr(success_span.parent, "span_id") == getattr(
         parent_span.get_span_context(), "span_id"
     )
-    assert err_span.attributes.get("lmnr.span.path") == ("parent", "err")
-    assert success_span.attributes.get("lmnr.span.path") == ("parent", "success")
+    assert (err_span.attributes or {}).get("lmnr.span.path") == ("parent", "err")
+    assert (success_span.attributes or {}).get("lmnr.span.path") == ("parent", "success")
 
 
 # Async counterpart of test_observe_exception_preserves_context above.
@@ -214,8 +228,8 @@ async def test_observe_async_exception_preserves_context(
     assert getattr(success_span.parent, "span_id") == getattr(
         parent_span.get_span_context(), "span_id"
     )
-    assert err_span.attributes.get("lmnr.span.path") == ("parent", "err")
-    assert success_span.attributes.get("lmnr.span.path") == ("parent", "success")
+    assert (err_span.attributes or {}).get("lmnr.span.path") == ("parent", "err")
+    assert (success_span.attributes or {}).get("lmnr.span.path") == ("parent", "success")
 
 
 @pytest.mark.asyncio
@@ -229,9 +243,9 @@ async def test_observe_async(span_exporter: InMemorySpanExporter):
     assert res == "foo"
     assert len(spans) == 1
     assert spans[0].name == "observed_foo"
-    assert json.loads(spans[0].attributes["lmnr.span.output"]) == "foo"
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.output"])) == "foo"
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("observed_foo",)
 
 
 @pytest.mark.asyncio
@@ -247,14 +261,14 @@ async def test_observe_async_exception(span_exporter: InMemorySpanExporter):
 
     assert len(spans) == 1
     assert spans[0].name == "observed_foo"
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
 
     events = spans[0].events
     assert len(events) == 1
     assert events[0].name == "exception"
-    assert events[0].attributes["exception.type"] == "ValueError"
-    assert events[0].attributes["exception.message"] == "test"
-    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
+    assert (events[0].attributes or {})["exception.type"] == "ValueError"
+    assert (events[0].attributes or {})["exception.message"] == "test"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("observed_foo",)
 
 
 def test_observe_nested(span_exporter: InMemorySpanExporter):
@@ -274,20 +288,20 @@ def test_observe_nested(span_exporter: InMemorySpanExporter):
 
     foo_span = [span for span in spans if span.name == "observed_foo"][0]
     bar_span = [span for span in spans if span.name == "observed_bar"][0]
-    assert bar_span.parent.span_id == foo_span.get_span_context().span_id
+    assert _parent(bar_span).span_id == _ctx(foo_span).span_id
 
-    assert foo_span.attributes["lmnr.association.properties.session_id"] == "123"
+    assert (foo_span.attributes or {})["lmnr.association.properties.session_id"] == "123"
 
-    assert foo_span.attributes["lmnr.span.input"] == json.dumps({})
-    assert foo_span.attributes["lmnr.span.path"] == ("observed_foo",)
-    assert bar_span.attributes["lmnr.span.input"] == json.dumps({})
-    assert bar_span.attributes["lmnr.span.path"] == ("observed_foo", "observed_bar")
+    assert (foo_span.attributes or {})["lmnr.span.input"] == json.dumps({})
+    assert (foo_span.attributes or {})["lmnr.span.path"] == ("observed_foo",)
+    assert (bar_span.attributes or {})["lmnr.span.input"] == json.dumps({})
+    assert (bar_span.attributes or {})["lmnr.span.path"] == ("observed_foo", "observed_bar")
 
-    assert foo_span.attributes["lmnr.span.output"] == json.dumps("bar")
-    assert bar_span.attributes["lmnr.span.output"] == json.dumps("bar")
+    assert (foo_span.attributes or {})["lmnr.span.output"] == json.dumps("bar")
+    assert (bar_span.attributes or {})["lmnr.span.output"] == json.dumps("bar")
 
-    assert foo_span.attributes["lmnr.span.instrumentation_source"] == "python"
-    assert bar_span.attributes["lmnr.span.instrumentation_source"] == "python"
+    assert (foo_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (bar_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
 
 
 def test_observe_deeply_nested_and_sequential(span_exporter: InMemorySpanExporter):
@@ -324,57 +338,57 @@ def test_observe_deeply_nested_and_sequential(span_exporter: InMemorySpanExporte
     after_all_span = [span for span in spans if span.name == "after_all"][0]
 
     assert level_1_span.parent is None or level_1_span.parent.span_id == 0
-    assert level_2_span.parent.span_id == level_1_span.get_span_context().span_id
-    assert level_3_span.parent.span_id == level_2_span.get_span_context().span_id
-    assert level_4_span.parent.span_id == level_3_span.get_span_context().span_id
+    assert _parent(level_2_span).span_id == _ctx(level_1_span).span_id
+    assert _parent(level_3_span).span_id == _ctx(level_2_span).span_id
+    assert _parent(level_4_span).span_id == _ctx(level_3_span).span_id
     assert after_all_span.parent is None or after_all_span.parent.span_id == 0
 
-    assert level_1_span.attributes["lmnr.span.path"] == ("level_1",)
-    assert level_2_span.attributes["lmnr.span.path"] == ("level_1", "level_2")
-    assert level_3_span.attributes["lmnr.span.path"] == (
+    assert (level_1_span.attributes or {})["lmnr.span.path"] == ("level_1",)
+    assert (level_2_span.attributes or {})["lmnr.span.path"] == ("level_1", "level_2")
+    assert (level_3_span.attributes or {})["lmnr.span.path"] == (
         "level_1",
         "level_2",
         "level_3",
     )
-    assert level_4_span.attributes["lmnr.span.path"] == (
+    assert (level_4_span.attributes or {})["lmnr.span.path"] == (
         "level_1",
         "level_2",
         "level_3",
         "level_4",
     )
-    assert after_all_span.attributes["lmnr.span.path"] == ("after_all",)
+    assert (after_all_span.attributes or {})["lmnr.span.path"] == ("after_all",)
 
-    assert level_1_span.attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=level_1_span.get_span_context().span_id)),
+    assert (level_1_span.attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(level_1_span).span_id)),
     )
-    assert level_2_span.attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=level_1_span.get_span_context().span_id)),
-        str(uuid.UUID(int=level_2_span.get_span_context().span_id)),
+    assert (level_2_span.attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(level_1_span).span_id)),
+        str(uuid.UUID(int=_ctx(level_2_span).span_id)),
     )
-    assert level_3_span.attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=level_1_span.get_span_context().span_id)),
-        str(uuid.UUID(int=level_2_span.get_span_context().span_id)),
-        str(uuid.UUID(int=level_3_span.get_span_context().span_id)),
+    assert (level_3_span.attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(level_1_span).span_id)),
+        str(uuid.UUID(int=_ctx(level_2_span).span_id)),
+        str(uuid.UUID(int=_ctx(level_3_span).span_id)),
     )
-    assert level_4_span.attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=level_1_span.get_span_context().span_id)),
-        str(uuid.UUID(int=level_2_span.get_span_context().span_id)),
-        str(uuid.UUID(int=level_3_span.get_span_context().span_id)),
-        str(uuid.UUID(int=level_4_span.get_span_context().span_id)),
+    assert (level_4_span.attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(level_1_span).span_id)),
+        str(uuid.UUID(int=_ctx(level_2_span).span_id)),
+        str(uuid.UUID(int=_ctx(level_3_span).span_id)),
+        str(uuid.UUID(int=_ctx(level_4_span).span_id)),
     )
-    assert after_all_span.attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=after_all_span.get_span_context().span_id)),
+    assert (after_all_span.attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(after_all_span).span_id)),
     )
 
     assert (
-        level_1_span.get_span_context().trace_id
-        == level_2_span.get_span_context().trace_id
-        == level_3_span.get_span_context().trace_id
-        == level_4_span.get_span_context().trace_id
+        _ctx(level_1_span).trace_id
+        == _ctx(level_2_span).trace_id
+        == _ctx(level_3_span).trace_id
+        == _ctx(level_4_span).trace_id
     )
     assert (
-        after_all_span.get_span_context().trace_id
-        != level_4_span.get_span_context().trace_id
+        _ctx(after_all_span).trace_id
+        != _ctx(level_4_span).trace_id
     )
 
 
@@ -388,9 +402,9 @@ def test_observe_skip_input_keys(span_exporter: InMemorySpanExporter):
     assert result == "foo"
     assert len(spans) == 1
     assert spans[0].name == "observed_foo"
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
-    assert json.loads(spans[0].attributes["lmnr.span.input"]) == {"b": 2, "c": 3}
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("observed_foo",)
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == {"b": 2, "c": 3}
 
 
 def test_observe_skip_input_keys_with_kwargs(span_exporter: InMemorySpanExporter):
@@ -403,9 +417,9 @@ def test_observe_skip_input_keys_with_kwargs(span_exporter: InMemorySpanExporter
     assert result == "foo"
     assert len(spans) == 1
     assert spans[0].name == "observed_foo"
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
-    assert json.loads(spans[0].attributes["lmnr.span.input"]) == {
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("observed_foo",)
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == {
         "b": 2,
         "c": 3,
         "e": 5,
@@ -424,9 +438,9 @@ async def test_observe_skip_input_keys_async(span_exporter: InMemorySpanExporter
     assert res == "foo"
     assert len(spans) == 1
     assert spans[0].name == "observed_foo"
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
-    assert json.loads(spans[0].attributes["lmnr.span.input"]) == {"b": 2, "c": 3}
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("observed_foo",)
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == {"b": 2, "c": 3}
 
 
 def test_observe_tags(span_exporter: InMemorySpanExporter):
@@ -440,12 +454,12 @@ def test_observe_tags(span_exporter: InMemorySpanExporter):
     assert len(spans) == 1
     span = spans[0]
 
-    assert sorted(span.attributes["lmnr.association.properties.tags"]) == [
+    assert sorted((span.attributes or {})["lmnr.association.properties.tags"]) == [
         "bar",
         "foo",
     ]
-    assert span.attributes["lmnr.span.instrumentation_source"] == "python"
-    assert span.attributes["lmnr.span.path"] == ("observed_foo",)
+    assert (span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (span.attributes or {})["lmnr.span.path"] == ("observed_foo",)
 
 
 def test_observe_tags_invalid_type(span_exporter: InMemorySpanExporter):
@@ -459,9 +473,9 @@ def test_observe_tags_invalid_type(span_exporter: InMemorySpanExporter):
     assert len(spans) == 1
     span = spans[0]
 
-    assert span.attributes.get("lmnr.association.properties.tags") is None
-    assert span.attributes["lmnr.span.instrumentation_source"] == "python"
-    assert span.attributes["lmnr.span.path"] == ("observed_foo",)
+    assert (span.attributes or {}).get("lmnr.association.properties.tags") is None
+    assert (span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (span.attributes or {})["lmnr.span.path"] == ("observed_foo",)
 
 
 def test_observe_sequential_spans(span_exporter: InMemorySpanExporter):
@@ -485,7 +499,7 @@ def test_observe_sequential_spans(span_exporter: InMemorySpanExporter):
     assert foo_span.parent is None or foo_span.parent.span_id == 0
     assert bar_span.parent is None or bar_span.parent.span_id == 0
 
-    assert foo_span.get_span_context().trace_id != bar_span.get_span_context().trace_id
+    assert _ctx(foo_span).trace_id != _ctx(bar_span).trace_id
 
 
 @pytest.mark.asyncio
@@ -510,7 +524,7 @@ async def test_observe_sequential_spans_async(span_exporter: InMemorySpanExporte
     assert foo_span.parent is None or foo_span.parent.span_id == 0
     assert bar_span.parent is None or bar_span.parent.span_id == 0
 
-    assert foo_span.get_span_context().trace_id != bar_span.get_span_context().trace_id
+    assert _ctx(foo_span).trace_id != _ctx(bar_span).trace_id
 
 
 @pytest.mark.asyncio
@@ -524,8 +538,8 @@ async def test_observe_name_async(span_exporter: InMemorySpanExporter):
     assert len(spans) == 1
     assert spans[0].name == "custom_name"
     assert result == "foo"
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("custom_name",)
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("custom_name",)
 
 
 @pytest.mark.asyncio
@@ -538,9 +552,9 @@ async def test_observe_session_id_async(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert result == "foo"
     assert len(spans) == 1
-    assert spans[0].attributes["lmnr.association.properties.session_id"] == "123"
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
+    assert (spans[0].attributes or {})["lmnr.association.properties.session_id"] == "123"
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("observed_foo",)
 
 
 @pytest.mark.asyncio
@@ -553,9 +567,9 @@ async def test_observe_user_id_async(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert result == "foo"
     assert len(spans) == 1
-    assert spans[0].attributes["lmnr.association.properties.user_id"] == "123"
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
+    assert (spans[0].attributes or {})["lmnr.association.properties.user_id"] == "123"
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("observed_foo",)
 
 
 @pytest.mark.asyncio
@@ -568,12 +582,12 @@ async def test_observe_metadata_async(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert result == "foo"
     assert len(spans) == 1
-    assert spans[0].attributes["lmnr.association.properties.metadata.key"] == "value"
+    assert (spans[0].attributes or {})["lmnr.association.properties.metadata.key"] == "value"
     assert json.loads(
-        spans[0].attributes["lmnr.association.properties.metadata.nested"]
-    ) == {"key2": "value2"}
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
+        cast(str, (spans[0].attributes or {})["lmnr.association.properties.metadata.nested"]
+    )) == {"key2": "value2"}
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("observed_foo",)
 
 
 @pytest.mark.asyncio
@@ -589,16 +603,16 @@ async def test_observe_exception_with_session_id_and_name_async(
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert spans[0].attributes["lmnr.association.properties.session_id"] == "123"
+    assert (spans[0].attributes or {})["lmnr.association.properties.session_id"] == "123"
     assert spans[0].name == "custom_name"
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("custom_name",)
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("custom_name",)
 
     events = spans[0].events
     assert len(events) == 1
     assert events[0].name == "exception"
-    assert events[0].attributes["exception.type"] == "ValueError"
-    assert events[0].attributes["exception.message"] == "test"
+    assert (events[0].attributes or {})["exception.type"] == "ValueError"
+    assert (events[0].attributes or {})["exception.message"] == "test"
 
 
 @pytest.mark.asyncio
@@ -620,21 +634,21 @@ async def test_observe_nested_async(span_exporter: InMemorySpanExporter):
     foo_span = [span for span in spans if span.name == "observed_foo"][0]
     bar_span = [span for span in spans if span.name == "observed_bar"][0]
     assert foo_span.parent is None or foo_span.parent.span_id == 0
-    assert bar_span.parent.span_id == foo_span.get_span_context().span_id
-    assert foo_span.get_span_context().trace_id == bar_span.get_span_context().trace_id
+    assert _parent(bar_span).span_id == _ctx(foo_span).span_id
+    assert _ctx(foo_span).trace_id == _ctx(bar_span).trace_id
 
-    assert foo_span.attributes["lmnr.association.properties.session_id"] == "123"
+    assert (foo_span.attributes or {})["lmnr.association.properties.session_id"] == "123"
 
-    assert foo_span.attributes["lmnr.span.input"] == json.dumps({})
-    assert foo_span.attributes["lmnr.span.path"] == ("observed_foo",)
-    assert bar_span.attributes["lmnr.span.input"] == json.dumps({})
-    assert bar_span.attributes["lmnr.span.path"] == ("observed_foo", "observed_bar")
+    assert (foo_span.attributes or {})["lmnr.span.input"] == json.dumps({})
+    assert (foo_span.attributes or {})["lmnr.span.path"] == ("observed_foo",)
+    assert (bar_span.attributes or {})["lmnr.span.input"] == json.dumps({})
+    assert (bar_span.attributes or {})["lmnr.span.path"] == ("observed_foo", "observed_bar")
 
-    assert foo_span.attributes["lmnr.span.output"] == json.dumps("bar")
-    assert bar_span.attributes["lmnr.span.output"] == json.dumps("bar")
+    assert (foo_span.attributes or {})["lmnr.span.output"] == json.dumps("bar")
+    assert (bar_span.attributes or {})["lmnr.span.output"] == json.dumps("bar")
 
-    assert foo_span.attributes["lmnr.span.instrumentation_source"] == "python"
-    assert bar_span.attributes["lmnr.span.instrumentation_source"] == "python"
+    assert (foo_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (bar_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
 
 
 @pytest.mark.asyncio
@@ -674,57 +688,57 @@ async def test_observe_deeply_nested_and_sequential_async(
     after_all_span = [span for span in spans if span.name == "after_all"][0]
 
     assert level_1_span.parent is None or level_1_span.parent.span_id == 0
-    assert level_2_span.parent.span_id == level_1_span.get_span_context().span_id
-    assert level_3_span.parent.span_id == level_2_span.get_span_context().span_id
-    assert level_4_span.parent.span_id == level_3_span.get_span_context().span_id
+    assert _parent(level_2_span).span_id == _ctx(level_1_span).span_id
+    assert _parent(level_3_span).span_id == _ctx(level_2_span).span_id
+    assert _parent(level_4_span).span_id == _ctx(level_3_span).span_id
     assert after_all_span.parent is None or after_all_span.parent.span_id == 0
 
-    assert level_1_span.attributes["lmnr.span.path"] == ("level_1",)
-    assert level_2_span.attributes["lmnr.span.path"] == ("level_1", "level_2")
-    assert level_3_span.attributes["lmnr.span.path"] == (
+    assert (level_1_span.attributes or {})["lmnr.span.path"] == ("level_1",)
+    assert (level_2_span.attributes or {})["lmnr.span.path"] == ("level_1", "level_2")
+    assert (level_3_span.attributes or {})["lmnr.span.path"] == (
         "level_1",
         "level_2",
         "level_3",
     )
-    assert level_4_span.attributes["lmnr.span.path"] == (
+    assert (level_4_span.attributes or {})["lmnr.span.path"] == (
         "level_1",
         "level_2",
         "level_3",
         "level_4",
     )
-    assert after_all_span.attributes["lmnr.span.path"] == ("after_all",)
+    assert (after_all_span.attributes or {})["lmnr.span.path"] == ("after_all",)
 
-    assert level_1_span.attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=level_1_span.get_span_context().span_id)),
+    assert (level_1_span.attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(level_1_span).span_id)),
     )
-    assert level_2_span.attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=level_1_span.get_span_context().span_id)),
-        str(uuid.UUID(int=level_2_span.get_span_context().span_id)),
+    assert (level_2_span.attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(level_1_span).span_id)),
+        str(uuid.UUID(int=_ctx(level_2_span).span_id)),
     )
-    assert level_3_span.attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=level_1_span.get_span_context().span_id)),
-        str(uuid.UUID(int=level_2_span.get_span_context().span_id)),
-        str(uuid.UUID(int=level_3_span.get_span_context().span_id)),
+    assert (level_3_span.attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(level_1_span).span_id)),
+        str(uuid.UUID(int=_ctx(level_2_span).span_id)),
+        str(uuid.UUID(int=_ctx(level_3_span).span_id)),
     )
-    assert level_4_span.attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=level_1_span.get_span_context().span_id)),
-        str(uuid.UUID(int=level_2_span.get_span_context().span_id)),
-        str(uuid.UUID(int=level_3_span.get_span_context().span_id)),
-        str(uuid.UUID(int=level_4_span.get_span_context().span_id)),
+    assert (level_4_span.attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(level_1_span).span_id)),
+        str(uuid.UUID(int=_ctx(level_2_span).span_id)),
+        str(uuid.UUID(int=_ctx(level_3_span).span_id)),
+        str(uuid.UUID(int=_ctx(level_4_span).span_id)),
     )
-    assert after_all_span.attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=after_all_span.get_span_context().span_id)),
+    assert (after_all_span.attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(after_all_span).span_id)),
     )
 
     assert (
-        level_1_span.get_span_context().trace_id
-        == level_2_span.get_span_context().trace_id
-        == level_3_span.get_span_context().trace_id
-        == level_4_span.get_span_context().trace_id
+        _ctx(level_1_span).trace_id
+        == _ctx(level_2_span).trace_id
+        == _ctx(level_3_span).trace_id
+        == _ctx(level_4_span).trace_id
     )
     assert (
-        after_all_span.get_span_context().trace_id
-        != level_4_span.get_span_context().trace_id
+        _ctx(after_all_span).trace_id
+        != _ctx(level_4_span).trace_id
     )
 
 
@@ -741,9 +755,9 @@ async def test_observe_skip_input_keys_with_kwargs_async(
     assert result == "foo"
     assert len(spans) == 1
     assert spans[0].name == "observed_foo"
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
-    assert json.loads(spans[0].attributes["lmnr.span.input"]) == {
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("observed_foo",)
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == {
         "b": 2,
         "c": 3,
         "e": 5,
@@ -763,7 +777,7 @@ def test_observe_input_formatter(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert result == 1
     assert len(spans) == 1
-    assert json.loads(spans[0].attributes["lmnr.span.input"]) == {"x": 2}
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == {"x": 2}
 
 
 def test_observe_input_formatter_exception(span_exporter: InMemorySpanExporter):
@@ -779,9 +793,9 @@ def test_observe_input_formatter_exception(span_exporter: InMemorySpanExporter):
     assert result == 1
     assert len(spans) == 1
     assert spans[0].name == "observed_foo"
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
-    assert "lmnr.span.input" not in spans[0].attributes
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("observed_foo",)
+    assert "lmnr.span.input" not in (spans[0].attributes or {})
 
 
 def test_observe_input_formatter_with_kwargs(span_exporter: InMemorySpanExporter):
@@ -796,7 +810,7 @@ def test_observe_input_formatter_with_kwargs(span_exporter: InMemorySpanExporter
     spans = span_exporter.get_finished_spans()
     assert result == 1
     assert len(spans) == 1
-    assert json.loads(spans[0].attributes["lmnr.span.input"]) == {
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == {
         "x": 2,
         "custom-A": "1--",
     }
@@ -814,12 +828,12 @@ async def test_observe_tags_async(span_exporter: InMemorySpanExporter):
     assert len(spans) == 1
     span = spans[0]
 
-    assert sorted(span.attributes["lmnr.association.properties.tags"]) == [
+    assert sorted((span.attributes or {})["lmnr.association.properties.tags"]) == [
         "bar",
         "foo",
     ]
-    assert span.attributes["lmnr.span.instrumentation_source"] == "python"
-    assert span.attributes["lmnr.span.path"] == ("observed_foo",)
+    assert (span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (span.attributes or {})["lmnr.span.path"] == ("observed_foo",)
 
 
 @pytest.mark.asyncio
@@ -834,9 +848,9 @@ async def test_observe_tags_invalid_type_async(span_exporter: InMemorySpanExport
     assert len(spans) == 1
     span = spans[0]
 
-    assert span.attributes.get("lmnr.association.properties.tags") is None
-    assert span.attributes["lmnr.span.instrumentation_source"] == "python"
-    assert span.attributes["lmnr.span.path"] == ("observed_foo",)
+    assert (span.attributes or {}).get("lmnr.association.properties.tags") is None
+    assert (span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (span.attributes or {})["lmnr.span.path"] == ("observed_foo",)
 
 
 @pytest.mark.asyncio
@@ -852,7 +866,7 @@ async def test_observe_input_formatter_async(span_exporter: InMemorySpanExporter
     spans = span_exporter.get_finished_spans()
     assert result == 1
     assert len(spans) == 1
-    assert json.loads(spans[0].attributes["lmnr.span.input"]) == {"x": 2}
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == {"x": 2}
 
 
 @pytest.mark.asyncio
@@ -870,7 +884,7 @@ async def test_observe_input_formatter_with_kwargs_async(
     spans = span_exporter.get_finished_spans()
     assert result == 1
     assert len(spans) == 1
-    assert json.loads(spans[0].attributes["lmnr.span.input"]) == {
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == {
         "x": 2,
         "custom-A": "1--",
     }
@@ -888,7 +902,7 @@ def test_observe_output_formatter(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert result == 1
     assert len(spans) == 1
-    assert json.loads(spans[0].attributes["lmnr.span.output"]) == {"x": 2}
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.output"])) == {"x": 2}
 
 
 def test_observe_output_formatter_exception(span_exporter: InMemorySpanExporter):
@@ -903,7 +917,7 @@ def test_observe_output_formatter_exception(span_exporter: InMemorySpanExporter)
     spans = span_exporter.get_finished_spans()
     assert result == 1
     assert len(spans) == 1
-    assert "lmnr.span.output" not in spans[0].attributes
+    assert "lmnr.span.output" not in (spans[0].attributes or {})
 
 
 @pytest.mark.asyncio
@@ -919,7 +933,7 @@ async def test_observe_output_formatter_async(span_exporter: InMemorySpanExporte
     spans = span_exporter.get_finished_spans()
     assert result == 1
     assert len(spans) == 1
-    assert json.loads(spans[0].attributes["lmnr.span.output"]) == {"x": 2}
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.output"])) == {"x": 2}
 
 
 def test_observe_complex_nested_input(span_exporter: InMemorySpanExporter):
@@ -964,7 +978,7 @@ def test_observe_complex_nested_input(span_exporter: InMemorySpanExporter):
     span = spans[0]
 
     # Check input serialization
-    span_input = json.loads(span.attributes["lmnr.span.input"])
+    span_input = json.loads(cast(str, (span.attributes or {})["lmnr.span.input"]))
     assert span_input["person"]["name"] == "Alice"
     assert span_input["person"]["age"] == 30
     assert span_input["person"]["address"]["street"] == "123 Main St"
@@ -979,7 +993,7 @@ def test_observe_complex_nested_input(span_exporter: InMemorySpanExporter):
     assert span_input["data"]["nested"]["inner"] == [10, 11, 12]
 
     # Check output serialization
-    span_output = json.loads(span.attributes["lmnr.span.output"])
+    span_output = json.loads(cast(str, (span.attributes or {})["lmnr.span.output"]))
     assert span_output["processed_person"] == "Alice"
     assert span_output["data_count"] == 4
 
@@ -1026,11 +1040,11 @@ def test_observe_complex_nested_output(span_exporter: InMemorySpanExporter):
     span = spans[0]
 
     # Check input serialization (simple case)
-    span_input = json.loads(span.attributes["lmnr.span.input"])
+    span_input = json.loads(cast(str, (span.attributes or {})["lmnr.span.input"]))
     assert span_input["input_data"]["simple"] == "input"
 
     # Check complex output serialization
-    span_output = json.loads(span.attributes["lmnr.span.output"])
+    span_output = json.loads(cast(str, (span.attributes or {})["lmnr.span.output"]))
 
     # Check dataclass serialization
     assert span_output["result"]["success"] is True
@@ -1082,12 +1096,12 @@ def test_observe_non_serializable_fallback(span_exporter: InMemorySpanExporter):
 
     assert len(spans) == 1
     span = spans[0]
-    span_input = json.loads(span.attributes["lmnr.span.input"])
+    span_input = json.loads(cast(str, (span.attributes or {})["lmnr.span.input"]))
     assert span_input["y"] == 2
     assert "NonSerializable object at 0x" in span_input["x"]
     assert "NonSerializable object at 0x" in json.loads(
-        span.attributes["lmnr.span.output"]
-    )
+        cast(str, (span.attributes or {})["lmnr.span.output"]
+    ))
 
 
 def test_observe_tags_deduplication(span_exporter: InMemorySpanExporter):
@@ -1099,7 +1113,7 @@ def test_observe_tags_deduplication(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert result == "foo"
     assert len(spans) == 1
-    assert sorted(spans[0].attributes["lmnr.association.properties.tags"]) == [
+    assert sorted((spans[0].attributes or {})["lmnr.association.properties.tags"]) == [
         "bar",
         "foo",
     ]
@@ -1118,15 +1132,15 @@ def test_start_as_current_span_inside_observe(span_exporter: InMemorySpanExporte
     assert len(spans) == 2
     outer_span = next(span for span in spans if span.name == "foo")
     inner_span = next(span for span in spans if span.name == "test")
-    assert json.loads(inner_span.attributes["lmnr.span.output"]) == "foo"
-    assert json.loads(inner_span.attributes["lmnr.span.input"]) == "my_input"
+    assert json.loads(cast(str, (inner_span.attributes or {})["lmnr.span.output"])) == "foo"
+    assert json.loads(cast(str, (inner_span.attributes or {})["lmnr.span.input"])) == "my_input"
     assert (
-        inner_span.get_span_context().trace_id == outer_span.get_span_context().trace_id
+        _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
     )
-    assert inner_span.parent.span_id == outer_span.get_span_context().span_id
-    assert outer_span.attributes["lmnr.span.instrumentation_source"] == "python"
-    assert outer_span.attributes["lmnr.span.path"] == ("foo",)
-    assert inner_span.attributes["lmnr.span.path"] == ("foo", "test")
+    assert _parent(inner_span).span_id == _ctx(outer_span).span_id
+    assert (outer_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (outer_span.attributes or {})["lmnr.span.path"] == ("foo",)
+    assert (inner_span.attributes or {})["lmnr.span.path"] == ("foo", "test")
 
 
 def test_observe_preserve_global_context(span_exporter: InMemorySpanExporter):
@@ -1155,15 +1169,15 @@ def test_observe_preserve_global_context(span_exporter: InMemorySpanExporter):
     ]
 
     assert (
-        outer_span.get_span_context().trace_id
-        == preserve_span.get_span_context().trace_id
+        _ctx(outer_span).trace_id
+        == _ctx(preserve_span).trace_id
     )
     assert (
-        outer_span.get_span_context().trace_id
-        != isolated_span.get_span_context().trace_id
+        _ctx(outer_span).trace_id
+        != _ctx(isolated_span).trace_id
     )
 
-    assert preserve_span.parent.span_id == outer_span.get_span_context().span_id
+    assert _parent(preserve_span).span_id == _ctx(outer_span).span_id
     assert isolated_span.parent is None
 
 
@@ -1196,15 +1210,15 @@ async def test_observe_preserve_global_context_async(
     ]
 
     assert (
-        outer_span.get_span_context().trace_id
-        == preserve_span.get_span_context().trace_id
+        _ctx(outer_span).trace_id
+        == _ctx(preserve_span).trace_id
     )
     assert (
-        outer_span.get_span_context().trace_id
-        != isolated_span.get_span_context().trace_id
+        _ctx(outer_span).trace_id
+        != _ctx(isolated_span).trace_id
     )
 
-    assert preserve_span.parent.span_id == outer_span.get_span_context().span_id
+    assert _parent(preserve_span).span_id == _ctx(outer_span).span_id
     assert isolated_span.parent is None
 
 
@@ -1220,9 +1234,9 @@ def test_observe_simple_generator(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "observed_foo"
-    assert json.loads(spans[0].attributes["lmnr.span.output"]) == ["foo", "bar"]
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.output"])) == ["foo", "bar"]
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("observed_foo",)
 
 
 @pytest.mark.asyncio
@@ -1238,9 +1252,9 @@ async def test_observe_simple_generator_async(span_exporter: InMemorySpanExporte
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "observed_foo"
-    assert json.loads(spans[0].attributes["lmnr.span.output"]) == ["foo", "bar"]
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == ("observed_foo",)
+    assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.output"])) == ["foo", "bar"]
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("observed_foo",)
 
 
 def test_start_active_span_with_observe(span_exporter: InMemorySpanExporter):
@@ -1263,18 +1277,18 @@ def test_start_active_span_with_observe(span_exporter: InMemorySpanExporter):
     observed_span = [s for s in spans if s.name == "observed_func"][0]
 
     # Check parent-child relationship
-    assert observed_span.parent.span_id == outer_span.get_span_context().span_id
+    assert _parent(observed_span).span_id == _ctx(outer_span).span_id
     assert (
-        observed_span.get_span_context().trace_id
-        == outer_span.get_span_context().trace_id
+        _ctx(observed_span).trace_id
+        == _ctx(outer_span).trace_id
     )
 
     # Check span paths
-    assert outer_span.attributes["lmnr.span.path"] == ("outer",)
-    assert observed_span.attributes["lmnr.span.path"] == ("outer", "observed_func")
+    assert (outer_span.attributes or {})["lmnr.span.path"] == ("outer",)
+    assert (observed_span.attributes or {})["lmnr.span.path"] == ("outer", "observed_func")
 
     # Check output
-    assert json.loads(observed_span.attributes["lmnr.span.output"]) == "observed_output"
+    assert json.loads(cast(str, (observed_span.attributes or {})["lmnr.span.output"])) == "observed_output"
 
 
 def test_start_active_span_with_nested_observe(span_exporter: InMemorySpanExporter):
@@ -1302,20 +1316,20 @@ def test_start_active_span_with_nested_observe(span_exporter: InMemorySpanExport
     inner_span = [s for s in spans if s.name == "inner_func"][0]
 
     # Check parent-child relationships
-    assert outer_span.parent.span_id == root_span.get_span_context().span_id
-    assert inner_span.parent.span_id == outer_span.get_span_context().span_id
+    assert _parent(outer_span).span_id == _ctx(root_span).span_id
+    assert _parent(inner_span).span_id == _ctx(outer_span).span_id
 
     # Check trace ids
     assert (
-        root_span.get_span_context().trace_id
-        == outer_span.get_span_context().trace_id
-        == inner_span.get_span_context().trace_id
+        _ctx(root_span).trace_id
+        == _ctx(outer_span).trace_id
+        == _ctx(inner_span).trace_id
     )
 
     # Check span paths
-    assert root_span.attributes["lmnr.span.path"] == ("root",)
-    assert outer_span.attributes["lmnr.span.path"] == ("root", "outer_func")
-    assert inner_span.attributes["lmnr.span.path"] == (
+    assert (root_span.attributes or {})["lmnr.span.path"] == ("root",)
+    assert (outer_span.attributes or {})["lmnr.span.path"] == ("root", "outer_func")
+    assert (inner_span.attributes or {})["lmnr.span.path"] == (
         "root",
         "outer_func",
         "inner_func",
@@ -1351,20 +1365,20 @@ def test_start_active_span_multiple_observe_calls(
     func2_span = [s for s in spans if s.name == "func2"][0]
 
     # Both should be children of parent
-    assert func1_span.parent.span_id == parent_span.get_span_context().span_id
-    assert func2_span.parent.span_id == parent_span.get_span_context().span_id
+    assert _parent(func1_span).span_id == _ctx(parent_span).span_id
+    assert _parent(func2_span).span_id == _ctx(parent_span).span_id
 
     # All should share the same trace_id
     assert (
-        parent_span.get_span_context().trace_id
-        == func1_span.get_span_context().trace_id
-        == func2_span.get_span_context().trace_id
+        _ctx(parent_span).trace_id
+        == _ctx(func1_span).trace_id
+        == _ctx(func2_span).trace_id
     )
 
     # Check span paths
-    assert parent_span.attributes["lmnr.span.path"] == ("parent",)
-    assert func1_span.attributes["lmnr.span.path"] == ("parent", "func1")
-    assert func2_span.attributes["lmnr.span.path"] == ("parent", "func2")
+    assert (parent_span.attributes or {})["lmnr.span.path"] == ("parent",)
+    assert (func1_span.attributes or {})["lmnr.span.path"] == ("parent", "func1")
+    assert (func2_span.attributes or {})["lmnr.span.path"] == ("parent", "func2")
 
 
 def test_start_active_span_with_observe_and_context_manager(
@@ -1392,20 +1406,20 @@ def test_start_active_span_with_observe_and_context_manager(
     manual_span = [s for s in spans if s.name == "manual_span"][0]
 
     # Check parent-child relationships
-    assert observed_span.parent.span_id == root_span.get_span_context().span_id
-    assert manual_span.parent.span_id == observed_span.get_span_context().span_id
+    assert _parent(observed_span).span_id == _ctx(root_span).span_id
+    assert _parent(manual_span).span_id == _ctx(observed_span).span_id
 
     # Check trace ids
     assert (
-        root_span.get_span_context().trace_id
-        == observed_span.get_span_context().trace_id
-        == manual_span.get_span_context().trace_id
+        _ctx(root_span).trace_id
+        == _ctx(observed_span).trace_id
+        == _ctx(manual_span).trace_id
     )
 
     # Check span paths
-    assert root_span.attributes["lmnr.span.path"] == ("root",)
-    assert observed_span.attributes["lmnr.span.path"] == ("root", "observed_func")
-    assert manual_span.attributes["lmnr.span.path"] == (
+    assert (root_span.attributes or {})["lmnr.span.path"] == ("root",)
+    assert (observed_span.attributes or {})["lmnr.span.path"] == ("root", "observed_func")
+    assert (manual_span.attributes or {})["lmnr.span.path"] == (
         "root",
         "observed_func",
         "manual_span",
@@ -1435,15 +1449,15 @@ async def test_start_active_span_with_observe_async(
     observed_span = [s for s in spans if s.name == "observed_func"][0]
 
     # Check parent-child relationship
-    assert observed_span.parent.span_id == outer_span.get_span_context().span_id
+    assert _parent(observed_span).span_id == _ctx(outer_span).span_id
     assert (
-        observed_span.get_span_context().trace_id
-        == outer_span.get_span_context().trace_id
+        _ctx(observed_span).trace_id
+        == _ctx(outer_span).trace_id
     )
 
     # Check span paths
-    assert outer_span.attributes["lmnr.span.path"] == ("outer",)
-    assert observed_span.attributes["lmnr.span.path"] == ("outer", "observed_func")
+    assert (outer_span.attributes or {})["lmnr.span.path"] == ("outer",)
+    assert (observed_span.attributes or {})["lmnr.span.path"] == ("outer", "observed_func")
 
 
 @pytest.mark.asyncio
@@ -1474,20 +1488,20 @@ async def test_start_active_span_with_nested_observe_async(
     inner_span = [s for s in spans if s.name == "inner_func"][0]
 
     # Check parent-child relationships
-    assert middle_span.parent.span_id == root_span.get_span_context().span_id
-    assert inner_span.parent.span_id == middle_span.get_span_context().span_id
+    assert _parent(middle_span).span_id == _ctx(root_span).span_id
+    assert _parent(inner_span).span_id == _ctx(middle_span).span_id
 
     # Check trace ids
     assert (
-        root_span.get_span_context().trace_id
-        == middle_span.get_span_context().trace_id
-        == inner_span.get_span_context().trace_id
+        _ctx(root_span).trace_id
+        == _ctx(middle_span).trace_id
+        == _ctx(inner_span).trace_id
     )
 
     # Check span paths
-    assert root_span.attributes["lmnr.span.path"] == ("root",)
-    assert middle_span.attributes["lmnr.span.path"] == ("root", "middle_func")
-    assert inner_span.attributes["lmnr.span.path"] == (
+    assert (root_span.attributes or {})["lmnr.span.path"] == ("root",)
+    assert (middle_span.attributes or {})["lmnr.span.path"] == ("root", "middle_func")
+    assert (inner_span.attributes or {})["lmnr.span.path"] == (
         "root",
         "middle_func",
         "inner_func",
@@ -1524,20 +1538,20 @@ async def test_start_active_span_async_multiple_observe(
     func2_span = [s for s in spans if s.name == "func2"][0]
 
     # Both should be children of parent
-    assert func1_span.parent.span_id == parent_span.get_span_context().span_id
-    assert func2_span.parent.span_id == parent_span.get_span_context().span_id
+    assert _parent(func1_span).span_id == _ctx(parent_span).span_id
+    assert _parent(func2_span).span_id == _ctx(parent_span).span_id
 
     # All should share the same trace_id
     assert (
-        parent_span.get_span_context().trace_id
-        == func1_span.get_span_context().trace_id
-        == func2_span.get_span_context().trace_id
+        _ctx(parent_span).trace_id
+        == _ctx(func1_span).trace_id
+        == _ctx(func2_span).trace_id
     )
 
     # Check span paths
-    assert parent_span.attributes["lmnr.span.path"] == ("parent",)
-    assert func1_span.attributes["lmnr.span.path"] == ("parent", "func1")
-    assert func2_span.attributes["lmnr.span.path"] == ("parent", "func2")
+    assert (parent_span.attributes or {})["lmnr.span.path"] == ("parent",)
+    assert (func1_span.attributes or {})["lmnr.span.path"] == ("parent", "func1")
+    assert (func2_span.attributes or {})["lmnr.span.path"] == ("parent", "func2")
 
 
 @pytest.mark.asyncio
@@ -1578,31 +1592,31 @@ async def test_start_active_span_deeply_nested_async(
     level4 = [s for s in spans if s.name == "level4"][0]
 
     # Check parent-child relationships
-    assert level1.parent.span_id == level0.get_span_context().span_id
-    assert level2.parent.span_id == level1.get_span_context().span_id
-    assert level3.parent.span_id == level2.get_span_context().span_id
-    assert level4.parent.span_id == level3.get_span_context().span_id
+    assert _parent(level1).span_id == _ctx(level0).span_id
+    assert _parent(level2).span_id == _ctx(level1).span_id
+    assert _parent(level3).span_id == _ctx(level2).span_id
+    assert _parent(level4).span_id == _ctx(level3).span_id
 
     # Check trace ids
     assert (
-        level0.get_span_context().trace_id
-        == level1.get_span_context().trace_id
-        == level2.get_span_context().trace_id
-        == level3.get_span_context().trace_id
-        == level4.get_span_context().trace_id
+        _ctx(level0).trace_id
+        == _ctx(level1).trace_id
+        == _ctx(level2).trace_id
+        == _ctx(level3).trace_id
+        == _ctx(level4).trace_id
     )
 
     # Check span paths
-    assert level0.attributes["lmnr.span.path"] == ("level0",)
-    assert level1.attributes["lmnr.span.path"] == ("level0", "level1")
-    assert level2.attributes["lmnr.span.path"] == ("level0", "level1", "nested_level2")
-    assert level3.attributes["lmnr.span.path"] == (
+    assert (level0.attributes or {})["lmnr.span.path"] == ("level0",)
+    assert (level1.attributes or {})["lmnr.span.path"] == ("level0", "level1")
+    assert (level2.attributes or {})["lmnr.span.path"] == ("level0", "level1", "nested_level2")
+    assert (level3.attributes or {})["lmnr.span.path"] == (
         "level0",
         "level1",
         "nested_level2",
         "nested_level3",
     )
-    assert level4.attributes["lmnr.span.path"] == (
+    assert (level4.attributes or {})["lmnr.span.path"] == (
         "level0",
         "level1",
         "nested_level2",
@@ -1636,17 +1650,17 @@ def test_start_active_span_ids_path_with_observe(span_exporter: InMemorySpanExpo
     func2_span = [s for s in spans if s.name == "func2"][0]
 
     # Check ids_path
-    assert root_span.attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=root_span.get_span_context().span_id)),
+    assert (root_span.attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(root_span).span_id)),
     )
-    assert func1_span.attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=root_span.get_span_context().span_id)),
-        str(uuid.UUID(int=func1_span.get_span_context().span_id)),
+    assert (func1_span.attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(root_span).span_id)),
+        str(uuid.UUID(int=_ctx(func1_span).span_id)),
     )
-    assert func2_span.attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=root_span.get_span_context().span_id)),
-        str(uuid.UUID(int=func1_span.get_span_context().span_id)),
-        str(uuid.UUID(int=func2_span.get_span_context().span_id)),
+    assert (func2_span.attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(root_span).span_id)),
+        str(uuid.UUID(int=_ctx(func1_span).span_id)),
+        str(uuid.UUID(int=_ctx(func2_span).span_id)),
     )
 
 
@@ -1674,21 +1688,21 @@ def test_span_context_from_env_variables_observe(span_exporter: InMemorySpanExpo
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    span_id = spans[0].get_span_context().span_id
+    span_id = _ctx(spans[0]).span_id
     assert spans[0].name == "test"
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.path"] == (
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.path"] == (
         "grandparent",
         "parent",
         "test",
     )
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
         str(uuid.UUID(test_span_id)),
         str(uuid.UUID(test_span_id2)),
         str(uuid.UUID(int=span_id)),
     )
-    assert spans[0].get_span_context().trace_id == uuid.UUID(test_trace_id).int
-    assert spans[0].parent.span_id == uuid.UUID(test_span_id2).int
+    assert _ctx(spans[0]).trace_id == uuid.UUID(test_trace_id).int
+    assert _parent(spans[0]).span_id == uuid.UUID(test_span_id2).int
     if old_val:
         os.environ["LMNR_SPAN_CONTEXT"] = old_val
     else:
@@ -1705,7 +1719,7 @@ def test_add_span_tags(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert sorted(spans[0].attributes["lmnr.association.properties.tags"]) == [
+    assert sorted((spans[0].attributes or {})["lmnr.association.properties.tags"]) == [
         "bar",
         "baz",
         "foo",
@@ -1723,7 +1737,7 @@ def test_set_span_tags_add_span_tags(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert sorted(spans[0].attributes["lmnr.association.properties.tags"]) == [
+    assert sorted((spans[0].attributes or {})["lmnr.association.properties.tags"]) == [
         "bar",
         "baz",
         "qux",
@@ -1788,7 +1802,7 @@ def test_observe_disable_tracing_nested_toggle(span_exporter: InMemorySpanExport
         assert len(spans) == 2
         outer_span = [s for s in spans if s.name == "outer_func"][0]
         inner_span = [s for s in spans if s.name == "inner_func"][0]
-        assert inner_span.parent.span_id == outer_span.get_span_context().span_id
+        assert _parent(inner_span).span_id == _ctx(outer_span).span_id
         span_exporter.clear()
 
         # Test 2: Disabled tracing - no spans created but functions still work
@@ -1810,8 +1824,8 @@ def test_observe_disable_tracing_nested_toggle(span_exporter: InMemorySpanExport
         outer_span = [s for s in spans if s.name == "outer_func"][0]
         inner_span = [s for s in spans if s.name == "inner_func"][0]
         # Verify proper nesting after re-enabling
-        assert inner_span.parent.span_id == outer_span.get_span_context().span_id
-        assert inner_span.attributes["lmnr.span.path"] == ("outer_func", "inner_func")
+        assert _parent(inner_span).span_id == _ctx(outer_span).span_id
+        assert (inner_span.attributes or {})["lmnr.span.path"] == ("outer_func", "inner_func")
 
     finally:
         # Restore original value

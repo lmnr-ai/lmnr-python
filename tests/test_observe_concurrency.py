@@ -6,6 +6,19 @@ import time
 
 from lmnr import observe
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.sdk.trace import ReadableSpan
+from opentelemetry.trace import SpanContext
+
+
+def _ctx(span: ReadableSpan) -> SpanContext:
+    ctx = span.get_span_context()
+    assert ctx is not None
+    return ctx
+
+
+def _parent(span: ReadableSpan) -> SpanContext:
+    assert span.parent is not None
+    return span.parent
 
 
 # =============================================================================
@@ -42,7 +55,7 @@ async def test_asyncio_parallel_spans_separate_traces(
     assert set(results) == {"task_a", "task_b", "task_c"}
 
     # Check all spans have different trace IDs (separate traces)
-    trace_ids = [span.get_span_context().trace_id for span in spans]
+    trace_ids = [_ctx(span).trace_id for span in spans]
     assert len(set(trace_ids)) == 3, "All spans should have different trace IDs"
 
     # Check no span has a parent (all are root spans)
@@ -79,17 +92,17 @@ async def test_asyncio_parallel_spans_same_parent(span_exporter: InMemorySpanExp
 
     assert len(child_spans) == 3
     assert (
-        parent_span.attributes["lmnr.association.properties.session_id"]
+        (parent_span.attributes or {})["lmnr.association.properties.session_id"]
         == "parent_session"
     )
 
     # Check all spans share the same trace ID
-    trace_ids = [span.get_span_context().trace_id for span in spans]
+    trace_ids = [_ctx(span).trace_id for span in spans]
     assert len(set(trace_ids)) == 1, "All spans should share the same trace ID"
 
     # Check all child spans have the parent as their parent
     for child_span in child_spans:
-        assert child_span.parent.span_id == parent_span.get_span_context().span_id
+        assert _parent(child_span).span_id == _ctx(parent_span).span_id
 
 
 @pytest.mark.asyncio
@@ -131,17 +144,17 @@ async def test_asyncio_deeply_nested_with_parallelism(
     assert len(leaf_spans) == 4
 
     # All spans should be in the same trace
-    trace_ids = [span.get_span_context().trace_id for span in spans]
+    trace_ids = [_ctx(span).trace_id for span in spans]
     assert len(set(trace_ids)) == 1
 
     # Check hierarchy
     for branch_span in branch_spans:
-        assert branch_span.parent.span_id == root_span.get_span_context().span_id
+        assert _parent(branch_span).span_id == _ctx(root_span).span_id
 
     # Each leaf should have a branch as parent
     for leaf_span in leaf_spans:
-        assert leaf_span.parent.span_id in [
-            b.get_span_context().span_id for b in branch_spans
+        assert _parent(leaf_span).span_id in [
+            _ctx(b).span_id for b in branch_spans
         ]
 
 
@@ -178,7 +191,7 @@ def test_threading_parallel_spans_separate_traces(span_exporter: InMemorySpanExp
     assert len(results) == 3
 
     # Check all spans have different trace IDs (separate traces)
-    trace_ids = [span.get_span_context().trace_id for span in spans]
+    trace_ids = [_ctx(span).trace_id for span in spans]
     assert len(set(trace_ids)) == 3, "All spans should have different trace IDs"
 
     # Check no span has a parent (all are root spans)
@@ -225,17 +238,17 @@ def test_threading_parallel_spans_same_parent(span_exporter: InMemorySpanExporte
 
     assert len(child_spans) == 3
     assert (
-        parent_span.attributes["lmnr.association.properties.session_id"]
+        (parent_span.attributes or {})["lmnr.association.properties.session_id"]
         == "parent_session"
     )
 
     # Check all spans share the same trace ID
-    trace_ids = [span.get_span_context().trace_id for span in spans]
+    trace_ids = [_ctx(span).trace_id for span in spans]
     assert len(set(trace_ids)) == 1, "All spans should share the same trace ID"
 
     # Check all child spans have the parent as their parent
     for child_span in child_spans:
-        assert child_span.parent.span_id == parent_span.get_span_context().span_id
+        assert _parent(child_span).span_id == _ctx(parent_span).span_id
 
 
 def test_threading_deeply_nested_with_parallelism(span_exporter: InMemorySpanExporter):
@@ -292,17 +305,17 @@ def test_threading_deeply_nested_with_parallelism(span_exporter: InMemorySpanExp
     assert len(leaf_spans) == 4
 
     # All spans should be in the same trace
-    trace_ids = [span.get_span_context().trace_id for span in spans]
+    trace_ids = [_ctx(span).trace_id for span in spans]
     assert len(set(trace_ids)) == 1
 
     # Check hierarchy
     for branch_span in branch_spans:
-        assert branch_span.parent.span_id == root_span.get_span_context().span_id
+        assert _parent(branch_span).span_id == _ctx(root_span).span_id
 
     # Each leaf should have a branch as parent
     for leaf_span in leaf_spans:
-        assert leaf_span.parent.span_id in [
-            b.get_span_context().span_id for b in branch_spans
+        assert _parent(leaf_span).span_id in [
+            _ctx(b).span_id for b in branch_spans
         ]
 
 
@@ -331,7 +344,7 @@ def test_threadpool_parallel_spans_separate_traces(span_exporter: InMemorySpanEx
     assert len(results) == 3
 
     # Check all spans have different trace IDs (separate traces)
-    trace_ids = [span.get_span_context().trace_id for span in spans]
+    trace_ids = [_ctx(span).trace_id for span in spans]
     assert len(set(trace_ids)) == 3, "All spans should have different trace IDs"
 
     # Check no span has a parent (all are root spans)
@@ -379,7 +392,7 @@ def test_observe_threadpool_parallel_spans_with_openai(
     assert len(results) == 3
 
     # There's one trace per thread
-    trace_ids = [span.get_span_context().trace_id for span in spans]
+    trace_ids = [_ctx(span).trace_id for span in spans]
     assert len(set(trace_ids)) == 3, "Number of traces should match number of threads"
 
     for span in spans:
@@ -438,7 +451,7 @@ def test_observe_threadpool_parallel_spans_with_langchain(
     assert len(results) == 3
 
     # There's one trace per thread
-    trace_ids = [span.get_span_context().trace_id for span in spans]
+    trace_ids = [_ctx(span).trace_id for span in spans]
     assert len(set(trace_ids)) == 3, "Number of traces should match number of threads"
 
     for span in spans:
@@ -447,10 +460,10 @@ def test_observe_threadpool_parallel_spans_with_langchain(
         else:
             assert span.name == "ChatOpenAI.chat"
             assert span.parent is not None
-            assert isinstance(span.attributes["lmnr.span.path"], tuple)
-            assert len(span.attributes["lmnr.span.path"]) == 2
-            assert isinstance(span.attributes["lmnr.span.ids_path"], tuple)
-            assert len(span.attributes["lmnr.span.ids_path"]) == 2
+            assert isinstance((span.attributes or {})["lmnr.span.path"], tuple)
+            assert len((span.attributes or {})["lmnr.span.path"]) == 2
+            assert isinstance((span.attributes or {})["lmnr.span.ids_path"], tuple)
+            assert len((span.attributes or {})["lmnr.span.ids_path"]) == 2
 
 
 def test_threadpool_parallel_spans_same_parent(span_exporter: InMemorySpanExporter):
@@ -483,17 +496,17 @@ def test_threadpool_parallel_spans_same_parent(span_exporter: InMemorySpanExport
 
     assert len(child_spans) == 3
     assert (
-        parent_span.attributes["lmnr.association.properties.session_id"]
+        (parent_span.attributes or {})["lmnr.association.properties.session_id"]
         == "parent_session"
     )
 
     # Check all spans share the same trace ID
-    trace_ids = [span.get_span_context().trace_id for span in spans]
+    trace_ids = [_ctx(span).trace_id for span in spans]
     assert len(set(trace_ids)) == 1, "All spans should share the same trace ID"
 
     # Check all child spans have the parent as their parent
     for child_span in child_spans:
-        assert child_span.parent.span_id == parent_span.get_span_context().span_id
+        assert _parent(child_span).span_id == _ctx(parent_span).span_id
 
 
 def test_threadpool_deeply_nested_with_parallelism(span_exporter: InMemorySpanExporter):
@@ -540,17 +553,17 @@ def test_threadpool_deeply_nested_with_parallelism(span_exporter: InMemorySpanEx
     assert len(leaf_spans) == 4
 
     # All spans should be in the same trace
-    trace_ids = [span.get_span_context().trace_id for span in spans]
+    trace_ids = [_ctx(span).trace_id for span in spans]
     assert len(set(trace_ids)) == 1
 
     # Check hierarchy
     for branch_span in branch_spans:
-        assert branch_span.parent.span_id == root_span.get_span_context().span_id
+        assert _parent(branch_span).span_id == _ctx(root_span).span_id
 
     # Each leaf should have a branch as parent
     for leaf_span in leaf_spans:
-        assert leaf_span.parent.span_id in [
-            b.get_span_context().span_id for b in branch_spans
+        assert _parent(leaf_span).span_id in [
+            _ctx(b).span_id for b in branch_spans
         ]
 
 
@@ -600,7 +613,7 @@ async def test_mixed_concurrency_isolation(span_exporter: InMemorySpanExporter):
     assert len(spans) == 3
 
     # Each should be in a separate trace
-    trace_ids = [span.get_span_context().trace_id for span in spans]
+    trace_ids = [_ctx(span).trace_id for span in spans]
     assert len(set(trace_ids)) == 3, "All spans should have different trace IDs"
 
     # All should be root spans
@@ -642,13 +655,13 @@ async def test_start_active_span_asyncio_parallel_with_observe(
     child_spans = [s for s in spans if s.name == "child_task"]
 
     # All spans should share the same trace ID
-    trace_ids = [span.get_span_context().trace_id for span in spans]
+    trace_ids = [_ctx(span).trace_id for span in spans]
     assert len(set(trace_ids)) == 1
 
     # All children should have parent as their parent
     for child_span in child_spans:
-        assert child_span.parent.span_id == parent_span.get_span_context().span_id
-        assert child_span.attributes["lmnr.span.path"][0] == "parent"
+        assert _parent(child_span).span_id == _ctx(parent_span).span_id
+        assert (child_span.attributes or {})["lmnr.span.path"][0] == "parent"
 
 
 def test_start_active_span_threading_parallel_with_observe(
@@ -689,13 +702,13 @@ def test_start_active_span_threading_parallel_with_observe(
     child_spans = [s for s in spans if s.name == "child_worker"]
 
     # All spans should share the same trace ID
-    trace_ids = [span.get_span_context().trace_id for span in spans]
+    trace_ids = [_ctx(span).trace_id for span in spans]
     assert len(set(trace_ids)) == 1
 
     # All children should have parent as their parent
     for child_span in child_spans:
-        assert child_span.parent.span_id == parent_span.get_span_context().span_id
-        assert child_span.attributes["lmnr.span.path"][0] == "parent"
+        assert _parent(child_span).span_id == _ctx(parent_span).span_id
+        assert (child_span.attributes or {})["lmnr.span.path"][0] == "parent"
 
 
 def test_start_active_span_threadpool_parallel_with_observe(
@@ -727,13 +740,13 @@ def test_start_active_span_threadpool_parallel_with_observe(
     child_spans = [s for s in spans if s.name == "child_worker"]
 
     # All spans should share the same trace ID
-    trace_ids = [span.get_span_context().trace_id for span in spans]
+    trace_ids = [_ctx(span).trace_id for span in spans]
     assert len(set(trace_ids)) == 1
 
     # All children should have parent as their parent
     for child_span in child_spans:
-        assert child_span.parent.span_id == parent_span.get_span_context().span_id
-        assert child_span.attributes["lmnr.span.path"][0] == "parent"
+        assert _parent(child_span).span_id == _ctx(parent_span).span_id
+        assert (child_span.attributes or {})["lmnr.span.path"][0] == "parent"
 
 
 def test_start_active_span_nested_threading_with_observe(
@@ -785,19 +798,19 @@ def test_start_active_span_nested_threading_with_observe(
     assert len(leaf_spans) == 4
 
     # All spans should share the same trace ID
-    trace_ids = [span.get_span_context().trace_id for span in spans]
+    trace_ids = [_ctx(span).trace_id for span in spans]
     assert len(set(trace_ids)) == 1
 
     # Check hierarchy
     for branch_span in branch_spans:
-        assert branch_span.parent.span_id == root_span.get_span_context().span_id
-        assert branch_span.attributes["lmnr.span.path"][0] == "root"
+        assert _parent(branch_span).span_id == _ctx(root_span).span_id
+        assert (branch_span.attributes or {})["lmnr.span.path"][0] == "root"
 
     for leaf_span in leaf_spans:
-        assert leaf_span.parent.span_id in [
-            b.get_span_context().span_id for b in branch_spans
+        assert _parent(leaf_span).span_id in [
+            _ctx(b).span_id for b in branch_spans
         ]
-        assert leaf_span.attributes["lmnr.span.path"][0] == "root"
+        assert (leaf_span.attributes or {})["lmnr.span.path"][0] == "root"
 
 
 @pytest.mark.asyncio
@@ -839,19 +852,19 @@ async def test_start_active_span_nested_asyncio_with_observe(
     assert len(leaf_spans) == 4
 
     # All spans should share the same trace ID
-    trace_ids = [span.get_span_context().trace_id for span in spans]
+    trace_ids = [_ctx(span).trace_id for span in spans]
     assert len(set(trace_ids)) == 1
 
     # Check hierarchy
     for branch_span in branch_spans:
-        assert branch_span.parent.span_id == root_span.get_span_context().span_id
-        assert branch_span.attributes["lmnr.span.path"][0] == "root"
+        assert _parent(branch_span).span_id == _ctx(root_span).span_id
+        assert (branch_span.attributes or {})["lmnr.span.path"][0] == "root"
 
     for leaf_span in leaf_spans:
-        assert leaf_span.parent.span_id in [
-            b.get_span_context().span_id for b in branch_spans
+        assert _parent(leaf_span).span_id in [
+            _ctx(b).span_id for b in branch_spans
         ]
-        assert leaf_span.attributes["lmnr.span.path"][0] == "root"
+        assert (leaf_span.attributes or {})["lmnr.span.path"][0] == "root"
 
 
 def test_start_active_span_threadpool_context_isolation_with_observe(
@@ -889,10 +902,10 @@ def test_start_active_span_threadpool_context_isolation_with_observe(
     assert len(inner_spans) == 3
 
     # Each worker should be in a different trace
-    trace_ids = [span.get_span_context().trace_id for span in worker_spans]
+    trace_ids = [_ctx(span).trace_id for span in worker_spans]
     assert len(set(trace_ids)) == 3
 
     # Each inner span should be a child of its corresponding worker
     for inner_span in inner_spans:
-        parent_id = inner_span.parent.span_id
-        assert any(w.get_span_context().span_id == parent_id for w in worker_spans)
+        parent_id = _parent(inner_span).span_id
+        assert any(_ctx(w).span_id == parent_id for w in worker_spans)
