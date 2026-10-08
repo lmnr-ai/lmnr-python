@@ -100,9 +100,12 @@ def test_decisions_create(
     _assert_decision_span(span, decision)
     assert span.attributes["llm.user"] == "user-123"
     assert json.loads(span.attributes["gen_ai.input.messages"]) == [
-        {"role": "system", "content": json.dumps(QUESTIONS, separators=(",", ":"))},
-        {"role": "user", "content": INPUT},
+        {"role": "user", "content": INPUT}
     ]
+    assert (
+        json.loads(span.attributes["gen_ai.request.structured_output_schema"])
+        == QUESTIONS
+    )
 
 
 @pytest.mark.vcr
@@ -127,9 +130,11 @@ async def test_decisions_create_async_with_message_input(
 
     span = _only_span(span_exporter)
     _assert_decision_span(span, decision)
-    input_messages = json.loads(span.attributes["gen_ai.input.messages"])
-    assert input_messages[0]["role"] == "system"
-    assert input_messages[1:] == messages
+    assert json.loads(span.attributes["gen_ai.input.messages"]) == messages
+    assert (
+        json.loads(span.attributes["gen_ai.request.structured_output_schema"])
+        == QUESTIONS
+    )
 
 
 @pytest.mark.vcr
@@ -160,6 +165,7 @@ def test_decisions_create_error(
     assert span.attributes["error.type"] == "BadRequestError"
     assert span.attributes["gen_ai.request.model"] == MODEL
     assert "gen_ai.input.messages" in span.attributes
+    assert "gen_ai.request.structured_output_schema" in span.attributes
     assert "gen_ai.output.messages" not in span.attributes
     assert span.events[0].name == "exception"
 
@@ -178,6 +184,7 @@ def test_decisions_create_does_not_consume_iterator_params(
     assert json.loads(span.attributes["gen_ai.input.messages"]) == [
         {"role": "user", "content": INPUT}
     ]
+    assert "gen_ai.request.structured_output_schema" not in span.attributes
 
 
 @pytest.mark.vcr
@@ -195,4 +202,5 @@ def test_decisions_create_without_content_tracing(
     span = _only_span(span_exporter)
     assert span.attributes["gen_ai.usage.input_tokens"] == decision.usage.input_tokens
     assert "gen_ai.input.messages" not in span.attributes
+    assert "gen_ai.request.structured_output_schema" not in span.attributes
     assert "gen_ai.output.messages" not in span.attributes

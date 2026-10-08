@@ -2,9 +2,11 @@
 
 Decisions is a standalone, non-streaming endpoint (`POST /decisions`, added in
 `openai==3.26.0`) that scores ordered predicate / choice / score questions
-against shared user input. The questions are the prompt, so they are recorded
-as a system message in `gen_ai.input.messages`; the typed answers are recorded
-as a single assistant message whose content is the JSON answer list.
+against shared user input. The questions define the answer contract, so they
+go into `gen_ai.request.structured_output_schema` (same as the Jev / typesafe
+instrumentation); `gen_ai.input.messages` holds only the user input, and the
+typed answers are a single assistant message whose content is the JSON answer
+list.
 """
 
 from typing import Any
@@ -35,29 +37,18 @@ SPAN_NAME = "openai.decision"
 
 
 def build_genai_input_messages(kwargs: dict) -> list[dict[str, Any]] | None:
-    """Questions first (as the system prompt), then the shared user input.
+    """The shared user input as chat messages.
 
-    Only materialized sequences are recorded: a generator passed as `input` or
-    `questions` is consumed by the SDK, so reading it here would either break
+    Only materialized sequences are recorded (here and for `questions`): a
+    generator is consumed by the SDK, so reading it here would either break
     the request (before the call) or see nothing (after it).
     """
-    messages: list[dict[str, Any]] = []
-    questions = kwargs.get("questions")
-    if isinstance(questions, (list, tuple)):
-        messages.append(
-            {
-                "role": "system",
-                "content": json_dumps([model_as_dict(q) for q in questions]),
-            }
-        )
-
     input_param = kwargs.get("input")
     if isinstance(input_param, str):
-        messages.append({"role": "user", "content": input_param})
-    elif isinstance(input_param, (list, tuple)):
-        messages.extend(model_as_dict(message) for message in input_param)
-
-    return messages or None
+        return [{"role": "user", "content": input_param}]
+    if isinstance(input_param, (list, tuple)):
+        return [model_as_dict(message) for message in input_param] or None
+    return None
 
 
 def _parse_decision(response: Any) -> Any:
@@ -80,6 +71,13 @@ def _set_request_attributes(span: Span, kwargs: dict) -> None:
         if input_messages is not None:
             set_span_attribute(
                 span, "gen_ai.input.messages", json_dumps(input_messages)
+            )
+        questions = kwargs.get("questions")
+        if isinstance(questions, (list, tuple)):
+            set_span_attribute(
+                span,
+                "gen_ai.request.structured_output_schema",
+                json_dumps([model_as_dict(q) for q in questions]),
             )
 
 
