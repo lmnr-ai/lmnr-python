@@ -84,18 +84,10 @@ def test_start_as_current_span_exception_preserves_context(
     err_span = [span for span in spans if span.name == "err"][0]
     success_span = [span for span in spans if span.name == "success"][0]
     parent_span = [span for span in spans if span.name == "parent"][0]
-    assert getattr(err_span.get_span_context(), "trace_id") == getattr(
-        parent_span.get_span_context(), "trace_id"
-    )
-    assert getattr(success_span.get_span_context(), "trace_id") == getattr(
-        parent_span.get_span_context(), "trace_id"
-    )
-    assert getattr(err_span.parent, "span_id") == getattr(
-        parent_span.get_span_context(), "span_id"
-    )
-    assert getattr(success_span.parent, "span_id") == getattr(
-        parent_span.get_span_context(), "span_id"
-    )
+    assert _ctx(err_span).trace_id == _ctx(parent_span).trace_id
+    assert _ctx(success_span).trace_id == _ctx(parent_span).trace_id
+    assert _parent(err_span).span_id == _ctx(parent_span).span_id
+    assert _parent(success_span).span_id == _ctx(parent_span).span_id
     assert (err_span.attributes or {}).get("lmnr.span.path") == ("parent", "err")
     assert (success_span.attributes or {}).get("lmnr.span.path") == ("parent", "success")
 
