@@ -34,6 +34,20 @@ instrumentor closes them:
    `invoke_agent` span, because `chat` span attributes are built from the
    client kwargs, not the request options. We carry the request's tools over
    to the `chat` span so the LLM span shows which tools the model was offered.
+7. Gemini reports thinking tokens separately from candidate tokens, and the
+   framework's Gemini client maps only the candidates to
+   `gen_ai.usage.output_tokens`. Gemini bills thinking as output, so we add
+   the thinking tokens to the output count on Gemini `chat` spans (as
+   Laminar's google-genai instrumentation does) and record them under
+   `gen_ai.usage.reasoning_tokens`, the key the backend reads.
+8. Workflow spans are named with `OtelAttr` members (a `str` enum), which
+   OTel rejects inside sequence attributes, dropping `lmnr.span.path` for the
+   workflow and everything under it. Span names are coerced to plain `str`.
+9. The MCP `tools/call` client span carries `gen_ai.operation.name =
+   execute_tool` (per the MCP semconv), so Laminar shows it as a second tool
+   span named after the tool, nested in the framework's own `execute_tool`
+   span. We drop the operation name from MCP client spans so it shows as
+   `tools/call <tool>` with its MCP attributes.
 
 `get_tracer()` is also routed to Laminar's tracer provider so the spans are
 exported even with `set_global_tracer_provider=False`, and the tracer copies
@@ -80,6 +94,10 @@ _OPERATION_NAME = "gen_ai.operation.name"
 _PROVIDER_NAME = "gen_ai.provider.name"
 _SYSTEM = "gen_ai.system"
 _TOOL_DEFINITIONS = "gen_ai.tool.definitions"
+_OUTPUT_TOKENS = "gen_ai.usage.output_tokens"
+_REASONING_TOKENS = "gen_ai.usage.reasoning_tokens"
+# `gen_ai.provider.name` prefix of the framework's Gemini clients ("gcp.gemini").
+_GEMINI_PROVIDER_PREFIX = "gcp."
 # Operations whose span already represents the model call. The provider SDK
 # call made underneath is suppressed so it is not traced a second time.
 _MODEL_CALL_OPERATIONS = ("chat", "embeddings")
@@ -141,6 +159,21 @@ def _wrap_span_cm(wrapped, instance, args, kwargs):
     return _bridge_span_cm(wrapped(*args, **kwargs))
 
 
+def _wrap_mcp_client_span(wrapped, instance, args, kwargs):
+    try:
+        attributes = kwargs.get("attributes")
+        if isinstance(attributes, dict) and _OPERATION_NAME in attributes:
+            kwargs = {
+                **kwargs,
+                "attributes": {
+                    k: v for k, v in attributes.items() if k != _OPERATION_NAME
+                },
+            }
+    except Exception:
+        logger.debug("Failed to strip MCP span operation name", exc_info=True)
+    return _bridge_span_cm(wrapped(*args, **kwargs))
+
+
 def _wrap_activate_span(wrapped, instance, args, kwargs):
     span = kwargs.get("span", args[0] if args else None)
     return _bridge_span_cm(wrapped(*args, **kwargs), span=span)
@@ -190,6 +223,59 @@ def _wrap_get_span_attributes(wrapped, instance, args, kwargs):
     return attributes
 
 
+def _wrap_get_response_attributes(wrapped, instance, args, kwargs):
+    attributes = wrapped(*args, **kwargs)
+    try:
+        _add_gemini_reasoning_tokens(attributes, args, kwargs)
+    except Exception:
+        logger.debug("Failed to add Gemini reasoning tokens", exc_info=True)
+    return attributes
+
+
+def _add_gemini_reasoning_tokens(attributes: Any, args: tuple, kwargs: dict) -> None:
+    """Count Gemini thinking tokens as output tokens on `chat` spans.
+
+    Read from the response's usage details rather than the span attributes:
+    the framework drops `gen_ai.usage.reasoning.output_tokens` when the
+    experimental GenAI semconv is off."""
+    if (
+        not isinstance(attributes, dict)
+        or attributes.get(_OPERATION_NAME) != "chat"
+        # Already applied to this attribute dict.
+        or _REASONING_TOKENS in attributes
+        or not str(attributes.get(_PROVIDER_NAME) or "").startswith(
+            _GEMINI_PROVIDER_PREFIX
+        )
+        or kwargs.get("capture_usage") is False
+    ):
+        return
+    response = kwargs.get("response", args[1] if len(args) > 1 else None)
+    usage = getattr(response, "usage_details", None) or {}
+    reasoning = usage.get("reasoning_output_token_count")
+    output = attributes.get(_OUTPUT_TOKENS)
+    if (
+        not isinstance(reasoning, int)
+        or isinstance(reasoning, bool)
+        or reasoning <= 0
+        or not isinstance(output, int)
+    ):
+        return
+    attributes[_OUTPUT_TOKENS] = output + reasoning
+    attributes[_REASONING_TOKENS] = reasoning
+
+
+def _with_plain_name(args: tuple, kwargs: dict[str, Any]) -> tuple[tuple, dict]:
+    """Coerce a `str` subclass span name (the framework's `OtelAttr` enum) to
+    a plain `str`. Laminar copies span names into the `lmnr.span.path`
+    sequence attribute, and OTel drops sequences holding non-`str` items."""
+    if args and isinstance(args[0], str) and type(args[0]) is not str:
+        args = (str.__str__(args[0]), *args[1:])
+    name = kwargs.get("name")
+    if isinstance(name, str) and type(name) is not str:
+        kwargs = {**kwargs, "name": str.__str__(name)}
+    return args, kwargs
+
+
 class _LaminarActivatingTracer(trace.Tracer):
     """Tracer handed to the framework: spans come from Laminar's tracer
     provider, and `start_as_current_span` also activates the span in
@@ -199,10 +285,12 @@ class _LaminarActivatingTracer(trace.Tracer):
         self._tracer = tracer
 
     def start_span(self, *args: Any, **kwargs: Any) -> trace.Span:
+        args, kwargs = _with_plain_name(args, kwargs)
         return self._tracer.start_span(*args, **_with_association_context(args, kwargs))
 
     @contextmanager
     def start_as_current_span(self, *args: Any, **kwargs: Any) -> Iterator[trace.Span]:
+        args, kwargs = _with_plain_name(args, kwargs)
         kwargs = _with_association_context(args, kwargs)
         cm = self._tracer.start_as_current_span(*args, **kwargs)
         with _bridge_span_cm(cm) as span:
@@ -295,12 +383,17 @@ class MicrosoftAgentFrameworkInstrumentor(BaseInstrumentor):
             (_OBSERVABILITY_MODULE, "_get_span_attributes", _wrap_get_span_attributes),
             (
                 _OBSERVABILITY_MODULE,
+                "_get_response_attributes",
+                _wrap_get_response_attributes,
+            ),
+            (
+                _OBSERVABILITY_MODULE,
                 "ChatTelemetryLayer.get_response",
                 _wrap_chat_get_response,
             ),
             # Imported by name into `_mcp`, so patch that binding too.
-            (_OBSERVABILITY_MODULE, "create_mcp_client_span", _wrap_span_cm),
-            (_MCP_MODULE, "create_mcp_client_span", _wrap_span_cm),
+            (_OBSERVABILITY_MODULE, "create_mcp_client_span", _wrap_mcp_client_span),
+            (_MCP_MODULE, "create_mcp_client_span", _wrap_mcp_client_span),
         ):
             try:
                 wrap_function_wrapper(module, name, wrapper)

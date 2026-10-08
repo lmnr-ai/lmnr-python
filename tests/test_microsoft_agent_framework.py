@@ -188,3 +188,91 @@ def test_instrumentation_enables_content_capture():
 
     assert OBSERVABILITY_SETTINGS.ENABLED
     assert OBSERVABILITY_SETTINGS.SENSITIVE_DATA_ENABLED
+
+
+def test_workflow_spans_keep_span_path(span_exporter):
+    # Workflow spans are named with the framework's `OtelAttr` str enum. Left
+    # as is, OTel drops `lmnr.span.path` for them and every descendant.
+    from typing_extensions import Never
+
+    from agent_framework import Executor, WorkflowBuilder, WorkflowContext, handler
+
+    class Upper(Executor):
+        @handler
+        async def process(self, text: str, ctx: WorkflowContext[str]) -> None:
+            await ctx.send_message(text.upper())
+
+    class Reverse(Executor):
+        @handler
+        async def process(self, text: str, ctx: WorkflowContext[Never, str]) -> None:
+            await ctx.yield_output(text[::-1])
+
+    @observe(name="root")
+    async def main():
+        upper, reverse = Upper(id="upper"), Reverse(id="reverse")
+        workflow = WorkflowBuilder(start_executor=upper).add_edge(upper, reverse).build()
+        return (await workflow.run("hello")).get_outputs()
+
+    assert asyncio.run(main()) == ["OLLEH"]
+
+    spans = span_exporter.get_finished_spans()
+    by_id = {s.context.span_id: s for s in spans}
+    framework_spans = [
+        s for s in spans if s.instrumentation_scope.name == "agent_framework"
+    ]
+    assert {"workflow.build", "workflow.run", "message.send"} <= {
+        s.name for s in framework_spans
+    }
+    for span in framework_spans:
+        assert type(span.name) is str
+        path = list(span.attributes["lmnr.span.path"])
+        assert path[0] == "root"
+        assert path[-1] == span.name
+        assert path[:-1] == list(by_id[span.parent.span_id].attributes["lmnr.span.path"])
+
+
+@pytest.mark.parametrize(
+    "provider, kwargs, expected_output, expected_reasoning",
+    [
+        # Gemini bills thinking as output but reports it separately.
+        ("gcp.gemini", {}, 40, 30),
+        # OpenAI's output tokens already include reasoning tokens.
+        ("openai", {}, 10, None),
+        ("gcp.gemini", {"capture_usage": False}, None, None),
+    ],
+)
+def test_gemini_thinking_tokens_count_as_output(
+    provider, kwargs, expected_output, expected_reasoning
+):
+    from agent_framework import ChatResponse
+    from agent_framework.observability import _get_response_attributes
+
+    response = ChatResponse(
+        messages=[],
+        usage_details={"output_token_count": 10, "reasoning_output_token_count": 30},
+    )
+    attributes = {"gen_ai.operation.name": "chat", "gen_ai.provider.name": provider}
+    _get_response_attributes(attributes, response, **kwargs)
+    # A second call on the same attributes must not add the tokens again.
+    _get_response_attributes(attributes, response, **kwargs)
+
+    assert attributes.get("gen_ai.usage.output_tokens") == expected_output
+    assert attributes.get("gen_ai.usage.reasoning_tokens") == expected_reasoning
+
+
+def test_mcp_tool_call_span_is_not_a_second_tool_span(span_exporter):
+    # `tools/call` carries `gen_ai.operation.name = execute_tool`, which made
+    # Laminar show it as a duplicate tool span inside the real `execute_tool`.
+    from agent_framework import _mcp
+
+    with _mcp.create_mcp_client_span(
+        "tools/call",
+        target="add",
+        attributes={"gen_ai.operation.name": "execute_tool", "gen_ai.tool.name": "add"},
+    ):
+        pass
+
+    [span] = spans_by_name(span_exporter.get_finished_spans(), "tools/call add")
+    assert "gen_ai.operation.name" not in span.attributes
+    assert span.attributes["mcp.method.name"] == "tools/call"
+    assert span.attributes["gen_ai.tool.name"] == "add"
