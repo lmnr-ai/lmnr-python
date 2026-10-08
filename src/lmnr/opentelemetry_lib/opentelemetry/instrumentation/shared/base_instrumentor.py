@@ -175,9 +175,13 @@ class BaseLaminarInstrumentor(BaseInstrumentor):
                     self._unwrap_module_function_with_alias_replacement(
                         package_name, method_name
                     )
+                elif object_name:
+                    # `unwrap` resolves its first argument as `module.attr`
+                    # and looks the method up on it, so the owning class has
+                    # to be part of the path, not of the method name.
+                    unwrap(f"{package_name}.{object_name}", method_name)
                 else:
-                    # Standard unwrap
-                    unwrap(package_name, target)
+                    unwrap(package_name, method_name)
             except Exception as e:
                 self.logger.debug(
                     f"Failed to uninstrument {package_name}.{target}: {e}"

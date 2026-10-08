@@ -390,6 +390,18 @@ class MCPInstrumentorInitializer(InstrumentorInitializer):
         return McpInstrumentor()
 
 
+class MicrosoftAgentFrameworkInstrumentorInitializer(InstrumentorInitializer):
+    def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
+        if not is_package_installed("agent-framework-core"):
+            return None
+
+        from ..opentelemetry.instrumentation.microsoft_agent_framework import (
+            MicrosoftAgentFrameworkInstrumentor,
+        )
+
+        return MicrosoftAgentFrameworkInstrumentor()
+
+
 class MilvusInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args, **kwargs) -> BaseInstrumentor | None:
         if not is_package_installed("pymilvus"):
