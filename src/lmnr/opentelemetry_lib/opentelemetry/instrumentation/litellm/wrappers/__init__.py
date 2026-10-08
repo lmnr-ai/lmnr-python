@@ -9,6 +9,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
 )
 from lmnr.opentelemetry_lib.tracing.context import (
     in_litellm_context,
+    is_in_litellm_context,
     _in_litellm_context,
 )
 from lmnr.sdk.log import get_default_logger
@@ -67,6 +68,16 @@ def wrap_completion(
         kwargs = {}
     if args is None:
         args = []
+    # LiteLLM bridges between its own two public entry points. A `responses()`
+    # call for a model that only speaks chat completions is re-entered through
+    # `completion()` (`completion_extras/litellm_responses_transformation`), and
+    # the reverse bridge sends `completion()` back through `responses()`. Both
+    # entry points are instrumented, so without this guard one user-visible call
+    # yields two LLM spans carrying identical messages and identical usage —
+    # double-counting tokens and cost. The outermost wrapper owns the span; the
+    # inner one passes the call straight through.
+    if is_in_litellm_context():
+        return wrapped(*args, **kwargs)
     span = Laminar.start_span(
         name=to_wrap["span_name"],
         span_type=to_wrap["span_type"],
@@ -232,6 +243,11 @@ def wrap_responses(
         kwargs = {}
     if args is None:
         args = []
+    # See `wrap_completion`: litellm re-enters `responses()` from `completion()`
+    # for models that only speak the Responses API. Whichever entry point the
+    # user called owns the span; the bridged inner call passes through.
+    if is_in_litellm_context():
+        return wrapped(*args, **kwargs)
     span = Laminar.start_span(
         name=to_wrap["span_name"],
         span_type=to_wrap["span_type"],
@@ -264,18 +280,23 @@ def wrap_responses(
         # If in rollout mode, delegate to rollout wrapper
         if rollout_wrapper:
             with Laminar.use_span(span):
-                result = rollout_wrapper.wrap_responses(
-                    wrapped,
-                    args,
-                    kwargs,
-                    is_streaming=kwargs.get("stream", False),
-                )
+                with in_litellm_context():
+                    result = rollout_wrapper.wrap_responses(
+                        wrapped,
+                        args,
+                        kwargs,
+                        is_streaming=kwargs.get("stream", False),
+                    )
         else:
             # See `wrap_completion`: activate our span so litellm's
             # `langfuse_otel` callback parents its attributes onto the
-            # `litellm.responses` span instead of the user's `@observe` root.
+            # `litellm.responses` span instead of the user's `@observe` root,
+            # and mark the litellm context so a bridged inner `completion()`
+            # call — plus the raw provider instrumentors underneath it — know
+            # this call is already traced.
             with Laminar.use_span(span):
-                result = wrapped(*args, **kwargs)
+                with in_litellm_context():
+                    result = wrapped(*args, **kwargs)
 
         # Handle case where async methods call sync methods internally and return a coroutine
         if iscoroutine(result):

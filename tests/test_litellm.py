@@ -1522,6 +1522,105 @@ async def test_litellm_completion_streaming_with_tool_call_async(
 
 
 @pytest.mark.vcr(record_mode="once")
+def test_litellm_completion_via_responses_bridge_creates_one_span(
+    span_exporter: InMemorySpanExporter,
+):
+    """A model that only speaks the Responses API makes litellm re-enter its own
+    public API: `completion()` transforms the request and calls `responses()`.
+    Both entry points are instrumented, so without a re-entrancy guard a single
+    user-visible call produced two LLM spans carrying identical messages and
+    identical usage — doubling the token and cost totals on the trace.
+    """
+    if "OPENAI_API_KEY" not in os.environ:
+        os.environ["OPENAI_API_KEY"] = "test-key"
+
+    response = litellm.completion(
+        model="openai/responses/gpt-4.1-nano",
+        messages=[
+            {"content": "Be very crisp in your response.", "role": "system"},
+            {"content": "What is the capital of France?", "role": "user"},
+        ],
+    )
+
+    spans = span_exporter.get_finished_spans()
+    # The surviving span is the entry point the caller actually invoked, and it
+    # carries the usage exactly once.
+    assert [span.name for span in spans] == ["litellm.completion"]
+    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 25
+    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 3
+    # Deduplicating must not cost us any detail: the kept span still has the
+    # full request and response, transformed back to the completions shape.
+    assert spans[0].attributes["gen_ai.response.model"] == "gpt-4.1-nano"
+    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+        {"content": "Be very crisp in your response.", "role": "system"},
+        {"content": "What is the capital of France?", "role": "user"},
+    ]
+    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+        {
+            "content": "Paris.",
+            "role": "assistant",
+            "tool_calls": None,
+            "function_call": None,
+        }
+    ]
+    assert response.choices[0].message.content == "Paris."
+    check_span_has_basic_attributes(spans[0])
+
+
+@pytest.mark.asyncio
+@pytest.mark.vcr(record_mode="once")
+async def test_litellm_completion_via_responses_bridge_creates_one_span_async(
+    span_exporter: InMemorySpanExporter,
+):
+    """Async twin of the above, and the path that actually bit us in production:
+    the wrapper returns a coroutine, so the nested `responses()` call runs while
+    the wrapper only holds the litellm context flag — our span is no longer the
+    active OTel span. The duplicate therefore landed as a *sibling* of the
+    caller's parent span rather than as a child of `litellm.completion`.
+    """
+    if "OPENAI_API_KEY" not in os.environ:
+        os.environ["OPENAI_API_KEY"] = "test-key"
+
+    response = await litellm.acompletion(
+        model="openai/responses/gpt-4.1-nano",
+        messages=[
+            {"content": "Be very crisp in your response.", "role": "system"},
+            {"content": "What is the capital of France?", "role": "user"},
+        ],
+    )
+
+    spans = span_exporter.get_finished_spans()
+    assert [span.name for span in spans] == ["litellm.completion"]
+    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 25
+    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 3
+    assert response.choices[0].message.content
+    check_span_has_basic_attributes(spans[0])
+
+
+@pytest.mark.vcr(record_mode="once")
+def test_litellm_responses_via_completion_bridge_creates_one_span(
+    span_exporter: InMemorySpanExporter,
+):
+    """The bridge runs in both directions: a `responses()` call for a provider
+    that only speaks chat completions is re-entered through `completion()`. Same
+    guard, opposite nesting — here `litellm.responses` is the span that survives.
+    """
+    if "GEMINI_API_KEY" not in os.environ:
+        os.environ["GEMINI_API_KEY"] = "test-key"
+
+    litellm.responses(
+        model="gemini/gemini-2.5-flash-lite",
+        input=[{"content": "What is the capital of France?", "role": "user"}],
+    )
+
+    spans = span_exporter.get_finished_spans()
+    assert [span.name for span in spans] == ["litellm.responses"]
+    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 8
+    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 8
+    check_span_has_basic_attributes(spans[0])
+
+
+@pytest.mark.vcr(record_mode="once")
 def test_litellm_responses_basic(span_exporter: InMemorySpanExporter):
     if "OPENAI_API_KEY" not in os.environ:
         os.environ["OPENAI_API_KEY"] = "test-key"
