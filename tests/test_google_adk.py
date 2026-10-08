@@ -421,14 +421,23 @@ def test_uninstrument_unwraps_lazily_imported_binding():
     import sys
 
     import wrapt
-    from google.adk.flows import llm_flows
     from google.adk.telemetry import tracing
     from lmnr.opentelemetry_lib.opentelemetry.instrumentation import (
         google_adk,
     )
 
-    module_name = "google.adk.flows.llm_flows.functions"
+    # Whichever flow module binds it in the installed ADK version.
+    (module_name,) = [
+        name
+        for name in (
+            google_adk._FLOW_FUNCTIONS_MODULE,
+            google_adk._BATCH_TOOL_EXECUTOR_MODULE,
+            google_adk._TOOLS_BATCH_EXECUTOR_MODULE,
+        )
+        if hasattr(sys.modules.get(name), "trace_merged_tool_calls")
+    ]
     original_module = sys.modules[module_name]
+    parent_name, _, attr_name = module_name.rpartition(".")
     instrumentor = google_adk.GoogleAdkInstrumentor()
     instrumentor.uninstrument()
     sys.modules.pop(module_name)
@@ -448,7 +457,7 @@ def test_uninstrument_unwraps_lazily_imported_binding():
         )
     finally:
         sys.modules[module_name] = original_module
-        llm_flows.functions = original_module
+        setattr(sys.modules[parent_name], attr_name, original_module)
         if not instrumentor.is_instrumented_by_opentelemetry:
             instrumentor.instrument()
 
