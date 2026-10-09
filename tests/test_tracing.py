@@ -1,16 +1,16 @@
 import json
 import os
-import pytest
 import uuid
+from typing import cast
+
+import pytest
+from opentelemetry.sdk.trace import ReadableSpan
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import SpanContext
 
 from lmnr import Attributes, Laminar
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-
 from lmnr.opentelemetry_lib.tracing import get_tracer_wrapper
 from lmnr.sdk.types import LaminarSpanContext
-from typing import cast
-from opentelemetry.sdk.trace import ReadableSpan
-from opentelemetry.trace import SpanContext
 
 
 def _ctx(span: ReadableSpan) -> SpanContext:

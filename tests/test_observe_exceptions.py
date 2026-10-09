@@ -4,15 +4,16 @@ and never propagate to the end-user. Each group targets a specific try/except bl
 in opentelemetry_lib/decorators/__init__.py and sdk/decorators.py.
 """
 
-import pytest
-from unittest.mock import patch, PropertyMock
+from typing import Any
+from unittest.mock import PropertyMock, patch
 
 import opentelemetry.context as otel_context
+import pytest
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from typing_extensions import override
 
 from lmnr import observe
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-
 
 # =============================================================================
 # _setup_span failures (get_tracer_with_context raises)
@@ -23,7 +24,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 def test_setup_span_failure_sync(span_exporter: InMemorySpanExporter):
     @observe()
-    def observed_foo():
+    def observed_foo() -> str:
         return "foo"
 
     with patch(
@@ -39,7 +40,7 @@ def test_setup_span_failure_sync(span_exporter: InMemorySpanExporter):
 @pytest.mark.asyncio
 async def test_setup_span_failure_async(span_exporter: InMemorySpanExporter):
     @observe()
-    async def observed_foo():
+    async def observed_foo() -> str:
         return "foo"
 
     with patch(
@@ -61,7 +62,7 @@ async def test_setup_span_failure_async(span_exporter: InMemorySpanExporter):
 
 def test_tracing_not_initialized_sync(span_exporter: InMemorySpanExporter):
     @observe()
-    def observed_foo():
+    def observed_foo() -> str:
         return "foo"
 
     with patch(
@@ -77,7 +78,7 @@ def test_tracing_not_initialized_sync(span_exporter: InMemorySpanExporter):
 @pytest.mark.asyncio
 async def test_tracing_not_initialized_async(span_exporter: InMemorySpanExporter):
     @observe()
-    async def observed_foo():
+    async def observed_foo() -> str:
         return "foo"
 
     with patch(
@@ -99,7 +100,7 @@ async def test_tracing_not_initialized_async(span_exporter: InMemorySpanExporter
 
 def test_process_input_get_func_args_failure_sync(span_exporter: InMemorySpanExporter):
     @observe()
-    def observed_foo(x):
+    def observed_foo(_x: int) -> str:
         return "foo"
 
     with patch(
@@ -120,7 +121,7 @@ async def test_process_input_get_func_args_failure_async(
     span_exporter: InMemorySpanExporter,
 ):
     @observe()
-    async def observed_foo(x):
+    async def observed_foo(_x: int) -> str:
         return "foo"
 
     with patch(
@@ -144,7 +145,7 @@ async def test_process_input_get_func_args_failure_async(
 
 def test_process_input_set_input_failure_sync(span_exporter: InMemorySpanExporter):
     @observe()
-    def observed_foo(x):
+    def observed_foo(_x: int) -> str:
         return "foo"
 
     with patch.object(LaminarSpan, "set_input", side_effect=RuntimeError("set_input exploded")):
@@ -159,7 +160,7 @@ def test_process_input_set_input_failure_sync(span_exporter: InMemorySpanExporte
 @pytest.mark.asyncio
 async def test_process_input_set_input_failure_async(span_exporter: InMemorySpanExporter):
     @observe()
-    async def observed_foo(x):
+    async def observed_foo(_x: int) -> str:
         return "foo"
 
     with patch.object(LaminarSpan, "set_input", side_effect=RuntimeError("set_input exploded")):
@@ -180,7 +181,7 @@ async def test_process_input_set_input_failure_async(span_exporter: InMemorySpan
 
 def test_process_output_set_output_failure_sync(span_exporter: InMemorySpanExporter):
     @observe()
-    def observed_foo():
+    def observed_foo() -> str:
         return "foo"
 
     with patch.object(LaminarSpan, "set_output", side_effect=RuntimeError("set_output exploded")):
@@ -196,7 +197,7 @@ def test_process_output_set_output_failure_sync(span_exporter: InMemorySpanExpor
 @pytest.mark.asyncio
 async def test_process_output_set_output_failure_async(span_exporter: InMemorySpanExporter):
     @observe()
-    async def observed_foo():
+    async def observed_foo() -> str:
         return "foo"
 
     with patch.object(LaminarSpan, "set_output", side_effect=RuntimeError("set_output exploded")):
@@ -216,9 +217,9 @@ async def test_process_output_set_output_failure_async(span_exporter: InMemorySp
 # =============================================================================
 
 
-def test_cleanup_span_end_failure_sync(span_exporter: InMemorySpanExporter):
+def test_cleanup_span_end_failure_sync():
     @observe()
-    def observed_foo():
+    def observed_foo() -> str:
         return "foo"
 
     with patch.object(LaminarSpan, "end", side_effect=RuntimeError("end exploded")):
@@ -228,9 +229,9 @@ def test_cleanup_span_end_failure_sync(span_exporter: InMemorySpanExporter):
 
 
 @pytest.mark.asyncio
-async def test_cleanup_span_end_failure_async(span_exporter: InMemorySpanExporter):
+async def test_cleanup_span_end_failure_async():
     @observe()
-    async def observed_foo():
+    async def observed_foo() -> str:
         return "foo"
 
     with patch.object(LaminarSpan, "end", side_effect=RuntimeError("end exploded")):
@@ -249,7 +250,7 @@ async def test_cleanup_span_end_failure_async(span_exporter: InMemorySpanExporte
 
 def test_cleanup_span_pop_context_failure_sync(span_exporter: InMemorySpanExporter):
     @observe()
-    def observed_foo():
+    def observed_foo() -> str:
         return "foo"
 
     with patch(
@@ -267,7 +268,7 @@ def test_cleanup_span_pop_context_failure_sync(span_exporter: InMemorySpanExport
 @pytest.mark.asyncio
 async def test_cleanup_span_pop_context_failure_async(span_exporter: InMemorySpanExporter):
     @observe()
-    async def observed_foo():
+    async def observed_foo() -> str:
         return "foo"
 
     with patch(
@@ -292,7 +293,7 @@ async def test_cleanup_span_pop_context_failure_async(span_exporter: InMemorySpa
 
 def test_push_span_context_failure_sync(span_exporter: InMemorySpanExporter):
     @observe()
-    def observed_foo():
+    def observed_foo() -> str:
         return "foo"
 
     with patch(
@@ -310,7 +311,7 @@ def test_push_span_context_failure_sync(span_exporter: InMemorySpanExporter):
 @pytest.mark.asyncio
 async def test_push_span_context_failure_async(span_exporter: InMemorySpanExporter):
     @observe()
-    async def observed_foo():
+    async def observed_foo() -> str:
         return "foo"
 
     with patch(
@@ -334,7 +335,7 @@ async def test_push_span_context_failure_async(span_exporter: InMemorySpanExport
 
 def test_context_api_attach_failure_sync(span_exporter: InMemorySpanExporter):
     @observe()
-    def observed_foo():
+    def observed_foo() -> str:
         return "foo"
 
     with patch.object(otel_context, "attach", side_effect=RuntimeError("otel attach exploded")):
@@ -349,7 +350,7 @@ def test_context_api_attach_failure_sync(span_exporter: InMemorySpanExporter):
 @pytest.mark.asyncio
 async def test_context_api_attach_failure_async(span_exporter: InMemorySpanExporter):
     @observe()
-    async def observed_foo():
+    async def observed_foo() -> str:
         return "foo"
 
     with patch.object(otel_context, "attach", side_effect=RuntimeError("otel attach exploded")):
@@ -370,7 +371,7 @@ async def test_context_api_attach_failure_async(span_exporter: InMemorySpanExpor
 
 def test_context_api_detach_failure_sync(span_exporter: InMemorySpanExporter):
     @observe()
-    def observed_foo():
+    def observed_foo() -> str:
         return "foo"
 
     with patch.object(otel_context, "detach", side_effect=RuntimeError("otel detach exploded")):
@@ -385,7 +386,7 @@ def test_context_api_detach_failure_sync(span_exporter: InMemorySpanExporter):
 @pytest.mark.asyncio
 async def test_context_api_detach_failure_async(span_exporter: InMemorySpanExporter):
     @observe()
-    async def observed_foo():
+    async def observed_foo() -> str:
         return "foo"
 
     with patch.object(otel_context, "detach", side_effect=RuntimeError("otel detach exploded")):
@@ -409,14 +410,13 @@ def test_process_exception_record_exception_failure_sync(
     span_exporter: InMemorySpanExporter,
 ):
     @observe()
-    def observed_foo():
+    def observed_foo() -> None:
         raise ValueError("user error")
 
     with patch.object(
         LaminarSpan, "record_exception", side_effect=RuntimeError("record_exception exploded")
-    ):
-        with pytest.raises(ValueError, match="user error"):
-            observed_foo()
+    ), pytest.raises(ValueError, match="user error"):
+        observed_foo()
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
@@ -428,14 +428,13 @@ async def test_process_exception_record_exception_failure_async(
     span_exporter: InMemorySpanExporter,
 ):
     @observe()
-    async def observed_foo():
+    async def observed_foo() -> None:
         raise ValueError("user error")
 
     with patch.object(
         LaminarSpan, "record_exception", side_effect=RuntimeError("record_exception exploded")
-    ):
-        with pytest.raises(ValueError, match="user error"):
-            await observed_foo()
+    ), pytest.raises(ValueError, match="user error"):
+        await observed_foo()
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
@@ -451,14 +450,13 @@ async def test_process_exception_record_exception_failure_async(
 
 def test_process_exception_set_status_failure_sync(span_exporter: InMemorySpanExporter):
     @observe()
-    def observed_foo():
+    def observed_foo() -> None:
         raise ValueError("user error")
 
     with patch.object(
         LaminarSpan, "set_status", side_effect=RuntimeError("set_status exploded")
-    ):
-        with pytest.raises(ValueError, match="user error"):
-            observed_foo()
+    ), pytest.raises(ValueError, match="user error"):
+        observed_foo()
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
@@ -470,14 +468,13 @@ async def test_process_exception_set_status_failure_async(
     span_exporter: InMemorySpanExporter,
 ):
     @observe()
-    async def observed_foo():
+    async def observed_foo() -> None:
         raise ValueError("user error")
 
     with patch.object(
         LaminarSpan, "set_status", side_effect=RuntimeError("set_status exploded")
-    ):
-        with pytest.raises(ValueError, match="user error"):
-            await observed_foo()
+    ), pytest.raises(ValueError, match="user error"):
+        await observed_foo()
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
@@ -491,9 +488,10 @@ async def test_process_exception_set_status_failure_async(
 # =============================================================================
 
 
-class _BadCopyMetadata(dict):
+class _BadCopyMetadata(dict[str, Any]):
     """Simulates a broken metadata object whose .copy() always raises."""
 
+    @override
     def copy(self):
         raise RuntimeError("copy exploded deliberately")
 

@@ -1,13 +1,14 @@
 """Tests for the module-level tracing lifecycle in `lmnr.opentelemetry_lib.tracing`."""
 
+from unittest.mock import MagicMock
+
 import pytest
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
 
-from lmnr.opentelemetry_lib.tracing import wrapper as wrapper_mod
 from lmnr.opentelemetry_lib.tracing import (
     get_session_recording_options,
     get_tracer_wrapper,
@@ -16,13 +17,14 @@ from lmnr.opentelemetry_lib.tracing import (
     reset_tracing,
     shutdown_tracing,
 )
+from lmnr.opentelemetry_lib.tracing import wrapper as wrapper_mod
 from lmnr.opentelemetry_lib.tracing.tracer import (
     get_laminar_tracer_provider,
     get_tracer,
 )
 
 
-def test_get_laminar_tracer_provider_returns_the_laminar_provider(span_exporter):
+def test_get_laminar_tracer_provider_returns_the_laminar_provider():
     """Regression: this used to read `TracerWrapper.instance.__tracer_provider`,
     an attribute that never existed (no name mangling at module scope), so every
     call raised AttributeError — on a function exported from `lmnr`."""
@@ -35,7 +37,7 @@ def test_get_laminar_tracer_provider_returns_the_laminar_provider(span_exporter)
     assert provider is wrapper.tracer_provider
 
 
-def test_tracer_helpers_do_not_initialize_tracing(span_exporter, monkeypatch):
+def test_tracer_helpers_do_not_initialize_tracing(monkeypatch: MagicMock):
     """`get_tracer()` and `get_laminar_tracer_provider()` used to call
     `TracerWrapper()`, which silently built a full API-key-less tracer (exporter
     threads and an atexit hook included) when tracing was not initialized."""
@@ -52,12 +54,12 @@ def test_tracer_helpers_do_not_initialize_tracing(span_exporter, monkeypatch):
     assert get_tracer_wrapper() is None, "must not have initialized tracing"
 
 
-def test_session_recording_options_default_before_init(monkeypatch):
+def test_session_recording_options_default_before_init(monkeypatch: MagicMock):
     monkeypatch.setattr(wrapper_mod, "_session_recording_options", None)
     assert get_session_recording_options() == {"mask_input_options": None}
 
 
-def test_reset_tracing_is_idempotent(monkeypatch):
+def test_reset_tracing_is_idempotent(monkeypatch: MagicMock):
     monkeypatch.setattr(wrapper_mod, "_tracer_wrapper", None)
     monkeypatch.setattr(wrapper_mod, "_session_recording_options", None)
 
@@ -87,12 +89,12 @@ def isolated_tracing():
         wrapper_mod._session_recording_options = saved_options
 
 
-def _names(exporter):
+def _names(exporter: InMemorySpanExporter):
     return [s.name for s in exporter.get_finished_spans()]
 
 
-def _boot(exporter):
-    init_tracing(
+def _boot(exporter: InMemorySpanExporter):
+    _tracer_wrapper = init_tracing(
         project_api_key="k",
         disable_batch=True,
         exporter=exporter,
@@ -111,7 +113,9 @@ def test_instrument_time_bound_tracer_survives_a_reinit(isolated_tracing):
     """
     exp1 = InMemorySpanExporter()
     _boot(exp1)
-    provider = get_tracer_wrapper().tracer_provider
+    wrapper = get_tracer_wrapper()
+    assert wrapper is not None
+    provider = wrapper.tracer_provider
 
     # Exactly what those instrumentors do inside `_instrument()`.
     bound_tracer = trace.get_tracer("probe", "1", provider)
@@ -124,7 +128,9 @@ def test_instrument_time_bound_tracer_survives_a_reinit(isolated_tracing):
 
     exp2 = InMemorySpanExporter()
     _boot(exp2)
-    assert get_tracer_wrapper().tracer_provider is provider
+    wrapper = get_tracer_wrapper()
+    assert wrapper is not None
+    assert wrapper.tracer_provider is provider
     assert trace.get_tracer_provider() is provider
 
     exp1.clear()
@@ -140,10 +146,12 @@ def test_shutdown_detaches_the_retired_processors(isolated_tracing):
     initialize()/shutdown() cycle."""
     exp1 = InMemorySpanExporter()
     _boot(exp1)
-    provider = get_tracer_wrapper().tracer_provider
-    retired = get_tracer_wrapper().span_processor
+    wrapper = get_tracer_wrapper()
+    assert wrapper is not None
+    provider = wrapper.tracer_provider
+    retired = wrapper.span_processor
 
-    def attached():
+    def attached() -> tuple[SpanProcessor, ...]:
         return provider._active_span_processor._span_processors
 
     # Other processors (e.g. the session fixture's) may share this provider,
@@ -157,7 +165,9 @@ def test_shutdown_detaches_the_retired_processors(isolated_tracing):
 
     for _ in range(3):
         _boot(InMemorySpanExporter())
-        current = get_tracer_wrapper().span_processor
+        wrapper = get_tracer_wrapper()
+        assert wrapper is not None
+        current = wrapper.span_processor
         assert len(attached()) == baseline + 1
         shutdown_tracing()
         assert current not in attached()

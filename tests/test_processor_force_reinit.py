@@ -6,25 +6,33 @@ specifically for Lambda-like environments where BatchSpanProcessor needs proper 
 """
 
 import time
-import pytest
-from unittest.mock import patch, MagicMock
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace.export import SpanExportResult
+from collections.abc import Generator
+from typing import Any, cast
+from unittest.mock import MagicMock, patch
 
+import pytest
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
+from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
+    SimpleSpanProcessor,
+    SpanExportResult,
+)
+
+from lmnr.opentelemetry_lib.tracing.exporter import LaminarSpanExporter
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
 
 
 @pytest.fixture
-def mock_otlp_exporter():
+def mock_otlp_exporter() -> Generator[list[ReadableSpan]]:
     """Create a mock OTLP exporter that tracks all operations."""
-    exported_spans = []
+    exported_spans: list[ReadableSpan] = []
 
-    def create_mock_instance(*args, **kwargs):
+    def create_mock_instance(*_args: Any, **_kwargs: Any):
         mock = MagicMock()
         mock.export = MagicMock(
-            side_effect=lambda spans: (
-                exported_spans.extend(spans),
+            side_effect=lambda spans: (  # pyright: ignore[reportUnknownLambdaType]
+                exported_spans.extend(spans),  # pyright: ignore[reportUnknownArgumentType]
                 SpanExportResult.SUCCESS,
             )[1]
         )
@@ -39,9 +47,7 @@ def mock_otlp_exporter():
         yield exported_spans
 
 
-def test_force_reinit_shuts_down_old_processor_before_reinit_exporter(
-    mock_otlp_exporter,
-):
+def test_force_reinit_shuts_down_old_processor_before_reinit_exporter():
     """
     Test that force_reinit() calls shutdown() on the old processor BEFORE
     reinitializing the exporter. This is the key fix for the Lambda issue.
@@ -58,16 +64,16 @@ def test_force_reinit_shuts_down_old_processor_before_reinit_exporter(
     )
 
     # Track the order of operations
-    operation_order = []
+    operation_order: list[str] = []
 
     # Patch the exporter's _init_instance to track when it's called
-    original_init = processor.exporter.init_instance
+    original_init = cast(LaminarSpanExporter, processor.exporter).init_instance
 
     def tracked_init():
         operation_order.append("exporter_reinit")
         return original_init()
 
-    processor.exporter.init_instance = tracked_init
+    cast(LaminarSpanExporter, processor.exporter).init_instance = tracked_init
 
     # Patch the processor instance's shutdown to track when it's called
     original_shutdown = processor.instance.shutdown
@@ -79,7 +85,7 @@ def test_force_reinit_shuts_down_old_processor_before_reinit_exporter(
     processor.instance.shutdown = tracked_shutdown
 
     # Call force_reinit
-    processor.force_reinit()
+    _success = processor.force_reinit()
 
     # CRITICAL ASSERTION: processor_shutdown must happen BEFORE exporter_reinit
     assert operation_order == ["processor_shutdown", "exporter_reinit"], (
@@ -107,14 +113,14 @@ def test_force_reinit_creates_fresh_exporter_instance():
         )
 
         # Get the initial exporter instance
-        initial_exporter_instance = processor.exporter.instance
+        initial_exporter_instance = cast(LaminarSpanExporter, processor.exporter).instance
         assert initial_exporter_instance is mock_instance_1
 
         # Call force_reinit
-        processor.force_reinit()
+        _succes = processor.force_reinit()
 
         # Get the new exporter instance
-        new_exporter_instance = processor.exporter.instance
+        new_exporter_instance = cast(LaminarSpanExporter, processor.exporter).instance
 
         # Assert they are different objects
         assert (
@@ -128,7 +134,7 @@ def test_force_reinit_creates_fresh_exporter_instance():
         processor.shutdown()
 
 
-def test_force_reinit_with_batch_processor_exports_pending_spans(mock_otlp_exporter):
+def test_force_reinit_with_batch_processor_exports_pending_spans(mock_otlp_exporter: MagicMock):
     """
     Test that force_reinit with BatchSpanProcessor properly exports all pending spans
     by shutting down the old processor (which joins the daemon thread).
@@ -153,7 +159,7 @@ def test_force_reinit_with_batch_processor_exports_pending_spans(mock_otlp_expor
     time.sleep(0.1)  # Give it a moment
 
     # Force reinit should flush and export the span
-    processor.force_reinit()
+    _success = processor.force_reinit()
 
     # Allow time for the export (shutdown waits for the daemon thread)
     time.sleep(0.2)
@@ -163,7 +169,7 @@ def test_force_reinit_with_batch_processor_exports_pending_spans(mock_otlp_expor
         len(mock_otlp_exporter) >= 1
     ), "force_reinit should export pending spans from the old BatchSpanProcessor"
 
-    exported_names = [span.name for span in mock_otlp_exporter]
+    exported_names: list[str] = [span.name for span in cast(Generator[ReadableSpan], mock_otlp_exporter)]
     assert (
         "test_span_1" in exported_names
     ), f"Expected 'test_span_1' in exported spans, got {exported_names}"
@@ -171,7 +177,7 @@ def test_force_reinit_with_batch_processor_exports_pending_spans(mock_otlp_expor
     processor.shutdown()
 
 
-def test_force_reinit_multiple_times(mock_otlp_exporter):
+def test_force_reinit_multiple_times(mock_otlp_exporter: MagicMock):
     """Test that force_reinit can be called multiple times successfully."""
     processor = LaminarSpanProcessor(
         base_url="http://test.local",
@@ -189,11 +195,11 @@ def test_force_reinit_multiple_times(mock_otlp_exporter):
         span = tracer.start_span(f"span_{i}")
         span.end()
 
-        processor.force_reinit()
+        _success = processor.force_reinit()
         time.sleep(0.2)
 
     # All spans should have been exported
-    exported_names = [span.name for span in mock_otlp_exporter]
+    exported_names: list[str] = [span.name for span in cast(Generator[ReadableSpan], mock_otlp_exporter)]
     assert "span_0" in exported_names
     assert "span_1" in exported_names
     assert "span_2" in exported_names
@@ -203,12 +209,10 @@ def test_force_reinit_multiple_times(mock_otlp_exporter):
 
 def test_force_reinit_preserves_disable_batch_setting():
     """Test that force_reinit preserves the disable_batch setting."""
-    from opentelemetry.sdk.trace.export import SimpleSpanProcessor, BatchSpanProcessor
-
     # Patch OTLP exporter
     with patch("lmnr.opentelemetry_lib.tracing.exporter.OTLPSpanExporter") as mock_otlp:
 
-        def create_mock(*args, **kwargs):
+        def create_mock(*_args: Any, **_kwargs: Any):
             mock = MagicMock()
             mock.shutdown = MagicMock()
             mock.force_flush = MagicMock(return_value=True)
@@ -225,7 +229,7 @@ def test_force_reinit_preserves_disable_batch_setting():
         )
 
         assert isinstance(processor_simple.instance, SimpleSpanProcessor)
-        processor_simple.force_reinit()
+        _success = processor_simple.force_reinit()
         assert isinstance(
             processor_simple.instance, SimpleSpanProcessor
         ), "force_reinit should preserve SimpleSpanProcessor when disable_batch=True"
@@ -241,7 +245,7 @@ def test_force_reinit_preserves_disable_batch_setting():
         )
 
         assert isinstance(processor_batch.instance, BatchSpanProcessor)
-        processor_batch.force_reinit()
+        _success = processor_batch.force_reinit()
         assert isinstance(
             processor_batch.instance, BatchSpanProcessor
         ), "force_reinit should preserve BatchSpanProcessor when disable_batch=False"
