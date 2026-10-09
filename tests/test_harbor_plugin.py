@@ -578,9 +578,15 @@ async def test_spans_are_exported_while_trial_runs(
     write_trajectory(job, "t1")
 
     await job.emit("start", event)
-    assert span_exporter.get_finished_spans() == ()
+    (marker,) = span_exporter.get_finished_spans()
+    assert marker.name == "trial_started"
+    assert marker.start_time == marker.end_time == parse_timestamp_ns(ts(0))
     await job.emit("agent_start", event)
-    assert set(spans_by_name(span_exporter)) == {"environment_setup", "agent_setup"}
+    assert set(spans_by_name(span_exporter)) == {
+        "trial_started",
+        "environment_setup",
+        "agent_setup",
+    }
     await job.emit("verification_start", event)
     spans = spans_by_name(span_exporter)
     assert "agent" in spans and "t1" not in spans and "verifier" not in spans
@@ -601,6 +607,7 @@ async def test_spans_are_exported_while_trial_runs(
     spans = spans_by_name(span_exporter)
     # Nothing is emitted twice.
     assert {name: len(s) for name, s in spans.items()} == {
+        "trial_started": 1,
         "environment_setup": 1,
         "agent_setup": 1,
         "agent": 1,
@@ -665,7 +672,7 @@ async def test_retry_emits_setup_and_agent_again(
     await plugin.on_job_end(SimpleNamespace())
 
     spans = spans_by_name(span_exporter)
-    for name in ("environment_setup", "agent_setup", "agent", "verifier", "t1"):
+    for name in ("trial_started", "environment_setup", "agent", "verifier", "t1"):
         assert len(spans[name]) == 2
     roots = {r.context.trace_id for r in spans["t1"]}
     assert {s.context.trace_id for s in spans["agent"]} == roots

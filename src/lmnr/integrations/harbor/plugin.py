@@ -312,6 +312,14 @@ class LaminarPlugin:
             },
             start_time=parse_timestamp_ns(event.timestamp),
         )
+        # An open root is never exported, so without a finished child the trace
+        # doesn't exist until the first phase ends (env setup can take minutes).
+        start_ns = parse_timestamp_ns(event.timestamp)
+        Laminar.start_span(
+            "trial_started",
+            parent_span_context=state.root_span.get_laminar_span_context(),
+            start_time=start_ns,
+        ).end(end_time=start_ns)
         span_context = state.root_span.get_span_context()
         state.trace_id = _uuid(span_context.trace_id)
         partial = PartialEvaluationDatapoint(
