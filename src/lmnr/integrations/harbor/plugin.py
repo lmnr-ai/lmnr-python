@@ -245,7 +245,7 @@ class LaminarPlugin:
         try:
             state = self._trials.get(event.trial_name)
             if state is not None and state.root_span is not None:
-                self._emit_setup(state, event.result)
+                self._emit_setup(state, event)
         except Exception as e:
             self._handle_error(f"Failed to report {event.trial_name} setup", e)
 
@@ -341,19 +341,24 @@ class LaminarPlugin:
         event: "TrialHookEvent",
     ) -> Any:
         """Emit the phase spans not emitted yet and end the trial's root span."""
-        self._emit_setup(state, result)
+        self._emit_setup(state, event)
         self._emit_agent_once(state, event)
         exception = result.exception_info
         # An exception the agent span doesn't carry happened after the agent ran,
         # so it goes on the verifier span, or on the root if there is none.
         unrecorded = None if exception == state.agent_exception else exception
         rewards = result.verifier_result.rewards if result.verifier_result else None
+        verifier_output: dict[str, Any] = {"rewards": rewards}
+        test_output = _read_text(_trial_dir(event), "verifier", "test-stdout.txt")
+        if test_output and test_output.strip():
+            verifier_output["test_output"] = test_output
         verifier_span = _emit_phase(
             root.get_laminar_span_context(),
             "verifier",
             result.verifier,
             span_type="EVALUATOR",
-            output=rewards,
+            input=_test_script(event),
+            output=verifier_output,
             exception=unrecorded,
         )
 
@@ -372,13 +377,26 @@ class LaminarPlugin:
         root.end(end_time=parse_timestamp_ns(result.finished_at))
         return state.agent_span
 
-    def _emit_setup(self, state: _TrialState, result: Any) -> None:
+    def _emit_setup(self, state: _TrialState, event: "TrialHookEvent") -> None:
         if state.setup_emitted:
             return
         state.setup_emitted = True
+        result = event.result
         parent = state.root_span.get_laminar_span_context()
-        _emit_phase(parent, "environment_setup", result.environment_setup)
-        _emit_phase(parent, "agent_setup", result.agent_setup)
+        _emit_phase(
+            parent,
+            "environment_setup",
+            result.environment_setup,
+            input=_environment_info(event),
+        )
+        agent = event.config.agent
+        _emit_phase(
+            parent,
+            "agent_setup",
+            result.agent_setup,
+            input={"agent": agent.name or agent.import_path, "model": agent.model_name},
+            output=_agent_setup_output(event),
+        )
 
     def _emit_agent_once(self, state: _TrialState, event: "TrialHookEvent") -> None:
         if state.agent_span is not None:
@@ -561,13 +579,83 @@ def _read_instruction(event: "TrialHookEvent") -> str | None:
         return None
 
 
-def _trajectory_path(event: "TrialHookEvent") -> Path | None:
+def _trial_dir(event: "TrialHookEvent") -> Path | None:
     try:
-        trial_dir = Path(event.config.trials_dir) / event.config.trial_name
+        return Path(event.config.trials_dir) / event.config.trial_name
     except Exception:
+        return None
+
+
+def _trajectory_path(event: "TrialHookEvent") -> Path | None:
+    trial_dir = _trial_dir(event)
+    if trial_dir is None:
         return None
     path = trial_dir / "agent" / "trajectory.json"
     return path if path.is_file() else None
+
+
+def _read_text(directory: Path | None, *parts: str) -> str | None:
+    if directory is None:
+        return None
+    try:
+        return directory.joinpath(*parts).read_text(errors="replace")
+    except OSError:
+        return None
+
+
+def _environment_info(event: "TrialHookEvent") -> dict[str, Any] | None:
+    """What the environment was asked for: its type, image, and resources."""
+    env = event.config.environment
+    env_type = getattr(env.type, "value", env.type) or env.import_path
+    task_env = _task_environment(event)
+    info: dict[str, Any] = {
+        "type": env_type,
+        "docker_image": task_env.get("docker_image"),
+    }
+    for key in ("cpus", "memory_mb", "storage_mb", "gpus"):
+        override = getattr(env, f"override_{key}", None)
+        info[key] = override if override is not None else task_env.get(key)
+    info = {key: value for key, value in info.items() if value is not None}
+    return info or None
+
+
+def _task_environment(event: "TrialHookEvent") -> dict[str, Any]:
+    """The `[environment]` table of the task's task.toml."""
+    try:
+        import tomllib  # Python 3.11+, which Harbor requires anyway.
+
+        task_toml = Path(event.config.task.get_local_path()) / "task.toml"
+        return tomllib.loads(task_toml.read_text()).get("environment", {})
+    except Exception:
+        return {}
+
+
+def _agent_setup_output(event: "TrialHookEvent") -> dict[str, Any] | None:
+    output: dict[str, Any] = {}
+    agent_info = event.result.agent_info
+    if agent_info is not None and agent_info.version:
+        output["version"] = agent_info.version
+    # Installed agents may write their install logs here.
+    trial_dir = _trial_dir(event)
+    setup_dir = trial_dir / "agent" / "setup" if trial_dir is not None else None
+    if setup_dir is not None and setup_dir.is_dir():
+        logs = {
+            path.name: text
+            for path in sorted(setup_dir.iterdir())
+            if path.is_file() and (text := _read_text(setup_dir, path.name))
+        }
+        if logs:
+            output["logs"] = logs
+    return output or None
+
+
+def _test_script(event: "TrialHookEvent") -> str | None:
+    try:
+        tests_dir = Path(event.config.task.get_local_path()) / "tests"
+        scripts = sorted(tests_dir.glob("test.*"))
+    except Exception:
+        return None
+    return _read_text(tests_dir, scripts[0].name) if scripts else None
 
 
 def _agent_attributes(result: Any) -> dict[str, Any]:
@@ -615,6 +703,7 @@ def _emit_phase(
     name: str,
     timing: Any,
     span_type: str = "DEFAULT",
+    input: Any = None,
     output: Any = None,
     exception: Any = None,
 ) -> Any:
@@ -622,6 +711,7 @@ def _emit_phase(
         return None
     span = Laminar.start_span(
         name,
+        input=input,
         span_type=span_type,
         parent_span_context=parent,
         start_time=parse_timestamp_ns(timing.started_at),

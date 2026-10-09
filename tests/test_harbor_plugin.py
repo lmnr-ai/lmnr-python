@@ -125,6 +125,7 @@ def make_event(
         trials_dir=job.job_dir,
         task=SimpleNamespace(get_local_path=lambda: task_dir),
         agent=job.config.agents[0],
+        environment=SimpleNamespace(type="docker", import_path=None, override_cpus=4),
     )
     return SimpleNamespace(
         event="start",
@@ -676,6 +677,55 @@ async def test_retry_emits_setup_and_agent_again(
         assert len(spans[name]) == 2
     roots = {r.context.trace_id for r in spans["t1"]}
     assert {s.context.trace_id for s in spans["agent"]} == roots
+
+
+@pytest.mark.asyncio
+async def test_phase_spans_carry_setup_and_test_details(
+    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+):
+    job = FakeJob(tmp_path / "job")
+    task_dir = make_task_dir(tmp_path, "t")
+    (task_dir / "task.toml").write_text(
+        '[environment]\ndocker_image = "ubuntu:24.04"\ncpus = 1\nmemory_mb = 2048\n'
+    )
+    (task_dir / "tests").mkdir()
+    (task_dir / "tests" / "test.sh").write_text("pytest /tests")
+    trial_dir = job.job_dir / "t1"
+    (trial_dir / "agent" / "setup").mkdir(parents=True)
+    (trial_dir / "agent" / "setup" / "install.log").write_text("installed")
+    (trial_dir / "verifier").mkdir()
+    (trial_dir / "verifier" / "test-stdout.txt").write_text("1 passed")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    event = make_event(job, task_dir, "t1", rewards={"reward": 1})
+    await job.emit("start", event)
+    await job.emit("end", event)
+    await plugin.on_job_end(SimpleNamespace())
+
+    spans = spans_by_name(span_exporter)
+    attrs = spans["environment_setup"][0].attributes
+    # The --ek override wins over task.toml.
+    assert json.loads(attrs["lmnr.span.input"]) == {
+        "type": "docker",
+        "docker_image": "ubuntu:24.04",
+        "cpus": 4,
+        "memory_mb": 2048,
+    }
+    attrs = spans["agent_setup"][0].attributes
+    assert json.loads(attrs["lmnr.span.input"]) == {
+        "agent": "terminus-2",
+        "model": "anthropic/claude-sonnet-4-5",
+    }
+    assert json.loads(attrs["lmnr.span.output"]) == {
+        "version": "2.0.0",
+        "logs": {"install.log": "installed"},
+    }
+    attrs = spans["verifier"][0].attributes
+    assert json.loads(attrs["lmnr.span.input"]) == "pytest /tests"
+    assert json.loads(attrs["lmnr.span.output"]) == {
+        "rewards": {"reward": 1},
+        "test_output": "1 passed",
+    }
 
 
 def test_fail_fast_reads_dotenv():
