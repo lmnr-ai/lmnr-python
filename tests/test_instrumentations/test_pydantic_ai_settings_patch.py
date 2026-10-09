@@ -64,7 +64,7 @@ def test_explicit_supported_version_is_respected(explicit_version: Literal[2, 3,
     assert settings.version == explicit_version
 
 
-def test_legacy_version_1_is_upgraded_to_default():
+def test_legacy_version_1_is_upgraded_to_default(instrumented: MagicMock):
     """`version=1` is treated as the legacy default and upgraded to v5."""
     settings = InstrumentationSettings(version=cast(Any, 1))
     assert settings.version == 5
