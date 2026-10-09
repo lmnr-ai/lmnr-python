@@ -219,7 +219,7 @@ LMNR_BASE_URL         # API base URL (default: https://api.lmnr.ai)
 
 - ADK call sites import `trace_call_llm` / `trace_merged_tool_calls` from `google.adk.telemetry.tracing` **by name**, so the instrumentor wraps each module holding a binding (tracing module last), and **ADK keeps moving them**. `trace_call_llm`: `flows.llm_flows.base_llm_flow` up to 2.9, then `flows.llm_flows.core._model_call` from 2.10. `trace_merged_tool_calls`: `flows.llm_flows.functions` up to 2.8, `flows.llm_flows._batch_tool_executor` in 2.9, `flows.llm_flows.tools._batch_executor` from 2.10. A missed binding fails silently: on 2.10+ without the `_model_call` entry, `call_llm` spans lost their prompt, response and LLM type.
 - When a new ADK release ships, grep its wheel for `trace_call_llm(` / `trace_merged_tool_calls(` call sites outside `telemetry/tracing.py` and add any new module to the wrap list. Missing modules are skipped, so old entries are safe to keep.
-- The dev pin is `google-adk==2.7.1`. CI also runs `tests/test_google_adk.py` with `uv run --with google-adk==2.11.0`, and the cassettes replay on both versions. Bump that overlay when you validate a newer ADK.
+- The dev pin is `google-adk==2.11.0`; the cassettes in `tests/cassettes/test_google_adk/` also replay on 2.7.1 and 2.9.2 (`uv run --with google-adk==2.7.1 pytest tests/test_google_adk.py`), which is how to check an older layout still works.
 
 ## google_genai emits the NATIVE Gemini shape (no OpenAI conversion)
 

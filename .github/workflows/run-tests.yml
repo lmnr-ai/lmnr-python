@@ -30,9 +30,3 @@ jobs:
       # so the Decisions API tests run against an overlay of the newer SDK.
       - name: Run Decisions API tests (openai 3.x)
         run: uv run --with openai==3.26.0 pytest tests/test_instrumentations/test_openai/traces/test_decisions.py
-
-      # The dev pin stays on an older google-adk; 2.9 and 2.10 moved the
-      # by-name bindings the instrumentor patches, so also run the ADK tests
-      # against a current release.
-      - name: Run Google ADK tests (google-adk 2.11)
-        run: uv run --with google-adk==2.11.0 pytest tests/test_google_adk.py
