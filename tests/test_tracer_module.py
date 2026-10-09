@@ -1,6 +1,6 @@
 """Tests for the module-level tracing lifecycle in `lmnr.opentelemetry_lib.tracing`."""
 
-from unittest.mock import MagicMock
+from typing import Any
 
 import pytest
 from opentelemetry import trace
@@ -102,7 +102,7 @@ def _boot(exporter: InMemorySpanExporter):
     )
 
 
-def test_instrument_time_bound_tracer_survives_a_reinit(isolated_tracing):
+def test_instrument_time_bound_tracer_survives_a_reinit(isolated_tracing: Any):
     """Instrumentors that bind a tracer at `_instrument()` time (MCP,
     pydantic_ai, the traceloop-derived ones) are NOT re-instrumented on a later
     `init_tracing` — `BaseInstrumentor.instrument()` no-ops once instrumented —
@@ -141,7 +141,7 @@ def test_instrument_time_bound_tracer_survives_a_reinit(isolated_tracing):
     assert _names(exp1) == [], "retired exporter must not still receive spans"
 
 
-def test_shutdown_detaches_the_retired_processors(isolated_tracing):
+def test_shutdown_detaches_the_retired_processors(isolated_tracing: Any):
     """The reused provider must not accumulate one shut-down span processor per
     initialize()/shutdown() cycle."""
     exp1 = InMemorySpanExporter()

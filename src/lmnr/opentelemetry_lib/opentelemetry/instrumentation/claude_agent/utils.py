@@ -5,6 +5,7 @@ import os
 import re
 import socket
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -189,7 +190,7 @@ def snapshot_env(keys: list[str]) -> tuple[dict[str, str | None], set[str]]:
     return snapshot, set_keys
 
 
-def restore_env(snapshot: dict[str, str | None], set_keys: set[str]) -> None:
+def restore_env(snapshot: Mapping[str, str | None], set_keys: set[str]) -> None:
     """
     Restore environment variables from snapshot.
 

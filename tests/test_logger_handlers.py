@@ -7,7 +7,9 @@ with the number of spans a run created.
 """
 
 import logging
+from unittest.mock import MagicMock
 
+from lmnr import Laminar
 from lmnr.sdk.log import get_default_logger
 
 
@@ -20,18 +22,18 @@ def test_repeated_calls_attach_only_one_handler():
     logging.getLogger(name).handlers.clear()
 
     for _ in range(25):
-        get_default_logger(name)
+        _logger = get_default_logger(name)
 
     assert _handler_count(name) == 1
 
 
-def test_a_message_is_emitted_once(caplog):
+def test_a_message_is_emitted_once(caplog: MagicMock):
     name = "lmnr.test.emit_once"
     logging.getLogger(name).handlers.clear()
 
     logger = get_default_logger(name)
     for _ in range(5):
-        get_default_logger(name)
+        _logger = get_default_logger(name)
 
     # propagate=False by default, so caplog needs the records routed to it.
     with caplog.at_level(logging.WARNING, logger=name):
@@ -46,12 +48,9 @@ def test_our_loggers_do_not_propagate():
     handler the host app installed (e.g. after logging.basicConfig()). An earlier fix
     passed propagate=True to satisfy a caplog-based test and reintroduced exactly the
     duplication this module exists to prevent."""
-    from lmnr.sdk.laminar import Laminar
-    from lmnr.sdk.log import get_default_logger
-
     Laminar._initialize_logger()
-    get_default_logger("lmnr.opentelemetry_lib.tracing")
-    get_default_logger("lmnr.opentelemetry_lib.tracing")
+    _logger = get_default_logger("lmnr.opentelemetry_lib.tracing")
+    _logger = get_default_logger("lmnr.opentelemetry_lib.tracing")
 
     for name in ("lmnr.sdk.laminar", "lmnr.opentelemetry_lib.tracing"):
         logger = logging.getLogger(name)
@@ -67,8 +66,8 @@ def test_a_foreign_handler_is_left_alone():
     foreign = logging.StreamHandler()
     logger.addHandler(foreign)
 
-    get_default_logger(name)
-    get_default_logger(name)
+    _logger = get_default_logger(name)
+    _logger = get_default_logger(name)
 
     assert foreign in logger.handlers
     # The user's handler plus exactly one of ours.

@@ -12,7 +12,6 @@ from __future__ import annotations
 import uuid
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import MagicMock
 
 import pytest
 from opentelemetry.context import get_value
