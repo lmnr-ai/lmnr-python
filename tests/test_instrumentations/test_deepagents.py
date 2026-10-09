@@ -19,9 +19,12 @@ handling of `GeneratorExit`, and idempotent middleware injection.
 from __future__ import annotations
 
 import types
-from typing import Any
+from collections.abc import AsyncGenerator, Generator
+from typing import Any, cast
+from unittest.mock import MagicMock
 
 import pytest
+from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
@@ -41,12 +44,11 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.deepagents.instrumento
     _wrap_graph_stream,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.deepagents.middleware import (
-    summarize_messages,
     _tool_result_to_json,
     _tool_span_input,
     _tool_span_name,
+    summarize_messages,
 )
-
 
 # --------------------------------------------------------------------- #
 # Pure helpers                                                           #
@@ -56,10 +58,10 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.deepagents.middleware 
 class _FakeMessage:
     def __init__(self, type_: str | None = None, role: str | None = None, content: Any = None):
         if type_ is not None:
-            self.type = type_
+            self.type: str = type_
         if role is not None:
-            self.role = role
-        self.content = content
+            self.role: str = role
+        self.content: Any = content
 
 
 def test_summarize_messages_handles_objects_with_type():
@@ -98,7 +100,7 @@ def test_summarize_messages_returns_non_lists_unchanged():
 
 def test_tool_result_to_json_with_content():
     class ToolMessage:
-        content = "tool output"
+        content: str = "tool output"
 
     assert _tool_result_to_json(ToolMessage()) == "tool output"
 
@@ -107,7 +109,10 @@ def test_tool_result_to_json_with_update():
     # langgraph `Command` objects expose `.update` as a data attribute
     # (not a callable). The helper must wrap it in {"update": ...}.
     class Command:
-        update = {"messages": []}
+        update: dict[str, list[Any]]
+
+        def __init__(self):
+            self.update = {"messages": []}
 
     assert _tool_result_to_json(Command()) == {"update": {"messages": []}}
 
@@ -141,15 +146,15 @@ def test_extract_messages_returns_none_for_non_dict():
 
 class _FakeSpan:
     def __init__(self):
-        self.output = None
+        self.output: Any = None
 
-    def set_output(self, value):
+    def set_output(self, value: Any):
         self.output = value
 
 
 def test_set_output_from_result_prefers_last_message_content():
     span = _FakeSpan()
-    _set_output_from_result(span, {"messages": [_FakeMessage(type_="ai", content="final")]})
+    _set_output_from_result(cast(Any, span), {"messages": [_FakeMessage(type_="ai", content="final")]})
     assert span.output == "final"
 
 
@@ -157,7 +162,7 @@ def test_set_output_from_result_falls_back_to_summary_for_non_content_messages()
     span = _FakeSpan()
     # A last message with neither content nor dict-content still yields the
     # whole summary so the span isn't completely empty.
-    _set_output_from_result(span, {"messages": [{"foo": "bar"}]})
+    _set_output_from_result(cast(Any, span), {"messages": [{"foo": "bar"}]})
     # The last dict has no content key, so content stays None and we fall
     # back to `_summarize_messages`, which returns the dict list unchanged
     # because role/type are absent.
@@ -165,14 +170,14 @@ def test_set_output_from_result_falls_back_to_summary_for_non_content_messages()
 
 
 def test_set_output_from_result_noop_when_no_messages():
-    calls = []
+    calls: list[Any] = []
 
     class _Span:
-        def set_output(self, value):
+        def set_output(self, value: Any):
             calls.append(value)
 
-    _set_output_from_result(_Span(), {})
-    _set_output_from_result(_Span(), "string")
+    _set_output_from_result(cast(Any, _Span()), {})
+    _set_output_from_result(cast(Any, _Span()), "string")
     assert calls == []
 
 
@@ -182,10 +187,15 @@ def test_set_output_from_result_noop_when_no_messages():
 
 
 class _FakeToolCallRequest:
-    def __init__(self, name=None, args=None, tool_name=None):
-        self.tool_call = {"name": name, "args": args} if name is not None else None
+    def __init__(
+        self,
+        name: str | None=None,
+        args: dict[str, Any] | None = None,
+        tool_name: str | None = None
+    ):
+        self.tool_call: dict[str, Any] | None = {"name": name, "args": args} if name is not None else None
         if tool_name is not None:
-            self.tool = types.SimpleNamespace(name=tool_name)
+            self.tool: types.SimpleNamespace = types.SimpleNamespace(name=tool_name)
 
 
 def test_tool_span_name_prefers_tool_call_name():
@@ -218,7 +228,7 @@ def test_tool_span_input_returns_none_without_tool_call():
 # --------------------------------------------------------------------- #
 
 
-def _span_by_name(exporter, name):
+def _span_by_name(exporter: InMemorySpanExporter, name: str) -> list[ReadableSpan]:
     return [s for s in exporter.get_finished_spans() if s.name == name]
 
 
@@ -228,7 +238,7 @@ def test_wrap_tool_call_emits_tool_span_with_name_and_args(
     middleware = LaminarMiddleware()
     request = _FakeToolCallRequest(name="read_file", args={"path": "/etc/hosts"})
 
-    def handler(req):
+    def handler(req: Any) -> types.SimpleNamespace:
         return types.SimpleNamespace(content="file contents")
 
     result = middleware.wrap_tool_call(request, handler)
@@ -237,9 +247,10 @@ def test_wrap_tool_call_emits_tool_span_with_name_and_args(
     spans = _span_by_name(span_exporter, "read_file")
     assert len(spans) == 1
     s = spans[0]
-    assert s.attributes["lmnr.span.type"] == "TOOL"
-    assert s.attributes["lmnr.span.input"] == '{"path":"/etc/hosts"}'
-    assert s.attributes["lmnr.span.output"] == '"file contents"'
+    attributes = s.attributes or {}
+    assert attributes["lmnr.span.type"] == "TOOL"
+    assert attributes["lmnr.span.input"] == '{"path":"/etc/hosts"}'
+    assert attributes["lmnr.span.output"] == '"file contents"'
 
 
 def test_wrap_tool_call_records_exception_and_reraises(
@@ -248,7 +259,7 @@ def test_wrap_tool_call_records_exception_and_reraises(
     middleware = LaminarMiddleware()
     request = _FakeToolCallRequest(name="broken", args={})
 
-    def handler(req):
+    def handler(req: Any):
         raise ValueError("nope")
 
     with pytest.raises(ValueError, match="nope"):
@@ -264,7 +275,7 @@ async def test_awrap_tool_call_emits_tool_span(span_exporter: InMemorySpanExport
     middleware = LaminarMiddleware()
     request = _FakeToolCallRequest(name="async_tool", args={"k": "v"})
 
-    async def handler(req):
+    async def handler(req: Any) -> types.SimpleNamespace:
         return types.SimpleNamespace(content="async out")
 
     result = await middleware.awrap_tool_call(request, handler)
@@ -272,8 +283,8 @@ async def test_awrap_tool_call_emits_tool_span(span_exporter: InMemorySpanExport
 
     spans = _span_by_name(span_exporter, "async_tool")
     assert len(spans) == 1
-    assert spans[0].attributes["lmnr.span.type"] == "TOOL"
-    assert spans[0].attributes["lmnr.span.output"] == '"async out"'
+    assert (spans[0].attributes or {})["lmnr.span.type"] == "TOOL"
+    assert (spans[0].attributes or {})["lmnr.span.output"] == '"async out"'
 
 
 # --------------------------------------------------------------------- #
@@ -284,7 +295,7 @@ async def test_awrap_tool_call_emits_tool_span(span_exporter: InMemorySpanExport
 def test_wrap_graph_invoke_emits_root_span_with_input_and_output(
     span_exporter: InMemorySpanExporter,
 ):
-    def wrapped(payload):
+    def wrapped(payload: Any) -> dict[str, list[Any]]:
         return {"messages": [_FakeMessage(type_="ai", content="hello")]}
 
     result = _wrap_graph_invoke(
@@ -298,9 +309,10 @@ def test_wrap_graph_invoke_emits_root_span_with_input_and_output(
     spans = _span_by_name(span_exporter, "deep_agent")
     assert len(spans) == 1
     s = spans[0]
-    assert s.attributes["lmnr.span.type"] == "DEFAULT"
-    assert s.attributes["lmnr.span.input"] == '{"messages":[{"role":"human","content":"hi"}]}'
-    assert s.attributes["lmnr.span.output"] == '"hello"'
+    attributes = s.attributes or {}
+    assert attributes["lmnr.span.type"] == "DEFAULT"
+    assert attributes["lmnr.span.input"] == '{"messages":[{"role":"human","content":"hi"}]}'
+    assert attributes["lmnr.span.output"] == '"hello"'
 
 
 def test_wrap_graph_invoke_skips_when_root_already_active(
@@ -311,13 +323,13 @@ def test_wrap_graph_invoke_skips_when_root_already_active(
     # short-circuit without opening a second root span.
     token = _root_active.set(True)
     try:
-        called = []
+        called: list[Any] = []
 
-        def wrapped(payload):
+        def wrapped(payload: Any) -> dict[str, list[Any]]:
             called.append(payload)
             return {"messages": []}
 
-        _wrap_graph_invoke(wrapped, _instance=None, args=({"messages": []},), kwargs={})
+        _res = _wrap_graph_invoke(wrapped, _instance=None, args=({"messages": []},), kwargs={})
     finally:
         _root_active.reset(token)
 
@@ -327,7 +339,7 @@ def test_wrap_graph_invoke_skips_when_root_already_active(
 
 
 def test_wrap_graph_invoke_records_exception(span_exporter: InMemorySpanExporter):
-    def wrapped(payload):
+    def wrapped(payload: Any):
         raise RuntimeError("graph failed")
 
     with pytest.raises(RuntimeError, match="graph failed"):
@@ -345,11 +357,11 @@ def test_wrap_graph_invoke_resets_root_active_on_success(
 ):
     assert _root_active.get() is False
 
-    def wrapped(payload):
+    def wrapped(payload: Any) -> dict[str, list[Any]]:
         assert _root_active.get() is True
         return {"messages": []}
 
-    _wrap_graph_invoke(wrapped, _instance=None, args=({"messages": []},), kwargs={})
+    _res = _wrap_graph_invoke(wrapped, _instance=None, args=({"messages": []},), kwargs={})
     assert _root_active.get() is False
 
 
@@ -358,7 +370,7 @@ def test_wrap_graph_invoke_resets_root_active_on_exception(
 ):
     assert _root_active.get() is False
 
-    def wrapped(payload):
+    def wrapped(payload: Any):
         raise RuntimeError("x")
 
     with pytest.raises(RuntimeError):
@@ -372,7 +384,7 @@ def test_wrap_graph_invoke_resets_root_active_on_exception(
 async def test_awrap_graph_invoke_emits_root_span(
     span_exporter: InMemorySpanExporter,
 ):
-    async def wrapped(payload):
+    async def wrapped(payload: Any) -> dict[str, list[Any]]:
         return {"messages": [_FakeMessage(type_="ai", content="async ok")]}
 
     result = await _awrap_graph_invoke(
@@ -385,8 +397,8 @@ async def test_awrap_graph_invoke_emits_root_span(
 
     spans = _span_by_name(span_exporter, "deep_agent")
     assert len(spans) == 1
-    assert spans[0].attributes["lmnr.span.type"] == "DEFAULT"
-    assert spans[0].attributes["lmnr.span.output"] == '"async ok"'
+    assert (spans[0].attributes or {})["lmnr.span.type"] == "DEFAULT"
+    assert (spans[0].attributes or {})["lmnr.span.output"] == '"async ok"'
 
 
 # --- stream wrappers: lazy setup + GeneratorExit ---------------------- #
@@ -398,7 +410,7 @@ def test_wrap_graph_stream_does_not_open_span_if_never_iterated(
     # If the caller discards the returned generator without iterating it,
     # no span must have been opened and `_root_active` must still be False
     # for the next invoke/stream call on the same task.
-    def wrapped(payload):
+    def wrapped(payload: Any) -> Generator[dict[str, list[Any]]]:
         yield {"messages": []}
 
     gen = _wrap_graph_stream(
@@ -420,7 +432,7 @@ def test_wrap_graph_stream_does_not_open_span_if_never_iterated(
 def test_wrap_graph_stream_emits_span_when_iterated(
     span_exporter: InMemorySpanExporter,
 ):
-    def wrapped(payload):
+    def wrapped(payload: Any) -> Generator[dict[str, int]]:
         yield {"step": 1}
         yield {"step": 2}
 
@@ -433,7 +445,7 @@ def test_wrap_graph_stream_emits_span_when_iterated(
 
     spans = _span_by_name(span_exporter, "deep_agent")
     assert len(spans) == 1
-    assert spans[0].attributes["lmnr.span.type"] == "DEFAULT"
+    assert (spans[0].attributes or {})["lmnr.span.type"] == "DEFAULT"
     # `_root_active` must not have leaked out of the generator body — no
     # matter what happened inside, callers must see the default `False`.
     assert _root_active.get() is False
@@ -448,11 +460,11 @@ def test_interleaved_sync_streams_both_get_root_spans(
     # concurrent `graph.stream()` would then see the sentinel on its
     # eager check and skip instrumentation. Interleaving two streams
     # must still emit one root span per stream.
-    def wrapped_a(payload):
+    def wrapped_a(payload: Any) -> Generator[dict[str, str | int]]:
         yield {"stream": "a", "step": 1}
         yield {"stream": "a", "step": 2}
 
-    def wrapped_b(payload):
+    def wrapped_b(payload: Any) -> Generator[dict[str, str | int]]:
         yield {"stream": "b", "step": 1}
         yield {"stream": "b", "step": 2}
 
@@ -481,7 +493,7 @@ def test_interleaved_sync_streams_both_get_root_spans(
     # Two streams → two root spans.
     spans = _span_by_name(span_exporter, "deep_agent")
     assert len(spans) == 2
-    assert all(s.attributes["lmnr.span.type"] == "DEFAULT" for s in spans)
+    assert all((s.attributes or {})["lmnr.span.type"] == "DEFAULT" for s in spans)
 
 
 def test_wrap_graph_stream_does_not_mark_error_on_generator_exit(
@@ -489,12 +501,12 @@ def test_wrap_graph_stream_does_not_mark_error_on_generator_exit(
 ):
     # Breaking out of the for-loop sends GeneratorExit into the wrapped
     # generator; the span must be ended cleanly (status UNSET, not ERROR).
-    def wrapped(payload):
+    def wrapped(payload: Any) -> Generator[dict[str, int]]:
         yield {"step": 1}
         yield {"step": 2}
         yield {"step": 3}
 
-    for chunk in _wrap_graph_stream(
+    for _chunk in _wrap_graph_stream(
         wrapped, _instance=None, args=({"messages": []},), kwargs={}
     ):
         break  # triggers GeneratorExit on the underlying generator
@@ -508,12 +520,12 @@ def test_wrap_graph_stream_does_not_mark_error_on_generator_exit(
 def test_wrap_graph_stream_records_real_exception(
     span_exporter: InMemorySpanExporter,
 ):
-    def wrapped(payload):
+    def wrapped(payload: Any) -> Generator[dict[str, int]]:
         yield {"step": 1}
         raise RuntimeError("stream boom")
 
     with pytest.raises(RuntimeError, match="stream boom"):
-        list(
+        _ = list(
             _wrap_graph_stream(
                 wrapped, _instance=None, args=({"messages": []},), kwargs={}
             )
@@ -529,11 +541,11 @@ def test_wrap_graph_stream_records_real_exception(
 async def test_awrap_graph_stream_emits_span_when_iterated(
     span_exporter: InMemorySpanExporter,
 ):
-    async def wrapped(payload):
+    async def wrapped(payload: Any) -> AsyncGenerator[dict[str, int]]:
         yield {"step": 1}
         yield {"step": 2}
 
-    collected = []
+    collected: list[Any] = []
     async for chunk in _awrap_graph_stream(
         wrapped, _instance=None, args=({"messages": []},), kwargs={}
     ):
@@ -542,7 +554,7 @@ async def test_awrap_graph_stream_emits_span_when_iterated(
 
     spans = _span_by_name(span_exporter, "deep_agent")
     assert len(spans) == 1
-    assert spans[0].attributes["lmnr.span.type"] == "DEFAULT"
+    assert (spans[0].attributes or {})["lmnr.span.type"] == "DEFAULT"
     assert _root_active.get() is False
 
 
@@ -550,7 +562,7 @@ async def test_awrap_graph_stream_emits_span_when_iterated(
 async def test_awrap_graph_stream_does_not_mark_error_on_generator_exit(
     span_exporter: InMemorySpanExporter,
 ):
-    async def wrapped(payload):
+    async def wrapped(payload: Any) -> AsyncGenerator[dict[str, int]]:
         yield {"step": 1}
         yield {"step": 2}
 
@@ -574,13 +586,13 @@ async def test_awrap_graph_stream_does_not_mark_error_on_generator_exit(
 
 
 def test_inject_middleware_adds_laminar_middleware_when_absent():
-    received = {}
+    received: dict[str, Any] = {}
 
-    def fake_create_deep_agent(*args, **kwargs):
+    def fake_create_deep_agent(*args: Any, **kwargs: Any) -> types.SimpleNamespace:
         received.update(kwargs)
-        return types.SimpleNamespace(invoke=lambda *a, **k: None, __class__=type("G", (), {}))
+        return types.SimpleNamespace(invoke=lambda *a, **k: None, __class__=type("G", (), {}))  # pyright: ignore[reportUnknownLambdaType]
 
-    _inject_middleware(fake_create_deep_agent, _instance=None, args=(), kwargs={})
+    _res = _inject_middleware(fake_create_deep_agent, _instance=None, args=(), kwargs={})
     assert any(isinstance(m, LaminarMiddleware) for m in received["middleware"])
 
 
@@ -588,17 +600,17 @@ def test_inject_middleware_does_not_duplicate_laminar_middleware():
     existing = LaminarMiddleware()
     received = {}
 
-    def fake_create_deep_agent(*args, **kwargs):
-        received.update(kwargs)
-        return types.SimpleNamespace(invoke=lambda *a, **k: None)
+    def fake_create_deep_agent(*args: Any, **kwargs: Any) -> types.SimpleNamespace:
+        received.update(kwargs)  # pyright: ignore[reportUnknownMemberType]
+        return types.SimpleNamespace(invoke=lambda *a, **k: None)  # pyright: ignore[reportUnknownLambdaType]
 
-    _inject_middleware(
+    _res = _inject_middleware(
         fake_create_deep_agent,
         _instance=None,
         args=(),
         kwargs={"middleware": (existing,)},
     )
-    mws = [m for m in received["middleware"] if isinstance(m, LaminarMiddleware)]
+    mws = [m for m in received["middleware"] if isinstance(m, LaminarMiddleware)]  # pyright: ignore[reportUnknownVariableType]
     assert mws == [existing]
 
 
@@ -607,7 +619,7 @@ def test_wrap_graph_methods_is_idempotent():
     # wrapped a second time — otherwise stream/invoke would emit two root
     # spans per top-level call.
     class FakeGraph:
-        def invoke(self, payload):
+        def invoke(self, payload: Any) -> dict[str, list[Any]]:
             return {"messages": []}
 
     g = FakeGraph()
@@ -624,10 +636,10 @@ def test_inject_middleware_wraps_returned_graph_invoke(
     # `invoke` must, after injection, emit a `deep_agent` root span per
     # top-level call.
     class FakeGraph:
-        def invoke(self, payload):
+        def invoke(self, payload: Any) -> dict[str, list[Any]]:
             return {"messages": [_FakeMessage(type_="ai", content="answer")]}
 
-    def fake_create_deep_agent(*args, **kwargs):
+    def fake_create_deep_agent(*args: Any, **kwargs: Any) -> FakeGraph:
         return FakeGraph()
 
     graph = _inject_middleware(
@@ -638,7 +650,7 @@ def test_inject_middleware_wraps_returned_graph_invoke(
 
     spans = _span_by_name(span_exporter, "deep_agent")
     assert len(spans) == 1
-    assert spans[0].attributes["lmnr.span.type"] == "DEFAULT"
+    assert (spans[0].attributes or {})["lmnr.span.type"] == "DEFAULT"
 
 
 def test_nested_stream_inside_invoke_collapses_to_one_root_span(
@@ -647,17 +659,17 @@ def test_nested_stream_inside_invoke_collapses_to_one_root_span(
     # Pregel.invoke delegates to self.stream internally. Both paths are
     # wrapped — the `_root_active` sentinel must collapse them into one
     # root span, matching the behaviour documented in CLAUDE.md.
-    def inner_stream(payload):
+    def inner_stream(payload: Any) -> Generator[dict[str, int]]:
         yield {"step": 1}
 
-    def outer_invoke(payload):
+    def outer_invoke(payload: Any) -> dict[str, list[dict[str, Any]]]:
         # Simulate Pregel's pattern: invoke calls the already-wrapped stream.
         wrapped_stream = _wrap_graph_stream(
             inner_stream, _instance=None, args=(payload,), kwargs={}
         )
         return {"messages": list(wrapped_stream)}
 
-    _wrap_graph_invoke(
+    _res = _wrap_graph_invoke(
         outer_invoke, _instance=None, args=({"messages": []},), kwargs={}
     )
 
@@ -675,8 +687,8 @@ def test_deepagents_auto_enabled_removes_langchain_and_langgraph():
     # codified in `_DEEPAGENTS_NOISE_CONFLICTS` and relied on by
     # `init_instrumentations`.
     from lmnr.opentelemetry_lib.tracing.instruments import (
-        Instruments,
         _DEEPAGENTS_NOISE_CONFLICTS,
+        Instruments,
     )
 
     assert Instruments.LANGCHAIN in _DEEPAGENTS_NOISE_CONFLICTS
@@ -686,18 +698,18 @@ def test_deepagents_auto_enabled_removes_langchain_and_langgraph():
     assert Instruments.DEEPAGENTS not in _DEEPAGENTS_NOISE_CONFLICTS
 
 
-def test_deepagents_initializer_returns_none_when_package_missing(monkeypatch):
+def test_deepagents_initializer_returns_none_when_package_missing(monkeypatch: MagicMock):
     from lmnr.opentelemetry_lib.tracing import _instrument_initializers as inits
 
-    monkeypatch.setattr(inits, "is_package_installed", lambda name: False)
+    monkeypatch.setattr(inits, "is_package_installed", lambda name: False)  # pyright: ignore[reportUnknownLambdaType]
     result = inits.DeepagentsInstrumentorInitializer().init_instrumentor()
     assert result is None
 
 
-def test_deepagents_initializer_returns_none_when_langchain_missing(monkeypatch):
+def test_deepagents_initializer_returns_none_when_langchain_missing(monkeypatch: MagicMock):
     from lmnr.opentelemetry_lib.tracing import _instrument_initializers as inits
 
-    def only_deepagents(name):
+    def only_deepagents(name: str) -> bool:
         return name == "deepagents"
 
     monkeypatch.setattr(inits, "is_package_installed", only_deepagents)
