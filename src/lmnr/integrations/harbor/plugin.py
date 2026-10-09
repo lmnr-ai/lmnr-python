@@ -194,13 +194,16 @@ class LaminarPlugin:
             # Harbor-process agents (e.g. terminus-2) call LLMs through LiteLLM
             # outside of any span we own, so auto-instrumentation would only
             # produce orphan traces. Their calls are recovered from the
-            # trajectory instead.
+            # trajectory instead. For the same reason we don't take over the
+            # global tracer provider: OTel-instrumented libraries in the Harbor
+            # process (e.g. the Daytona SDK) would export a trace per call.
             Laminar.initialize(
                 project_api_key=self.project_api_key,
                 base_url=self.base_url,
                 http_port=self.http_port,
                 grpc_port=self.grpc_port,
                 instruments=set(),
+                set_global_tracer_provider=False,
             )
         self._client = AsyncLaminarClient(
             base_url=self.base_url,

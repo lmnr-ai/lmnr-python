@@ -17,6 +17,7 @@ import pytest
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
 
+from lmnr import Laminar
 from lmnr.integrations.harbor import LaminarPlugin
 from lmnr.integrations.harbor.trajectory import (
     ORDER_GAP_NS,
@@ -886,3 +887,20 @@ async def test_failed_evaluation_init_closes_client(
     client.close.assert_awaited_once()
     await plugin.on_job_end(SimpleNamespace())
     client.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_initialize_does_not_take_over_global_tracer_provider(
+    client, tmp_path: Path
+):
+    # Libraries in the Harbor process that trace with the global provider (the
+    # Daytona SDK) must not export a trace per call into the project.
+    plugin = LaminarPlugin(project_api_key="test_key")
+    with (
+        patch.object(Laminar, "is_initialized", return_value=False),
+        patch.object(Laminar, "initialize") as initialize,
+    ):
+        await plugin.on_job_start(FakeJob(tmp_path / "job"))
+    assert initialize.call_args.kwargs["set_global_tracer_provider"] is False
+    assert initialize.call_args.kwargs["instruments"] == set()
+    await plugin.on_job_end(SimpleNamespace())
