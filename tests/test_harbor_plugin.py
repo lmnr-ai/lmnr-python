@@ -704,7 +704,7 @@ async def test_phase_spans_carry_setup_and_test_details(
 
     spans = spans_by_name(span_exporter)
     attrs = spans["environment_setup"][0].attributes
-    # The --ek override wins over task.toml.
+    # A CLI resource override wins over task.toml.
     assert json.loads(attrs["lmnr.span.input"]) == {
         "type": "docker",
         "docker_image": "ubuntu:24.04",
