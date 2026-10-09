@@ -8,8 +8,8 @@ fixture the rest of the suite shares.
 
 import pytest
 
-from lmnr.opentelemetry_lib.tracing import wrapper as wrapper_mod
 from lmnr.opentelemetry_lib.tracing import reset_tracing
+from lmnr.opentelemetry_lib.tracing import wrapper as wrapper_mod
 
 
 @pytest.fixture(scope="function", autouse=True)

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from typing import Any, cast
 
-
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
     LangfuseAttributeTranslator,
     is_langfuse_span,

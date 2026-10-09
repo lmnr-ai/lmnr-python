@@ -1,8 +1,11 @@
 import asyncio
-import pytest
 import threading
-from unittest.mock import patch
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
+from unittest.mock import patch
+
+import pytest
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from lmnr import Laminar
 from lmnr.opentelemetry_lib import tracing as tracing_mod
@@ -14,7 +17,6 @@ from lmnr.opentelemetry_lib.tracing import (
     is_tracing_initialized,
     reset_tracing,
 )
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 
 class TestTracerWrapperRaceCondition:
@@ -38,15 +40,15 @@ class TestTracerWrapperRaceCondition:
 
     def test_concurrent_initialization_and_flush_must_succeed(self):
         """Test that concurrent initialization and flush operations succeed without race conditions."""
-        results = []
-        exceptions = []
+        results: list[str] = []
+        exceptions: list[str] = []
 
-        def initialize_and_flush(thread_id):
+        def initialize_and_flush(thread_id: int) -> bool:
             """Simulate initialization and immediate flush."""
             try:
                 exporter = InMemorySpanExporter()
 
-                init_tracing(
+                _wrapper = init_tracing(
                     project_api_key=f"race-test-key-{thread_id}",
                     disable_batch=True,
                     exporter=exporter,
@@ -71,7 +73,7 @@ class TestTracerWrapperRaceCondition:
 
             for future in as_completed(futures):
                 try:
-                    future.result()
+                    _res = future.result()
                 except AssertionError:
                     # print debugging info before re-raising
                     print(f"Results so far: {results}")
@@ -90,10 +92,10 @@ class TestTracerWrapperRaceCondition:
 
         This simulates the evaluation pattern where multiple evaluations run concurrently.
         """
-        results = []
-        exceptions = []
+        results: list[str] = []
+        exceptions: list[str] = []
 
-        def rapid_laminar_operations(thread_id):
+        def rapid_laminar_operations(thread_id: int) -> bool:
             """Perform rapid Laminar operations."""
             try:
                 # Rapid initialization and flush cycle
@@ -110,13 +112,13 @@ class TestTracerWrapperRaceCondition:
             except AttributeError as e:
                 if "span_processor" in str(e):
                     exception_msg = (
-                        f"Rapid-{thread_id}: RACE CONDITION DETECTED - {str(e)}"
+                        f"Rapid-{thread_id}: RACE CONDITION DETECTED - {e!s}"
                     )
                     exceptions.append(exception_msg)
                     raise AssertionError(exception_msg) from e
                 raise
             except Exception as e:
-                exception_msg = f"Rapid-{thread_id}: UNEXPECTED ERROR - {type(e).__name__}: {str(e)}"
+                exception_msg = f"Rapid-{thread_id}: UNEXPECTED ERROR - {type(e).__name__}: {e!s}"
                 exceptions.append(exception_msg)
                 raise AssertionError(exception_msg) from e
 
@@ -129,7 +131,7 @@ class TestTracerWrapperRaceCondition:
 
             for future in as_completed(futures):
                 try:
-                    future.result()
+                    _res = future.result()
                 except AssertionError:
                     print(f"Rapid test results: {results}")
                     print(f"Rapid test exceptions: {exceptions}")
@@ -147,10 +149,10 @@ class TestTracerWrapperRaceCondition:
         This simulates the async evaluation pattern where multiple evaluations run concurrently
         using asyncio instead of threading.
         """
-        results = []
-        exceptions = []
+        results: list[str] = []
+        exceptions: list[str] = []
 
-        async def rapid_laminar_operations_async(task_id):
+        async def rapid_laminar_operations_async(task_id: int) -> bool:
             """Perform rapid Laminar operations asynchronously."""
             try:
                 # Rapid initialization and flush cycle
@@ -167,13 +169,13 @@ class TestTracerWrapperRaceCondition:
             except AttributeError as e:
                 if "span_processor" in str(e):
                     exception_msg = (
-                        f"RapidAsync-{task_id}: RACE CONDITION DETECTED - {str(e)}"
+                        f"RapidAsync-{task_id}: RACE CONDITION DETECTED - {e!s}"
                     )
                     exceptions.append(exception_msg)
                     raise AssertionError(exception_msg) from e
                 raise
             except Exception as e:
-                exception_msg = f"RapidAsync-{task_id}: UNEXPECTED ERROR - {type(e).__name__}: {str(e)}"
+                exception_msg = f"RapidAsync-{task_id}: UNEXPECTED ERROR - {type(e).__name__}: {e!s}"
                 exceptions.append(exception_msg)
                 raise AssertionError(exception_msg) from e
 
@@ -184,7 +186,7 @@ class TestTracerWrapperRaceCondition:
         ]
 
         try:
-            await asyncio.gather(*tasks)
+            _results = await asyncio.gather(*tasks)
         except AssertionError:
             print(f"Rapid async test results: {results}")
             print(f"Rapid async test exceptions: {exceptions}")
@@ -200,14 +202,14 @@ class TestTracerWrapperRaceCondition:
     @pytest.mark.asyncio
     async def test_async_threading_race_conditions(self):
         """Test async + threading combinations that can cause race conditions."""
-        results = []
-        exceptions = []
+        results: list[str] = []
+        exceptions: list[str] = []
 
-        def threaded_init_flush(worker_id):
+        def threaded_init_flush(worker_id: int) -> bool:
             """Worker function that performs init/flush in a thread."""
             try:
                 exporter = InMemorySpanExporter()
-                init_tracing(
+                _wrapper = init_tracing(
                     project_api_key=f"async-thread-{worker_id}",
                     disable_batch=True,
                     exporter=exporter,
@@ -222,13 +224,13 @@ class TestTracerWrapperRaceCondition:
             except AttributeError as e:
                 if "span_processor" in str(e):
                     exception_msg = (
-                        f"AsyncThread-{worker_id}: ASYNC RACE CONDITION - {str(e)}"
+                        f"AsyncThread-{worker_id}: ASYNC RACE CONDITION - {e!s}"
                     )
                     exceptions.append(exception_msg)
                     raise AssertionError(exception_msg) from e
                 raise
             except Exception as e:
-                exception_msg = f"AsyncThread-{worker_id}: ASYNC ERROR - {str(e)}"
+                exception_msg = f"AsyncThread-{worker_id}: ASYNC ERROR - {e!s}"
                 exceptions.append(exception_msg)
                 raise AssertionError(exception_msg) from e
 
@@ -243,7 +245,7 @@ class TestTracerWrapperRaceCondition:
             ]
 
             try:
-                await asyncio.gather(*tasks)
+                _results = await asyncio.gather(*tasks)
             except AssertionError:
                 print(f"Async results: {results}")
                 print(f"Async exceptions: {exceptions}")
@@ -258,19 +260,19 @@ class TestTracerWrapperRaceCondition:
 
     def test_stress_singleton_pattern(self):
         """Stress test the singleton pattern under extreme concurrent load."""
-        results = []
-        exceptions = []
+        results: list[str] = []
+        exceptions: list[str] = []
         barrier = threading.Barrier(20)  # Synchronize thread starts
 
-        def stress_singleton(thread_id):
+        def stress_singleton(thread_id: int) -> bool:
             """Stress test singleton creation and usage."""
             try:
                 # Wait for all threads to be ready
-                barrier.wait()
+                _idx = barrier.wait()
 
                 # All threads try to create/use singleton simultaneously
                 exporter = InMemorySpanExporter()
-                init_tracing(
+                _wrapper = init_tracing(
                     project_api_key=f"stress-{thread_id}",
                     disable_batch=True,
                     exporter=exporter,
@@ -293,7 +295,7 @@ class TestTracerWrapperRaceCondition:
                     raise AssertionError(exception_msg) from e
                 raise
             except Exception as e:
-                exception_msg = f"Stress-{thread_id}: STRESS ERROR - {str(e)}"
+                exception_msg = f"Stress-{thread_id}: STRESS ERROR - {e!s}"
                 exceptions.append(exception_msg)
                 raise AssertionError(exception_msg) from e
 
@@ -303,7 +305,7 @@ class TestTracerWrapperRaceCondition:
 
             for future in as_completed(futures):
                 try:
-                    future.result()
+                    _res = future.result()
                 except AssertionError:
                     print(f"Stress results: {results}")
                     print(f"Stress exceptions: {exceptions}")
@@ -334,17 +336,17 @@ class TestTracerWrapperRaceCondition:
         depends on the same ordering."""
         self._clear_tracer_instances()
 
-        observed = []
+        observed: list[tuple[bool, bool]] = []
         original = tracing_mod.init_instrumentations
 
-        def spy(*args, **kwargs):
+        def spy(*args: Any, **kwargs: Any):
             observed.append(
                 (is_tracing_initialized(), get_tracer_wrapper() is None)
             )
             return original(*args, **kwargs)
 
         with patch.object(tracing_mod, "init_instrumentations", side_effect=spy):
-            init_tracing(
+            _wrapper = init_tracing(
                 project_api_key="publish-order",
                 disable_batch=True,
                 exporter=InMemorySpanExporter(),
@@ -357,16 +359,16 @@ class TestTracerWrapperRaceCondition:
     def test_initialization_atomicity(self):
         """Test that TracerWrapper initialization is atomic and thread-safe."""
         initialization_count = 0
-        instances_created = []
+        instances_created: list[int] = []
         lock = threading.Lock()
 
-        def try_initialize(thread_id):
+        def try_initialize(thread_id: int) -> str:
             """Try to initialize and record what happens."""
             nonlocal initialization_count
 
             try:
                 exporter = InMemorySpanExporter()
-                init_tracing(
+                _wrapper = init_tracing(
                     project_api_key=f"atomic-{thread_id}",
                     disable_batch=True,
                     exporter=exporter,
@@ -384,19 +386,19 @@ class TestTracerWrapperRaceCondition:
             except AttributeError as e:
                 if "span_processor" in str(e):
                     raise AssertionError(
-                        f"INITIALIZATION NOT ATOMIC - Thread {thread_id}: {str(e)}"
+                        f"INITIALIZATION NOT ATOMIC - Thread {thread_id}: {e!s}"
                     ) from e
                 raise
             except Exception as e:
                 raise AssertionError(
-                    f"INITIALIZATION FAILED - Thread {thread_id}: {str(e)}"
+                    f"INITIALIZATION FAILED - Thread {thread_id}: {e!s}"
                 ) from e
 
         # Many threads trying to initialize simultaneously
         with ThreadPoolExecutor(max_workers=15) as executor:
             futures = [executor.submit(try_initialize, i) for i in range(15)]
 
-            results = []
+            results: list[str] = []
             for future in as_completed(futures):
                 results.append(future.result())
 

@@ -6,12 +6,12 @@ import json
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
-from opentelemetry.trace import use_span
 from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.export import (
     SpanExporter,
 )
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import use_span
 
 from lmnr import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
@@ -19,7 +19,11 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
     get_langfuse_instrumentor,
     is_llm_span,
 )
-from lmnr.opentelemetry_lib.tracing import get_tracer_wrapper, init_tracing, reset_tracing
+from lmnr.opentelemetry_lib.tracing import (
+    get_tracer_wrapper,
+    init_tracing,
+    reset_tracing,
+)
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     SPAN_TYPE,

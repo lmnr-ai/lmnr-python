@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
-
 from lmnr.opentelemetry_lib.tracing import instruments as instruments_mod
 from lmnr.opentelemetry_lib.tracing.instruments import (
     Instruments,
