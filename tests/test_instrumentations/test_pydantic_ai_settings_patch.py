@@ -12,22 +12,24 @@ These tests exercise the patch directly; they're skipped when pydantic_ai
 isn't installed in the test environment.
 """
 
+from collections.abc import Generator
+from typing import Any, Literal, cast
 from unittest.mock import MagicMock
 
 import pytest
 
 pytest.importorskip("pydantic_ai")
 
-from pydantic_ai import Agent  # noqa: E402
-from pydantic_ai.models.instrumented import InstrumentationSettings  # noqa: E402
+from pydantic_ai import Agent
+from pydantic_ai.models.instrumented import InstrumentationSettings
 
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.pydantic_ai import (  # noqa: E402
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.pydantic_ai import (
     PydanticAIInstrumentor,
 )
 
 
 @pytest.fixture
-def instrumented():
+def instrumented() -> Generator[MagicMock]:
     """Install the instrumentor with a sentinel tracer provider and tear it down.
 
     PydanticAIInstrumentor is a singleton (see `BaseInstrumentor.__new__`),
@@ -47,7 +49,7 @@ def instrumented():
         instrumentor.uninstrument()
 
 
-def test_default_construction_uses_laminar_settings(instrumented):
+def test_default_construction_uses_laminar_settings(instrumented: MagicMock):
     """`InstrumentationSettings()` (no args) picks up version=5 + our tracer."""
     tracer_provider = instrumented
     settings = InstrumentationSettings()
@@ -56,26 +58,26 @@ def test_default_construction_uses_laminar_settings(instrumented):
 
 
 @pytest.mark.parametrize("explicit_version", [2, 3, 4, 5])
-def test_explicit_supported_version_is_respected(instrumented, explicit_version):
+def test_explicit_supported_version_is_respected(explicit_version: Literal[2, 3, 4, 5]):
     """Any caller-supplied `version >= 2` is passed through unchanged."""
     settings = InstrumentationSettings(version=explicit_version)
     assert settings.version == explicit_version
 
 
-def test_legacy_version_1_is_upgraded_to_default(instrumented):
+def test_legacy_version_1_is_upgraded_to_default():
     """`version=1` is treated as the legacy default and upgraded to v5."""
-    settings = InstrumentationSettings(version=1)
+    settings = InstrumentationSettings(version=cast(Any, 1))
     assert settings.version == 5
 
 
-def test_explicit_tracer_provider_is_respected(instrumented):
+def test_explicit_tracer_provider_is_respected():
     """User-provided tracer_provider wins over our default."""
     other_tp = MagicMock(name="user_tracer_provider")
-    InstrumentationSettings(tracer_provider=other_tp)
+    _settings = InstrumentationSettings(tracer_provider=other_tp)
     other_tp.get_tracer.assert_called()
 
 
-def test_instrument_all_true_resolves_to_laminar_settings(instrumented):
+def test_instrument_all_true_resolves_to_laminar_settings(instrumented: MagicMock):
     """`Agent.instrument_all(True)` after our patch still yields version=5 + our tp."""
     tracer_provider = instrumented
     Agent.instrument_all(True)

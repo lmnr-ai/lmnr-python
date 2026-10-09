@@ -17,21 +17,22 @@ in the environment, and verify that:
 """
 
 import logging
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
 from lmnr.opentelemetry_lib.tracing import instruments as instruments_mod
 from lmnr.opentelemetry_lib.tracing.instruments import (
+    _PYDANTIC_AI_PROVIDER_CONFLICTS,
     INSTRUMENTATION_INITIALIZERS,
     Instruments,
-    _PYDANTIC_AI_PROVIDER_CONFLICTS,
     init_instrumentations,
 )
 
 
 @pytest.fixture
-def track_initializers(monkeypatch):
+def track_initializers(monkeypatch: MagicMock) -> set[Instruments]:
     """Patch every initializer in the map to record which were invoked.
 
     Returns a set that accumulates the `Instruments` key for each initializer
@@ -43,7 +44,7 @@ def track_initializers(monkeypatch):
     for instrument, initializer in INSTRUMENTATION_INITIALIZERS.items():
         fake = MagicMock(spec=initializer)
         fake.init_instrumentor = MagicMock(
-            side_effect=lambda *_a, _inst=instrument, **_kw: called.add(_inst)
+            side_effect=lambda *_a, _inst=instrument, **_kw: called.add(_inst)  # pyright: ignore[reportUnknownLambdaType]
             or None
         )
         replacements[instrument] = fake
@@ -57,21 +58,21 @@ def track_initializers(monkeypatch):
 
 
 @pytest.fixture
-def pydantic_ai_installed(monkeypatch):
+def pydantic_ai_installed(monkeypatch: MagicMock):
     """Simulate pydantic_ai being installed in the environment."""
     monkeypatch.setattr(
         instruments_mod, "_pydantic_ai_installed", lambda: True)
 
 
 @pytest.fixture
-def pydantic_ai_not_installed(monkeypatch):
+def pydantic_ai_not_installed(monkeypatch: MagicMock):
     """Simulate pydantic_ai being absent from the environment."""
     monkeypatch.setattr(
         instruments_mod, "_pydantic_ai_installed", lambda: False)
 
 
 @pytest.fixture(autouse=True)
-def google_adk_not_installed(monkeypatch):
+def google_adk_not_installed(monkeypatch: MagicMock):
     """These tests aren't about google-adk; `google-adk` is a pinned dev
     dependency, and leaving its real installedness in place would trip the
     GOOGLE_GENAI auto-removal these tests don't expect (see
@@ -80,20 +81,20 @@ def google_adk_not_installed(monkeypatch):
 
 
 @pytest.fixture
-def deepagents_installed(monkeypatch):
+def deepagents_installed(monkeypatch: MagicMock):
     """Simulate deepagents being installed in the environment."""
     monkeypatch.setattr(instruments_mod, "_deepagents_installed", lambda: True)
 
 
 @pytest.fixture
-def deepagents_not_installed(monkeypatch):
+def deepagents_not_installed(monkeypatch: MagicMock):
     """Simulate deepagents being absent from the environment."""
     monkeypatch.setattr(
         instruments_mod, "_deepagents_installed", lambda: False)
 
 
 def test_pydantic_ai_not_installed_defaults_exclude_it(
-    track_initializers, pydantic_ai_not_installed
+    track_initializers: set[Instruments], pydantic_ai_not_installed: Any,
 ):
     """When pydantic_ai isn't installed, PYDANTIC_AI is not in the default set."""
     init_instrumentations(tracer_provider=MagicMock(), instruments=None)
@@ -104,7 +105,7 @@ def test_pydantic_ai_not_installed_defaults_exclude_it(
 
 
 def test_pydantic_ai_installed_defaults_enable_it_and_block_providers(
-    track_initializers, pydantic_ai_installed
+    track_initializers: set[Instruments], pydantic_ai_installed: Any,
 ):
     """When pydantic_ai is installed, PYDANTIC_AI is auto-enabled and the
     overlapping provider instrumentors are auto-disabled to avoid duplicate spans.
@@ -121,7 +122,7 @@ def test_pydantic_ai_installed_defaults_enable_it_and_block_providers(
 
 
 def test_explicit_instruments_bypass_auto_logic(
-    track_initializers, pydantic_ai_installed
+    track_initializers: set[Instruments], pydantic_ai_installed: Any,
 ):
     """Explicit `instruments=` always wins: no auto-enable, no auto-removal."""
     init_instrumentations(
@@ -134,7 +135,7 @@ def test_explicit_instruments_bypass_auto_logic(
 
 
 def test_explicit_pydantic_ai_and_providers_keeps_both(
-    track_initializers, pydantic_ai_installed
+    track_initializers: set[Instruments], pydantic_ai_installed: Any,
 ):
     """Users who explicitly want both get both (they accept the duplicate spans)."""
     init_instrumentations(
@@ -151,7 +152,7 @@ def test_explicit_pydantic_ai_and_providers_keeps_both(
 
 
 def test_block_pydantic_ai_disables_auto_logic(
-    track_initializers, pydantic_ai_installed
+    track_initializers: set[Instruments], pydantic_ai_installed: Any,
 ):
     """Blocking PYDANTIC_AI suppresses auto-enable and restores provider defaults."""
     init_instrumentations(
@@ -165,7 +166,10 @@ def test_block_pydantic_ai_disables_auto_logic(
 
 
 def test_deepagents_wins_over_pydantic_ai_when_both_installed(
-    track_initializers, pydantic_ai_installed, deepagents_installed, caplog
+    track_initializers: set[Instruments],
+    pydantic_ai_installed: Any,
+    deepagents_installed: Any,
+    caplog: MagicMock,
 ):
     """When both deepagents and pydantic_ai are installed, deepagents wins.
 
@@ -195,7 +199,9 @@ def test_deepagents_wins_over_pydantic_ai_when_both_installed(
 
 
 def test_blocking_deepagents_restores_pydantic_ai_conflict_removal(
-    track_initializers, pydantic_ai_installed, deepagents_installed
+    track_initializers: set[Instruments],
+    pydantic_ai_installed: Any,
+    deepagents_installed: Any,
 ):
     """Blocking DEEPAGENTS falls back to pydantic_ai's normal auto-removal."""
     init_instrumentations(
@@ -212,7 +218,9 @@ def test_blocking_deepagents_restores_pydantic_ai_conflict_removal(
 
 
 def test_pydantic_ai_alone_still_removes_providers(
-    track_initializers, pydantic_ai_installed, deepagents_not_installed
+    track_initializers: set[Instruments],
+    pydantic_ai_installed: Any,
+    deepagents_not_installed: Any,
 ):
     """Regression: the new deepagents guard doesn't accidentally break the
     pydantic_ai-only case."""
@@ -224,7 +232,9 @@ def test_pydantic_ai_alone_still_removes_providers(
 
 
 def test_deepagents_alone_keeps_providers_and_drops_langchain(
-    track_initializers, pydantic_ai_not_installed, deepagents_installed
+    track_initializers: set[Instruments],
+    pydantic_ai_not_installed: Any,
+    deepagents_installed: Any,
 ):
     """Deepagents without pydantic_ai: providers stay on, LANGCHAIN/LANGGRAPH off."""
     init_instrumentations(tracer_provider=MagicMock(), instruments=None)
