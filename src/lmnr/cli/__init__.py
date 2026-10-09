@@ -4,6 +4,11 @@ import asyncio
 from lmnr.cli.datasets import handle_datasets_command
 from lmnr.cli.dev import run_dev
 from lmnr.cli.evals import run_evaluation
+from lmnr.cli.import_langfuse import (
+    DEFAULT_LANGFUSE_HOST,
+    DEFAULT_TRACE_BATCH_SIZE,
+    handle_import_langfuse,
+)
 from lmnr.cli.rules import add_cursor_rules
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import from_env
@@ -286,6 +291,78 @@ def setup_datasets_parser(subparsers: _SubParsersAction) -> None:
     setup_datasets_create_parser(parser_datasets_subparsers)
 
 
+def setup_import_parser(subparsers: _SubParsersAction) -> None:
+    """Setup the import subcommand parser."""
+    parser_import: ArgumentParser = subparsers.add_parser(
+        "import",
+        description="Import data from another observability platform into Laminar",
+        help="Import data from another observability platform into Laminar",
+    )
+    import_subparsers = parser_import.add_subparsers(title="source", dest="source")
+    parser_langfuse: ArgumentParser = import_subparsers.add_parser(
+        "langfuse",
+        description="Import traces (with their original ids, timings, tokens and costs), "
+        + "scores and datasets from a Langfuse project. Needs the Langfuse v2 observations "
+        + "API (Langfuse v4). To keep sending live Langfuse spans to Laminar, see "
+        + "Laminar.connect_to_langfuse().",
+        help="Import a Langfuse project",
+    )
+    setup_laminar_args(parser_langfuse)
+    parser_langfuse.add_argument(
+        "--langfuse-host",
+        help="[Optional] Langfuse host. Defaults to the 'LANGFUSE_HOST' environment "
+        + f"variable or '{DEFAULT_LANGFUSE_HOST}'.",
+        default=from_env("LANGFUSE_HOST") or DEFAULT_LANGFUSE_HOST,
+    )
+    parser_langfuse.add_argument(
+        "--langfuse-public-key",
+        help="[Optional] Langfuse public key. Defaults to 'LANGFUSE_PUBLIC_KEY'.",
+        default=from_env("LANGFUSE_PUBLIC_KEY"),
+    )
+    parser_langfuse.add_argument(
+        "--langfuse-secret-key",
+        help="[Optional] Langfuse secret key. Defaults to 'LANGFUSE_SECRET_KEY'.",
+        default=from_env("LANGFUSE_SECRET_KEY"),
+    )
+    parser_langfuse.add_argument(
+        "--from",
+        dest="from_time",
+        help="[Optional] Import only traces whose root observation starts at or after "
+        + "this ISO 8601 timestamp.",
+    )
+    parser_langfuse.add_argument(
+        "--to",
+        dest="to_time",
+        help="[Optional] Import only traces whose root observation starts before this "
+        + "ISO 8601 timestamp. Defaults to the moment the import starts.",
+    )
+    parser_langfuse.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="Read from Langfuse and print what would be imported, without writing to Laminar.",
+    )
+    parser_langfuse.add_argument(
+        "--skip-traces",
+        action="store_true",
+        default=False,
+        help="Do not import traces and scores.",
+    )
+    parser_langfuse.add_argument(
+        "--skip-datasets",
+        action="store_true",
+        default=False,
+        help="Do not import datasets.",
+    )
+    parser_langfuse.add_argument(
+        "--batch-size",
+        type=int,
+        help="Number of traces read and written per batch. "
+        + f"Defaults to '{DEFAULT_TRACE_BATCH_SIZE}'.",
+        default=DEFAULT_TRACE_BATCH_SIZE,
+    )
+
+
 def cli() -> None:
     """Main CLI entry point."""
     parser = ArgumentParser(
@@ -301,6 +378,7 @@ def cli() -> None:
     setup_dev_parser(subparsers)
     setup_add_cursor_rules_parser(subparsers)
     setup_datasets_parser(subparsers)
+    setup_import_parser(subparsers)
 
     # Parse arguments and dispatch to appropriate handler
     parsed = parser.parse_args()
@@ -313,5 +391,7 @@ def cli() -> None:
         add_cursor_rules()
     elif parsed.subcommand == "datasets":
         asyncio.run(handle_datasets_command(parsed))
+    elif parsed.subcommand == "import" and parsed.source == "langfuse":
+        asyncio.run(handle_import_langfuse(parsed))
     else:
         parser.print_help()
