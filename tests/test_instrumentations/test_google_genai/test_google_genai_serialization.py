@@ -13,9 +13,13 @@ contract, and the intermediate dicts intentionally carry raw `bytes`.
 
 import base64
 import json
+from collections.abc import Iterator, Mapping
+from typing import Any, cast
 from unittest.mock import patch
 
 from google.genai import types
+from opentelemetry.util.types import AttributeValue
+from typing_extensions import override
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai import (
     _set_raw_response_attribute,
@@ -39,12 +43,12 @@ class _RecordingSpan:
     """Minimal span double — these writers only set attributes."""
 
     def __init__(self):
-        self.attributes: dict[str, object] = {}
+        self.attributes: dict[str, AttributeValue] = {}
 
-    def set_attribute(self, key, value):
+    def set_attribute(self, key: str, value: AttributeValue):
         self.attributes[key] = value
 
-    def is_recording(self):
+    def is_recording(self) -> bool:
         return True
 
 
@@ -77,7 +81,7 @@ def _image_response() -> types.GenerateContentResponse:
     )
 
 
-def _roundtrip(value) -> dict:
+def _roundtrip(value: Any) -> dict[str, Any]:
     """Serialize the way the instrumentation does, then read it back."""
     return json.loads(json_dumps(value))
 
@@ -185,7 +189,7 @@ def test_non_bytes_fields_keep_their_json_shape():
         part_to_dict(
             types.Part(
                 executable_code=types.ExecutableCode(
-                    code="print(1)", language="PYTHON"
+                    code="print(1)", language=types.Language("PYTHON")
                 ),
             )
         )
@@ -231,7 +235,7 @@ def test_input_messages_attribute_decodes_back_to_the_original_bytes():
     span = _RecordingSpan()
 
     _set_request_attributes(
-        span,
+        cast(Any, span),
         (),
         {
             "model": "gemini-2.5-flash",
@@ -239,7 +243,7 @@ def test_input_messages_attribute_decodes_back_to_the_original_bytes():
         },
     )
 
-    messages = json.loads(span.attributes["gen_ai.input.messages"])
+    messages = json.loads(cast(str, span.attributes["gen_ai.input.messages"]))
     data = messages[0]["parts"][0]["inline_data"]["data"]
     assert data == STANDARD_B64
     assert base64.b64decode(data) == ALPHABET_DIVERGENT_BYTES
@@ -250,9 +254,9 @@ def test_output_messages_attribute_decodes_back_to_the_original_bytes():
     # path has the same hazard as the input path.
     span = _RecordingSpan()
 
-    _set_raw_response_attribute(span, _image_response())
+    _set_raw_response_attribute(cast(Any, span), _image_response())
 
-    candidates = json.loads(span.attributes["gen_ai.output.messages"])
+    candidates = json.loads(cast(str, span.attributes["gen_ai.output.messages"]))
     data = candidates[0]["content"]["parts"][0]["inline_data"]["data"]
     assert data == STANDARD_B64
     assert base64.b64decode(data) == ALPHABET_DIVERGENT_BYTES
@@ -264,10 +268,14 @@ def test_raw_response_attribute_round_trips_through_the_replay_parser():
     # round trip byte-for-byte.
     span = _RecordingSpan()
 
-    _set_raw_response_attribute(span, _image_response(), record_raw_response=True)
+    _set_raw_response_attribute(cast(Any, span), _image_response(), record_raw_response=True)
 
     raw = span.attributes["lmnr.sdk.raw.response"]
-    reparsed = types.GenerateContentResponse.model_validate_json(raw)
+    reparsed = types.GenerateContentResponse.model_validate_json(cast(str, raw))
+    assert reparsed.candidates is not None
+    assert reparsed.candidates[0].content is not None
+    assert reparsed.candidates[0].content.parts is not None
+    assert reparsed.candidates[0].content.parts[0].inline_data is not None
     assert (
         reparsed.candidates[0].content.parts[0].inline_data.data
         == ALPHABET_DIVERGENT_BYTES
@@ -280,7 +288,7 @@ def test_unserializable_raw_response_is_skipped_not_stamped_empty():
     # so stamping "{}" would shadow the usable fallback.
     span = _RecordingSpan()
 
-    _set_raw_response_attribute(span, _image_response(), record_raw_response=True)
+    _set_raw_response_attribute(cast(Any, span), _image_response(), record_raw_response=True)
     assert "lmnr.sdk.raw.response" in span.attributes
 
     empty = _RecordingSpan()
@@ -288,7 +296,7 @@ def test_unserializable_raw_response_is_skipped_not_stamped_empty():
         "lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.json_dumps",
         return_value="{}",
     ):
-        _set_raw_response_attribute(empty, _image_response(), record_raw_response=True)
+        _set_raw_response_attribute(cast(Any, empty), _image_response(), record_raw_response=True)
 
     assert "lmnr.sdk.raw.response" not in empty.attributes
 
@@ -303,25 +311,26 @@ def test_an_unserializable_tool_value_does_not_drop_the_conversation():
     every message in the conversation. `mode="python"` hands the value to
     `json_dumps`, which degrades only that leaf.
     """
-    import collections.abc
+    class ReadOnlyMapping(Mapping[str, Any]):
+        def __init__(self, data: Mapping[str, Any]):
+            self._data: Mapping[str, Any] = data
 
-    class ReadOnlyMapping(collections.abc.Mapping):
-        def __init__(self, data):
-            self._data = data
-
-        def __getitem__(self, key):
+        @override
+        def __getitem__(self, key: str):
             return self._data[key]
 
-        def __iter__(self):
+        @override
+        def __iter__(self) -> Iterator[str]:
             return iter(self._data)
 
-        def __len__(self):
+        @override
+        def __len__(self) -> int:
             return len(self._data)
 
     span = _RecordingSpan()
 
     _set_request_attributes(
-        span,
+        cast(Any, span),
         (),
         {
             "model": "gemini-2.5-flash",
@@ -342,7 +351,7 @@ def test_an_unserializable_tool_value_does_not_drop_the_conversation():
         },
     )
 
-    messages = json.loads(span.attributes["gen_ai.input.messages"])
+    messages = json.loads(cast(str, span.attributes["gen_ai.input.messages"]))
     assert len(messages) == 2
     assert messages[0]["parts"][0] == {"text": "weather?"}
     # The exotic value survives structurally rather than as a Python repr.

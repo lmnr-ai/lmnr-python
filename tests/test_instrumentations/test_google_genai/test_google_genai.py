@@ -19,20 +19,20 @@ image_media_type = "image/jpeg"
 image_data = base64.b64encode(httpx.get(image_url).content).decode("utf-8")
 image_data_raw_bytes = base64.b64encode(httpx.get(image_url).content).decode()
 
-get_weather_declaration = {
-    "name": "get_weather",
-    "description": "Gets the weather in a given city.",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "location": {
-                "type": "string",
-                "description": "The location to get the weather for.",
-            },
+get_weather_declaration: types.FunctionDeclaration = types.FunctionDeclaration(
+    name="get_weather",
+    description="Gets the weather in a given city.",
+    parameters=types.Schema(
+        type=types.Type("object"),
+        properties={
+            "location": types.Schema(
+                type=types.Type("string"),
+                description="The location to get the weather for.",
+            ),
         },
-        "required": ["location"],
-    },
-}
+        required=["location"],
+    ),
+)
 
 
 @pytest.mark.vcr
@@ -60,19 +60,19 @@ def test_google_genai(span_exporter: InMemorySpanExporter):
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
-        spans[0].attributes["gen_ai.request.model"] == "gemini-2.5-flash-preview-05-20"
+        (spans[0].attributes or {})["gen_ai.request.model"] == "gemini-2.5-flash-preview-05-20"
     )
     assert (
-        spans[0].attributes["gen_ai.response.model"]
+        (spans[0].attributes or {})["gen_ai.response.model"]
         == "models/gemini-2.5-flash-preview-05-20"
     )
-    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    messages = json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"]))
     assert messages[0] == {"role": "system", "parts": [{"text": system_instruction}]}
     assert messages[1] == {
         "role": "user",
         "parts": [{"text": "What is the capital of France?"}],
     }
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "content": {"role": "model", "parts": [{"text": response.text}]},
             "finish_reason": "STOP",
@@ -137,23 +137,23 @@ def test_google_genai_multiturn(span_exporter: InMemorySpanExporter):
     for span in spans:
         assert span.name == "gemini.generate_content"
         assert (
-            span.attributes["gen_ai.request.model"] == "gemini-2.5-flash-preview-05-20"
+            (span.attributes or {})["gen_ai.request.model"] == "gemini-2.5-flash-preview-05-20"
         )
         assert (
-            span.attributes["gen_ai.response.model"]
+            (span.attributes or {})["gen_ai.response.model"]
             == "models/gemini-2.5-flash-preview-05-20"
         )
-        input_messages = json.loads(span.attributes["gen_ai.input.messages"])
+        input_messages = json.loads(cast(str, (span.attributes or {})["gen_ai.input.messages"]))
         assert input_messages[0] == {
             "role": "system",
             "parts": [{"text": system_instruction}],
         }
 
-    spans = sorted(spans, key=lambda x: x.start_time)
+    spans = sorted(spans, key=lambda x: x.start_time or 0)
     adjective_span = spans[0]
     haiku_span = spans[1]
 
-    adj_messages = json.loads(adjective_span.attributes["gen_ai.input.messages"])
+    adj_messages = json.loads(cast(str, (adjective_span.attributes or {})["gen_ai.input.messages"]))
     assert adj_messages[1] == {
         "role": "user",
         "parts": [
@@ -162,7 +162,7 @@ def test_google_genai_multiturn(span_exporter: InMemorySpanExporter):
             }
         ],
     }
-    assert json.loads(adjective_span.attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (adjective_span.attributes or {})["gen_ai.output.messages"])) == [
         {
             "content": {"role": "model", "parts": [{"text": adjective_response.text}]},
             "finish_reason": "STOP",
@@ -170,7 +170,7 @@ def test_google_genai_multiturn(span_exporter: InMemorySpanExporter):
         }
     ]
 
-    haiku_messages = json.loads(haiku_span.attributes["gen_ai.input.messages"])
+    haiku_messages = json.loads(cast(str, (haiku_span.attributes or {})["gen_ai.input.messages"]))
     assert haiku_messages[1] == {
         "role": "user",
         "parts": [
@@ -185,7 +185,7 @@ def test_google_genai_multiturn(span_exporter: InMemorySpanExporter):
         "role": "user",
         "parts": [{"text": "Now generate a haiku using this adjective."}],
     }
-    assert json.loads(haiku_span.attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (haiku_span.attributes or {})["gen_ai.output.messages"])) == [
         {
             "content": {"role": "model", "parts": [{"text": haiku_response.text}]},
             "finish_reason": "STOP",
@@ -200,7 +200,7 @@ def test_google_genai_tool_calls(span_exporter: InMemorySpanExporter):
     # to the VCR cassette.
     client = Client(api_key="123")
     system_instruction = "Be concise and to the point. Use tools as much as possible."
-    client.models.generate_content(
+    _res = client.models.generate_content(
         model="gemini-2.5-flash-lite",
         contents=[
             {
@@ -219,15 +219,15 @@ def test_google_genai_tool_calls(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
-    assert spans[0].attributes["gen_ai.request.model"] == "gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+    messages = json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"]))
     assert messages[0] == {"role": "system", "parts": [{"text": system_instruction}]}
     assert messages[1] == {
         "role": "user",
         "parts": [{"text": "What is the weather in Tokyo?"}],
     }
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "content": {
                 "role": "model",
@@ -269,7 +269,7 @@ def test_google_genai_tool_calls_history(span_exporter: InMemorySpanExporter):
             tools=[types.Tool(function_declarations=[get_weather_declaration])],
         ),
     )
-    client.models.generate_content(
+    _res = client.models.generate_content(
         model="gemini-2.5-flash-lite",
         contents=[
             {
@@ -302,10 +302,10 @@ def test_google_genai_tool_calls_history(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
-    span1 = sorted(spans, key=lambda x: x.start_time)[0]
-    span2 = sorted(spans, key=lambda x: x.start_time)[1]
+    span1 = min(spans, key=lambda x: x.start_time or 0)
+    span2 = sorted(spans, key=lambda x: x.start_time or 0)[1]
 
-    assert json.loads(span1.attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (span1.attributes or {})["gen_ai.output.messages"])) == [
         {
             "content": {
                 "role": "model",
@@ -327,9 +327,9 @@ def test_google_genai_tool_calls_history(span_exporter: InMemorySpanExporter):
 
     for span in spans:
         assert span.name == "gemini.generate_content"
-        assert span.attributes["gen_ai.request.model"] == "gemini-2.5-flash-lite"
-        assert span.attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-        input_messages = json.loads(span.attributes["gen_ai.input.messages"])
+        assert (span.attributes or {})["gen_ai.request.model"] == "gemini-2.5-flash-lite"
+        assert (span.attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+        input_messages = json.loads(cast(str, (span.attributes or {})["gen_ai.input.messages"]))
         assert input_messages[0] == {
             "role": "system",
             "parts": [{"text": system_instruction}],
@@ -339,7 +339,7 @@ def test_google_genai_tool_calls_history(span_exporter: InMemorySpanExporter):
             "parts": [{"text": "What is the weather in Tokyo?"}],
         }
 
-    messages2 = json.loads(span2.attributes["gen_ai.input.messages"])
+    messages2 = json.loads(cast(str, (span2.attributes or {})["gen_ai.input.messages"]))
     assert messages2[2]["role"] == "model"
     assert messages2[2]["parts"][0]["function_call"]["name"] == "get_weather"
     assert messages2[2]["parts"][0]["function_call"]["args"] == {"location": "Tokyo"}
@@ -352,7 +352,7 @@ def test_google_genai_tool_calls_history(span_exporter: InMemorySpanExporter):
             }
         }
     ]
-    assert json.loads(span2.attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (span2.attributes or {})["gen_ai.output.messages"])) == [
         {
             "content": {
                 "role": "model",
@@ -391,7 +391,7 @@ def test_google_genai_tool_calls_history_from_function_response(
             tools=[types.Tool(function_declarations=[get_weather_declaration])],
         ),
     )
-    client.models.generate_content(
+    _res = client.models.generate_content(
         model="gemini-2.5-flash-lite",
         contents=[
             {
@@ -422,10 +422,10 @@ def test_google_genai_tool_calls_history_from_function_response(
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
-    span1 = sorted(spans, key=lambda x: x.start_time)[0]
-    span2 = sorted(spans, key=lambda x: x.start_time)[1]
+    span1 = min(spans, key=lambda x: x.start_time or 0)
+    span2 = sorted(spans, key=lambda x: x.start_time or 0)[1]
 
-    assert json.loads(span1.attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (span1.attributes or {})["gen_ai.output.messages"])) == [
         {
             "content": {
                 "role": "model",
@@ -447,9 +447,9 @@ def test_google_genai_tool_calls_history_from_function_response(
 
     for span in spans:
         assert span.name == "gemini.generate_content"
-        assert span.attributes["gen_ai.request.model"] == "gemini-2.5-flash-lite"
-        assert span.attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-        input_messages = json.loads(span.attributes["gen_ai.input.messages"])
+        assert (span.attributes or {})["gen_ai.request.model"] == "gemini-2.5-flash-lite"
+        assert (span.attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+        input_messages = json.loads(cast(str, (span.attributes or {})["gen_ai.input.messages"]))
         assert input_messages[0] == {
             "role": "system",
             "parts": [{"text": system_instruction}],
@@ -459,7 +459,7 @@ def test_google_genai_tool_calls_history_from_function_response(
             "parts": [{"text": "What is the weather in Tokyo?"}],
         }
 
-    messages2 = json.loads(span2.attributes["gen_ai.input.messages"])
+    messages2 = json.loads(cast(str, (span2.attributes or {})["gen_ai.input.messages"]))
     assert messages2[2]["role"] == "model"
     assert messages2[2]["parts"][0]["function_call"]["name"] == "get_weather"
     assert messages2[2]["parts"][0]["function_call"]["args"] == {"location": "Tokyo"}
@@ -468,7 +468,7 @@ def test_google_genai_tool_calls_history_from_function_response(
         "name": "get_weather",
         "response": {"output": "Sunny, 22°C."},
     }
-    assert json.loads(span2.attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (span2.attributes or {})["gen_ai.output.messages"])) == [
         {
             "content": {
                 "role": "model",
@@ -490,7 +490,7 @@ def test_google_genai_multiple_tool_calls(span_exporter: InMemorySpanExporter):
     # to the VCR cassette.
     client = Client(api_key="123")
     system_instruction = "Be concise and to the point. Use tools as much as possible."
-    client.models.generate_content(
+    _res = client.models.generate_content(
         model="gemini-2.5-flash-preview-05-20",
         contents=[
             {
@@ -510,13 +510,13 @@ def test_google_genai_multiple_tool_calls(span_exporter: InMemorySpanExporter):
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
-        spans[0].attributes["gen_ai.request.model"] == "gemini-2.5-flash-preview-05-20"
+        (spans[0].attributes or {})["gen_ai.request.model"] == "gemini-2.5-flash-preview-05-20"
     )
     assert (
-        spans[0].attributes["gen_ai.response.model"]
+        (spans[0].attributes or {})["gen_ai.response.model"]
         == "models/gemini-2.5-flash-preview-05-20"
     )
-    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    messages = json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"]))
     assert messages[0] == {"role": "system", "parts": [{"text": system_instruction}]}
     assert messages[1] == {
         "role": "user",
@@ -533,7 +533,7 @@ def test_google_genai_tool_calls_and_text_part(span_exporter: InMemorySpanExport
     user_message = (
         "What is the opposite of 'bright'? Also, what is the weather in Tokyo?"
     )
-    client.models.generate_content(
+    _res = client.models.generate_content(
         model="gemini-2.5-flash-lite",
         contents=[
             {
@@ -552,12 +552,12 @@ def test_google_genai_tool_calls_and_text_part(span_exporter: InMemorySpanExport
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
-    assert spans[0].attributes["gen_ai.request.model"] == "gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+    messages = json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"]))
     assert messages[0] == {"role": "system", "parts": [{"text": system_instruction}]}
     assert messages[1] == {"role": "user", "parts": [{"text": user_message}]}
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "content": {
                 "role": "model",
@@ -610,20 +610,20 @@ def test_google_genai_image(span_exporter: InMemorySpanExporter):
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
-        spans[0].attributes["gen_ai.request.model"] == "gemini-2.5-flash-preview-05-20"
+        (spans[0].attributes or {})["gen_ai.request.model"] == "gemini-2.5-flash-preview-05-20"
     )
     assert (
-        spans[0].attributes["gen_ai.response.model"]
+        (spans[0].attributes or {})["gen_ai.response.model"]
         == "models/gemini-2.5-flash-preview-05-20"
     )
-    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    messages = json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"]))
     assert messages[0] == {"role": "system", "parts": [{"text": system_instruction}]}
     assert messages[1]["role"] == "user"
     assert messages[1]["parts"][0] == {"text": "Describe this image"}
     assert messages[1]["parts"][1] == {
         "inline_data": {"mime_type": image_media_type, "data": image_data}
     }
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "content": {
                 "role": "model",
@@ -670,20 +670,20 @@ def test_google_genai_image_raw_bytes(span_exporter: InMemorySpanExporter):
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
-        spans[0].attributes["gen_ai.request.model"] == "gemini-2.5-flash-preview-05-20"
+        (spans[0].attributes or {})["gen_ai.request.model"] == "gemini-2.5-flash-preview-05-20"
     )
     assert (
-        spans[0].attributes["gen_ai.response.model"]
+        (spans[0].attributes or {})["gen_ai.response.model"]
         == "models/gemini-2.5-flash-preview-05-20"
     )
-    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    messages = json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"]))
     assert messages[0] == {"role": "system", "parts": [{"text": system_instruction}]}
     assert messages[1]["role"] == "user"
     assert messages[1]["parts"][0] == {"text": "Describe this image"}
     assert messages[1]["parts"][1] == {
         "inline_data": {"mime_type": image_media_type, "data": image_data_raw_bytes}
     }
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "content": {
                 "role": "model",
@@ -746,17 +746,17 @@ def test_google_genai_output_schema(span_exporter: InMemorySpanExporter):
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
-        spans[0].attributes["gen_ai.request.model"]
+        (spans[0].attributes or {})["gen_ai.request.model"]
         == "gemini-2.5-flash-lite-preview-06-17"
     )
     assert (
-        spans[0].attributes["gen_ai.response.model"]
+        (spans[0].attributes or {})["gen_ai.response.model"]
         == "gemini-2.5-flash-lite-preview-06-17"
     )
 
-    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    messages = json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"]))
     assert messages[0] == {"role": "user", "parts": [{"text": prompt}]}
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "content": {
                 "role": "model",
@@ -771,7 +771,7 @@ def test_google_genai_output_schema(span_exporter: InMemorySpanExporter):
         }
     ]
     assert (
-        json.loads(spans[0].attributes["gen_ai.request.structured_output_schema"])
+        json.loads(cast(str, (spans[0].attributes or {})["gen_ai.request.structured_output_schema"]))
         == EXPECTED_SCHEMA
     )
 
@@ -801,18 +801,18 @@ def test_google_genai_output_json_schema(span_exporter: InMemorySpanExporter):
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
-        spans[0].attributes["gen_ai.request.model"]
+        (spans[0].attributes or {})["gen_ai.request.model"]
         == "gemini-2.5-flash-lite-preview-06-17"
     )
     assert (
-        spans[0].attributes["gen_ai.response.model"]
+        (spans[0].attributes or {})["gen_ai.response.model"]
         == "gemini-2.5-flash-lite-preview-06-17"
     )
 
-    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    messages = json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"]))
     assert messages[0] == {"role": "user", "parts": [{"text": prompt}]}
 
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "content": {
                 "role": "model",
@@ -827,7 +827,7 @@ def test_google_genai_output_json_schema(span_exporter: InMemorySpanExporter):
         }
     ]
     assert (
-        json.loads(spans[0].attributes["gen_ai.request.structured_output_schema"])
+        json.loads(cast(str, (spans[0].attributes or {})["gen_ai.request.structured_output_schema"]))
         == EXPECTED_SCHEMA
     )
 
@@ -853,30 +853,31 @@ def test_google_genai_reasoning_tokens(span_exporter: InMemorySpanExporter):
         ),
     )
 
+    usage = response.usage_metadata
+    assert usage is not None
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
-        spans[0].attributes["gen_ai.usage.reasoning_tokens"]
-        == response.usage_metadata.thoughts_token_count
+        (spans[0].attributes or {})["gen_ai.usage.reasoning_tokens"]
+        == usage.thoughts_token_count
     )
     assert (
-        spans[0].attributes["gen_ai.usage.output_tokens"]
-        == response.usage_metadata.candidates_token_count
-        + response.usage_metadata.thoughts_token_count
+        (spans[0].attributes or {})["gen_ai.usage.output_tokens"]
+        == (usage.candidates_token_count or 0) + (usage.thoughts_token_count or 0)
     )
     assert (
-        spans[0].attributes["gen_ai.usage.input_tokens"]
-        == response.usage_metadata.prompt_token_count
+        (spans[0].attributes or {})["gen_ai.usage.input_tokens"]
+        == usage.prompt_token_count
     )
     assert (
-        spans[0].attributes["llm.usage.total_tokens"]
-        == response.usage_metadata.total_token_count
+        (spans[0].attributes or {})["llm.usage.total_tokens"]
+        == usage.total_token_count
     )
     assert (
-        spans[0].attributes["llm.usage.total_tokens"]
-        == spans[0].attributes["gen_ai.usage.input_tokens"]
-        + spans[0].attributes["gen_ai.usage.output_tokens"]
+        (spans[0].attributes or {})["llm.usage.total_tokens"]
+        == cast(int, (spans[0].attributes or {})["gen_ai.usage.input_tokens"])
+        + cast(int, (spans[0].attributes or {})["gen_ai.usage.output_tokens"])
     )
 
 
@@ -905,32 +906,34 @@ def test_google_genai_reasoning_tokens_with_include_thoughts(
         ),
     )
 
+    usage = response.usage_metadata
+    assert usage is not None
+    assert response.parts is not None
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
-        spans[0].attributes["gen_ai.usage.reasoning_tokens"]
-        == response.usage_metadata.thoughts_token_count
+        (spans[0].attributes or {})["gen_ai.usage.reasoning_tokens"]
+        == usage.thoughts_token_count
     )
     assert (
-        spans[0].attributes["gen_ai.usage.output_tokens"]
-        == response.usage_metadata.candidates_token_count
-        + response.usage_metadata.thoughts_token_count
+        (spans[0].attributes or {})["gen_ai.usage.output_tokens"]
+        == (usage.candidates_token_count or 0) + (usage.thoughts_token_count or 0)
     )
     assert (
-        spans[0].attributes["gen_ai.usage.input_tokens"]
-        == response.usage_metadata.prompt_token_count
+        (spans[0].attributes or {})["gen_ai.usage.input_tokens"]
+        == usage.prompt_token_count
     )
     assert (
-        spans[0].attributes["llm.usage.total_tokens"]
-        == response.usage_metadata.total_token_count
+        (spans[0].attributes or {})["llm.usage.total_tokens"]
+        == usage.total_token_count
     )
     assert (
-        spans[0].attributes["llm.usage.total_tokens"]
-        == spans[0].attributes["gen_ai.usage.input_tokens"]
-        + spans[0].attributes["gen_ai.usage.output_tokens"]
+        (spans[0].attributes or {})["llm.usage.total_tokens"]
+        == cast(int, (spans[0].attributes or {})["gen_ai.usage.input_tokens"])
+        + cast(int, (spans[0].attributes or {})["gen_ai.usage.output_tokens"])
     )
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "content": {
                 "role": "model",
@@ -969,30 +972,31 @@ async def test_google_genai_reasoning_tokens_async(span_exporter: InMemorySpanEx
         ),
     )
 
+    usage = response.usage_metadata
+    assert usage is not None
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
-        spans[0].attributes["gen_ai.usage.reasoning_tokens"]
-        == response.usage_metadata.thoughts_token_count
+        (spans[0].attributes or {})["gen_ai.usage.reasoning_tokens"]
+        == usage.thoughts_token_count
     )
     assert (
-        spans[0].attributes["gen_ai.usage.output_tokens"]
-        == response.usage_metadata.candidates_token_count
-        + response.usage_metadata.thoughts_token_count
+        (spans[0].attributes or {})["gen_ai.usage.output_tokens"]
+        == (usage.candidates_token_count or 0) + (usage.thoughts_token_count or 0)
     )
     assert (
-        spans[0].attributes["gen_ai.usage.input_tokens"]
-        == response.usage_metadata.prompt_token_count
+        (spans[0].attributes or {})["gen_ai.usage.input_tokens"]
+        == usage.prompt_token_count
     )
     assert (
-        spans[0].attributes["llm.usage.total_tokens"]
-        == response.usage_metadata.total_token_count
+        (spans[0].attributes or {})["llm.usage.total_tokens"]
+        == usage.total_token_count
     )
     assert (
-        spans[0].attributes["llm.usage.total_tokens"]
-        == spans[0].attributes["gen_ai.usage.input_tokens"]
-        + spans[0].attributes["gen_ai.usage.output_tokens"]
+        (spans[0].attributes or {})["llm.usage.total_tokens"]
+        == cast(int, (spans[0].attributes or {})["gen_ai.usage.input_tokens"])
+        + cast(int, (spans[0].attributes or {})["gen_ai.usage.output_tokens"])
     )
 
 
@@ -1022,32 +1026,34 @@ async def test_google_genai_reasoning_tokens_with_include_thoughts_async(
         ),
     )
 
+    usage = response.usage_metadata
+    assert usage is not None
+    assert response.parts is not None
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
-        spans[0].attributes["gen_ai.usage.reasoning_tokens"]
-        == response.usage_metadata.thoughts_token_count
+        (spans[0].attributes or {})["gen_ai.usage.reasoning_tokens"]
+        == usage.thoughts_token_count
     )
     assert (
-        spans[0].attributes["gen_ai.usage.output_tokens"]
-        == response.usage_metadata.candidates_token_count
-        + response.usage_metadata.thoughts_token_count
+        (spans[0].attributes or {})["gen_ai.usage.output_tokens"]
+        == (usage.candidates_token_count or 0) + (usage.thoughts_token_count or 0)
     )
     assert (
-        spans[0].attributes["gen_ai.usage.input_tokens"]
-        == response.usage_metadata.prompt_token_count
+        (spans[0].attributes or {})["gen_ai.usage.input_tokens"]
+        == usage.prompt_token_count
     )
     assert (
-        spans[0].attributes["llm.usage.total_tokens"]
-        == response.usage_metadata.total_token_count
+        (spans[0].attributes or {})["llm.usage.total_tokens"]
+        == usage.total_token_count
     )
     assert (
-        spans[0].attributes["llm.usage.total_tokens"]
-        == spans[0].attributes["gen_ai.usage.input_tokens"]
-        + spans[0].attributes["gen_ai.usage.output_tokens"]
+        (spans[0].attributes or {})["llm.usage.total_tokens"]
+        == cast(int, (spans[0].attributes or {})["gen_ai.usage.input_tokens"])
+        + cast(int, (spans[0].attributes or {})["gen_ai.usage.output_tokens"])
     )
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "content": {
                 "role": "model",
@@ -1080,13 +1086,13 @@ def test_google_genai_string_contents(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
-    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    messages = json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"]))
     assert messages[0] == {"role": "system", "parts": [{"text": system_instruction}]}
     assert messages[1] == {
         "role": "user",
         "parts": [{"text": "What is the capital of France?"}],
     }
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "content": {
                 "role": "model",
@@ -1107,7 +1113,7 @@ def test_google_genai_error(span_exporter: InMemorySpanExporter):
     client = Client(api_key="123")
     system_instruction = "Be concise and to the point. Use tools as much as possible."
     with pytest.raises(ClientError):
-        client.models.generate_content(
+        _res = client.models.generate_content(
             model="gemini-2.5-flash-preview-05-20",
             contents=[
                 {
@@ -1126,27 +1132,27 @@ def test_google_genai_error(span_exporter: InMemorySpanExporter):
     assert len(spans) == 1
     assert spans[0].name == "gemini.generate_content"
     assert (
-        spans[0].attributes["gen_ai.request.model"] == "gemini-2.5-flash-preview-05-20"
+        (spans[0].attributes or {})["gen_ai.request.model"] == "gemini-2.5-flash-preview-05-20"
     )
-    messages = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    messages = json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"]))
     assert messages[0] == {"role": "system", "parts": [{"text": system_instruction}]}
     assert messages[1] == {
         "role": "user",
         "parts": [{"text": "What is the capital of France?"}],
     }
-    assert spans[0].attributes["error.type"] == "ClientError"
+    assert (spans[0].attributes or {})["error.type"] == "ClientError"
 
     assert spans[0].status.status_code == StatusCode.ERROR
     events = spans[0].events
     assert len(events) == 1
     event = events[0]
     assert event.name == "exception"
-    assert event.attributes["exception.type"] == "google.genai.errors.ClientError"
-    assert event.attributes["exception.message"].startswith("400")
+    assert (event.attributes or {})["exception.type"] == "google.genai.errors.ClientError"
+    assert cast(str, (event.attributes or {})["exception.message"]).startswith("400")
     assert (
-        "Traceback (most recent call last):" in event.attributes["exception.stacktrace"]
+        "Traceback (most recent call last):" in cast(str, (event.attributes or {})["exception.stacktrace"])
     )
-    assert "google.genai.errors.ClientError" in event.attributes["exception.stacktrace"]
+    assert "google.genai.errors.ClientError" in cast(str, (event.attributes or {})["exception.stacktrace"])
 
 
 @pytest.mark.vcr
@@ -1187,12 +1193,12 @@ They stretch and yawn, a lazy art,
 And steal away a human heart."""
     )
 
-    messages = json.loads(span.attributes["gen_ai.input.messages"])
+    messages = json.loads(cast(str, (span.attributes or {})["gen_ai.input.messages"]))
     assert messages[0] == {
         "role": "user",
         "parts": [{"text": "Write a short poem about cats"}],
     }
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "content": {
                 "role": "model",
@@ -1204,9 +1210,9 @@ And steal away a human heart."""
             },
         }
     ]
-    assert span.attributes["gen_ai.usage.input_tokens"] == 7
-    assert span.attributes["gen_ai.usage.output_tokens"] == 166
-    assert span.attributes["llm.usage.total_tokens"] == 175  # 173 + 2 (thinking tokens)
+    assert (span.attributes or {})["gen_ai.usage.input_tokens"] == 7
+    assert (span.attributes or {})["gen_ai.usage.output_tokens"] == 166
+    assert (span.attributes or {})["llm.usage.total_tokens"] == 175  # 173 + 2 (thinking tokens)
     assert len(span.events) == chunk_count
     assert all(event.name == "llm.content.completion.chunk" for event in span.events)
 
@@ -1335,7 +1341,7 @@ def test_merge_text_parts_consecutive_part_objects():
 
 def test_merge_text_parts_consecutive_part_dicts():
     """Test merging consecutive PartDict (dict) inputs"""
-    parts = [
+    parts: list[types.PartDict] = [
         {"text": "First "},
         {"text": "second "},
         {"text": "third"},
@@ -1348,7 +1354,7 @@ def test_merge_text_parts_consecutive_part_dicts():
 
 def test_merge_text_parts_mixed_types():
     """Test merging with mixed input types (str, Part, dict)"""
-    parts = [
+    parts: list[str | types.Part | types.PartDict] = [
         "Start ",
         types.Part(text="middle "),
         {"text": "end"},
@@ -1363,7 +1369,10 @@ def test_merge_text_parts_with_non_text_part():
     """Test that non-text parts break the merge sequence"""
     # Create an inline_data part (e.g., image)
     inline_data_part = types.Part(
-        inline_data={"mime_type": "image/png", "data": b"fake_image_data"}
+        inline_data=types.Blob(
+            mime_type="image/png",
+            data = b"fake_image_data"
+        )
     )
 
     parts = [
@@ -1385,7 +1394,10 @@ def test_merge_text_parts_with_function_call():
     """Test that function call parts break the merge sequence"""
     # Create a function call part
     function_call_part = types.Part(
-        function_call={"name": "get_weather", "args": {"location": "Tokyo"}}
+        function_call=types.FunctionCall(
+            name="get_weather",
+            args={"location": "Tokyo"},
+        )
     )
 
     parts = [
@@ -1405,10 +1417,16 @@ def test_merge_text_parts_with_function_call():
 def test_merge_text_parts_multiple_non_text_parts():
     """Test multiple non-text parts with text in between"""
     inline_data_part1 = types.Part(
-        inline_data={"mime_type": "image/png", "data": b"image1"}
+        inline_data=types.Blob(
+            mime_type="image/png",
+            data=b"image1"
+        )
     )
     inline_data_part2 = types.Part(
-        inline_data={"mime_type": "image/png", "data": b"image2"}
+        inline_data=types.Blob(
+            mime_type="image/png",
+            data=b"image2",
+        )
     )
 
     parts = [
@@ -1435,10 +1453,16 @@ def test_merge_text_parts_multiple_non_text_parts():
 def test_merge_text_parts_only_non_text_parts():
     """Test that only non-text parts are preserved as-is"""
     inline_data_part1 = types.Part(
-        inline_data={"mime_type": "image/png", "data": b"image1"}
+        inline_data=types.Blob(
+            mime_type="image/png",
+            data=b"image1"
+        )
     )
     inline_data_part2 = types.Part(
-        inline_data={"mime_type": "image/jpeg", "data": b"image2"}
+        inline_data=types.Blob(
+            mime_type="image/png",
+            data=b"image2",
+        )
     )
 
     parts = [inline_data_part1, inline_data_part2]
@@ -1477,7 +1501,8 @@ def test_merge_text_parts_with_file_object():
     assert len(result) == 3
     assert result[0].text == "Before file part"
     assert isinstance(result[1], types.Part)
-    assert cast(types.Part, result[1].file_data)
+    assert result[1].file_data is not None
+    assert cast(types.Part, result[1].file_data)  # pyright: ignore[reportInvalidCast]
     assert result[2].text == "After file"
 
 
@@ -1497,7 +1522,10 @@ def test_merge_text_parts_trailing_text_only():
 def test_merge_text_parts_leading_non_text():
     """Test parts starting with non-text part"""
     inline_data_part = types.Part(
-        inline_data={"mime_type": "image/png", "data": b"image"}
+        inline_data=types.Blob(
+            mime_type="image/png",
+            data=b"image"
+        )
     )
 
     parts = [

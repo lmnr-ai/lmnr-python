@@ -1,4 +1,5 @@
 from collections import defaultdict
+from collections.abc import Sequence
 from typing import Any, cast
 
 import pydantic
@@ -21,7 +22,7 @@ class ProcessChunkResult(TypedDict):
 
 
 def merge_text_parts(
-    parts: list[types.PartDict | types.File | types.Part | str],
+    parts: Sequence[types.PartDict | types.File | types.Part | str],
 ) -> list[types.Part]:
     if not parts:
         return []
