@@ -1,9 +1,14 @@
 """Tests for environment variable handling with per-transport proxies."""
 
 import os
-from unittest.mock import patch
+from typing import Any, cast
+from unittest.mock import MagicMock, patch
 
+from claude_agent_sdk._internal.transport.subprocess_cli import (
+    SubprocessCLITransport,
+)
 from lmnr_claude_code_proxy import ProxyServer
+from pytest import MonkeyPatch
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (
     proxy as claude_proxy,
@@ -11,12 +16,18 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (
     utils as claude_utils,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (
+    wrappers,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.wrappers import (
+    wrap_transport_connect,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     add_spec_wrapper,
 )
 
 
-def test_foundry_base_url_overrides_target(monkeypatch):
+def test_foundry_base_url_overrides_target(monkeypatch: MonkeyPatch):
     """Test that Foundry base URL is used as target."""
     monkeypatch.setenv("CLAUDE_CODE_USE_FOUNDRY", "1")
     monkeypatch.setenv(
@@ -24,11 +35,14 @@ def test_foundry_base_url_overrides_target(monkeypatch):
     )
     monkeypatch.delenv("ANTHROPIC_FOUNDRY_RESOURCE", raising=False)
 
-    proxy = ProxyServer(port=45500)
-    proxy.allocated_port = 45500
+    proxy = claude_proxy.LaminarProxyServer(
+        ProxyServer(port=45500),
+        allocated_port=45500,
+    )
 
     # Resolve target URL before starting proxy
     target_url = claude_utils.resolve_target_url_from_env({})
+    assert target_url
 
     with (
         patch.object(proxy, "run_server") as mock_run,
@@ -44,17 +58,20 @@ def test_foundry_base_url_overrides_target(monkeypatch):
         claude_proxy.stop_proxy(proxy)
 
 
-def test_foundry_resource_builds_target_url(monkeypatch):
+def test_foundry_resource_builds_target_url(monkeypatch: MonkeyPatch):
     """Test that Foundry resource name builds correct URL."""
     monkeypatch.setenv("CLAUDE_CODE_USE_FOUNDRY", "1")
     monkeypatch.delenv("ANTHROPIC_FOUNDRY_BASE_URL", raising=False)
     monkeypatch.setenv("ANTHROPIC_FOUNDRY_RESOURCE", "my-resource")
 
-    proxy = ProxyServer(port=45501)
-    proxy.allocated_port = 45501
+    proxy = claude_proxy.LaminarProxyServer(
+        ProxyServer(port=45501),
+        allocated_port=45501,
+    )
 
     # Resolve target URL before starting proxy
     target_url = claude_utils.resolve_target_url_from_env({})
+    assert target_url
 
     with (
         patch.object(proxy, "run_server") as mock_run,
@@ -72,7 +89,7 @@ def test_foundry_resource_builds_target_url(monkeypatch):
         claude_proxy.stop_proxy(proxy)
 
 
-def test_foundry_missing_config_fails(monkeypatch):
+def test_foundry_missing_config_fails(monkeypatch: MonkeyPatch):
     """Test that missing Foundry config fails gracefully."""
     import pytest
 
@@ -80,8 +97,10 @@ def test_foundry_missing_config_fails(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_FOUNDRY_BASE_URL", raising=False)
     monkeypatch.delenv("ANTHROPIC_FOUNDRY_RESOURCE", raising=False)
 
-    proxy = ProxyServer(port=45502)
-    proxy.allocated_port = 45502
+    proxy = claude_proxy.LaminarProxyServer(
+        ProxyServer(port=45502),
+        allocated_port=45502,
+    )
 
     # Resolve target URL - should return None for invalid config
     target_url = claude_utils.resolve_target_url_from_env({})
@@ -89,13 +108,13 @@ def test_foundry_missing_config_fails(monkeypatch):
 
     # start_proxy should fail when target_url is None
     with pytest.raises(RuntimeError):
-        claude_proxy.start_proxy(proxy, target_url)
+        _ = claude_proxy.start_proxy(proxy, target_url)  # pyright: ignore[reportArgumentType]
 
     # Port should be released on failure
     assert 45502 not in claude_proxy._ALLOCATED_PORTS
 
 
-def test_env_restoration_after_stop(monkeypatch):
+def test_env_restoration_after_stop(monkeypatch: MonkeyPatch):
     """Test that environment is properly managed per-transport."""
     monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://original.anthropic.com")
 
@@ -113,7 +132,7 @@ def test_env_restoration_after_stop(monkeypatch):
     assert "ANTHROPIC_ORIGINAL_BASE_URL" not in os.environ
 
 
-def test_https_proxy_takes_highest_priority(monkeypatch):
+def test_https_proxy_takes_highest_priority(monkeypatch: MonkeyPatch):
     """Test that HTTPS_PROXY has highest priority in target URL resolution."""
     monkeypatch.setenv("HTTPS_PROXY", "https://corporate-proxy.example.com:8443")
     monkeypatch.setenv("HTTP_PROXY", "http://other-proxy.example.com:8080")
@@ -125,7 +144,7 @@ def test_https_proxy_takes_highest_priority(monkeypatch):
     assert target_url == "https://corporate-proxy.example.com:8443"
 
 
-def test_http_proxy_priority_over_third_party(monkeypatch):
+def test_http_proxy_priority_over_third_party(monkeypatch: MonkeyPatch):
     """Test that HTTP_PROXY takes priority over third-party URLs."""
     monkeypatch.delenv("HTTPS_PROXY", raising=False)
     monkeypatch.setenv("HTTP_PROXY", "http://corporate-proxy.example.com:8080")
@@ -137,7 +156,7 @@ def test_http_proxy_priority_over_third_party(monkeypatch):
     assert target_url == "http://corporate-proxy.example.com:8080"
 
 
-def test_proxy_vars_removed_from_options_env(monkeypatch):
+def test_proxy_vars_removed_from_options_env(monkeypatch: MonkeyPatch):
     """Test that HTTP_PROXY and HTTPS_PROXY are removed from options.env."""
     from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.wrappers import (
         update_options_env_for_proxy,
@@ -145,7 +164,7 @@ def test_proxy_vars_removed_from_options_env(monkeypatch):
 
     class MockOptions:
         def __init__(self):
-            self.env = {
+            self.env: dict[str, str] = {
                 "HTTP_PROXY": "http://proxy1.example.com",
                 "HTTPS_PROXY": "https://proxy2.example.com",
                 "OTHER_VAR": "keep_me",
@@ -166,7 +185,7 @@ def test_proxy_vars_removed_from_options_env(monkeypatch):
     assert options.env["ANTHROPIC_ORIGINAL_BASE_URL"] == "https://api.anthropic.com"
 
 
-def test_proxy_vars_removed_from_global_env(monkeypatch):
+def test_proxy_vars_removed_from_global_env(monkeypatch: MonkeyPatch):
     """Test that HTTP_PROXY and HTTPS_PROXY are removed from global env."""
     monkeypatch.setenv("HTTP_PROXY", "http://proxy1.example.com")
     monkeypatch.setenv("HTTPS_PROXY", "https://proxy2.example.com")
@@ -192,7 +211,7 @@ def test_proxy_vars_removed_from_global_env(monkeypatch):
     assert "ANTHROPIC_ORIGINAL_BASE_URL" not in os.environ
 
 
-def test_https_proxy_from_options_env(monkeypatch):
+def test_https_proxy_from_options_env(monkeypatch: MonkeyPatch):
     """Test that HTTPS_PROXY from options.env takes priority."""
     # Set some conflicting values in os.environ
     monkeypatch.setenv("HTTP_PROXY", "http://system-proxy.example.com")
@@ -208,7 +227,7 @@ def test_https_proxy_from_options_env(monkeypatch):
     assert target_url == "https://transport-proxy.example.com:8443"
 
 
-def test_http_proxy_strips_trailing_slash(monkeypatch):
+def test_http_proxy_strips_trailing_slash(monkeypatch: MonkeyPatch):
     """Test that trailing slashes are removed from HTTP_PROXY."""
     monkeypatch.setenv("HTTP_PROXY", "http://proxy.example.com:8080/")
 
@@ -216,7 +235,7 @@ def test_http_proxy_strips_trailing_slash(monkeypatch):
     assert target_url == "http://proxy.example.com:8080"
 
 
-def test_resolution_order_complete(monkeypatch):
+def test_resolution_order_complete(monkeypatch: MonkeyPatch):
     """Test complete priority order: HTTPS_PROXY > HTTP_PROXY > Foundry > ANTHROPIC_BASE_URL > default."""
 
     # Test 1: Only default
@@ -250,7 +269,7 @@ def test_resolution_order_complete(monkeypatch):
     assert target_url == "https://https-proxy.example.com"
 
 
-def test_subprocess_transport_removes_proxy_vars_from_os_environ(monkeypatch):
+def test_subprocess_transport_removes_proxy_vars_from_os_environ(monkeypatch: MonkeyPatch):
     """
     Test that HTTP_PROXY and HTTPS_PROXY are removed from os.environ for SubprocessCLITransport.
 
@@ -258,18 +277,9 @@ def test_subprocess_transport_removes_proxy_vars_from_os_environ(monkeypatch):
     are present, the subprocess might route through a corporate proxy instead of the lmnr proxy.
     """
     import asyncio
-    from unittest.mock import AsyncMock, MagicMock
+    from unittest.mock import AsyncMock
 
-    from claude_agent_sdk._internal.transport.subprocess_cli import (
-        SubprocessCLITransport,
-    )
 
-    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (
-        wrappers,
-    )
-    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.wrappers import (
-        wrap_transport_connect,
-    )
 
     # Set up system-level proxy variables
     monkeypatch.setenv("HTTP_PROXY", "http://corporate-proxy.example.com:8080")
@@ -279,7 +289,7 @@ def test_subprocess_transport_removes_proxy_vars_from_os_environ(monkeypatch):
     # Create a mock SubprocessCLITransport instance
     class MockOptions:
         def __init__(self):
-            self.env = {}
+            self.env: dict[str, str] = {}
 
     transport = MagicMock(spec=SubprocessCLITransport)
     transport._options = MockOptions()
@@ -288,19 +298,18 @@ def test_subprocess_transport_removes_proxy_vars_from_os_environ(monkeypatch):
     proxy_vars_removed_during_connect = {}
 
     # Mock the original connect method to check os.environ state
-    async def mock_connect(*args, **kwargs):
+    async def mock_connect(*args: Any, **kwargs: Any):
         # At this point, HTTP_PROXY and HTTPS_PROXY should be removed from os.environ
         proxy_vars_removed_during_connect["HTTP_PROXY"] = "HTTP_PROXY" not in os.environ
         proxy_vars_removed_during_connect["HTTPS_PROXY"] = (
             "HTTPS_PROXY" not in os.environ
         )
-        return None
 
     original_connect = AsyncMock(side_effect=mock_connect)
 
     # Create wrapper
     to_wrap = {"method_name": "connect", "original": original_connect}
-    wrapper = add_spec_wrapper(wrap_transport_connect, to_wrap)
+    wrapper = add_spec_wrapper(wrap_transport_connect, cast(Any, to_wrap))
 
     # Mock proxy functions
     from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent import (
@@ -316,7 +325,7 @@ def test_subprocess_transport_removes_proxy_vars_from_os_environ(monkeypatch):
         patch.object(wrappers, "start_proxy") as mock_start,
         patch.object(
             span_utils, "publish_span_context_for_transport"
-        ) as mock_publish,
+        ),
     ):
 
         mock_proxy = MagicMock(spec=ProxyServer)

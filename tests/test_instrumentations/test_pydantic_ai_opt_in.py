@@ -32,7 +32,7 @@ from lmnr.opentelemetry_lib.tracing.instruments import (
 
 
 @pytest.fixture
-def track_initializers(monkeypatch: MagicMock) -> set[Instruments]:
+def track_initializers(monkeypatch: pytest.MonkeyPatch) -> set[Instruments]:
     """Patch every initializer in the map to record which were invoked.
 
     Returns a set that accumulates the `Instruments` key for each initializer
@@ -58,21 +58,21 @@ def track_initializers(monkeypatch: MagicMock) -> set[Instruments]:
 
 
 @pytest.fixture
-def pydantic_ai_installed(monkeypatch: MagicMock):
+def pydantic_ai_installed(monkeypatch: pytest.MonkeyPatch):
     """Simulate pydantic_ai being installed in the environment."""
     monkeypatch.setattr(
         instruments_mod, "_pydantic_ai_installed", lambda: True)
 
 
 @pytest.fixture
-def pydantic_ai_not_installed(monkeypatch: MagicMock):
+def pydantic_ai_not_installed(monkeypatch: pytest.MonkeyPatch):
     """Simulate pydantic_ai being absent from the environment."""
     monkeypatch.setattr(
         instruments_mod, "_pydantic_ai_installed", lambda: False)
 
 
 @pytest.fixture(autouse=True)
-def google_adk_not_installed(monkeypatch: MagicMock):
+def google_adk_not_installed(monkeypatch: pytest.MonkeyPatch):
     """These tests aren't about google-adk; `google-adk` is a pinned dev
     dependency, and leaving its real installedness in place would trip the
     GOOGLE_GENAI auto-removal these tests don't expect (see
@@ -81,13 +81,13 @@ def google_adk_not_installed(monkeypatch: MagicMock):
 
 
 @pytest.fixture
-def deepagents_installed(monkeypatch: MagicMock):
+def deepagents_installed(monkeypatch: pytest.MonkeyPatch):
     """Simulate deepagents being installed in the environment."""
     monkeypatch.setattr(instruments_mod, "_deepagents_installed", lambda: True)
 
 
 @pytest.fixture
-def deepagents_not_installed(monkeypatch: MagicMock):
+def deepagents_not_installed(monkeypatch: pytest.MonkeyPatch):
     """Simulate deepagents being absent from the environment."""
     monkeypatch.setattr(
         instruments_mod, "_deepagents_installed", lambda: False)

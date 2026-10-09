@@ -25,7 +25,7 @@ _VECTORS = json.loads(
 
 
 @pytest.fixture(autouse=True)
-def _clear_debug_env(monkeypatch: MagicMock):
+def _clear_debug_env(monkeypatch: pytest.MonkeyPatch):
     for key in _DEBUG_ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
 
@@ -34,7 +34,7 @@ def _clear_debug_env(monkeypatch: MagicMock):
 def test_config_truth_table(
     case: dict[str, dict[str, str] | None],
     tmp_path: Path,
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     # build_debug_config now reads `.lmnr/debug-session.json` from cwd
     # unconditionally; pin cwd to an empty temp dir so a stray file can't leak in.
@@ -56,7 +56,7 @@ def test_config_truth_table(
     assert config.replay_enabled is expect["replay_enabled"]
 
 
-def test_session_id_defaults_to_uuid(tmp_path: Path, monkeypatch: MagicMock):
+def test_session_id_defaults_to_uuid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("LMNR_DEBUG", "true")
     config = build_debug_config()
@@ -79,7 +79,7 @@ def _write_session_file(tmp_path: Path, payload: dict[str, Any]) -> None:
 
 def test_session_file_rejoins_silently_continuation_not_minted(
     tmp_path: Path,
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.chdir(tmp_path)
     _write_session_file(
@@ -110,7 +110,7 @@ def test_session_file_rejoins_silently_continuation_not_minted(
 
 def test_session_file_found_in_ancestor_joins_its_session(
     tmp_path: Path,
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     # Nearest-ancestor resolution: a run started from a subdirectory of a
     # project joins the project's session, not a fresh one.
@@ -138,7 +138,7 @@ def test_session_file_found_in_ancestor_joins_its_session(
 
 def test_config_pins_session_dir_and_file_session_id(
     tmp_path: Path,
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     # The anchor and the on-disk session id are captured at init for the
     # emit-side write/guard: session_dir is the resolved ancestor (chdir-safe
@@ -170,7 +170,7 @@ def test_config_pins_session_dir_and_file_session_id(
 
 def test_session_file_reads_replay_and_cache_when_env_unset(
     tmp_path: Path,
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.chdir(tmp_path)
     _write_session_file(
@@ -195,7 +195,7 @@ def test_session_file_reads_replay_and_cache_when_env_unset(
 
 def test_env_overrides_the_file_per_field(
     tmp_path: Path,
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.chdir(tmp_path)
     _write_session_file(
@@ -225,7 +225,7 @@ def test_env_overrides_the_file_per_field(
 
 def test_mints_fresh_session_when_no_file_and_no_env_id(
     tmp_path: Path,
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("LMNR_DEBUG", "true")
@@ -240,7 +240,7 @@ def test_mints_fresh_session_when_no_file_and_no_env_id(
 
 def test_local_origin_and_session_minted_from_env(
     tmp_path: Path,
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("LMNR_DEBUG", "true")
@@ -252,7 +252,7 @@ def test_local_origin_and_session_minted_from_env(
 
 def test_provided_session_id_not_minted(
     tmp_path: Path,
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("LMNR_DEBUG", "true")

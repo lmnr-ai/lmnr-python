@@ -15,6 +15,7 @@ from opentelemetry.sdk.trace.export import (
 )
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.util.types import AttributeValue
+from pytest import MonkeyPatch
 from typing_extensions import override
 
 from lmnr import Laminar
@@ -203,7 +204,7 @@ def test_translator_mutates_before_synchronous_exporter():
     ), f"translator must run before exporter, got {exported[0]}"
 
 
-def test_connect_to_langfuse_swallows_install_exceptions(monkeypatch: MagicMock):
+def test_connect_to_langfuse_swallows_install_exceptions(monkeypatch: MonkeyPatch):
     """Regression: `LangfuseInstrumentor.instrument()` re-raises on
     attach-phase failures (e.g. `RuntimeError` from concurrent modification
     of `LangfuseResourceManager._instances`). `Laminar.connect_to_langfuse()`
@@ -229,7 +230,7 @@ def test_connect_to_langfuse_swallows_install_exceptions(monkeypatch: MagicMock)
     assert get_langfuse_instrumentor().is_instrumented_by_opentelemetry is False
 
 
-def test_connect_to_langfuse_before_initialize_does_not_crash(monkeypatch: MagicMock):
+def test_connect_to_langfuse_before_initialize_does_not_crash(monkeypatch: MonkeyPatch):
     """Regression: `connect_to_langfuse()` must return `False` (not raise)
     when called before `Laminar.initialize()`. The not-initialized branch
     previously accessed the private name-mangled `cls.__logger`, which is
@@ -247,7 +248,7 @@ def test_connect_to_langfuse_before_initialize_does_not_crash(monkeypatch: Magic
     assert Laminar.connect_to_langfuse() is False
 
 
-def test_connect_to_langfuse_returns_false_on_install_failure(monkeypatch: MagicMock):
+def test_connect_to_langfuse_returns_false_on_install_failure(monkeypatch: MonkeyPatch):
     """If `instrument()` bails out before setting `_installed=True` (e.g.
     translator install raises), the public helper must surface the failure
     as `False` — not claim success."""
@@ -264,7 +265,7 @@ def test_connect_to_langfuse_returns_false_on_install_failure(monkeypatch: Magic
     assert get_langfuse_instrumentor().is_instrumented_by_opentelemetry is False
 
 
-def test_connect_to_langfuse_returns_false_without_langfuse(monkeypatch: MagicMock):
+def test_connect_to_langfuse_returns_false_without_langfuse(monkeypatch: MonkeyPatch):
     """If `langfuse` isn't importable (or is too old), the helper must return
     False and must NOT install the bridge (i.e. no translator added, no
     monkey-patch). The version-aware `langfuse_installed` check is what
@@ -283,7 +284,7 @@ def test_connect_to_langfuse_returns_false_without_langfuse(monkeypatch: MagicMo
     assert instrumentor._translator is None
 
 
-def test_connect_to_langfuse_returns_false_when_sdk_unimportable(monkeypatch: MagicMock):
+def test_connect_to_langfuse_returns_false_when_sdk_unimportable(monkeypatch: MonkeyPatch):
     """If `langfuse` is present per metadata but cannot actually be imported
     (the pydantic-v1 failure on Python 3.14), the bridge's resource-manager
     attach/patch path would silently no-op while `instrument()` still flips
@@ -306,7 +307,7 @@ def test_connect_to_langfuse_returns_false_when_sdk_unimportable(monkeypatch: Ma
     assert instrumentor._translator is None
 
 
-def test_connect_to_langfuse_rejects_langfuse_v2(monkeypatch: MagicMock):
+def test_connect_to_langfuse_rejects_langfuse_v2(monkeypatch: MonkeyPatch):
     """Regression: `connect_to_langfuse()` must also version-gate on
     langfuse >= 3.0. With 2.x installed, the bridge initializer returns
     None, so installing it would attach a useless translator and
@@ -328,4 +329,3 @@ def test_connect_to_langfuse_rejects_langfuse_v2(monkeypatch: MagicMock):
     instrumentor = get_langfuse_instrumentor()
     assert instrumentor.is_instrumented_by_opentelemetry is False
     assert instrumentor._translator is None
-

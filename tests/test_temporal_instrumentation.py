@@ -304,7 +304,7 @@ async def test_workflow_handle_lifecycle_span_ends_on_result(
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
 async def test_activity_restores_context_and_spans(
-    span_exporter: InMemorySpanExporter, monkeypatch: MagicMock,
+    span_exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch,
 ):
     span_exporter.clear()
     root = LaminarTracingInterceptor()

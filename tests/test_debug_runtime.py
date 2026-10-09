@@ -43,7 +43,7 @@ from lmnr.sdk.types import DebugContext, LaminarSpanContext
 
 
 @pytest.fixture
-def no_browser(monkeypatch: MagicMock):
+def no_browser(monkeypatch: pytest.MonkeyPatch):
     """Prevent _init_debug_runtime from opening a browser tab during tests."""
     monkeypatch.setenv("LMNR_DEBUG_SESSION_ID", "test-session")
 
@@ -196,7 +196,7 @@ def test_debugger_session_url_full_with_project_id(make_runtime: Callable[..., D
 
 
 def test_record_debug_trace_id_from_env_populates_pointer(\
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
     make_runtime: Callable[..., DebugRuntime]
 ):
     # A run attached via LMNR_SPAN_CONTEXT never opens a root span, so the
@@ -220,7 +220,7 @@ def test_record_debug_trace_id_from_env_populates_pointer(\
     _reset_runtime()
 
 
-def test_env_context_arms_debug_runtime_from_block(monkeypatch: MagicMock):
+def test_env_context_arms_debug_runtime_from_block(monkeypatch: pytest.MonkeyPatch):
     # A debug block carried by LMNR_SPAN_CONTEXT must arm the debug runtime: an
     # LMNR_SPAN_CONTEXT-attached run parents off the pushed context with
     # parent_span_context=None, so the span-creation funnels never see the block
@@ -252,7 +252,7 @@ def test_env_context_arms_debug_runtime_from_block(monkeypatch: MagicMock):
 
 
 def test_processor_records_trace_id_when_tracing_disabled(
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
     make_runtime: Callable[..., DebugRuntime]
 ):
     # Even with LMNR_DISABLE_TRACING=true the processor must record the root
@@ -273,7 +273,7 @@ def test_processor_records_trace_id_when_tracing_disabled(
 
 
 def test_processor_keeps_real_span_path_for_replay_when_disabled(
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
     make_runtime: Callable[..., DebugRuntime]
 ):
     # With replay active, LMNR_DISABLE_TRACING=true must NOT mask span names to
@@ -294,7 +294,7 @@ def test_processor_keeps_real_span_path_for_replay_when_disabled(
     _reset_runtime()
 
 
-def test_processor_masks_span_path_when_disabled_without_replay(monkeypatch: MagicMock):
+def test_processor_masks_span_path_when_disabled_without_replay(monkeypatch: pytest.MonkeyPatch):
     # No debug runtime: disabled tracing still masks span names to "_" (privacy).
     _reset_runtime()
     monkeypatch.setenv("LMNR_DISABLE_TRACING", "true")
@@ -322,7 +322,7 @@ def test_record_debug_trace_id_from_env_noop_without_runtime():
 
 def test_emit_pointer_uses_construction_time_started_at(
     tmp_path: Path,
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
     capsys: MagicMock,
     make_runtime: Callable[..., DebugRuntime],
 ):
@@ -347,7 +347,7 @@ def test_emit_pointer_uses_construction_time_started_at(
 
 def test_emit_pointer_persists_cache_until_span_id(
     tmp_path: Path,
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
     capsys: MagicMock,
     make_runtime: Callable[..., DebugRuntime],
 ):
@@ -371,7 +371,7 @@ def test_emit_pointer_persists_cache_until_span_id(
 
 def test_emit_pointer_only_once(
     tmp_path: Path,
-    monkeypatch: MagicMock,
+    monkeypatch: MonkeyPatch,
     capsys: MagicMock,
     make_runtime: Callable[..., DebugRuntime]
 ):
@@ -390,7 +390,7 @@ def test_emit_pointer_only_once(
 
 def test_emit_pointer_noop_for_downstream_run(
     tmp_path: Path,
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
     capsys: MagicMock,
     make_runtime: Callable[..., DebugRuntime],
 ):
@@ -413,7 +413,7 @@ def test_emit_pointer_noop_for_downstream_run(
 
 def test_emit_pointer_uses_full_debugger_url(
     tmp_path: Path,
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
     capsys: MagicMock,
     make_runtime: Callable[..., DebugRuntime],
 ):
@@ -439,14 +439,14 @@ def test_emit_pointer_uses_full_debugger_url(
     )
 
 
-def test_init_disabled_returns_none(monkeypatch: MagicMock, sync_client: LaminarClient, async_client: AsyncLaminarClient):
+def test_init_disabled_returns_none(monkeypatch: pytest.MonkeyPatch, sync_client: LaminarClient, async_client: AsyncLaminarClient):
     _reset_runtime()
     monkeypatch.delenv("LMNR_DEBUG", raising=False)
     assert init_debug_runtime(client=sync_client, async_client=async_client) is None
     assert get_runtime() is None
 
 
-def test_init_debug_runtime_skips_client_when_debug_off(monkeypatch: MagicMock):
+def test_init_debug_runtime_skips_client_when_debug_off(monkeypatch: pytest.MonkeyPatch):
     # When LMNR_DEBUG is off, Laminar._init_debug_runtime must NOT construct a
     # LaminarClient (and its httpx.Client) — that would leak unclosed on every
     # normal initialize().
@@ -474,7 +474,7 @@ def test_init_debug_runtime_skips_client_when_debug_off(monkeypatch: MagicMock):
 
 
 def test_init_off_does_not_latch_flag(
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
     sync_client: LaminarClient,
     async_client: AsyncLaminarClient
 ):
@@ -495,7 +495,7 @@ def test_init_off_does_not_latch_flag(
 
 
 def test_init_is_idempotent(
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
     sync_client: LaminarClient,
     async_client: AsyncLaminarClient
 ):
@@ -510,7 +510,7 @@ def test_init_is_idempotent(
 
 
 def test_reset_allows_reinit_to_reread_env(
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
     sync_client: LaminarClient,
     async_client: AsyncLaminarClient
 ):
@@ -531,7 +531,7 @@ def test_reset_allows_reinit_to_reread_env(
 
 
 def test_init_builds_replay_runtime_from_env(
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
     sync_client: LaminarClient,
     async_client: AsyncLaminarClient
 ):
@@ -595,7 +595,7 @@ class _SpyAsyncDebugClient:
 
 
 def _patch_clients(
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
     sync_client: _SpyDebugClient,
     async_client: _SpyAsyncDebugClient | None = None
 ):
@@ -610,7 +610,7 @@ def _patch_clients(
     )
 
 
-def test_init_registers_session_with_backend(monkeypatch: MagicMock):
+def test_init_registers_session_with_backend(monkeypatch: pytest.MonkeyPatch):
     # A bare LMNR_DEBUG=true run must POST its SDK-minted session id to the
     # backend so the session shows up in the UI.
     _reset_runtime()
@@ -637,7 +637,7 @@ def test_init_registers_session_with_backend(monkeypatch: MagicMock):
 
 def test_init_logs_debugger_url_when_project_id_returned(
     no_browser: Any,
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
     caplog: MagicMock,
 ):
     # When the backend returns a project id, init must log the human-facing
@@ -671,7 +671,7 @@ def test_init_logs_debugger_url_when_project_id_returned(
     _reset_runtime()
 
 
-def test_init_survives_registration_failure(monkeypatch: MagicMock):
+def test_init_survives_registration_failure(monkeypatch: pyetst.MonkeyPatch):
     # Registration is best-effort: a backend error must never crash init.
     from lmnr.sdk.laminar import Laminar
 
@@ -692,7 +692,7 @@ def test_init_survives_registration_failure(monkeypatch: MagicMock):
     _reset_runtime()
 
 
-def test_init_does_not_build_debug_runtime_when_tracing_fails(monkeypatch: MagicMock):
+def test_init_does_not_build_debug_runtime_when_tracing_fails(monkeypatch: pytest.MonkeyPatch):
     # If init_tracing() raises, initialize() must abort BEFORE any debug
     # side effects: no backend session registration and no debug runtime left
     # live on a process whose tracing never came up.
@@ -725,7 +725,7 @@ def test_init_does_not_build_debug_runtime_when_tracing_fails(monkeypatch: Magic
 
 
 def test_initialize_captures_debug_connection_args_before_marking_initialized(
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     # The from-context arm path (_arm_debug_runtime_from_context) builds its own
     # cache clients from __base_url_for_debug / __http_port_for_debug. Those are
@@ -762,7 +762,7 @@ def test_initialize_captures_debug_connection_args_before_marking_initialized(
     _reset_runtime()
 
 
-def test_exit_hook_does_not_accumulate_across_cycles(tmp_path: Path, monkeypatch: MagicMock):
+def test_exit_hook_does_not_accumulate_across_cycles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # atexit holds a strong ref to whatever it registers, so each debug-mode
     # init must unregister the previous pointer hook on shutdown — otherwise an
     # init/shutdown loop pins every retired DebugRuntime alive and leaks one
@@ -795,7 +795,7 @@ def test_exit_hook_does_not_accumulate_across_cycles(tmp_path: Path, monkeypatch
     monkeypatch.setattr(Laminar, "_Laminar__initialized", False, raising=False)
 
 
-def test_shutdown_closes_retained_clients(tmp_path: Path, monkeypatch: MagicMock):
+def test_shutdown_closes_retained_clients(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # v2 keeps both cache clients open for the run; shutdown must close both so
     # their httpx connection pools aren't leaked across init/shutdown cycles.
     _reset_runtime()
@@ -821,7 +821,7 @@ def test_shutdown_closes_retained_clients(tmp_path: Path, monkeypatch: MagicMock
     monkeypatch.setattr(Laminar, "_Laminar__initialized", False, raising=False)
 
 
-def test_shutdown_resets_run_live_latch(tmp_path: Path, monkeypatch: MagicMock):
+def test_shutdown_resets_run_live_latch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # A MISS latches the process-wide run-live flag; shutdown must clear it so a
     # fresh debug run in the same process starts from a clean cache state.
     _reset_runtime()
@@ -846,7 +846,7 @@ def test_shutdown_resets_run_live_latch(tmp_path: Path, monkeypatch: MagicMock):
     monkeypatch.setattr(Laminar, "_Laminar__initialized", False, raising=False)
 
 
-def test_shutdown_completes_cleanup_when_emit_pointer_raises(tmp_path: Path, monkeypatch: MagicMock):
+def test_shutdown_completes_cleanup_when_emit_pointer_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # emit_pointer prints to stdout, which can raise OSError/BrokenPipeError
     # (closed stdout in daemons/containers, notebook kernel restarts). That must
     # never abort shutdown's cleanup: shutdown_tracing(), the reset, and
@@ -891,7 +891,7 @@ def _raise_broken_pipe():
     raise BrokenPipeError("stdout closed")
 
 
-def test_arm_from_context_closes_clients_when_losing_race(monkeypatch: MagicMock):
+def test_arm_from_context_closes_clients_when_losing_race(monkeypatch: pytest.MonkeyPatch):
     # _arm_debug_runtime_from_context allocates fresh sync/async clients BEFORE
     # consulting init_debug_runtime_from_context, which is first-wins. Under a
     # concurrent arm, both callers pass the get_runtime() fast path, both
@@ -951,7 +951,7 @@ def test_arm_from_context_closes_clients_when_losing_race(monkeypatch: MagicMock
     _reset_runtime()
 
 
-def test_init_closes_clients_when_runtime_already_armed_from_context(monkeypatch: MagicMock):
+def test_init_closes_clients_when_runtime_already_armed_from_context(monkeypatch: pytest.MonkeyPatch):
     # _init_debug_runtime (the env path) allocates fresh sync/async clients
     # BEFORE consulting init_debug_runtime, which is first-wins. If a propagated
     # DebugContext armed the runtime first (deep in span creation, before
@@ -1004,7 +1004,7 @@ def test_init_closes_clients_when_runtime_already_armed_from_context(monkeypatch
     _reset_runtime()
 
 
-def test_init_preempts_context_runtime_when_env_debug_set(monkeypatch: MagicMock):
+def test_init_preempts_context_runtime_when_env_debug_set(monkeypatch: pytest.MonkeyPatch):
     # initialize() flips __initialized BEFORE _init_debug_runtime runs, and the
     # span funnels gate only on is_initialized() — so a span carrying a
     # propagated debug block can arm a context runtime (local_origin=False) in
@@ -1065,7 +1065,7 @@ def test_init_preempts_context_runtime_when_env_debug_set(monkeypatch: MagicMock
     _reset_runtime()
 
 
-def test_arm_from_context_refreshes_isolated_context_metadata(monkeypatch: MagicMock):
+def test_arm_from_context_refreshes_isolated_context_metadata(monkeypatch: pytest.MonkeyPatch):
     # `LaminarSpanProcessor.on_start` reads `rollout.session_id` from
     # CONTEXT_METADATA_KEY on the parent context (NOT from __global_metadata), so
     # arming the debug runtime from a propagated block must also re-stamp the
@@ -1102,7 +1102,7 @@ def test_arm_from_context_refreshes_isolated_context_metadata(monkeypatch: Magic
 
 
 def test_init_from_context_refreshes_context_runtime_reusing_clients(
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
     sync_client: LaminarClient,
     async_client: AsyncLaminarClient
 ):
@@ -1140,7 +1140,7 @@ def test_init_from_context_refreshes_context_runtime_reusing_clients(
 
 
 def test_init_from_context_never_overrides_env_origin_runtime(
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
     sync_client: LaminarClient,
     async_client: AsyncLaminarClient
 ):
@@ -1170,7 +1170,7 @@ def test_init_from_context_never_overrides_env_origin_runtime(
     _reset_runtime()
 
 
-def test_arm_from_context_refreshes_session_on_new_context(monkeypatch: MagicMock):
+def test_arm_from_context_refreshes_session_on_new_context(monkeypatch: pytest.MonkeyPatch):
     # The coordinates in a propagated debug block are DYNAMIC: a long-lived
     # downstream service must follow each request's session id, not freeze on the
     # first context it ever saw. A second block with a different session must
@@ -1225,7 +1225,7 @@ def test_arm_from_context_refreshes_session_on_new_context(monkeypatch: MagicMoc
 
 
 def test_span_uses_freshly_armed_session_over_stale_context(
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
     span_exporter: InMemorySpanExporter,
 ):
     # Regression: in start_span / start_as_current_span the parent `ctx` is
@@ -1276,7 +1276,7 @@ def test_span_uses_freshly_armed_session_over_stale_context(
     )
 
 
-def test_arm_from_context_reuses_clients_on_same_session(monkeypatch: MagicMock):
+def test_arm_from_context_reuses_clients_on_same_session(monkeypatch: pytest.MonkeyPatch):
     # A steady stream of requests on the SAME session must not allocate new
     # clients per span, nor re-register or re-stamp metadata on every span.
     _reset_runtime()
@@ -1318,7 +1318,7 @@ def test_arm_from_context_reuses_clients_on_same_session(monkeypatch: MagicMock)
 
 
 def test_init_from_context_publishes_single_runtime_under_concurrency(
-    monkeypatch: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
     sync_client: LaminarClient,
     async_client: AsyncLaminarClient,
 ):

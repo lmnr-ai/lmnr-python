@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
+from pytest import MonkeyPatch
+
 from lmnr.opentelemetry_lib.tracing import instruments as instruments_mod
 from lmnr.opentelemetry_lib.tracing.instruments import (
     Instruments,
@@ -31,7 +33,7 @@ def test_langfuse_not_installed_defaults_exclude_it(
         ), f"{instrument} should remain when langfuse isn't installed"
 
 
-def test_langfuse_initializer_skips_on_unreadable_or_invalid_version(monkeypatch: MagicMock):
+def test_langfuse_initializer_skips_on_unreadable_or_invalid_version(monkeypatch: MonkeyPatch):
     """Regression: the initializer used to pass version guards when
     `get_package_version` returned `None` (the check
     `if version and parse(version) < parse("3.0.0")` short-circuits on None),
@@ -73,7 +75,7 @@ def test_langfuse_initializer_skips_on_unreadable_or_invalid_version(monkeypatch
     assert initializer.init_instrumentor() is not None
 
 
-def test_langfuse_v2_reports_not_installed(monkeypatch: MagicMock):
+def test_langfuse_v2_reports_not_installed(monkeypatch: MonkeyPatch):
     """langfuse 2.x is not OTel-native, so the bridge initializer returns None.
     `langfuse_installed()` must report False in that case so
     `connect_to_langfuse()` refuses to install a useless translator."""

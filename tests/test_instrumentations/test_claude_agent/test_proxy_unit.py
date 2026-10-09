@@ -4,6 +4,8 @@ import os
 import socket
 import threading
 import time
+from collections.abc import AsyncGenerator
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,7 +22,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers
 
 
 @pytest.fixture
-def clean_env(monkeypatch):
+def clean_env(monkeypatch: pytest.MonkeyPatch):
     """Clean up environment variables."""
     monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
     monkeypatch.delenv("ANTHROPIC_ORIGINAL_BASE_URL", raising=False)
@@ -64,7 +66,7 @@ def test_is_truthy_env():
     assert claude_utils.is_truthy_env(None) is False
 
 
-def test_snapshot_env(monkeypatch):
+def test_snapshot_env(monkeypatch: pytest.MonkeyPatch):
     """Test environment snapshot function."""
     monkeypatch.setenv("TEST_KEY1", "value1")
     monkeypatch.setenv("TEST_KEY2", "value2")
@@ -79,7 +81,7 @@ def test_snapshot_env(monkeypatch):
     assert set_keys == {"TEST_KEY1", "TEST_KEY2"}
 
 
-def test_restore_env(monkeypatch):
+def test_restore_env(monkeypatch: pytest.MonkeyPatch):
     """Test environment restoration."""
     monkeypatch.setenv("KEY1", "original")
     monkeypatch.setenv("KEY2", "to_delete")
@@ -89,7 +91,7 @@ def test_restore_env(monkeypatch):
 
     # Modify environment
     os.environ["KEY1"] = "modified"
-    os.environ.pop("KEY2", None)
+    _popped_val = os.environ.pop("KEY2", None)
     os.environ["KEY3"] = "added"
 
     # Restore
@@ -141,7 +143,10 @@ def test_wait_for_port_timeout():
     assert result is False
 
 
-def test_resolve_target_url_from_env(monkeypatch, clean_env):
+def test_resolve_target_url_from_env(
+    monkeypatch: pytest.MonkeyPatch,
+    clean_env: dict[str, str],
+):
     """Test unified target URL resolution from env_dict with os.environ fallback."""
     # Default fallback
     url = claude_utils.resolve_target_url_from_env({})
@@ -185,7 +190,10 @@ def test_resolve_target_url_from_env(monkeypatch, clean_env):
     assert url is None
 
 
-def test_setup_proxy_env(monkeypatch, clean_env):
+def test_setup_proxy_env(
+    monkeypatch: pytest.MonkeyPatch,
+    clean_env: dict[str, str],
+):
     """Test setting up proxy environment."""
     monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
 
@@ -196,7 +204,10 @@ def test_setup_proxy_env(monkeypatch, clean_env):
     assert os.environ["ANTHROPIC_ORIGINAL_BASE_URL"] == "https://api.anthropic.com"
 
 
-def test_setup_proxy_env_with_foundry(monkeypatch, clean_env):
+def test_setup_proxy_env_with_foundry(
+    monkeypatch: pytest.MonkeyPatch,
+    clean_env: dict[str, str],
+):
     """Test setting up proxy environment with Foundry."""
     monkeypatch.setenv("CLAUDE_CODE_USE_FOUNDRY", "1")
     monkeypatch.setenv("ANTHROPIC_FOUNDRY_BASE_URL", "https://foundry.example.com")
@@ -248,7 +259,7 @@ def test_port_reuse_after_release():
 
 def test_concurrent_port_allocation():
     """Test thread-safe port allocation."""
-    allocated = []
+    allocated: list[int] = []
     lock = threading.Lock()
 
     def allocate_ports():
@@ -281,7 +292,10 @@ def test_create_proxy_for_transport():
     assert proxy.port == proxy.allocated_port
 
 
-def test_start_proxy_success(monkeypatch, clean_env):
+def test_start_proxy_success(
+    monkeypatch: pytest.MonkeyPatch,
+    clean_env: dict[str, str],
+):
     """Test starting a proxy successfully."""
     from lmnr_claude_code_proxy import ProxyServer
 
@@ -297,7 +311,10 @@ def test_start_proxy_success(monkeypatch, clean_env):
         mock_run.assert_called_once_with("https://api.anthropic.com")
 
 
-def test_start_proxy_with_explicit_target_url(monkeypatch, clean_env):
+def test_start_proxy_with_explicit_target_url(
+    monkeypatch: pytest.MonkeyPatch,
+    clean_env: dict[str, str],
+):
     """Test starting proxy with explicit target_url."""
     from lmnr_claude_code_proxy import ProxyServer
 
@@ -313,21 +330,29 @@ def test_start_proxy_with_explicit_target_url(monkeypatch, clean_env):
         mock_run.assert_called_once_with("https://custom.anthropic.com")
 
 
-def test_start_proxy_server_fails(monkeypatch, clean_env):
+def test_start_proxy_server_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    clean_env: dict[str, str],
+):
     """Test handling server startup failure."""
     from lmnr_claude_code_proxy import ProxyServer
 
     proxy = claude_proxy.LaminarProxyServer(ProxyServer(port=45403), allocated_port=45403)
 
-    with patch.object(proxy, "run_server", side_effect=Exception("Server error")):
-        with pytest.raises(RuntimeError, match="Failed to start proxy"):
-            claude_proxy.start_proxy(proxy, "https://api.anthropic.com")
+    with (
+        patch.object(proxy, "run_server", side_effect=Exception("Server error")),
+        pytest.raises(RuntimeError, match="Failed to start proxy")
+    ):
+        _url = claude_proxy.start_proxy(proxy, "https://api.anthropic.com")
 
     # Port should be released
     assert 45403 not in claude_proxy._ALLOCATED_PORTS
 
 
-def test_start_proxy_not_ready(monkeypatch, clean_env):
+def test_start_proxy_not_ready(
+    monkeypatch: pytest.MonkeyPatch,
+    clean_env: dict[str, str],
+):
     """Test when proxy doesn't become ready."""
     from lmnr_claude_code_proxy import ProxyServer
 
@@ -337,9 +362,9 @@ def test_start_proxy_not_ready(monkeypatch, clean_env):
         patch.object(proxy, "run_server"),
         patch.object(claude_proxy, "wait_for_port", return_value=False),
         patch.object(proxy, "stop_server") as mock_stop,
+        pytest.raises(RuntimeError, match="Proxy failed to start")
     ):
-        with pytest.raises(RuntimeError, match="Proxy failed to start"):
-            claude_proxy.start_proxy(proxy, "https://api.anthropic.com")
+        _url = claude_proxy.start_proxy(proxy, "https://api.anthropic.com")
 
         mock_stop.assert_called()
         # Port should be released
@@ -424,9 +449,12 @@ def test_publish_span_context_handles_error():
 # ===== Multiple Proxy Tests =====
 
 
-def test_multiple_proxies_different_ports(monkeypatch, clean_env):
+def test_multiple_proxies_different_ports(
+    monkeypatch: pytest.MonkeyPatch,
+    clean_env: dict[str, str],
+):
     """Test creating multiple proxies with different ports."""
-    proxies = []
+    proxies: list[tuple[claude_proxy.LaminarProxyServer, str]] = []
 
     with (
         patch("lmnr_claude_code_proxy.ProxyServer.run_server"),
@@ -456,7 +484,10 @@ def test_multiple_proxies_different_ports(monkeypatch, clean_env):
             claude_proxy.stop_proxy(proxy)
 
 
-def test_port_reuse_after_cleanup(monkeypatch, clean_env):
+def test_port_reuse_after_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    clean_env: dict[str, str],
+):
     """Test that ports are reused after cleanup."""
     with (
         patch("lmnr_claude_code_proxy.ProxyServer.run_server"),
@@ -464,7 +495,7 @@ def test_port_reuse_after_cleanup(monkeypatch, clean_env):
     ):
         # Create and stop first proxy
         proxy1 = claude_proxy.create_proxy_for_transport()
-        claude_proxy.start_proxy(proxy1, "https://api.anthropic.com")
+        _url = claude_proxy.start_proxy(proxy1, "https://api.anthropic.com")
         port1 = proxy1.port
 
         with patch.object(proxy1, "stop_server"):
@@ -492,20 +523,20 @@ def test_wrap_query_does_not_double_wrap_subprocess_transport():
 
     # Create a simple class that inherits from SubprocessCLITransport for testing
     class TestTransport(SubprocessCLITransport):
-        def __init__(self):
+        def __init__(self):  # pyright:ignore[reportMissingSuperCall]
             # Don't call super().__init__() to avoid requiring options
             # Just set up what we need for the test
             class MockOptions:
                 def __init__(self):
-                    self.env = {}
+                    self.env: dict[str, str] = {}
 
-            self._options = MockOptions()
+            self._options: MockOptions = MockOptions()
 
     mock_transport = TestTransport()
     original_connect = mock_transport.connect
 
     # Mock the wrapped function (query)
-    async def mock_query(*args, **kwargs):
+    async def mock_query(*args: Any, **kwargs: Any) -> AsyncGenerator[dict[str, str]]:
         # Return an async iterator
         async def gen():
             yield {"type": "test"}
@@ -519,7 +550,7 @@ def test_wrap_query_does_not_double_wrap_subprocess_transport():
     # instrumentor does it.
     wrapper = add_spec_wrapper(
         wrappers_module.wrap_query,
-        {"method_name": "query", "span_type": "DEFAULT"},
+        cast(Any, {"method_name": "query", "span_type": "DEFAULT"}),
     )
 
     # Call the wrapper with a SubprocessCLITransport
@@ -550,14 +581,14 @@ def test_wrap_client_init_does_not_double_wrap_subprocess_transport():
 
     # Create a simple class that inherits from SubprocessCLITransport for testing
     class TestTransport(SubprocessCLITransport):
-        def __init__(self):
+        def __init__(self):  # pyright: ignore[reportMissingSuperCall]
             # Don't call super().__init__() to avoid requiring options
             # Just set up what we need for the test
             class MockOptions:
                 def __init__(self):
-                    self.env = {}
+                    self.env: dict[str, str] = {}
 
-            self._options = MockOptions()
+            self._options: MockOptions = MockOptions()
 
     mock_transport = TestTransport()
     original_connect = mock_transport.connect
@@ -568,7 +599,7 @@ def test_wrap_client_init_does_not_double_wrap_subprocess_transport():
     # Create the wrapper
     wrapper = add_spec_wrapper(
         wrap_client_init,
-        {"method_name": "__init__", "class_name": "ClaudeSDKClient"},
+        cast(Any, {"method_name": "__init__", "class_name": "ClaudeSDKClient"}),
     )
 
     # Call the wrapper with a SubprocessCLITransport

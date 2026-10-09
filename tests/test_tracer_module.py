@@ -37,7 +37,7 @@ def test_get_laminar_tracer_provider_returns_the_laminar_provider():
     assert provider is wrapper.tracer_provider
 
 
-def test_tracer_helpers_do_not_initialize_tracing(monkeypatch: MagicMock):
+def test_tracer_helpers_do_not_initialize_tracing(monkeypatch: pytest.MonkeyPatch):
     """`get_tracer()` and `get_laminar_tracer_provider()` used to call
     `TracerWrapper()`, which silently built a full API-key-less tracer (exporter
     threads and an atexit hook included) when tracing was not initialized."""
@@ -54,12 +54,12 @@ def test_tracer_helpers_do_not_initialize_tracing(monkeypatch: MagicMock):
     assert get_tracer_wrapper() is None, "must not have initialized tracing"
 
 
-def test_session_recording_options_default_before_init(monkeypatch: MagicMock):
+def test_session_recording_options_default_before_init(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(wrapper_mod, "_session_recording_options", None)
     assert get_session_recording_options() == {"mask_input_options": None}
 
 
-def test_reset_tracing_is_idempotent(monkeypatch: MagicMock):
+def test_reset_tracing_is_idempotent(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(wrapper_mod, "_tracer_wrapper", None)
     monkeypatch.setattr(wrapper_mod, "_session_recording_options", None)
 

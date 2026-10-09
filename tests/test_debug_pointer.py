@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from pytest import MonkeyPatch
+
 from lmnr.sdk.debug.debug_session_file import (
     DEBUG_SESSION_DIR,
     DEBUG_SESSION_FILE,
@@ -59,7 +61,7 @@ def test_build_debug_session_file_keeps_trace_id_null_for_fresh_session():
 
 def test_emit_prints_prefixed_compact_json(
     tmp_path: Path,
-    monkeypatch: MagicMock,
+    monkeypatch: MonkeyPatch,
     capsys: MagicMock,
 ):
     monkeypatch.chdir(tmp_path)
@@ -76,7 +78,7 @@ def test_emit_prints_prefixed_compact_json(
 
 def test_emit_always_writes_the_debug_session_file(
     tmp_path: Path,
-    monkeypatch: MagicMock,
+    monkeypatch: MonkeyPatch,
 ):
     # Default-on now: no env gate. The file is always written.
     monkeypatch.chdir(tmp_path)
@@ -93,7 +95,7 @@ def test_emit_always_writes_the_debug_session_file(
 
 def test_emit_best_effort_on_unwritable_dir(
     tmp_path: Path,
-    monkeypatch: MagicMock,
+    monkeypatch: MonkeyPatch,
     capsys: MagicMock,
 ):
     # Make the working directory's .lmnr path un-creatable by making makedirs
@@ -215,7 +217,7 @@ def test_resolve_falls_back_to_start_dir(tmp_path: Path):
 
 
 def test_emit_from_subdirectory_writes_back_to_the_ancestor_anchor(
-    tmp_path: Path, monkeypatch: MagicMock, capsys: MagicMock,
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: MagicMock,
 ):
     existing = build_debug_session_file("s", None, None, None, None)
     _success = write_debug_session_file(existing, str(tmp_path))
@@ -235,7 +237,7 @@ def test_emit_from_subdirectory_writes_back_to_the_ancestor_anchor(
 
 
 def test_emit_skips_the_write_when_on_disk_session_differs(
-    tmp_path: Path, monkeypatch: MagicMock, capsys: MagicMock,
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: MagicMock,
 ):
     # A fresher session minted on disk while this run was in flight (e.g.
     # `lmnr-cli debug session new`) must not be clobbered.
@@ -253,7 +255,7 @@ def test_emit_skips_the_write_when_on_disk_session_differs(
 
 
 def test_emit_persists_env_session_override_when_file_unchanged(
-    tmp_path: Path, monkeypatch: MagicMock, capsys: MagicMock,
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: MagicMock,
 ):
     # LMNR_DEBUG_SESSION_ID overrode the file's session at init; the file is
     # unchanged since that read, so this run still owns it and the override
@@ -270,7 +272,7 @@ def test_emit_persists_env_session_override_when_file_unchanged(
 
 
 def test_emit_skips_when_file_changed_since_init(
-    tmp_path: Path, monkeypatch: MagicMock, capsys: MagicMock,
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: MagicMock,
 ):
     # Init read sess-at-init, but a fresher session replaced it mid-run — even
     # an env-overridden run no longer owns the file.
@@ -286,7 +288,7 @@ def test_emit_skips_when_file_changed_since_init(
 
 
 def test_emit_writes_to_the_pinned_directory_after_chdir(
-    tmp_path: Path, monkeypatch: MagicMock, capsys: MagicMock,
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: MagicMock,
 ):
     # The anchor is resolved once at init and passed in; a chdir between init
     # and shutdown must not retarget the write.

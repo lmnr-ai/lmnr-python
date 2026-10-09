@@ -67,7 +67,7 @@ def vcr_config():
 
 
 @pytest.fixture(autouse=True)
-def gemini_env(monkeypatch: MagicMock):
+def gemini_env(monkeypatch: pytest.MonkeyPatch):
     # Real key from the environment while recording; the placeholder is
     # enough for replay because vcr_config filters the key out of matches.
     monkeypatch.setenv(
@@ -232,7 +232,7 @@ def test_call_llm_span_ends_before_tool_execution(span_exporter: InMemorySpanExp
 
 @pytest.mark.vcr
 def test_call_llm_content_respects_adk_content_toggle(
-    span_exporter: InMemorySpanExporter, monkeypatch: MagicMock,
+    span_exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch,
 ):
     # With the content knob off, ADK stamps "{}" for the legacy
     # gcp.vertex.agent.llm_request/response attributes; the new gen_ai.*
@@ -261,7 +261,7 @@ def test_agent_span_carries_session_association(span_exporter: InMemorySpanExpor
 
 @pytest.mark.vcr
 def test_tool_content_respects_adk_content_toggle(
-    span_exporter: InMemorySpanExporter, monkeypatch: MagicMock,
+    span_exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch,
 ):
     # With the content knob off, ADK stamps "{}" for tool args/response;
     # that must not leak into the Laminar input/output attributes.
