@@ -5,6 +5,7 @@ fakes of Harbor's `Job` and `TrialHookEvent` instead of importing `harbor`.
 """
 
 import datetime
+import itertools
 import json
 import uuid
 from pathlib import Path
@@ -18,6 +19,7 @@ from opentelemetry.trace import StatusCode
 
 from lmnr.integrations.harbor import LaminarPlugin
 from lmnr.integrations.harbor.trajectory import (
+    ORDER_GAP_NS,
     content_to_text,
     parse_timestamp_ns,
     split_model_name,
@@ -337,6 +339,9 @@ async def test_trajectory_becomes_llm_and_tool_spans(
         "content": "hello.txt",
     }
     assert json.loads(second.attributes["lmnr.span.output"])[0]["content"] == "Done"
+    # It starts once the previous step's tool call is done, not at the same time.
+    assert second.start_time == parse_timestamp_ns(ts(10)) + ORDER_GAP_NS
+    assert second.end_time == parse_timestamp_ns(ts(15))
 
     tool = spans["bash"][0]
     assert tool.attributes["lmnr.span.type"] == "TOOL"
@@ -430,6 +435,59 @@ async def test_embedded_subagent_is_nested_under_tool(
     assert subagent.start_time == subagent.end_time == parse_timestamp_ns(ts(7.5))
     assert tool.start_time == parse_timestamp_ns(ts(7))
     assert tool.end_time == parse_timestamp_ns(ts(7.5))
+
+
+@pytest.mark.asyncio
+async def test_spans_start_in_trajectory_order(
+    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+):
+    def agent_step(step_id: int, seconds: float, calls: list[str]) -> dict:
+        return {
+            "step_id": step_id,
+            "timestamp": iso(seconds),
+            "source": "agent",
+            "message": f"step {step_id}",
+            "tool_calls": [
+                {"tool_call_id": c, "function_name": c, "arguments": {}} for c in calls
+            ],
+            "observation": {
+                "results": [{"source_call_id": c, "content": "ok"} for c in calls]
+            },
+        }
+
+    trajectory = {
+        "agent": {"name": "main", "model_name": "openai/gpt-5"},
+        "steps": [
+            {"step_id": 1, "timestamp": iso(6), "source": "user", "message": "go"},
+            agent_step(2, 8, ["read", "grep"]),
+            # Same timestamp as the previous step: still ordered after its tools.
+            agent_step(3, 8, ["edit"]),
+            agent_step(4, 9, []),
+        ],
+    }
+    job = FakeJob(tmp_path / "job")
+    task_dir = make_task_dir(tmp_path, "t")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    event = make_event(job, task_dir, "t1", rewards={"reward": 0})
+    write_trajectory(job, "t1", trajectory)
+    await job.emit("start", event)
+    await job.emit("end", event)
+    await plugin.on_job_end(SimpleNamespace())
+
+    agent = spans_by_name(span_exporter)["agent"][0]
+    children = [
+        s
+        for s in span_exporter.get_finished_spans()
+        if s.parent is not None and s.parent.span_id == agent.context.span_id
+    ]
+    emitted = [s.name for s in children]
+    by_start = [s.name for s in sorted(children, key=lambda s: s.start_time)]
+    assert emitted == ["gpt-5", "read", "grep", "gpt-5", "edit", "gpt-5"]
+    assert by_start == emitted
+    starts = [s.start_time for s in children]
+    assert all(b - a >= ORDER_GAP_NS for a, b in itertools.pairwise(starts))
+    assert all(s.end_time >= s.start_time for s in children)
 
 
 @pytest.mark.asyncio

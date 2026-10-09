@@ -24,6 +24,22 @@ logger = get_default_logger(__name__)
 # Guard against reference cycles between file-ref subagent trajectories.
 MAX_SUBAGENT_DEPTH = 8
 
+# ATIF gives a step's LLM call, its tool calls and the next LLM call the same
+# timestamp, and the trace view orders siblings by start time at millisecond
+# precision. Spans that would tie are nudged apart by this much so they show up
+# in the order they happened.
+ORDER_GAP_NS = 1_000_000
+
+
+def _not_before(value: int | None, floor: int | None) -> int | None:
+    if value is None or floor is None:
+        return value
+    return max(value, floor)
+
+
+def _shift(value: int | None, delta: int) -> int | None:
+    return None if value is None else value + delta
+
 
 def parse_timestamp_ns(value: Any) -> int | None:
     """Parse an ISO 8601 string or a datetime into nanoseconds since the epoch."""
@@ -149,11 +165,18 @@ class TrajectoryConverter:
     spans have no duration, unless the call spawned a subagent: embedded and
     file-referenced subagent trajectories become nested spans under the tool
     call, covering the time range of the subagent's own steps.
+
+    Since these timings are partly synthetic, sibling spans are nudged by
+    `ORDER_GAP_NS` where needed so that start times follow the trajectory's
+    order: an LLM call, then its tool calls one by one, then the next LLM call
+    after the last tool span has ended.
     """
 
     def __init__(self, base_dir: Path | None = None):
         self.base_dir = base_dir
         self.span_count = 0
+        self._last_start: int | None = None
+        self._tools_end: int | None = None
 
     def emit(
         self,
@@ -171,6 +194,25 @@ class TrajectoryConverter:
             if isinstance(sub, dict) and sub.get("trajectory_id")
         }
 
+        # Latest span start and latest tool span end so far at this level, used
+        # to keep sibling start times in trajectory order. Saved and restored
+        # because subagents recurse into `emit` with their own level.
+        outer_order = self._last_start, self._tools_end
+        self._last_start, self._tools_end = None, None
+        try:
+            self._emit_steps(steps, parent, start_ns, depth, default_model, subagents)
+        finally:
+            self._last_start, self._tools_end = outer_order
+
+    def _emit_steps(
+        self,
+        steps: list[dict[str, Any]],
+        parent: LaminarSpanContext,
+        start_ns: int | None,
+        depth: int,
+        default_model: str | None,
+        subagents: dict[str, dict[str, Any]],
+    ) -> None:
         history: list[dict[str, Any]] = []
         prev_ns = start_ns
         for step in steps:
@@ -181,12 +223,19 @@ class TrajectoryConverter:
                 and step.get("llm_call_count") != 0
             )
             if is_llm_step:
+                llm_start = prev_ns if prev_ns is not None else step_ns
+                llm_start = _not_before(
+                    llm_start, _shift(self._last_start, ORDER_GAP_NS)
+                )
+                llm_start = _not_before(
+                    llm_start, _shift(self._tools_end, ORDER_GAP_NS)
+                )
                 self._emit_llm_span(
                     step,
                     list(history),
                     parent,
-                    start_ns=prev_ns if prev_ns is not None else step_ns,
-                    end_ns=step_ns,
+                    start_ns=llm_start,
+                    end_ns=_not_before(step_ns, llm_start),
                     default_model=default_model,
                 )
             if step.get("source") == "agent" and not step.get("is_copied_context"):
@@ -250,6 +299,11 @@ class TrajectoryConverter:
         span.set_output([assistant_message(step)])
         span.end(end_time=end_ns)
         self.span_count += 1
+        self._record_start(start_ns)
+
+    def _record_start(self, start_ns: int | None) -> None:
+        if start_ns is not None:
+            self._last_start = _not_before(start_ns, self._last_start)
 
     def _emit_tool_spans(
         self,
@@ -291,7 +345,11 @@ class TrajectoryConverter:
             if step_ns is not None:
                 starts.append(step_ns)
                 ends.append(step_ns)
-            start_ns = min(starts) if starts else None
+            start_ns = _not_before(
+                min(starts) if starts else None,
+                _shift(self._last_start, ORDER_GAP_NS),
+            )
+            end_ns = _not_before(max(ends) if ends else None, start_ns)
             span = Laminar.start_span(
                 tool_call.get("function_name") or "tool",
                 input=tool_call.get("arguments"),
@@ -302,15 +360,19 @@ class TrajectoryConverter:
             output = "\n".join(content_to_text(r.get("content")) for r in results)
             span.set_output(output if results else None)
             for sub, sub_start, sub_end in spawned:
+                sub_start = _not_before(sub_start, start_ns)
                 self._emit_subagent(
                     sub,
                     span.get_laminar_span_context(),
                     start_ns=sub_start,
-                    end_ns=sub_end,
+                    end_ns=_not_before(sub_end, sub_start),
                     depth=depth + 1,
                 )
-            span.end(end_time=max(ends) if ends else None)
+            span.end(end_time=end_ns)
             self.span_count += 1
+            self._record_start(start_ns)
+            if end_ns is not None:
+                self._tools_end = _not_before(end_ns, self._tools_end)
 
     def _emit_subagent(
         self,
