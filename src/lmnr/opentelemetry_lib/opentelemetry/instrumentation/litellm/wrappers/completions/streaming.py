@@ -1,5 +1,5 @@
 from collections import defaultdict
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Generator, Iterator
 from typing import Any, TypedDict, TypeVar, cast
 
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
@@ -240,7 +240,7 @@ def _set_accumulated_attributes(
 
 def process_completion_streaming_response(
     span: Span,
-    response: Generator[T, None, None],
+    response: Generator[T] | Iterator[T],
     record_raw_response: bool = False,
 ) -> Generator[T, None, None]:
     accumulated = _new_accumulated()

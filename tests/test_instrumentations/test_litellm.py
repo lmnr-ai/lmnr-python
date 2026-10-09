@@ -3,13 +3,17 @@ import base64
 import json
 import os
 import uuid
+from collections.abc import AsyncIterator, Iterator
 from importlib.metadata import version
+from typing import Any, cast
 
 import litellm
 import pytest
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import SpanContext
 from pydantic import BaseModel
+from typing_extensions import override
 
 from lmnr import Laminar, LaminarLiteLLMCallback
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.litellm.wrappers.completions.streaming import (
@@ -17,6 +21,12 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.litellm.wrappers.compl
     process_completion_streaming_response,
 )
 from lmnr.version import __version__
+
+
+def _ctx(span: ReadableSpan) -> SpanContext:
+    ctx = span.get_span_context()
+    assert ctx is not None
+    return ctx
 
 
 class Event(BaseModel):
@@ -126,10 +136,10 @@ responses_tools = [
 
 
 def check_span_has_basic_attributes(span: ReadableSpan):
-    assert span.attributes["lmnr.span.instrumentation_source"] == "python"
-    assert span.attributes["lmnr.span.sdk_version"] == __version__
-    assert span.attributes["lmnr.span.instrumentation_scope.name"] == "litellm"
-    assert span.attributes["lmnr.span.instrumentation_scope.version"] == version(
+    assert (span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (span.attributes or {})["lmnr.span.sdk_version"] == __version__
+    assert (span.attributes or {})["lmnr.span.instrumentation_scope.name"] == "litellm"
+    assert (span.attributes or {})["lmnr.span.instrumentation_scope.version"] == version(
         "litellm"
     )
 
@@ -187,14 +197,14 @@ def test_litellm_completion_basic(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.completion"
-    assert spans[0].attributes["gen_ai.system"] == "gemini"
-    assert spans[0].attributes["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.id"] == response.id
-    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 8
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 8
-    assert spans[0].attributes["llm.usage.total_tokens"] == 16
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "gemini"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == cast(litellm.ModelResponse, response).id
+    assert (spans[0].attributes or {})["gen_ai.usage.input_tokens"] == 8
+    assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == 8
+    assert (spans[0].attributes or {})["llm.usage.total_tokens"] == 16
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "role": "assistant",
             "content": "The capital of France is **Paris**.",
@@ -204,15 +214,15 @@ def test_litellm_completion_basic(span_exporter: InMemorySpanExporter):
             "thinking_blocks": [],
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {
             "role": "user",
             "content": "What is the capital of France?",
         }
     ]
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.completion",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.completion",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -236,7 +246,14 @@ def test_litellm_completion_activates_span_for_otel_callbacks(
     called = threading.Event()
 
     class _SpanCapturingCallback(CustomLogger):
-        def log_success_event(self, kwargs, response_obj, start_time, end_time):
+        @override
+        def log_success_event(
+            self,
+            kwargs: dict[str, Any],
+            response_obj: Any,
+            start_time: int,
+            end_time: int,
+        ):
             # litellm dispatches success callbacks on a background thread, so
             # the main thread must wait for this to run before asserting.
             captured["span_id"] = trace.get_current_span().get_span_context().span_id
@@ -244,7 +261,7 @@ def test_litellm_completion_activates_span_for_otel_callbacks(
 
     litellm.callbacks = [_SpanCapturingCallback()]
     try:
-        litellm.completion(
+        _res = litellm.completion(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "say hi"}],
             mock_response="Hello there!",
@@ -257,7 +274,7 @@ def test_litellm_completion_activates_span_for_otel_callbacks(
     assert len(spans) == 1
     assert spans[0].name == "litellm.completion"
     # The callback observed our span as the active OTel span.
-    assert captured["span_id"] == spans[0].get_span_context().span_id
+    assert captured["span_id"] == _ctx(spans[0]).span_id
 
 
 @pytest.mark.vcr(record_mode="once")
@@ -269,7 +286,7 @@ async def test_litellm_completion_callback_doesnt_create_double_spans(
     if "GEMINI_API_KEY" not in os.environ:
         os.environ["GEMINI_API_KEY"] = "test-key"
 
-    await litellm.acompletion(
+    _res = await litellm.acompletion(
         model="gemini/gemini-2.5-flash-lite",
         messages=[{"role": "user", "content": "What is the capital of France?"}],
     )
@@ -294,19 +311,19 @@ def test_litellm_completion_streaming(span_exporter: InMemorySpanExporter):
     )
     response_id = None
     for chunk in response:
+        # consume the stream
+        chunk  = cast(litellm.ModelResponseStream, chunk)
         if chunk.id:
             response_id = chunk.id
-        # consume the stream
-        pass
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.completion"
-    assert spans[0].attributes["gen_ai.system"] == "gemini"
-    assert spans[0].attributes["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.id"] == response_id
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "gemini"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == response_id
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "role": "assistant",
             "content": "The capital of France is **Paris**.",
@@ -316,15 +333,15 @@ def test_litellm_completion_streaming(span_exporter: InMemorySpanExporter):
             "index": 0,
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {
             "role": "user",
             "content": "What is the capital of France?",
         }
     ]
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.completion",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.completion",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -334,7 +351,7 @@ def test_litellm_completion_streaming_records_usage_only_chunk(
 ):
     """Usage from the final empty-choice stream chunk must reach the span."""
     span = Laminar.start_span("litellm.completion", span_type="LLM")
-    chunks = [
+    chunks: list[dict[str, Any]] = [
         {
             "id": "chatcmpl-test",
             "model": "kimi-k3",
@@ -363,7 +380,7 @@ def test_litellm_completion_streaming_records_usage_only_chunk(
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    attributes = spans[0].attributes
+    attributes = spans[0].attributes or {}
     assert attributes["gen_ai.usage.input_tokens"] == 5000
     assert attributes["gen_ai.usage.output_tokens"] == 100
     assert attributes["llm.usage.total_tokens"] == 5100
@@ -375,7 +392,7 @@ def test_litellm_completion_streaming_preserves_reasoning_deltas(
 ):
     """Reasoning deltas must be accumulated into the output message."""
     span = Laminar.start_span("litellm.completion", span_type="LLM")
-    chunks = [
+    chunks: list[dict[str, Any]] = [
         {
             "id": "chatcmpl-test",
             "model": "kimi-k3",
@@ -408,8 +425,8 @@ def test_litellm_completion_streaming_preserves_reasoning_deltas(
     assert list(process_completion_streaming_response(span, iter(chunks))) == chunks
 
     output = json.loads(
-        span_exporter.get_finished_spans()[0].attributes["gen_ai.output.messages"]
-    )
+        cast(str, (span_exporter.get_finished_spans()[0].attributes or {})["gen_ai.output.messages"]
+    ))
     assert output[0]["reasoning_content"] == "I should inspect the repository."
     assert output[0]["content"] == "I'll inspect it."
 
@@ -419,7 +436,7 @@ def test_litellm_completion_streaming_omits_unknown_cache_usage(
 ):
     """Missing cache details must not be reported as confirmed zero usage."""
     span = Laminar.start_span("litellm.completion", span_type="LLM")
-    chunks = [
+    chunks: list[dict[str, str | list[dict[str, str]] | dict[str, int]]] = [
         {
             "id": "chatcmpl-test",
             "model": "kimi-k3",
@@ -432,9 +449,10 @@ def test_litellm_completion_streaming_omits_unknown_cache_usage(
         }
     ]
 
-    list(process_completion_streaming_response(span, iter(chunks)))
+    # consume the stream
+    _ = list(process_completion_streaming_response(span, iter(chunks)))
 
-    attributes = span_exporter.get_finished_spans()[0].attributes
+    attributes = span_exporter.get_finished_spans()[0].attributes or {}
     assert "gen_ai.usage.cache_read_input_tokens" not in attributes
     assert "gen_ai.usage.cache_creation_input_tokens" not in attributes
 
@@ -445,7 +463,7 @@ async def test_litellm_completion_async_streaming_records_usage_only_chunk(
 ):
     """The async stream wrapper must preserve a final usage-only chunk."""
     span = Laminar.start_span("litellm.completion", span_type="LLM")
-    chunks = [
+    chunks: list[dict[str, Any]] = [
         {
             "id": "chatcmpl-test",
             "model": "kimi-k3",
@@ -476,7 +494,7 @@ async def test_litellm_completion_async_streaming_records_usage_only_chunk(
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    attributes = spans[0].attributes
+    attributes = spans[0].attributes or {}
     assert attributes["gen_ai.usage.input_tokens"] == 5000
     assert attributes["gen_ai.usage.output_tokens"] == 100
     assert attributes["llm.usage.total_tokens"] == 5100
@@ -523,8 +541,8 @@ async def test_litellm_completion_async_streaming_preserves_reasoning_deltas(
     ]
     assert received == chunks
     output = json.loads(
-        span_exporter.get_finished_spans()[0].attributes["gen_ai.output.messages"]
-    )
+        cast(str, (span_exporter.get_finished_spans()[0].attributes or {})["gen_ai.output.messages"]
+    ))
     assert output[0]["reasoning_content"] == "Think carefully."
     assert output[0]["content"] == "Done"
 
@@ -542,19 +560,18 @@ def test_litellm_completion_streaming_openai(span_exporter: InMemorySpanExporter
     )
     response_id = None
     for chunk in response:
+        chunk = cast(litellm.ModelResponseStream, chunk)
         if chunk.id:
             response_id = chunk.id
-        # consume the stream
-        pass
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.completion"
-    assert spans[0].attributes["gen_ai.system"] == "openai"
-    assert spans[0].attributes["gen_ai.request.model"] == "gpt-4.1-nano"
-    assert spans[0].attributes["gen_ai.response.model"] == "gpt-4.1-nano"
-    assert spans[0].attributes["gen_ai.response.id"] == response_id
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "openai"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gpt-4.1-nano"
+    assert (spans[0].attributes or {})["gen_ai.response.model"] == "gpt-4.1-nano"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == response_id
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "role": "assistant",
             "content": "The capital of France is Paris.",
@@ -564,15 +581,15 @@ def test_litellm_completion_streaming_openai(span_exporter: InMemorySpanExporter
             "index": 0,
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {
             "role": "user",
             "content": "What is the capital of France?",
         }
     ]
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.completion",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.completion",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -595,14 +612,14 @@ def test_litellm_completion_with_structured_output(span_exporter: InMemorySpanEx
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.completion"
-    assert spans[0].attributes["gen_ai.system"] == "gemini"
-    assert spans[0].attributes["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.id"] == response.id
-    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 17
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 32
-    assert spans[0].attributes["llm.usage.total_tokens"] == 49
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "gemini"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == cast(litellm.ModelResponse, response).id
+    assert (spans[0].attributes or {})["gen_ai.usage.input_tokens"] == 17
+    assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == 32
+    assert (spans[0].attributes or {})["llm.usage.total_tokens"] == 49
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "role": "assistant",
             "content": '{\n  "name": "Science fair",\n  "people": ["Alice", "Bob"],\n  "dayOfWeek": "Friday"\n}',
@@ -612,19 +629,19 @@ def test_litellm_completion_with_structured_output(span_exporter: InMemorySpanEx
             "thinking_blocks": [],
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {
             "role": "user",
             "content": "Alice and Bob go to a Science fair on Friday. Extract the event information.",
         }
     ]
     assert (
-        json.loads(spans[0].attributes["gen_ai.request.structured_output_schema"])
+        json.loads(cast(str, (spans[0].attributes or {})["gen_ai.request.structured_output_schema"]))
         == schema
     )
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.completion",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.completion",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -649,14 +666,14 @@ def test_litellm_completion_with_structured_output_pydantic(
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.completion"
-    assert spans[0].attributes["gen_ai.system"] == "gemini"
-    assert spans[0].attributes["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.id"] == response.id
-    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 17
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 32
-    assert spans[0].attributes["llm.usage.total_tokens"] == 49
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "gemini"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == cast(litellm.ModelResponse, response).id
+    assert (spans[0].attributes or {})["gen_ai.usage.input_tokens"] == 17
+    assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == 32
+    assert (spans[0].attributes or {})["llm.usage.total_tokens"] == 49
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "role": "assistant",
             "content": '{\n  "name": "Science fair",\n  "people": ["Alice", "Bob"],\n  "dayOfWeek": "Friday"\n}',
@@ -666,19 +683,19 @@ def test_litellm_completion_with_structured_output_pydantic(
             "thinking_blocks": [],
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {
             "role": "user",
             "content": "Alice and Bob go to a Science fair on Friday. Extract the event information.",
         }
     ]
     assert (
-        json.loads(spans[0].attributes["gen_ai.request.structured_output_schema"])
+        json.loads(cast(str, (spans[0].attributes or {})["gen_ai.request.structured_output_schema"]))
         == Event.model_json_schema()
     )
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.completion",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.completion",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -687,7 +704,7 @@ def test_litellm_completion_with_structured_output_pydantic(
 def test_litellm_completion_with_tool_call(span_exporter: InMemorySpanExporter):
     if "GEMINI_API_KEY" not in os.environ:
         os.environ["GEMINI_API_KEY"] = "test-key"
-    response = litellm.completion(
+    response = cast(litellm.ModelResponse, litellm.completion(
         model="gemini/gemini-2.5-flash-lite",
         messages=[
             {
@@ -696,19 +713,20 @@ def test_litellm_completion_with_tool_call(span_exporter: InMemorySpanExporter):
             }
         ],
         tools=[tools[0]],
-    )
+    ))
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.completion"
-    assert spans[0].attributes["gen_ai.system"] == "gemini"
-    assert spans[0].attributes["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.id"] == response.id
-    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 65
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 15
-    assert spans[0].attributes["llm.usage.total_tokens"] == 80
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "gemini"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == response.id
+    assert (spans[0].attributes or {})["gen_ai.usage.input_tokens"] == 65
+    assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == 15
+    assert (spans[0].attributes or {})["llm.usage.total_tokens"] == 80
+    assert response.choices[0].message.tool_calls is not None
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "role": "assistant",
             "content": None,
@@ -728,16 +746,16 @@ def test_litellm_completion_with_tool_call(span_exporter: InMemorySpanExporter):
             "thinking_blocks": [],
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {
             "role": "user",
             "content": "What is the weather in Tokyo?",
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.tool.definitions"]) == [tools[0]]
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.completion",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.tool.definitions"])) == [tools[0]]
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.completion",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -748,7 +766,7 @@ def test_litellm_completion_with_parallel_tool_calls(
 ):
     if "GEMINI_API_KEY" not in os.environ:
         os.environ["GEMINI_API_KEY"] = "test-key"
-    response = litellm.completion(
+    response = cast(litellm.ModelResponse, litellm.completion(
         model="gemini/gemini-2.5-flash",
         messages=[
             {
@@ -761,19 +779,20 @@ def test_litellm_completion_with_parallel_tool_calls(
             "type": "enabled",
             "budget_tokens": 0,
         },
-    )
+    ))
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.completion"
-    assert spans[0].attributes["gen_ai.system"] == "gemini"
-    assert spans[0].attributes["gen_ai.request.model"] == "gemini/gemini-2.5-flash"
-    assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash"
-    assert spans[0].attributes["gen_ai.response.id"] == response.id
-    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 129
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 34
-    assert spans[0].attributes["llm.usage.total_tokens"] == 163
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "gemini"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gemini/gemini-2.5-flash"
+    assert (spans[0].attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == response.id
+    assert (spans[0].attributes or {})["gen_ai.usage.input_tokens"] == 129
+    assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == 34
+    assert (spans[0].attributes or {})["llm.usage.total_tokens"] == 163
+    assert response.choices[0].message.tool_calls is not None
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "role": "assistant",
             "content": None,
@@ -802,19 +821,19 @@ def test_litellm_completion_with_parallel_tool_calls(
             "thinking_blocks": [],
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {
             "role": "user",
             "content": "What is the weather in Tokyo? What are the latest news there?",
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.tool.definitions"]) == tools
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.completion",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.tool.definitions"])) == tools
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.completion",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
-    assert spans[0].attributes["lmnr.span.instrumentation_source"] == "python"
-    assert spans[0].attributes["lmnr.span.sdk_version"] == __version__
+    assert (spans[0].attributes or {})["lmnr.span.instrumentation_source"] == "python"
+    assert (spans[0].attributes or {})["lmnr.span.sdk_version"] == __version__
 
 
 @pytest.mark.vcr(record_mode="once")
@@ -822,7 +841,7 @@ def test_litellm_completion_with_tool_call_history(span_exporter: InMemorySpanEx
     if "GEMINI_API_KEY" not in os.environ:
         os.environ["GEMINI_API_KEY"] = "test-key"
 
-    response1 = litellm.completion(
+    response1 = cast(litellm.ModelResponse, litellm.completion(
         model="gemini/gemini-2.5-flash-lite",
         messages=[
             {
@@ -831,8 +850,9 @@ def test_litellm_completion_with_tool_call_history(span_exporter: InMemorySpanEx
             }
         ],
         tools=[tools[0]],
-    )
-    response2 = litellm.completion(
+    ))
+    assert response1.choices[0].message.tool_calls is not None
+    response2 = cast(litellm.ModelResponse, litellm.completion(
         model="gemini/gemini-2.5-flash-lite",
         messages=[
             {
@@ -847,37 +867,37 @@ def test_litellm_completion_with_tool_call_history(span_exporter: InMemorySpanEx
             },
         ],
         tools=[tools[0]],
-    )
+    ))
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
-    span1 = sorted(spans, key=lambda x: x.start_time)[0]
-    span2 = sorted(spans, key=lambda x: x.start_time)[1]
+    span1 = min(spans, key=lambda x: x.start_time or 0)
+    span2 = sorted(spans, key=lambda x: x.start_time or 0)[1]
 
     for span in spans:
         assert span.name == "litellm.completion"
-        assert span.attributes["gen_ai.system"] == "gemini"
-        assert span.attributes["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
-        assert span.attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-        assert json.loads(span.attributes["gen_ai.tool.definitions"]) == [tools[0]]
-        assert span.attributes["lmnr.span.path"] == ("litellm.completion",)
-        assert span.attributes["lmnr.span.ids_path"] == (
-            str(uuid.UUID(int=span.get_span_context().span_id)),
+        assert (span.attributes or {})["gen_ai.system"] == "gemini"
+        assert (span.attributes or {})["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
+        assert (span.attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+        assert json.loads(cast(str, (span.attributes or {})["gen_ai.tool.definitions"])) == [tools[0]]
+        assert (span.attributes or {})["lmnr.span.path"] == ("litellm.completion",)
+        assert (span.attributes or {})["lmnr.span.ids_path"] == (
+            str(uuid.UUID(int=_ctx(span).span_id)),
         )
         check_span_has_basic_attributes(span)
 
-    assert span1.attributes["gen_ai.response.id"] == response1.id
-    assert span2.attributes["gen_ai.response.id"] == response2.id
+    assert (span1.attributes or {})["gen_ai.response.id"] == response1.id
+    assert (span2.attributes or {})["gen_ai.response.id"] == response2.id
 
-    assert span1.attributes["gen_ai.usage.input_tokens"] == 65
-    assert span1.attributes["gen_ai.usage.output_tokens"] == 15
-    assert span1.attributes["llm.usage.total_tokens"] == 80
+    assert (span1.attributes or {})["gen_ai.usage.input_tokens"] == 65
+    assert (span1.attributes or {})["gen_ai.usage.output_tokens"] == 15
+    assert (span1.attributes or {})["llm.usage.total_tokens"] == 80
 
-    assert span2.attributes["gen_ai.usage.input_tokens"] == 101
-    assert span2.attributes["gen_ai.usage.output_tokens"] == 13
-    assert span2.attributes["llm.usage.total_tokens"] == 114
+    assert (span2.attributes or {})["gen_ai.usage.input_tokens"] == 101
+    assert (span2.attributes or {})["gen_ai.usage.output_tokens"] == 13
+    assert (span2.attributes or {})["llm.usage.total_tokens"] == 114
 
-    assert json.loads(span1.attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (span1.attributes or {})["gen_ai.output.messages"])) == [
         {
             "role": "assistant",
             "content": None,
@@ -897,14 +917,14 @@ def test_litellm_completion_with_tool_call_history(span_exporter: InMemorySpanEx
             "thinking_blocks": [],
         }
     ]
-    assert json.loads(span1.attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (span1.attributes or {})["gen_ai.input.messages"])) == [
         {
             "role": "user",
             "content": "What is the weather in Tokyo?",
         }
     ]
 
-    assert json.loads(span2.attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (span2.attributes or {})["gen_ai.output.messages"])) == [
         {
             "role": "assistant",
             "content": "The weather in Tokyo is sunny and 22°C.",
@@ -914,7 +934,7 @@ def test_litellm_completion_with_tool_call_history(span_exporter: InMemorySpanEx
             "thinking_blocks": [],
         }
     ]
-    assert json.loads(span2.attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (span2.attributes or {})["gen_ai.input.messages"])) == [
         {
             "role": "user",
             "content": "What is the weather in Tokyo?",
@@ -947,7 +967,9 @@ def test_litellm_completion_streaming_with_tool_call(
     )
 
     response_id = None
+    tool_call_id = None
     for chunk in response:
+        chunk = cast(litellm.ModelResponseStream, chunk)
         if chunk.id:
             response_id = chunk.id
         if chunk.choices[0].delta.tool_calls:
@@ -956,11 +978,11 @@ def test_litellm_completion_streaming_with_tool_call(
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.completion"
-    assert spans[0].attributes["gen_ai.system"] == "gemini"
-    assert spans[0].attributes["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.id"] == response_id
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "gemini"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == response_id
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "role": "assistant",
             "content": None,
@@ -980,16 +1002,16 @@ def test_litellm_completion_streaming_with_tool_call(
             ],
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {
             "role": "user",
             "content": "What is the weather in Tokyo?",
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.tool.definitions"]) == [tools[0]]
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.completion",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.tool.definitions"])) == [tools[0]]
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.completion",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -1015,6 +1037,7 @@ def test_litellm_completion_streaming_with_tool_call_openai(
     response_id = None
     tool_call_id = None
     for chunk in response:
+        chunk = cast(litellm.ModelResponseStream, chunk)
         if chunk.id:
             response_id = chunk.id
         if chunk.choices[0].delta.tool_calls:
@@ -1025,11 +1048,11 @@ def test_litellm_completion_streaming_with_tool_call_openai(
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.completion"
-    assert spans[0].attributes["gen_ai.system"] == "openai"
-    assert spans[0].attributes["gen_ai.request.model"] == "gpt-4.1-nano"
-    assert spans[0].attributes["gen_ai.response.model"] == "gpt-4.1-nano"
-    assert spans[0].attributes["gen_ai.response.id"] == response_id
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "openai"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gpt-4.1-nano"
+    assert (spans[0].attributes or {})["gen_ai.response.model"] == "gpt-4.1-nano"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == response_id
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "role": "assistant",
             "content": None,
@@ -1049,16 +1072,16 @@ def test_litellm_completion_streaming_with_tool_call_openai(
             ],
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {
             "role": "user",
             "content": "What is the weather in Tokyo?",
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.tool.definitions"]) == [tools[0]]
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.completion",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.tool.definitions"])) == [tools[0]]
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.completion",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -1068,22 +1091,22 @@ def test_litellm_completion_streaming_with_tool_call_openai(
 async def test_litellm_completion_basic_async(span_exporter: InMemorySpanExporter):
     if "GEMINI_API_KEY" not in os.environ:
         os.environ["GEMINI_API_KEY"] = "test-key"
-    response = await litellm.acompletion(
+    response = cast(litellm.ModelResponse, await litellm.acompletion(
         model="gemini/gemini-2.5-flash-lite",
         messages=[{"role": "user", "content": "What is the capital of France?"}],
-    )
+    ))
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.completion"
-    assert spans[0].attributes["gen_ai.system"] == "gemini"
-    assert spans[0].attributes["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.id"] == response.id
-    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 8
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 8
-    assert spans[0].attributes["llm.usage.total_tokens"] == 16
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "gemini"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == response.id
+    assert (spans[0].attributes or {})["gen_ai.usage.input_tokens"] == 8
+    assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == 8
+    assert (spans[0].attributes or {})["llm.usage.total_tokens"] == 16
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "role": "assistant",
             "content": "The capital of France is **Paris**.",
@@ -1093,15 +1116,15 @@ async def test_litellm_completion_basic_async(span_exporter: InMemorySpanExporte
             "thinking_blocks": [],
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {
             "role": "user",
             "content": "What is the capital of France?",
         }
     ]
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.completion",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.completion",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -1111,26 +1134,24 @@ async def test_litellm_completion_basic_async(span_exporter: InMemorySpanExporte
 async def test_litellm_completion_streaming_async(span_exporter: InMemorySpanExporter):
     if "GEMINI_API_KEY" not in os.environ:
         os.environ["GEMINI_API_KEY"] = "test-key"
-    response = await litellm.acompletion(
+    response = cast(litellm.CustomStreamWrapper, await litellm.acompletion(
         model="gemini/gemini-2.5-flash-lite",
         messages=[{"role": "user", "content": "What is the capital of France?"}],
         stream=True,
-    )
+    ))
     response_id = None
     async for chunk in response:
         if chunk.id:
             response_id = chunk.id
-        # consume the stream
-        pass
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.completion"
-    assert spans[0].attributes["gen_ai.system"] == "gemini"
-    assert spans[0].attributes["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.id"] == response_id
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "gemini"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == response_id
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "role": "assistant",
             "content": "The capital of France is **Paris**.",
@@ -1140,15 +1161,15 @@ async def test_litellm_completion_streaming_async(span_exporter: InMemorySpanExp
             "index": 0,
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {
             "role": "user",
             "content": "What is the capital of France?",
         }
     ]
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.completion",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.completion",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -1162,27 +1183,25 @@ async def test_litellm_completion_streaming_async_openai(
     # so for streaming, we return an async generator from OpenAI SDK; thus, separate test.
     if "OPENAI_API_KEY" not in os.environ:
         os.environ["OPENAI_API_KEY"] = "test-key"
-    response = await litellm.acompletion(
+    response = cast(litellm.CustomStreamWrapper, await litellm.acompletion(
         model="gpt-4.1-nano",
         messages=[{"role": "user", "content": "What is the capital of France?"}],
         stream=True,
-    )
+    ))
     response_id = None
     async for chunk in response:
         if chunk.id:
             response_id = chunk.id
-        # consume the stream
-        pass
 
     spans = span_exporter.get_finished_spans()
     print([span.name for span in spans])
     assert len(spans) == 1
     assert spans[0].name == "litellm.completion"
-    assert spans[0].attributes["gen_ai.system"] == "openai"
-    assert spans[0].attributes["gen_ai.request.model"] == "gpt-4.1-nano"
-    assert spans[0].attributes["gen_ai.response.model"] == "gpt-4.1-nano"
-    assert spans[0].attributes["gen_ai.response.id"] == response_id
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "openai"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gpt-4.1-nano"
+    assert (spans[0].attributes or {})["gen_ai.response.model"] == "gpt-4.1-nano"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == response_id
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "role": "assistant",
             "content": "The capital of France is Paris.",
@@ -1192,15 +1211,15 @@ async def test_litellm_completion_streaming_async_openai(
             "index": 0,
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {
             "role": "user",
             "content": "What is the capital of France?",
         }
     ]
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.completion",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.completion",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -1226,14 +1245,14 @@ async def test_litellm_completion_with_structured_output_async(
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.completion"
-    assert spans[0].attributes["gen_ai.system"] == "gemini"
-    assert spans[0].attributes["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.id"] == response.id
-    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 17
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 29
-    assert spans[0].attributes["llm.usage.total_tokens"] == 46
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "gemini"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == cast(litellm.ModelResponse, response).id
+    assert (spans[0].attributes or {})["gen_ai.usage.input_tokens"] == 17
+    assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == 29
+    assert (spans[0].attributes or {})["llm.usage.total_tokens"] == 46
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "role": "assistant",
             "content": '{\n"name": "Science fair",\n"people": ["Alice", "Bob"],\n"dayOfWeek": "Friday"\n}',
@@ -1243,19 +1262,19 @@ async def test_litellm_completion_with_structured_output_async(
             "thinking_blocks": [],
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {
             "role": "user",
             "content": "Alice and Bob go to a Science fair on Friday. Extract the event information.",
         }
     ]
     assert (
-        json.loads(spans[0].attributes["gen_ai.request.structured_output_schema"])
+        json.loads(cast(str, (spans[0].attributes or {})["gen_ai.request.structured_output_schema"]))
         == schema
     )
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.completion",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.completion",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -1281,14 +1300,14 @@ async def test_litellm_completion_with_structured_output_pydantic_async(
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.completion"
-    assert spans[0].attributes["gen_ai.system"] == "gemini"
-    assert spans[0].attributes["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.id"] == response.id
-    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 17
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 32
-    assert spans[0].attributes["llm.usage.total_tokens"] == 49
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "gemini"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == cast(litellm.ModelResponse, response).id
+    assert (spans[0].attributes or {})["gen_ai.usage.input_tokens"] == 17
+    assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == 32
+    assert (spans[0].attributes or {})["llm.usage.total_tokens"] == 49
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "role": "assistant",
             "content": '{\n  "name": "Science fair",\n  "people": ["Alice", "Bob"],\n  "dayOfWeek": "Friday"\n}',
@@ -1298,19 +1317,19 @@ async def test_litellm_completion_with_structured_output_pydantic_async(
             "thinking_blocks": [],
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {
             "role": "user",
             "content": "Alice and Bob go to a Science fair on Friday. Extract the event information.",
         }
     ]
     assert (
-        json.loads(spans[0].attributes["gen_ai.request.structured_output_schema"])
+        json.loads(cast(str, (spans[0].attributes or {})["gen_ai.request.structured_output_schema"]))
         == Event.model_json_schema()
     )
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.completion",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.completion",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -1322,7 +1341,7 @@ async def test_litellm_completion_with_tool_call_async(
 ):
     if "GEMINI_API_KEY" not in os.environ:
         os.environ["GEMINI_API_KEY"] = "test-key"
-    response = await litellm.acompletion(
+    response = cast(litellm.ModelResponse, await litellm.acompletion(
         model="gemini/gemini-2.5-flash-lite",
         messages=[
             {
@@ -1331,19 +1350,20 @@ async def test_litellm_completion_with_tool_call_async(
             }
         ],
         tools=[tools[0]],
-    )
+    ))
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.completion"
-    assert spans[0].attributes["gen_ai.system"] == "gemini"
-    assert spans[0].attributes["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.id"] == response.id
-    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 65
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 15
-    assert spans[0].attributes["llm.usage.total_tokens"] == 80
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "gemini"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == response.id
+    assert (spans[0].attributes or {})["gen_ai.usage.input_tokens"] == 65
+    assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == 15
+    assert (spans[0].attributes or {})["llm.usage.total_tokens"] == 80
+    assert response.choices[0].message.tool_calls is not None
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "role": "assistant",
             "content": None,
@@ -1363,16 +1383,16 @@ async def test_litellm_completion_with_tool_call_async(
             "thinking_blocks": [],
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {
             "role": "user",
             "content": "What is the weather in Tokyo?",
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.tool.definitions"]) == [tools[0]]
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.completion",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.tool.definitions"])) == [tools[0]]
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.completion",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -1384,7 +1404,7 @@ async def test_litellm_completion_with_parallel_tool_calls_async(
 ):
     if "GEMINI_API_KEY" not in os.environ:
         os.environ["GEMINI_API_KEY"] = "test-key"
-    response = await litellm.acompletion(
+    response = cast(litellm.ModelResponse, await litellm.acompletion(
         model="gemini/gemini-2.5-flash",
         messages=[
             {
@@ -1397,19 +1417,20 @@ async def test_litellm_completion_with_parallel_tool_calls_async(
             "type": "enabled",
             "budget_tokens": 0,
         },
-    )
+    ))
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.completion"
-    assert spans[0].attributes["gen_ai.system"] == "gemini"
-    assert spans[0].attributes["gen_ai.request.model"] == "gemini/gemini-2.5-flash"
-    assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash"
-    assert spans[0].attributes["gen_ai.response.id"] == response.id
-    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 129
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 34
-    assert spans[0].attributes["llm.usage.total_tokens"] == 163
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "gemini"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gemini/gemini-2.5-flash"
+    assert (spans[0].attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == response.id
+    assert (spans[0].attributes or {})["gen_ai.usage.input_tokens"] == 129
+    assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == 34
+    assert (spans[0].attributes or {})["llm.usage.total_tokens"] == 163
+    assert response.choices[0].message.tool_calls is not None
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "role": "assistant",
             "content": None,
@@ -1438,16 +1459,16 @@ async def test_litellm_completion_with_parallel_tool_calls_async(
             "thinking_blocks": [],
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {
             "role": "user",
             "content": "What is the weather in Tokyo? What are the latest news there?",
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.tool.definitions"]) == tools
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.completion",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.tool.definitions"])) == tools
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.completion",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -1459,7 +1480,7 @@ async def test_litellm_completion_streaming_with_tool_call_async(
 ):
     if "GEMINI_API_KEY" not in os.environ:
         os.environ["GEMINI_API_KEY"] = "test-key"
-    response = await litellm.acompletion(
+    response = cast(litellm.CustomStreamWrapper, await litellm.acompletion(
         model="gemini/gemini-2.5-flash-lite",
         messages=[
             {
@@ -1469,7 +1490,7 @@ async def test_litellm_completion_streaming_with_tool_call_async(
         ],
         stream=True,
         tools=[tools[0]],
-    )
+    ))
 
     response_id = None
     tool_call_id = None
@@ -1478,16 +1499,15 @@ async def test_litellm_completion_streaming_with_tool_call_async(
             response_id = chunk.id
         if chunk.choices[0].delta.tool_calls:
             tool_call_id = chunk.choices[0].delta.tool_calls[0].id
-        pass
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.completion"
-    assert spans[0].attributes["gen_ai.system"] == "gemini"
-    assert spans[0].attributes["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.model"] == "gemini-2.5-flash-lite"
-    assert spans[0].attributes["gen_ai.response.id"] == response_id
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "gemini"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gemini/gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.model"] == "gemini-2.5-flash-lite"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == response_id
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "role": "assistant",
             "content": None,
@@ -1507,16 +1527,16 @@ async def test_litellm_completion_streaming_with_tool_call_async(
             ],
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {
             "role": "user",
             "content": "What is the weather in Tokyo?",
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.tool.definitions"]) == [tools[0]]
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.completion",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.tool.definitions"])) == [tools[0]]
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.completion",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -1526,23 +1546,23 @@ def test_litellm_responses_basic(span_exporter: InMemorySpanExporter):
     if "OPENAI_API_KEY" not in os.environ:
         os.environ["OPENAI_API_KEY"] = "test-key"
 
-    response = litellm.responses(
+    response = cast(litellm.ResponsesAPIResponse, litellm.responses(
         model="gpt-4.1-nano",
         input=[
             {"content": "Be very crisp in your response.", "role": "system"},
             {"content": "What is the capital of France?", "role": "user"},
         ],
-    )
+    ))
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.responses"
-    assert spans[0].attributes["gen_ai.system"] == "openai"
-    assert spans[0].attributes["gen_ai.request.model"] == "gpt-4.1-nano"
-    assert spans[0].attributes["gen_ai.response.id"] == response.id
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "openai"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gpt-4.1-nano"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == response.id
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
-            "id": response.output[0].id,
+            "id": cast(litellm.ResponseOutputItem, response.output[0]).id,
             "content": [
                 {
                     "annotations": [],
@@ -1557,16 +1577,16 @@ def test_litellm_responses_basic(span_exporter: InMemorySpanExporter):
             "phase": None,
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {"content": "Be very crisp in your response.", "role": "system"},
         {"content": "What is the capital of France?", "role": "user"},
     ]
-    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 25
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 3
-    assert spans[0].attributes["llm.usage.total_tokens"] == 28
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.responses",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert (spans[0].attributes or {})["gen_ai.usage.input_tokens"] == 25
+    assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == 3
+    assert (spans[0].attributes or {})["llm.usage.total_tokens"] == 28
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.responses",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -1576,14 +1596,14 @@ def test_litellm_responses_streaming(span_exporter: InMemorySpanExporter):
     if "OPENAI_API_KEY" not in os.environ:
         os.environ["OPENAI_API_KEY"] = "test-key"
 
-    response = litellm.responses(
+    response = cast(Iterator[Any], litellm.responses(
         model="gpt-4.1-nano",
         input=[
             {"content": "Be very crisp in your response.", "role": "system"},
             {"content": "What is the capital of France?", "role": "user"},
         ],
         stream=True,
-    )
+    ))
     final_response = None
     for chunk in response:
         if chunk.type == "response.completed":
@@ -1592,10 +1612,11 @@ def test_litellm_responses_streaming(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.responses"
-    assert spans[0].attributes["gen_ai.system"] == "openai"
-    assert spans[0].attributes["gen_ai.request.model"] == "gpt-4.1-nano"
-    assert spans[0].attributes["gen_ai.response.id"] == final_response.id
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "openai"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gpt-4.1-nano"
+    assert final_response is not None
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == final_response.id
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "id": final_response.output[0].id,
             "content": [
@@ -1612,16 +1633,16 @@ def test_litellm_responses_streaming(span_exporter: InMemorySpanExporter):
             "phase": None,
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {"content": "Be very crisp in your response.", "role": "system"},
         {"content": "What is the capital of France?", "role": "user"},
     ]
-    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 25
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 2
-    assert spans[0].attributes["llm.usage.total_tokens"] == 27
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.responses",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert (spans[0].attributes or {})["gen_ai.usage.input_tokens"] == 25
+    assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == 2
+    assert (spans[0].attributes or {})["llm.usage.total_tokens"] == 27
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.responses",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -1631,42 +1652,42 @@ def test_litellm_responses_with_tool_call(span_exporter: InMemorySpanExporter):
     if "OPENAI_API_KEY" not in os.environ:
         os.environ["OPENAI_API_KEY"] = "test-key"
 
-    response = litellm.responses(
+    response = cast(litellm.ResponsesAPIResponse, litellm.responses(
         model="gpt-4.1-nano",
         input=[
             {"content": "Be very crisp in your response.", "role": "system"},
             {"content": "What is the weather in Tokyo?", "role": "user"},
         ],
-        tools=[responses_tools[0]],
-    )
+        tools=[cast(Any, responses_tools[0])],
+    ))
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.responses"
-    assert spans[0].attributes["gen_ai.system"] == "openai"
-    assert spans[0].attributes["gen_ai.request.model"] == "gpt-4.1-nano"
-    assert spans[0].attributes["gen_ai.response.id"] == response.id
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert (spans[0].attributes or {})["gen_ai.system"] == "openai"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gpt-4.1-nano"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == response.id
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "arguments": '{"location":"Tokyo"}',
-            "call_id": response.output[0].call_id,
+            "call_id": cast(Any, response.output[0]).call_id,
             "name": "get_weather",
             "namespace": None,
             "type": "function_call",
-            "id": response.output[0].id,
+            "id": cast(litellm.ResponseOutputItem, response.output[0]).id,
             "status": "completed",
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {"content": "Be very crisp in your response.", "role": "system"},
         {"content": "What is the weather in Tokyo?", "role": "user"},
     ]
-    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 77
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 31
-    assert spans[0].attributes["llm.usage.total_tokens"] == 108
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.responses",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert (spans[0].attributes or {})["gen_ai.usage.input_tokens"] == 77
+    assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == 31
+    assert (spans[0].attributes or {})["llm.usage.total_tokens"] == 108
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.responses",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -1677,25 +1698,25 @@ async def test_litellm_responses_basic_async(span_exporter: InMemorySpanExporter
     if "OPENAI_API_KEY" not in os.environ:
         os.environ["OPENAI_API_KEY"] = "test-key"
 
-    response = await litellm.aresponses(
+    response = cast(litellm.ResponsesAPIResponse, await litellm.aresponses(
         model="gpt-4.1-nano",
         input=[
             {"content": "Be very crisp in your response.", "role": "system"},
             {"content": "What is the capital of France?", "role": "user"},
         ],
-    )
+    ))
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.responses"
-    assert spans[0].attributes["gen_ai.system"] == "openai"
-    assert spans[0].attributes["gen_ai.request.model"] == "gpt-4.1-nano"
-    assert spans[0].attributes["gen_ai.response.id"] == extract_original_response_id(
+    assert (spans[0].attributes or {})["gen_ai.system"] == "openai"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gpt-4.1-nano"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == extract_original_response_id(
         response.id
     )
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
-            "id": response.output[0].id,
+            "id": cast(litellm.ResponseOutputItem, response.output[0]).id,
             "content": [
                 {
                     "annotations": [],
@@ -1710,16 +1731,16 @@ async def test_litellm_responses_basic_async(span_exporter: InMemorySpanExporter
             "phase": None,
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {"content": "Be very crisp in your response.", "role": "system"},
         {"content": "What is the capital of France?", "role": "user"},
     ]
-    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 25
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 2
-    assert spans[0].attributes["llm.usage.total_tokens"] == 27
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.responses",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert (spans[0].attributes or {})["gen_ai.usage.input_tokens"] == 25
+    assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == 2
+    assert (spans[0].attributes or {})["llm.usage.total_tokens"] == 27
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.responses",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -1730,14 +1751,14 @@ async def test_litellm_responses_streaming_async(span_exporter: InMemorySpanExpo
     if "OPENAI_API_KEY" not in os.environ:
         os.environ["OPENAI_API_KEY"] = "test-key"
 
-    response = await litellm.aresponses(
+    response = cast(AsyncIterator[Any], cast(object, await litellm.aresponses(
         model="gpt-4.1-nano",
         input=[
             {"content": "Be very crisp in your response.", "role": "system"},
             {"content": "What is the capital of France?", "role": "user"},
         ],
         stream=True,
-    )
+    )))
     final_response = None
     async for chunk in response:
         if chunk.type == "response.completed":
@@ -1746,13 +1767,14 @@ async def test_litellm_responses_streaming_async(span_exporter: InMemorySpanExpo
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.responses"
-    assert spans[0].attributes["gen_ai.system"] == "openai"
-    assert spans[0].attributes["gen_ai.request.model"] == "gpt-4.1-nano"
+    assert (spans[0].attributes or {})["gen_ai.system"] == "openai"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gpt-4.1-nano"
     # In streaming, we only have a chance to get the response ID after the LiteLLM magic,
     # so we check for the exact match. This is not too critical, users may extract the response ID manually,
     # if needed for debugging purposes.
-    assert spans[0].attributes["gen_ai.response.id"] == final_response.id
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert final_response is not None
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == final_response.id
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "id": final_response.output[0].id,
             "content": [
@@ -1769,16 +1791,16 @@ async def test_litellm_responses_streaming_async(span_exporter: InMemorySpanExpo
             "phase": None,
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {"content": "Be very crisp in your response.", "role": "system"},
         {"content": "What is the capital of France?", "role": "user"},
     ]
-    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 25
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 2
-    assert spans[0].attributes["llm.usage.total_tokens"] == 27
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.responses",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert (spans[0].attributes or {})["gen_ai.usage.input_tokens"] == 25
+    assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == 2
+    assert (spans[0].attributes or {})["llm.usage.total_tokens"] == 27
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.responses",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
 
@@ -1791,43 +1813,43 @@ async def test_litellm_responses_with_tool_call_async(
     if "OPENAI_API_KEY" not in os.environ:
         os.environ["OPENAI_API_KEY"] = "test-key"
 
-    response = await litellm.aresponses(
+    response = cast(litellm.ResponsesAPIResponse, await litellm.aresponses(
         model="gpt-4.1-nano",
         input=[
             {"content": "Be very crisp in your response.", "role": "system"},
             {"content": "What is the weather in Tokyo?", "role": "user"},
         ],
-        tools=[responses_tools[0]],
-    )
+        tools=[cast(Any, responses_tools[0])],
+    ))
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "litellm.responses"
-    assert spans[0].attributes["gen_ai.system"] == "openai"
-    assert spans[0].attributes["gen_ai.request.model"] == "gpt-4.1-nano"
-    assert spans[0].attributes["gen_ai.response.id"] == extract_original_response_id(
+    assert (spans[0].attributes or {})["gen_ai.system"] == "openai"
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == "gpt-4.1-nano"
+    assert (spans[0].attributes or {})["gen_ai.response.id"] == extract_original_response_id(
         response.id
     )
-    assert json.loads(spans[0].attributes["gen_ai.output.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"])) == [
         {
             "arguments": '{"location":"Tokyo"}',
-            "call_id": response.output[0].call_id,
+            "call_id": cast(Any, response.output[0]).call_id,
             "name": "get_weather",
             "type": "function_call",
-            "id": response.output[0].id,
+            "id": cast(litellm.ResponseOutputItem, response.output[0]).id,
             "status": "completed",
             "namespace": None,
         }
     ]
-    assert json.loads(spans[0].attributes["gen_ai.input.messages"]) == [
+    assert json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"])) == [
         {"content": "Be very crisp in your response.", "role": "system"},
         {"content": "What is the weather in Tokyo?", "role": "user"},
     ]
-    assert spans[0].attributes["gen_ai.usage.input_tokens"] == 77
-    assert spans[0].attributes["gen_ai.usage.output_tokens"] == 31
-    assert spans[0].attributes["llm.usage.total_tokens"] == 108
-    assert spans[0].attributes["lmnr.span.path"] == ("litellm.responses",)
-    assert spans[0].attributes["lmnr.span.ids_path"] == (
-        str(uuid.UUID(int=spans[0].get_span_context().span_id)),
+    assert (spans[0].attributes or {})["gen_ai.usage.input_tokens"] == 77
+    assert (spans[0].attributes or {})["gen_ai.usage.output_tokens"] == 31
+    assert (spans[0].attributes or {})["llm.usage.total_tokens"] == 108
+    assert (spans[0].attributes or {})["lmnr.span.path"] == ("litellm.responses",)
+    assert (spans[0].attributes or {})["lmnr.span.ids_path"] == (
+        str(uuid.UUID(int=_ctx(spans[0]).span_id)),
     )
     check_span_has_basic_attributes(spans[0])
