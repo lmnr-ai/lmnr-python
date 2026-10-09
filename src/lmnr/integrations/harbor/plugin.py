@@ -76,7 +76,7 @@ class LaminarPlugin:
 
     Implements Harbor's `JobPlugin` protocol (`on_job_start` / `on_job_end`) and
     is registered under the `harbor.plugins` entry point as `laminar`. Options
-    can be passed with `--pk key=value` or `plugins[].kwargs` in a job config:
+    are passed with `--pk key=value` (Harbor ignores `plugins` in job configs):
 
     - `project_api_key`: Laminar project API key. Defaults to
       `LMNR_PROJECT_API_KEY`.
