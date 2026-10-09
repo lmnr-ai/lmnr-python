@@ -12,7 +12,6 @@ recorded step. Verifier rewards become evaluation scores.
 """
 
 import asyncio
-import os
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -121,9 +120,7 @@ class LaminarPlugin:
             True if trajectory_spans is None else _parse_bool(trajectory_spans)
         )
         self.fail_fast = _parse_bool(
-            fail_fast
-            if fail_fast is not None
-            else os.getenv("HARBOR_LAMINAR_FAIL_FAST")
+            fail_fast if fail_fast is not None else from_env("HARBOR_LAMINAR_FAIL_FAST")
         )
 
         self._client: AsyncLaminarClient | None = None
@@ -300,13 +297,14 @@ class LaminarPlugin:
         )
         state.last_upload = self._upload([partial], after=state.last_upload)
 
-    def _end_trial(self, event: "TrialHookEvent") -> None:
-        state = self._trials.get(event.trial_name)
-        if state is None or state.root_span is None:
-            return
-        root = state.root_span
-        state.root_span = None
-        result = event.result
+    def _emit_trial_spans(
+        self,
+        root: Any,
+        state: _TrialState,
+        result: Any,
+        event: "TrialHookEvent",
+    ) -> Any:
+        """Emit the trial's phase spans and end its root span."""
         parent = root.get_laminar_span_context()
 
         _emit_phase(parent, "environment_setup", result.environment_setup)
@@ -333,6 +331,24 @@ class LaminarPlugin:
             root.set_status(Status(StatusCode.ERROR, "cancelled"))
         root.set_output(output)
         root.end(end_time=parse_timestamp_ns(result.finished_at))
+        return agent_span
+
+    def _end_trial(self, event: "TrialHookEvent") -> None:
+        state = self._trials.get(event.trial_name)
+        if state is None or state.root_span is None:
+            return
+        root = state.root_span
+        state.root_span = None
+        result = event.result
+        try:
+            agent_span = self._emit_trial_spans(root, state, result, event)
+        except Exception:
+            # Don't leave the root open with a historical start time.
+            root.set_status(Status(StatusCode.ERROR, "failed to report trial"))
+            root.end()
+            raise
+        exception = result.exception_info
+        rewards = result.verifier_result.rewards if result.verifier_result else None
 
         executor_span_id = (
             agent_span.get_span_context().span_id

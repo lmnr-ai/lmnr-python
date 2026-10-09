@@ -515,6 +515,35 @@ async def test_laminar_errors_do_not_break_the_job(
 
 
 @pytest.mark.asyncio
+async def test_span_emission_failure_still_ends_root(
+    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+):
+    job = FakeJob(tmp_path / "job")
+    task_dir = make_task_dir(tmp_path, "t")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    event = make_event(job, task_dir, "t1", rewards={"reward": 1})
+    await job.emit("start", event)
+    with patch.object(
+        plugin, "_emit_agent", side_effect=RuntimeError("bad trajectory")
+    ):
+        await job.emit("end", event)
+    await plugin.on_job_end(SimpleNamespace())
+
+    root = spans_by_name(span_exporter)["t1"][0]
+    assert root.end_time is not None
+    assert root.status.status_code == StatusCode.ERROR
+
+
+def test_fail_fast_reads_dotenv():
+    with patch(
+        "lmnr.integrations.harbor.plugin.from_env",
+        side_effect=lambda key: "true" if key == "HARBOR_LAMINAR_FAIL_FAST" else None,
+    ):
+        assert LaminarPlugin(project_api_key="test_key").fail_fast is True
+
+
+@pytest.mark.asyncio
 async def test_missing_api_key_skips_reporting(
     span_exporter: InMemorySpanExporter, client, tmp_path: Path, monkeypatch
 ):
