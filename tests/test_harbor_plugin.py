@@ -440,7 +440,10 @@ async def test_failed_and_retried_trials(
     await job.emit("end", ok)
 
     exception = SimpleNamespace(
-        exception_type="AgentTimeoutError", exception_message="timed out"
+        exception_type="AgentTimeoutError",
+        exception_message="timed out",
+        exception_traceback="Traceback (most recent call last): ...",
+        occurred_at=ts(19),
     )
     first = make_event(job, task_dir, "flaky", exception=exception)
     await job.emit("start", first)
@@ -468,6 +471,22 @@ async def test_failed_and_retried_trials(
 
     roots = spans_by_name(span_exporter)["flaky"]
     assert [r.status.status_code for r in roots] == [StatusCode.ERROR, StatusCode.UNSET]
+    # The error lands on the executor span the datapoint links to.
+    failed_agent, retried_agent = [
+        s
+        for s in spans_by_name(span_exporter)["agent"]
+        if s.context.trace_id in {r.context.trace_id for r in roots}
+    ]
+    assert failed_agent.status.status_code == StatusCode.ERROR
+    assert retried_agent.status.status_code == StatusCode.UNSET
+    assert not retried_agent.events
+    (event,) = failed_agent.events
+    assert event.name == "exception"
+    assert event.timestamp == parse_timestamp_ns(ts(19))
+    assert event.attributes["exception.type"] == "AgentTimeoutError"
+    assert event.attributes["exception.message"] == "timed out"
+    assert event.attributes["exception.stacktrace"].startswith("Traceback")
+    assert failed_dp.executor_span_id == uuid.UUID(int=failed_agent.context.span_id)
 
 
 @pytest.mark.asyncio

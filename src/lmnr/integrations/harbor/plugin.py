@@ -309,7 +309,8 @@ class LaminarPlugin:
 
         _emit_phase(parent, "environment_setup", result.environment_setup)
         _emit_phase(parent, "agent_setup", result.agent_setup)
-        agent_span = self._emit_agent(parent, event)
+        exception = result.exception_info
+        agent_span = self._emit_agent(parent, event, exception)
         rewards = result.verifier_result.rewards if result.verifier_result else None
         _emit_phase(
             parent,
@@ -319,13 +320,15 @@ class LaminarPlugin:
             output=rewards,
         )
 
-        exception = result.exception_info
         output: dict[str, Any] = {"rewards": rewards}
         if exception is not None:
             output["exception"] = {
                 "type": exception.exception_type,
                 "message": exception.exception_message,
             }
+            if agent_span is None:
+                # No executor span to attach it to (the agent never ran).
+                _record_exception(root, exception)
             root.set_status(Status(StatusCode.ERROR, exception.exception_message))
         elif state.cancelled:
             root.set_status(Status(StatusCode.ERROR, "cancelled"))
@@ -373,7 +376,9 @@ class LaminarPlugin:
         )
         state.last_upload = self._upload([datapoint], after=state.last_upload)
 
-    def _emit_agent(self, parent: Any, event: "TrialHookEvent") -> Any:
+    def _emit_agent(
+        self, parent: Any, event: "TrialHookEvent", exception: Any = None
+    ) -> Any:
         result = event.result
         timing = result.agent_execution
         if timing is None:
@@ -406,6 +411,9 @@ class LaminarPlugin:
             span.set_attribute(
                 "harbor.agent.metadata", json_dumps(agent_result.metadata)
             )
+        if exception is not None:
+            _record_exception(span, exception)
+            span.set_status(Status(StatusCode.ERROR, exception.exception_message))
         span.end(end_time=end_ns)
         return span
 
@@ -526,6 +534,25 @@ def _agent_attributes(result: Any) -> dict[str, Any]:
             if value is not None:
                 attributes[attr] = value
     return attributes
+
+
+def _record_exception(span: Any, exception: Any) -> None:
+    """Record Harbor's `ExceptionInfo` as an OTel exception event.
+
+    Harbor only keeps the exception's type, message, and traceback as strings,
+    so this builds the event `span.record_exception` would emit.
+    """
+    occurred_at = getattr(exception, "occurred_at", None)
+    span.add_event(
+        "exception",
+        attributes={
+            "exception.type": exception.exception_type,
+            "exception.message": exception.exception_message,
+            "exception.stacktrace": getattr(exception, "exception_traceback", "") or "",
+            "exception.escaped": True,
+        },
+        timestamp=parse_timestamp_ns(occurred_at) if occurred_at else None,
+    )
 
 
 def _emit_phase(
