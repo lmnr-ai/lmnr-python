@@ -6,7 +6,7 @@ from openai import AsyncOpenAI, OpenAI
 
 
 @pytest.mark.vcr
-def test_openai_prompt_caching(instrument_legacy, span_exporter):
+def test_openai_prompt_caching(instrumentor, span_exporter):
     with open(Path(__file__).parent.parent.joinpath("data/1024+tokens.txt"), "r") as f:
         # add the unique test name to the prompt to avoid caching leaking to other tests
         text = (
@@ -78,7 +78,7 @@ def test_openai_prompt_caching(instrument_legacy, span_exporter):
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
-async def test_openai_prompt_caching_async(instrument_legacy, span_exporter):
+async def test_openai_prompt_caching_async(instrumentor, span_exporter):
     with open(Path(__file__).parent.parent.joinpath("data/1024+tokens.txt"), "r") as f:
         # add the unique test name to the prompt to avoid caching leaking to other tests
         text = (

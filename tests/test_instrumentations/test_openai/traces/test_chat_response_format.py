@@ -14,7 +14,7 @@ class Joke(pydantic.BaseModel):
 
 @pytest.mark.vcr
 def test_chat_response_format(
-    instrument_legacy,
+    instrumentor,
     span_exporter: InMemorySpanExporter,
     openai_client: OpenAI,
 ):
@@ -54,7 +54,7 @@ def test_chat_response_format(
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_chat_response_format(
-    instrument_legacy,
+    instrumentor,
     span_exporter: InMemorySpanExporter,
     async_openai_client: AsyncOpenAI,
 ):

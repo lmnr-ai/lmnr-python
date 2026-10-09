@@ -10,7 +10,7 @@ def api_usage_provider_client():
 
 @pytest.mark.vcr
 def test_streaming_with_api_usage_capture(
-    instrument_legacy, span_exporter, api_usage_provider_client
+    instrumentor, span_exporter, api_usage_provider_client
 ):
     """Test that streaming responses with API usage information are properly captured"""
     response = api_usage_provider_client.chat.completions.create(

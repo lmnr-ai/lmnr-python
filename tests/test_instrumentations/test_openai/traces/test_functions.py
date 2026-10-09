@@ -27,7 +27,7 @@ def openai_tools():
 
 
 @pytest.mark.vcr
-def test_open_ai_function_calls(instrument_legacy, span_exporter, openai_client):
+def test_open_ai_function_calls(instrumentor, span_exporter, openai_client):
     functions = [
         {
             "name": "get_current_weather",
@@ -76,7 +76,7 @@ def test_open_ai_function_calls(instrument_legacy, span_exporter, openai_client)
 
 @pytest.mark.vcr
 def test_open_ai_function_calls_tools(
-    instrument_legacy, span_exporter, openai_client, openai_tools
+    instrumentor, span_exporter, openai_client, openai_tools
 ):
     openai_client.chat.completions.create(
         model="gpt-4",
@@ -114,7 +114,7 @@ def test_open_ai_function_calls_tools(
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_open_ai_function_calls_tools_streaming(
-    instrument_legacy, span_exporter, async_openai_client, openai_tools
+    instrumentor, span_exporter, async_openai_client, openai_tools
 ):
     response = await async_openai_client.chat.completions.create(
         model="gpt-3.5-turbo",
@@ -156,7 +156,7 @@ async def test_open_ai_function_calls_tools_streaming(
 
 @pytest.mark.vcr
 def test_open_ai_function_calls_tools_parallel(
-    instrument_legacy, span_exporter, openai_client, openai_tools
+    instrumentor, span_exporter, openai_client, openai_tools
 ):
     response = openai_client.chat.completions.create(
         model="gpt-3.5-turbo",
@@ -215,7 +215,7 @@ def test_open_ai_function_calls_tools_parallel(
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_open_ai_function_calls_tools_streaming_parallel(
-    instrument_legacy, span_exporter, async_openai_client, openai_tools
+    instrumentor, span_exporter, async_openai_client, openai_tools
 ):
     response = await async_openai_client.chat.completions.create(
         model="gpt-3.5-turbo",

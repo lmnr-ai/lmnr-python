@@ -14,7 +14,7 @@ from .utils import (
 
 
 @pytest.mark.vcr
-def test_completion(instrument_legacy, span_exporter, openai_client):
+def test_completion(instrumentor, span_exporter, openai_client):
     openai_client.completions.create(
         model="davinci-002",
         prompt="Tell me a joke about opentelemetry",
@@ -42,7 +42,7 @@ def test_completion(instrument_legacy, span_exporter, openai_client):
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
-async def test_async_completion(instrument_legacy, span_exporter, async_openai_client):
+async def test_async_completion(instrumentor, span_exporter, async_openai_client):
     await async_openai_client.completions.create(
         model="davinci-002",
         prompt="Tell me a joke about opentelemetry",
@@ -64,7 +64,7 @@ async def test_async_completion(instrument_legacy, span_exporter, async_openai_c
 
 
 @pytest.mark.vcr
-def test_completion_langchain_style(instrument_legacy, span_exporter, openai_client):
+def test_completion_langchain_style(instrumentor, span_exporter, openai_client):
     openai_client.completions.create(
         model="davinci-002",
         prompt=["Tell me a joke about opentelemetry"],
@@ -86,7 +86,7 @@ def test_completion_langchain_style(instrument_legacy, span_exporter, openai_cli
 
 
 @pytest.mark.vcr
-def test_completion_streaming(instrument_legacy, span_exporter, openai_client):
+def test_completion_streaming(instrumentor, span_exporter, openai_client):
     # set os env for token usage record in stream mode
     original_value = os.environ.get("TRACELOOP_STREAM_TOKEN_USAGE")
     os.environ["TRACELOOP_STREAM_TOKEN_USAGE"] = "true"
@@ -131,7 +131,7 @@ def test_completion_streaming(instrument_legacy, span_exporter, openai_client):
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_completion_streaming(
-    instrument_legacy, span_exporter, async_openai_client
+    instrumentor, span_exporter, async_openai_client
 ):
     response = await async_openai_client.completions.create(
         model="davinci-002",
@@ -163,7 +163,7 @@ async def test_async_completion_streaming(
 
 @pytest.mark.vcr
 def test_completion_context_propagation(
-    instrument_legacy, span_exporter, vllm_openai_client
+    instrumentor, span_exporter, vllm_openai_client
 ):
     send_spy = spy_decorator(httpx.Client.send)
     with patch.object(httpx.Client, "send", send_spy):
@@ -191,7 +191,7 @@ def test_completion_context_propagation(
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_completion_context_propagation(
-    instrument_legacy, span_exporter, async_vllm_openai_client
+    instrumentor, span_exporter, async_vllm_openai_client
 ):
     send_spy = spy_decorator(httpx.AsyncClient.send)
     with patch.object(httpx.AsyncClient, "send", send_spy):
@@ -215,7 +215,7 @@ async def test_async_completion_context_propagation(
     )
 
 
-def test_completion_exception(instrument_legacy, span_exporter, openai_client):
+def test_completion_exception(instrumentor, span_exporter, openai_client):
     openai_client.api_key = "invalid"
     with pytest.raises(Exception):
         openai_client.completions.create(
@@ -248,7 +248,7 @@ def test_completion_exception(instrument_legacy, span_exporter, openai_client):
 
 @pytest.mark.asyncio
 async def test_async_completion_exception(
-    instrument_legacy, span_exporter, async_openai_client
+    instrumentor, span_exporter, async_openai_client
 ):
     async_openai_client.api_key = "invalid"
     with pytest.raises(Exception):

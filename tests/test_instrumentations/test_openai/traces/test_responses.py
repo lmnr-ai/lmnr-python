@@ -11,7 +11,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
 
 @pytest.mark.vcr
 def test_responses(
-    instrument_legacy, span_exporter: InMemorySpanExporter, openai_client: OpenAI
+    instrumentor, span_exporter: InMemorySpanExporter, openai_client: OpenAI
 ):
     response = openai_client.responses.create(
         model="gpt-4.1-nano",
@@ -38,7 +38,7 @@ def test_responses(
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_responses_async(
-    instrument_legacy,
+    instrumentor,
     span_exporter: InMemorySpanExporter,
     async_openai_client: AsyncOpenAI,
 ):
@@ -66,7 +66,7 @@ async def test_responses_async(
 
 @pytest.mark.vcr
 def test_responses_with_input_history(
-    instrument_legacy, span_exporter: InMemorySpanExporter, openai_client: OpenAI
+    instrumentor, span_exporter: InMemorySpanExporter, openai_client: OpenAI
 ):
     user_message = "Come up with an adjective in English. Respond with just one word."
     first_response = openai_client.responses.create(
@@ -123,7 +123,7 @@ def test_responses_with_input_history(
 
 @pytest.mark.vcr
 def test_responses_tool_calls(
-    instrument_legacy, span_exporter: InMemorySpanExporter, openai_client: OpenAI
+    instrumentor, span_exporter: InMemorySpanExporter, openai_client: OpenAI
 ):
     tools = [
         {
@@ -189,7 +189,7 @@ def test_responses_tool_calls(
     reason="Reasoning is not supported in older OpenAI library versions",
 )
 def test_responses_reasoning(
-    instrument_legacy, span_exporter: InMemorySpanExporter, openai_client: OpenAI
+    instrumentor, span_exporter: InMemorySpanExporter, openai_client: OpenAI
 ):
     openai_client.responses.create(
         model="gpt-5-nano",
@@ -211,7 +211,7 @@ def test_responses_reasoning(
     reason="Reasoning is not supported in older OpenAI library versions",
 )
 def test_responses_reasoning_dict_issue(
-    instrument_legacy, span_exporter: InMemorySpanExporter, openai_client: OpenAI
+    instrumentor, span_exporter: InMemorySpanExporter, openai_client: OpenAI
 ):
     """Test for issue #3350 - reasoning dict causing invalid type warning"""
     openai_client.responses.create(

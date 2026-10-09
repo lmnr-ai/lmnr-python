@@ -6,7 +6,7 @@ import requests
 
 
 @pytest.mark.vcr
-def test_vision(instrument_legacy, span_exporter, openai_client):
+def test_vision(instrumentor, span_exporter, openai_client):
     response = openai_client.chat.completions.create(
         model="gpt-4-vision-preview",
         messages=[
@@ -55,7 +55,7 @@ def test_vision(instrument_legacy, span_exporter, openai_client):
 
 
 @pytest.mark.vcr
-def test_vision_base64(instrument_legacy, span_exporter, openai_client):
+def test_vision_base64(instrumentor, span_exporter, openai_client):
     # Fetch the image from the URL
     response = requests.get(
         "https://upload.wikimedia.org/wikipedia/commons/"

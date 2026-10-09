@@ -14,7 +14,7 @@ from .utils import (
 
 
 @pytest.mark.vcr
-def test_embeddings(instrument_legacy, span_exporter, openai_client):
+def test_embeddings(instrumentor, span_exporter, openai_client):
     openai_client.embeddings.create(
         input="Tell me a joke about opentelemetry",
         model="text-embedding-ada-002",
@@ -36,7 +36,7 @@ def test_embeddings(instrument_legacy, span_exporter, openai_client):
 
 
 @pytest.mark.vcr
-def test_embeddings_with_raw_response(instrument_legacy, span_exporter, openai_client):
+def test_embeddings_with_raw_response(instrumentor, span_exporter, openai_client):
     response = openai_client.embeddings.with_raw_response.create(
         input="Tell me a joke about opentelemetry",
         model="text-embedding-ada-002",
@@ -61,7 +61,7 @@ def test_embeddings_with_raw_response(instrument_legacy, span_exporter, openai_c
 
 
 @pytest.mark.vcr
-def test_azure_openai_embeddings(instrument_legacy, span_exporter):
+def test_azure_openai_embeddings(instrumentor, span_exporter):
     api_key = "test-api-key"
     azure_resource = "test-resource"
     azure_deployment = "test-deployment"
@@ -95,7 +95,7 @@ def test_azure_openai_embeddings(instrument_legacy, span_exporter):
 
 @pytest.mark.vcr
 def test_embeddings_context_propagation(
-    instrument_legacy, span_exporter, vllm_openai_client
+    instrumentor, span_exporter, vllm_openai_client
 ):
     send_spy = spy_decorator(httpx.Client.send)
     with patch.object(httpx.Client, "send", send_spy):
@@ -117,7 +117,7 @@ def test_embeddings_context_propagation(
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_embeddings_context_propagation(
-    instrument_legacy, span_exporter, async_vllm_openai_client
+    instrumentor, span_exporter, async_vllm_openai_client
 ):
     send_spy = spy_decorator(httpx.AsyncClient.send)
     with patch.object(httpx.AsyncClient, "send", send_spy):
@@ -136,7 +136,7 @@ async def test_async_embeddings_context_propagation(
     assert_request_contains_tracecontext(request, open_ai_span)
 
 
-def test_embeddings_exception(instrument_legacy, span_exporter, openai_client):
+def test_embeddings_exception(instrumentor, span_exporter, openai_client):
     openai_client.api_key = "invalid"
     with pytest.raises(Exception):
         openai_client.embeddings.create(
@@ -161,7 +161,7 @@ def test_embeddings_exception(instrument_legacy, span_exporter, openai_client):
 
 @pytest.mark.asyncio
 async def test_async_embeddings_exception(
-    instrument_legacy, span_exporter, async_openai_client
+    instrumentor, span_exporter, async_openai_client
 ):
     async_openai_client.api_key = "invalid"
     with pytest.raises(Exception):

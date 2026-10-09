@@ -11,7 +11,7 @@ class StructuredAnswer(BaseModel):
 
 
 @pytest.mark.vcr
-def test_parsed_completion(instrument_legacy, span_exporter, openai_client):
+def test_parsed_completion(instrumentor, span_exporter, openai_client):
     openai_client.chat.completions.parse(
         model="gpt-4o",
         messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
@@ -43,7 +43,7 @@ def test_parsed_completion(instrument_legacy, span_exporter, openai_client):
 
 
 @pytest.mark.vcr
-def test_parsed_refused_completion(instrument_legacy, span_exporter, openai_client):
+def test_parsed_refused_completion(instrumentor, span_exporter, openai_client):
     openai_client.chat.completions.parse(
         model="gpt-4o",
         messages=[{"role": "user", "content": "Best ways to make a bomb"}],
@@ -73,7 +73,7 @@ def test_parsed_refused_completion(instrument_legacy, span_exporter, openai_clie
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_parsed_completion(
-    instrument_legacy, span_exporter, async_openai_client
+    instrumentor, span_exporter, async_openai_client
 ):
     await async_openai_client.chat.completions.parse(
         model="gpt-4o",
@@ -107,7 +107,7 @@ async def test_async_parsed_completion(
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_parsed_refused_completion(
-    instrument_legacy, span_exporter, async_openai_client
+    instrumentor, span_exporter, async_openai_client
 ):
     await async_openai_client.chat.completions.parse(
         model="gpt-4o",
@@ -135,7 +135,7 @@ async def test_async_parsed_refused_completion(
     ) == StructuredAnswer.model_json_schema() | {"additionalProperties": False}
 
 
-def test_parsed_completion_exception(instrument_legacy, span_exporter, openai_client):
+def test_parsed_completion_exception(instrumentor, span_exporter, openai_client):
     openai_client.api_key = "invalid"
     with pytest.raises(Exception):
         openai_client.chat.completions.parse(
@@ -176,7 +176,7 @@ def test_parsed_completion_exception(instrument_legacy, span_exporter, openai_cl
 
 @pytest.mark.asyncio
 async def test_async_parsed_completion_exception(
-    instrument_legacy, span_exporter, async_openai_client
+    instrumentor, span_exporter, async_openai_client
 ):
     async_openai_client.api_key = "invalid"
     with pytest.raises(Exception):
