@@ -69,6 +69,16 @@ _TRACING_MODULE = "google.adk.telemetry.tracing"
 _TELEMETRY_PACKAGE = "google.adk.telemetry"
 _FLOW_FUNCTIONS_MODULE = "google.adk.flows.llm_flows.functions"
 _BASE_LLM_FLOW_MODULE = "google.adk.flows.llm_flows.base_llm_flow"
+# ADK moved the by-name bindings in later releases: trace_merged_tool_calls
+# into a batch executor module in 2.9 (renamed in 2.10), trace_call_llm out
+# of base_llm_flow into core._model_call in 2.10.
+_BATCH_TOOL_EXECUTOR_MODULE = (
+    "google.adk.flows.llm_flows._batch_tool_executor"
+)
+_TOOLS_BATCH_EXECUTOR_MODULE = (
+    "google.adk.flows.llm_flows.tools._batch_executor"
+)
+_MODEL_CALL_MODULE = "google.adk.flows.llm_flows.core._model_call"
 _TOOL_ARGS_ATTRIBUTE = "gcp.vertex.agent.tool_call_args"
 _TOOL_RESPONSE_ATTRIBUTE = "gcp.vertex.agent.tool_response"
 _LLM_REQUEST_ATTRIBUTE = "gcp.vertex.agent.llm_request"
@@ -390,14 +400,15 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
 
     def instrumentation_dependencies(self) -> Collection[str]:
         # All wrapped hooks exist with compatible signatures since 2.0.0;
-        # validated against 2.7.1. The upper bound guards against a 3.x
-        # rework of the telemetry module.
+        # validated against 2.7.1 and 2.11.0. The upper bound guards
+        # against a 3.x rework of the telemetry module.
         return ("google-adk >= 2.0.0, < 3.0.0",)
 
     def _instrument(self, **kwargs: Any):
         self._wrapped_functions = []
         # trace_merged_tool_calls is bound by name at import time in
-        # flows.llm_flows.functions (and re-exported from the telemetry
+        # flows.llm_flows.functions or, depending on the ADK version, a
+        # batch executor module (and re-exported from the telemetry
         # package), so patching only the tracing module misses that call
         # site whenever ADK gets imported before initialize(), which is the
         # usual ordering. Patch every module holding a binding; a call that
@@ -409,6 +420,16 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
             (_TRACING_MODULE, "trace_tool_call", _wrap_trace_tool_call),
             (
                 _FLOW_FUNCTIONS_MODULE,
+                "trace_merged_tool_calls",
+                _wrap_trace_merged_tool_calls,
+            ),
+            (
+                _BATCH_TOOL_EXECUTOR_MODULE,
+                "trace_merged_tool_calls",
+                _wrap_trace_merged_tool_calls,
+            ),
+            (
+                _TOOLS_BATCH_EXECUTOR_MODULE,
                 "trace_merged_tool_calls",
                 _wrap_trace_merged_tool_calls,
             ),
@@ -434,11 +455,17 @@ class GoogleAdkInstrumentor(BaseInstrumentor):
                 _wrap_use_extra_generate_content_attributes,
             ),
             # trace_call_llm is bound by name at import time in
-            # base_llm_flow (and re-exported from the telemetry package),
+            # base_llm_flow (core._model_call since 2.10, and re-exported
+            # from the telemetry package),
             # same reasoning as trace_merged_tool_calls above: patch every
             # module holding a binding, tracing module last.
             (
                 _BASE_LLM_FLOW_MODULE,
+                "trace_call_llm",
+                _wrap_trace_call_llm,
+            ),
+            (
+                _MODEL_CALL_MODULE,
                 "trace_call_llm",
                 _wrap_trace_call_llm,
             ),
