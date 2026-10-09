@@ -314,14 +314,21 @@ class TrajectoryConverter:
         depth: int,
     ) -> None:
         results_by_call: dict[str, list[dict[str, Any]]] = {}
+        unattributed = []
         for result in _observation_results(step):
             if result.get("source_call_id"):
                 results_by_call.setdefault(result["source_call_id"], []).append(result)
+            else:
+                unattributed.append(result)
 
-        for tool_call in step.get("tool_calls") or []:
-            if not isinstance(tool_call, dict):
-                continue
+        tool_calls = [c for c in step.get("tool_calls") or [] if isinstance(c, dict)]
+        for i, tool_call in enumerate(tool_calls):
             results = results_by_call.get(tool_call.get("tool_call_id"), [])
+            if i == len(tool_calls) - 1:
+                # Agents like terminus-2 record one terminal observation per step
+                # without a source_call_id; it is the output left after the
+                # step's last call.
+                results = results + unattributed
             spawned = []
             for result in results:
                 for ref in result.get("subagent_trajectory_ref") or []:

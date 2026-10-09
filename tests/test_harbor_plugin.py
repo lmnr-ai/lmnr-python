@@ -492,6 +492,45 @@ async def test_spans_start_in_trajectory_order(
 
 
 @pytest.mark.asyncio
+async def test_unattributed_observation_goes_on_last_tool(
+    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+):
+    # terminus-2 records one terminal observation per step, not one per call.
+    trajectory = {
+        "agent": {"name": "terminus-2", "model_name": "anthropic/claude"},
+        "steps": [
+            {"step_id": 1, "timestamp": iso(6), "source": "user", "message": "go"},
+            {
+                "step_id": 2,
+                "timestamp": iso(8),
+                "source": "agent",
+                "message": "run two commands",
+                "tool_calls": [
+                    {"tool_call_id": "a", "function_name": "first", "arguments": {}},
+                    {"tool_call_id": "b", "function_name": "second", "arguments": {}},
+                ],
+                "observation": {"results": [{"content": "$ ls\nfile.txt"}]},
+            },
+        ],
+    }
+    job = FakeJob(tmp_path / "job")
+    task_dir = make_task_dir(tmp_path, "t")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    event = make_event(job, task_dir, "t1", rewards={"reward": 0})
+    write_trajectory(job, "t1", trajectory)
+    await job.emit("start", event)
+    await job.emit("end", event)
+    await plugin.on_job_end(SimpleNamespace())
+
+    spans = spans_by_name(span_exporter)
+    assert "lmnr.span.output" not in spans["first"][0].attributes
+    assert json.loads(spans["second"][0].attributes["lmnr.span.output"]) == (
+        "$ ls\nfile.txt"
+    )
+
+
+@pytest.mark.asyncio
 async def test_failed_and_retried_trials(
     span_exporter: InMemorySpanExporter, client, tmp_path: Path
 ):
