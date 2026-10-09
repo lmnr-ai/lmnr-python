@@ -65,6 +65,11 @@ class _TrialState:
     root_span: Any = None
     trace_id: uuid.UUID | None = None
     cancelled: bool = False
+    # Spans emitted while the trial is still running, so the trace shows up in
+    # Laminar before the trial ends.
+    setup_emitted: bool = False
+    agent_span: Any = None
+    agent_exception: Any = None
     # The trial's latest upload. Every upload waits for it, since saves upsert
     # by datapoint id and a retry must not be overwritten by an earlier attempt.
     last_upload: asyncio.Task | None = None
@@ -143,6 +148,8 @@ class LaminarPlugin:
             return
 
         job.on_trial_started(self._on_trial_started)
+        job.on_agent_started(self._on_agent_started)
+        job.on_verification_started(self._on_verification_started)
         job.on_trial_cancelled(self._on_trial_cancelled)
         job.on_trial_ended(self._on_trial_ended)
 
@@ -233,6 +240,24 @@ class LaminarPlugin:
                 f"Failed to start Laminar trace for {event.trial_name}", e
             )
 
+    async def _on_agent_started(self, event: "TrialHookEvent") -> None:
+        # Environment and agent setup are done by now.
+        try:
+            state = self._trials.get(event.trial_name)
+            if state is not None and state.root_span is not None:
+                self._emit_setup(state, event.result)
+        except Exception as e:
+            self._handle_error(f"Failed to report {event.trial_name} setup", e)
+
+    async def _on_verification_started(self, event: "TrialHookEvent") -> None:
+        # The agent is done and its logs and trajectory are synced by now.
+        try:
+            state = self._trials.get(event.trial_name)
+            if state is not None and state.root_span is not None:
+                self._emit_agent_once(state, event)
+        except Exception as e:
+            self._handle_error(f"Failed to report {event.trial_name} agent run", e)
+
     async def _on_trial_cancelled(self, event: "TrialHookEvent") -> None:
         state = self._trials.get(event.trial_name)
         if state is not None:
@@ -269,6 +294,9 @@ class LaminarPlugin:
             if state.root_span is not None:
                 state.root_span.end()
             state.cancelled = False
+            state.setup_emitted = False
+            state.agent_span = None
+            state.agent_exception = None
 
         state.root_span = Laminar.start_span(
             event.trial_name,
@@ -304,20 +332,21 @@ class LaminarPlugin:
         result: Any,
         event: "TrialHookEvent",
     ) -> Any:
-        """Emit the trial's phase spans and end its root span."""
-        parent = root.get_laminar_span_context()
-
-        _emit_phase(parent, "environment_setup", result.environment_setup)
-        _emit_phase(parent, "agent_setup", result.agent_setup)
+        """Emit the phase spans not emitted yet and end the trial's root span."""
+        self._emit_setup(state, result)
+        self._emit_agent_once(state, event)
         exception = result.exception_info
-        agent_span = self._emit_agent(parent, event, exception)
+        # An exception the agent span doesn't carry happened after the agent ran,
+        # so it goes on the verifier span, or on the root if there is none.
+        unrecorded = None if exception == state.agent_exception else exception
         rewards = result.verifier_result.rewards if result.verifier_result else None
-        _emit_phase(
-            parent,
+        verifier_span = _emit_phase(
+            root.get_laminar_span_context(),
             "verifier",
             result.verifier,
             span_type="EVALUATOR",
             output=rewards,
+            exception=unrecorded,
         )
 
         output: dict[str, Any] = {"rewards": rewards}
@@ -326,22 +355,38 @@ class LaminarPlugin:
                 "type": exception.exception_type,
                 "message": exception.exception_message,
             }
-            if agent_span is None:
-                # No executor span to attach it to (the agent never ran).
+            if unrecorded is not None and verifier_span is None:
                 _record_exception(root, exception)
             root.set_status(Status(StatusCode.ERROR, exception.exception_message))
         elif state.cancelled:
             root.set_status(Status(StatusCode.ERROR, "cancelled"))
         root.set_output(output)
         root.end(end_time=parse_timestamp_ns(result.finished_at))
-        return agent_span
+        return state.agent_span
+
+    def _emit_setup(self, state: _TrialState, result: Any) -> None:
+        if state.setup_emitted:
+            return
+        state.setup_emitted = True
+        parent = state.root_span.get_laminar_span_context()
+        _emit_phase(parent, "environment_setup", result.environment_setup)
+        _emit_phase(parent, "agent_setup", result.agent_setup)
+
+    def _emit_agent_once(self, state: _TrialState, event: "TrialHookEvent") -> None:
+        if state.agent_span is not None:
+            return
+        exception = event.result.exception_info
+        state.agent_span = self._emit_agent(
+            state.root_span.get_laminar_span_context(), event, exception
+        )
+        if state.agent_span is not None:
+            state.agent_exception = exception
 
     def _end_trial(self, event: "TrialHookEvent") -> None:
         state = self._trials.get(event.trial_name)
         if state is None or state.root_span is None:
             return
         root = state.root_span
-        state.root_span = None
         result = event.result
         try:
             agent_span = self._emit_trial_spans(root, state, result, event)
@@ -350,6 +395,8 @@ class LaminarPlugin:
             root.set_status(Status(StatusCode.ERROR, "failed to report trial"))
             root.end()
             raise
+        finally:
+            state.root_span = None
         exception = result.exception_info
         rewards = result.verifier_result.rewards if result.verifier_result else None
 
@@ -561,9 +608,10 @@ def _emit_phase(
     timing: Any,
     span_type: str = "DEFAULT",
     output: Any = None,
-) -> None:
+    exception: Any = None,
+) -> Any:
     if timing is None or timing.started_at is None:
-        return
+        return None
     span = Laminar.start_span(
         name,
         span_type=span_type,
@@ -572,4 +620,8 @@ def _emit_phase(
     )
     if output is not None:
         span.set_output(output)
+    if exception is not None:
+        _record_exception(span, exception)
+        span.set_status(Status(StatusCode.ERROR, exception.exception_message))
     span.end(end_time=parse_timestamp_ns(timing.finished_at))
+    return span

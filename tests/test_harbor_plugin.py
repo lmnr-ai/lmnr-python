@@ -64,6 +64,12 @@ class FakeJob:
     def on_trial_started(self, cb):
         return self._add("start", cb)
 
+    def on_agent_started(self, cb):
+        return self._add("agent_start", cb)
+
+    def on_verification_started(self, cb):
+        return self._add("verification_start", cb)
+
     def on_trial_cancelled(self, cb):
         return self._add("cancel", cb)
 
@@ -552,6 +558,117 @@ async def test_span_emission_failure_still_ends_root(
     root = spans_by_name(span_exporter)["t1"][0]
     assert root.end_time is not None
     assert root.status.status_code == StatusCode.ERROR
+
+
+@pytest.mark.asyncio
+async def test_spans_are_exported_while_trial_runs(
+    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+):
+    job = FakeJob(tmp_path / "job")
+    task_dir = make_task_dir(tmp_path, "t")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    exception = SimpleNamespace(
+        exception_type="AgentTimeoutError",
+        exception_message="timed out",
+        exception_traceback="Traceback ...",
+        occurred_at=ts(19),
+    )
+    event = make_event(job, task_dir, "t1", exception=exception)
+    write_trajectory(job, "t1")
+
+    await job.emit("start", event)
+    assert span_exporter.get_finished_spans() == ()
+    await job.emit("agent_start", event)
+    assert set(spans_by_name(span_exporter)) == {"environment_setup", "agent_setup"}
+    await job.emit("verification_start", event)
+    spans = spans_by_name(span_exporter)
+    assert "agent" in spans and "t1" not in spans and "verifier" not in spans
+    (agent,) = spans["agent"]
+    assert agent.status.status_code == StatusCode.ERROR
+
+    # The verifier then fails too: it gets its own error.
+    event.result.verifier_result = None
+    event.result.exception_info = SimpleNamespace(
+        exception_type="VerifierTimeoutError",
+        exception_message="verifier timed out",
+        exception_traceback="Traceback ...",
+        occurred_at=ts(28),
+    )
+    await job.emit("end", event)
+    await plugin.on_job_end(SimpleNamespace())
+
+    spans = spans_by_name(span_exporter)
+    # Nothing is emitted twice.
+    assert {name: len(s) for name, s in spans.items()} == {
+        "environment_setup": 1,
+        "agent_setup": 1,
+        "agent": 1,
+        "claude-sonnet-4-5": 2,
+        "bash": 1,
+        "verifier": 1,
+        "t1": 1,
+    }
+    (verifier,) = spans["verifier"]
+    assert verifier.status.status_code == StatusCode.ERROR
+    assert verifier.events[0].attributes["exception.type"] == "VerifierTimeoutError"
+    (root,) = spans["t1"]
+    assert root.status.status_code == StatusCode.ERROR
+    assert not root.events
+    full = saved_datapoints(client)[-1]
+    assert full.executor_span_id == uuid.UUID(int=agent.context.span_id)
+
+
+@pytest.mark.asyncio
+async def test_verifier_exception_without_verifier_span_goes_on_root(
+    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+):
+    job = FakeJob(tmp_path / "job")
+    task_dir = make_task_dir(tmp_path, "t")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    event = make_event(job, task_dir, "t1")
+    event.result.verifier = None
+    await job.emit("start", event)
+    await job.emit("agent_start", event)
+    await job.emit("verification_start", event)
+    event.result.exception_info = SimpleNamespace(
+        exception_type="RewardFileNotFoundError",
+        exception_message="no reward",
+        exception_traceback="Traceback ...",
+        occurred_at=ts(28),
+    )
+    await job.emit("end", event)
+    await plugin.on_job_end(SimpleNamespace())
+
+    spans = spans_by_name(span_exporter)
+    (agent,) = spans["agent"]
+    assert agent.status.status_code == StatusCode.UNSET
+    (root,) = spans["t1"]
+    assert root.events[0].attributes["exception.type"] == "RewardFileNotFoundError"
+
+
+@pytest.mark.asyncio
+async def test_retry_emits_setup_and_agent_again(
+    span_exporter: InMemorySpanExporter, client, tmp_path: Path
+):
+    job = FakeJob(tmp_path / "job")
+    task_dir = make_task_dir(tmp_path, "t")
+    plugin = LaminarPlugin(project_api_key="test_key")
+    await plugin.on_job_start(job)
+    event = make_event(job, task_dir, "t1", rewards={"reward": 1})
+    for _ in range(2):
+        await job.emit("start", event)
+        await job.emit("agent_start", event)
+        await job.emit("verification_start", event)
+        await job.emit("end", event)
+    await plugin.on_job_end(SimpleNamespace())
+
+    spans = spans_by_name(span_exporter)
+    for name in ("environment_setup", "agent_setup", "agent", "verifier", "t1"):
+        assert len(spans[name]) == 2
+    roots = {r.context.trace_id for r in spans["t1"]}
+    assert {s.context.trace_id for s in spans["agent"]} == roots
 
 
 def test_fail_fast_reads_dotenv():
