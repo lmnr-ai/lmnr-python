@@ -1,16 +1,18 @@
 import json
 import os
 import uuid
-from typing import cast
+from typing import Any, cast
 
 import pytest
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from opentelemetry.trace import SpanContext
+from opentelemetry.trace import Span, SpanContext
+from pydantic import SecretStr
 
 from lmnr import Attributes, Laminar
 from lmnr.opentelemetry_lib.tracing import get_tracer_wrapper
-from lmnr.sdk.types import LaminarSpanContext
+from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
+from lmnr.sdk.types import LaminarSpanContext, LaminarSpanContextDict
 
 
 def _ctx(span: ReadableSpan) -> SpanContext:
@@ -27,7 +29,6 @@ def _parent(span: ReadableSpan) -> SpanContext:
 def test_start_as_current_span(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("test", input="my_input"):
         Laminar.set_span_output("foo")
-        pass
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
@@ -39,10 +40,9 @@ def test_start_as_current_span(span_exporter: InMemorySpanExporter):
 
 
 def test_start_as_current_span_exception(span_exporter: InMemorySpanExporter):
-    with pytest.raises(ValueError):
-        with Laminar.start_as_current_span("test", input="my_input"):
-            Laminar.set_span_output("foo")
-            raise ValueError("error")
+    with pytest.raises(ValueError), Laminar.start_as_current_span("test", input="my_input"):
+        Laminar.set_span_output("foo")
+        raise ValueError("error")
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
@@ -76,14 +76,14 @@ def test_start_as_current_span_exception_preserves_context(
         try:
             err()
         except Exception:
-            pass
+            print("error")
         success()
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
-    err_span = [span for span in spans if span.name == "err"][0]
-    success_span = [span for span in spans if span.name == "success"][0]
-    parent_span = [span for span in spans if span.name == "parent"][0]
+    err_span = next(span for span in spans if span.name == "err")
+    success_span = next(span for span in spans if span.name == "success")
+    parent_span = next(span for span in spans if span.name == "parent")
     assert _ctx(err_span).trace_id == _ctx(parent_span).trace_id
     assert _ctx(success_span).trace_id == _ctx(parent_span).trace_id
     assert _parent(err_span).span_id == _ctx(parent_span).span_id
@@ -109,7 +109,7 @@ def test_start_as_current_span_tags(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert sorted((spans[0].attributes or {})["lmnr.association.properties.tags"]) == [
+    assert sorted(cast(list[str], (spans[0].attributes or {})["lmnr.association.properties.tags"])) == [
         "bar",
         "foo",
     ]
@@ -178,7 +178,6 @@ def test_use_span_end_on_exit(span_exporter: InMemorySpanExporter):
 
     with Laminar.use_span(span, end_on_exit=True):
         Laminar.set_span_output("foo")
-        pass
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
@@ -199,15 +198,15 @@ def test_use_span_with_auto_instrumentation(span_exporter: InMemorySpanExporter)
     span = Laminar.start_span("test", input="my_input")
 
     with Laminar.use_span(span, end_on_exit=True):
-        openai_client.chat.completions.create(
+        _completion = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "what is the capital of France?"}],
         )
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
-    test_span = [span for span in spans if span.name == "test"][0]
-    openai_span = [span for span in spans if span.name == "openai.chat"][0]
+    test_span = next(span for span in spans if span.name == "test")
+    openai_span = next(span for span in spans if span.name == "openai.chat")
 
     assert json.loads(cast(str, (test_span.attributes or {})["lmnr.span.input"])) == "my_input"
     assert (test_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
@@ -235,7 +234,7 @@ def test_use_span_manual_end(span_exporter: InMemorySpanExporter):
 
 
 def test_use_span_exception(span_exporter: InMemorySpanExporter):
-    def foo(span):
+    def foo(span: Span) -> None:
         with Laminar.use_span(span, end_on_exit=True):
             raise ValueError("error")
 
@@ -259,22 +258,21 @@ def test_use_span_exception(span_exporter: InMemorySpanExporter):
 
 def test_use_span_nested_path(span_exporter: InMemorySpanExporter):
     span = Laminar.start_span("test", input="my_input")
-    with Laminar.use_span(span, end_on_exit=True):
-        with Laminar.start_as_current_span("foo"):
-            pass
+    with Laminar.use_span(span, end_on_exit=True), Laminar.start_as_current_span("foo"):
+        pass
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
 
-    outer_span = [span for span in spans if span.name == "test"][0]
-    inner_span = [span for span in spans if span.name == "foo"][0]
+    outer_span = next(span for span in spans if span.name == "test")
+    inner_span = next(span for span in spans if span.name == "foo")
 
     assert (outer_span.attributes or {})["lmnr.span.path"] == ("test",)
     assert (inner_span.attributes or {})["lmnr.span.path"] == ("test", "foo")
 
 
 def test_use_span_suppress_exception(span_exporter: InMemorySpanExporter):
-    def foo(span):
+    def foo(span: Span) -> None:
         with Laminar.use_span(span, end_on_exit=True, record_exception=False):
             raise ValueError("error")
 
@@ -300,7 +298,7 @@ def test_use_span_with_auto_instrumentation_langchain(
     from langchain_openai import ChatOpenAI
 
     # the real API key was used in the vcr cassette
-    openai_client = ChatOpenAI(api_key="test-api-key")
+    openai_client = ChatOpenAI(api_key=SecretStr("test-api-key"))
 
     span = Laminar.start_span("test", input="my_input")
 
@@ -313,8 +311,8 @@ def test_use_span_with_auto_instrumentation_langchain(
 
     spans = span_exporter.get_finished_spans()
     # assert len(spans) == 2
-    test_span = [span for span in spans if span.name == "test"][0]
-    openai_span = [span for span in spans if span.name == "ChatOpenAI.chat"][0]
+    test_span = next(span for span in spans if span.name == "test")
+    openai_span = next(span for span in spans if span.name == "ChatOpenAI.chat")
 
     assert (
         _ctx(test_span).trace_id == _ctx(openai_span).trace_id
@@ -327,7 +325,6 @@ def test_use_span_with_auto_instrumentation_langchain(
 def test_session_id(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("test"):
         Laminar.set_trace_session_id("123")
-        pass
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
@@ -384,13 +381,12 @@ def test_session_id_doesnt_leak(span_exporter: InMemorySpanExporter):
 
     with Laminar.start_as_current_span("in_session"):
         Laminar.set_trace_session_id("123")
-        pass
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
 
-    in_session_span = [span for span in spans if span.name == "in_session"][0]
-    no_session_span = [span for span in spans if span.name == "no_session"][0]
+    in_session_span = next(span for span in spans if span.name == "in_session")
+    no_session_span = next(span for span in spans if span.name == "no_session")
 
     assert (in_session_span.attributes or {})["lmnr.association.properties.session_id"] == "123"
     assert (in_session_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
@@ -405,7 +401,6 @@ def test_session_id_doesnt_leak(span_exporter: InMemorySpanExporter):
 def test_user_id(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("test"):
         Laminar.set_trace_user_id("123")
-        pass
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
@@ -418,7 +413,6 @@ def test_user_id(span_exporter: InMemorySpanExporter):
 def test_metadata(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("test"):
         Laminar.set_trace_metadata({"foo": "bar"})
-        pass
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
@@ -431,7 +425,6 @@ def test_metadata(span_exporter: InMemorySpanExporter):
 def test_metadata_does_not_leak(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("with_metadata"):
         Laminar.set_trace_metadata({"foo": "bar"})
-        pass
 
     with Laminar.start_as_current_span("no_metadata"):
         pass
@@ -439,8 +432,8 @@ def test_metadata_does_not_leak(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
 
-    with_metadata_span = [span for span in spans if span.name == "with_metadata"][0]
-    no_metadata_span = [span for span in spans if span.name == "no_metadata"][0]
+    with_metadata_span = next(span for span in spans if span.name == "with_metadata")
+    no_metadata_span = next(span for span in spans if span.name == "no_metadata")
 
     assert with_metadata_span.parent is None or with_metadata_span.parent.span_id == 0
     assert no_metadata_span.parent is None or no_metadata_span.parent.span_id == 0
@@ -473,11 +466,10 @@ def test_metadata_does_not_leak(span_exporter: InMemorySpanExporter):
 def test_tags(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("test"):
         Laminar.set_span_tags(["foo", "bar"])
-        pass
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert sorted((spans[0].attributes or {})["lmnr.association.properties.tags"]) == [
+    assert sorted(cast(list[str], (spans[0].attributes or {})["lmnr.association.properties.tags"])) == [
         "bar",
         "foo",
     ]
@@ -512,8 +504,8 @@ def test_span_context(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
-    inner_span = [span for span in spans if span.name == "inner"][0]
-    outer_span = [span for span in spans if span.name == "test"][0]
+    inner_span = next(span for span in spans if span.name == "inner")
+    outer_span = next(span for span in spans if span.name == "test")
 
     assert (inner_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
     assert (inner_span.attributes or {})["lmnr.span.path"] == ("test", "inner")
@@ -528,7 +520,7 @@ def test_span_context(span_exporter: InMemorySpanExporter):
 
 
 def test_span_context_dict(span_exporter: InMemorySpanExporter):
-    def foo(context: dict):
+    def foo(context: LaminarSpanContextDict):
         parent_span_context = Laminar.deserialize_span_context(context)
         with Laminar.start_as_current_span(
             "inner", parent_span_context=parent_span_context
@@ -543,8 +535,8 @@ def test_span_context_dict(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
-    inner_span = [span for span in spans if span.name == "inner"][0]
-    outer_span = [span for span in spans if span.name == "test"][0]
+    inner_span = next(span for span in spans if span.name == "inner")
+    outer_span = next(span for span in spans if span.name == "test")
 
     assert (inner_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
     assert (inner_span.attributes or {})["lmnr.span.path"] == ("test", "inner")
@@ -567,15 +559,15 @@ def test_span_context_str(span_exporter: InMemorySpanExporter):
             pass
 
     span = Laminar.start_span("test")
-    span_context = Laminar.get_laminar_span_context_dict(span)
+    span_context = Laminar.serialize_span_context(span)
     assert span_context is not None
     foo(span_context)
     span.end()
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
-    inner_span = [span for span in spans if span.name == "inner"][0]
-    outer_span = [span for span in spans if span.name == "test"][0]
+    inner_span = next(span for span in spans if span.name == "inner")
+    outer_span = next(span for span in spans if span.name == "test")
 
     assert (inner_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
     assert (inner_span.attributes or {})["lmnr.span.path"] == ("test", "inner")
@@ -605,8 +597,8 @@ def test_span_context_ser_de(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
-    inner_span = [span for span in spans if span.name == "inner"][0]
-    outer_span = [span for span in spans if span.name == "test"][0]
+    inner_span = next(span for span in spans if span.name == "inner")
+    outer_span = next(span for span in spans if span.name == "test")
 
     assert (inner_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
     assert (inner_span.attributes or {})["lmnr.span.path"] == ("test", "inner")
@@ -632,7 +624,9 @@ def test_span_context_path_ids_path(span_exporter: InMemorySpanExporter):
         span = Laminar.start_span("test")
         # Clear the span processor to ensure the path is not cached
         # This simulates span context being passed across services
-        get_tracer_wrapper().span_processor.clear()
+        wrapper = get_tracer_wrapper()
+        assert wrapper is not None
+        cast(LaminarSpanProcessor, wrapper.span_processor).clear()
         span_context = Laminar.serialize_span_context(span)
         assert span_context is not None
         foo(span_context)
@@ -640,9 +634,9 @@ def test_span_context_path_ids_path(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
-    inner_span = [span for span in spans if span.name == "inner"][0]
-    outer_span = [span for span in spans if span.name == "outer"][0]
-    context_span = [span for span in spans if span.name == "test"][0]
+    inner_span = next(span for span in spans if span.name == "inner")
+    outer_span = next(span for span in spans if span.name == "outer")
+    context_span = next(span for span in spans if span.name == "test")
 
     assert (inner_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
     assert (inner_span.attributes or {})["lmnr.span.path"] == ("outer", "test", "inner")
@@ -668,7 +662,9 @@ def test_span_context_path_ids_path_start_span(span_exporter: InMemorySpanExport
         span = Laminar.start_span("test")
         # Clear the span processor to ensure the path is not cached
         # This simulates span context being passed across services
-        get_tracer_wrapper().span_processor.clear()
+        wrapper = get_tracer_wrapper()
+        assert wrapper is not None
+        cast(LaminarSpanProcessor, wrapper.span_processor).clear()
         span_context = Laminar.serialize_span_context(span)
         assert span_context is not None
         foo(span_context)
@@ -676,9 +672,9 @@ def test_span_context_path_ids_path_start_span(span_exporter: InMemorySpanExport
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
-    inner_span = [span for span in spans if span.name == "inner"][0]
-    outer_span = [span for span in spans if span.name == "outer"][0]
-    context_span = [span for span in spans if span.name == "test"][0]
+    inner_span = next(span for span in spans if span.name == "inner")
+    outer_span = next(span for span in spans if span.name == "outer")
+    context_span = next(span for span in spans if span.name == "test")
 
     assert (inner_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
     assert (inner_span.attributes or {})["lmnr.span.path"] == ("outer", "test", "inner")
@@ -708,8 +704,8 @@ def test_span_context_ended_span(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
-    inner_span = [span for span in spans if span.name == "inner"][0]
-    outer_span = [span for span in spans if span.name == "test"][0]
+    inner_span = next(span for span in spans if span.name == "inner")
+    outer_span = next(span for span in spans if span.name == "test")
 
     assert (inner_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
     assert (inner_span.attributes or {})["lmnr.span.path"] == ("test", "inner")
@@ -724,8 +720,8 @@ def test_span_context_ended_span(span_exporter: InMemorySpanExporter):
 
 
 def test_span_context_otel_fallback(span_exporter: InMemorySpanExporter):
-    def foo(context: LaminarSpanContext):
-        with Laminar.start_as_current_span("inner", parent_span_context=context):
+    def foo(context: SpanContext):
+        with Laminar.start_as_current_span("inner", parent_span_context=cast(Any, context)):
             pass
 
     span = Laminar.start_span("test")
@@ -734,8 +730,8 @@ def test_span_context_otel_fallback(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
-    inner_span = [span for span in spans if span.name == "inner"][0]
-    outer_span = [span for span in spans if span.name == "test"][0]
+    inner_span = next(span for span in spans if span.name == "inner")
+    outer_span = next(span for span in spans if span.name == "test")
 
     assert (inner_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
     assert (inner_span.attributes or {})["lmnr.span.path"] == ("test", "inner")
@@ -750,8 +746,8 @@ def test_span_context_otel_fallback(span_exporter: InMemorySpanExporter):
 
 
 def test_span_context_dict_fallback(span_exporter: InMemorySpanExporter):
-    def foo(context: LaminarSpanContext):
-        with Laminar.start_as_current_span("inner", parent_span_context=context):
+    def foo(context: LaminarSpanContextDict):
+        with Laminar.start_as_current_span("inner", parent_span_context=cast(Any, context)):
             pass
 
     span = Laminar.start_span("test")
@@ -762,8 +758,8 @@ def test_span_context_dict_fallback(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
-    inner_span = [span for span in spans if span.name == "inner"][0]
-    outer_span = [span for span in spans if span.name == "test"][0]
+    inner_span = next(span for span in spans if span.name == "inner")
+    outer_span = next(span for span in spans if span.name == "test")
 
     assert (inner_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
     assert (inner_span.attributes or {})["lmnr.span.path"] == ("test", "inner")
@@ -783,8 +779,8 @@ def test_span_context_from_env_variables(span_exporter: InMemorySpanExporter):
     test_span_id2 = "00000000-0000-0000-fedc-ba9876543210"
     old_val = os.getenv("LMNR_SPAN_CONTEXT")
     test_context = LaminarSpanContext(
-        trace_id=test_trace_id,
-        span_id=test_span_id2,
+        trace_id=uuid.UUID(test_trace_id),
+        span_id=uuid.UUID(test_span_id2),
         span_path=["grandparent", "parent"],
         span_ids_path=[test_span_id, test_span_id2],
     )
@@ -815,17 +811,16 @@ def test_span_context_from_env_variables(span_exporter: InMemorySpanExporter):
     if old_val:
         os.environ["LMNR_SPAN_CONTEXT"] = old_val
     else:
-        os.environ.pop("LMNR_SPAN_CONTEXT", None)
+        _popped_val = os.environ.pop("LMNR_SPAN_CONTEXT", None)
 
 
 def test_tags_deduplication(span_exporter: InMemorySpanExporter):
     with Laminar.start_as_current_span("test"):
         Laminar.set_span_tags(["foo", "bar", "foo"])
-        pass
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert sorted((spans[0].attributes or {})["lmnr.association.properties.tags"]) == [
+    assert sorted(cast(list[str], (spans[0].attributes or {})["lmnr.association.properties.tags"])) == [
         "bar",
         "foo",
     ]
@@ -859,8 +854,8 @@ def test_start_active_span_with_nested_context_manager(
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
 
-    outer_span = [s for s in spans if s.name == "outer"][0]
-    inner_span = [s for s in spans if s.name == "inner"][0]
+    outer_span = next(s for s in spans if s.name == "outer")
+    inner_span = next(s for s in spans if s.name == "inner")
 
     # Check parent-child relationship
     assert _parent(inner_span).span_id == _ctx(outer_span).span_id
@@ -890,9 +885,9 @@ def test_start_active_span_deeply_nested(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
 
-    outer = [s for s in spans if s.name == "outer"][0]
-    middle = [s for s in spans if s.name == "middle"][0]
-    inner = [s for s in spans if s.name == "inner"][0]
+    outer = next(s for s in spans if s.name == "outer")
+    middle = next(s for s in spans if s.name == "middle")
+    inner = next(s for s in spans if s.name == "inner")
 
     # Check parent-child relationships
     assert _parent(middle).span_id == _ctx(outer).span_id
@@ -940,9 +935,9 @@ def test_start_active_span_sequential_siblings(span_exporter: InMemorySpanExport
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
 
-    parent = [s for s in spans if s.name == "parent"][0]
-    child1 = [s for s in spans if s.name == "child1"][0]
-    child2 = [s for s in spans if s.name == "child2"][0]
+    parent = next(s for s in spans if s.name == "parent")
+    child1 = next(s for s in spans if s.name == "child1")
+    child2 = next(s for s in spans if s.name == "child2")
 
     # Both children should have the same parent
     assert _parent(child1).span_id == _ctx(parent).span_id
@@ -977,10 +972,8 @@ def test_start_active_span_with_tags_and_span_type(
     assert json.loads(cast(str, (spans[0].attributes or {})["lmnr.span.input"])) == {"key": "value"}
     assert (spans[0].attributes or {})["lmnr.span.path"] == ("test_span",)
 
-    # Check tags if present (tags might be set via the span processor)
     tags_attr = (spans[0].attributes or {}).get("lmnr.association.properties.tags")
-    if tags_attr:
-        assert sorted(tags_attr) == ["tag1", "tag2"]
+    assert sorted(cast(list[str], tags_attr)) == ["tag1", "tag2"]
 
 
 def test_start_active_span_multiple_active_spans(span_exporter: InMemorySpanExporter):
@@ -996,8 +989,8 @@ def test_start_active_span_multiple_active_spans(span_exporter: InMemorySpanExpo
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
 
-    span1_obj = [s for s in spans if s.name == "span1"][0]
-    span2_obj = [s for s in spans if s.name == "span2"][0]
+    span1_obj = next(s for s in spans if s.name == "span1")
+    span2_obj = next(s for s in spans if s.name == "span2")
 
     # They should be in different traces
     assert (
@@ -1028,8 +1021,8 @@ async def test_start_active_span_async(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
 
-    outer = [s for s in spans if s.name == "async_outer"][0]
-    inner = [s for s in spans if s.name == "async_inner"][0]
+    outer = next(s for s in spans if s.name == "async_outer")
+    inner = next(s for s in spans if s.name == "async_inner")
 
     # Check parent-child relationship
     assert _parent(inner).span_id == _ctx(outer).span_id
@@ -1060,9 +1053,9 @@ async def test_start_active_span_async_nested(span_exporter: InMemorySpanExporte
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
 
-    level0 = [s for s in spans if s.name == "level0"][0]
-    level1 = [s for s in spans if s.name == "level1"][0]
-    level2 = [s for s in spans if s.name == "level2"][0]
+    level0 = next(s for s in spans if s.name == "level0")
+    level1 = next(s for s in spans if s.name == "level1")
+    level2 = next(s for s in spans if s.name == "level2")
 
     # Check parent-child relationships
     assert _parent(level1).span_id == _ctx(level0).span_id
@@ -1088,7 +1081,7 @@ def test_add_span_tags(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert sorted((spans[0].attributes or {})["lmnr.association.properties.tags"]) == [
+    assert sorted(cast(list[str], (spans[0].attributes or {})["lmnr.association.properties.tags"])) == [
         "bar",
         "baz",
         "foo",
@@ -1103,7 +1096,7 @@ def test_set_span_tags_add_span_tags(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert sorted((spans[0].attributes or {})["lmnr.association.properties.tags"]) == [
+    assert sorted(cast(list[str], (spans[0].attributes or {})["lmnr.association.properties.tags"])) == [
         "bar",
         "baz",
         "qux",
@@ -1129,7 +1122,7 @@ def test_disable_tracing_simple(span_exporter: InMemorySpanExporter):
         if old_val:
             os.environ["LMNR_DISABLE_TRACING"] = old_val
         else:
-            os.environ.pop("LMNR_DISABLE_TRACING", None)
+            _popped_val = os.environ.pop("LMNR_DISABLE_TRACING", None)
 
 
 def test_disable_tracing_dynamic_toggle(span_exporter: InMemorySpanExporter):
@@ -1145,7 +1138,7 @@ def test_disable_tracing_dynamic_toggle(span_exporter: InMemorySpanExporter):
 
     try:
         # Start with tracing enabled - span should be exported
-        os.environ.pop("LMNR_DISABLE_TRACING", None)
+        _popped_val = os.environ.pop("LMNR_DISABLE_TRACING", None)
         with Laminar.start_as_current_span("enabled_span_1", input="enabled_1"):
             Laminar.set_span_output("output_1")
 
@@ -1168,7 +1161,7 @@ def test_disable_tracing_dynamic_toggle(span_exporter: InMemorySpanExporter):
         span_exporter.clear()
 
         # Re-enable tracing - spans should be exported again
-        os.environ.pop("LMNR_DISABLE_TRACING", None)
+        _popped_val = os.environ.pop("LMNR_DISABLE_TRACING", None)
         with Laminar.start_as_current_span("enabled_span_2", input="enabled_2"):
             Laminar.set_span_output("output_2")
 
@@ -1183,7 +1176,7 @@ def test_disable_tracing_dynamic_toggle(span_exporter: InMemorySpanExporter):
         if old_val:
             os.environ["LMNR_DISABLE_TRACING"] = old_val
         else:
-            os.environ.pop("LMNR_DISABLE_TRACING", None)
+            _popped_val = os.environ.pop("LMNR_DISABLE_TRACING", None)
 
 
 def test_disable_tracing_skipped_middle_span(span_exporter: InMemorySpanExporter):
@@ -1204,7 +1197,7 @@ def test_disable_tracing_skipped_middle_span(span_exporter: InMemorySpanExporter
 
     try:
         # Start with tracing enabled
-        os.environ.pop("LMNR_DISABLE_TRACING", None)
+        _popped_val = os.environ.pop("LMNR_DISABLE_TRACING", None)
 
         with Laminar.start_as_current_span("parent", input="parent_input"):
             Laminar.set_span_output("parent_output")
@@ -1225,7 +1218,7 @@ def test_disable_tracing_skipped_middle_span(span_exporter: InMemorySpanExporter
                 child_span_id = child_span_obj.get_span_context().span_id
 
                 # Re-enable tracing before grandchild
-                os.environ.pop("LMNR_DISABLE_TRACING", None)
+                _popped_val = os.environ.pop("LMNR_DISABLE_TRACING", None)
                 with Laminar.start_as_current_span(
                     "grandchild", input="grandchild_input"
                 ):
@@ -1236,8 +1229,8 @@ def test_disable_tracing_skipped_middle_span(span_exporter: InMemorySpanExporter
         # Only parent and grandchild should be exported
         assert len(spans) == 2
 
-        parent_span = [s for s in spans if s.name == "parent"][0]
-        grandchild_span = [s for s in spans if s.name == "grandchild"][0]
+        parent_span = next(s for s in spans if s.name == "parent")
+        grandchild_span = next(s for s in spans if s.name == "grandchild")
 
         # Verify no child span was exported
         child_spans = [s for s in spans if s.name == "child"]
@@ -1277,4 +1270,4 @@ def test_disable_tracing_skipped_middle_span(span_exporter: InMemorySpanExporter
         if old_val:
             os.environ["LMNR_DISABLE_TRACING"] = old_val
         else:
-            os.environ.pop("LMNR_DISABLE_TRACING", None)
+            _popped_val = os.environ.pop("LMNR_DISABLE_TRACING", None)
