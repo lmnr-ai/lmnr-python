@@ -1,15 +1,13 @@
 import json
-
-from langchain_core.messages import AnyMessage, HumanMessage, AIMessage
-from langchain_core.tools import Tool
-from langgraph.graph import StateGraph, START
-from langgraph.graph.message import add_messages
-from langgraph.prebuilt import ToolNode, tools_condition
-
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from typing import Annotated, TypedDict
+from typing import Annotated, TypedDict, cast
 
 import pytest
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langchain_core.tools import Tool
+from langgraph.graph import START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode, tools_condition
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 
 class AgentState(TypedDict):
@@ -35,21 +33,21 @@ tools = [
 
 def test_langchain_langgraph(span_exporter: InMemorySpanExporter):
     graph_builder = StateGraph(AgentState)
-    graph_builder.add_node("assistant", assistant)
-    graph_builder.add_node("tools", ToolNode(tools))
-    graph_builder.add_edge(START, "assistant")
-    graph_builder.add_conditional_edges("assistant", tools_condition)
-    graph_builder.add_edge("tools", "assistant")
-    graph = graph_builder.compile()
+    _ = graph_builder.add_node("assistant", assistant)  # pyright: ignore[reportUnknownMemberType]
+    _ = graph_builder.add_node("tools", ToolNode(tools))  # pyright: ignore[reportUnknownMemberType]
+    _ = graph_builder.add_edge(START, "assistant")
+    _ = graph_builder.add_conditional_edges("assistant", tools_condition)
+    _ = graph_builder.add_edge("tools", "assistant")
+    graph = graph_builder.compile()  # pyright: ignore[reportUnknownMemberType]
 
-    graph.invoke({"messages": [HumanMessage(content="What is the weather in Tokyo?")]})
+    _res = graph.invoke({"messages": [HumanMessage(content="What is the weather in Tokyo?")]})  # pyright: ignore[reportUnknownMemberType]
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
-    workflow_span = [span for span in spans if span.name == "LangGraph.workflow"][0]
+    workflow_span = next(span for span in spans if span.name == "LangGraph.workflow")
     other_spans = [span for span in spans if span.name != "LangGraph.workflow"]
     assert json.loads(
-        workflow_span.attributes["lmnr.association.properties.langgraph.nodes"]
+        cast(str, (workflow_span.attributes or {})["lmnr.association.properties.langgraph.nodes"])
     ) == [
         {
             "id": "__start__",
@@ -74,7 +72,7 @@ def test_langchain_langgraph(span_exporter: InMemorySpanExporter):
     ]
 
     workflow_edges = json.loads(
-        workflow_span.attributes["lmnr.association.properties.langgraph.edges"]
+        cast(str, (workflow_span.attributes or {})["lmnr.association.properties.langgraph.edges"])
     )
     assert all(
         edge in workflow_edges
@@ -89,11 +87,11 @@ def test_langchain_langgraph(span_exporter: InMemorySpanExporter):
 
     for other_span in other_spans:
         assert (
-            other_span.attributes.get("lmnr.association.properties.langgraph.nodes")
+            (other_span.attributes or {}).get("lmnr.association.properties.langgraph.nodes")
             is None
         )
         assert (
-            other_span.attributes.get("lmnr.association.properties.langgraph.edges")
+            (other_span.attributes or {}).get("lmnr.association.properties.langgraph.edges")
             is None
         )
 
@@ -101,24 +99,24 @@ def test_langchain_langgraph(span_exporter: InMemorySpanExporter):
 @pytest.mark.asyncio
 async def test_langchain_langgraph_async(span_exporter: InMemorySpanExporter):
     graph_builder = StateGraph(AgentState)
-    graph_builder.add_node("assistant", assistant)
-    graph_builder.add_node("tools", ToolNode(tools))
-    graph_builder.add_edge(START, "assistant")
-    graph_builder.add_conditional_edges("assistant", tools_condition)
-    graph_builder.add_edge("tools", "assistant")
-    graph = graph_builder.compile()
+    _ = graph_builder.add_node("assistant", assistant)  # pyright: ignore[reportUnknownMemberType]
+    _ = graph_builder.add_node("tools", ToolNode(tools))  # pyright: ignore[reportUnknownMemberType]
+    _ = graph_builder.add_edge(START, "assistant")
+    _ = graph_builder.add_conditional_edges("assistant", tools_condition)
+    _ = graph_builder.add_edge("tools", "assistant")
+    graph = graph_builder.compile()  # pyright: ignore[reportUnknownMemberType]
 
-    await graph.ainvoke(
+    _res = await graph.ainvoke(  # pyright: ignore[reportUnknownMemberType]
         {"messages": [HumanMessage(content="What is the weather in Tokyo?")]}
     )
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
-    workflow_span = [span for span in spans if span.name == "LangGraph.workflow"][0]
+    workflow_span = next(span for span in spans if span.name == "LangGraph.workflow")
     other_spans = [span for span in spans if span.name != "LangGraph.workflow"]
     assert json.loads(
-        workflow_span.attributes["lmnr.association.properties.langgraph.nodes"]
-    ) == [
+        cast(str, (workflow_span.attributes or {})["lmnr.association.properties.langgraph.nodes"]
+    )) == [
         {
             "id": "__start__",
             "name": "__start__",
@@ -142,7 +140,7 @@ async def test_langchain_langgraph_async(span_exporter: InMemorySpanExporter):
     ]
 
     workflow_edges = json.loads(
-        workflow_span.attributes["lmnr.association.properties.langgraph.edges"]
+        cast(str, (workflow_span.attributes or {})["lmnr.association.properties.langgraph.edges"])
     )
     assert all(
         edge in workflow_edges
@@ -157,35 +155,35 @@ async def test_langchain_langgraph_async(span_exporter: InMemorySpanExporter):
 
     for other_span in other_spans:
         assert (
-            other_span.attributes.get("lmnr.association.properties.langgraph.nodes")
+            (other_span.attributes or {}).get("lmnr.association.properties.langgraph.nodes")
             is None
         )
         assert (
-            other_span.attributes.get("lmnr.association.properties.langgraph.edges")
+            (other_span.attributes or {}).get("lmnr.association.properties.langgraph.edges")
             is None
         )
 
 
 def test_langchain_langgraph_stream(span_exporter: InMemorySpanExporter):
     graph_builder = StateGraph(AgentState)
-    graph_builder.add_node("assistant", assistant)
-    graph_builder.add_node("tools", ToolNode(tools))
-    graph_builder.add_edge(START, "assistant")
-    graph_builder.add_conditional_edges("assistant", tools_condition)
-    graph_builder.add_edge("tools", "assistant")
-    graph = graph_builder.compile()
+    _ = graph_builder.add_node("assistant", assistant)  # pyright: ignore[reportUnknownMemberType]
+    _ = graph_builder.add_node("tools", ToolNode(tools))  # pyright: ignore[reportUnknownMemberType]
+    _ = graph_builder.add_edge(START, "assistant")
+    _ = graph_builder.add_conditional_edges("assistant", tools_condition)
+    _ = graph_builder.add_edge("tools", "assistant")
+    graph = graph_builder.compile()  # pyright: ignore[reportUnknownMemberType]
 
-    for chunk in graph.stream(
+    for _chunk in graph.stream(  # pyright: ignore[reportUnknownMemberType]
         {"messages": [HumanMessage(content="What is the weather in Tokyo?")]}
     ):
         pass
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
-    workflow_span = [span for span in spans if span.name == "LangGraph.workflow"][0]
+    workflow_span = next(span for span in spans if span.name == "LangGraph.workflow")
     other_spans = [span for span in spans if span.name != "LangGraph.workflow"]
     assert json.loads(
-        workflow_span.attributes["lmnr.association.properties.langgraph.nodes"]
+        cast(str, (workflow_span.attributes or {})["lmnr.association.properties.langgraph.nodes"])
     ) == [
         {
             "id": "__start__",
@@ -210,7 +208,7 @@ def test_langchain_langgraph_stream(span_exporter: InMemorySpanExporter):
     ]
 
     workflow_edges = json.loads(
-        workflow_span.attributes["lmnr.association.properties.langgraph.edges"]
+        cast(str, (workflow_span.attributes or {})["lmnr.association.properties.langgraph.edges"])
     )
     assert all(
         edge in workflow_edges
@@ -225,11 +223,11 @@ def test_langchain_langgraph_stream(span_exporter: InMemorySpanExporter):
 
     for other_span in other_spans:
         assert (
-            other_span.attributes.get("lmnr.association.properties.langgraph.nodes")
+            (other_span.attributes or {}).get("lmnr.association.properties.langgraph.nodes")
             is None
         )
         assert (
-            other_span.attributes.get("lmnr.association.properties.langgraph.edges")
+            (other_span.attributes or {}).get("lmnr.association.properties.langgraph.edges")
             is None
         )
 
@@ -237,24 +235,24 @@ def test_langchain_langgraph_stream(span_exporter: InMemorySpanExporter):
 @pytest.mark.asyncio
 async def test_langchain_langgraph_async_stream(span_exporter: InMemorySpanExporter):
     graph_builder = StateGraph(AgentState)
-    graph_builder.add_node("assistant", assistant)
-    graph_builder.add_node("tools", ToolNode(tools))
-    graph_builder.add_edge(START, "assistant")
-    graph_builder.add_conditional_edges("assistant", tools_condition)
-    graph_builder.add_edge("tools", "assistant")
-    graph = graph_builder.compile()
+    _ = graph_builder.add_node("assistant", assistant)  # pyright: ignore[reportUnknownMemberType]
+    _ = graph_builder.add_node("tools", ToolNode(tools))  # pyright: ignore[reportUnknownMemberType]
+    _ = graph_builder.add_edge(START, "assistant")
+    _ = graph_builder.add_conditional_edges("assistant", tools_condition)
+    _ = graph_builder.add_edge("tools", "assistant")
+    graph = graph_builder.compile()  # pyright: ignore[reportUnknownMemberType]
 
-    async for chunk in graph.astream(
+    async for _chunk in graph.astream(  # pyright: ignore[reportUnknownMemberType]
         {"messages": [HumanMessage(content="What is the weather in Tokyo?")]}
     ):
         pass
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
-    workflow_span = [span for span in spans if span.name == "LangGraph.workflow"][0]
+    workflow_span = next(span for span in spans if span.name == "LangGraph.workflow")
     other_spans = [span for span in spans if span.name != "LangGraph.workflow"]
     assert json.loads(
-        workflow_span.attributes["lmnr.association.properties.langgraph.nodes"]
+        cast(str, (workflow_span.attributes or {})["lmnr.association.properties.langgraph.nodes"])
     ) == [
         {
             "id": "__start__",
@@ -279,7 +277,7 @@ async def test_langchain_langgraph_async_stream(span_exporter: InMemorySpanExpor
     ]
 
     workflow_edges = json.loads(
-        workflow_span.attributes["lmnr.association.properties.langgraph.edges"]
+        cast(str, (workflow_span.attributes or {})["lmnr.association.properties.langgraph.edges"])
     )
     assert all(
         edge in workflow_edges
@@ -294,10 +292,10 @@ async def test_langchain_langgraph_async_stream(span_exporter: InMemorySpanExpor
 
     for other_span in other_spans:
         assert (
-            other_span.attributes.get("lmnr.association.properties.langgraph.nodes")
+            (other_span.attributes or {}).get("lmnr.association.properties.langgraph.nodes")
             is None
         )
         assert (
-            other_span.attributes.get("lmnr.association.properties.langgraph.edges")
+            (other_span.attributes or {}).get("lmnr.association.properties.langgraph.edges")
             is None
         )
