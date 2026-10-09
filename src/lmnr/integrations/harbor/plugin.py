@@ -622,7 +622,12 @@ def _environment_info(event: "TrialHookEvent") -> dict[str, Any] | None:
 def _task_environment(event: "TrialHookEvent") -> dict[str, Any]:
     """The `[environment]` table of the task's task.toml."""
     try:
-        import tomllib  # Python 3.11+, which Harbor requires anyway.
+        try:
+            import tomllib
+        except ImportError:
+            # Python 3.10. Harbor itself requires 3.12+, so this only matters
+            # outside a real Harbor run (e.g. our tests on 3.10).
+            import tomli as tomllib
 
         task_toml = Path(event.config.task.get_local_path()) / "task.toml"
         return tomllib.loads(task_toml.read_text()).get("environment", {})
