@@ -1,11 +1,13 @@
 """Unit tests configuration module."""
 
 import os
+from collections.abc import Generator
 
 import pytest
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AzureOpenAI, OpenAI
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import (
     OpenAIInstrumentor,
@@ -57,18 +59,15 @@ def async_vllm_openai_client():
 
 
 @pytest.fixture(scope="session", name="tracer_provider")
-def fixture_tracer_provider(span_exporter):
+def fixture_tracer_provider(span_exporter: InMemorySpanExporter) -> TracerProvider:
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(span_exporter))
     return provider
 
 
 @pytest.fixture(scope="function")
-def instrument_legacy(tracer_provider):
-    instrumentor = OpenAIInstrumentor(
-        enrich_assistant=True,
-        enrich_token_usage=True,
-    )
+def instrumentor(tracer_provider: TracerProvider) -> Generator[OpenAIInstrumentor]:
+    instrumentor = OpenAIInstrumentor()
     was_already_instrumented = instrumentor.is_instrumented_by_opentelemetry
     if not was_already_instrumented:
         instrumentor.instrument(

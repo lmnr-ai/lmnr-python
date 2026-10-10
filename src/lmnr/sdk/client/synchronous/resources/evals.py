@@ -1,19 +1,27 @@
 """Evals resource for interacting with Laminar evaluations API."""
 
-import uuid
-import warnings
+from __future__ import annotations
 
-from typing import Any
+import uuid
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any, cast
 
 from lmnr.sdk.client.synchronous.resources.base import BaseResource
 from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.types import (
-    GetDatapointsResponse,
-    EvaluationResultDatapoint,
-    InitEvaluationResponse,
-    PartialEvaluationDatapoint,
-)
-from lmnr.sdk.utils import describe_response, serialize, json_dumps
+from lmnr.sdk.utils import describe_response, json_dumps, serialize
+
+# `lmnr.sdk.evaluations` (a package) transitively imports this client package
+# (via `lmnr.sdk.datasets` -> `LaminarClient`), so importing
+# `lmnr.sdk.evaluations.models` at module level here would be circular.
+# Annotation-only uses are deferred via `TYPE_CHECKING` (safe under
+# `from __future__ import annotations`); actual constructors/functions are
+# imported lazily inside the methods that call them.
+if TYPE_CHECKING:
+    from lmnr.sdk.evaluations.models import (
+        EvaluationResultDatapoint,
+        InitEvaluationResponse,
+        PartialEvaluationDatapoint,
+    )
 
 INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH = 16_000_000  # 16MB
 logger = get_default_logger(__name__)
@@ -26,7 +34,7 @@ class Evals(BaseResource):
         self,
         name: str | None = None,
         group_name: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,  # ,
     ) -> InitEvaluationResponse:
         """Initialize a new evaluation.
 
@@ -38,6 +46,8 @@ class Evals(BaseResource):
         Returns:
             InitEvaluationResponse: The response from the initialization request.
         """
+        from lmnr.sdk.evaluations.models import parse_init_evaluation_response
+
         response = self._client.post(
             self._base_url + "/v1/evals",
             json={
@@ -53,14 +63,14 @@ class Evals(BaseResource):
             raise ValueError(
                 f"Error initializing evaluation: {describe_response(response)}"
             )
-        resp_json = response.json()
-        return InitEvaluationResponse.model_validate(resp_json)
+        resp_json = cast(dict[str, str], response.json())
+        return parse_init_evaluation_response(resp_json)
 
     def create_evaluation(
         self,
         name: str | None = None,
         group_name: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,  # ,
     ) -> uuid.UUID:
         """
         Create a new evaluation and return its ID.
@@ -74,13 +84,13 @@ class Evals(BaseResource):
             uuid.UUID: The evaluation ID.
         """
         evaluation = self.init(name=name, group_name=group_name, metadata=metadata)
-        return evaluation.id
+        return evaluation["id"]
 
     def update_evaluation(
         self,
         eval_id: uuid.UUID,
         name: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,  # ,
     ) -> InitEvaluationResponse:
         """Update an evaluation's name and/or metadata. The group ID is
         immutable. Fields left as None are kept unchanged.
@@ -95,6 +105,8 @@ class Evals(BaseResource):
         Returns:
             InitEvaluationResponse: The updated evaluation.
         """
+        from lmnr.sdk.evaluations.models import parse_init_evaluation_response
+
         response = self._client.post(
             self._base_url + f"/v1/evals/{eval_id}",
             json={
@@ -111,14 +123,14 @@ class Evals(BaseResource):
             raise ValueError(
                 f"Error updating evaluation: {describe_response(response)}"
             )
-        return InitEvaluationResponse.model_validate(response.json())
+        return parse_init_evaluation_response(cast(dict[str, str], response.json()))
 
     def create_datapoint(
         self,
         eval_id: uuid.UUID,
-        data: Any,
-        target: Any = None,
-        metadata: dict[str, Any] | None = None,
+        data: Any,  # ,
+        target: Any = None,  # ,
+        metadata: dict[str, Any] | None = None,  # ,
         index: int | None = None,
         trace_id: uuid.UUID | None = None,
     ) -> uuid.UUID:
@@ -136,6 +148,7 @@ class Evals(BaseResource):
         Returns:
             uuid.UUID: The datapoint ID.
         """
+        from lmnr.sdk.evaluations.models import PartialEvaluationDatapoint
 
         datapoint_id = uuid.uuid4()
 
@@ -156,7 +169,7 @@ class Evals(BaseResource):
     def save_datapoints(
         self,
         eval_id: uuid.UUID,
-        datapoints: list[EvaluationResultDatapoint | PartialEvaluationDatapoint],
+        datapoints: Sequence[EvaluationResultDatapoint | PartialEvaluationDatapoint],
         group_name: str | None = None,
     ):
         """Save evaluation datapoints.
@@ -227,45 +240,11 @@ class Evals(BaseResource):
                 f"Error updating evaluation datapoint: {describe_response(response)}"
             )
 
-    def get_datapoints(
-        self,
-        dataset_name: str,
-        offset: int,
-        limit: int,
-    ) -> GetDatapointsResponse:
-        """Get datapoints from a dataset.
-
-        Args:
-            dataset_name (str): The name of the dataset.
-            offset (int): The offset to start from.
-            limit (int): The maximum number of datapoints to return.
-
-        Returns:
-            GetDatapointsResponse: The response containing the datapoints.
-
-        Raises:
-            ValueError: If there's an error fetching the datapoints.
-        """
-
-        warnings.warn(
-            "Use client.datasets.pull instead",
-            DeprecationWarning,
-        )
-
-        params = {"name": dataset_name, "offset": offset, "limit": limit}
-        response = self._client.get(
-            self._base_url + "/v1/datasets/datapoints",
-            params=params,
-            headers=self._headers(),
-        )
-        if response.status_code != 200:
-            raise ValueError(f"Error fetching datapoints: {describe_response(response)}")
-        return GetDatapointsResponse.model_validate(response.json())
 
     def _retry_save_datapoints(
         self,
         eval_id: uuid.UUID,
-        datapoints: list[EvaluationResultDatapoint | PartialEvaluationDatapoint],
+        datapoints: Sequence[EvaluationResultDatapoint | PartialEvaluationDatapoint],
         group_name: str | None = None,
         initial_length: int = INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH,
         max_retries: int = 20,
@@ -281,8 +260,8 @@ class Evals(BaseResource):
             )
             if length == 0:
                 raise ValueError(
-                    "Error saving evaluation datapoints: the server rejected the payload as too "
-                    "large even after truncating datapoint data to nothing. "
+                    "Error saving evaluation datapoints: the server rejected the payload as too " +
+                    "large even after truncating datapoint data to nothing. " +
                     f"Last server response: {describe_response(response)}"
                 )
             points = [

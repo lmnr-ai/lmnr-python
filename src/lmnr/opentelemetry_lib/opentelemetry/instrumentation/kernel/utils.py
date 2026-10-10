@@ -1,13 +1,14 @@
 # import base64
 import base64
 from copy import deepcopy
-from typing import Any
+from typing import Any, cast
 
-from lmnr.sdk.utils import json_dumps
 from pydantic import BaseModel
 
+from lmnr.sdk.utils import json_dumps
 
-def screenshot_tool_output_formatter(output: Any) -> str:
+
+def screenshot_tool_output_formatter(_output: Any) -> str:
     # output is of type BinaryAPIResponse, which implements
     # the iter_bytes method from httpx.Response
 
@@ -28,7 +29,7 @@ def process_tool_output_formatter(output: Any) -> str:
     if not isinstance(output, (dict, BaseModel)):
         return json_dumps(output)
 
-    output = output.model_dump() if isinstance(output, BaseModel) else deepcopy(output)
+    output = cast(dict[str, Any], output.model_dump() if isinstance(output, BaseModel) else deepcopy(output))  # pyright: ignore[reportUnknownArgumentType]
     if "stderr_b64" in output:
         output["stderr"] = base64.b64decode(output["stderr_b64"]).decode("utf-8")
     if "stdout_b64" in output:

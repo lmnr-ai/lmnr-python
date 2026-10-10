@@ -1,6 +1,9 @@
 import json
+from typing import Any, cast
 
 import pytest
+from openai import AsyncAzureOpenAI, AzureOpenAI
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
     is_reasoning_supported,
@@ -11,8 +14,12 @@ PROMPT_ERROR = "prompt_error"
 
 
 @pytest.mark.vcr
-def test_chat(instrument_legacy, span_exporter, azure_openai_client):
-    azure_openai_client.chat.completions.create(
+def test_chat(
+    instrumentor: Any,
+    span_exporter: InMemorySpanExporter,
+    azure_openai_client: AzureOpenAI,
+):
+    _res = azure_openai_client.chat.completions.create(
         model="openllmetry-testing",
         messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
     )
@@ -23,24 +30,28 @@ def test_chat(instrument_legacy, span_exporter, azure_openai_client):
         "openai.chat",
     ]
     open_ai_span = spans[0]
-    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, (open_ai_span.attributes or {})["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
-    output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, (open_ai_span.attributes or {})["gen_ai.output.messages"]))
     assert output_messages[0]["message"]["content"]
     assert (
-        open_ai_span.attributes.get("gen_ai.request.base_url")
+        (open_ai_span.attributes or {}).get("gen_ai.request.base_url")
         == "https://traceloop-stg.openai.azure.com/openai/"
     )
-    assert open_ai_span.attributes.get("llm.is_streaming") is False
+    assert (open_ai_span.attributes or {}).get("llm.is_streaming") is False
     assert (
-        open_ai_span.attributes.get("gen_ai.response.id")
+        (open_ai_span.attributes or {}).get("gen_ai.response.id")
         == "chatcmpl-9HpbZPf84KZFiQG6fdY0KVtIwHyIa"
     )
 
 
 @pytest.mark.vcr
-def test_chat_content_filtering(instrument_legacy, span_exporter, azure_openai_client):
-    azure_openai_client.chat.completions.create(
+def test_chat_content_filtering(
+    instrumentor: Any,
+    span_exporter: InMemorySpanExporter,
+    azure_openai_client: AzureOpenAI,
+):
+    _res = azure_openai_client.chat.completions.create(
         model="openllmetry-testing",
         messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
     )
@@ -51,9 +62,9 @@ def test_chat_content_filtering(instrument_legacy, span_exporter, azure_openai_c
         "openai.chat",
     ]
     open_ai_span = spans[0]
-    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, (open_ai_span.attributes or {})["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
-    output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, (open_ai_span.attributes or {})["gen_ai.output.messages"]))
     assert output_messages[0]["finish_reason"] == "content_filter"
     content_filter_results = output_messages[0]["content_filter_results"]
     assert content_filter_results["hate"]["filtered"] is True
@@ -61,21 +72,23 @@ def test_chat_content_filtering(instrument_legacy, span_exporter, azure_openai_c
     assert content_filter_results["self_harm"]["filtered"] is False
     assert content_filter_results["self_harm"]["severity"] == "safe"
     assert (
-        open_ai_span.attributes.get("gen_ai.request.base_url")
+        (open_ai_span.attributes or {}).get("gen_ai.request.base_url")
         == "https://traceloop-stg.openai.azure.com/openai/"
     )
-    assert open_ai_span.attributes.get("llm.is_streaming") is False
+    assert (open_ai_span.attributes or {}).get("llm.is_streaming") is False
     assert (
-        open_ai_span.attributes.get("gen_ai.response.id")
+        (open_ai_span.attributes or {}).get("gen_ai.response.id")
         == "chatcmpl-9HpyGSWv1hoKdGaUaiFhfxzTEVlZo"
     )
 
 
 @pytest.mark.vcr
 def test_prompt_content_filtering(
-    instrument_legacy, span_exporter, azure_openai_client
+    instrumentor: Any,
+    span_exporter: InMemorySpanExporter,
+    azure_openai_client: AzureOpenAI,
 ):
-    azure_openai_client.chat.completions.create(
+    _res = azure_openai_client.chat.completions.create(
         model="openllmetry-testing",
         messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
     )
@@ -87,9 +100,9 @@ def test_prompt_content_filtering(
     ]
     open_ai_span = spans[0]
 
-    assert isinstance(open_ai_span.attributes[f"gen_ai.prompt.{PROMPT_ERROR}"], str)
+    assert isinstance((open_ai_span.attributes or {})[f"gen_ai.prompt.{PROMPT_ERROR}"], str)
 
-    error = json.loads(open_ai_span.attributes[f"gen_ai.prompt.{PROMPT_ERROR}"])
+    error = json.loads(cast(str, (open_ai_span.attributes or {})[f"gen_ai.prompt.{PROMPT_ERROR}"]))
 
     assert "innererror" in error
 
@@ -107,7 +120,11 @@ def test_prompt_content_filtering(
 
 
 @pytest.mark.vcr
-def test_chat_streaming(instrument_legacy, span_exporter, azure_openai_client):
+def test_chat_streaming(
+    instrumentor: Any,
+    span_exporter: InMemorySpanExporter,
+    azure_openai_client: AzureOpenAI,
+):
     response = azure_openai_client.chat.completions.create(
         model="openllmetry-testing",
         messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
@@ -124,22 +141,22 @@ def test_chat_streaming(instrument_legacy, span_exporter, azure_openai_client):
         "openai.chat",
     ]
     open_ai_span = spans[0]
-    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, (open_ai_span.attributes or {})["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
-    output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, (open_ai_span.attributes or {})["gen_ai.output.messages"]))
     assert output_messages[0]["message"]["content"]
     assert (
-        open_ai_span.attributes.get("gen_ai.request.base_url")
+        (open_ai_span.attributes or {}).get("gen_ai.request.base_url")
         == "https://traceloop-stg.openai.azure.com/openai/"
     )
-    assert open_ai_span.attributes.get("llm.is_streaming") is True
+    assert (open_ai_span.attributes or {}).get("llm.is_streaming") is True
 
     events = open_ai_span.events
     assert len(events) == chunk_count
 
     # prompt filter results
     prompt_filter_results = json.loads(
-        open_ai_span.attributes.get(f"gen_ai.prompt.{PROMPT_FILTER_KEY}")
+        cast(str, (open_ai_span.attributes or {}).get(f"gen_ai.prompt.{PROMPT_FILTER_KEY}"))
     )
     assert prompt_filter_results[0]["prompt_index"] == 0
     assert (
@@ -150,7 +167,7 @@ def test_chat_streaming(instrument_legacy, span_exporter, azure_openai_client):
         is False
     )
     assert (
-        open_ai_span.attributes.get("gen_ai.response.id")
+        (open_ai_span.attributes or {}).get("gen_ai.response.id")
         == "chatcmpl-9HpbaAXyt0cAnlWvI8kUAFpZt5jyQ"
     )
 
@@ -158,7 +175,9 @@ def test_chat_streaming(instrument_legacy, span_exporter, azure_openai_client):
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_chat_async_streaming(
-    instrument_legacy, span_exporter, async_azure_openai_client
+    instrumentor: Any,
+    span_exporter: InMemorySpanExporter,
+    async_azure_openai_client: AsyncAzureOpenAI,
 ):
     response = await async_azure_openai_client.chat.completions.create(
         model="openllmetry-testing",
@@ -177,20 +196,20 @@ async def test_chat_async_streaming(
     ]
     open_ai_span = spans[0]
 
-    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, (open_ai_span.attributes or {})["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
-    output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, (open_ai_span.attributes or {})["gen_ai.output.messages"]))
     assert output_messages[0]["message"]["content"]
     assert (
-        open_ai_span.attributes.get("gen_ai.request.base_url")
+        (open_ai_span.attributes or {}).get("gen_ai.request.base_url")
         == "https://traceloop-stg.openai.azure.com/openai/"
     )
-    assert open_ai_span.attributes.get("llm.is_streaming") is True
+    assert (open_ai_span.attributes or {}).get("llm.is_streaming") is True
 
     events = open_ai_span.events
     assert len(events) == chunk_count
     assert (
-        open_ai_span.attributes.get("gen_ai.response.id")
+        (open_ai_span.attributes or {}).get("gen_ai.response.id")
         == "chatcmpl-9HpbbsSaH8U6amSDAwdA2WzMeDdLB"
     )
 
@@ -200,8 +219,12 @@ async def test_chat_async_streaming(
     not is_reasoning_supported(),
     reason="Reasoning is not supported in older OpenAI library versions",
 )
-def test_chat_reasoning(instrument_legacy, span_exporter, azure_openai_client):
-    azure_openai_client.chat.completions.create(
+def test_chat_reasoning(
+    instrumentor: Any,
+    span_exporter: InMemorySpanExporter,
+    azure_openai_client: AzureOpenAI,
+):
+    _res = azure_openai_client.chat.completions.create(
         model="gpt-5-nano",
         messages=[{"role": "user", "content": "Count r's in strawberry"}],
         reasoning_effort="low",
@@ -209,5 +232,5 @@ def test_chat_reasoning(instrument_legacy, span_exporter, azure_openai_client):
     spans = span_exporter.get_finished_spans()
     assert len(spans) >= 1
     span = spans[-1]
-    assert span.attributes["gen_ai.request.reasoning_effort"] == "low"
-    assert span.attributes["gen_ai.usage.reasoning_tokens"] > 0
+    assert (span.attributes or {})["gen_ai.request.reasoning_effort"] == "low"
+    assert cast(int, (span.attributes or {})["gen_ai.usage.reasoning_tokens"]) > 0

@@ -1,9 +1,10 @@
-from argparse import ArgumentParser, _SubParsersAction
 import asyncio
+from argparse import ArgumentParser
+from typing import Protocol
 
-from lmnr.cli.datasets import handle_datasets_command
+from lmnr.cli.datasets import DatasetsArgs, handle_datasets_command
 from lmnr.cli.dev import run_dev
-from lmnr.cli.evals import run_evaluation
+from lmnr.cli.evals import EvalArgs, run_evaluation
 from lmnr.cli.rules import add_cursor_rules
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import from_env
@@ -14,14 +15,41 @@ DEFAULT_DATASET_PULL_BATCH_SIZE = 100
 DEFAULT_DATASET_PUSH_BATCH_SIZE = 100
 
 
-def setup_eval_parser(subparsers: _SubParsersAction) -> None:
+class SubParsersAction(Protocol):
+    """Structural stand-in for argparse's private `_SubParsersAction`."""
+
+    def add_parser(
+        self,
+        name: str,
+        *,
+        help: str | None = None,
+        description: str | None = None,
+    ) -> ArgumentParser: ...
+
+
+class _CliNamespace(  # pyright: ignore[reportUnsafeMultipleInheritance]
+    DatasetsArgs, EvalArgs
+):
+    """Namespace subclass declaring the `dest` set by `parser.add_subparsers()`.
+
+    `DatasetsArgs.__init__` and `EvalArgs.__init__` both cooperatively call
+    `super().__init__(**kwargs)`, so the MRO chain (`_CliNamespace` ->
+    `DatasetsArgs` -> `EvalArgs` -> `Namespace`) initializes both `paths` and
+    `file` correctly; verified at runtime that neither list is shared across
+    instances.
+    """
+
+    subcommand: str | None = None
+
+
+def setup_eval_parser(subparsers: SubParsersAction):
     """Setup the eval subcommand parser."""
-    parser_eval = subparsers.add_parser(
+    parser_eval: ArgumentParser = subparsers.add_parser(
         "eval",
         description="Run an evaluation",
         help="Run an evaluation",
     )
-    parser_eval.add_argument(
+    _file_action = parser_eval.add_argument(
         "file",
         nargs="*",
         help="Files or a file containing the evaluation to run. "
@@ -29,18 +57,18 @@ def setup_eval_parser(subparsers: _SubParsersAction) -> None:
         + "as they match *_eval.py or eval_*.py",
         default=[],
     )
-    parser_eval.add_argument(
+    _continue_action = parser_eval.add_argument(
         "--continue-on-error",
         action="store_true",
         default=False,
         help="Continue execution upon errors",
     )
-    parser_eval.add_argument(
+    _output_file_action = parser_eval.add_argument(
         "--output-file",
         help="Output file to write the results to. Outputs are written in JSON format.",
         nargs="?",
     )
-    parser_eval.add_argument(
+    _frontend_port_action = parser_eval.add_argument(
         "--frontend-port",
         help="[Optional] Port for the frontend when running locally. "
         + "If no port is provided, defaults to '5667'.",
@@ -49,18 +77,18 @@ def setup_eval_parser(subparsers: _SubParsersAction) -> None:
     )
 
 
-def setup_dev_parser(subparsers: _SubParsersAction) -> None:
+def setup_dev_parser(subparsers: SubParsersAction):
     """Setup the dev subcommand parser."""
-    parser_dev = subparsers.add_parser(
+    parser_dev: ArgumentParser = subparsers.add_parser(
         "dev",
         description="Start a debuger session for interactive LLM debugging",
         help="Start a debugger session",
     )
-    parser_dev.add_argument(
+    _file_action = parser_dev.add_argument(
         "file",
         help="Path to Python file containing entrypoint function(s)",
     )
-    parser_dev.add_argument(
+    _fulnction_argument = parser_dev.add_argument(
         "--function",
         "-f",
         help="[Optional] Specific function name to use as entrypoint. "
@@ -68,14 +96,14 @@ def setup_dev_parser(subparsers: _SubParsersAction) -> None:
         + "Required if multiple entrypoints exist in the file.",
         default=None,
     )
-    parser_dev.add_argument(
+    _grpc_port_action = parser_dev.add_argument(
         "--grpc-port",
         help="[Optional] Port to use for the gRPC server. "
         + "If no port is provided, the port defaults to '8443'.",
         type=int,
         default=8443,
     )
-    parser_dev.add_argument(
+    _frontend_port_action = parser_dev.add_argument(
         "--frontend-port",
         help="[Optional] Port for the frontend when running locally. "
         + "If no port is provided, defaults to '5667'.",
@@ -85,32 +113,32 @@ def setup_dev_parser(subparsers: _SubParsersAction) -> None:
     setup_laminar_args(parser_dev)
 
 
-def setup_add_cursor_rules_parser(subparsers: _SubParsersAction) -> None:
+def setup_add_cursor_rules_parser(subparsers: SubParsersAction):
     """Setup the add-cursor-rules subcommand parser."""
-    subparsers.add_parser(
+    _parser = subparsers.add_parser(
         "add-cursor-rules",
         description="Download laminar.mdc file and add it to .cursor/rules",
         help="Download laminar.mdc file and add it to .cursor/rules",
     )
 
 
-def setup_laminar_args(parser: ArgumentParser) -> None:
+def setup_laminar_args(parser: ArgumentParser):
     """Setup the laminar arguments parser."""
-    parser.add_argument(
+    _project_api_key_aciton = parser.add_argument(
         "--project-api-key",
         help="[Optional] Project API key to use for the command. "
         + "If no project API key is provided, the project API key will be read "
         + "from the environment variable LMNR_PROJECT_API_KEY.",
         default=from_env("LMNR_PROJECT_API_KEY"),
     )
-    parser.add_argument(
+    _base_url_action = parser.add_argument(
         "--base-url",
         help="[Optional] Base URL to use for the command. "
         + "If no base URL is provided, the base URL will be read from the "
         + "'LMNR_BASE_URL' environment variable or we default to 'https://api.lmnr.ai'.",
         default=from_env("LMNR_BASE_URL") or "https://api.lmnr.ai",
     )
-    parser.add_argument(
+    _port_action = parser.add_argument(
         "--port",
         help="[Optional] Port to use for the command. "
         + "If no port is provided, the port defaults to '443'.",
@@ -118,47 +146,47 @@ def setup_laminar_args(parser: ArgumentParser) -> None:
     )
 
 
-def setup_datasets_list_parser(subparsers: _SubParsersAction) -> None:
+def setup_datasets_list_parser(subparsers: SubParsersAction):
     """Setup the datasets list subcommand parser."""
-    subparsers.add_parser(
+    _parser = subparsers.add_parser(
         "list",
         description="List datasets",
         help="List datasets",
     )
 
 
-def setup_datasets_push_parser(subparsers: _SubParsersAction) -> None:
+def setup_datasets_push_parser(subparsers: SubParsersAction):
     """Setup the datasets push subcommand parser."""
     parser_datasets_push: ArgumentParser = subparsers.add_parser(
         "push",
         description="Push datapoints to an existing dataset",
         help="Push datapoints to an existing dataset",
     )
-    parser_datasets_push.add_argument(
+    _name_action = parser_datasets_push.add_argument(
         "--name",
         "-n",
         help="Name of the dataset to push data to. Exactly one of name or id must be provided.",
         default=None,
     )
-    parser_datasets_push.add_argument(
+    _id_action = parser_datasets_push.add_argument(
         "--id",
         help="ID of the dataset to push data to. Exactly one of name or id must be provided.",
         default=None,
     )
-    parser_datasets_push.add_argument(
+    _paths_action = parser_datasets_push.add_argument(
         "paths",
         nargs="*",
         help="Paths to the files or directories containing the data to push to the dataset. "
         + "Supported formats: JSON, CSV, JSONL",
     )
-    parser_datasets_push.add_argument(
+    _recursive_action = parser_datasets_push.add_argument(
         "-r",
         "--recursive",
         action="store_true",
         default=False,
         help="Recursively read all files in the directories and their subdirectories.",
     )
-    parser_datasets_push.add_argument(
+    _batch_size_action = parser_datasets_push.add_argument(
         "--batch-size",
         type=int,
         help="Batch size to push data in. If no batch size is provided, "
@@ -167,51 +195,51 @@ def setup_datasets_push_parser(subparsers: _SubParsersAction) -> None:
     )
 
 
-def setup_datasets_pull_parser(subparsers: _SubParsersAction) -> None:
+def setup_datasets_pull_parser(subparsers: SubParsersAction):
     """Setup the datasets pull subcommand parser."""
     parser_datasets_pull: ArgumentParser = subparsers.add_parser(
         "pull",
         description="Pull data from a dataset",
         help="Pull data from a dataset",
     )
-    parser_datasets_pull.add_argument(
+    _name_action = parser_datasets_pull.add_argument(
         "--name",
         "-n",
         help="Name of the dataset to pull data from",
         default=None,
     )
-    parser_datasets_pull.add_argument(
+    _id_action = parser_datasets_pull.add_argument(
         "--id",
         help="ID of the dataset to pull data from",
         default=None,
     )
-    parser_datasets_pull.add_argument(
+    _output_path_action = parser_datasets_pull.add_argument(
         "output_path",
         help="Path to the file to save the data to. "
         + "If no path is provided, data is printed to the console in the format "
         + "specified by '--output-format'.",
         nargs="?",
     )
-    parser_datasets_pull.add_argument(
+    _output_format_action = parser_datasets_pull.add_argument(
         "--output-format",
         choices=["json", "csv", "jsonl"],
         help="Output format to save the data to. "
         + "If no format is provided, it is inferred from the file extension.",
     )
-    parser_datasets_pull.add_argument(
+    _batch_size_action = parser_datasets_pull.add_argument(
         "--batch-size",
         type=int,
         help="Batch size to pull data in. If no batch size is provided, "
         + f"data is pulled in batches of '{DEFAULT_DATASET_PULL_BATCH_SIZE}'.",
         default=DEFAULT_DATASET_PULL_BATCH_SIZE,
     )
-    parser_datasets_pull.add_argument(
+    _limit_action = parser_datasets_pull.add_argument(
         "--limit",
         type=int,
         help="Limit the number of data points to pull. "
         + "If no limit is provided, all data points are pulled.",
     )
-    parser_datasets_pull.add_argument(
+    _offset_action = parser_datasets_pull.add_argument(
         "--offset",
         type=int,
         help="Offset the number of data points to pull. "
@@ -219,43 +247,43 @@ def setup_datasets_pull_parser(subparsers: _SubParsersAction) -> None:
     )
 
 
-def setup_datasets_create_parser(subparsers: _SubParsersAction) -> None:
+def setup_datasets_create_parser(subparsers: SubParsersAction):
     """Setup the datasets create subcommand parser."""
     parser_datasets_create: ArgumentParser = subparsers.add_parser(
         "create",
         description="Create a dataset from input files and download it in Laminar format",
         help="Create a dataset from input files and download it in Laminar format",
     )
-    parser_datasets_create.add_argument(
+    _name_action = parser_datasets_create.add_argument(
         "name",
         help="Name of the dataset to create",
     )
-    parser_datasets_create.add_argument(
+    _paths_action = parser_datasets_create.add_argument(
         "paths",
         nargs="+",
         help="Paths to the files or directories containing the data to push to the dataset. "
         + "Supported formats: JSON, CSV, JSONL",
     )
-    parser_datasets_create.add_argument(
+    _output_file_action = parser_datasets_create.add_argument(
         "-o",
         "--output-file",
         required=True,
         help="Path to the file to save the pulled data to",
     )
-    parser_datasets_create.add_argument(
+    _output_format_action = parser_datasets_create.add_argument(
         "--output-format",
         choices=["json", "csv", "jsonl"],
         help="Output format to save the data to. "
         + "If no format is provided, it is inferred from the output file extension.",
     )
-    parser_datasets_create.add_argument(
+    _recursive_action = parser_datasets_create.add_argument(
         "-r",
         "--recursive",
         action="store_true",
         default=False,
         help="Recursively read all files in the directories and their subdirectories.",
     )
-    parser_datasets_create.add_argument(
+    _batch_size_action = parser_datasets_create.add_argument(
         "--batch-size",
         type=int,
         help="Batch size to push/pull data in. If no batch size is provided, "
@@ -264,7 +292,7 @@ def setup_datasets_create_parser(subparsers: _SubParsersAction) -> None:
     )
 
 
-def setup_datasets_parser(subparsers: _SubParsersAction) -> None:
+def setup_datasets_parser(subparsers: SubParsersAction):
     """Setup the datasets subcommand parser and its subcommands."""
     parser_datasets: ArgumentParser = subparsers.add_parser(
         "datasets",
@@ -274,7 +302,7 @@ def setup_datasets_parser(subparsers: _SubParsersAction) -> None:
 
     setup_laminar_args(parser_datasets)
 
-    parser_datasets_subparsers = parser_datasets.add_subparsers(
+    parser_datasets_subparsers: SubParsersAction = parser_datasets.add_subparsers(
         title="command",
         dest="command",
     )
@@ -294,7 +322,9 @@ def cli() -> None:
         + "Call `lmnr [subcommand] --help` for more information on each subcommand.",
     )
 
-    subparsers = parser.add_subparsers(title="subcommands", dest="subcommand")
+    subparsers: SubParsersAction = parser.add_subparsers(
+        title="subcommands", dest="subcommand"
+    )
 
     # Setup all subcommand parsers
     setup_eval_parser(subparsers)
@@ -303,15 +333,16 @@ def cli() -> None:
     setup_datasets_parser(subparsers)
 
     # Parse arguments and dispatch to appropriate handler
-    parsed = parser.parse_args()
+    parsed = parser.parse_args(namespace=_CliNamespace())
+    subcommand = parsed.subcommand
 
-    if parsed.subcommand == "eval":
+    if subcommand == "eval":
         asyncio.run(run_evaluation(parsed))
-    elif parsed.subcommand == "dev":
+    elif subcommand == "dev":
         asyncio.run(run_dev(parsed))
-    elif parsed.subcommand == "add-cursor-rules":
+    elif subcommand == "add-cursor-rules":
         add_cursor_rules()
-    elif parsed.subcommand == "datasets":
+    elif subcommand == "datasets":
         asyncio.run(handle_datasets_command(parsed))
     else:
         parser.print_help()

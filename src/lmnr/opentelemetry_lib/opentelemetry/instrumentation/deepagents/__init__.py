@@ -14,11 +14,11 @@ subagent (e.g. `task`) become the natural parent of that subagent's own LLM
 and tool spans. No extra subagent-specific span machinery is needed.
 """
 
-from .instrumentor import DeepagentsInstrumentor, _instruments
+from .instrumentor import DeepagentsInstrumentor, instruments
 from .middleware import LaminarMiddleware
 
 __all__ = [
     "DeepagentsInstrumentor",
     "LaminarMiddleware",
-    "_instruments",
+    "instruments",
 ]

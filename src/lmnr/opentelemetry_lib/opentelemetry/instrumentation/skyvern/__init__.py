@@ -1,87 +1,65 @@
-from lmnr.sdk.browser.utils import with_tracer_wrapper
-from lmnr.sdk.utils import get_input_from_func_args, json_dumps
-from lmnr.version import __version__
+from collections.abc import Awaitable, Callable, Collection, Sequence
+from importlib.metadata import version
+from typing import Any, cast
 
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry.instrumentation.utils import unwrap
-from opentelemetry.trace import get_tracer, Tracer
-from typing import Collection
-from wrapt import wrap_function_wrapper
 import pydantic
+from opentelemetry.util.types import AttributeValue
+from typing_extensions import TypeVar, override
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
+    BaseLaminarInstrumentor,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WrappedFunctionSpec,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    set_instrumentation_scope_attributes,
+    stamp_instrumentation_scope,
+)
+from lmnr.sdk.laminar import Laminar
+from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.utils import JsonValue, get_input_from_func_args, json_dumps
+
+logger = get_default_logger(__name__)
 
 try:
-    from skyvern import Skyvern
+    from skyvern import Skyvern  # pyright: ignore[reportMissingImports]: TODO: Python 3.11 upgrade and install as a dev dep
 except ImportError as e:
     raise ImportError(
-        f"Attempted to import {__file__}, but it is designed "
-        "to patch Skyvern, which is not installed. Use `pip install skyvern` "
+        f"Attempted to import {__file__}, but it is designed " +
+        "to patch Skyvern, which is not installed. Use `pip install skyvern` " +
         "to install Skyvern or remove this import."
     ) from e
 
 _instruments = ("skyvern >= 0.1.0",)
 
-WRAPPED_METHODS = [
-    {
-        "package": "skyvern.library.skyvern",
-        "object": "Skyvern",  # Class name
-        "method": "run_task",  # Method name
-        "span_name": "Skyvern.run_task",
-        "span_type": "DEFAULT",
-    },
-    {
-        "package": "skyvern.webeye.scraper.scraper",
-        # No "object" field for module-level functions
-        "method": "get_interactable_element_tree",  # Function name
-        "span_name": "get_interactable_element_tree",
-        "span_type": "DEFAULT",
-    },
-    {
-        "package": "skyvern.forge.agent",
-        "object": "ForgeAgent",
-        "method": "execute_step",
-        "span_name": "ForgeAgent.execute_step",
-        "span_type": "DEFAULT",
-    },
-    {
-        "package": "skyvern.services.task_v2_service",
-        "method": "initialize_task_v2",
-        "span_name": "initialize_task_v2",
-        "span_type": "DEFAULT",
-    },
-    {
-        "package": "skyvern.services.task_v2_service",
-        "method": "run_task_v2_helper",
-        "span_name": "run_task_v2_helper",
-        "span_type": "DEFAULT",
-    },
-    {
-        "package": "skyvern.forge.sdk.workflow.models.block",
-        "object": "Block",
-        "method": "_generate_workflow_run_block_description",
-        "span_name": "Block._generate_workflow_run_block_description",
-        "span_type": "DEFAULT",
-    },
-    {
-        "package": "skyvern.webeye.actions.handler",
-        "method": "extract_information_for_navigation_goal",
-        "span_name": "extract_information_for_navigation_goal",
-        "span_type": "DEFAULT",
-    },
-]
 
+T = TypeVar("T")
 
-@with_tracer_wrapper
-async def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
-    span_name = to_wrap.get("span_name")
+async def _wrap(
+    to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., Awaitable[T]],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T:
+    span_name = to_wrap.get("span_name") or "Skyvern.span"
     attributes = {
         "lmnr.span.type": to_wrap.get("span_type"),
     }
+    attributes = {k: v for k,v in attributes.items() if v is not None}
 
     attributes["lmnr.span.input"] = json_dumps(
         get_input_from_func_args(wrapped, True, args, kwargs)
     )
 
-    with tracer.start_as_current_span(span_name, attributes=attributes) as span:
+    # `Laminar.start_as_current_span` rather than a per-library tracer: this
+    # instrumentor no longer receives one. The attributes are passed through
+    # verbatim so the emitted span is unchanged.
+    with Laminar.start_as_current_span(span_name, attributes=cast(dict[str, AttributeValue], attributes)) as span:
+        stamp_instrumentation_scope(span, to_wrap)
         try:
             result = await wrapped(*args, **kwargs)
 
@@ -89,7 +67,7 @@ async def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
             serialized = (
                 to_serialize.model_dump_json()
                 if isinstance(to_serialize, pydantic.BaseModel)
-                else json_dumps(to_serialize)
+                else json_dumps(cast(JsonValue, to_serialize))
             )
             span.set_attribute("lmnr.span.output", serialized)
             return result
@@ -99,13 +77,21 @@ async def _wrap(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
             raise
 
 
-def instrument_llm_handler(tracer: Tracer):
-    from skyvern.forge import app
+def instrument_llm_handler(
+    scope: LaminarInstrumentationScopeAttributes | None = None,
+) -> Any:
+    """Wrap skyvern's global LLM handler, returning the original for restoration.
+
+    Reading `app.LLM_API_HANDLER` raises `RuntimeError` until skyvern's forge app
+    has been started, which is the normal state at `Laminar.initialize()` time —
+    hence the guard at the call site.
+    """
+    from skyvern.forge import app  # pyright: ignore[reportMissingImports]: TODO: Python 3.11 upgrade and install as a dev dep
 
     # Store the original handler
-    original_handler = app.LLM_API_HANDLER
+    original_handler = app.LLM_API_HANDLER  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
 
-    async def wrapped_llm_handler(*args, **kwargs):
+    async def wrapped_llm_handler(*args: Any, **kwargs: Any) -> Any:
 
         prompt_name = kwargs.get("prompt_name", "")
 
@@ -118,74 +104,154 @@ def instrument_llm_handler(tracer: Tracer):
             "lmnr.span.type": "DEFAULT",
         }
 
-        with tracer.start_as_current_span(span_name, attributes=attributes) as span:
+        with Laminar.start_as_current_span(span_name, attributes=cast(dict[str, AttributeValue], attributes)) as span:
+            set_instrumentation_scope_attributes(span, scope)
             try:
-                result = await original_handler(*args, **kwargs)
+                result = await original_handler(*args, **kwargs)  # pyright: ignore[reportUnknownVariableType]
 
-                to_serialize = result
+                to_serialize = result# pyright: ignore[reportUnknownVariableType]
                 serialized = (
                     to_serialize.model_dump_json()
                     if isinstance(to_serialize, pydantic.BaseModel)
-                    else json_dumps(to_serialize)
+                    else json_dumps(to_serialize)  # pyright: ignore[reportUnknownArgumentType]
                 )
                 span.set_attribute("lmnr.span.output", serialized)
-                return result
+                return result  # pyright: ignore[reportUnknownVariableType]
             except Exception as e:
                 span.record_exception(e)
                 raise
 
     # Replace the global handler
     app.LLM_API_HANDLER = wrapped_llm_handler
+    return original_handler  # pyright: ignore[reportUnknownVariableType]
 
 
-class SkyvernInstrumentor(BaseInstrumentor):
+WRAPPED_FUNCTIONS: list[WrappedFunctionSpec] = [
+    WrappedFunctionSpec(
+        package_name="skyvern.library.skyvern",
+        object_name="Skyvern",
+        method_name="run_task",
+        is_async=True,
+        span_name="Skyvern.run_task",
+        span_type="DEFAULT",
+        wrapper_function=_wrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="skyvern.webeye.scraper.scraper",
+        object_name=None,
+        method_name="get_interactable_element_tree",
+        is_async=True,
+        span_name="get_interactable_element_tree",
+        span_type="DEFAULT",
+        wrapper_function=_wrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="skyvern.forge.agent",
+        object_name="ForgeAgent",
+        method_name="execute_step",
+        is_async=True,
+        span_name="ForgeAgent.execute_step",
+        span_type="DEFAULT",
+        wrapper_function=_wrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="skyvern.services.task_v2_service",
+        object_name=None,
+        method_name="initialize_task_v2",
+        is_async=True,
+        span_name="initialize_task_v2",
+        span_type="DEFAULT",
+        wrapper_function=_wrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="skyvern.services.task_v2_service",
+        object_name=None,
+        method_name="run_task_v2_helper",
+        is_async=True,
+        span_name="run_task_v2_helper",
+        span_type="DEFAULT",
+        wrapper_function=_wrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="skyvern.forge.sdk.workflow.models.block",
+        object_name="Block",
+        method_name="_generate_workflow_run_block_description",
+        is_async=True,
+        span_name="Block._generate_workflow_run_block_description",
+        span_type="DEFAULT",
+        wrapper_function=_wrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="skyvern.webeye.actions.handler",
+        object_name=None,
+        method_name="extract_information_for_navigation_goal",
+        is_async=True,
+        span_name="extract_information_for_navigation_goal",
+        span_type="DEFAULT",
+        wrapper_function=_wrap,
+    ),
+]
+
+
+class SkyvernInstrumentor(BaseLaminarInstrumentor):
+    _scope: LaminarInstrumentationScopeAttributes | None = None
+
     def __init__(self):
         super().__init__()
+        self._original_llm_handler: Callable[..., Any] | None = None
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
+            wrapped_functions=[
+                {**spec, "instrumentation_scope": self.instrumentation_scope()}
+                for spec in WRAPPED_FUNCTIONS
+            ]
+        )
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
-    def _instrument(self, **kwargs):
-
-        tracer_provider = kwargs.get("tracer_provider")
-        tracer = get_tracer(__name__, __version__, tracer_provider)
-
-        instrument_llm_handler(tracer)
-
-        for wrapped_method in WRAPPED_METHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            wrap_method = wrapped_method.get("method")
-
-            # For class methods: "Class.method", for module functions: just "function_name"
-            if wrap_object:
-                target = f"{wrap_object}.{wrap_method}"
-            else:
-                target = wrap_method
-
+    @override
+    def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
+        if self._scope is None:
             try:
-                wrap_function_wrapper(
-                    wrap_package,
-                    target,
-                    _wrap(
-                        tracer,
-                        wrapped_method,
-                    ),
-                )
-            except ModuleNotFoundError:
-                pass  # that's ok, we're not instrumenting everything
+                skyvern_version = version("skyvern")
+            except Exception:
+                logger.debug("Failed to get skyvern version", exc_info=True)
+                skyvern_version = "unknown"
+            self._scope = LaminarInstrumentationScopeAttributes(
+                name="skyvern",
+                version=skyvern_version,
+            )
+        return self._scope
 
-    def _uninstrument(self, **kwargs):
+    @override
+    def _instrument(self, **kwargs: Any):
+        # Guarded: `app.LLM_API_HANDLER` raises RuntimeError until skyvern's
+        # forge app is started, which is the normal state during
+        # `Laminar.initialize()`. Unguarded, that exception propagated out of
+        # `_instrument` before any method was wrapped, so a single uninitialized
+        # global left ALL seven unwrapped — skyvern tracing silently did nothing.
+        try:
+            self._original_llm_handler = instrument_llm_handler(
+                self.instrumentation_scope()
+            )
+        except Exception:
+            logger.debug("Failed to instrument skyvern LLM_API_HANDLER", exc_info=True)
 
-        for wrapped_method in WRAPPED_METHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            wrap_method = wrapped_method.get("method")
+        super()._instrument(**kwargs)
 
-            # For class methods: "package.Class", for module functions: just "package"
-            if wrap_object:
-                module_path = f"{wrap_package}.{wrap_object}"
-            else:
-                module_path = wrap_package
+    @override
+    def _uninstrument(self, **kwargs: Any):
+        # `instrument_llm_handler` swaps a module-level global, which `unwrap`
+        # cannot undo — without this the handler stayed wrapped forever and each
+        # instrument/uninstrument cycle layered another wrapper on it.
+        if self._original_llm_handler is not None:
+            try:
+                from skyvern.forge import app  # pyright: ignore[reportMissingImports]: TODO: Python 3.11 upgrade and install as a dev dep
 
-            unwrap(module_path, wrap_method)
+                app.LLM_API_HANDLER = self._original_llm_handler
+            except Exception:
+                logger.debug("Failed to restore skyvern LLM_API_HANDLER", exc_info=True)
+            self._original_llm_handler = None
+
+        super()._uninstrument(**kwargs)

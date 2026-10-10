@@ -1,20 +1,23 @@
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any, cast
 
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
+)
 from opentelemetry.trace import Span
 from pydantic import BaseModel
 
-from lmnr.sdk.utils import json_dumps
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.litellm.utils import (
+    infer_provider,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     extract_json_schema,
     set_span_attribute,
     to_dict,
 )
-from ...utils import infer_provider
-from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
-    GEN_AI_USAGE_INPUT_TOKENS,
-    GEN_AI_USAGE_OUTPUT_TOKENS,
-)
+from lmnr.sdk.utils import json_dumps
 
 
 @dont_throw
@@ -26,6 +29,9 @@ def process_responses_kwargs(
     """Process responses kwargs and set span attributes."""
     if kwargs is None:
         kwargs = {}
+
+    if args is None:
+        args = []
 
     # Get model - responses() has model as second arg or model kwarg
     model = args[1] if len(args) > 1 else kwargs.get("model")
@@ -48,7 +54,7 @@ def process_responses_kwargs(
         set_span_attribute(
             span,
             "gen_ai.request.reasoning_effort",
-            reasoning.get("effort") if isinstance(reasoning, dict) else None,
+            reasoning.get("effort") if isinstance(reasoning, dict) else None,  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
         )
 
     # Structured output via text_format
@@ -73,27 +79,27 @@ def process_responses_kwargs(
 def process_responses_inputs(
     span: Span,
     input_param: Any,
-    tools: list[dict] | None = None,
+    tools: list[dict[str, Any]] | None = None,
 ):
     """Process responses input and tools."""
     # this for loop replicates `litellm.utils.validate_and_fix_openai_messages`
-    if tools and isinstance(tools, list):
+    if tools and isinstance(tools, list):  # pyright: ignore[reportUnnecessaryIsInstance]
         attr_tools = [to_dict(tool) for tool in tools]
         span.set_attribute("gen_ai.tool.definitions", json_dumps(attr_tools))
 
     attr_input_items = []
     if not isinstance(input_param, list):
         return
-    for item in input_param:
-        attr_input_items.append(to_dict(item))
+    for item in input_param:  # pyright: ignore[reportUnknownVariableType]
+        attr_input_items.append(to_dict(item))  # pyright: ignore[reportUnknownMemberType]
 
-    span.set_attribute("gen_ai.input.messages", json_dumps(attr_input_items))
+    span.set_attribute("gen_ai.input.messages", json_dumps(attr_input_items))  # pyright: ignore[reportUnknownArgumentType]
 
 
 @dont_throw
 def process_responses_response(
     span: Span,
-    response: BaseModel,
+    response: BaseModel | object,
     record_raw_response: bool = False,
 ):
     """Process responses response."""
@@ -103,19 +109,19 @@ def process_responses_response(
 
     if usage := response_dict.get("usage"):
         usage_dict = to_dict(usage)
-        input_tokens = usage_dict.get(
-            "input_tokens", usage_dict.get("prompt_tokens", 0)
-        )
-        output_tokens = usage_dict.get(
-            "output_tokens", usage_dict.get("completion_tokens", 0)
-        )
-        total_tokens = usage_dict.get("total_tokens", input_tokens + output_tokens)
+        input_tokens = cast(int, usage_dict.get(
+            "input_tokens", usage_dict.get("prompt_tokens")
+        ) or 0)
+        output_tokens = cast(int, usage_dict.get(
+            "output_tokens", usage_dict.get("completion_tokens")
+        ) or 0)
+        total_tokens = cast(int, usage_dict.get("total_tokens", input_tokens + output_tokens) or 0)
         set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, input_tokens)
         set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, output_tokens)
         set_span_attribute(span, "llm.usage.total_tokens", total_tokens)
         if input_details := usage_dict.get("input_tokens_details"):
             details = to_dict(input_details)
-            cache_read_tokens = details.get("cached_tokens", 0)
+            cache_read_tokens = cast(int, details.get("cached_tokens") or 0)
             set_span_attribute(
                 span, "gen_ai.usage.cache_read_input_tokens", cache_read_tokens
             )
@@ -124,13 +130,13 @@ def process_responses_response(
     if reasoning := response_dict.get("reasoning"):
         reasoning_dict = to_dict(reasoning)
         if reasoning_dict.get("summary") or reasoning_dict.get("effort"):
-            final_items.append(reasoning_dict)
+            final_items.append(reasoning_dict)  # pyright: ignore[reportUnknownMemberType]
     if isinstance(response_dict.get("output"), list):
-        for item in response_dict.get("output"):
+        for item in cast(list[Any], response_dict.get("output")):
             item = to_dict(item)
-            final_items.append(item)
+            final_items.append(item)  # pyright: ignore[reportUnknownMemberType]
 
-    span.set_attribute("gen_ai.output.messages", json_dumps(final_items))
+    span.set_attribute("gen_ai.output.messages", json_dumps(final_items))  # pyright: ignore[reportUnknownArgumentType]
 
     # Record raw response in rollout mode
     if record_raw_response:

@@ -1,6 +1,6 @@
 from lmnr.opentelemetry_lib.tracing.instruments import (
-    Instruments,
     INSTRUMENTATION_INITIALIZERS,
+    Instruments,
 )
 
 

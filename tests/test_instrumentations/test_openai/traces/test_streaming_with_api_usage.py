@@ -1,5 +1,9 @@
+from typing import cast
+
 import pytest
 from openai import OpenAI
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import OpenAIInstrumentor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 
 @pytest.fixture
@@ -10,7 +14,9 @@ def api_usage_provider_client():
 
 @pytest.mark.vcr
 def test_streaming_with_api_usage_capture(
-    instrument_legacy, span_exporter, api_usage_provider_client
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    api_usage_provider_client,
 ):
     """Test that streaming responses with API usage information are properly captured"""
     response = api_usage_provider_client.chat.completions.create(
@@ -28,12 +34,14 @@ def test_streaming_with_api_usage_capture(
     assert len(spans) == 1
 
     span = spans[0]
+    attributes = span.attributes or {}
+    attributes = span.attributes or {}
     assert span.name == "openai.chat"
 
     # Check that token usage is captured from API response
-    assert span.attributes.get("gen_ai.usage.input_tokens") > 0
-    assert span.attributes.get("gen_ai.usage.output_tokens") > 0
+    assert cast(int, attributes.get("gen_ai.usage.input_tokens")) > 0
+    assert cast(int, attributes.get("gen_ai.usage.output_tokens")) > 0
 
     # Verify that the response content is meaningful
     assert len(response_content) > 0
-    assert span.attributes.get("gen_ai.response.model") == "deepseek-chat"
+    assert attributes.get("gen_ai.response.model") == "deepseek-chat"

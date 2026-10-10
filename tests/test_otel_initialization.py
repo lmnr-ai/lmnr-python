@@ -1,10 +1,11 @@
 import os
-import pytest
 from unittest.mock import patch
 
+import pytest
+
 from lmnr import Laminar
-from lmnr.sdk.utils import get_otel_env_var, parse_otel_headers
 from lmnr.opentelemetry_lib.tracing.exporter import LaminarSpanExporter
+from lmnr.sdk.utils import get_otel_env_var, parse_otel_headers
 
 
 class TestOtelEnvVarUtils:
@@ -137,13 +138,13 @@ class TestLaminarOtelInitialization:
     def setup_method(self):
         """Reset Laminar state before each test."""
         if hasattr(Laminar, "_Laminar__initialized"):
-            Laminar._Laminar__initialized = False
+            Laminar._Laminar__initialized = False  # pyright: ignore[reportAttributeAccessIssue]
         if hasattr(Laminar, "_Laminar__project_api_key"):
-            Laminar._Laminar__project_api_key = None
+            Laminar._Laminar__project_api_key = None  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_traditional_initialization_still_works(self):
         """Test that traditional initialization path is not broken."""
-        with patch("lmnr.opentelemetry_lib.TracerManager.init") as mock_init:
+        with patch("lmnr.sdk.laminar.init_tracing") as mock_init:
             Laminar.initialize(project_api_key="test-key")
 
             mock_init.assert_called_once()
@@ -160,13 +161,12 @@ class TestLaminarOtelInitialization:
                 "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://custom-endpoint:4318",
             },
             clear=True,
-        ):
-            with patch("lmnr.opentelemetry_lib.TracerManager.init") as mock_init:
-                Laminar.initialize()
+        ), patch("lmnr.sdk.laminar.init_tracing") as mock_init:
+            Laminar.initialize()
 
-                mock_init.assert_called_once()
-                call_kwargs = mock_init.call_args[1]
-                assert call_kwargs["base_url"] is None
+            mock_init.assert_called_once()
+            call_kwargs = mock_init.call_args[1]
+            assert call_kwargs["base_url"] is None
 
     def test_base_url_param_prevents_otel_config(self):
         """Test that providing base_url parameter prevents OTEL config."""
@@ -174,24 +174,22 @@ class TestLaminarOtelInitialization:
             os.environ,
             {"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://custom-endpoint:4318"},
             clear=True,
-        ):
-            with patch("lmnr.opentelemetry_lib.TracerManager.init") as mock_init:
-                # Need to provide API key when base_url is specified
-                Laminar.initialize(
-                    base_url="https://custom.lmnr.ai", project_api_key="test-key"
-                )
+        ), patch("lmnr.sdk.laminar.init_tracing") as mock_init:
+            # Need to provide API key when base_url is specified
+            Laminar.initialize(
+                base_url="https://custom.lmnr.ai", project_api_key="test-key"
+            )
 
-                mock_init.assert_called_once()
-                call_kwargs = mock_init.call_args[1]
-                assert call_kwargs["base_url"] == "https://custom.lmnr.ai"
+            mock_init.assert_called_once()
+            call_kwargs = mock_init.call_args[1]
+            assert call_kwargs["base_url"] == "https://custom.lmnr.ai"
 
     def test_error_when_no_config_available(self):
         """Test error when neither Laminar nor OTEL config is available."""
-        with patch.dict(os.environ, {}, clear=True):
-            with pytest.raises(
-                ValueError, match="Please initialize the Laminar object"
-            ):
-                Laminar.initialize()
+        with patch.dict(os.environ, {}, clear=True), pytest.raises(
+            ValueError, match="Please initialize the Laminar object"
+        ):
+            Laminar.initialize()
 
     def test_otel_config_with_explicit_api_key_fails(self):
         """Test that providing API key prevents OTEL config even with OTEL vars."""
@@ -199,14 +197,13 @@ class TestLaminarOtelInitialization:
             os.environ,
             {"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://custom-endpoint:4318"},
             clear=True,
-        ):
-            with patch("lmnr.opentelemetry_lib.TracerManager.init") as mock_init:
-                Laminar.initialize(project_api_key="explicit-key")
+        ), patch("lmnr.sdk.laminar.init_tracing") as mock_init:
+            Laminar.initialize(project_api_key="explicit-key")
 
-                mock_init.assert_called_once()
-                call_kwargs = mock_init.call_args[1]
-                assert call_kwargs["project_api_key"] == "explicit-key"
-                assert call_kwargs["base_url"] is None
+            mock_init.assert_called_once()
+            call_kwargs = mock_init.call_args[1]
+            assert call_kwargs["project_api_key"] == "explicit-key"
+            assert call_kwargs["base_url"] is None
 
 
 class TestOtelConfigIntegration:
@@ -215,9 +212,9 @@ class TestOtelConfigIntegration:
     def setup_method(self):
         """Reset Laminar state before each test."""
         if hasattr(Laminar, "_Laminar__initialized"):
-            Laminar._Laminar__initialized = False
+            Laminar._Laminar__initialized = False  # pyright: ignore[reportAttributeAccessIssue]
         if hasattr(Laminar, "_Laminar__project_api_key"):
-            Laminar._Laminar__project_api_key = None
+            Laminar._Laminar__project_api_key = None  # pyright: ignore[reportAttributeAccessIssue]
 
     def test_end_to_end_otel_initialization(self):
         """Test end-to-end OTEL initialization flow."""
@@ -230,11 +227,10 @@ class TestOtelConfigIntegration:
                 "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "http/protobuf",
             },
             clear=True,
-        ):
-            with patch("lmnr.opentelemetry_lib.TracerManager.init") as mock_init:
-                Laminar.initialize()
+        ), patch("lmnr.sdk.laminar.init_tracing") as mock_init:
+            Laminar.initialize()
 
-                # Verify TracerManager.init was called with OTEL config
-                mock_init.assert_called_once()
-                call_kwargs = mock_init.call_args[1]
-                assert call_kwargs["base_url"] is None
+            # Verify init_tracing was called with OTEL config
+            mock_init.assert_called_once()
+            call_kwargs = mock_init.call_args[1]
+            assert call_kwargs["base_url"] is None

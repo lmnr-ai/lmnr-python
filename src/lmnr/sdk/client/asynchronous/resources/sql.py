@@ -1,6 +1,6 @@
 """SQL query resource for asynchronous client."""
 
-from typing import Any
+from typing import Any, cast
 
 from lmnr.sdk.client.asynchronous.resources.base import BaseAsyncResource
 from lmnr.sdk.log import get_default_logger
@@ -43,7 +43,8 @@ class AsyncSql(BaseAsyncResource):
             headers=self._headers(),
             json=payload,
         )
-        response.raise_for_status()
 
-        result = response.json()
+        _ = response.raise_for_status()
+
+        result = cast(dict[str, list[Any]], response.json())
         return result.get("data", [])

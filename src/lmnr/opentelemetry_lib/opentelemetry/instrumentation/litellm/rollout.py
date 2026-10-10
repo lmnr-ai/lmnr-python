@@ -13,8 +13,16 @@ the result, so the cache lookup is a blocking HTTP call even on the async path
 """
 
 import json
-from typing import Any, AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Callable, Generator, Iterator, Sequence
+from typing import Any, NotRequired, TypedDict, cast
 
+from opentelemetry.trace import Span
+from typing_extensions import TypeVar
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    set_span_attribute,
+    to_dict,
+)
 from lmnr.sdk.debug.replay import (
     cache_outcome_for,
     mark_span_cached,
@@ -22,8 +30,60 @@ from lmnr.sdk.debug.replay import (
 )
 from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.utils import json_dumps
 
 logger = get_default_logger(__name__)
+T = TypeVar("T")
+C = TypeVar("C")
+
+
+class _CompletionChoice(TypedDict):
+    index: int
+    message: dict[str, Any]
+    finish_reason: str | None
+
+
+class _CompletionResponseDict(TypedDict):
+    """Dict form of a chat completion, as fed to `ModelResponse.model_validate`."""
+
+    id: str | None
+    model: str | None
+    choices: list[_CompletionChoice]
+    created: int | None
+    object: str
+    usage: None
+
+
+class _ChunkChoice(TypedDict):
+    index: int
+    delta: dict[str, Any]
+    finish_reason: str | None
+
+
+class _CompletionChunkDict(TypedDict):
+    """Dict form of a streaming chat completion chunk."""
+
+    id: str | None
+    model: str | None
+    object: str
+    created: int | None
+    choices: list[_ChunkChoice]
+
+
+class _ResponsesResponseDict(TypedDict):
+    """Dict form of a Responses-API response, as fed to `ResponsesAPIResponse`."""
+
+    id: str
+    model: str
+    output: list[dict[str, Any]]
+    usage: None
+    created_at: int
+    reasoning: NotRequired[dict[str, Any]]
+
+
+class _ResponseCompletedEventDict(TypedDict):
+    type: str
+    response: Any
 
 
 class DualIteratorWrapper:
@@ -32,17 +92,22 @@ class DualIteratorWrapper:
     This allows cached streaming responses to work in both contexts.
     """
 
-    def __init__(self, sync_iterator, cached_response=None):
+    def __init__(
+        self,
+        sync_iterator: Iterator[C],
+        cached_response: Any = None,
+    ):
         """
         Args:
             sync_iterator: A sync iterator/generator to wrap
             cached_response: Optional cached response object for setting span attributes
         """
-        self._sync_iterator = sync_iterator
-        self._items = None  # Cache items for potential reuse
-        self._cached_response = cached_response
+        self._sync_iterator: Iterator[Any] = sync_iterator
+        # Cache items for potential reuse
+        self._items: list[Any] | None = None
+        self._cached_response: Any = cached_response
 
-    def set_span_attributes(self, span, record_raw_response=False):
+    def set_span_attributes(self, span: Span, record_raw_response: bool = False):
         """
         Set span attributes from the cached response without consuming the iterator.
 
@@ -53,11 +118,6 @@ class DualIteratorWrapper:
         if not self._cached_response:
             return
 
-        from lmnr.sdk.utils import json_dumps
-        from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
-            set_span_attribute,
-            to_dict,
-        )
 
         response_dict = to_dict(self._cached_response)
 
@@ -83,11 +143,11 @@ class DualIteratorWrapper:
             if reasoning := response_dict.get("reasoning"):
                 reasoning_dict = to_dict(reasoning)
                 if reasoning_dict.get("summary") or reasoning_dict.get("effort"):
-                    final_items.append(reasoning_dict)
+                    final_items.append(reasoning_dict)  # pyright: ignore[reportUnknownMemberType]
             if isinstance(response_dict.get("output"), list):
-                for item in response_dict.get("output"):
-                    final_items.append(to_dict(item))
-            span.set_attribute("gen_ai.output.messages", json_dumps(final_items))
+                for item in (response_dict.get("output") or []):  # pyright: ignore[reportUnknownVariableType]
+                    final_items.append(to_dict(item))  # pyright: ignore[reportUnknownMemberType]
+            span.set_attribute("gen_ai.output.messages", json_dumps(final_items))  # pyright: ignore[reportUnknownArgumentType]
 
         # Record raw response in rollout mode
         if record_raw_response:
@@ -123,7 +183,7 @@ class DualIteratorWrapper:
 
 def _import_litellm_types():
     """Lazy import litellm types to avoid import errors."""
-    types = {
+    types: dict[str, Any] = {
         "ModelResponse": None,
         "ResponsesAPIResponse": None,
         "Delta": None,
@@ -180,16 +240,16 @@ class LiteLLMRolloutWrapper:
                 if not raw:
                     logger.warning("Cached span type='raw' has no response field")
                     return None
-                response_dict = raw if isinstance(raw, dict) else json.loads(raw)
+                raw_dict = raw if isinstance(raw, dict) else json.loads(raw)  # pyright: ignore[reportUnknownVariableType]
                 if ModelResponse:
                     try:
-                        return ModelResponse.model_validate(response_dict)
-                    except Exception as e:
-                        logger.debug(f"Failed to validate ModelResponse, returning dict: {e}")
-                        return response_dict
-                return response_dict
-            except Exception as e:
-                logger.debug(f"Failed to parse raw LiteLLM completion response: {e}", exc_info=True)
+                        return ModelResponse.model_validate(raw_dict)
+                    except Exception:
+                        logger.debug("Failed to validate ModelResponse, returning dict", exc_info=True)
+                        return raw_dict  # pyright: ignore[reportUnknownVariableType]
+                return raw_dict  # pyright: ignore[reportUnknownVariableType]
+            except Exception:
+                logger.debug("Failed to parse raw LiteLLM completion response", exc_info=True)
                 return None
 
         # envelope_type == "genAi"
@@ -198,15 +258,15 @@ class LiteLLMRolloutWrapper:
             if not isinstance(messages, list):
                 logger.warning("Cached span type='genAi' has no messages list")
                 return None
-            model = cached_span.get("model", "unknown")
-            finish_reasons = cached_span.get("finishReasons", [])
+            model = cast(str, cached_span.get("model", "unknown"))
+            finish_reasons = cast(list[str], cached_span.get("finishReasons", []))
 
-            choices = []
-            for i, message in enumerate(messages):
+            choices: list[_CompletionChoice] = []
+            for i, message in enumerate(cast(list[dict[str, Any]], messages)):
                 finish_reason = finish_reasons[i] if i < len(finish_reasons) else "stop"
                 choices.append({"index": i, "message": message, "finish_reason": finish_reason})
 
-            response_dict = {
+            response_dict: _CompletionResponseDict = {
                 "id": "cached",
                 "model": model,
                 "choices": choices,
@@ -218,14 +278,14 @@ class LiteLLMRolloutWrapper:
             if ModelResponse:
                 try:
                     return ModelResponse.model_validate(response_dict)
-                except Exception as e:
-                    logger.debug(f"Failed to validate ModelResponse, returning dict: {e}")
+                except Exception:
+                    logger.debug("Failed to validate ModelResponse, returning dict", exc_info=True)
                     return response_dict
             return response_dict
 
-        except Exception as e:
+        except Exception:
             logger.debug(
-                f"Failed to convert genAi response to LiteLLM completion format: {e}",
+                "Failed to convert genAi response to LiteLLM completion format",
                 exc_info=True,
             )
             return None
@@ -246,16 +306,16 @@ class LiteLLMRolloutWrapper:
                 if not raw:
                     logger.warning("Cached span type='raw' has no response field")
                     return None
-                response_dict = raw if isinstance(raw, dict) else json.loads(raw)
+                raw_dict = raw if isinstance(raw, dict) else json.loads(raw)  # pyright: ignore[reportUnknownVariableType]
                 if ResponsesAPIResponse:
                     try:
-                        return ResponsesAPIResponse.model_validate(response_dict)
-                    except Exception as e:
-                        logger.debug(f"Failed to validate ResponsesAPIResponse, returning dict: {e}")
-                        return response_dict
-                return response_dict
-            except Exception as e:
-                logger.debug(f"Failed to parse raw LiteLLM responses response: {e}", exc_info=True)
+                        return ResponsesAPIResponse.model_validate(raw_dict)
+                    except Exception:
+                        logger.debug("Failed to validate ResponsesAPIResponse, returning dict", exc_info=True)
+                        return raw_dict  # pyright: ignore[reportUnknownVariableType]
+                return raw_dict  # pyright: ignore[reportUnknownVariableType]
+            except Exception:
+                logger.debug("Failed to parse raw LiteLLM responses response", exc_info=True)
                 return None
 
         # envelope_type == "genAi"
@@ -264,17 +324,17 @@ class LiteLLMRolloutWrapper:
             if not isinstance(messages, list):
                 logger.warning("Cached span type='genAi' has no messages list")
                 return None
-            model = cached_span.get("model", "unknown")
+            model = cast(str, cached_span.get("model", "unknown"))
 
-            reasoning = None
-            output_items = []
-            for item in messages:
-                if isinstance(item, dict) and (item.get("summary") or item.get("effort")):
+            reasoning: dict[str, Any] | None = None
+            output_items: list[dict[str, Any]] = []
+            for item in cast(list[dict[str, Any]], messages):
+                if item.get("summary") or item.get("effort"):
                     reasoning = item
                 else:
                     output_items.append(item)
 
-            response_dict = {
+            response_dict: _ResponsesResponseDict = {
                 "id": "cached",
                 "model": model,
                 "output": output_items,
@@ -287,20 +347,20 @@ class LiteLLMRolloutWrapper:
             if ResponsesAPIResponse:
                 try:
                     return ResponsesAPIResponse.model_validate(response_dict)
-                except Exception as e:
-                    logger.debug(f"Failed to validate ResponsesAPIResponse, returning dict: {e}")
+                except Exception:
+                    logger.debug("Failed to validate ResponsesAPIResponse, returning dict", exc_info=True)
                     return response_dict
             return response_dict
 
-        except Exception as e:
+        except Exception:
             logger.debug(
-                f"Failed to convert genAi response to LiteLLM responses format: {e}",
+                "Failed to convert genAi response to LiteLLM responses format",
                 exc_info=True,
             )
             return None
 
     def _create_cached_completion_stream(
-        self, response: Any
+        self, response: Any,
     ) -> Generator[Any, None, None]:
         """
         Create a generator that yields a cached completion response as a single chunk.
@@ -321,8 +381,10 @@ class LiteLLMRolloutWrapper:
         else:
             response_dict = response
 
+        response_dict = cast(_CompletionResponseDict, response_dict)
+
         # Convert the full response to a streaming chunk format
-        chunk_dict = {
+        chunk_dict: _CompletionChunkDict = {
             "id": response_dict.get("id"),
             "model": response_dict.get("model"),
             "object": "chat.completion.chunk",
@@ -351,12 +413,11 @@ class LiteLLMRolloutWrapper:
                 return
             except Exception:
                 logger.debug("Failed to validate ModelResponse", exc_info=True)
-                pass
 
         yield chunk_dict
 
     async def _create_async_cached_completion_stream(
-        self, response: Any
+        self, response: Any,
     ) -> AsyncGenerator[Any, None]:
         """
         Create an async generator that yields a cached completion response as a single chunk.
@@ -376,9 +437,10 @@ class LiteLLMRolloutWrapper:
             response_dict = response.model_dump()
         else:
             response_dict = response
+        response_dict = cast(_CompletionResponseDict, response_dict)
 
         # Convert the full response to a streaming chunk format
-        chunk_dict = {
+        chunk_dict: _CompletionChunkDict = {
             "id": response_dict.get("id"),
             "model": response_dict.get("model"),
             "object": "chat.completion.chunk",
@@ -406,12 +468,12 @@ class LiteLLMRolloutWrapper:
                 yield chunk
                 return
             except Exception:
-                pass
+                logger.debug("Failed to revalidate as ModelResponse", exc_info=True)
 
         yield chunk_dict
 
     def _create_cached_responses_stream(
-        self, response: Any
+        self, response: Any,
     ) -> Generator[Any, None, None]:
         """
         Create a generator that yields a cached responses response as a completed event.
@@ -425,7 +487,7 @@ class LiteLLMRolloutWrapper:
         types = _import_litellm_types()
         ResponseCompletedEvent = types["ResponseCompletedEvent"]
 
-        event_dict = {
+        event_dict: _ResponseCompletedEventDict = {
             "type": "response.completed",
             "response": response,
         }
@@ -438,12 +500,11 @@ class LiteLLMRolloutWrapper:
                 return
             except Exception:
                 logger.debug("Failed to validate ResponseCompletedEvent", exc_info=True)
-                pass
 
         yield event_dict
 
     async def _create_async_cached_responses_stream(
-        self, response: Any
+        self, response: Any,
     ) -> AsyncGenerator[Any, None]:
         """
         Create an async generator that yields a cached responses response as a completed event.
@@ -457,7 +518,7 @@ class LiteLLMRolloutWrapper:
         types = _import_litellm_types()
         ResponseCompletedEvent = types["ResponseCompletedEvent"]
 
-        event_dict = {
+        event_dict: _ResponseCompletedEventDict = {
             "type": "response.completed",
             "response": response,
         }
@@ -470,21 +531,20 @@ class LiteLLMRolloutWrapper:
                 return
             except Exception:
                 logger.debug("Failed to validate ResponseCompletedEvent", exc_info=True)
-                pass
 
         yield event_dict
 
     def wrap_completion(
         self,
-        wrapped,
-        args,
-        kwargs,
+        wrapped: Callable[..., T],
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
         is_streaming: bool = False,
-    ) -> Any:
+    ) -> T | DualIteratorWrapper:
         """Serve a cached completion response if available, else run live."""
         span = Laminar.get_current_span()
         outcome = cache_outcome_for(span)
-        if outcome is not None and outcome.kind == "hit":
+        if outcome is not None and outcome.kind == "hit" and outcome.cached is not None:
             response = self.cached_response_to_completion(outcome.cached)
             if response is not None:
                 logger.debug("Serving cached LiteLLM completion from replay cache")
@@ -498,15 +558,15 @@ class LiteLLMRolloutWrapper:
 
     def wrap_responses(
         self,
-        wrapped,
-        args,
-        kwargs,
+        wrapped: Callable[..., T],
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
         is_streaming: bool = False,
-    ) -> Any:
+    ) -> T | DualIteratorWrapper:
         """Serve a cached responses-API response if available, else run live."""
         span = Laminar.get_current_span()
         outcome = cache_outcome_for(span)
-        if outcome is not None and outcome.kind == "hit":
+        if outcome is not None and outcome.kind == "hit" and outcome.cached is not None:
             response = self.cached_response_to_responses(outcome.cached)
             if response is not None:
                 logger.debug("Serving cached LiteLLM responses from replay cache")
@@ -538,8 +598,8 @@ def get_litellm_rollout_wrapper() -> LiteLLMRolloutWrapper | None:
     if _litellm_rollout_wrapper is None:
         try:
             _litellm_rollout_wrapper = LiteLLMRolloutWrapper()
-        except Exception as e:
-            logger.error(f"Failed to create LiteLLM debugger wrapper: {e}")
+        except Exception:
+            logger.exception("Failed to create LiteLLM debugger wrapper")
             return None
 
     return _litellm_rollout_wrapper

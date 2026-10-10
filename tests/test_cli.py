@@ -1,13 +1,13 @@
 import tempfile
+import uuid
 from argparse import Namespace
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock, patch
-import uuid
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from lmnr.cli import run_evaluation
-from lmnr.sdk.evaluations import Evaluation
+from lmnr.cli.evals import run_evaluation
+from lmnr.sdk.evaluations.evaluation import Evaluation
 
 
 @pytest.fixture
@@ -17,6 +17,7 @@ def mock_args():
         file=[],
         continue_on_error=False,
         output_file=None,
+        frontend_port=None,
     )
 
 
@@ -49,7 +50,7 @@ def sample_eval_files():
         ]
 
         for file in eval_files:
-            file.write_text("# Sample evaluation file")
+            _bytes_written = file.write_text("# Sample evaluation file")
 
         yield temp_dir, eval_files
 
@@ -62,14 +63,14 @@ def sample_eval_files():
 @patch("lmnr.cli.evals.PREPARE_ONLY")
 @pytest.mark.asyncio
 async def test_run_evaluation_auto_discovery(
-    mock_prepare_only,
-    mock_eval_instances,
-    mock_module_from_spec,
-    mock_spec_from_file_location,
-    mock_listdir,
-    mock_getcwd,
-    mock_args,
-    mock_evaluation,
+    mock_prepare_only: MagicMock,
+    mock_eval_instances: MagicMock,
+    mock_module_from_spec: MagicMock,
+    mock_spec_from_file_location: MagicMock,
+    mock_listdir: MagicMock,
+    mock_getcwd: MagicMock,
+    mock_args: MagicMock,
+    mock_evaluation: MagicMock,
 ):
     """Test auto-discovery of evaluation files in evals directory."""
     # Setup mocks
@@ -109,19 +110,19 @@ async def test_run_evaluation_auto_discovery(
 @patch("lmnr.cli.evals.PREPARE_ONLY")
 @pytest.mark.asyncio
 async def test_run_evaluation_explicit_files(
-    mock_prepare_only,
-    mock_eval_instances,
-    mock_module_from_spec,
-    mock_spec_from_file_location,
-    mock_glob,
-    mock_args,
-    mock_evaluation,
+    mock_prepare_only: MagicMock,
+    mock_eval_instances: MagicMock,
+    mock_module_from_spec: MagicMock,
+    mock_spec_from_file_location: MagicMock,
+    mock_glob: MagicMock,
+    mock_args: MagicMock,
+    mock_evaluation: MagicMock,
 ):
     """Test running evaluation with explicitly specified files."""
     # Setup
     mock_args.file = ["test_eval.py", "another_eval.py"]
-    mock_glob.side_effect = lambda pattern: (
-        [pattern] if pattern.endswith(".py") else []
+    mock_glob.side_effect = lambda pattern: (  # pyright: ignore[reportUnknownLambdaType]
+        [pattern] if pattern.endswith(".py") else []  # pyright: ignore[reportUnknownMemberType]
     )
 
     # Mock spec and module loading
@@ -149,9 +150,9 @@ async def test_run_evaluation_explicit_files(
 @patch("lmnr.cli.evals.LOG")
 @pytest.mark.asyncio
 async def test_run_evaluation_no_eval_files_found(
-    mock_log,
-    mock_listdir,
-    mock_args,
+    mock_log: MagicMock,
+    mock_listdir: MagicMock,
+    mock_args: MagicMock,
 ):
     """Test behavior when no evaluation files are found."""
     # Setup
@@ -171,9 +172,9 @@ async def test_run_evaluation_no_eval_files_found(
 @patch("lmnr.cli.evals.LOG")
 @pytest.mark.asyncio
 async def test_run_evaluation_module_load_error(
-    mock_log,
-    mock_spec_from_file_location,
-    mock_args,
+    mock_log: MagicMock,
+    mock_spec_from_file_location: MagicMock,
+    mock_args: MagicMock,
 ):
     """Test error handling when module specification cannot be loaded."""
     # Setup
@@ -195,12 +196,12 @@ async def test_run_evaluation_module_load_error(
 @patch("lmnr.cli.evals.LOG")
 @pytest.mark.asyncio
 async def test_run_evaluation_no_evaluation_instances(
-    mock_log,
-    mock_prepare_only,
-    mock_eval_instances,
-    mock_module_from_spec,
-    mock_spec_from_file_location,
-    mock_args,
+    mock_log: MagicMock,
+    mock_prepare_only: MagicMock,
+    mock_eval_instances: MagicMock,
+    mock_module_from_spec: MagicMock,
+    mock_spec_from_file_location: MagicMock,
+    mock_args: MagicMock,
 ):
     """Test behavior when no evaluation instances are found."""
     # Setup
@@ -233,12 +234,12 @@ async def test_run_evaluation_no_evaluation_instances(
 @patch("lmnr.cli.evals.LOG")
 @pytest.mark.asyncio
 async def test_run_evaluation_continue_on_error(
-    mock_log,
-    mock_prepare_only,
-    mock_eval_instances,
-    mock_module_from_spec,
-    mock_spec_from_file_location,
-    mock_args,
+    mock_log: MagicMock,
+    mock_prepare_only: MagicMock,
+    mock_eval_instances: MagicMock,
+    mock_module_from_spec: MagicMock,
+    mock_spec_from_file_location: MagicMock,
+    mock_args: MagicMock,
 ):
     """Test continue_on_error flag behavior."""
     # Setup
@@ -274,12 +275,12 @@ async def test_run_evaluation_continue_on_error(
 @patch("lmnr.cli.evals.LOG")
 @pytest.mark.asyncio
 async def test_run_evaluation_evaluation_error_no_continue(
-    mock_log,
-    mock_prepare_only,
-    mock_eval_instances,
-    mock_module_from_spec,
-    mock_spec_from_file_location,
-    mock_args,
+    mock_log: MagicMock,
+    mock_prepare_only: MagicMock,
+    mock_eval_instances: MagicMock,
+    mock_module_from_spec: MagicMock,
+    mock_spec_from_file_location: MagicMock,
+    mock_args: MagicMock,
 ):
     """Test error handling when evaluation fails and continue_on_error is False."""
     # Setup
@@ -305,7 +306,7 @@ async def test_run_evaluation_evaluation_error_no_continue(
         await run_evaluation(mock_args)
 
     # Verify error logging
-    mock_log.error.assert_called()
+    mock_log.exception.assert_called()
 
 
 @patch("lmnr.cli.evals.importlib.util.spec_from_file_location")
@@ -315,12 +316,12 @@ async def test_run_evaluation_evaluation_error_no_continue(
 @patch("lmnr.cli.evals.LOG")
 @pytest.mark.asyncio
 async def test_run_evaluation_evaluation_error_with_continue(
-    mock_log,
-    mock_prepare_only,
-    mock_eval_instances,
-    mock_module_from_spec,
-    mock_spec_from_file_location,
-    mock_args,
+    mock_log: MagicMock,
+    mock_prepare_only: MagicMock,
+    mock_eval_instances: MagicMock,
+    mock_module_from_spec: MagicMock,
+    mock_spec_from_file_location: MagicMock,
+    mock_args: MagicMock,
 ):
     """Test error handling when evaluation fails and continue_on_error is True."""
     # Setup
@@ -345,7 +346,7 @@ async def test_run_evaluation_evaluation_error_with_continue(
     await run_evaluation(mock_args)
 
     # Verify error logging but function continues
-    mock_log.error.assert_called()
+    mock_log.exception.assert_called()
     mock_prepare_only.reset.assert_called_once_with(mock_token)
 
 
@@ -353,9 +354,9 @@ async def test_run_evaluation_evaluation_error_with_continue(
 @patch("lmnr.cli.evals.os.getcwd")
 @pytest.mark.asyncio
 async def test_run_evaluation_adds_cwd_to_path(
-    mock_getcwd,
-    mock_sys_path,
-    mock_args,
+    mock_getcwd: MagicMock,
+    mock_sys_path: MagicMock,
+    mock_args: MagicMock,
 ):
     """Test that current working directory is added to sys.path."""
     # Setup

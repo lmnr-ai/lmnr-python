@@ -8,28 +8,15 @@ live. The decision is made by `cache_outcome_for` (sync) / `acache_outcome_for`
 (async); there is no in-process cache anymore.
 """
 
-import json
-from typing import Any, AsyncGenerator, Generator
+from __future__ import annotations
 
+import json
+from collections.abc import AsyncGenerator, Awaitable, Callable, Generator, Sequence
+from typing import TYPE_CHECKING, Any, cast
+
+from opentelemetry.sdk.trace import Span as SDKSpan
 from opentelemetry.trace import Span
 
-from anthropic.types import (
-    Message,
-    RawMessageStreamEvent,
-    InputJSONDelta,
-    MessageDeltaUsage,
-    RawContentBlockDeltaEvent,
-    RawContentBlockStartEvent,
-    RawContentBlockStopEvent,
-    RawMessageDeltaEvent,
-    RawMessageStartEvent,
-    RawMessageStopEvent,
-    TextDelta,
-    ThinkingDelta,
-    Usage,
-)
-
-from anthropic.types.raw_message_delta_event import Delta
 from lmnr.sdk.debug.replay import (
     acache_outcome_for,
     cache_outcome_for,
@@ -37,6 +24,11 @@ from lmnr.sdk.debug.replay import (
     replay_enabled,
 )
 from lmnr.sdk.log import get_default_logger
+
+# `anthropic` may be missing or older than these names, so only annotation uses
+# are imported here; constructors are imported lazily where they are called.
+if TYPE_CHECKING:
+    from anthropic.types import Message, RawMessageStreamEvent
 
 logger = get_default_logger(__name__)
 
@@ -48,6 +40,8 @@ class AnthropicRolloutWrapper:
         self, cached_span: dict[str, Any]
     ) -> Message | None:
         """Convert cached span envelope to Anthropic Message response."""
+        from anthropic.types import Message, Usage
+
         envelope_type = cached_span.get("type")
         if envelope_type not in ("raw", "genAi"):
             logger.warning(f"Unknown cached span type: {envelope_type!r}")
@@ -59,12 +53,12 @@ class AnthropicRolloutWrapper:
                 if not raw:
                     logger.warning("Cached span type='raw' has no response field")
                     return None
-                response_dict = raw if isinstance(raw, dict) else json.loads(raw)
+                response_dict = cast(dict[str, Any], raw if isinstance(raw, dict) else json.loads(raw))
                 if "usage" in response_dict:
                     response_dict["usage"] = {"input_tokens": 0, "output_tokens": 0}
                 return Message.model_validate(response_dict)
-            except Exception as e:
-                logger.debug(f"Failed to parse raw Anthropic response: {e}", exc_info=True)
+            except Exception:
+                logger.debug("Failed to parse raw Anthropic response", exc_info=True)
                 return None
 
         # envelope_type == "genAi"
@@ -76,7 +70,7 @@ class AnthropicRolloutWrapper:
             model = cached_span.get("model", "unknown")
             finish_reasons = cached_span.get("finishReasons", [])
             stop_reason = finish_reasons[0] if finish_reasons else "end_turn"
-            content_blocks = messages[0].get("content", [])
+            content_blocks = cast(list[Any], cast(dict[str, Any], messages[0]).get("content", []))
             return Message(
                 id="cached",
                 model=model,
@@ -86,19 +80,19 @@ class AnthropicRolloutWrapper:
                 type="message",
                 usage=Usage(input_tokens=0, output_tokens=0),
             )
-        except Exception as e:
+        except Exception:
             logger.debug(
-                f"Failed to convert genAi response to Anthropic format: {e}",
+                "Failed to convert genAi response to Anthropic format",
                 exc_info=True,
             )
             return None
 
     def wrap_create(
         self,
-        wrapped,
-        instance,
-        args,
-        kwargs,
+        wrapped: Callable[..., Any],
+        _instance: Any,
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
         span: Span | None = None,
         is_streaming: bool = False,
         is_async: bool = False,
@@ -108,9 +102,10 @@ class AnthropicRolloutWrapper:
         if is_async:
             return self._awrap_create(wrapped, args, kwargs, span, is_streaming)
 
+        span = cast(SDKSpan, span)
         outcome = cache_outcome_for(span)
         if outcome is not None and outcome.kind == "hit":
-            response = self.cached_response_to_anthropic(outcome.cached)
+            response = self.cached_response_to_anthropic(outcome.cached or {})
             if response is not None:
                 logger.debug("Serving cached Anthropic response from replay cache")
                 mark_span_cached(span)
@@ -120,11 +115,19 @@ class AnthropicRolloutWrapper:
 
         return wrapped(*args, **kwargs)
 
-    async def _awrap_create(self, wrapped, args, kwargs, span, is_streaming) -> Any:
+    async def _awrap_create(
+        self,
+        wrapped: Callable[..., Awaitable[Any]],
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
+        span: Span | None = None,
+        is_streaming: bool = False,
+    ) -> Any:
         """Async cache lookup; on a HIT serve cached, else run the call live."""
+        span = cast(SDKSpan, span)
         outcome = await acache_outcome_for(span)
         if outcome is not None and outcome.kind == "hit":
-            response = self.cached_response_to_anthropic(outcome.cached)
+            response = self.cached_response_to_anthropic(outcome.cached or {})
             if response is not None:
                 logger.debug("Serving cached Anthropic response from replay cache")
                 mark_span_cached(span)
@@ -138,6 +141,21 @@ class AnthropicRolloutWrapper:
         self, response: Message
     ) -> Generator[RawMessageStreamEvent, None, None]:
         """Yield a cached response as a sequence of streaming events."""
+        from anthropic.types import (
+            InputJSONDelta,
+            Message,
+            MessageDeltaUsage,
+            RawContentBlockDeltaEvent,
+            RawContentBlockStartEvent,
+            RawContentBlockStopEvent,
+            RawMessageDeltaEvent,
+            RawMessageStartEvent,
+            RawMessageStopEvent,
+            TextDelta,
+            ThinkingDelta,
+            Usage,
+        )
+        from anthropic.types.raw_message_delta_event import Delta
 
         # 1. Message Start
         yield RawMessageStartEvent(
@@ -226,8 +244,8 @@ def get_anthropic_rollout_wrapper() -> AnthropicRolloutWrapper | None:
     if _anthropic_rollout_wrapper is None:
         try:
             _anthropic_rollout_wrapper = AnthropicRolloutWrapper()
-        except Exception as e:
-            logger.error(f"Failed to create Anthropic replay wrapper: {e}")
+        except Exception:
+            logger.exception("Failed to create Anthropic replay wrapper")
             return None
 
     return _anthropic_rollout_wrapper

@@ -1,9 +1,13 @@
 import json
-import pytest
+from typing import cast
 
+import pytest
 from openai import AsyncOpenAI, OpenAI
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import (
+    OpenAIInstrumentor,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
     is_reasoning_supported,
 )
@@ -11,7 +15,9 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
 
 @pytest.mark.vcr
 def test_responses(
-    instrument_legacy, span_exporter: InMemorySpanExporter, openai_client: OpenAI
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
 ):
     response = openai_client.responses.create(
         model="gpt-4.1-nano",
@@ -21,24 +27,26 @@ def test_responses(
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
+    attributes = span.attributes or {}
+    attributes = span.attributes or {}
     assert span.name == "openai.response"
-    assert span.attributes["gen_ai.system"] == "openai"
-    assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
-    assert span.attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
+    assert attributes["gen_ai.system"] == "openai"
+    assert attributes["gen_ai.request.model"] == "gpt-4.1-nano"
+    assert attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
     assert (
-        span.attributes["gen_ai.prompt.0.content"] == "What is the capital of France?"
+        attributes["gen_ai.prompt.0.content"] == "What is the capital of France?"
     )
-    assert span.attributes["gen_ai.prompt.0.role"] == "user"
-    assert span.attributes["gen_ai.completion.0.content"] == response.output_text
-    assert span.attributes["gen_ai.completion.0.role"] == "assistant"
-    assert span.attributes["openai.request.service_tier"] == "default"
-    assert span.attributes["openai.response.service_tier"] == "default"
+    assert attributes["gen_ai.prompt.0.role"] == "user"
+    assert attributes["gen_ai.completion.0.content"] == response.output_text
+    assert attributes["gen_ai.completion.0.role"] == "assistant"
+    assert attributes["openai.request.service_tier"] == "default"
+    assert attributes["openai.response.service_tier"] == "default"
 
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_responses_async(
-    instrument_legacy,
+    instrumentor: OpenAIInstrumentor,
     span_exporter: InMemorySpanExporter,
     async_openai_client: AsyncOpenAI,
 ):
@@ -50,23 +58,27 @@ async def test_responses_async(
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
+    attributes = span.attributes or {}
+    attributes = span.attributes or {}
     assert span.name == "openai.response"
-    assert span.attributes["gen_ai.system"] == "openai"
-    assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
-    assert span.attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
+    assert attributes["gen_ai.system"] == "openai"
+    assert attributes["gen_ai.request.model"] == "gpt-4.1-nano"
+    assert attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
     assert (
-        span.attributes["gen_ai.prompt.0.content"] == "What is the capital of France?"
+        attributes["gen_ai.prompt.0.content"] == "What is the capital of France?"
     )
-    assert span.attributes["gen_ai.prompt.0.role"] == "user"
-    assert span.attributes["gen_ai.completion.0.content"] == response.output_text
-    assert span.attributes["gen_ai.completion.0.role"] == "assistant"
-    assert span.attributes["openai.request.service_tier"] == "default"
-    assert span.attributes["openai.response.service_tier"] == "default"
+    assert attributes["gen_ai.prompt.0.role"] == "user"
+    assert attributes["gen_ai.completion.0.content"] == response.output_text
+    assert attributes["gen_ai.completion.0.role"] == "assistant"
+    assert attributes["openai.request.service_tier"] == "default"
+    assert attributes["openai.response.service_tier"] == "default"
 
 
 @pytest.mark.vcr
 def test_responses_with_input_history(
-    instrument_legacy, span_exporter: InMemorySpanExporter, openai_client: OpenAI
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
 ):
     user_message = "Come up with an adjective in English. Respond with just one word."
     first_response = openai_client.responses.create(
@@ -80,7 +92,7 @@ def test_responses_with_input_history(
                 "role": "user",
                 "content": user_message,
             },
-            {
+            {  # pyright:ignore[reportArgumentType]
                 "role": "assistant",
                 "content": [
                     {
@@ -96,34 +108,38 @@ def test_responses_with_input_history(
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     span = spans[1]
+    attributes = span.attributes or {}
+    attributes = span.attributes or {}
     assert span.name == "openai.response"
-    assert span.attributes["gen_ai.system"] == "openai"
-    assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
-    assert span.attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
+    assert attributes["gen_ai.system"] == "openai"
+    assert attributes["gen_ai.request.model"] == "gpt-4.1-nano"
+    assert attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
     assert (
-        span.attributes["gen_ai.prompt.0.content"]
+        attributes["gen_ai.prompt.0.content"]
         == "Come up with an adjective in English. Respond with just one word."
     )
-    assert span.attributes["gen_ai.prompt.0.role"] == "user"
-    assert json.loads(span.attributes["gen_ai.prompt.1.content"]) == [
+    assert attributes["gen_ai.prompt.0.role"] == "user"
+    assert json.loads(cast(str, attributes["gen_ai.prompt.1.content"])) == [
         {
             "type": "output_text",
             "text": first_response.output_text,
         }
     ]
-    assert span.attributes["gen_ai.prompt.1.role"] == "assistant"
+    assert attributes["gen_ai.prompt.1.role"] == "assistant"
     assert (
-        span.attributes["gen_ai.prompt.2.content"]
+        attributes["gen_ai.prompt.2.content"]
         == "Can you explain why you chose that word?"
     )
-    assert span.attributes["gen_ai.prompt.2.role"] == "user"
-    assert span.attributes["gen_ai.completion.0.content"] == response.output_text
-    assert span.attributes["gen_ai.completion.0.role"] == "assistant"
+    assert attributes["gen_ai.prompt.2.role"] == "user"
+    assert attributes["gen_ai.completion.0.content"] == response.output_text
+    assert attributes["gen_ai.completion.0.role"] == "assistant"
 
 
 @pytest.mark.vcr
 def test_responses_tool_calls(
-    instrument_legacy, span_exporter: InMemorySpanExporter, openai_client: OpenAI
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
 ):
     tools = [
         {
@@ -142,7 +158,7 @@ def test_responses_tool_calls(
             },
         }
     ]
-    openai_client.responses.create(
+    _ = openai_client.responses.create(
         model="gpt-4.1-nano",
         input=[
             {
@@ -151,7 +167,7 @@ def test_responses_tool_calls(
                 "content": "What's the weather in London?",
             }
         ],
-        tools=tools,
+        tools=tools,  # pyright: ignore[reportArgumentType]
         tool_choice="auto",
     )
 
@@ -159,26 +175,28 @@ def test_responses_tool_calls(
 
     assert len(spans) == 1
     span = spans[0]
+    attributes = span.attributes or {}
+    attributes = span.attributes or {}
     assert span.name == "openai.response"
-    assert span.attributes["gen_ai.system"] == "openai"
-    assert span.attributes["gen_ai.request.model"] == "gpt-4.1-nano"
-    assert span.attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
+    assert attributes["gen_ai.system"] == "openai"
+    assert attributes["gen_ai.request.model"] == "gpt-4.1-nano"
+    assert attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
 
-    assert span.attributes["gen_ai.prompt.0.content"] == "What's the weather in London?"
-    assert span.attributes["gen_ai.prompt.0.role"] == "user"
-    assert span.attributes["gen_ai.completion.0.role"] == "assistant"
-    assert span.attributes["gen_ai.completion.0.tool_calls.0.name"] == "get_weather"
+    assert attributes["gen_ai.prompt.0.content"] == "What's the weather in London?"
+    assert attributes["gen_ai.prompt.0.role"] == "user"
+    assert attributes["gen_ai.completion.0.role"] == "assistant"
+    assert attributes["gen_ai.completion.0.tool_calls.0.name"] == "get_weather"
     assert (
-        span.attributes["gen_ai.completion.0.tool_calls.0.arguments"]
+        attributes["gen_ai.completion.0.tool_calls.0.arguments"]
         == '{"location":"London"}'
     )
-    assert json.loads(span.attributes["gen_ai.tool.definitions"]) == tools
+    assert json.loads(cast(str, attributes["gen_ai.tool.definitions"])) == tools
     assert (
-        span.attributes["gen_ai.completion.0.tool_calls.0.id"]
+        attributes["gen_ai.completion.0.tool_calls.0.id"]
         == "fc_685ff89422ec819a977b2ea385bc9b6601c537ddeff5c2a2"
     )
     assert (
-        span.attributes["gen_ai.response.id"]
+        attributes["gen_ai.response.id"]
         == "resp_685ff8928dc4819aac45e085ba66838101c537ddeff5c2a2"
     )
 
@@ -189,9 +207,11 @@ def test_responses_tool_calls(
     reason="Reasoning is not supported in older OpenAI library versions",
 )
 def test_responses_reasoning(
-    instrument_legacy, span_exporter: InMemorySpanExporter, openai_client: OpenAI
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
 ):
-    openai_client.responses.create(
+    _ = openai_client.responses.create(
         model="gpt-5-nano",
         input="Count r's in strawberry",
         reasoning={"effort": "low", "summary": None},
@@ -199,10 +219,12 @@ def test_responses_reasoning(
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
-    assert span.attributes["gen_ai.request.reasoning_effort"] == "low"
-    assert span.attributes["gen_ai.usage.reasoning_tokens"] > 0
+    attributes = span.attributes or {}
+    attributes = span.attributes or {}
+    assert attributes["gen_ai.request.reasoning_effort"] == "low"
+    assert cast(int, attributes["gen_ai.usage.reasoning_tokens"]) > 0
     # When reasoning summary is None/empty, the attribute should not be set
-    assert "gen_ai.completion.0.reasoning" not in span.attributes
+    assert "gen_ai.completion.0.reasoning" not in attributes
 
 
 @pytest.mark.vcr
@@ -211,10 +233,12 @@ def test_responses_reasoning(
     reason="Reasoning is not supported in older OpenAI library versions",
 )
 def test_responses_reasoning_dict_issue(
-    instrument_legacy, span_exporter: InMemorySpanExporter, openai_client: OpenAI
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
 ):
     """Test for issue #3350 - reasoning dict causing invalid type warning"""
-    openai_client.responses.create(
+    _ = openai_client.responses.create(
         model="gpt-5-nano",
         input="Explain why the sky is blue",
         reasoning={"effort": "medium", "summary": "auto"},
@@ -223,14 +247,16 @@ def test_responses_reasoning_dict_issue(
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
+    attributes = span.attributes or {}
+    attributes = span.attributes or {}
 
     # Verify the reasoning attributes are properly set without causing warnings
-    assert span.attributes["gen_ai.request.reasoning_effort"] == "medium"
-    assert span.attributes["gen_ai.request.reasoning_summary"] == "auto"
+    assert attributes["gen_ai.request.reasoning_effort"] == "medium"
+    assert attributes["gen_ai.request.reasoning_summary"] == "auto"
     # This should not cause an "Invalid type dict" warning and should contain serialized reasoning
-    assert "gen_ai.completion.0.reasoning" in span.attributes
+    assert "gen_ai.completion.0.reasoning" in attributes
     # The reasoning should be serialized as JSON since it contains complex data
-    reasoning_attr = span.attributes["gen_ai.completion.0.reasoning"]
+    reasoning_attr = attributes["gen_ai.completion.0.reasoning"]
     assert isinstance(reasoning_attr, str)
     # Should be valid JSON containing reasoning summary data
     import json

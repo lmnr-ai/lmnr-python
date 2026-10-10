@@ -1,21 +1,23 @@
+from opentelemetry.context import set_value
 from opentelemetry.trace import Span
-from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
+
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
-    USER_ID,
     SESSION_ID,
     TRACE_TYPE,
+    USER_ID,
 )
 from lmnr.opentelemetry_lib.tracing.context import (
-    get_current_context,
-    attach_context,
-    set_value,
-    CONTEXT_USER_ID_KEY,
+    CONTEXT_METADATA_KEY,
     CONTEXT_SESSION_ID_KEY,
     CONTEXT_TRACE_TYPE_KEY,
-    CONTEXT_METADATA_KEY,
+    CONTEXT_USER_ID_KEY,
+    attach_context,
+    get_current_context,
 )
+from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.types import MetadataType
 
 logger = get_default_logger(__name__)
 
@@ -40,7 +42,7 @@ def set_association_props_in_context(span: Span):
         extracted_trace_type = props.get(trace_type_key)
 
         # Extract metadata from props (keys without ASSOCIATION_PROPERTIES prefix)
-        metadata_dict = {}
+        metadata_dict: MetadataType = {}
         for key, value in props.items():
             if not key.startswith(f"{ASSOCIATION_PROPERTIES}."):
                 metadata_dict[key] = value

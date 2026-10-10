@@ -2,25 +2,34 @@
 
 from __future__ import annotations
 
-from typing import Any, Collection
+from collections.abc import AsyncIterable, Awaitable, Callable, Collection, Sequence
+from typing import Any, cast
 
-from lmnr.sdk.log import get_default_logger
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
+from typing_extensions import TypeVar, override
 from wrapt import wrap_function_wrapper
 
-from .helpers import (
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.helpers import (
     reset_current_system_instructions,
     set_current_system_instructions,
 )
-from .processor import LaminarAgentsTraceProcessor
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.processor import (
+    LaminarAgentsTraceProcessor,
+)
+from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
 
-_instruments = ("openai-agents >= 0.7.0",)
+instruments = ("openai-agents >= 0.7.0",)
+
+T = TypeVar("T")
 
 
-def _extract_system_instructions(args: tuple, kwargs: dict) -> Any:
+def _extract_system_instructions(
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> Any:
     if "system_instructions" in kwargs:
         return kwargs["system_instructions"]
     if args:
@@ -28,7 +37,12 @@ def _extract_system_instructions(args: tuple, kwargs: dict) -> Any:
     return None
 
 
-async def _wrap_get_response(wrapped, instance, args, kwargs):
+async def _wrap_get_response(
+    wrapped: Callable[..., Awaitable[T]],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T:
     token = set_current_system_instructions(_extract_system_instructions(args, kwargs))
     try:
         return await wrapped(*args, **kwargs)
@@ -36,7 +50,12 @@ async def _wrap_get_response(wrapped, instance, args, kwargs):
         reset_current_system_instructions(token)
 
 
-def _wrap_stream_response(wrapped, instance, args, kwargs):
+def _wrap_stream_response(
+    wrapped: Callable[..., AsyncIterable[T]],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> AsyncIterable[T]:
     # wrapped(*args, **kwargs) returns an async generator; wrap iteration so the
     # ContextVar stays set while generation_span / response_span exits (which is
     # where on_span_end fires and we read the system instructions).
@@ -53,7 +72,7 @@ def _wrap_stream_response(wrapped, instance, args, kwargs):
     return _gen()
 
 
-_WRAPPED_TARGETS: tuple[tuple[str, str, Any], ...] = (
+_WRAPPED_TARGETS: tuple[tuple[str, str, Callable[..., Any]], ...] = (
     (
         "agents.models.openai_responses",
         "OpenAIResponsesModel.get_response",
@@ -80,10 +99,12 @@ _WRAPPED_TARGETS: tuple[tuple[str, str, Any], ...] = (
 class OpenAIAgentsInstrumentor(BaseInstrumentor):
     """Instrumentor for the OpenAI Agents SDK tracing module."""
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
-        return _instruments
+        return instruments
 
-    def _instrument(self, **kwargs):
+    @override
+    def _instrument(self, **kwargs: Any):
         try:
             from agents.tracing import add_trace_processor
         except Exception:
@@ -93,10 +114,10 @@ class OpenAIAgentsInstrumentor(BaseInstrumentor):
         processor = LaminarAgentsTraceProcessor()
         try:
             add_trace_processor(processor)
-        except Exception as exc:
-            logger.warning("Failed to register Laminar Agents processor: %s", exc)
+        except Exception:
+            logger.warning("Failed to register Laminar Agents processor: %s", exc_info=True)
             raise
-        self._processor = processor
+        self._processor: LaminarAgentsTraceProcessor | None = processor
 
         for module, name, wrapper in _WRAPPED_TARGETS:
             try:
@@ -106,7 +127,8 @@ class OpenAIAgentsInstrumentor(BaseInstrumentor):
 
         logger.debug("Laminar OpenAI Agents trace processor registered")
 
-    def _uninstrument(self, **kwargs):
+    @override
+    def _uninstrument(self, **kwargs: Any):
         for module, name, _ in _WRAPPED_TARGETS:
             try:
                 cls_name, func_name = name.split(".", 1)
@@ -117,7 +139,7 @@ class OpenAIAgentsInstrumentor(BaseInstrumentor):
             except Exception:
                 logger.debug("Failed to unwrap %s.%s", module, name)
 
-        processor = getattr(self, "_processor", None)
+        processor = cast(LaminarAgentsTraceProcessor | None, getattr(self, "_processor", None))
         if processor is None:
             return
         try:
@@ -131,6 +153,6 @@ class OpenAIAgentsInstrumentor(BaseInstrumentor):
                 current = getattr(mp, "_processors", ())
                 provider.set_processors([p for p in current if p is not processor])
         except Exception:
-            pass
+            logger.debug("Failed to set OpenAI agents processor", exc_info=True)
         processor.shutdown()
         self._processor = None

@@ -2,22 +2,21 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 
-from lmnr.opentelemetry_lib.tracing.attributes import Attributes
-from lmnr.sdk.log import get_default_logger
-from lmnr.sdk.utils import json_dumps
-
-from .helpers import (
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.helpers import (
     get_attr_not_none,
     get_first_not_none,
     model_as_dict,
     normalize_messages,
-    to_dict,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import to_dict
+from lmnr.opentelemetry_lib.tracing.attributes import Attributes
+from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.utils import json_dumps
 
 logger = get_default_logger(__name__)
 
@@ -73,7 +72,7 @@ def set_gen_ai_output_messages(lmnr_span: LaminarSpan, output_data: Any) -> None
 
 
 def set_gen_ai_output_messages_from_response(
-    lmnr_span: LaminarSpan, response: Any
+    lmnr_span: LaminarSpan, response: Any,
 ) -> None:
     """Extract and set gen_ai.output.messages from a Response object."""
     if response is None:
@@ -91,13 +90,13 @@ def set_gen_ai_output_messages_from_response(
         )
         output_items = []
 
-    result = {
+    result = {  # pyright: ignore[reportUnknownVariableType]
         "id": id,
         "object": "response",
         "output": output_items,
     }
 
-    lmnr_span.set_attribute("gen_ai.output.messages", json_dumps(result))
+    lmnr_span.set_attribute("gen_ai.output.messages", json_dumps(result))  # pyright: ignore[reportUnknownArgumentType]
 
 
 # ---------------------------------------------------------------------------
@@ -105,7 +104,10 @@ def set_gen_ai_output_messages_from_response(
 # ---------------------------------------------------------------------------
 
 
-def set_tool_definitions_from_response(lmnr_span: LaminarSpan, response: Any) -> None:
+def set_tool_definitions_from_response(
+    lmnr_span: LaminarSpan,
+    response: Any,
+) -> None:
     """Extract gen_ai.tool.definitions from a Response object's tools field."""
     tools = getattr(response, "tools", None)
     if not tools:
@@ -135,12 +137,12 @@ def set_tool_definitions_from_response(lmnr_span: LaminarSpan, response: Any) ->
             strict = function_info.get("strict")
             if strict is not None:
                 func_def["function"]["strict"] = strict
-            tool_defs.append(func_def)
+            tool_defs.append(func_def)  # pyright: ignore[reportUnknownMemberType]
         else:
-            tool_defs.append(tool_dict)
+            tool_defs.append(tool_dict)  # pyright: ignore[reportUnknownMemberType]
 
     if tool_defs:
-        lmnr_span.set_attribute("gen_ai.tool.definitions", json_dumps(tool_defs))
+        lmnr_span.set_attribute("gen_ai.tool.definitions", json_dumps(tool_defs))  # pyright: ignore[reportUnknownArgumentType]
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +150,10 @@ def set_tool_definitions_from_response(lmnr_span: LaminarSpan, response: Any) ->
 # ---------------------------------------------------------------------------
 
 
-def apply_llm_attributes(lmnr_span: LaminarSpan, data: dict[str, Any]) -> None:
+def apply_llm_attributes(
+    lmnr_span: LaminarSpan,
+    data: dict[str, Any],
+) -> None:
     if not data:
         return
 
@@ -179,35 +184,36 @@ def _apply_usage(lmnr_span: LaminarSpan, usage: Any) -> None:
     output_tokens_details = None
 
     if isinstance(usage, dict):
-        input_tokens = get_first_not_none(
-            usage, "input_tokens", "prompt_tokens", "input"
-        )
-        output_tokens = get_first_not_none(
-            usage, "output_tokens", "completion_tokens", "output"
-        )
-        total_tokens = get_first_not_none(usage, "total_tokens", "total")
-        input_tokens_details = get_first_not_none(
-            usage, "input_tokens_details", "prompt_tokens_details"
-        )
-        output_tokens_details = get_first_not_none(
-            usage, "output_tokens_details", "completion_tokens_details"
-        )
+        usage = cast(dict[str, int | dict[str, int]], usage)
+        input_tokens = cast(int | None, get_first_not_none(
+            usage, "input_tokens", "prompt_tokens", "input",
+        ))
+        output_tokens = cast(int | None, get_first_not_none(
+            usage, "output_tokens", "completion_tokens", "output",
+        ))
+        total_tokens = cast(int | None, get_first_not_none(usage, "total_tokens", "total"))
+        input_tokens_details = cast(dict[str, int] | None, get_first_not_none(
+            usage, "input_tokens_details", "prompt_tokens_details",
+        ))
+        output_tokens_details = cast(dict[str, int] | None, get_first_not_none(
+            usage, "output_tokens_details", "completion_tokens_details",
+        ))
     else:
         # Object with attributes (e.g. ResponseUsage)
-        input_tokens = get_attr_not_none(usage, "input_tokens", "prompt_tokens")
-        output_tokens = get_attr_not_none(usage, "output_tokens", "completion_tokens")
-        total_tokens = get_attr_not_none(usage, "total_tokens")
-        input_tokens_details = get_attr_not_none(
+        input_tokens = cast(int | None, get_attr_not_none(usage, "input_tokens", "prompt_tokens"))
+        output_tokens = cast(int | None, get_attr_not_none(usage, "output_tokens", "completion_tokens"))
+        total_tokens = cast(int | None, get_attr_not_none(usage, "total_tokens"))
+        input_tokens_details = cast(dict[str, int] | None, get_attr_not_none(
             usage, "input_tokens_details", "prompt_tokens_details"
-        )
-        output_tokens_details = get_attr_not_none(
+        ))
+        output_tokens_details = cast(dict[str, int] | None, get_attr_not_none(
             usage, "output_tokens_details", "completion_tokens_details"
-        )
+        ))
 
     if input_tokens_details:
-        cached_input_tokens = to_dict(input_tokens_details).get("cached_tokens", 0)
+        cached_input_tokens = cast(int | None, to_dict(input_tokens_details).get("cached_tokens", 0))
     if output_tokens_details:
-        reasoning_output_tokens = to_dict(output_tokens_details).get("reasoning_tokens")
+        reasoning_output_tokens = cast(int | None, to_dict(output_tokens_details).get("reasoning_tokens"))
     if input_tokens is not None:
         lmnr_span.set_attribute(Attributes.INPUT_TOKEN_COUNT.value, input_tokens)
     if cached_input_tokens:

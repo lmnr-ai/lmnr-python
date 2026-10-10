@@ -1,6 +1,7 @@
 """Debug (rollout) session registration resource for the synchronous client."""
 
 import uuid
+from typing import Any, cast
 
 from lmnr.sdk.client.synchronous.resources.base import BaseResource
 from lmnr.sdk.debug.outcome import CacheOutcome
@@ -9,6 +10,26 @@ from lmnr.sdk.types import SessionBlock, SessionBlockContent, SessionBlockType
 
 logger = get_default_logger(__name__)
 
+def _parse_cache_outcome(data: object) -> CacheOutcome:
+    """Map app-server's `{outcome: hit|miss|live, response?}` body to CacheOutcome.
+
+    Anything unrecognized degrades to `live` (safe).
+    """
+    outcome = data.get("outcome") if isinstance(data, dict) else None  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    if outcome == "hit":
+        # A HIT must carry a response envelope to be servable; the provider
+        # wrappers call cached_response_to_*(cached), which does cached.get().
+        # A response-less HIT (omitted/null `response`) is malformed — degrade
+        # to `live` so the call runs live (no latch) instead of raising.
+        data_dict = cast(dict[str, Any], data)
+        response = data_dict.get("response")
+        if response is None:
+            logger.debug("Cache HIT without response body; running call live")
+            return CacheOutcome(kind="live")
+        return CacheOutcome(kind="hit", cached=response)
+    if outcome == "miss":
+        return CacheOutcome(kind="miss")
+    return CacheOutcome(kind="live")
 
 class RolloutSessions(BaseResource):
     """Register / delete debug sessions on the backend.
@@ -37,9 +58,10 @@ class RolloutSessions(BaseResource):
             headers=self._headers(),
             json={"name": name},
         )
-        response.raise_for_status()
+        _ = response.raise_for_status()
         try:
-            return response.json().get("projectId")
+            response_dict = cast(dict[str, str | None], response.json())
+            return response_dict.get("projectId")
         except Exception:
             return None
 
@@ -53,7 +75,7 @@ class RolloutSessions(BaseResource):
             f"{self._base_url}/v1/rollouts/{session_id}",
             headers=self._headers(),
         )
-        response.raise_for_status()
+        _ = response.raise_for_status()
 
     def add_block(
         self,
@@ -97,11 +119,12 @@ class RolloutSessions(BaseResource):
                 raise RuntimeError(message)
             logger.warning(message)
             return None
-        response.raise_for_status()
+        _ = response.raise_for_status()
         try:
-            return response.json().get("id")
-        except Exception as e:
-            logger.warning(f"Failed to parse add-block response: {e}")
+            response_dict = cast(dict[str, str | None], response.json())
+            return response_dict.get("id")
+        except Exception:
+            logger.warning("Failed to parse add-block response", exc_info=True)
             return None
 
     def list_blocks(self, session_id: uuid.UUID | str) -> list[SessionBlock]:
@@ -118,20 +141,20 @@ class RolloutSessions(BaseResource):
             f"{self._base_url}/v1/rollouts/{session_id}/blocks",
             headers=self._headers(),
         )
-        response.raise_for_status()
+        _ = response.raise_for_status()
         try:
-            body = response.json()
+            body = cast(list[SessionBlock] | dict[str, list[SessionBlock]], response.json())
             blocks = body if isinstance(body, list) else body.get("blocks")
             return blocks or []
-        except Exception as e:
-            logger.warning(f"Failed to parse list-blocks response: {e}")
+        except Exception:
+            logger.warning("Failed to parse list-blocks response", exc_info=True)
             return []
 
     def cache(
         self,
         session_id: uuid.UUID | str,
-        replay_trace_id: uuid.UUID | str,
-        cache_until: str,
+        replay_trace_id: uuid.UUID | str | None,
+        cache_until: str | None,
         input_hash: str,
     ) -> CacheOutcome:
         """Look up one LLM call's input hash in the server-side replay cache.
@@ -149,7 +172,7 @@ class RolloutSessions(BaseResource):
                 f"{self._base_url}/v1/rollouts/{session_id}/cache",
                 headers=self._headers(),
                 json={
-                    "replayTraceId": str(replay_trace_id),
+                    "replayTraceId": str(replay_trace_id) if replay_trace_id is not None else None,
                     "cacheUntil": cache_until,
                     "inputHash": input_hash,
                 },
@@ -160,30 +183,8 @@ class RolloutSessions(BaseResource):
                     response.status_code,
                 )
                 return CacheOutcome(kind="live")
-            data = response.json()
-        except Exception as exc:
-            logger.debug("Cache lookup failed (%s); running this call live", exc)
+            data = cast(object, response.json())
+        except Exception:
+            logger.debug("Cache lookup failed; running this call live", exc_info=True)
             return CacheOutcome(kind="live")
         return _parse_cache_outcome(data)
-
-
-def _parse_cache_outcome(data: object) -> CacheOutcome:
-    """Map app-server's `{outcome: hit|miss|live, response?}` body to CacheOutcome.
-
-    Shared by the sync and async resources (kept here to avoid duplicating the
-    parse). Anything unrecognized degrades to `live` (safe).
-    """
-    outcome = data.get("outcome") if isinstance(data, dict) else None
-    if outcome == "hit":
-        # A HIT must carry a response envelope to be servable; the provider
-        # wrappers call cached_response_to_*(cached), which does cached.get().
-        # A response-less HIT (omitted/null `response`) is malformed — degrade
-        # to `live` so the call runs live (no latch) instead of raising.
-        response = data.get("response")
-        if response is None:
-            logger.debug("Cache HIT without response body; running call live")
-            return CacheOutcome(kind="live")
-        return CacheOutcome(kind="hit", cached=response)
-    if outcome == "miss":
-        return CacheOutcome(kind="miss")
-    return CacheOutcome(kind="live")
