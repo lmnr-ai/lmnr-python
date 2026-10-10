@@ -13,24 +13,24 @@ RESET = "\x1b[0m"
 
 
 _nameToLevel = {
-    'CRITICAL': logging.CRITICAL,
-    'FATAL': logging.FATAL,
-    'ERROR': logging.ERROR,
-    'WARN': logging.WARNING,
-    'WARNING': logging.WARNING,
-    'INFO': logging.INFO,
-    'DEBUG': logging.DEBUG,
-    'NOTSET': logging.NOTSET,
+    "CRITICAL": logging.CRITICAL,
+    "FATAL": logging.FATAL,
+    "ERROR": logging.ERROR,
+    "WARN": logging.WARNING,
+    "WARNING": logging.WARNING,
+    "INFO": logging.INFO,
+    "DEBUG": logging.DEBUG,
+    "NOTSET": logging.NOTSET,
 }
 
 
 levelToName = _levelToName = {
-    logging.CRITICAL: 'CRITICAL',
-    logging.ERROR: 'ERROR',
-    logging.WARNING: 'WARNING',
-    logging.INFO: 'INFO',
-    logging.DEBUG: 'DEBUG',
-    logging.NOTSET: 'NOTSET',
+    logging.CRITICAL: "CRITICAL",
+    logging.ERROR: "ERROR",
+    logging.WARNING: "WARNING",
+    logging.INFO: "INFO",
+    logging.DEBUG: "DEBUG",
+    logging.NOTSET: "NOTSET",
 }
 
 

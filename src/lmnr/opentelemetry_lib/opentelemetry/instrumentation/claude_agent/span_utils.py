@@ -9,9 +9,9 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import Span as SDKSpan
 from opentelemetry.trace.span import Span
 
-from lmnr.sdk.laminar import Laminar
 from lmnr.opentelemetry_lib.tracing.attributes import SPAN_IDS_PATH, SPAN_PATH
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
+from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import get_input_from_func_args, is_method, json_dumps
 
@@ -66,7 +66,6 @@ def record_output(
         logger.debug("Failed to record output on CAS span", exc_info=True)
 
 
-
 def get_span_context_payload() -> ProxyContext | None:
     """Extract current span context for publishing to proxy."""
     current_span = trace.get_current_span(context=get_current_context())
@@ -81,7 +80,9 @@ def get_span_context_payload() -> ProxyContext | None:
     span_path = []
     if hasattr(current_span, "attributes"):
         readable_span = cast(SDKSpan, current_span)
-        span_ids_path = list(cast(tuple[str], (readable_span.attributes or {}).get(SPAN_IDS_PATH, ())))
+        span_ids_path = list(
+            cast(tuple[str], (readable_span.attributes or {}).get(SPAN_IDS_PATH, ()))
+        )
         span_path = list(cast(tuple[str], (readable_span.attributes or {}).get(SPAN_PATH, ())))
 
     project_api_key = Laminar.get_project_api_key()
@@ -118,6 +119,7 @@ def publish_span_context_for_transport(transport: Any) -> None:
         from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.proxy import (
             LaminarProxyServer,
         )
+
         cast(LaminarProxyServer, context["proxy"]).set_current_trace(
             trace_id=payload["trace_id"],
             span_id=payload["span_id"],

@@ -21,7 +21,6 @@ from __future__ import annotations
 import types
 from collections.abc import AsyncGenerator, Generator
 from typing import Any, cast
-from unittest.mock import MagicMock
 
 import pytest
 from opentelemetry.sdk.trace import ReadableSpan
@@ -154,7 +153,9 @@ class _FakeSpan:
 
 def test_set_output_from_result_prefers_last_message_content():
     span = _FakeSpan()
-    _set_output_from_result(cast(Any, span), {"messages": [_FakeMessage(type_="ai", content="final")]})
+    _set_output_from_result(
+        cast(Any, span), {"messages": [_FakeMessage(type_="ai", content="final")]}
+    )
     assert span.output == "final"
 
 
@@ -189,11 +190,13 @@ def test_set_output_from_result_noop_when_no_messages():
 class _FakeToolCallRequest:
     def __init__(
         self,
-        name: str | None=None,
+        name: str | None = None,
         args: dict[str, Any] | None = None,
-        tool_name: str | None = None
+        tool_name: str | None = None,
     ):
-        self.tool_call: dict[str, Any] | None = {"name": name, "args": args} if name is not None else None
+        self.tool_call: dict[str, Any] | None = (
+            {"name": name, "args": args} if name is not None else None
+        )
         if tool_name is not None:
             self.tool: types.SimpleNamespace = types.SimpleNamespace(name=tool_name)
 
@@ -343,9 +346,7 @@ def test_wrap_graph_invoke_records_exception(span_exporter: InMemorySpanExporter
         raise RuntimeError("graph failed")
 
     with pytest.raises(RuntimeError, match="graph failed"):
-        _wrap_graph_invoke(
-            wrapped, _instance=None, args=({"messages": []},), kwargs={}
-        )
+        _wrap_graph_invoke(wrapped, _instance=None, args=({"messages": []},), kwargs={})
 
     spans = _span_by_name(span_exporter, "deep_agent")
     assert len(spans) == 1
@@ -374,9 +375,7 @@ def test_wrap_graph_invoke_resets_root_active_on_exception(
         raise RuntimeError("x")
 
     with pytest.raises(RuntimeError):
-        _wrap_graph_invoke(
-            wrapped, _instance=None, args=({"messages": []},), kwargs={}
-        )
+        _wrap_graph_invoke(wrapped, _instance=None, args=({"messages": []},), kwargs={})
     assert _root_active.get() is False
 
 
@@ -413,9 +412,7 @@ def test_wrap_graph_stream_does_not_open_span_if_never_iterated(
     def wrapped(payload: Any) -> Generator[dict[str, list[Any]]]:
         yield {"messages": []}
 
-    gen = _wrap_graph_stream(
-        wrapped, _instance=None, args=({"messages": []},), kwargs={}
-    )
+    gen = _wrap_graph_stream(wrapped, _instance=None, args=({"messages": []},), kwargs={})
 
     # No iteration → no span, no sentinel.
     assert _span_by_name(span_exporter, "deep_agent") == []
@@ -436,11 +433,7 @@ def test_wrap_graph_stream_emits_span_when_iterated(
         yield {"step": 1}
         yield {"step": 2}
 
-    chunks = list(
-        _wrap_graph_stream(
-            wrapped, _instance=None, args=({"messages": []},), kwargs={}
-        )
-    )
+    chunks = list(_wrap_graph_stream(wrapped, _instance=None, args=({"messages": []},), kwargs={}))
     assert chunks == [{"step": 1}, {"step": 2}]
 
     spans = _span_by_name(span_exporter, "deep_agent")
@@ -468,18 +461,14 @@ def test_interleaved_sync_streams_both_get_root_spans(
         yield {"stream": "b", "step": 1}
         yield {"stream": "b", "step": 2}
 
-    gen_a = _wrap_graph_stream(
-        wrapped_a, _instance=None, args=({"messages": []},), kwargs={}
-    )
+    gen_a = _wrap_graph_stream(wrapped_a, _instance=None, args=({"messages": []},), kwargs={})
     # Pull the first chunk from A (this starts the generator body and,
     # before the fix, would flip `_root_active` on in the caller).
     first_a = next(gen_a)
     assert first_a == {"stream": "a", "step": 1}
 
     # B must still be instrumented.
-    gen_b = _wrap_graph_stream(
-        wrapped_b, _instance=None, args=({"messages": []},), kwargs={}
-    )
+    gen_b = _wrap_graph_stream(wrapped_b, _instance=None, args=({"messages": []},), kwargs={})
     chunks_b = list(gen_b)
     assert chunks_b == [{"stream": "b", "step": 1}, {"stream": "b", "step": 2}]
 
@@ -506,9 +495,7 @@ def test_wrap_graph_stream_does_not_mark_error_on_generator_exit(
         yield {"step": 2}
         yield {"step": 3}
 
-    for _chunk in _wrap_graph_stream(
-        wrapped, _instance=None, args=({"messages": []},), kwargs={}
-    ):
+    for _chunk in _wrap_graph_stream(wrapped, _instance=None, args=({"messages": []},), kwargs={}):
         break  # triggers GeneratorExit on the underlying generator
 
     spans = _span_by_name(span_exporter, "deep_agent")
@@ -525,11 +512,7 @@ def test_wrap_graph_stream_records_real_exception(
         raise RuntimeError("stream boom")
 
     with pytest.raises(RuntimeError, match="stream boom"):
-        _ = list(
-            _wrap_graph_stream(
-                wrapped, _instance=None, args=({"messages": []},), kwargs={}
-            )
-        )
+        _ = list(_wrap_graph_stream(wrapped, _instance=None, args=({"messages": []},), kwargs={}))
 
     spans = _span_by_name(span_exporter, "deep_agent")
     assert len(spans) == 1
@@ -566,9 +549,7 @@ async def test_awrap_graph_stream_does_not_mark_error_on_generator_exit(
         yield {"step": 1}
         yield {"step": 2}
 
-    agen = _awrap_graph_stream(
-        wrapped, _instance=None, args=({"messages": []},), kwargs={}
-    )
+    agen = _awrap_graph_stream(wrapped, _instance=None, args=({"messages": []},), kwargs={})
     async for _ in agen:
         break
     # aclose to propagate GeneratorExit-equivalent cleanup
@@ -642,9 +623,7 @@ def test_inject_middleware_wraps_returned_graph_invoke(
     def fake_create_deep_agent(*args: Any, **kwargs: Any) -> FakeGraph:
         return FakeGraph()
 
-    graph = _inject_middleware(
-        fake_create_deep_agent, _instance=None, args=(), kwargs={}
-    )
+    graph = _inject_middleware(fake_create_deep_agent, _instance=None, args=(), kwargs={})
     result = graph.invoke({"messages": [_FakeMessage(type_="human", content="q")]})
     assert result["messages"][0].content == "answer"
 
@@ -669,9 +648,7 @@ def test_nested_stream_inside_invoke_collapses_to_one_root_span(
         )
         return {"messages": list(wrapped_stream)}
 
-    _res = _wrap_graph_invoke(
-        outer_invoke, _instance=None, args=({"messages": []},), kwargs={}
-    )
+    _res = _wrap_graph_invoke(outer_invoke, _instance=None, args=({"messages": []},), kwargs={})
 
     assert len(_span_by_name(span_exporter, "deep_agent")) == 1
 
@@ -706,7 +683,9 @@ def test_deepagents_initializer_returns_none_when_package_missing(monkeypatch: p
     assert result is None
 
 
-def test_deepagents_initializer_returns_none_when_langchain_missing(monkeypatch: pytest.MonkeyPatch):
+def test_deepagents_initializer_returns_none_when_langchain_missing(
+    monkeypatch: pytest.MonkeyPatch,
+):
     from lmnr.opentelemetry_lib.tracing import _instrument_initializers as inits
 
     def only_deepagents(name: str) -> bool:

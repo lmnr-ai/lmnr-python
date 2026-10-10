@@ -45,9 +45,7 @@ async def test_claude_agent_tool(span_exporter: InMemorySpanExporter):
         allowed_tools=["mcp__utils__calculate", "mcp__utils__get_time"],
     )
 
-    async with ClaudeSDKClient(
-        options=options, transport=MockClaudeTransport()
-    ) as client:
+    async with ClaudeSDKClient(options=options, transport=MockClaudeTransport()) as client:
         await client.query("What's 123 * 456?")
         async for _ in client.receive_response():
             pass

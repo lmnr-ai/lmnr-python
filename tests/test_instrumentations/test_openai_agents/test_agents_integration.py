@@ -23,6 +23,7 @@ from lmnr.opentelemetry_lib.tracing.attributes import Attributes
 class SpanData(TypedDict):
     attributes: dict[str, AttributeValue]
 
+
 def _get_spans(span_exporter: InMemorySpanExporter) -> tuple[ReadableSpan, ...]:
     """Helper to get spans with a small delay for flush."""
     time.sleep(0.1)
@@ -40,9 +41,7 @@ def _find_spans_with_model(span_data: Sequence[SpanData]) -> list[SpanData]:
 
 
 def _find_spans_by_attr(
-    span_data: Sequence[SpanData],
-    key: str,
-    value: Any = None
+    span_data: Sequence[SpanData], key: str, value: Any = None
 ) -> list[SpanData]:
     """Find spans that have a specific attribute, optionally matching a value."""
     if value is None:
@@ -141,8 +140,7 @@ def test_agent_with_tool(instrument_openai_agents: MagicMock, span_exporter: InM
 
     # Verify token usage on at least one model span
     assert any(
-        s["attributes"].get(Attributes.INPUT_TOKEN_COUNT.value) is not None
-        for s in model_spans
+        s["attributes"].get(Attributes.INPUT_TOKEN_COUNT.value) is not None for s in model_spans
     )
 
     # Every span that records input messages should carry the agent's system
@@ -153,8 +151,7 @@ def test_agent_with_tool(instrument_openai_agents: MagicMock, span_exporter: InM
             {
                 "type": "input_text",
                 "text": (
-                    "You are a helpful assistant. Use the get_weather tool "
-                    "to answer weather questions."
+                    "You are a helpful assistant. Use the get_weather tool to answer weather questions."
                 ),
             }
         ],

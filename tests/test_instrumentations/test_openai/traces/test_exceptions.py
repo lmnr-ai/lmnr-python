@@ -8,6 +8,7 @@ from typing_extensions import TypeVar
 
 T = TypeVar("T")
 
+
 def test_inner_exception_isnt_caught(
     openai_client: OpenAI,
 ):
@@ -26,9 +27,7 @@ def test_inner_exception_isnt_caught(
     with pytest.raises(RuntimeError):
         _ = throw_exception(openai_client.chat.completions.create)(
             model="gpt-3.5-turbo",
-            messages=[
-                {"role": "user", "content": "Tell me a joke about opentelemetry"}
-            ],
+            messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
         )
 
     should_throw = False

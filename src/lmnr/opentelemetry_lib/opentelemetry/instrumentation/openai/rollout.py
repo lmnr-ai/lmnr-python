@@ -14,6 +14,7 @@ opens the span and builds `TracedData` post-hoc) and only borrows
 `cached_response_to_responses` from here to turn a cached envelope into an
 `openai.types.responses.Response`.
 """
+
 from __future__ import annotations
 
 import json
@@ -59,12 +60,11 @@ from lmnr.sdk.log import get_default_logger
 logger = get_default_logger(__name__)
 T = TypeVar("T")
 
+
 class OpenAIRolloutWrapper:
     """Serves cached OpenAI responses on a debug run; runs live otherwise."""
 
-    def cached_response_to_openai(
-        self, cached_span: dict[str, Any]
-    ) -> ChatCompletion | None:
+    def cached_response_to_openai(self, cached_span: dict[str, Any]) -> ChatCompletion | None:
         """Convert cached span envelope to OpenAI ChatCompletion response."""
         envelope_type = cached_span.get("type")
         if envelope_type not in ("raw", "genAi"):
@@ -150,9 +150,7 @@ class OpenAIRolloutWrapper:
             )
             return None
 
-    def cached_response_to_responses(
-        self, cached_span: dict[str, Any]
-    ) -> Response | None:
+    def cached_response_to_responses(self, cached_span: dict[str, Any]) -> Response | None:
         """Convert a cached span envelope to an OpenAI Responses-API `Response`.
 
         Mirrors `cached_response_to_openai` but targets
@@ -166,8 +164,8 @@ class OpenAIRolloutWrapper:
             from openai.types.responses import Response
         except ImportError:
             logger.warning(
-                "openai.types.responses.Response unavailable; cannot serve cached " +
-                "Responses-API response"
+                "openai.types.responses.Response unavailable; cannot serve cached "
+                + "Responses-API response"
             )
             return None
 
@@ -239,13 +237,20 @@ class OpenAIRolloutWrapper:
         span: Span,
         is_streaming: bool = False,
         is_async: bool = False,
-    ) -> ChatCompletion | Generator[ChatCompletionChunk] | Awaitable[ChatCompletion | AsyncGenerator[ChatCompletionChunk]]:
+    ) -> (
+        ChatCompletion
+        | Generator[ChatCompletionChunk]
+        | Awaitable[ChatCompletion | AsyncGenerator[ChatCompletionChunk]]
+    ):
         # Async path: hand back the coroutine so the call site (which checks
         # inspect.iscoroutine) awaits the cache lookup off the event loop.
         if is_async:
             return self._awrap_chat_completion(
                 cast(Callable[..., Awaitable[ChatCompletion]], wrapped),
-                args, kwargs, span, is_streaming
+                args,
+                kwargs,
+                span,
+                is_streaming,
             )
 
         if not isinstance(span, LaminarSpan):
@@ -285,9 +290,7 @@ class OpenAIRolloutWrapper:
 
         return await wrapped(*args, **kwargs)
 
-    def _create_cached_stream(
-        self, response: ChatCompletion
-    ) -> Generator[ChatCompletionChunk]:
+    def _create_cached_stream(self, response: ChatCompletion) -> Generator[ChatCompletionChunk]:
         """Yield a cached response as a single streaming chunk."""
         response_dict = response.model_dump()
 

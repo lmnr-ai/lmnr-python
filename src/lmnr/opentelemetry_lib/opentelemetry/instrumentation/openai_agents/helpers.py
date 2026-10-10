@@ -24,8 +24,8 @@ DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY = create_key(
 # Set by the wrapped get_response / stream_response methods in instrumentor.py
 # and read by the response/generation span_data handlers so the system prompt
 # can be prepended to gen_ai.input.messages.
-_current_system_instructions: contextvars.ContextVar[str | None] = (
-    contextvars.ContextVar("lmnr_openai_agents_system_instructions", default=None)
+_current_system_instructions: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "lmnr_openai_agents_system_instructions", default=None
 )
 
 
@@ -145,7 +145,7 @@ def model_as_dict(obj: Any) -> dict[str, Any] | None:
 
 def name_from_span_data(agent: Any) -> str:
     if isinstance(agent, dict):
-        return agent.get("name") or "" ## pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+        return agent.get("name") or ""  ## pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
     if isinstance(agent, str):
         return agent
     if hasattr(agent, "name"):
@@ -169,5 +169,3 @@ def get_attr_not_none(obj: Any, *attrs: str) -> Any:
         if val is not None:
             return val
     return None
-
-

@@ -107,17 +107,9 @@ def test_anthropic_message_create_legacy(
     )
 
     assert attributes["gen_ai.usage.input_tokens"] == 17
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "msg_01NgS2sXcQRKUKbwKFx1vVxC"
-    )
-    assert (
-        attributes.get("anthropic.request.service_tier")
-        == "standard_only"
-    )
-    assert (
-        attributes.get("anthropic.response.service_tier") == "standard"
-    )
+    assert attributes.get("gen_ai.response.id") == "msg_01NgS2sXcQRKUKbwKFx1vVxC"
+    assert attributes.get("anthropic.request.service_tier") == "standard_only"
+    assert attributes.get("anthropic.response.service_tier") == "standard"
 
 
 @pytest.mark.vcr
@@ -172,10 +164,7 @@ def test_anthropic_multi_modal_legacy(
     )
 
     assert attributes["gen_ai.usage.input_tokens"] == 1381
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "msg_01B37ySLPzYj8KY6uZmiPoxd"
-    )
+    assert attributes.get("gen_ai.response.id") == "msg_01B37ySLPzYj8KY6uZmiPoxd"
 
 
 @pytest.mark.vcr
@@ -308,10 +297,7 @@ async def test_anthropic_async_multi_modal_legacy(
     )
 
     assert attributes["gen_ai.usage.input_tokens"] == 1311
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "msg_01DWnmUo9hWk4Fk7V7Ddfa2w"
-    )
+    assert attributes.get("gen_ai.response.id") == "msg_01DWnmUo9hWk4Fk7V7Ddfa2w"
 
 
 @pytest.mark.vcr
@@ -367,17 +353,9 @@ def test_anthropic_message_streaming_legacy(
     )
 
     assert attributes["gen_ai.usage.input_tokens"] == 17
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "msg_019bVafnfSbR9K5SGmoy6gcX"
-    )
-    assert (
-        attributes.get("anthropic.request.service_tier")
-        == "standard_only"
-    )
-    assert (
-        attributes.get("anthropic.response.service_tier") == "standard"
-    )
+    assert attributes.get("gen_ai.response.id") == "msg_019bVafnfSbR9K5SGmoy6gcX"
+    assert attributes.get("anthropic.request.service_tier") == "standard_only"
+    assert attributes.get("anthropic.response.service_tier") == "standard"
 
 
 @pytest.mark.vcr
@@ -428,17 +406,9 @@ async def test_async_anthropic_message_create_legacy(
     )
 
     assert attributes["gen_ai.usage.input_tokens"] == 17
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "msg_01HCcR31VQpZtUqtJ6gZnX34"
-    )
-    assert (
-        attributes.get("anthropic.request.service_tier")
-        == "standard_only"
-    )
-    assert (
-        attributes.get("anthropic.response.service_tier") == "standard"
-    )
+    assert attributes.get("gen_ai.response.id") == "msg_01HCcR31VQpZtUqtJ6gZnX34"
+    assert attributes.get("anthropic.request.service_tier") == "standard_only"
+    assert attributes.get("anthropic.response.service_tier") == "standard"
 
 
 @pytest.mark.vcr(record_mode="once")
@@ -495,17 +465,9 @@ async def test_async_anthropic_message_streaming_legacy(
     )
 
     assert attributes["gen_ai.usage.input_tokens"] == 17
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "msg_01TwQxsi2T5Pat3DNJW7m2wx"
-    )
-    assert (
-        attributes.get("anthropic.request.service_tier")
-        == "standard_only"
-    )
-    assert (
-        attributes.get("anthropic.response.service_tier") == "standard"
-    )
+    assert attributes.get("gen_ai.response.id") == "msg_01TwQxsi2T5Pat3DNJW7m2wx"
+    assert attributes.get("anthropic.request.service_tier") == "standard_only"
+    assert attributes.get("anthropic.response.service_tier") == "standard"
 
 
 @pytest.mark.vcr
@@ -632,10 +594,7 @@ def test_anthropic_tools_history_legacy(
 
     # First message: user
     assert input_messages[0]["role"] == "user"
-    assert (
-        input_messages[0]["content"]
-        == "What is the weather and current time in San Francisco?"
-    )
+    assert input_messages[0]["content"] == "What is the weather and current time in San Francisco?"
 
     # Second message: assistant with text and tool_use
     assert input_messages[1]["role"] == "assistant"
@@ -643,8 +602,7 @@ def test_anthropic_tools_history_legacy(
     assert isinstance(content_1, list)
     assert content_1[0]["type"] == "text"
     assert (
-        content_1[0]["text"]
-        == "I'll help you get the weather and current time in San Francisco."
+        content_1[0]["text"] == "I'll help you get the weather and current time in San Francisco."
     )
     assert content_1[1]["type"] == "tool_use"
     assert content_1[1]["id"] == "call_1"
@@ -703,10 +661,7 @@ def test_anthropic_tools_streaming_legacy(
     input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert len(input_messages) == 1
     assert input_messages[0]["role"] == "user"
-    assert (
-        input_messages[0]["content"]
-        == "What is the weather and current time in San Francisco?"
-    )
+    assert input_messages[0]["content"] == "What is the weather and current time in San Francisco?"
 
     # verify output messages
     output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
@@ -801,17 +756,9 @@ def test_anthropic_message_stream_manager(
         for block in output_messages[0]["content"]
     )
 
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "msg_01MCkQZZtEKF3nVbFaExwATe"
-    )
-    assert (
-        attributes.get("anthropic.request.service_tier")
-        == "standard_only"
-    )
-    assert (
-        attributes.get("anthropic.response.service_tier") == "standard"
-    )
+    assert attributes.get("gen_ai.response.id") == "msg_01MCkQZZtEKF3nVbFaExwATe"
+    assert attributes.get("anthropic.request.service_tier") == "standard_only"
+    assert attributes.get("anthropic.response.service_tier") == "standard"
 
 
 @pytest.mark.vcr
@@ -859,14 +806,6 @@ async def test_async_anthropic_message_stream_manager(
         for block in output_messages[0]["content"]
     )
 
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "msg_01QnFxEDGs7cHJegKR367cJ7"
-    )
-    assert (
-        attributes.get("anthropic.request.service_tier")
-        == "standard_only"
-    )
-    assert (
-        attributes.get("anthropic.response.service_tier") == "standard"
-    )
+    assert attributes.get("gen_ai.response.id") == "msg_01QnFxEDGs7cHJegKR367cJ7"
+    assert attributes.get("anthropic.request.service_tier") == "standard_only"
+    assert attributes.get("anthropic.response.service_tier") == "standard"

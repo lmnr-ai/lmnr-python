@@ -173,9 +173,7 @@ def test_anthropic_thinking_streaming_legacy(
     for event in response:
         if event.type == "content_block_delta" and event.delta.type == "text_delta":
             text += event.delta.text
-        elif (
-            event.type == "content_block_delta" and event.delta.type == "thinking_delta"
-        ):
+        elif event.type == "content_block_delta" and event.delta.type == "thinking_delta":
             thinking += event.delta.thinking
 
     spans = span_exporter.get_finished_spans()
@@ -246,9 +244,7 @@ async def test_async_anthropic_thinking_streaming_legacy(
     async for event in response:
         if event.type == "content_block_delta" and event.delta.type == "text_delta":
             text += event.delta.text
-        elif (
-            event.type == "content_block_delta" and event.delta.type == "thinking_delta"
-        ):
+        elif event.type == "content_block_delta" and event.delta.type == "thinking_delta":
             thinking += event.delta.thinking
 
     spans = span_exporter.get_finished_spans()

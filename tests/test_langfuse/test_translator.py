@@ -81,7 +81,11 @@ def test_translator_empty_tool_calls_output_stays_normal_message():
     on an empty `tool_calls` and warp the message shape, breaking transcript
     rendering."""
     translator = LangfuseAttributeTranslator()
-    msg: dict[str, str | list[dict[str, str]]] = {"role": "assistant", "content": "just text", "tool_calls": []}
+    msg: dict[str, str | list[dict[str, str]]] = {
+        "role": "assistant",
+        "content": "just text",
+        "tool_calls": [],
+    }
     span = FakeSpan(
         {
             "langfuse.observation.type": "generation",
@@ -114,9 +118,7 @@ def test_translator_splits_openai_input_messages_and_tools():
     span = FakeSpan(
         {
             "langfuse.observation.type": "generation",
-            "langfuse.observation.input": json.dumps(
-                {"messages": messages, "tools": tools}
-            ),
+            "langfuse.observation.input": json.dumps({"messages": messages, "tools": tools}),
             "langfuse.observation.output": json.dumps(
                 {"role": "assistant", "content": "It's sunny"}
             ),

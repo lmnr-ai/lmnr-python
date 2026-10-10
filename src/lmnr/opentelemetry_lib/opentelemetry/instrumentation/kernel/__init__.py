@@ -76,8 +76,7 @@ def _wrap(
             span.record_exception(e)
             raise
         output_formatter = (  # pyright: ignore[reportUnknownVariableType]
-            to_wrap.get("output_formatter")
-            or (lambda x: json_dumps(x))  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+            to_wrap.get("output_formatter") or (lambda x: json_dumps(x))  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
         )
         span.set_attribute("lmnr.span.output", output_formatter(result))
         return result
@@ -110,8 +109,7 @@ async def _wrap_async(
             span.record_exception(e)
             raise
         output_formatter = (  # pyright: ignore[reportUnknownVariableType]
-            to_wrap.get("output_formatter")
-            or (lambda x: json_dumps(x))  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+            to_wrap.get("output_formatter") or (lambda x: json_dumps(x))  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
         )
         span.set_attribute("lmnr.span.output", output_formatter(result))
         return result
@@ -141,7 +139,9 @@ def _wrap_app_action(
     action_name = args[0] if args else kwargs.get("name", "unknown")
 
     # Create a wrapper for the decorator that intercepts the handler
-    def tracing_decorator(handler: Callable[..., Awaitable[Callable[..., T]] | Callable[..., T]]) -> T:
+    def tracing_decorator(
+        handler: Callable[..., Awaitable[Callable[..., T]] | Callable[..., T]],
+    ) -> T:
         # Apply the observe decorator to add tracing
         observed_handler = observe(
             name=f"action.{action_name}",
@@ -152,7 +152,9 @@ def _wrap_app_action(
         if is_async(handler):
 
             @functools.wraps(handler)
-            async def async_wrapper_with_flush(*handler_args: Any, **handler_kwargs: Any) -> Callable[..., T]:
+            async def async_wrapper_with_flush(
+                *handler_args: Any, **handler_kwargs: Any
+            ) -> Callable[..., T]:
                 # Execute the observed handler (tracing happens here)
                 result = await cast(
                     Awaitable[Callable[..., T]], observed_handler(*handler_args, **handler_kwargs)
@@ -167,11 +169,11 @@ def _wrap_app_action(
         else:
 
             @functools.wraps(handler)
-            def sync_wrapper_with_flush(*handler_args: Any, **handler_kwargs: Any) -> Callable[..., T]:
+            def sync_wrapper_with_flush(
+                *handler_args: Any, **handler_kwargs: Any
+            ) -> Callable[..., T]:
                 # Execute the observed handler (tracing happens here)
-                result = cast(
-                    Callable[..., T], observed_handler(*handler_args, **handler_kwargs)
-                )
+                result = cast(Callable[..., T], observed_handler(*handler_args, **handler_kwargs))
 
                 _flush_success = Laminar.flush()
 

@@ -93,9 +93,7 @@ def _load_settings_file(path: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None  # pyright: ignore[reportUnknownVariableType]
 
 
-def flag_settings_env(
-    existing: str | None, cwd: str | Path | None = None
-) -> dict[str, str]:
+def flag_settings_env(existing: str | None, cwd: str | Path | None = None) -> dict[str, str]:
     """
     Read the ``env`` block out of the caller's ``options.settings`` (flag layer).
 
@@ -351,8 +349,8 @@ def resolve_target_url_from_env(
 
         # Foundry is enabled but misconfigured
         logger.error(
-            "%s is set but neither %s nor %s is configured. " +
-            "Microsoft Foundry requires one of these values.",
+            "%s is set but neither %s nor %s is configured. "
+            + "Microsoft Foundry requires one of these values.",
             FOUNDRY_USE_ENV,
             FOUNDRY_BASE_URL_ENV,
             FOUNDRY_RESOURCE_ENV,
@@ -375,8 +373,8 @@ def resolve_target_url_from_env(
             return f"https://bedrock-runtime.{region}.amazonaws.com"
 
         logger.error(
-            "%s is set but could not determine AWS region. " +
-            "Set %s or configure a region in ~/.aws/config for the active profile.",
+            "%s is set but could not determine AWS region. "
+            + "Set %s or configure a region in ~/.aws/config for the active profile.",
             BEDROCK_USE_ENV,
             BEDROCK_AWS_REGION_ENV,
         )
@@ -463,13 +461,10 @@ def build_proxy_flag_settings(
         # another route (e.g. Foundry via ANTHROPIC_FOUNDRY_RESOURCE), leaving it
         # with its routing key blanked below and no proxy URL to fall back on.
         enabled = any(
-            is_truthy_env(source.get(use_key))
-            for source in (env_dict, settings_env, os.environ)
+            is_truthy_env(source.get(use_key)) for source in (env_dict, settings_env, os.environ)
         )
         in_play = (
-            base_url_key in env_dict
-            or base_url_key in settings_env
-            or base_url_key in os.environ
+            base_url_key in env_dict or base_url_key in settings_env or base_url_key in os.environ
         )
         if enabled or in_play:
             env_dict[base_url_key] = proxy_url
@@ -488,9 +483,7 @@ def build_proxy_flag_settings(
     return json.dumps(settings_obj)
 
 
-def setup_proxy_env(
-    proxy_url: str, cwd: str | Path | None = None
-) -> dict[str, str | None]:
+def setup_proxy_env(proxy_url: str, cwd: str | Path | None = None) -> dict[str, str | None]:
     """
     Configure global environment to use proxy for custom transports.
 
@@ -517,9 +510,7 @@ def setup_proxy_env(
     settings_env = read_claude_settings_env(cwd)
 
     def provider_enabled(use_key: str) -> bool:
-        return is_truthy_env(os.environ.get(use_key)) or is_truthy_env(
-            settings_env.get(use_key)
-        )
+        return is_truthy_env(os.environ.get(use_key)) or is_truthy_env(settings_env.get(use_key))
 
     # Snapshot every key the pops below touch — PROXY_ENV_KEYS covers both the
     # upper and lower case spellings, and a key popped but not snapshotted is

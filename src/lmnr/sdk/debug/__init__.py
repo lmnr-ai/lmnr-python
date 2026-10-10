@@ -181,10 +181,7 @@ class DebugRuntime:
             return None
         if self._project_id is None:
             return self._debugger_url
-        return (
-            f"{self._debugger_url}/project/{self._project_id}"
-            f"/debugger-sessions/{self._config.session_id}"
-        )
+        return f"{self._debugger_url}/project/{self._project_id}/debugger-sessions/{self._config.session_id}"
 
     def emit_pointer(self) -> None:
         """Emit the debug-session record once (console line + best-effort file
@@ -240,6 +237,8 @@ def set_debug_run_live(value: bool) -> None:
     """Latch (or reset) the process-wide debugger run-live flag."""
     global _run_live
     _run_live = value
+
+
 # Serializes the check-and-set of the one-shot init globals. Span creation runs
 # `init_debug_runtime_from_context` from arbitrary worker threads, so the
 # `_initialized` read and the `_runtime` write must be atomic or two threads

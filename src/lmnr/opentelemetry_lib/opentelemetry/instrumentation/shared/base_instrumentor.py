@@ -90,9 +90,7 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
             bool: True if wrapping succeeded, False otherwise
         """
         try:
-            module = sys.modules.get(module_name) or importlib.import_module(
-                module_name
-            )
+            module = sys.modules.get(module_name) or importlib.import_module(module_name)
         except (ModuleNotFoundError, ImportError):
             return False
 
@@ -156,9 +154,7 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
 
             target = f"{object_name}.{method_name}" if object_name else method_name
 
-            wrapper = add_spec_wrapper(
-                wrapper_function, wrapped_function_spec, **handler_kwargs
-            )
+            wrapper = add_spec_wrapper(wrapper_function, wrapped_function_spec, **handler_kwargs)
 
             try:
                 if replace_aliases and not object_name:
@@ -171,15 +167,11 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
                             f"Successfully instrumented {package_name}.{target} with alias replacement"
                         )
                     else:
-                        self.logger.debug(
-                            f"Failed to instrument {package_name}.{target}"
-                        )
+                        self.logger.debug(f"Failed to instrument {package_name}.{target}")
                 else:
                     # Standard class method or module function without alias replacement
                     wrap_function_wrapper(package_name, target, wrapper)
-                    self.logger.debug(
-                        f"Successfully instrumented {package_name}.{target}"
-                    )
+                    self.logger.debug(f"Successfully instrumented {package_name}.{target}")
             except (AttributeError, ModuleNotFoundError, ImportError):
                 # that's ok, we don't want to fail if some methods do not exist
                 self.logger.debug(f"Failed to instrument {package_name}.{target}", exc_info=True)
@@ -201,9 +193,7 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
             try:
                 if replace_aliases and not object_name:
                     # Unwrap with alias replacement
-                    self._unwrap_module_function_with_alias_replacement(
-                        package_name, method_name
-                    )
+                    self._unwrap_module_function_with_alias_replacement(package_name, method_name)
                 elif object_name:
                     # `unwrap` resolves its first argument as `module.attr`
                     # and looks the method up on it, so the owning class has
@@ -219,10 +209,7 @@ class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
                     # silently — so uninstrument becomes a no-op that leaves
                     # every method wrapped. Pinned by
                     # tests/test_instrumentor_targets.py.
-                    holder = (
-                        f"{package_name}.{object_name}" if object_name
-                        else package_name
-                    )
+                    holder = f"{package_name}.{object_name}" if object_name else package_name
                     unwrap(holder, method_name)
             except Exception:
                 self.logger.debug(

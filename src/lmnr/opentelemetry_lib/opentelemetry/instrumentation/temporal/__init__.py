@@ -52,17 +52,17 @@ _interceptor_options = LaminarTemporalInterceptorOptions()
 
 T = TypeVar("T")
 
+
 def _has_laminar_interceptor(
     interceptors: list[
         WorkflowInboundInterceptor
         | WorkflowOutboundInterceptor
         | ActivityInboundInterceptor
         | Interceptor
-    ] | None
+    ]
+    | None,
 ) -> bool:
-    return any(
-        isinstance(i, LaminarTracingInterceptor) for i in (interceptors or [])
-    )
+    return any(isinstance(i, LaminarTracingInterceptor) for i in (interceptors or []))
 
 
 def _wrap_client_init(

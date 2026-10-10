@@ -17,9 +17,7 @@ class TestHttpEndpointNormalization:
     @pytest.fixture
     def mock_http_exporter(self) -> Generator[MagicMock]:
         """Mock HTTPOTLPSpanExporter to avoid actual initialization."""
-        with patch(
-            "lmnr.opentelemetry_lib.tracing.exporter.HTTPOTLPSpanExporter"
-        ) as mock:
+        with patch("lmnr.opentelemetry_lib.tracing.exporter.HTTPOTLPSpanExporter") as mock:
             mock.return_value = MagicMock()
             yield mock
 
@@ -31,7 +29,8 @@ class TestHttpEndpointNormalization:
             yield mock
 
     def test_http_endpoint_without_path_adds_v1_traces(
-        self, mock_http_exporter: MagicMock,
+        self,
+        mock_http_exporter: MagicMock,
     ):
         """Test that endpoint without path gets /v1/traces added."""
         exporter = LaminarSpanExporter(
@@ -46,7 +45,8 @@ class TestHttpEndpointNormalization:
         assert call_kwargs["endpoint"] == "http://localhost:8080/v1/traces"
 
     def test_http_endpoint_with_trailing_slash_adds_v1_traces(
-        self, mock_http_exporter: MagicMock,
+        self,
+        mock_http_exporter: MagicMock,
     ):
         """Test that endpoint with trailing slash gets /v1/traces added."""
         exporter = LaminarSpanExporter(
@@ -79,7 +79,8 @@ class TestHttpEndpointNormalization:
         assert call_kwargs["endpoint"] == "http://localhost:8443"
 
     def test_https_endpoint_without_path_adds_v1_traces(
-        self, mock_http_exporter: MagicMock,
+        self,
+        mock_http_exporter: MagicMock,
     ):
         """Test that HTTPS endpoint without path gets /v1/traces added."""
         exporter = LaminarSpanExporter(
@@ -109,7 +110,8 @@ class TestHttpEndpointNormalization:
             assert "Adding default path /v1/traces" in call_args
 
     def test_no_logging_when_path_exists(
-        self, caplog: MagicMock,
+        self,
+        caplog: MagicMock,
     ):
         """Test that no info message is logged when path already exists."""
         import logging
@@ -124,8 +126,7 @@ class TestHttpEndpointNormalization:
         assert exporter is not None
 
         assert not any(
-            "No path found in HTTP endpoint URL" in record.message
-            for record in caplog.records
+            "No path found in HTTP endpoint URL" in record.message for record in caplog.records
         )
 
     def test_normalize_http_endpoint_directly(self):
@@ -146,6 +147,6 @@ class TestHttpEndpointNormalization:
 
         for input_url, expected_url in test_cases:
             result = _normalize_http_endpoint(input_url, "/v1/traces")
-            assert (
-                result == expected_url
-            ), f"Expected {expected_url}, got {result} for input {input_url}"
+            assert result == expected_url, (
+                f"Expected {expected_url}, got {result} for input {input_url}"
+            )

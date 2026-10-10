@@ -34,14 +34,7 @@ NumericTypes = (int, float)  # for use with isinstance
 EvaluationDatapointData = Any  # non-null, must be JSON-serializable
 EvaluationDatapointTarget = Any | None  # must be JSON-serializable
 EvaluationDatapointMetadata = Any | None  # must be JSON-serializable
-LaminarSpanType = Literal[
-    "DEFAULT",
-    "LLM",
-    "TOOL",
-    "EVALUATION",
-    "EXECUTOR",
-    "EVALUATOR"
-]
+LaminarSpanType = Literal["DEFAULT", "LLM", "TOOL", "EVALUATION", "EXECUTOR", "EVALUATOR"]
 
 
 # EvaluationDatapoint is a single data point in the evaluation
@@ -101,12 +94,16 @@ class GetDatapointsResponse(TypedDict):
     total_count: int
 
 
-def parse_get_datapoints_response(data: dict[str, int | list[dict[str, Any]]]) -> GetDatapointsResponse:
+def parse_get_datapoints_response(
+    data: dict[str, int | list[dict[str, Any]]],
+) -> GetDatapointsResponse:
     """Parse a `GetDatapointsResponse` from a `GET /v1/datasets/datapoints`
     response. Each item still goes through `Datapoint.model_validate` for its
     own uuid/datetime coercion."""
     return GetDatapointsResponse(
-        items=[Datapoint.model_validate(item) for item in cast(list[dict[str, Any]], data["items"])],
+        items=[
+            Datapoint.model_validate(item) for item in cast(list[dict[str, Any]], data["items"])
+        ],
         total_count=cast(int, data["totalCount"]),
     )
 
@@ -215,10 +212,7 @@ def deserialize_debug_context(data: dict[str, Any] | DebugContext) -> DebugConte
         # runtime.
         enabled=data.get("enabled") is True,
         session_id=(data.get("session_id") or data.get("sessionId")) or None,
-        replay_trace_id=(
-            data.get("replay_trace_id") or data.get("replayTraceId")
-        )
-        or None,
+        replay_trace_id=(data.get("replay_trace_id") or data.get("replayTraceId")) or None,
         cache_until=(data.get("cache_until") or data.get("cacheUntil")) or None,
     )
 
@@ -229,8 +223,23 @@ def deserialize_debug_context(data: dict[str, Any] | DebugContext) -> DebugConte
 SpanContextDict = dict[
     str, str | bool | int | float | list[str] | dict[str, str | bool | int | float]
 ]
-MetadataMemberType = str | int | float | bool | Sequence[str] | Sequence[int] | Sequence[float] | Sequence[bool] | None
-MetadataType = dict[str, MetadataMemberType | list[MetadataMemberType] | dict[str, MetadataMemberType | list[MetadataMemberType]]]
+MetadataMemberType = (
+    str
+    | int
+    | float
+    | bool
+    | Sequence[str]
+    | Sequence[int]
+    | Sequence[float]
+    | Sequence[bool]
+    | None
+)
+MetadataType = dict[
+    str,
+    MetadataMemberType
+    | list[MetadataMemberType]
+    | dict[str, MetadataMemberType | list[MetadataMemberType]],
+]
 LaminarSpanContextDict = dict[
     str, uuid.UUID | bool | list[str] | str | TraceType | MetadataType | DebugContext | None
 ]
@@ -266,7 +275,11 @@ class LaminarSpanContext(BaseModel):
     @classmethod
     def try_to_otel_span_context(
         cls,
-        span_context: LaminarSpanContext | LaminarSpanContextDict | SpanContextDict | str | SpanContext,
+        span_context: LaminarSpanContext
+        | LaminarSpanContextDict
+        | SpanContextDict
+        | str
+        | SpanContext,
         logger: logging.Logger | None = None,
     ) -> SpanContext:
         if logger is None:
@@ -281,9 +294,9 @@ class LaminarSpanContext(BaseModel):
             )
         elif isinstance(span_context, SpanContext):
             logger.warning(
-                "span_context provided" +
-                " is likely a raw OpenTelemetry span context. Will try to use it. " +
-                "Please use `LaminarSpanContext` instead."
+                "span_context provided"
+                + " is likely a raw OpenTelemetry span context. Will try to use it. "
+                + "Please use `LaminarSpanContext` instead."
             )
             return span_context
         elif isinstance(getattr(span_context, "trace_id", None), int) and isinstance(
@@ -294,9 +307,9 @@ class LaminarSpanContext(BaseModel):
             # version). The `getattr` checks are the only signal here, so this
             # cast is trusting the same runtime check pyright can't itself see.
             logger.warning(
-                "span_context provided" +
-                " is likely a raw OpenTelemetry span context. Will try to use it. " +
-                "Please use `LaminarSpanContext` instead."
+                "span_context provided"
+                + " is likely a raw OpenTelemetry span context. Will try to use it. "
+                + "Please use `LaminarSpanContext` instead."
             )
             return cast(SpanContext, cast(object, span_context))
         elif isinstance(span_context, (dict, str)):  # pyright: ignore[reportUnnecessaryIsInstance]
@@ -314,7 +327,9 @@ class LaminarSpanContext(BaseModel):
             raise TypeError("Invalid span_context provided")  # pyright: ignore[reportUnreachable]
 
     @classmethod
-    def deserialize(cls, data: SpanContextDict | LaminarSpanContextDict | str) -> LaminarSpanContext:
+    def deserialize(
+        cls, data: SpanContextDict | LaminarSpanContextDict | str
+    ) -> LaminarSpanContext:
         if isinstance(data, dict):
             # Convert camelCase to snake_case for known fields
             debug_raw = data.get("debug")
@@ -323,16 +338,13 @@ class LaminarSpanContext(BaseModel):
                 "span_id": data.get("span_id") or data.get("spanId"),
                 "is_remote": data.get("is_remote") or data.get("isRemote", False),
                 "span_path": data.get("span_path") or data.get("spanPath", []),
-                "span_ids_path": data.get("span_ids_path")
-                or data.get("spanIdsPath", []),
+                "span_ids_path": data.get("span_ids_path") or data.get("spanIdsPath", []),
                 "user_id": data.get("user_id") or data.get("userId"),
                 "session_id": data.get("session_id") or data.get("sessionId"),
                 "trace_type": data.get("trace_type") or data.get("traceType"),
                 "metadata": data.get("metadata") or data.get("metadata", {}),
                 "debug": (
-                    deserialize_debug_context(debug_raw)
-                    if isinstance(debug_raw, dict)
-                    else None
+                    deserialize_debug_context(debug_raw) if isinstance(debug_raw, dict) else None
                 ),
             }
             return cls.model_validate(converted_data)

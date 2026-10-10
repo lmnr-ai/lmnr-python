@@ -141,7 +141,4 @@ def test_openai_completion_after_observe(span_exporter: InMemorySpanExporter):
 
     assert first_span.parent is None or first_span.parent.span_id == 0
     assert openai_span.parent is None or openai_span.parent.span_id == 0
-    assert (
-        _ctx(openai_span).trace_id
-        != _ctx(first_span).trace_id
-    )
+    assert _ctx(openai_span).trace_id != _ctx(first_span).trace_id

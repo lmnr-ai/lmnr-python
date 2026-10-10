@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, Any, Protocol, cast
 import orjson
 from opentelemetry import trace
 
-from lmnr.opentelemetry_lib.tracing.wrapper import get_session_recording_options
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
+from lmnr.opentelemetry_lib.tracing.wrapper import get_session_recording_options
 from lmnr.opentelemetry_lib.utils.package_check import is_package_installed
 from lmnr.sdk.browser.background_send_events import (
     get_background_loop,
@@ -49,9 +49,7 @@ class _ExposesSyncEvents(Protocol):
     Casting to this Protocol at the call site swaps in a signature we own.
     """
 
-    def expose_function(
-        self, name: str, callback: Callable[[ChunkMessage], None]
-    ) -> None: ...
+    def expose_function(self, name: str, callback: Callable[[ChunkMessage], None]) -> None: ...
 
 
 class _ExposesAsyncEvents(Protocol):
@@ -185,9 +183,9 @@ def get_mask_input_setting() -> MaskInputOptions:
 def inject_session_recorder_sync(page: SyncPage):
     try:
         try:
-            is_loaded = cast(bool, page.evaluate(
-                """() => typeof window.lmnrRrweb !== 'undefined'"""
-            ))
+            is_loaded = cast(
+                bool, page.evaluate("""() => typeof window.lmnrRrweb !== 'undefined'""")
+            )
         except Exception:
             logger.debug("Failed to check if session recorder is loaded", exc_info=True)
             is_loaded = False
@@ -226,9 +224,9 @@ def inject_session_recorder_sync(page: SyncPage):
 async def inject_session_recorder_async(page: Page):
     try:
         try:
-            is_loaded = cast(bool, await page.evaluate(
-                """() => typeof window.lmnrRrweb !== 'undefined'"""
-            ))
+            is_loaded = cast(
+                bool, await page.evaluate("""() => typeof window.lmnrRrweb !== 'undefined'""")
+            )
         except Exception:
             logger.debug("Failed to check if session recorder is loaded", exc_info=True)
             is_loaded = False
@@ -265,9 +263,7 @@ async def inject_session_recorder_async(page: Page):
 
 
 @observe(name="playwright.page", ignore_input=True, ignore_output=True)
-def start_recording_events_sync(
-    page: SyncPage, session_id: str, client: AsyncLaminarClient
-):
+def start_recording_events_sync(page: SyncPage, session_id: str, client: AsyncLaminarClient):
 
     ctx = get_current_context()
     span = trace.get_current_span(ctx)
@@ -314,9 +310,7 @@ def start_recording_events_sync(
 
 
 @observe(name="playwright.page", ignore_input=True, ignore_output=True)
-async def start_recording_events_async(
-    page: Page, session_id: str, client: AsyncLaminarClient
-):
+async def start_recording_events_async(page: Page, session_id: str, client: AsyncLaminarClient):
     ctx = get_current_context()
     span = trace.get_current_span(ctx)
     trace_id = format(span.get_span_context().trace_id, "032x")
@@ -354,8 +348,10 @@ async def start_recording_events_async(
 
 
 def take_full_snapshot(page: SyncPage) -> bool:
-    return cast(bool, page.evaluate(
-        """() => {
+    return cast(
+        bool,
+        page.evaluate(
+            """() => {
         if (window.lmnrRrweb) {
             try {
                 window.lmnrRrweb.record.takeFullSnapshot();
@@ -367,12 +363,15 @@ def take_full_snapshot(page: SyncPage) -> bool:
         }
         return false;
     }"""
-    ))
+        ),
+    )
 
 
 async def take_full_snapshot_async(page: Page) -> bool:
-    return cast(bool, await page.evaluate(
-        """() => {
+    return cast(
+        bool,
+        await page.evaluate(
+            """() => {
         if (window.lmnrRrweb) {
             try {
                 window.lmnrRrweb.record.takeFullSnapshot();
@@ -384,4 +383,5 @@ async def take_full_snapshot_async(page: Page) -> bool:
         }
         return false;
     }"""
-    ))
+        ),
+    )

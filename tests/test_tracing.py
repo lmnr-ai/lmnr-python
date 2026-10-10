@@ -109,7 +109,9 @@ def test_start_as_current_span_tags(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert sorted(cast(list[str], (spans[0].attributes or {})["lmnr.association.properties.tags"])) == [
+    assert sorted(
+        cast(list[str], (spans[0].attributes or {})["lmnr.association.properties.tags"])
+    ) == [
         "bar",
         "foo",
     ]
@@ -314,9 +316,7 @@ def test_use_span_with_auto_instrumentation_langchain(
     test_span = next(span for span in spans if span.name == "test")
     openai_span = next(span for span in spans if span.name == "ChatOpenAI.chat")
 
-    assert (
-        _ctx(test_span).trace_id == _ctx(openai_span).trace_id
-    )
+    assert _ctx(test_span).trace_id == _ctx(openai_span).trace_id
     assert _parent(openai_span).span_id == _ctx(test_span).span_id
     assert (openai_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
     assert (openai_span.attributes or {})["lmnr.span.path"] == ("test", "ChatOpenAI.chat")
@@ -335,9 +335,7 @@ def test_session_id(span_exporter: InMemorySpanExporter):
 
 
 def test_session_id_start_span(span_exporter: InMemorySpanExporter):
-    span = Laminar.start_span(
-        "test", session_id="123", user_id="123", metadata={"foo": "bar"}
-    )
+    span = Laminar.start_span("test", session_id="123", user_id="123", metadata={"foo": "bar"})
     span.end()
 
     spans = span_exporter.get_finished_spans()
@@ -391,9 +389,7 @@ def test_session_id_doesnt_leak(span_exporter: InMemorySpanExporter):
     assert (in_session_span.attributes or {})["lmnr.association.properties.session_id"] == "123"
     assert (in_session_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
 
-    assert (
-        (no_session_span.attributes or {}).get("lmnr.association.properties.session_id") is None
-    )
+    assert (no_session_span.attributes or {}).get("lmnr.association.properties.session_id") is None
     assert (no_session_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
     assert (no_session_span.attributes or {})["lmnr.span.path"] == ("no_session",)
 
@@ -438,29 +434,21 @@ def test_metadata_does_not_leak(span_exporter: InMemorySpanExporter):
     assert with_metadata_span.parent is None or with_metadata_span.parent.span_id == 0
     assert no_metadata_span.parent is None or no_metadata_span.parent.span_id == 0
 
-    assert (
-        _ctx(with_metadata_span).trace_id
-        != _ctx(no_metadata_span).trace_id
-    )
+    assert _ctx(with_metadata_span).trace_id != _ctx(no_metadata_span).trace_id
 
-    assert (
-        (with_metadata_span.attributes or {})["lmnr.association.properties.metadata.foo"]
-        == "bar"
-    )
+    assert (with_metadata_span.attributes or {})[
+        "lmnr.association.properties.metadata.foo"
+    ] == "bar"
 
-    assert (
-        (no_metadata_span.attributes or {}).get("lmnr.association.properties.metadata.foo")
-        is None
-    )
+    assert (no_metadata_span.attributes or {}).get(
+        "lmnr.association.properties.metadata.foo"
+    ) is None
     assert (with_metadata_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
     assert (no_metadata_span.attributes or {})["lmnr.span.instrumentation_source"] == "python"
     assert (no_metadata_span.attributes or {})["lmnr.span.path"] == ("no_metadata",)
     assert with_metadata_span.parent is None or with_metadata_span.parent.span_id == 0
     assert no_metadata_span.parent is None or no_metadata_span.parent.span_id == 0
-    assert (
-        _ctx(with_metadata_span).trace_id
-        != _ctx(no_metadata_span).trace_id
-    )
+    assert _ctx(with_metadata_span).trace_id != _ctx(no_metadata_span).trace_id
 
 
 def test_tags(span_exporter: InMemorySpanExporter):
@@ -469,7 +457,9 @@ def test_tags(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert sorted(cast(list[str], (spans[0].attributes or {})["lmnr.association.properties.tags"])) == [
+    assert sorted(
+        cast(list[str], (spans[0].attributes or {})["lmnr.association.properties.tags"])
+    ) == [
         "bar",
         "foo",
     ]
@@ -513,18 +503,14 @@ def test_span_context(span_exporter: InMemorySpanExporter):
         str(uuid.UUID(int=_ctx(outer_span).span_id)),
         str(uuid.UUID(int=_ctx(inner_span).span_id)),
     )
-    assert (
-        _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
-    )
+    assert _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
     assert _parent(inner_span).span_id == _ctx(outer_span).span_id
 
 
 def test_span_context_dict(span_exporter: InMemorySpanExporter):
     def foo(context: LaminarSpanContextDict):
         parent_span_context = Laminar.deserialize_span_context(context)
-        with Laminar.start_as_current_span(
-            "inner", parent_span_context=parent_span_context
-        ):
+        with Laminar.start_as_current_span("inner", parent_span_context=parent_span_context):
             pass
 
     span = Laminar.start_span("test")
@@ -544,18 +530,14 @@ def test_span_context_dict(span_exporter: InMemorySpanExporter):
         str(uuid.UUID(int=_ctx(outer_span).span_id)),
         str(uuid.UUID(int=_ctx(inner_span).span_id)),
     )
-    assert (
-        _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
-    )
+    assert _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
     assert _parent(inner_span).span_id == _ctx(outer_span).span_id
 
 
 def test_span_context_str(span_exporter: InMemorySpanExporter):
     def foo(context: str):
         parent_span_context = Laminar.deserialize_span_context(context)
-        with Laminar.start_as_current_span(
-            "inner", parent_span_context=parent_span_context
-        ):
+        with Laminar.start_as_current_span("inner", parent_span_context=parent_span_context):
             pass
 
     span = Laminar.start_span("test")
@@ -575,18 +557,14 @@ def test_span_context_str(span_exporter: InMemorySpanExporter):
         str(uuid.UUID(int=_ctx(outer_span).span_id)),
         str(uuid.UUID(int=_ctx(inner_span).span_id)),
     )
-    assert (
-        _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
-    )
+    assert _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
     assert _parent(inner_span).span_id == _ctx(outer_span).span_id
 
 
 def test_span_context_ser_de(span_exporter: InMemorySpanExporter):
     def foo(context: str):
         parent_span_context = Laminar.deserialize_span_context(context)
-        with Laminar.start_as_current_span(
-            "inner", parent_span_context=parent_span_context
-        ):
+        with Laminar.start_as_current_span("inner", parent_span_context=parent_span_context):
             pass
 
     span = Laminar.start_span("test")
@@ -606,18 +584,14 @@ def test_span_context_ser_de(span_exporter: InMemorySpanExporter):
         str(uuid.UUID(int=_ctx(outer_span).span_id)),
         str(uuid.UUID(int=_ctx(inner_span).span_id)),
     )
-    assert (
-        _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
-    )
+    assert _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
     assert _parent(inner_span).span_id == _ctx(outer_span).span_id
 
 
 def test_span_context_path_ids_path(span_exporter: InMemorySpanExporter):
     def foo(context: str):
         parent_span_context = Laminar.deserialize_span_context(context)
-        with Laminar.start_as_current_span(
-            "inner", parent_span_context=parent_span_context
-        ):
+        with Laminar.start_as_current_span("inner", parent_span_context=parent_span_context):
             pass
 
     with Laminar.start_as_current_span("outer"):
@@ -645,9 +619,7 @@ def test_span_context_path_ids_path(span_exporter: InMemorySpanExporter):
         str(uuid.UUID(int=_ctx(context_span).span_id)),
         str(uuid.UUID(int=_ctx(inner_span).span_id)),
     )
-    assert (
-        _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
-    )
+    assert _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
     assert _parent(inner_span).span_id == _ctx(context_span).span_id
     assert _parent(context_span).span_id == _ctx(outer_span).span_id
 
@@ -683,9 +655,7 @@ def test_span_context_path_ids_path_start_span(span_exporter: InMemorySpanExport
         str(uuid.UUID(int=_ctx(context_span).span_id)),
         str(uuid.UUID(int=_ctx(inner_span).span_id)),
     )
-    assert (
-        _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
-    )
+    assert _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
     assert _parent(inner_span).span_id == _ctx(context_span).span_id
     assert _parent(context_span).span_id == _ctx(outer_span).span_id
 
@@ -713,9 +683,7 @@ def test_span_context_ended_span(span_exporter: InMemorySpanExporter):
         str(uuid.UUID(int=_ctx(outer_span).span_id)),
         str(uuid.UUID(int=_ctx(inner_span).span_id)),
     )
-    assert (
-        _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
-    )
+    assert _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
     assert _parent(inner_span).span_id == _ctx(outer_span).span_id
 
 
@@ -739,9 +707,7 @@ def test_span_context_otel_fallback(span_exporter: InMemorySpanExporter):
         str(uuid.UUID(int=_ctx(outer_span).span_id)),
         str(uuid.UUID(int=_ctx(inner_span).span_id)),
     )
-    assert (
-        _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
-    )
+    assert _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
     assert _parent(inner_span).span_id == _ctx(outer_span).span_id
 
 
@@ -767,9 +733,7 @@ def test_span_context_dict_fallback(span_exporter: InMemorySpanExporter):
         str(uuid.UUID(int=_ctx(outer_span).span_id)),
         str(uuid.UUID(int=_ctx(inner_span).span_id)),
     )
-    assert (
-        _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
-    )
+    assert _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
     assert _parent(inner_span).span_id == _ctx(outer_span).span_id
 
 
@@ -820,7 +784,9 @@ def test_tags_deduplication(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert sorted(cast(list[str], (spans[0].attributes or {})["lmnr.association.properties.tags"])) == [
+    assert sorted(
+        cast(list[str], (spans[0].attributes or {})["lmnr.association.properties.tags"])
+    ) == [
         "bar",
         "foo",
     ]
@@ -859,16 +825,16 @@ def test_start_active_span_with_nested_context_manager(
 
     # Check parent-child relationship
     assert _parent(inner_span).span_id == _ctx(outer_span).span_id
-    assert (
-        _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
-    )
+    assert _ctx(inner_span).trace_id == _ctx(outer_span).trace_id
 
     # Check span paths
     assert (outer_span.attributes or {})["lmnr.span.path"] == ("outer",)
     assert (inner_span.attributes or {})["lmnr.span.path"] == ("outer", "inner")
 
     # Check output
-    assert json.loads(cast(str, (inner_span.attributes or {})["lmnr.span.output"])) == "inner_output"
+    assert (
+        json.loads(cast(str, (inner_span.attributes or {})["lmnr.span.output"])) == "inner_output"
+    )
 
 
 def test_start_active_span_deeply_nested(span_exporter: InMemorySpanExporter):
@@ -894,11 +860,7 @@ def test_start_active_span_deeply_nested(span_exporter: InMemorySpanExporter):
     assert _parent(inner).span_id == _ctx(middle).span_id
 
     # Check all spans share the same trace_id
-    assert (
-        _ctx(outer).trace_id
-        == _ctx(middle).trace_id
-        == _ctx(inner).trace_id
-    )
+    assert _ctx(outer).trace_id == _ctx(middle).trace_id == _ctx(inner).trace_id
 
     # Check span paths
     assert (outer.attributes or {})["lmnr.span.path"] == ("outer",)
@@ -944,11 +906,7 @@ def test_start_active_span_sequential_siblings(span_exporter: InMemorySpanExport
     assert _parent(child2).span_id == _ctx(parent).span_id
 
     # All should share the same trace_id
-    assert (
-        _ctx(parent).trace_id
-        == _ctx(child1).trace_id
-        == _ctx(child2).trace_id
-    )
+    assert _ctx(parent).trace_id == _ctx(child1).trace_id == _ctx(child2).trace_id
 
     # Check span paths
     assert (parent.attributes or {})["lmnr.span.path"] == ("parent",)
@@ -993,9 +951,7 @@ def test_start_active_span_multiple_active_spans(span_exporter: InMemorySpanExpo
     span2_obj = next(s for s in spans if s.name == "span2")
 
     # They should be in different traces
-    assert (
-        _ctx(span1_obj).trace_id != _ctx(span2_obj).trace_id
-    )
+    assert _ctx(span1_obj).trace_id != _ctx(span2_obj).trace_id
 
     # Both should be root spans
     assert span1_obj.parent is None or span1_obj.parent.span_id == 0
@@ -1062,11 +1018,7 @@ async def test_start_active_span_async_nested(span_exporter: InMemorySpanExporte
     assert _parent(level2).span_id == _ctx(level1).span_id
 
     # Check trace ids
-    assert (
-        _ctx(level0).trace_id
-        == _ctx(level1).trace_id
-        == _ctx(level2).trace_id
-    )
+    assert _ctx(level0).trace_id == _ctx(level1).trace_id == _ctx(level2).trace_id
 
     # Check span paths
     assert (level0.attributes or {})["lmnr.span.path"] == ("level0",)
@@ -1081,7 +1033,9 @@ def test_add_span_tags(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert sorted(cast(list[str], (spans[0].attributes or {})["lmnr.association.properties.tags"])) == [
+    assert sorted(
+        cast(list[str], (spans[0].attributes or {})["lmnr.association.properties.tags"])
+    ) == [
         "bar",
         "baz",
         "foo",
@@ -1096,7 +1050,9 @@ def test_set_span_tags_add_span_tags(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
-    assert sorted(cast(list[str], (spans[0].attributes or {})["lmnr.association.properties.tags"])) == [
+    assert sorted(
+        cast(list[str], (spans[0].attributes or {})["lmnr.association.properties.tags"])
+    ) == [
         "bar",
         "baz",
         "qux",
@@ -1219,9 +1175,7 @@ def test_disable_tracing_skipped_middle_span(span_exporter: InMemorySpanExporter
 
                 # Re-enable tracing before grandchild
                 _popped_val = os.environ.pop("LMNR_DISABLE_TRACING", None)
-                with Laminar.start_as_current_span(
-                    "grandchild", input="grandchild_input"
-                ):
+                with Laminar.start_as_current_span("grandchild", input="grandchild_input"):
                     Laminar.set_span_output("grandchild_output")
 
         spans = span_exporter.get_finished_spans()
@@ -1242,10 +1196,7 @@ def test_disable_tracing_skipped_middle_span(span_exporter: InMemorySpanExporter
         assert _parent(grandchild_span).span_id == child_span_id
 
         # 2. All spans share the same trace ID
-        assert (
-            _ctx(grandchild_span).trace_id
-            == _ctx(parent_span).trace_id
-        )
+        assert _ctx(grandchild_span).trace_id == _ctx(parent_span).trace_id
 
         # 3. lmnr.span.path should show "_" for the disabled child span
         assert (parent_span.attributes or {})["lmnr.span.path"] == ("parent",)

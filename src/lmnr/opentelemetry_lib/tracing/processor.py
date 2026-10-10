@@ -86,9 +86,7 @@ class LaminarSpanProcessor(SpanProcessor):
         self._instance_lock = threading.RLock()
         self._paths_lock = threading.RLock()
         self.logger = get_default_logger(__name__)
-        self.max_export_batch_size = (
-            max_export_batch_size or DEFAULT_MAX_EXPORT_BATCH_SIZE
-        )
+        self.max_export_batch_size = max_export_batch_size or DEFAULT_MAX_EXPORT_BATCH_SIZE
         self.max_export_batch_size_bytes = (
             max_export_batch_size_bytes or DEFAULT_MAX_EXPORT_BATCH_SIZE_BYTES
         )
@@ -102,9 +100,7 @@ class LaminarSpanProcessor(SpanProcessor):
             force_http=force_http,
         )
         self.instance = (
-            SimpleSpanProcessor(self.exporter)
-            if disable_batch
-            else self._new_batch_processor()
+            SimpleSpanProcessor(self.exporter) if disable_batch else self._new_batch_processor()
         )
         self.__span_id_to_path = {}
         self.__span_id_lists = {}
@@ -116,28 +112,22 @@ class LaminarSpanProcessor(SpanProcessor):
                 max_export_batch_size=self.max_export_batch_size,
                 max_export_batch_size_bytes=self.max_export_batch_size_bytes,
             )
-        return BatchSpanProcessor(
-            self.exporter, max_export_batch_size=self.max_export_batch_size
-        )
+        return BatchSpanProcessor(self.exporter, max_export_batch_size=self.max_export_batch_size)
 
     @override
     def on_start(self, span: Span, parent_context: Context | None = None):
-        is_disabled = (
-            from_env("LMNR_DISABLE_TRACING") or "false"
-        ).lower().strip() == "true"
+        is_disabled = (from_env("LMNR_DISABLE_TRACING") or "false").lower().strip() == "true"
 
         if is_disabled:
             span.set_attribute("lmnr.internal.disabled", True)
 
         with self._paths_lock:
-            parent_span_path = list(cast(tuple[str], (span.attributes or {}).get(PARENT_SPAN_PATH, ()))) or (
-                self.__span_id_to_path.get(span.parent.span_id) if span.parent else None
-            )
+            parent_span_path = list(
+                cast(tuple[str], (span.attributes or {}).get(PARENT_SPAN_PATH, ()))
+            ) or (self.__span_id_to_path.get(span.parent.span_id) if span.parent else None)
             parent_span_ids_path = list(
                 cast(tuple[str], (span.attributes or {}).get(PARENT_SPAN_IDS_PATH, ()))
-            ) or (
-                self.__span_id_lists.get(span.parent.span_id, []) if span.parent else []
-            )
+            ) or (self.__span_id_lists.get(span.parent.span_id, []) if span.parent else [])
             # Disabled tracing masks span names in the path for privacy (the
             # span is never exported). But a debug replay run reads this
             # in-process path to match the replay cache, which keys on the
@@ -150,16 +140,12 @@ class LaminarSpanProcessor(SpanProcessor):
             if is_disabled and not _replay_active():
                 span_name_in_path = "_"
             span_path = (
-                parent_span_path + [span_name_in_path]
-                if parent_span_path
-                else [span_name_in_path]
+                parent_span_path + [span_name_in_path] if parent_span_path else [span_name_in_path]
             )
             span_context = span.get_span_context()
             if span_context is None:  # pyright: ignore[reportUnnecessaryComparison]
                 raise ValueError("Improperly setup span, no span_context")
-            span_ids_path = parent_span_ids_path + [
-                str(uuid.UUID(int=span_context.span_id))
-            ]
+            span_ids_path = parent_span_ids_path + [str(uuid.UUID(int=span_context.span_id))]
             span.set_attribute(SPAN_PATH, span_path)
             span.set_attribute(SPAN_IDS_PATH, span_ids_path)
             self.__span_id_to_path[span_context.span_id] = span_path
@@ -285,9 +271,7 @@ class LaminarSpanProcessor(SpanProcessor):
 
             # Create new processor with fresh exporter
             self.instance = (
-                SimpleSpanProcessor(self.exporter)
-                if disable_batch
-                else self._new_batch_processor()
+                SimpleSpanProcessor(self.exporter) if disable_batch else self._new_batch_processor()
             )
             # Force reinit protocol is a clear state, so clear
             # any remaining internal state

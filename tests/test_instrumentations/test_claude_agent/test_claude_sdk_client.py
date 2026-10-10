@@ -33,10 +33,9 @@ async def test_claude_agent_query(span_exporter: InMemorySpanExporter):
     assert spans[7].name == "ClaudeSDKClient.disconnect"
 
     assert (spans[1].attributes or {})["lmnr.span.path"] == ("ClaudeSDKClient.query",)
-    assert (
-        (spans[1].attributes or {})["lmnr.span.input"]
-        == '{"prompt":"What\'s the capital of France?"}'
-    )
+    assert (spans[1].attributes or {})[
+        "lmnr.span.input"
+    ] == '{"prompt":"What\'s the capital of France?"}'
     assert spans[3].parent is not None
     assert spans[2].context is not None
     assert spans[3].parent.trace_id == spans[2].context.trace_id

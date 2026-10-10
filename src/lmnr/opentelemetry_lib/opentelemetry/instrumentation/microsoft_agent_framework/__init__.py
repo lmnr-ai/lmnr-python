@@ -192,9 +192,7 @@ def _wrap_mcp_client_span(
             attributes = cast(dict[str, AttributeValue], attributes)
             kwargs = {
                 **kwargs,
-                "attributes": {
-                    k: v for k, v in attributes.items() if k != _OPERATION_NAME
-                },
+                "attributes": {k: v for k, v in attributes.items() if k != _OPERATION_NAME},
             }
     except Exception:
         logger.debug("Failed to strip MCP span operation name", exc_info=True)
@@ -286,7 +284,9 @@ def _wrap_get_response_attributes(
     return cast(Any, attributes)
 
 
-def _add_gemini_reasoning_tokens(attributes: Any, args: Sequence[Any], kwargs: dict[str, Any]) -> None:
+def _add_gemini_reasoning_tokens(
+    attributes: Any, args: Sequence[Any], kwargs: dict[str, Any]
+) -> None:
     """Count Gemini thinking tokens as output tokens on `chat` spans.
 
     Read from the response's usage details rather than the span attributes:
@@ -297,9 +297,7 @@ def _add_gemini_reasoning_tokens(attributes: Any, args: Sequence[Any], kwargs: d
         or attributes.get(_OPERATION_NAME) != "chat"
         # Already applied to this attribute dict.
         or _REASONING_TOKENS in attributes
-        or not str(attributes.get(_PROVIDER_NAME) or "").startswith(
-            _GEMINI_PROVIDER_PREFIX
-        )
+        or not str(attributes.get(_PROVIDER_NAME) or "").startswith(_GEMINI_PROVIDER_PREFIX)
         or kwargs.get("capture_usage") is False
     ):
         return
@@ -319,7 +317,9 @@ def _add_gemini_reasoning_tokens(attributes: Any, args: Sequence[Any], kwargs: d
     attributes[_REASONING_TOKENS] = reasoning
 
 
-def _with_plain_name(args: Sequence[Any], kwargs: dict[str, Any]) -> tuple[tuple[Any], dict[str, Any]]:
+def _with_plain_name(
+    args: Sequence[Any], kwargs: dict[str, Any]
+) -> tuple[tuple[Any], dict[str, Any]]:
     """Coerce a `str` subclass span name (the framework's `OtelAttr` enum) to
     a plain `str`. Laminar copies span names into the `lmnr.span.path`
     sequence attribute, and OTel drops sequences holding non-`str` items."""
@@ -337,9 +337,7 @@ class _LaminarActivatingTracer(trace.Tracer):
     `start_as_current_span` also activates the span in Laminar's context
     (tool and workflow spans go through this path)."""
 
-    def __init__(
-        self, tracer: trace.Tracer, scope: LaminarInstrumentationScopeAttributes
-    ):
+    def __init__(self, tracer: trace.Tracer, scope: LaminarInstrumentationScopeAttributes):
         self._tracer: trace.Tracer = tracer
         self._scope: LaminarInstrumentationScopeAttributes = scope
 
@@ -394,9 +392,7 @@ def _with_association_context(args: Sequence[Any], kwargs: dict[str, Any]) -> di
         if changed:
             return {**kwargs, "context": start_context}
     except Exception:
-        logger.debug(
-            "Failed to propagate Laminar association properties", exc_info=True
-        )
+        logger.debug("Failed to propagate Laminar association properties", exc_info=True)
     return kwargs
 
 
@@ -488,7 +484,8 @@ class MicrosoftAgentFrameworkInstrumentor(BaseLaminarInstrumentor):
             ]
         )
 
-    def _wrap_get_tracer(self,
+    def _wrap_get_tracer(
+        self,
         to_wrap: WrappedFunctionSpec,
         wrapped: Callable[..., trace.Tracer],
         _instance: Any,
@@ -512,7 +509,7 @@ class MicrosoftAgentFrameworkInstrumentor(BaseLaminarInstrumentor):
 
     @override
     def _instrument(self, **kwargs: Any):
-        import agent_framework.observability as observability
+        from agent_framework import observability
 
         self._tracer_provider = kwargs.get("tracer_provider")
         super()._instrument(**kwargs)

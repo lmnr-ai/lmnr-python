@@ -158,9 +158,7 @@ _GOOGLE_ADK_GENAI_CONFLICTS: set[Instruments] = {
 
 
 def _pydantic_ai_installed() -> bool:
-    return is_package_installed("pydantic-ai-slim") or is_package_installed(
-        "pydantic-ai"
-    )
+    return is_package_installed("pydantic-ai-slim") or is_package_installed("pydantic-ai")
 
 
 def _deepagents_installed() -> bool:
@@ -201,9 +199,9 @@ def init_instrumentations(
         # Filled by `lmnr/__init__.py` (see `register_initializers`). Empty means
         # this ran while the package was still importing, before that call.
         module_logger.error(
-            "No instrumentation initializers are registered, so nothing will be " +
-            "auto-instrumented. Is Laminar being initialized while `lmnr` is " +
-            "still being imported?"
+            "No instrumentation initializers are registered, so nothing will be "
+            + "auto-instrumented. Is Laminar being initialized while `lmnr` is "
+            + "still being imported?"
         )
         return
     block_instruments = block_instruments or set()
@@ -216,18 +214,14 @@ def init_instrumentations(
         # calling `Laminar.connect_to_langfuse()` after initialization.
         instruments = set(Instruments) - {Instruments.LANGFUSE}
         deepagents_active = (
-            _deepagents_installed()
-            and Instruments.DEEPAGENTS not in block_instruments
+            _deepagents_installed() and Instruments.DEEPAGENTS not in block_instruments
         )
         # Only auto-enable PYDANTIC_AI if the package is actually installed,
         # and only auto-remove overlapping provider instrumentors in that case.
         # If pydantic_ai isn't installed, PYDANTIC_AI stays in the set but its
         # initializer will short-circuit to None (see
         # PydanticAIInstrumentorInitializer).
-        if (
-            _pydantic_ai_installed()
-            and Instruments.PYDANTIC_AI not in block_instruments
-        ):
+        if _pydantic_ai_installed() and Instruments.PYDANTIC_AI not in block_instruments:
             # Deepagents wins over pydantic_ai when both are installed: the
             # deepagents instrumentation relies on the raw-provider
             # instrumentors (Anthropic / OpenAI / …) to emit LLM spans
@@ -259,10 +253,7 @@ def init_instrumentations(
             instruments = instruments - {Instruments.DEEPAGENTS}
         # Only auto-remove GOOGLE_GENAI if google-adk is actually installed
         # (mirrors the pydantic_ai handling above).
-        if (
-            _google_adk_installed()
-            and Instruments.GOOGLE_ADK not in block_instruments
-        ):
+        if _google_adk_installed() and Instruments.GOOGLE_ADK not in block_instruments:
             module_logger.warning(
                 "Not enabling the default Google GenAI SDK instrumentation to "
                 + "avoid double instrumentation with Google ADK. To opt-in, pass "
@@ -314,7 +305,8 @@ def init_instrumentations(
                     )
                 except Exception:
                     module_logger.warning(
-                        "Failed to install Laminar/Langfuse bridge", exc_info=True,
+                        "Failed to install Laminar/Langfuse bridge",
+                        exc_info=True,
                     )
                 continue
             if not instrumentor.is_instrumented_by_opentelemetry:

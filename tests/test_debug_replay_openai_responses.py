@@ -31,9 +31,7 @@ def _genai_envelope() -> dict[str, Any]:
                 "type": "message",
                 "role": "assistant",
                 "status": "completed",
-                "content": [
-                    {"type": "output_text", "text": "Paris", "annotations": []}
-                ],
+                "content": [{"type": "output_text", "text": "Paris", "annotations": []}],
             }
         ],
     }
@@ -72,9 +70,7 @@ def test_cached_response_to_responses_raw():
                 "type": "message",
                 "role": "assistant",
                 "status": "completed",
-                "content": [
-                    {"type": "output_text", "text": "Rome", "annotations": []}
-                ],
+                "content": [{"type": "output_text", "text": "Rome", "annotations": []}],
             }
         ],
         "parallel_tool_calls": False,
@@ -82,7 +78,7 @@ def test_cached_response_to_responses_raw():
         "tools": [],
         "status": "completed",
     }
-    envelope : dict[str, Any] = {"type": "raw", "response": raw}
+    envelope: dict[str, Any] = {"type": "raw", "response": raw}
     response = wrapper.cached_response_to_responses(envelope)
     assert response is not None
     assert response.id == "resp_123"
@@ -119,9 +115,7 @@ def test_cached_response_to_responses_genai_without_messages():
 
 
 def test_input_messages_string_input():
-    assert rw.build_genai_input_messages("hello") == [
-        {"role": "user", "content": "hello"}
-    ]
+    assert rw.build_genai_input_messages("hello") == [{"role": "user", "content": "hello"}]
 
 
 def test_input_messages_list_input_passthrough():

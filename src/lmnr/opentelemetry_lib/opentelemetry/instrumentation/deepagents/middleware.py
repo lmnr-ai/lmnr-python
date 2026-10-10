@@ -62,8 +62,10 @@ def _tool_span_input(request: Any) -> Any:
         return call.get("args")  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
     return None
 
+
 try:
     from langchain.agents.middleware.types import AgentMiddleware
+
     class LaminarMiddleware(AgentMiddleware):  # pyright: ignore[reportRedeclaration]
         """Emits Laminar TOOL spans around every agent tool call.
 
@@ -113,5 +115,6 @@ try:
 
 except ImportError:
     logger.debug("failed to import DeepAgents", exc_info=True)
+
     class LaminarMiddleware:
         pass

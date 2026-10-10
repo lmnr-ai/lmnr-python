@@ -29,11 +29,7 @@ class EventHandlerWrapper(AssistantEventHandler):
     _prompt_tokens: int = 0
     _completion_tokens: int = 0
 
-    def __init__(
-        self,
-        original_handler: AssistantEventHandler,
-        span: Span
-    ):
+    def __init__(self, original_handler: AssistantEventHandler, span: Span):
         super().__init__()
         self._original_handler: AssistantEventHandler = original_handler
         self._span: Span = span
@@ -87,9 +83,7 @@ class EventHandlerWrapper(AssistantEventHandler):
     @override
     def on_exception(self, exception: Exception):
         self._span.set_attribute(ERROR_TYPE, exception.__class__.__name__)
-        self._span.record_exception(
-            exception, attributes=get_event_attributes_from_context()
-        )
+        self._span.record_exception(exception, attributes=get_event_attributes_from_context())
         self._span.set_status(Status(StatusCode.ERROR, str(exception)))
         self._original_handler.on_exception(exception)
 

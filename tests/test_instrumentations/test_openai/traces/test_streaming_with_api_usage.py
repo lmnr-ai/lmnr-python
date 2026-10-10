@@ -2,8 +2,11 @@ from typing import cast
 
 import pytest
 from openai import OpenAI
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import OpenAIInstrumentor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import (
+    OpenAIInstrumentor,
+)
 
 
 @pytest.fixture

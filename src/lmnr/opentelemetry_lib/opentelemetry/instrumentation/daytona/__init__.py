@@ -52,6 +52,7 @@ from lmnr.sdk.log import get_default_logger
 _instruments = ("daytona >= 0.1.0",)
 logger = get_default_logger(__name__)
 
+
 class DaytonaSDKInstrumentor(BaseLaminarInstrumentor):
     _scope: LaminarInstrumentationScopeAttributes | None = None
 
@@ -80,7 +81,7 @@ class DaytonaSDKInstrumentor(BaseLaminarInstrumentor):
     def __init__(self):
         super().__init__()
         self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
-            wrapped_functions= [
+            wrapped_functions=[
                 WrappedFunctionSpec(
                     package_name="daytona._sync.process",
                     object_name="Process",

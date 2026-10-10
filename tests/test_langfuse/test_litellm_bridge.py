@@ -82,8 +82,6 @@ def test_translator_routes_litellm_hybrid_span_through_openinference():
     assert span.attributes[f"{ASSOCIATION_PROPERTIES}.user_id"] == "user-3"
 
 
-
-
 @litellm_required
 def test_litellm_bridge_attaches_to_existing_logger():
     """A `LangfuseOtelLogger` already constructed before the bridge installs
@@ -109,18 +107,18 @@ def test_litellm_bridge_attaches_to_existing_logger():
             lmnr_span_processor=wrapper.span_processor,
         )
         processors = list(provider._active_span_processor._span_processors)
-        assert any(
-            isinstance(p, LangfuseAttributeTranslator) for p in processors
-        ), "translator must be attached to the LiteLLM logger's provider"
-        assert (
-            wrapper.span_processor in processors
-        ), "Laminar span processor must be attached to the LiteLLM provider"
+        assert any(isinstance(p, LangfuseAttributeTranslator) for p in processors), (
+            "translator must be attached to the LiteLLM logger's provider"
+        )
+        assert wrapper.span_processor in processors, (
+            "Laminar span processor must be attached to the LiteLLM provider"
+        )
 
         instrumentor.uninstrument()
         after = list(provider._active_span_processor._span_processors)
-        assert not any(
-            isinstance(p, LangfuseAttributeTranslator) for p in after
-        ), "uninstrument must detach the translator from the LiteLLM provider"
+        assert not any(isinstance(p, LangfuseAttributeTranslator) for p in after), (
+            "uninstrument must detach the translator from the LiteLLM provider"
+        )
         assert wrapper.span_processor not in after
     finally:
         litellm_logging._in_memory_loggers[:] = original_loggers
@@ -147,9 +145,7 @@ def test_litellm_bridge_patches_factory_for_late_loggers():
             lmnr_span_processor=wrapper.span_processor,
         )
         # The factory must have been wrapped.
-        assert (
-            litellm_logging._init_custom_logger_compatible_class is not original_factory
-        )
+        assert litellm_logging._init_custom_logger_compatible_class is not original_factory
 
         logger_obj = litellm_logging._init_custom_logger_compatible_class(
             "langfuse_otel",
@@ -159,9 +155,9 @@ def test_litellm_bridge_patches_factory_for_late_loggers():
         assert logger_obj is not None
         provider = cast(Any, logger_obj)._tracer_provider
         processors = list(provider._active_span_processor._span_processors)
-        assert any(
-            isinstance(p, LangfuseAttributeTranslator) for p in processors
-        ), "late-constructed LiteLLM logger must be bridged via the factory"
+        assert any(isinstance(p, LangfuseAttributeTranslator) for p in processors), (
+            "late-constructed LiteLLM logger must be bridged via the factory"
+        )
         assert wrapper.span_processor in processors
 
         instrumentor.uninstrument()
@@ -216,7 +212,7 @@ def test_litellm_factory_does_not_bridge_non_langfuse_loggers():
             llm_router=None,
         )
         assert attached == [], (
-            "non-langfuse LiteLLM logger must NOT be routed to " "ProviderAttachment.attach"
+            "non-langfuse LiteLLM logger must NOT be routed to ProviderAttachment.attach"
         )
 
         # A `langfuse_otel` logger built through the same factory MUST attach.
@@ -299,9 +295,7 @@ def test_litellm_bridge_wraps_and_unwraps_logger_methods():
 
         # ...an LLM active span (Laminar's litellm.completion) is preserved so
         # LiteLLM folds onto it instead of creating a duplicate nested LLM span.
-        llm = probe_tracer.start_span(
-            "litellm.completion", attributes={SPAN_TYPE: "LLM"}
-        )
+        llm = probe_tracer.start_span("litellm.completion", attributes={SPAN_TYPE: "LLM"})
         with use_span(llm, end_on_exit=False):
             _, parent_llm = logger_obj._get_span_context({})
         assert parent_llm is llm, "LLM parent must be preserved (no duplicate span)"
@@ -339,9 +333,7 @@ def test_bridge_is_rebound_to_the_new_processor_after_a_reinit():
         # short-circuits on its own flag.
         Laminar._Laminar__initialized = False  # pyright: ignore[reportAttributeAccessIssue]
         with patch.object(laminar_mod, "init_tracing", side_effect=injected):
-            Laminar.initialize(
-                project_api_key="k", disable_batch=True, instruments=set()
-            )
+            Laminar.initialize(project_api_key="k", disable_batch=True, instruments=set())
 
     def processors(provider: TracerProvider) -> tuple[SpanProcessor, ...]:
         return provider._active_span_processor._span_processors

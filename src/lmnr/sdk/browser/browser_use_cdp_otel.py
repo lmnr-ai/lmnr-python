@@ -38,6 +38,7 @@ class BrowserUseCdpSpec(WrappedFunctionSpec, total=False):
 
     action: str
 
+
 # Stable versions, e.g. 0.6.0, satisfy this condition too
 _instruments = ("browser-use >= 0.6.0rc1",)
 
@@ -60,9 +61,7 @@ async def process_wrapped_result(
         # Add eagerly to prevent parallel calls from double-initializing
         _initialized_sessions.add(session_id)
         try:
-            is_recording = await start_recording_events(
-                result, str(uuid.uuid4()), client
-            )
+            is_recording = await start_recording_events(result, str(uuid.uuid4()), client)
             if not is_recording:
                 _initialized_sessions.discard(session_id)
         except Exception:
@@ -85,9 +84,7 @@ async def _wrap(
     client: AsyncLaminarClient,
 ) -> T:
     result = await wrapped(*args, **kwargs)
-    _process_task = asyncio.create_task(
-        process_wrapped_result(result, instance, client, to_wrap)
-    )
+    _process_task = asyncio.create_task(process_wrapped_result(result, instance, client, to_wrap))
 
     return result
 

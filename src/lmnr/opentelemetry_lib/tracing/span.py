@@ -53,9 +53,9 @@ def _truncate_payload(serialized: str, kind: Literal["input", "output"]) -> str:
         return serialized
     logger = get_default_logger(__name__)
     logger.warning(
-        f"Laminar: span {kind} is {len(serialized)} bytes, which exceeds the " +
-        f"{MAX_MANUAL_SPAN_PAYLOAD_SIZE} byte limit. Truncating to the limit; " +
-        "the recorded value will not be valid JSON."
+        f"Laminar: span {kind} is {len(serialized)} bytes, which exceeds the "
+        + f"{MAX_MANUAL_SPAN_PAYLOAD_SIZE} byte limit. Truncating to the limit; "
+        + "the recorded value will not be valid JSON."
     )
     keep = MAX_MANUAL_SPAN_PAYLOAD_SIZE - len(TRUNCATION_SUFFIX)
     return serialized[:keep] + TRUNCATION_SUFFIX
@@ -122,9 +122,7 @@ class LaminarSpanInterfaceMixin:
             if is_otel_attribute_value_type(value):
                 formatted_metadata[f"{ASSOCIATION_PROPERTIES}.metadata.{key}"] = value
             else:
-                formatted_metadata[f"{ASSOCIATION_PROPERTIES}.metadata.{key}"] = (
-                    json_dumps(value)
-                )
+                formatted_metadata[f"{ASSOCIATION_PROPERTIES}.metadata.{key}"] = json_dumps(value)
         self.span.set_attributes(formatted_metadata)
 
     def get_laminar_span_context(self) -> LaminarSpanContext:
@@ -136,10 +134,10 @@ class LaminarSpanInterfaceMixin:
         metadata = {}
         if hasattr(self.span, "attributes"):
             span_path = list(cast(tuple[str], (self.span.attributes or {}).get(SPAN_PATH, ())))
-            span_ids_path = list(cast(tuple[str], (self.span.attributes or {}).get(SPAN_IDS_PATH, ())))
-            user_id = (self.span.attributes or {}).get(
-                f"{ASSOCIATION_PROPERTIES}.{USER_ID}", None
+            span_ids_path = list(
+                cast(tuple[str], (self.span.attributes or {}).get(SPAN_IDS_PATH, ()))
             )
+            user_id = (self.span.attributes or {}).get(f"{ASSOCIATION_PROPERTIES}.{USER_ID}", None)
             session_id = (self.span.attributes or {}).get(
                 f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}", None
             )
@@ -158,8 +156,8 @@ class LaminarSpanInterfaceMixin:
                     metadata[k] = v
         else:
             self.logger.warning(
-                "Attributes object is not available. Most likely the span is not a LaminarSpan " +
-                "and not an OpenTelemetry default SDK span. Span path and ids path will be empty.",
+                "Attributes object is not available. Most likely the span is not a LaminarSpan "
+                + "and not an OpenTelemetry default SDK span. Span path and ids path will be empty.",
             )
         return LaminarSpanContext(
             trace_id=uuid.UUID(int=self.span.get_span_context().trace_id),
@@ -190,9 +188,7 @@ class LaminarSpanInterfaceMixin:
         self.logger.warning(f"Invalid format: {format}. Returning int.")  # pyright: ignore[reportUnreachable]
         return self.span.get_span_context().trace_id
 
-    def parent_span_id(
-        self, format: Literal["int", "uuid"] = "int"
-    ) -> int | uuid.UUID | None:
+    def parent_span_id(self, format: Literal["int", "uuid"] = "int") -> int | uuid.UUID | None:
         parent_span_id = self.span.parent.span_id if self.span.parent else None
         if parent_span_id is None:
             return None
@@ -205,15 +201,11 @@ class LaminarSpanInterfaceMixin:
 
     def set_output(self, output: Any = None) -> None:
         if output is not None:
-            self.span.set_attribute(
-                SPAN_OUTPUT, _truncate_payload(json_dumps(output), "output")
-            )
+            self.span.set_attribute(SPAN_OUTPUT, _truncate_payload(json_dumps(output), "output"))
 
     def set_input(self, input: Any = None) -> None:
         if input is not None:
-            self.span.set_attribute(
-                SPAN_INPUT, _truncate_payload(json_dumps(input), "input")
-            )
+            self.span.set_attribute(SPAN_INPUT, _truncate_payload(json_dumps(input), "input"))
 
     def add_tags(self, tags: list[str]) -> None:
         if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):  # pyright: ignore[reportUnnecessaryIsInstance]
@@ -221,9 +213,7 @@ class LaminarSpanInterfaceMixin:
             return
         current_tags = self.tags
         current_tags.extend(tags)
-        self.span.set_attribute(
-            f"{ASSOCIATION_PROPERTIES}.tags", list(set(current_tags))
-        )
+        self.span.set_attribute(f"{ASSOCIATION_PROPERTIES}.tags", list(set(current_tags)))
 
     def set_tags(self, tags: list[str]) -> None:
         """Set the tags for the current span.
@@ -240,14 +230,19 @@ class LaminarSpanInterfaceMixin:
     def tags(self) -> list[str]:
         if not hasattr(self.span, "attributes"):
             self.logger.debug(
-                "[LaminarSpan.tags] WARNING. Current span does not have attributes object. " +
-                "Perhaps, the span was created with a custom OTel SDK. Returning an empty list. " +
-                "Help: OpenTelemetry API does not guarantee reading attributes from a span, but OTel SDK " +
-                "allows it by default. Laminar SDK allows to read attributes too.",
+                "[LaminarSpan.tags] WARNING. Current span does not have attributes object. "
+                + "Perhaps, the span was created with a custom OTel SDK. Returning an empty list. "
+                + "Help: OpenTelemetry API does not guarantee reading attributes from a span, but OTel SDK "
+                + "allows it by default. Laminar SDK allows to read attributes too.",
             )
             return []
         try:
-            return list(cast(list[str], (self.span.attributes or {}).get(f"{ASSOCIATION_PROPERTIES}.tags", [])))
+            return list(
+                cast(
+                    list[str],
+                    (self.span.attributes or {}).get(f"{ASSOCIATION_PROPERTIES}.tags", []),
+                )
+            )
         except Exception:
             return []
 
@@ -255,11 +250,11 @@ class LaminarSpanInterfaceMixin:
     def laminar_association_properties(self) -> MetadataType:
         if not hasattr(self.span, "attributes"):
             self.logger.debug(
-                "[LaminarSpan.laminar_association_properties] WARNING. Current span " +
-                "does not have attributes object. Perhaps, the span was created with a " +
-                "custom OTel SDK. Returning an empty dictionary." +
-                "Help: OpenTelemetry API does not guarantee reading attributes from a span, but OTel SDK " +
-                "allows it by default. Laminar SDK allows to read attributes too.",
+                "[LaminarSpan.laminar_association_properties] WARNING. Current span "
+                + "does not have attributes object. Perhaps, the span was created with a "
+                + "custom OTel SDK. Returning an empty dictionary."
+                + "Help: OpenTelemetry API does not guarantee reading attributes from a span, but OTel SDK "
+                + "allows it by default. Laminar SDK allows to read attributes too.",
             )
             return {}
         try:
@@ -267,9 +262,7 @@ class LaminarSpanInterfaceMixin:
             for key, value in (self.span.attributes or {}).items():
                 if key.startswith(f"{ASSOCIATION_PROPERTIES}."):
                     if key.startswith(f"{ASSOCIATION_PROPERTIES}.metadata."):
-                        meta_key = key.replace(
-                            f"{ASSOCIATION_PROPERTIES}.metadata.", ""
-                        )
+                        meta_key = key.replace(f"{ASSOCIATION_PROPERTIES}.metadata.", "")
                         if isinstance(value, (bytes, str, bytearray)):
                             try:
                                 values[meta_key] = orjson.loads(value)
@@ -308,7 +301,9 @@ class SpanDelegationMixin:
         self.span.add_event(name, attributes, timestamp)
 
     def add_link(
-        self, context: SpanContext, attributes: Attributes = None,
+        self,
+        context: SpanContext,
+        attributes: Attributes = None,
     ) -> None:
         self.span.add_link(context, attributes)
 
@@ -430,9 +425,7 @@ class LaminarSpan(LaminarSpanInterfaceMixin, SpanDelegationMixin, Span, Readable
                 if id(current_task) == self.lmnr_task_id:
                     detach(self.lmnr_ctx_token)
                 else:
-                    self.logger.debug(
-                        "Not detaching global context, not in the same context"
-                    )
+                    self.logger.debug("Not detaching global context, not in the same context")
                 self._popped = True
             except Exception:
                 self.logger.debug("Failed to pop span context", exc_info=True)
@@ -440,9 +433,7 @@ class LaminarSpan(LaminarSpanInterfaceMixin, SpanDelegationMixin, Span, Readable
             try:
                 detach_context(self.lmnr_assoc_props_token)
             except Exception:
-                self.logger.debug(
-                    "Failed to detach association properties context", exc_info=True
-                )
+                self.logger.debug("Failed to detach association properties context", exc_info=True)
 
     @override
     def __enter__(self) -> Self:  # pyright: ignore[reportMissingSuperCall]

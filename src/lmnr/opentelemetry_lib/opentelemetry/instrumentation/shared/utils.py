@@ -25,9 +25,7 @@ P = ParamSpec("P")
 
 
 def should_send_prompts() -> bool:
-    return (
-        os.getenv(LMNR_TRACE_CONTENT) or "true"
-    ).lower() == "true" or cast(
+    return (os.getenv(LMNR_TRACE_CONTENT) or "true").lower() == "true" or cast(
         bool, context_api.get_value("override_enable_content_tracing")
     )
 
@@ -56,9 +54,7 @@ def dont_throw(func: Callable[P, Any]) -> Callable[P, Any]:
             try:
                 return await func(*args, **kwargs)
             except Exception:
-                func_logger.debug(
-                    "Laminar failed to trace in %s", func.__name__, exc_info=True
-                )
+                func_logger.debug("Laminar failed to trace in %s", func.__name__, exc_info=True)
                 return None
 
         return async_wrapper
@@ -68,17 +64,13 @@ def dont_throw(func: Callable[P, Any]) -> Callable[P, Any]:
         try:
             return func(*args, **kwargs)
         except Exception:
-            func_logger.debug(
-                "Laminar failed to trace in %s", func.__name__, exc_info=True
-            )
+            func_logger.debug("Laminar failed to trace in %s", func.__name__, exc_info=True)
             return None
 
     return wrapper
 
 
-def set_span_attribute(
-    span: Span, attribute_name: str, attribute_value: AttributeValue | None
-):
+def set_span_attribute(span: Span, attribute_name: str, attribute_value: AttributeValue | None):
     if attribute_value is not None and attribute_value != "":
         span.set_attribute(attribute_name, attribute_value)
 

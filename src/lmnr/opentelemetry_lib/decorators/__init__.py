@@ -8,7 +8,6 @@ from opentelemetry import context as context_api
 from opentelemetry.sdk.trace import Span as SdkSpan
 from opentelemetry.trace import Span, Status, StatusCode
 
-from lmnr.opentelemetry_lib.tracing.wrapper import is_tracing_initialized
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     METADATA,
@@ -23,6 +22,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from lmnr.opentelemetry_lib.tracing.tracer import get_tracer_with_context
 from lmnr.opentelemetry_lib.tracing.utils import set_association_props_in_context
+from lmnr.opentelemetry_lib.tracing.wrapper import is_tracing_initialized
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import (
     get_input_from_func_args,
@@ -54,7 +54,9 @@ def _setup_span(
                 attributes={SPAN_TYPE: span_type},
             )
 
-            ctx_metadata = cast(dict[str, Any], context_api.get_value(CONTEXT_METADATA_KEY, isolated_context))
+            ctx_metadata = cast(
+                dict[str, Any], context_api.get_value(CONTEXT_METADATA_KEY, isolated_context)
+            )
             merged_metadata = {
                 **(ctx_metadata or {}),
                 **(metadata or {}),
@@ -62,11 +64,7 @@ def _setup_span(
             for key, value in merged_metadata.items():
                 span.set_attribute(
                     f"{ASSOCIATION_PROPERTIES}.{METADATA}.{key}",
-                    (
-                        value
-                        if is_otel_attribute_value_type(value)
-                        else json_dumps(value)
-                    ),
+                    (value if is_otel_attribute_value_type(value) else json_dumps(value)),
                 )
 
             if association_properties is not None:
@@ -226,9 +224,7 @@ def observe_base(
             except Exception:
                 logger.debug("Failed to setup span context", exc_info=True)
 
-            _process_input(
-                span, fn, args, kwargs, ignore_input, ignore_inputs, input_formatter
-            )
+            _process_input(span, fn, args, kwargs, ignore_input, ignore_inputs, input_formatter)
 
             try:
                 res = fn(*args, **kwargs)
@@ -250,9 +246,7 @@ def observe_base(
                     except Exception:
                         logger.debug("Failed to detach global context", exc_info=True)
                 else:
-                    logger.debug(
-                        "Not detaching global context, not in the same context"
-                    )
+                    logger.debug("Not detaching global context, not in the same context")
             # span will be ended in the generator
             if isinstance(res, types.GeneratorType):
                 return _handle_generator(
@@ -354,9 +348,7 @@ def async_observe_base(
             except Exception:
                 logger.debug("Failed to setup span context", exc_info=True)
 
-            _process_input(
-                span, fn, args, kwargs, ignore_input, ignore_inputs, input_formatter
-            )
+            _process_input(span, fn, args, kwargs, ignore_input, ignore_inputs, input_formatter)
 
             try:
                 res = await fn(*args, **kwargs)
@@ -378,9 +370,7 @@ def async_observe_base(
                     except Exception:
                         logger.debug("Failed to detach global context", exc_info=True)
                 else:
-                    logger.debug(
-                        "Not detaching global context, not in the same context"
-                    )
+                    logger.debug("Not detaching global context, not in the same context")
 
             # span will be ended in the generator
             if isinstance(res, types.AsyncGeneratorType):
@@ -446,9 +436,7 @@ async def _ahandle_generator(
 def _process_exception(span: Span, e: Exception):
     try:
         # Note that this `escaped` is sent as a StringValue("True"), not a boolean.
-        span.record_exception(
-            e, attributes=get_event_attributes_from_context(), escaped=True
-        )
+        span.record_exception(e, attributes=get_event_attributes_from_context(), escaped=True)
         span.set_status(Status(StatusCode.ERROR, str(e)))
     except Exception:
         logger.debug("Failed to process exception", exc_info=True)

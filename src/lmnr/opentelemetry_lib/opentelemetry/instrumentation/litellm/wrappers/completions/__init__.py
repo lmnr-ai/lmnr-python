@@ -40,15 +40,9 @@ def process_completion_kwargs(
         kwargs.get("max_tokens", kwargs.get("max_completion_tokens")),
     )
     set_span_attribute(span, "gen_ai.request.stop_sequences", kwargs.get("stop"))
-    set_span_attribute(
-        span, "gen_ai.request.frequency_penalty", kwargs.get("frequency_penalty")
-    )
-    set_span_attribute(
-        span, "gen_ai.request.presence_penalty", kwargs.get("presence_penalty")
-    )
-    set_span_attribute(
-        span, "gen_ai.request.reasoning_effort", kwargs.get("reasoning_effort")
-    )
+    set_span_attribute(span, "gen_ai.request.frequency_penalty", kwargs.get("frequency_penalty"))
+    set_span_attribute(span, "gen_ai.request.presence_penalty", kwargs.get("presence_penalty"))
+    set_span_attribute(span, "gen_ai.request.reasoning_effort", kwargs.get("reasoning_effort"))
     set_span_attribute(
         span,
         "gen_ai.request.thinking_budget",
@@ -118,18 +112,14 @@ def process_completion_response(
     set_span_attribute(span, "llm.usage.total_tokens", total_tokens)
     if input_details := usage.get("prompt_tokens_details"):
         details = cast(dict[str, int], to_dict(input_details))
-        cache_read_tokens = cast(int, details.get(
-            "cached_tokens", usage.get("cache_read_input_tokens")
-        ) or 0)
-        cache_creation_tokens = cast(int, details.get(
-            "cache_creation_tokens", usage.get("cache_creation_input_tokens")
-        ) or 0)
-        set_span_attribute(
-            span, "gen_ai.usage.cache_read_input_tokens", cache_read_tokens
+        cache_read_tokens = cast(
+            int, details.get("cached_tokens", usage.get("cache_read_input_tokens")) or 0
         )
-        set_span_attribute(
-            span, "gen_ai.usage.cache_creation_input_tokens", cache_creation_tokens
+        cache_creation_tokens = cast(
+            int, details.get("cache_creation_tokens", usage.get("cache_creation_input_tokens")) or 0
         )
+        set_span_attribute(span, "gen_ai.usage.cache_read_input_tokens", cache_read_tokens)
+        set_span_attribute(span, "gen_ai.usage.cache_creation_input_tokens", cache_creation_tokens)
 
     # Record raw response in rollout mode
     if record_raw_response:

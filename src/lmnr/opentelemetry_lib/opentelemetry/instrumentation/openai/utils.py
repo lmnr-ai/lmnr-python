@@ -13,6 +13,7 @@ _OPENAI_VERSION = version("openai")
 
 T = TypeVar("T")
 
+
 def is_openai_v1():
     return parse(_OPENAI_VERSION) >= parse("1.0.0")
 

@@ -80,12 +80,8 @@ class TestTracerWrapperRaceCondition:
                     print(f"Exceptions: {exceptions}")
                     raise
 
-        assert (
-            len(results) == 10
-        ), f"Expected 10 successful results, got {len(results)}: {results}"
-        assert (
-            len(exceptions) == 0
-        ), f"No exceptions should occur, but got: {exceptions}"
+        assert len(results) == 10, f"Expected 10 successful results, got {len(results)}: {results}"
+        assert len(exceptions) == 0, f"No exceptions should occur, but got: {exceptions}"
 
     def test_rapid_concurrent_laminar_operations(self):
         """Test rapid concurrent Laminar operations that commonly cause race conditions.
@@ -111,9 +107,7 @@ class TestTracerWrapperRaceCondition:
 
             except AttributeError as e:
                 if "span_processor" in str(e):
-                    exception_msg = (
-                        f"Rapid-{thread_id}: RACE CONDITION DETECTED - {e!s}"
-                    )
+                    exception_msg = f"Rapid-{thread_id}: RACE CONDITION DETECTED - {e!s}"
                     exceptions.append(exception_msg)
                     raise AssertionError(exception_msg) from e
                 raise
@@ -137,9 +131,7 @@ class TestTracerWrapperRaceCondition:
                     print(f"Rapid test exceptions: {exceptions}")
                     raise
 
-        assert (
-            len(results) == 15
-        ), f"Expected 15 successful operations, got {len(results)}"
+        assert len(results) == 15, f"Expected 15 successful operations, got {len(results)}"
         assert len(exceptions) == 0, f"No race conditions should occur: {exceptions}"
 
     @pytest.mark.asyncio
@@ -168,14 +160,14 @@ class TestTracerWrapperRaceCondition:
 
             except AttributeError as e:
                 if "span_processor" in str(e):
-                    exception_msg = (
-                        f"RapidAsync-{task_id}: RACE CONDITION DETECTED - {e!s}"
-                    )
+                    exception_msg = f"RapidAsync-{task_id}: RACE CONDITION DETECTED - {e!s}"
                     exceptions.append(exception_msg)
                     raise AssertionError(exception_msg) from e
                 raise
             except Exception as e:
-                exception_msg = f"RapidAsync-{task_id}: UNEXPECTED ERROR - {type(e).__name__}: {e!s}"
+                exception_msg = (
+                    f"RapidAsync-{task_id}: UNEXPECTED ERROR - {type(e).__name__}: {e!s}"
+                )
                 exceptions.append(exception_msg)
                 raise AssertionError(exception_msg) from e
 
@@ -192,12 +184,10 @@ class TestTracerWrapperRaceCondition:
             print(f"Rapid async test exceptions: {exceptions}")
             raise
 
-        assert (
-            len(results) == 15
-        ), f"Expected 15 successful async operations, got {len(results)}"
-        assert (
-            len(exceptions) == 0
-        ), f"No race conditions should occur in async version: {exceptions}"
+        assert len(results) == 15, f"Expected 15 successful async operations, got {len(results)}"
+        assert len(exceptions) == 0, (
+            f"No race conditions should occur in async version: {exceptions}"
+        )
 
     @pytest.mark.asyncio
     async def test_async_threading_race_conditions(self):
@@ -223,9 +213,7 @@ class TestTracerWrapperRaceCondition:
 
             except AttributeError as e:
                 if "span_processor" in str(e):
-                    exception_msg = (
-                        f"AsyncThread-{worker_id}: ASYNC RACE CONDITION - {e!s}"
-                    )
+                    exception_msg = f"AsyncThread-{worker_id}: ASYNC RACE CONDITION - {e!s}"
                     exceptions.append(exception_msg)
                     raise AssertionError(exception_msg) from e
                 raise
@@ -239,10 +227,7 @@ class TestTracerWrapperRaceCondition:
 
         with ThreadPoolExecutor(max_workers=6) as executor:
             # Create many concurrent async tasks
-            tasks = [
-                loop.run_in_executor(executor, threaded_init_flush, i)
-                for i in range(12)
-            ]
+            tasks = [loop.run_in_executor(executor, threaded_init_flush, i) for i in range(12)]
 
             try:
                 _results = await asyncio.gather(*tasks)
@@ -251,12 +236,8 @@ class TestTracerWrapperRaceCondition:
                 print(f"Async exceptions: {exceptions}")
                 raise
 
-        assert (
-            len(results) == 12
-        ), f"All async operations should succeed: {len(results)}/12"
-        assert (
-            len(exceptions) == 0
-        ), f"No async race conditions should occur: {exceptions}"
+        assert len(results) == 12, f"All async operations should succeed: {len(results)}/12"
+        assert len(exceptions) == 0, f"No async race conditions should occur: {exceptions}"
 
     def test_stress_singleton_pattern(self):
         """Stress test the singleton pattern under extreme concurrent load."""
@@ -283,9 +264,7 @@ class TestTracerWrapperRaceCondition:
                 initialized = is_tracing_initialized()
                 flush_result = flush_tracing()
 
-                results.append(
-                    f"Stress-{thread_id}: init={initialized}, flush={flush_result}"
-                )
+                results.append(f"Stress-{thread_id}: init={initialized}, flush={flush_result}")
                 return flush_result
 
             except AttributeError as e:
@@ -311,9 +290,7 @@ class TestTracerWrapperRaceCondition:
                     print(f"Stress exceptions: {exceptions}")
                     raise
 
-        assert (
-            len(results) == 20
-        ), f"All stress operations should succeed: {len(results)}/20"
+        assert len(results) == 20, f"All stress operations should succeed: {len(results)}/20"
         assert len(exceptions) == 0, f"No singleton race conditions: {exceptions}"
 
     def test_flush_before_init_returns_false(self):
@@ -340,9 +317,7 @@ class TestTracerWrapperRaceCondition:
         original = tracing_mod.init_instrumentations
 
         def spy(*args: Any, **kwargs: Any):
-            observed.append(
-                (is_tracing_initialized(), get_tracer_wrapper() is None)
-            )
+            observed.append((is_tracing_initialized(), get_tracer_wrapper() is None))
             return original(*args, **kwargs)
 
         with patch.object(tracing_mod, "init_instrumentations", side_effect=spy):
@@ -390,9 +365,7 @@ class TestTracerWrapperRaceCondition:
                     ) from e
                 raise
             except Exception as e:
-                raise AssertionError(
-                    f"INITIALIZATION FAILED - Thread {thread_id}: {e!s}"
-                ) from e
+                raise AssertionError(f"INITIALIZATION FAILED - Thread {thread_id}: {e!s}") from e
 
         # Many threads trying to initialize simultaneously
         with ThreadPoolExecutor(max_workers=15) as executor:
@@ -404,7 +377,7 @@ class TestTracerWrapperRaceCondition:
 
         # Verify singleton behavior
         unique_instances = set(instances_created)
-        assert (
-            len(unique_instances) == 1
-        ), f"Should only create one instance, got {len(unique_instances)}: {unique_instances}"
+        assert len(unique_instances) == 1, (
+            f"Should only create one instance, got {len(unique_instances)}: {unique_instances}"
+        )
         assert len(results) == 15, f"All threads should succeed: {len(results)}/15"

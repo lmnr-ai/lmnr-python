@@ -46,15 +46,15 @@ def _detach_span_processor(provider: TracerProvider, processor: SpanProcessor) -
         active._span_processors = filtered
 
 
-def _detach_log_processor(
-    provider: LoggerProvider, processor: BatchLogRecordProcessor
-) -> None:
+def _detach_log_processor(provider: LoggerProvider, processor: BatchLogRecordProcessor) -> None:
     """`_detach_span_processor`'s counterpart for the logs pipeline."""
     multi = getattr(provider, "_multi_log_record_processor", None)
     current = getattr(multi, "_log_record_processors", None)
     if current is None:
         return
-    filtered = tuple(p for p in cast(Sequence[BatchLogRecordProcessor], current) if p is not processor)
+    filtered = tuple(
+        p for p in cast(Sequence[BatchLogRecordProcessor], current) if p is not processor
+    )
     lock = getattr(multi, "_lock", None)
     if multi is None:
         return

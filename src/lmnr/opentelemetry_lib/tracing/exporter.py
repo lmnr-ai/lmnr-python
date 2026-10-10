@@ -86,8 +86,7 @@ def _configure_exporter(
                 protocol = get_otel_env_var("PROTOCOL") or "grpc/protobuf"
                 exporter_type = from_env("OTEL_EXPORTER") or "otlp_grpc"
                 force_http_result = (
-                    protocol in ("http/protobuf", "http/json")
-                    or exporter_type == "otlp_http"
+                    protocol in ("http/protobuf", "http/json") or exporter_type == "otlp_http"
                 )
             else:
                 logger.warning(
@@ -96,10 +95,10 @@ def _configure_exporter(
 
     if not endpoint:
         raise ValueError(
-            "Laminar base URL is not set and OTEL_ENDPOINT is not set. Please either\n" +
-            "- set the LMNR_BASE_URL environment variable\n" +
-            "- set the OTEL_ENDPOINT environment variable\n" +
-            "- pass the base_url parameter to Laminar.initialize"
+            "Laminar base URL is not set and OTEL_ENDPOINT is not set. Please either\n"
+            + "- set the LMNR_BASE_URL environment variable\n"
+            + "- set the OTEL_ENDPOINT environment variable\n"
+            + "- pass the base_url parameter to Laminar.initialize"
         )
 
     return {
@@ -111,34 +110,34 @@ def _configure_exporter(
 
 
 def _normalize_http_endpoint(endpoint: str, default_path: str) -> str:
-        """
-        Normalize HTTP endpoint URL by adding the given default path if no path is present.
+    """
+    Normalize HTTP endpoint URL by adding the given default path if no path is present.
 
-        Args:
-            endpoint: The endpoint URL to normalize
+    Args:
+        endpoint: The endpoint URL to normalize
 
-        Returns:
-            The normalized endpoint URL with the given default path if needed
-        """
-        try:
-            parsed = urlparse(endpoint)
-            # Check if there's no path or only a trailing slash
-            if not parsed.path or parsed.path == "/":
-                # Add the given path to the endpoint
-                new_parsed = parsed._replace(path=default_path)
-                normalized_url = urlunparse(new_parsed)
-                logger.info(
-                    "No path found in HTTP endpoint URL. " +
-                    f"Adding default path {default_path}: {endpoint} -> {normalized_url}"
-                )
-                return normalized_url
-            return endpoint
-        except Exception:
-            logger.warning(
-                "Failed to parse endpoint URL '{endpoint}'. Using as-is.",
-                exc_info=True,
+    Returns:
+        The normalized endpoint URL with the given default path if needed
+    """
+    try:
+        parsed = urlparse(endpoint)
+        # Check if there's no path or only a trailing slash
+        if not parsed.path or parsed.path == "/":
+            # Add the given path to the endpoint
+            new_parsed = parsed._replace(path=default_path)
+            normalized_url = urlunparse(new_parsed)
+            logger.info(
+                "No path found in HTTP endpoint URL. "
+                + f"Adding default path {default_path}: {endpoint} -> {normalized_url}"
             )
-            return endpoint
+            return normalized_url
+        return endpoint
+    except Exception:
+        logger.warning(
+            "Failed to parse endpoint URL '{endpoint}'. Using as-is.",
+            exc_info=True,
+        )
+        return endpoint
 
 
 class LaminarSpanExporter(SpanExporter):
@@ -207,6 +206,7 @@ class LaminarSpanExporter(SpanExporter):
     def force_flush(self, timeout_millis: int = 30000) -> bool:
         with self._instance_lock:
             return self.instance.force_flush(timeout_millis)
+
 
 class LaminarLogExporter(LogRecordExporter):
     """Log exporter for Laminar that sends logs to the OTLP endpoint."""

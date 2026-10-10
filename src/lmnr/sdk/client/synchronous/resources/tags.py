@@ -77,9 +77,7 @@ class Tags(BaseResource):
             return []
 
         if response.status_code != 200:
-            raise ValueError(
-                f"Failed to tag trace: [{response.status_code}] {response.text}"
-            )
+            raise ValueError(f"Failed to tag trace: [{response.status_code}] {response.text}")
         # always return an empty list.
         # The server used to return tags that were passed,
         # but now returns a response with no body,

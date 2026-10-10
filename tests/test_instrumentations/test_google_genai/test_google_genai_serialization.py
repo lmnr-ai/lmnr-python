@@ -53,9 +53,7 @@ class _RecordingSpan:
 
 
 def _image_part() -> types.Part:
-    return types.Part(
-        inline_data=types.Blob(mime_type="image/png", data=ALPHABET_DIVERGENT_BYTES)
-    )
+    return types.Part(inline_data=types.Blob(mime_type="image/png", data=ALPHABET_DIVERGENT_BYTES))
 
 
 def _image_response() -> types.GenerateContentResponse:
@@ -199,9 +197,7 @@ def test_non_bytes_fields_keep_their_json_shape():
     part = _roundtrip(
         part_to_dict(
             types.Part(
-                function_call=types.FunctionCall(
-                    name="f", args={"a": 1, "b": [1, 2.5, None, True]}
-                )
+                function_call=types.FunctionCall(name="f", args={"a": 1, "b": [1, 2.5, None, True]})
             )
         )
     )
@@ -276,10 +272,7 @@ def test_raw_response_attribute_round_trips_through_the_replay_parser():
     assert reparsed.candidates[0].content is not None
     assert reparsed.candidates[0].content.parts is not None
     assert reparsed.candidates[0].content.parts[0].inline_data is not None
-    assert (
-        reparsed.candidates[0].content.parts[0].inline_data.data
-        == ALPHABET_DIVERGENT_BYTES
-    )
+    assert reparsed.candidates[0].content.parts[0].inline_data.data == ALPHABET_DIVERGENT_BYTES
 
 
 def test_unserializable_raw_response_is_skipped_not_stamped_empty():
@@ -311,6 +304,7 @@ def test_an_unserializable_tool_value_does_not_drop_the_conversation():
     every message in the conversation. `mode="python"` hands the value to
     `json_dumps`, which degrades only that leaf.
     """
+
     class ReadOnlyMapping(Mapping[str, Any]):
         def __init__(self, data: Mapping[str, Any]):
             self._data: Mapping[str, Any] = data
@@ -355,9 +349,7 @@ def test_an_unserializable_tool_value_does_not_drop_the_conversation():
     assert len(messages) == 2
     assert messages[0]["parts"][0] == {"text": "weather?"}
     # The exotic value survives structurally rather than as a Python repr.
-    assert messages[1]["parts"][0]["function_response"]["response"] == {
-        "raw": {"temp": 20}
-    }
+    assert messages[1]["parts"][0]["function_response"]["response"] == {"raw": {"temp": 20}}
 
 
 def test_a_model_nested_in_a_dict_part_does_not_discard_the_conversation():
@@ -382,6 +374,4 @@ def test_a_model_nested_in_a_dict_part_does_not_discard_the_conversation():
     parsed = _roundtrip(result)
 
     assert parsed["parts"][0] == {"text": "describe this"}
-    assert parsed["parts"][1]["function_response"]["response"] == {
-        "grid": {"(0, 1)": "hit"}
-    }
+    assert parsed["parts"][1]["function_response"]["response"] == {"grid": {"(0, 1)": "hit"}}

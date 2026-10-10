@@ -74,6 +74,7 @@ Laminar.initialize(project_api_key=os.environ["LMNR_PROJECT_API_KEY"])
 
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
+
 def poem_writer(topic: str):
     prompt = f"write a poem about {topic}"
     messages = [
@@ -89,6 +90,7 @@ def poem_writer(topic: str):
     poem = response.choices[0].message.content
 
     return poem
+
 
 @observe()
 def generate_poems():
@@ -122,7 +124,10 @@ For example, if you want to only instrument OpenAI and Anthropic, then do the fo
 ```python
 from lmnr import Laminar, Instruments
 
-Laminar.initialize(project_api_key=os.environ["LMNR_PROJECT_API_KEY"], instruments={Instruments.OPENAI, Instruments.ANTHROPIC})
+Laminar.initialize(
+    project_api_key=os.environ["LMNR_PROJECT_API_KEY"],
+    instruments={Instruments.OPENAI, Instruments.ANTHROPIC},
+)
 ```
 
 If you want to fully disable any kind of autoinstrumentation, pass an empty set as `instruments=set()` to `.initialize()`. 
@@ -144,11 +149,14 @@ Create a file named `my_first_eval.py` with the following code:
 ```python
 from lmnr import evaluate
 
+
 def write_poem(data):
     return f"This is a good poem about {data['topic']}"
 
+
 def contains_poem(output, target):
-    return 1 if output in target['poem'] else 0
+    return 1 if output in target["poem"] else 0
+
 
 # Evaluation data
 data = [
@@ -159,10 +167,8 @@ data = [
 evaluate(
     data=data,
     executor=write_poem,
-    evaluators={
-        "containsPoem": contains_poem
-    },
-    group_id="my_first_feature"
+    evaluators={"containsPoem": contains_poem},
+    group_id="my_first_feature",
 )
 ```
 
@@ -206,9 +212,7 @@ from lmnr import LaminarClient
 
 client = LaminarClient(project_api_key="<YOUR_PROJECT_API_KEY>")
 
-response = client.agent.run(
-    prompt="What is the weather in London today?"
-)
+response = client.agent.run(prompt="What is the weather in London today?")
 
 print(response.result.content)
 ```
@@ -222,13 +226,10 @@ from lmnr import LaminarClient
 
 client = LaminarClient(project_api_key="<YOUR_PROJECT_API_KEY>")
 
-for chunk in client.agent.run(
-    prompt="What is the weather in London today?",
-    stream=True
-):
-    if chunk.chunk_type == 'step':
+for chunk in client.agent.run(prompt="What is the weather in London today?", stream=True):
+    if chunk.chunk_type == "step":
         print(chunk.summary)
-    elif chunk.chunk_type == 'finalOutput':
+    elif chunk.chunk_type == "finalOutput":
         print(chunk.content.result.content)
 ```
 
@@ -239,9 +240,7 @@ from lmnr import AsyncLaminarClient
 
 client = AsyncLaminarClient(project_api_key="<YOUR_PROJECT_API_KEY>")
 
-response = await client.agent.run(
-    prompt="What is the weather in London today?"
-)
+response = await client.agent.run(prompt="What is the weather in London today?")
 
 print(response.result.content)
 ```
@@ -254,16 +253,10 @@ from lmnr import AsyncLaminarClient
 client = AsyncLaminarClient(project_api_key="<YOUR_PROJECT_API_KEY>")
 
 # Note that you need to await the operation even though we use `async for` below
-response = await client.agent.run(
-    prompt="What is the weather in London today?",
-    stream=True
-)
-async for chunk in client.agent.run(
-    prompt="What is the weather in London today?",
-    stream=True
-):
-    if chunk.chunk_type == 'step':
+response = await client.agent.run(prompt="What is the weather in London today?", stream=True)
+async for chunk in client.agent.run(prompt="What is the weather in London today?", stream=True):
+    if chunk.chunk_type == "step":
         print(chunk.summary)
-    elif chunk.chunk_type == 'finalOutput':
+    elif chunk.chunk_type == "finalOutput":
         print(chunk.content.result.content)
 ```

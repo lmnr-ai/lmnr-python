@@ -146,6 +146,7 @@ dev = [
   "temporalio==1.31.0",
   "typesafe-sdk==0.7.0",
   "vcrpy==8.3.0",
+  "ruff>=0.17.0",
 ]
 
 [build-system]
@@ -157,6 +158,7 @@ members = ["examples/fastapi-app"]
 
 [tool.ruff]
 target-version = "py310"
+line-length = 100
 
 [tool.ruff.lint]
 # BLE001 (flake8-blind-except): the codebase intentionally catches bare

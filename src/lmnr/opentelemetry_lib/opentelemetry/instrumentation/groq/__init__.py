@@ -1,6 +1,5 @@
 """OpenTelemetry Groq instrumentation"""
 
-import logging
 from collections.abc import (
     AsyncGenerator,
     AsyncIterable,
@@ -52,6 +51,7 @@ _instruments = ("groq >= 0.9.0",)
 
 T = TypeVar("T")
 
+
 def is_streaming_response(response: Any) -> bool:
     return isinstance(response, (Stream, AsyncStream))
 
@@ -87,7 +87,7 @@ def _handle_streaming_response(
 def _create_stream_processor(
     response: Iterable[T],
     span: Span,
-)-> Generator[T]:
+) -> Generator[T]:
     """Create a generator that processes a stream while collecting telemetry."""
     accumulated_content = ""
     finish_reason = None
@@ -116,8 +116,7 @@ def _create_stream_processor(
 
 
 async def _create_async_stream_processor(
-    response: AsyncIterable[T],
-    span: Span
+    response: AsyncIterable[T], span: Span
 ) -> AsyncGenerator[T]:
     """Create an async generator that processes a stream while collecting telemetry."""
     accumulated_content = ""
@@ -135,7 +134,8 @@ async def _create_async_stream_processor(
                 usage = chunk_usage
         except Exception:
             logger.warning(
-                "Failed to process streaming chunk for groq span", exc_info=True,
+                "Failed to process streaming chunk for groq span",
+                exc_info=True,
             )
         finally:
             yield chunk
@@ -172,9 +172,7 @@ def _wrap(
         return wrapped(*args, **kwargs)
 
     name = to_wrap.get("span_name") or "groq.chat"
-    span = safe_start_span(
-        name=name, attributes={"gen_ai.system": "groq"}, span_type="LLM"
-    )
+    span = safe_start_span(name=name, attributes={"gen_ai.system": "groq"}, span_type="LLM")
     if not span:
         logger.warning("Failed to start span for groq chat")
         return wrapped(*args, **kwargs)
@@ -183,7 +181,6 @@ def _wrap(
     _handle_input(span, kwargs)
 
     response = wrapped(*args, **kwargs)
-
 
     if is_streaming_response(response):
         try:
@@ -219,9 +216,7 @@ async def _awrap(
         return await wrapped(*args, **kwargs)
 
     name = to_wrap.get("span_name") or "groq.chat"
-    span = safe_start_span(
-        name=name, attributes={"gen_ai.system": "groq"}, span_type="LLM"
-    )
+    span = safe_start_span(name=name, attributes={"gen_ai.system": "groq"}, span_type="LLM")
     if not span:
         logger.warning("Failed to start span for groq chat")
         return await wrapped(*args, **kwargs)
@@ -230,7 +225,6 @@ async def _awrap(
     _handle_input(span, kwargs)
 
     response = await wrapped(*args, **kwargs)
-
 
     if is_streaming_response(response):
         try:

@@ -19,7 +19,6 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.shared import (
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
     is_openai_v1,
 )
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import should_send_prompts
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
@@ -28,6 +27,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     model_as_dict,
     safe_start_span,
     set_span_attribute,
+    should_send_prompts,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     stamp_instrumentation_scope,
@@ -162,10 +162,7 @@ def _handle_response(
         _set_completions(span, response_dict.get("choices") or [])
 
 
-def _set_prompts(
-    span: Span,
-    prompt: str | list[str]
-):
+def _set_prompts(span: Span, prompt: str | list[str]):
     if not span.is_recording() or not prompt:
         return
 
@@ -209,9 +206,9 @@ def _build_from_streaming_response(
 
 @dont_throw
 async def _abuild_from_streaming_response(
-  span: Span,
-  _request_kwargs: dict[str, Any],
-  response: Any,
+    span: Span,
+    _request_kwargs: dict[str, Any],
+    response: Any,
 ) -> AsyncGenerator[Any]:
     complete_response: CompletionStreamResponse = {"choices": [], "model": "", "id": ""}
     async for item in response:

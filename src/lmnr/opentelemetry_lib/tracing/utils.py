@@ -51,21 +51,13 @@ def set_association_props_in_context(span: Span):
         current_ctx = get_current_context()
         ctx_with_props = current_ctx
         if extracted_user_id:
-            ctx_with_props = set_value(
-                CONTEXT_USER_ID_KEY, extracted_user_id, ctx_with_props
-            )
+            ctx_with_props = set_value(CONTEXT_USER_ID_KEY, extracted_user_id, ctx_with_props)
         if extracted_session_id:
-            ctx_with_props = set_value(
-                CONTEXT_SESSION_ID_KEY, extracted_session_id, ctx_with_props
-            )
+            ctx_with_props = set_value(CONTEXT_SESSION_ID_KEY, extracted_session_id, ctx_with_props)
         if extracted_trace_type:
-            ctx_with_props = set_value(
-                CONTEXT_TRACE_TYPE_KEY, extracted_trace_type, ctx_with_props
-            )
+            ctx_with_props = set_value(CONTEXT_TRACE_TYPE_KEY, extracted_trace_type, ctx_with_props)
         if metadata_dict:
-            ctx_with_props = set_value(
-                CONTEXT_METADATA_KEY, metadata_dict, ctx_with_props
-            )
+            ctx_with_props = set_value(CONTEXT_METADATA_KEY, metadata_dict, ctx_with_props)
 
         return attach_context(ctx_with_props)
 

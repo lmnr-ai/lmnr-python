@@ -37,19 +37,15 @@ def test_parsed_completion(
     attributes = open_ai_span.attributes or {}
     output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output_messages[0]["message"]["content"]
-    assert (
-        attributes.get("gen_ai.request.base_url")
-        == "https://api.openai.com/v1/"
-    )
+    assert attributes.get("gen_ai.request.base_url") == "https://api.openai.com/v1/"
     assert attributes.get("llm.is_streaming") is False
     input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "chatcmpl-AGC1gNoe1Zyq9yZicdhLc85lmt2Ep"
-    )
+    assert attributes.get("gen_ai.response.id") == "chatcmpl-AGC1gNoe1Zyq9yZicdhLc85lmt2Ep"
 
-    assert json.loads(cast(str, attributes.get("gen_ai.request.structured_output_schema"))) == StructuredAnswer.model_json_schema() | {"additionalProperties": False}
+    assert json.loads(
+        cast(str, attributes.get("gen_ai.request.structured_output_schema"))
+    ) == StructuredAnswer.model_json_schema() | {"additionalProperties": False}
 
 
 @pytest.mark.vcr
@@ -76,11 +72,10 @@ def test_parsed_refused_completion(
         output_messages[0]["message"]["refusal"]
         == "I'm very sorry, but I can't assist with that request."
     )
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "chatcmpl-AGky8KFDbg6f5fF4qLtsBredIjZZh"
-    )
-    assert json.loads(cast(str, attributes.get("gen_ai.request.structured_output_schema"))) == StructuredAnswer.model_json_schema() | {"additionalProperties": False}
+    assert attributes.get("gen_ai.response.id") == "chatcmpl-AGky8KFDbg6f5fF4qLtsBredIjZZh"
+    assert json.loads(
+        cast(str, attributes.get("gen_ai.request.structured_output_schema"))
+    ) == StructuredAnswer.model_json_schema() | {"additionalProperties": False}
 
 
 @pytest.mark.vcr
@@ -104,18 +99,14 @@ async def test_async_parsed_completion(
     attributes = open_ai_span.attributes or {}
     output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output_messages[0]["message"]["content"]
-    assert (
-        attributes.get("gen_ai.request.base_url")
-        == "https://api.openai.com/v1/"
-    )
+    assert attributes.get("gen_ai.request.base_url") == "https://api.openai.com/v1/"
     assert attributes.get("llm.is_streaming") is False
     input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "chatcmpl-AGC1iysV7rZ0qZ510vbeKVTNxSOHB"
-    )
-    assert json.loads(cast(str, attributes.get("gen_ai.request.structured_output_schema"))) == StructuredAnswer.model_json_schema() | {"additionalProperties": False}
+    assert attributes.get("gen_ai.response.id") == "chatcmpl-AGC1iysV7rZ0qZ510vbeKVTNxSOHB"
+    assert json.loads(
+        cast(str, attributes.get("gen_ai.request.structured_output_schema"))
+    ) == StructuredAnswer.model_json_schema() | {"additionalProperties": False}
 
 
 @pytest.mark.vcr
@@ -143,11 +134,10 @@ async def test_async_parsed_refused_completion(
         output_messages[0]["message"]["refusal"]
         == "I'm very sorry, but I can't assist with that request."
     )
-    assert (
-        attributes.get("gen_ai.response.id")
-        == "chatcmpl-AGkyFJGzZPUGAAEDJJuOS3idKvD3G"
-    )
-    assert json.loads(cast(str, attributes.get("gen_ai.request.structured_output_schema"))) == StructuredAnswer.model_json_schema() | {"additionalProperties": False}
+    assert attributes.get("gen_ai.response.id") == "chatcmpl-AGkyFJGzZPUGAAEDJJuOS3idKvD3G"
+    assert json.loads(
+        cast(str, attributes.get("gen_ai.request.structured_output_schema"))
+    ) == StructuredAnswer.model_json_schema() | {"additionalProperties": False}
 
 
 def test_parsed_completion_exception(
@@ -159,9 +149,7 @@ def test_parsed_completion_exception(
     with pytest.raises(AuthenticationError):
         _ = openai_client.chat.completions.parse(
             model="gpt-4o",
-            messages=[
-                {"role": "user", "content": "Tell me a joke about opentelemetry"}
-            ],
+            messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
             response_format=StructuredAnswer,
         )
 
@@ -170,9 +158,7 @@ def test_parsed_completion_exception(
     span = spans[0]
     attributes = span.attributes or {}
     assert span.name == "openai.chat"
-    assert (
-        attributes.get("gen_ai.request.base_url") == "https://api.openai.com/v1/"
-    )
+    assert attributes.get("gen_ai.request.base_url") == "https://api.openai.com/v1/"
     assert attributes.get("llm.is_streaming") is False
     input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
@@ -187,8 +173,8 @@ def test_parsed_completion_exception(
     assert event.name == "exception"
     assert event_attributes["exception.type"] == "openai.AuthenticationError"
     assert cast(str, event_attributes["exception.message"]).startswith("Error code: 401")
-    assert (
-        "Traceback (most recent call last):" in cast(str, event_attributes["exception.stacktrace"])
+    assert "Traceback (most recent call last):" in cast(
+        str, event_attributes["exception.stacktrace"]
     )
     assert "openai.AuthenticationError" in cast(str, event_attributes["exception.stacktrace"])
     assert "invalid_api_key" in cast(str, event_attributes["exception.stacktrace"])
@@ -205,9 +191,7 @@ async def test_async_parsed_completion_exception(
     with pytest.raises(AuthenticationError):
         _ = await async_openai_client.chat.completions.parse(
             model="gpt-4o",
-            messages=[
-                {"role": "user", "content": "Tell me a joke about opentelemetry"}
-            ],
+            messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
             response_format=StructuredAnswer,
         )
 
@@ -216,9 +200,7 @@ async def test_async_parsed_completion_exception(
     span = spans[0]
     attributes = span.attributes or {}
     assert span.name == "openai.chat"
-    assert (
-        attributes.get("gen_ai.request.base_url") == "https://api.openai.com/v1/"
-    )
+    assert attributes.get("gen_ai.request.base_url") == "https://api.openai.com/v1/"
     assert attributes.get("llm.is_streaming") is False
     input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
@@ -233,8 +215,8 @@ async def test_async_parsed_completion_exception(
     assert event.name == "exception"
     assert event_attributes["exception.type"] == "openai.AuthenticationError"
     assert cast(str, event_attributes["exception.message"]).startswith("Error code: 401")
-    assert (
-        "Traceback (most recent call last):" in cast(str, event_attributes["exception.stacktrace"])
+    assert "Traceback (most recent call last):" in cast(
+        str, event_attributes["exception.stacktrace"]
     )
     assert "openai.AuthenticationError" in cast(str, event_attributes["exception.stacktrace"])
     assert "invalid_api_key" in cast(str, event_attributes["exception.stacktrace"])

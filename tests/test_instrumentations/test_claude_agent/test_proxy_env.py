@@ -30,9 +30,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers
 def test_foundry_base_url_overrides_target(monkeypatch: MonkeyPatch):
     """Test that Foundry base URL is used as target."""
     monkeypatch.setenv("CLAUDE_CODE_USE_FOUNDRY", "1")
-    monkeypatch.setenv(
-        "ANTHROPIC_FOUNDRY_BASE_URL", "https://foundry.example/anthropic/"
-    )
+    monkeypatch.setenv("ANTHROPIC_FOUNDRY_BASE_URL", "https://foundry.example/anthropic/")
     monkeypatch.delenv("ANTHROPIC_FOUNDRY_RESOURCE", raising=False)
 
     proxy = claude_proxy.LaminarProxyServer(
@@ -80,9 +78,7 @@ def test_foundry_resource_builds_target_url(monkeypatch: MonkeyPatch):
         result = claude_proxy.start_proxy(proxy, target_url)
 
         assert result == "http://127.0.0.1:45501"
-        mock_run.assert_called_once_with(
-            "https://my-resource.services.ai.azure.com/anthropic"
-        )
+        mock_run.assert_called_once_with("https://my-resource.services.ai.azure.com/anthropic")
 
     # Clean up
     with patch.object(proxy, "stop_server"):
@@ -171,9 +167,7 @@ def test_proxy_vars_removed_from_options_env(monkeypatch: MonkeyPatch):
             }
 
     options = MockOptions()
-    update_options_env_for_proxy(
-        options, "http://127.0.0.1:45600", "https://api.anthropic.com"
-    )
+    update_options_env_for_proxy(options, "http://127.0.0.1:45600", "https://api.anthropic.com")
 
     # Proxy vars should be removed
     assert "HTTP_PROXY" not in options.env
@@ -279,8 +273,6 @@ def test_subprocess_transport_removes_proxy_vars_from_os_environ(monkeypatch: Mo
     import asyncio
     from unittest.mock import AsyncMock
 
-
-
     # Set up system-level proxy variables
     monkeypatch.setenv("HTTP_PROXY", "http://corporate-proxy.example.com:8080")
     monkeypatch.setenv("HTTPS_PROXY", "https://corporate-proxy.example.com:8443")
@@ -301,9 +293,7 @@ def test_subprocess_transport_removes_proxy_vars_from_os_environ(monkeypatch: Mo
     async def mock_connect(*args: Any, **kwargs: Any):
         # At this point, HTTP_PROXY and HTTPS_PROXY should be removed from os.environ
         proxy_vars_removed_during_connect["HTTP_PROXY"] = "HTTP_PROXY" not in os.environ
-        proxy_vars_removed_during_connect["HTTPS_PROXY"] = (
-            "HTTPS_PROXY" not in os.environ
-        )
+        proxy_vars_removed_during_connect["HTTPS_PROXY"] = "HTTPS_PROXY" not in os.environ
 
     original_connect = AsyncMock(side_effect=mock_connect)
 
@@ -323,11 +313,8 @@ def test_subprocess_transport_removes_proxy_vars_from_os_environ(monkeypatch: Mo
     with (
         patch.object(wrappers, "create_proxy_for_transport") as mock_create,
         patch.object(wrappers, "start_proxy") as mock_start,
-        patch.object(
-            span_utils, "publish_span_context_for_transport"
-        ),
+        patch.object(span_utils, "publish_span_context_for_transport"),
     ):
-
         mock_proxy = MagicMock(spec=ProxyServer)
         mock_create.return_value = mock_proxy
         mock_start.return_value = "http://127.0.0.1:45667"
@@ -339,20 +326,20 @@ def test_subprocess_transport_removes_proxy_vars_from_os_environ(monkeypatch: Mo
         asyncio.run(run_test())
 
         # Verify that during connect, the proxy vars were removed
-        assert proxy_vars_removed_during_connect[
-            "HTTP_PROXY"
-        ], "HTTP_PROXY should be removed from os.environ during connect"
-        assert proxy_vars_removed_during_connect[
-            "HTTPS_PROXY"
-        ], "HTTPS_PROXY should be removed from os.environ during connect"
+        assert proxy_vars_removed_during_connect["HTTP_PROXY"], (
+            "HTTP_PROXY should be removed from os.environ during connect"
+        )
+        assert proxy_vars_removed_during_connect["HTTPS_PROXY"], (
+            "HTTPS_PROXY should be removed from os.environ during connect"
+        )
 
         # After connect completes, verify they're still removed (not yet restored)
-        assert (
-            "HTTP_PROXY" not in os.environ
-        ), "HTTP_PROXY should remain removed until transport closes"
-        assert (
-            "HTTPS_PROXY" not in os.environ
-        ), "HTTPS_PROXY should remain removed until transport closes"
+        assert "HTTP_PROXY" not in os.environ, (
+            "HTTP_PROXY should remain removed until transport closes"
+        )
+        assert "HTTPS_PROXY" not in os.environ, (
+            "HTTPS_PROXY should remain removed until transport closes"
+        )
 
         # Check that the context was stored with snapshot for restoration
         assert hasattr(transport, "__lmnr_context")
@@ -361,11 +348,5 @@ def test_subprocess_transport_removes_proxy_vars_from_os_environ(monkeypatch: Mo
         # Verify that HTTP_PROXY and HTTPS_PROXY were snapshotted
         assert "HTTP_PROXY" in context["original_env"]
         assert "HTTPS_PROXY" in context["original_env"]
-        assert (
-            context["original_env"]["HTTP_PROXY"]
-            == "http://corporate-proxy.example.com:8080"
-        )
-        assert (
-            context["original_env"]["HTTPS_PROXY"]
-            == "https://corporate-proxy.example.com:8443"
-        )
+        assert context["original_env"]["HTTP_PROXY"] == "http://corporate-proxy.example.com:8080"
+        assert context["original_env"]["HTTPS_PROXY"] == "https://corporate-proxy.example.com:8443"

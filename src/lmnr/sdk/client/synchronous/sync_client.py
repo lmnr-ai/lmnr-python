@@ -60,8 +60,8 @@ class LaminarClient:
         resolved_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
         if not resolved_key:
             raise ValueError(
-                "Project API key is not set. Please set the LMNR_PROJECT_API_KEY environment " +
-                "variable or pass project_api_key to the initializer."
+                "Project API key is not set. Please set the LMNR_PROJECT_API_KEY environment "
+                + "variable or pass project_api_key to the initializer."
             )
         self.__project_api_key = resolved_key
         self.__client = httpx.Client(
@@ -95,9 +95,7 @@ class LaminarClient:
             self.__client, self.__base_url, self.__project_api_key
         )
         self.__tags = Tags(self.__client, self.__base_url, self.__project_api_key)
-        self.__datasets = Datasets(
-            self.__client, self.__base_url, self.__project_api_key
-        )
+        self.__datasets = Datasets(self.__client, self.__base_url, self.__project_api_key)
         self.__sql = Sql(self.__client, self.__base_url, self.__project_api_key)
         self.__traces = Traces(self.__client, self.__base_url, self.__project_api_key)
         self.__rollout_sessions = RolloutSessions(

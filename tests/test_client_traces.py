@@ -90,12 +90,12 @@ class TestAsyncLaminarClientTraces:
     async def test_push_metadata_success(self, async_client: AsyncLaminarClient):
         trace_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
         with patch.object(
-            async_client._AsyncLaminarClient__client, "post", new_callable=AsyncMock  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+            async_client._AsyncLaminarClient__client,  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+            "post",
+            new_callable=AsyncMock,
         ) as mock_post:
             mock_post.return_value = _ok_response()
-            await async_client.traces.push_metadata(
-                trace_id, {"score": 0.85, "reviewer": "alice"}
-            )
+            await async_client.traces.push_metadata(trace_id, {"score": 0.85, "reviewer": "alice"})
 
         mock_post.assert_called_once()
         url, *_ = mock_post.call_args.args
@@ -108,7 +108,9 @@ class TestAsyncLaminarClientTraces:
     @pytest.mark.asyncio
     async def test_push_metadata_404_does_not_raise(self, async_client: AsyncLaminarClient):
         with patch.object(
-            async_client._AsyncLaminarClient__client, "post", new_callable=AsyncMock  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+            async_client._AsyncLaminarClient__client,  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+            "post",
+            new_callable=AsyncMock,
         ) as mock_post:
             mock_post.return_value = _not_found_response()
             await async_client.traces.push_metadata(uuid.uuid4(), {"k": "v"})
@@ -117,7 +119,9 @@ class TestAsyncLaminarClientTraces:
     @pytest.mark.asyncio
     async def test_push_metadata_500_raises(self, async_client: AsyncLaminarClient):
         with patch.object(
-            async_client._AsyncLaminarClient__client, "post", new_callable=AsyncMock  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+            async_client._AsyncLaminarClient__client,  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+            "post",
+            new_callable=AsyncMock,
         ) as mock_post:
             mock_post.return_value = _error_response()
             with pytest.raises(ValueError, match="Failed to push trace metadata"):
