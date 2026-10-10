@@ -19,12 +19,13 @@ the instrumentor runs; they default to the dataclass defaults otherwise.
 
 from __future__ import annotations
 
-from typing import Any, Collection
+from collections.abc import Callable, Collection, Sequence
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from wrapt import wrap_function_wrapper
-
 from opentelemetry.instrumentation.utils import unwrap
+from typing_extensions import override
+from wrapt import wrap_function_wrapper
 
 from lmnr.sdk.log import get_default_logger
 
@@ -32,6 +33,14 @@ from .interceptors import (
     LaminarTemporalInterceptorOptions,
     LaminarTracingInterceptor,
 )
+
+if TYPE_CHECKING:
+    from temporalio.client import Interceptor
+    from temporalio.worker import (
+        ActivityInboundInterceptor,
+        WorkflowInboundInterceptor,
+        WorkflowOutboundInterceptor,
+    )
 
 logger = get_default_logger(__name__)
 
@@ -41,14 +50,27 @@ _instruments = ("temporalio >= 1.7.0",)
 #: the instrumentor when explicit options are passed at initialization.
 _interceptor_options = LaminarTemporalInterceptorOptions()
 
+T = TypeVar("T")
 
-def _has_laminar_interceptor(interceptors: Any) -> bool:
+def _has_laminar_interceptor(
+    interceptors: list[
+        WorkflowInboundInterceptor
+        | WorkflowOutboundInterceptor
+        | ActivityInboundInterceptor
+        | Interceptor
+    ] | None
+) -> bool:
     return any(
         isinstance(i, LaminarTracingInterceptor) for i in (interceptors or [])
     )
 
 
-def _wrap_client_init(wrapped, instance, args, kwargs):
+def _wrap_client_init(
+    wrapped: Callable[..., T],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T:
     """Inject a Laminar interceptor into every ``Client`` construction.
 
     ``Client.connect`` builds the config then calls ``cls(...)``, so patching
@@ -65,14 +87,17 @@ def _wrap_client_init(wrapped, instance, args, kwargs):
 
 
 class TemporalInstrumentor(BaseInstrumentor):
+    @override
     def __init__(self, options: LaminarTemporalInterceptorOptions | None = None):
         super().__init__()
-        self._options = options
+        self._options: LaminarTemporalInterceptorOptions | None = options
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
-    def _instrument(self, **kwargs):
+    @override
+    def _instrument(self, **kwargs: Any):
         if self._options is not None:
             global _interceptor_options
             _interceptor_options = self._options
@@ -82,10 +107,11 @@ class TemporalInstrumentor(BaseInstrumentor):
                 "Client.__init__",
                 _wrap_client_init,
             )
-        except (ModuleNotFoundError, AttributeError) as e:
-            logger.debug(f"failed to instrument temporalio client: {e}")
+        except (ModuleNotFoundError, AttributeError):
+            logger.debug("failed to instrument temporalio client", exc_info=True)
 
-    def _uninstrument(self, **kwargs):
+    @override
+    def _uninstrument(self, **kwargs: Any):
         try:
             unwrap("temporalio.client.Client", "__init__")
         except (ModuleNotFoundError, AttributeError):
@@ -93,7 +119,7 @@ class TemporalInstrumentor(BaseInstrumentor):
 
 
 __all__ = [
-    "TemporalInstrumentor",
-    "LaminarTracingInterceptor",
     "LaminarTemporalInterceptorOptions",
+    "LaminarTracingInterceptor",
+    "TemporalInstrumentor",
 ]

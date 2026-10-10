@@ -26,20 +26,31 @@ picks up subagent boundaries without any extra span machinery.
 from __future__ import annotations
 
 import contextvars
-from typing import Any, Collection
+from collections.abc import (
+    AsyncGenerator,
+    Awaitable,
+    Callable,
+    Collection,
+    Generator,
+    Sequence,
+)
+from typing import Any, cast
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
+from typing_extensions import TypeVar, override
 from wrapt import wrap_function_wrapper
 
+from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
 
-from .middleware import LaminarMiddleware, _summarize_messages
+from .middleware import LaminarMiddleware, summarize_messages
 
 logger = get_default_logger(__name__)
+T = TypeVar("T")
 
-_instruments = ("deepagents >= 0.5.0",)
+instruments = ("deepagents >= 0.5.0",)
 
 _ROOT_SPAN_NAME = "deep_agent"
 
@@ -53,7 +64,7 @@ _root_active: contextvars.ContextVar[bool] = contextvars.ContextVar(
 
 def _extract_messages(input_payload: Any) -> Any:
     if isinstance(input_payload, dict):
-        return input_payload.get("messages")
+        return input_payload.get("messages") # pyright: ignore[reportUnknownMemberType, reportUnknownMemberType, reportUnknownVariableType]
     return None
 
 
@@ -61,21 +72,26 @@ def _span_input(input_payload: Any) -> Any:
     messages = _extract_messages(input_payload)
     if messages is None:
         return None
-    return {"messages": _summarize_messages(messages)}
+    return {"messages": summarize_messages(messages)}
 
 
-def _set_output_from_result(span, result: Any) -> None:
+def _set_output_from_result(span: LaminarSpan, result: Any) -> None:
     out_messages = _extract_messages(result)
     if not out_messages:
         return
-    last = out_messages[-1] if isinstance(out_messages, list) else None
-    content = getattr(last, "content", None) if last is not None else None
+    last = out_messages[-1] if isinstance(out_messages, list) else None  # pyright: ignore[reportUnknownVariableType]
+    content = getattr(last, "content", None) if last is not None else None  # pyright: ignore[reportUnknownArgumentType]
     if content is None and isinstance(last, dict):
-        content = last.get("content")
-    span.set_output(content if content is not None else _summarize_messages(out_messages))
+        content = last.get("content")  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
+    span.set_output(content if content is not None else summarize_messages(out_messages))
 
 
-def _wrap_graph_invoke(wrapped, instance, args, kwargs):
+def _wrap_graph_invoke(
+    wrapped: Callable[..., T],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+)-> T:
     if _root_active.get():
         return wrapped(*args, **kwargs)
     input_payload = args[0] if args else kwargs.get("input")
@@ -93,7 +109,12 @@ def _wrap_graph_invoke(wrapped, instance, args, kwargs):
         _root_active.reset(token)
 
 
-async def _awrap_graph_invoke(wrapped, instance, args, kwargs):
+async def _awrap_graph_invoke(
+    wrapped: Callable[..., Awaitable[T]],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+)-> T:
     if _root_active.get():
         return await wrapped(*args, **kwargs)
     input_payload = args[0] if args else kwargs.get("input")
@@ -111,7 +132,12 @@ async def _awrap_graph_invoke(wrapped, instance, args, kwargs):
         _root_active.reset(token)
 
 
-def _wrap_graph_stream(wrapped, instance, args, kwargs):
+def _wrap_graph_stream(
+    wrapped: Callable[..., Generator[T]],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+)-> Generator[T]:
     # The `_root_active` sentinel is set only by `_wrap_graph_invoke`, and
     # only within its own (non-generator) function frame. That's enough to
     # collapse the invoke→stream path: when Pregel.invoke internally calls
@@ -133,11 +159,11 @@ def _wrap_graph_stream(wrapped, instance, args, kwargs):
     # detaches the OTel + Laminar-isolated contexts around each iteration
     # and ends the span on generator close (including on GeneratorExit).
     def _gen():
-        span = Laminar.start_span(
+        span = cast(LaminarSpan, Laminar.start_span(
             name=_ROOT_SPAN_NAME,
             input=_span_input(input_payload),
             span_type="DEFAULT",
-        )
+        ))
         last_chunk: Any = None
         with Laminar.use_span(span, end_on_exit=True):
             for chunk in wrapped(*args, **kwargs):
@@ -149,7 +175,12 @@ def _wrap_graph_stream(wrapped, instance, args, kwargs):
     return _gen()
 
 
-def _awrap_graph_stream(wrapped, instance, args, kwargs):
+def _awrap_graph_stream(
+    wrapped: Callable[..., AsyncGenerator[T]],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+)-> AsyncGenerator[T]:
     # See `_wrap_graph_stream` — the sentinel is intentionally not set
     # inside the generator body to avoid cross-stream leakage.
     if _root_active.get():
@@ -157,11 +188,11 @@ def _awrap_graph_stream(wrapped, instance, args, kwargs):
     input_payload = args[0] if args else kwargs.get("input")
 
     async def _gen():
-        span = Laminar.start_span(
+        span = cast(LaminarSpan, Laminar.start_span(
             name=_ROOT_SPAN_NAME,
             input=_span_input(input_payload),
             span_type="DEFAULT",
-        )
+        ))
         last_chunk: Any = None
         with Laminar.use_span(span, end_on_exit=True):
             async for chunk in wrapped(*args, **kwargs):
@@ -194,10 +225,15 @@ def _wrap_graph_methods(graph: Any) -> None:
     try:
         setattr(graph, _INSTRUMENTED_GRAPH_FLAG, True)
     except Exception:
-        pass
+        logger.debug("Failed to wrap Langgraph methods for deepagents", exc_info=True)
 
 
-def _inject_middleware(wrapped, instance, args, kwargs):
+def _inject_middleware(
+    wrapped: Callable[..., T],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T:
     existing = kwargs.get("middleware") or ()
     if not any(isinstance(m, LaminarMiddleware) for m in existing):
         kwargs["middleware"] = (LaminarMiddleware(), *existing)
@@ -209,7 +245,7 @@ def _inject_middleware(wrapped, instance, args, kwargs):
     return graph
 
 
-_WRAPPED_TARGETS: tuple[tuple[str, str, Any], ...] = (
+_WRAPPED_TARGETS: tuple[tuple[str, str, Callable[..., Any]], ...] = (
     ("deepagents.graph", "create_deep_agent", _inject_middleware),
     ("deepagents", "create_deep_agent", _inject_middleware),
 )
@@ -228,17 +264,20 @@ class DeepagentsInstrumentor(BaseInstrumentor):
       context propagation).
     """
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
-        return _instruments
+        return instruments
 
-    def _instrument(self, **kwargs):
+    @override
+    def _instrument(self, **kwargs: dict[str, Any]):
         for module, name, wrapper in _WRAPPED_TARGETS:
             try:
                 wrap_function_wrapper(module, name, wrapper)
             except (AttributeError, ModuleNotFoundError, ImportError):
                 logger.debug("Failed to wrap %s.%s", module, name)
 
-    def _uninstrument(self, **kwargs):
+    @override
+    def _uninstrument(self, **kwargs: dict[str, Any]):
         for module, name, _ in _WRAPPED_TARGETS:
             try:
                 mod = __import__(module, fromlist=[name])

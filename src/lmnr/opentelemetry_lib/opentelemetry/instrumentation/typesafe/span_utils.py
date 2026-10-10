@@ -1,4 +1,5 @@
 import os
+from typing import Any, cast
 
 from opentelemetry.trace import Span
 
@@ -14,7 +15,7 @@ def should_send_prompts() -> bool:
     return (os.getenv("LMNR_TRACE_CONTENT") or "true").lower() == "true"
 
 
-def _default_model(instance) -> str | None:
+def _default_model(instance: Any) -> str | None:
     """Best-effort read of the client's default model (private attribute)."""
     try:
         return instance._config.default_model
@@ -22,7 +23,7 @@ def _default_model(instance) -> str | None:
         return None
 
 
-def _questions_to_dicts(questions) -> dict:
+def _questions_to_dicts(questions: Any) -> dict[str, Any]:
     """Questions are pydantic models (`Noul`/`Choice`/`Score`) or raw dicts."""
     return {
         name: question if isinstance(question, dict) else to_dict(question)
@@ -31,7 +32,7 @@ def _questions_to_dicts(questions) -> dict:
 
 
 @dont_throw
-def set_request_attributes(span: Span, call_kwargs: dict, instance):
+def set_request_attributes(span: Span, call_kwargs: dict[str, Any], instance: Any):
     set_span_attribute(
         span,
         "gen_ai.request.model",
@@ -57,11 +58,11 @@ def set_request_attributes(span: Span, call_kwargs: dict, instance):
 
 
 @dont_throw
-def set_response_attributes(span: Span, response: dict | None):
+def set_response_attributes(span: Span, response: dict[str, Any] | None):
     if not response:
         return
     set_span_attribute(span, "gen_ai.response.model", response.get("model"))
-    usage = response.get("usage") or {}
+    usage = cast(dict[str, int], response.get("usage") or {})
     set_span_attribute(span, "gen_ai.usage.input_tokens", usage.get("input_tokens"))
     set_span_attribute(span, "gen_ai.usage.output_tokens", usage.get("output_tokens"))
     # A custom `response_model` result may not carry `answers`.

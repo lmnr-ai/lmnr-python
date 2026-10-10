@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
 from claude_agent_sdk import Transport
+from typing_extensions import override
 
 
 def _default_conversations() -> list[list[dict[str, Any]]]:
@@ -90,24 +91,26 @@ class MockClaudeTransport(Transport):
         close_after_responses: bool = False,
     ) -> None:
 
-        self._connected = False
-        self._ready = False
-        self._closed = False
+        self._connected: bool = False
+        self._ready: bool = False
+        self._closed: bool = False
         self._sentinel: object = object()
         self._message_queue: asyncio.Queue[dict[str, Any] | object] = asyncio.Queue()
-        self._conversations = (
+        self._conversations: list[Sequence[dict[str,Any]]] | list[list[dict[str, Any]]] = (
             list(conversations)
             if conversations is not None
             else _default_conversations()
         )
-        self._conversation_index = 0
-        self._auto_respond_on_connect = auto_respond_on_connect
-        self._close_after_responses = close_after_responses
+        self._conversation_index: int = 0
+        self._auto_respond_on_connect: bool = auto_respond_on_connect
+        self._close_after_responses: bool = close_after_responses
 
+    @override
     async def connect(self) -> None:
         self._connected = True
         self._ready = True
 
+    @override
     async def write(self, data: str) -> None:
         if not data.strip():
             return
@@ -119,7 +122,7 @@ class MockClaudeTransport(Transport):
             request_id = payload.get("request_id")
             request_subtype = payload.get("request", {}).get("subtype")
 
-            response = {
+            response: dict[str, str | dict[str, str | dict[str, Any]]] = {
                 "type": "control_response",
                 "response": {
                     "subtype": "success",
@@ -158,12 +161,12 @@ class MockClaudeTransport(Transport):
         for message in script:
             self._message_queue.put_nowait(message)
 
-        if self._close_after_responses or force_close:
-            if not self._closed:
-                self._closed = True
-                self._ready = False
-                self._message_queue.put_nowait(self._sentinel)
+        if (self._close_after_responses or force_close) and not self._closed:
+            self._closed = True
+            self._ready = False
+            self._message_queue.put_nowait(self._sentinel)
 
+    @override
     async def close(self) -> None:
         if self._closed:
             return
@@ -171,16 +174,19 @@ class MockClaudeTransport(Transport):
         self._ready = False
         await self._message_queue.put(self._sentinel)
 
+    @override
     def is_ready(self) -> bool:
         return self._ready and self._connected and not self._closed
 
+    @override
     async def end_input(self) -> None:
         # No-op for mock transport.
         return
 
+    @override
     async def read_messages(self) -> AsyncIterator[dict[str, Any]]:
         while True:
             message = await self._message_queue.get()
             if message is self._sentinel:
                 break
-            yield message  # type: ignore[misc]
+            yield message  # pyright: ignore[reportReturnType]

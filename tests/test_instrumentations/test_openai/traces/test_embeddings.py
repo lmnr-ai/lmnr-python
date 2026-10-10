@@ -1,10 +1,17 @@
-from unittest.mock import patch
 import json
+from typing import Any, cast
+from unittest.mock import patch
 
 import httpx
 import openai
 import pytest
+from openai import AsyncOpenAI, AuthenticationError, OpenAI
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import (
+    OpenAIInstrumentor,
+)
 
 from .utils import (
     assert_request_contains_tracecontext,
@@ -14,8 +21,12 @@ from .utils import (
 
 
 @pytest.mark.vcr
-def test_embeddings(instrument_legacy, span_exporter, openai_client):
-    openai_client.embeddings.create(
+def test_embeddings(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
+):
+    _ = openai_client.embeddings.create(
         input="Tell me a joke about opentelemetry",
         model="text-embedding-ada-002",
     )
@@ -25,18 +36,23 @@ def test_embeddings(instrument_legacy, span_exporter, openai_client):
         "openai.embeddings",
     ]
     open_ai_span = spans[0]
-    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    attributes = open_ai_span.attributes or {}
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
-    assert open_ai_span.attributes["gen_ai.request.model"] == "text-embedding-ada-002"
-    assert open_ai_span.attributes["gen_ai.usage.input_tokens"] == 8
+    assert attributes["gen_ai.request.model"] == "text-embedding-ada-002"
+    assert attributes["gen_ai.usage.input_tokens"] == 8
     assert (
-        open_ai_span.attributes["gen_ai.request.base_url"]
+        attributes["gen_ai.request.base_url"]
         == "https://api.openai.com/v1/"
     )
 
 
 @pytest.mark.vcr
-def test_embeddings_with_raw_response(instrument_legacy, span_exporter, openai_client):
+def test_embeddings_with_raw_response(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
+):
     response = openai_client.embeddings.with_raw_response.create(
         input="Tell me a joke about opentelemetry",
         model="text-embedding-ada-002",
@@ -46,13 +62,14 @@ def test_embeddings_with_raw_response(instrument_legacy, span_exporter, openai_c
         "openai.embeddings",
     ]
     open_ai_span = spans[0]
-    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    attributes = open_ai_span.attributes or {}
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
 
-    assert open_ai_span.attributes["gen_ai.request.model"] == "text-embedding-ada-002"
-    assert open_ai_span.attributes["gen_ai.usage.input_tokens"] == 8
+    assert attributes["gen_ai.request.model"] == "text-embedding-ada-002"
+    assert attributes["gen_ai.usage.input_tokens"] == 8
     assert (
-        open_ai_span.attributes["gen_ai.request.base_url"]
+        attributes["gen_ai.request.base_url"]
         == "https://api.openai.com/v1/"
     )
 
@@ -61,7 +78,10 @@ def test_embeddings_with_raw_response(instrument_legacy, span_exporter, openai_c
 
 
 @pytest.mark.vcr
-def test_azure_openai_embeddings(instrument_legacy, span_exporter):
+def test_azure_openai_embeddings(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+):
     api_key = "test-api-key"
     azure_resource = "test-resource"
     azure_deployment = "test-deployment"
@@ -72,7 +92,7 @@ def test_azure_openai_embeddings(instrument_legacy, span_exporter):
         azure_deployment=azure_deployment,
         api_version="2023-07-01-preview",
     )
-    openai_client.embeddings.create(
+    _ = openai_client.embeddings.create(
         input="Tell me a joke about opentelemetry",
         model="embedding",
     )
@@ -82,24 +102,27 @@ def test_azure_openai_embeddings(instrument_legacy, span_exporter):
         "openai.embeddings",
     ]
     open_ai_span = spans[0]
-    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    attributes = open_ai_span.attributes or {}
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
-    assert open_ai_span.attributes["gen_ai.request.model"] == "embedding"
-    assert open_ai_span.attributes["gen_ai.usage.input_tokens"] == 8
+    assert attributes["gen_ai.request.model"] == "embedding"
+    assert attributes["gen_ai.usage.input_tokens"] == 8
     assert (
-        open_ai_span.attributes["gen_ai.request.base_url"]
+        attributes["gen_ai.request.base_url"]
         == f"https://{azure_resource}.openai.azure.com/openai/deployments/{azure_deployment}/"
     )
-    assert open_ai_span.attributes["gen_ai.openai.api_version"] == "2023-07-01-preview"
+    assert attributes["gen_ai.openai.api_version"] == "2023-07-01-preview"
 
 
 @pytest.mark.vcr
 def test_embeddings_context_propagation(
-    instrument_legacy, span_exporter, vllm_openai_client
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    vllm_openai_client: OpenAI,
 ):
     send_spy = spy_decorator(httpx.Client.send)
     with patch.object(httpx.Client, "send", send_spy):
-        vllm_openai_client.embeddings.create(
+        _ = vllm_openai_client.embeddings.create(
             input="Tell me a joke about opentelemetry",
             model="intfloat/e5-mistral-7b-instruct",
         )
@@ -109,19 +132,21 @@ def test_embeddings_context_propagation(
         "openai.embeddings",
     ]
     open_ai_span = spans[0]
-    request = single_request_to_path(send_spy.mock, "/v1/embeddings")
+    request = single_request_to_path(send_spy.mock, "/v1/embeddings")  # pyright: ignore[reportFunctionMemberAccess]
 
-    assert_request_contains_tracecontext(request, open_ai_span)
+    assert_request_contains_tracecontext(request, cast(Any, open_ai_span))
 
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_embeddings_context_propagation(
-    instrument_legacy, span_exporter, async_vllm_openai_client
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    async_vllm_openai_client: AsyncOpenAI,
 ):
     send_spy = spy_decorator(httpx.AsyncClient.send)
     with patch.object(httpx.AsyncClient, "send", send_spy):
-        await async_vllm_openai_client.embeddings.create(
+        _ = await async_vllm_openai_client.embeddings.create(
             input="Tell me a joke about opentelemetry",
             model="intfloat/e5-mistral-7b-instruct",
         )
@@ -131,15 +156,19 @@ async def test_async_embeddings_context_propagation(
         "openai.embeddings",
     ]
     open_ai_span = spans[0]
-    request = single_request_to_path(send_spy.mock, "/v1/embeddings")
+    request = single_request_to_path(send_spy.mock, "/v1/embeddings")  # pyright: ignore[reportFunctionMemberAccess]
 
-    assert_request_contains_tracecontext(request, open_ai_span)
+    assert_request_contains_tracecontext(request, cast(Any, open_ai_span))
 
 
-def test_embeddings_exception(instrument_legacy, span_exporter, openai_client):
+def test_embeddings_exception(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
+):
     openai_client.api_key = "invalid"
-    with pytest.raises(Exception):
-        openai_client.embeddings.create(
+    with pytest.raises(AuthenticationError):
+        _ = openai_client.embeddings.create(
             input="Tell me a joke about opentelemetry",
             model="text-embedding-ada-002",
         )
@@ -150,22 +179,25 @@ def test_embeddings_exception(instrument_legacy, span_exporter, openai_client):
     ]
     open_ai_span = spans[0]
     assert open_ai_span.status.status_code == StatusCode.ERROR
-    assert open_ai_span.status.description.startswith("Error code: 401")
+    assert (open_ai_span.status.description or "").startswith("Error code: 401")
     events = open_ai_span.events
     assert len(events) == 1
     event = events[0]
+    event_attributes = event.attributes or {}
     assert event.name == "exception"
-    assert event.attributes["exception.type"] == "openai.AuthenticationError"
-    assert event.attributes["exception.message"].startswith("Error code: 401")
+    assert event_attributes["exception.type"] == "openai.AuthenticationError"
+    assert cast(str, event_attributes["exception.message"]).startswith("Error code: 401")
 
 
 @pytest.mark.asyncio
 async def test_async_embeddings_exception(
-    instrument_legacy, span_exporter, async_openai_client
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    async_openai_client: AsyncOpenAI,
 ):
     async_openai_client.api_key = "invalid"
-    with pytest.raises(Exception):
-        await async_openai_client.embeddings.create(
+    with pytest.raises(AuthenticationError):
+        _ = await async_openai_client.embeddings.create(
             input="Tell me a joke about opentelemetry",
             model="text-embedding-ada-002",
         )
@@ -176,10 +208,11 @@ async def test_async_embeddings_exception(
     ]
     open_ai_span = spans[0]
     assert open_ai_span.status.status_code == StatusCode.ERROR
-    assert open_ai_span.status.description.startswith("Error code: 401")
+    assert (open_ai_span.status.description or "").startswith("Error code: 401")
     events = open_ai_span.events
     assert len(events) == 1
     event = events[0]
+    event_attributes = event.attributes or {}
     assert event.name == "exception"
-    assert event.attributes["exception.type"] == "openai.AuthenticationError"
-    assert event.attributes["exception.message"].startswith("Error code: 401")
+    assert event_attributes["exception.type"] == "openai.AuthenticationError"
+    assert cast(str, event_attributes["exception.message"]).startswith("Error code: 401")

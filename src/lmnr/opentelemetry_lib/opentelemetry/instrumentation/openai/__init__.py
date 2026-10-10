@@ -3,11 +3,15 @@ Initially copied over from openllmetry, commit
 b3a18c9f7e6ff2368c8fb0bc35fd9123f11121c4
 """
 
-from typing import Callable, Collection
+from collections.abc import Collection
+from typing import Any
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from .shared.config import Config
-from .utils import is_openai_v1
+from typing_extensions import override
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
+    is_openai_v1,
+)
 
 _instruments = ("openai >= 0.27.0",)
 
@@ -15,27 +19,15 @@ _instruments = ("openai >= 0.27.0",)
 class OpenAIInstrumentor(BaseInstrumentor):
     """An instrumentor for OpenAI's client library."""
 
-    def __init__(
-        self,
-        enrich_assistant: bool = False,
-        enrich_token_usage: bool = False,
-        exception_logger=None,
-        get_common_metrics_attributes: Callable[[], dict] = lambda: {},
-        enable_trace_context_propagation: bool = True,
-        use_legacy_attributes: bool = True,
-    ):
+    def __init__(self):
         super().__init__()
-        Config.enrich_assistant = enrich_assistant
-        Config.enrich_token_usage = enrich_token_usage
-        Config.exception_logger = exception_logger
-        Config.get_common_metrics_attributes = get_common_metrics_attributes
-        Config.enable_trace_context_propagation = enable_trace_context_propagation
-        Config.use_legacy_attributes = use_legacy_attributes
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
-    def _instrument(self, **kwargs):
+    @override
+    def _instrument(self, **kwargs: Any):
         if is_openai_v1():
             from .v1 import OpenAIV1Instrumentor
 
@@ -45,7 +37,8 @@ class OpenAIInstrumentor(BaseInstrumentor):
 
             OpenAIV0Instrumentor().instrument(**kwargs)
 
-    def _uninstrument(self, **kwargs):
+    @override
+    def _uninstrument(self, **kwargs: Any):
         if is_openai_v1():
             from .v1 import OpenAIV1Instrumentor
 

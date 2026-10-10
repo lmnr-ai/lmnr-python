@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import cast
 from unittest.mock import MagicMock
 
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.helpers import (  # noqa: E501
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.helpers import (
     get_current_system_instructions,
     reset_current_system_instructions,
     set_current_system_instructions,
 )
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.messages import (  # noqa: E501
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.messages import (
     set_gen_ai_input_messages,
 )
 
@@ -32,7 +33,7 @@ def test_set_gen_ai_input_messages_without_system_instructions_unchanged():
     """No system_instructions → output matches pre-change behavior."""
     span, captured = _captured_attrs()
     set_gen_ai_input_messages(span, "hello there")
-    messages = json.loads(captured["gen_ai.input.messages"])
+    messages = json.loads(cast(str, captured["gen_ai.input.messages"]))
     assert messages == [{"role": "user", "content": "hello there"}]
 
 
@@ -43,7 +44,7 @@ def test_set_gen_ai_input_messages_prepends_system_instructions():
         [{"role": "user", "content": "What is 2+2?"}],
         system_instructions="You are a calculator.",
     )
-    messages = json.loads(captured["gen_ai.input.messages"])
+    messages = json.loads(cast(str, captured["gen_ai.input.messages"]))
     assert messages == [
         {
             "role": "system",
@@ -60,7 +61,7 @@ def test_set_gen_ai_input_messages_system_only_still_emits():
     set_gen_ai_input_messages(
         span, None, system_instructions="Always respond in French."
     )
-    messages = json.loads(captured["gen_ai.input.messages"])
+    messages = json.loads(cast(str, captured["gen_ai.input.messages"]))
     assert messages == [
         {
             "role": "system",

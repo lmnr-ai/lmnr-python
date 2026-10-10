@@ -1,11 +1,27 @@
 """OpenTelemetry Groq instrumentation"""
 
 import logging
-from typing import Collection
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterable,
+    Awaitable,
+    Callable,
+    Collection,
+    Generator,
+    Iterable,
+    Sequence,
+)
+from importlib.metadata import version
+from typing import Any, cast
 
 from opentelemetry import context as context_api
-from .config import Config
-from .span_utils import (
+from opentelemetry.trace import Span
+from opentelemetry.trace.status import Status, StatusCode
+from typing_extensions import TypeVar, override
+
+from groq._streaming import AsyncStream, Stream
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.event_models import Usage
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.groq.span_utils import (
     set_input_attributes,
     set_model_input_attributes,
     set_model_response_attributes,
@@ -13,72 +29,36 @@ from .span_utils import (
     set_response_attributes,
     set_streaming_response_attributes,
 )
-from .version import __version__
-
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
+    BaseLaminarInstrumentor,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WrappedFunctionSpec,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     safe_start_span,
 )
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
-from opentelemetry.trace import Tracer, get_tracer
-from opentelemetry.trace.status import Status, StatusCode
-from wrapt import wrap_function_wrapper
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    stamp_instrumentation_scope,
+)
+from lmnr.sdk.log import get_default_logger
 
-from groq._streaming import AsyncStream, Stream
-
-logger = logging.getLogger(__name__)
+logger = get_default_logger(__name__)
 
 _instruments = ("groq >= 0.9.0",)
 
+T = TypeVar("T")
 
-WRAPPED_METHODS = [
-    {
-        "package": "groq.resources.chat.completions",
-        "object": "Completions",
-        "method": "create",
-        "span_name": "groq.chat",
-    },
-]
-WRAPPED_AMETHODS = [
-    {
-        "package": "groq.resources.chat.completions",
-        "object": "AsyncCompletions",
-        "method": "create",
-        "span_name": "groq.chat",
-    },
-]
+def is_streaming_response(response: Any) -> bool:
+    return isinstance(response, (Stream, AsyncStream))
 
 
-def is_streaming_response(response):
-    return isinstance(response, Stream) or isinstance(response, AsyncStream)
-
-
-def _with_chat_telemetry_wrapper(func):
-    """Helper for providing tracer for wrapper functions. Includes metric collectors."""
-
-    def _with_chat_telemetry(
-        tracer,
-        to_wrap,
-    ):
-        def wrapper(wrapped, instance, args, kwargs):
-            return func(
-                tracer,
-                to_wrap,
-                wrapped,
-                instance,
-                args,
-                kwargs,
-            )
-
-        return wrapper
-
-    return _with_chat_telemetry
-
-
-def _process_streaming_chunk(chunk):
+def _process_streaming_chunk(chunk: Any) -> tuple[Any, Any, Any]:
     """Extract content, finish_reason and usage from a streaming chunk."""
-    if not chunk.choices:
+    if not getattr(chunk, "choices", None):
         return None, None, None
 
     delta = chunk.choices[0].delta
@@ -87,22 +67,27 @@ def _process_streaming_chunk(chunk):
 
     # Extract usage from x_groq if present in the final chunk
     usage = None
-    if hasattr(chunk, "x_groq") and chunk.x_groq and chunk.x_groq.usage:
+    if hasattr(chunk, "x_groq") and chunk.x_groq and getattr(chunk.x_groq, "usage", None):
         usage = chunk.x_groq.usage
 
     return content, finish_reason, usage
 
 
 @dont_throw
-def _handle_streaming_response(span, accumulated_content, finish_reason, usage):
+def _handle_streaming_response(
+    span: Span,
+    accumulated_content: Any,
+    finish_reason: str | None,
+    usage: Usage | None,
+):
     set_model_streaming_response_attributes(span, usage)
     set_streaming_response_attributes(span, accumulated_content, finish_reason, usage)
 
 
 def _create_stream_processor(
-    response,
-    span,
-):
+    response: Iterable[T],
+    span: Span,
+)-> Generator[T]:
     """Create a generator that processes a stream while collecting telemetry."""
     accumulated_content = ""
     finish_reason = None
@@ -117,10 +102,8 @@ def _create_stream_processor(
                 finish_reason = chunk_finish_reason
             if chunk_usage:
                 usage = chunk_usage
-        except Exception as e:
-            logger.warning(
-                "Failed to process streaming chunk for groq span, error: %s", str(e)
-            )
+        except Exception:
+            logger.warning("Failed to process streaming chunk for groq span", exc_info=True)
         finally:
             yield chunk
 
@@ -132,7 +115,10 @@ def _create_stream_processor(
     span.end()
 
 
-async def _create_async_stream_processor(response, span):
+async def _create_async_stream_processor(
+    response: AsyncIterable[T],
+    span: Span
+) -> AsyncGenerator[T]:
     """Create an async generator that processes a stream while collecting telemetry."""
     accumulated_content = ""
     finish_reason = None
@@ -147,9 +133,9 @@ async def _create_async_stream_processor(response, span):
                 finish_reason = chunk_finish_reason
             if chunk_usage:
                 usage = chunk_usage
-        except Exception as e:
+        except Exception:
             logger.warning(
-                "Failed to process streaming chunk for groq span, error: %s", str(e)
+                "Failed to process streaming chunk for groq span", exc_info=True,
             )
         finally:
             yield chunk
@@ -163,31 +149,29 @@ async def _create_async_stream_processor(response, span):
 
 
 @dont_throw
-def _handle_input(span, kwargs):
+def _handle_input(span: Span, kwargs: dict[str, Any]):
     set_model_input_attributes(span, kwargs)
     set_input_attributes(span, kwargs)
 
 
 @dont_throw
-def _handle_response(span, response):
+def _handle_response(span: Span, response: Any):
     set_model_response_attributes(span, response)
     set_response_attributes(span, response)
 
 
-@_with_chat_telemetry_wrapper
 def _wrap(
-    tracer: Tracer,
-    to_wrap,
-    wrapped,
-    instance,
-    args,
-    kwargs,
-):
-    """Instruments and calls every function defined in TO_WRAP."""
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
+    to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., T],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T | Generator[T]:
+    """Instruments and calls every function defined in WRAPPED_FUNCTIONS."""
+    if context_api.get_value(context_api._SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
-    name = to_wrap.get("span_name")
+    name = to_wrap.get("span_name") or "groq.chat"
     span = safe_start_span(
         name=name, attributes={"gen_ai.system": "groq"}, span_type="LLM"
     )
@@ -195,21 +179,18 @@ def _wrap(
         logger.warning("Failed to start span for groq chat")
         return wrapped(*args, **kwargs)
 
+    stamp_instrumentation_scope(span, to_wrap)
     _handle_input(span, kwargs)
 
-    try:
-        response = wrapped(*args, **kwargs)
-    except Exception as e:  # pylint: disable=broad-except
-        raise e
+    response = wrapped(*args, **kwargs)
+
 
     if is_streaming_response(response):
         try:
-            return _create_stream_processor(response, span)
+            return _create_stream_processor(cast(Iterable[Any], response), span)
         except Exception as ex:
-            logger.warning(
-                "Failed to process streaming response for groq span, error: %s",
-                str(ex),
-            )
+            logger.warning("Failed to process streaming response for groq span", exc_info=True)
+            span.record_exception(ex)
             span.set_status(Status(StatusCode.ERROR))
             span.end()
             raise
@@ -217,11 +198,8 @@ def _wrap(
         try:
             _handle_response(span, response)
 
-        except Exception as ex:  # pylint: disable=broad-except
-            logger.warning(
-                "Failed to set response attributes for groq span, error: %s",
-                str(ex),
-            )
+        except Exception:
+            logger.warning("Failed to set response attributes for groq span", exc_info=True)
 
         if span.is_recording():
             span.set_status(Status(StatusCode.OK))
@@ -229,20 +207,18 @@ def _wrap(
     return response
 
 
-@_with_chat_telemetry_wrapper
 async def _awrap(
-    tracer,
-    to_wrap,
-    wrapped,
-    instance,
-    args,
-    kwargs,
-):
-    """Instruments and calls every function defined in TO_WRAP."""
-    if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
+    to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., Awaitable[T]],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T | AsyncGenerator[T]:
+    """Instruments and calls every function defined in WRAPPED_FUNCTIONS."""
+    if context_api.get_value(context_api._SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
-    name = to_wrap.get("span_name")
+    name = to_wrap.get("span_name") or "groq.chat"
     span = safe_start_span(
         name=name, attributes={"gen_ai.system": "groq"}, span_type="LLM"
     )
@@ -250,21 +226,21 @@ async def _awrap(
         logger.warning("Failed to start span for groq chat")
         return await wrapped(*args, **kwargs)
 
+    stamp_instrumentation_scope(span, to_wrap)
     _handle_input(span, kwargs)
 
-    try:
-        response = await wrapped(*args, **kwargs)
-    except Exception as e:  # pylint: disable=broad-except
-        raise e
+    response = await wrapped(*args, **kwargs)
+
 
     if is_streaming_response(response):
         try:
-            return await _create_async_stream_processor(response, span)
+            return _create_async_stream_processor(cast(AsyncIterable[Any], response), span)
         except Exception as ex:
             logger.warning(
-                "Failed to process streaming response for groq span, error: %s",
-                str(ex),
+                "Failed to process streaming response for groq span",
+                exc_info=True,
             )
+            span.record_exception(ex)
             span.set_status(Status(StatusCode.ERROR))
             span.end()
             raise
@@ -277,70 +253,55 @@ async def _awrap(
     return response
 
 
-class GroqInstrumentor(BaseInstrumentor):
+WRAPPED_FUNCTIONS: list[WrappedFunctionSpec] = [
+    WrappedFunctionSpec(
+        package_name="groq.resources.chat.completions",
+        object_name="Completions",
+        method_name="create",
+        span_name="groq.chat",
+        is_async=False,
+        wrapper_function=_wrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="groq.resources.chat.completions",
+        object_name="AsyncCompletions",
+        method_name="create",
+        span_name="groq.chat",
+        is_async=True,
+        wrapper_function=_awrap,
+    ),
+]
+
+
+class GroqInstrumentor(BaseLaminarInstrumentor):
     """An instrumentor for Groq's client library."""
 
-    def __init__(
-        self,
-        enrich_token_usage: bool = False,
-        use_legacy_attributes: bool = True,
-    ):
-        super().__init__()
-        Config.enrich_token_usage = enrich_token_usage
-        Config.use_legacy_attributes = use_legacy_attributes
+    _scope: LaminarInstrumentationScopeAttributes | None = None
 
+    @override
+    def __init__(self):
+        super().__init__()
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
+            wrapped_functions=[
+                {**spec, "instrumentation_scope": self.instrumentation_scope()}
+                for spec in WRAPPED_FUNCTIONS
+            ]
+        )
+
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
-    def _instrument(self, **kwargs):
-        tracer_provider = kwargs.get("tracer_provider")
-        tracer = get_tracer(__name__, __version__, tracer_provider)
-
-        for wrapped_method in WRAPPED_METHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            wrap_method = wrapped_method.get("method")
-
+    @override
+    def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
+        if self._scope is None:
             try:
-                wrap_function_wrapper(
-                    wrap_package,
-                    f"{wrap_object}.{wrap_method}",
-                    _wrap(
-                        tracer,
-                        wrapped_method,
-                    ),
-                )
-            except ModuleNotFoundError:
-                pass  # that's ok, we don't want to fail if some methods do not exist
-
-        for wrapped_method in WRAPPED_AMETHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            wrap_method = wrapped_method.get("method")
-            try:
-                wrap_function_wrapper(
-                    wrap_package,
-                    f"{wrap_object}.{wrap_method}",
-                    _awrap(
-                        tracer,
-                        wrapped_method,
-                    ),
-                )
-            except ModuleNotFoundError:
-                pass  # that's ok, we don't want to fail if some methods do not exist
-
-    def _uninstrument(self, **kwargs):
-        for wrapped_method in WRAPPED_METHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            unwrap(
-                f"{wrap_package}.{wrap_object}",
-                wrapped_method.get("method"),
+                groq_version = version("groq")
+            except Exception:
+                logger.debug("Failed to get groq version", exc_info=True)
+                groq_version = "unknown"
+            self._scope = LaminarInstrumentationScopeAttributes(
+                name="groq",
+                version=groq_version,
             )
-        for wrapped_method in WRAPPED_AMETHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            unwrap(
-                f"{wrap_package}.{wrap_object}",
-                wrapped_method.get("method"),
-            )
+        return self._scope

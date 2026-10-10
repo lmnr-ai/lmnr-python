@@ -1,8 +1,10 @@
 import json
 import os
+from typing import Any, cast
 
 import pytest
 from openrouter import OpenRouter
+from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
 
@@ -34,13 +36,14 @@ def _client() -> OpenRouter:
     return OpenRouter(api_key=os.environ.get("OPENROUTER_API_KEY", "test-key"))
 
 
-def _assert_usage(span):
-    assert span.attributes["gen_ai.usage.input_tokens"] > 0
-    assert span.attributes["gen_ai.usage.output_tokens"] > 0
-    assert span.attributes["llm.usage.total_tokens"] > 0
-    assert span.attributes["gen_ai.usage.cost"] > 0
-    assert span.attributes["gen_ai.usage.input_cost"] > 0
-    assert span.attributes["gen_ai.usage.output_cost"] > 0
+def _assert_usage(span: ReadableSpan):
+    attributes = span.attributes or {}
+    assert cast(int, attributes["gen_ai.usage.input_tokens"]) > 0
+    assert cast(int, attributes["gen_ai.usage.output_tokens"]) > 0
+    assert cast(int, attributes["llm.usage.total_tokens"]) > 0
+    assert cast(int, attributes["gen_ai.usage.cost"]) > 0
+    assert cast(int, attributes["gen_ai.usage.input_cost"]) > 0
+    assert cast(int, attributes["gen_ai.usage.output_cost"]) > 0
 
 
 @pytest.mark.vcr
@@ -54,7 +57,7 @@ def test_openrouter_chat(span_exporter: InMemorySpanExporter):
         presence_penalty=0.3,
         reasoning_effort="low",
         user="user-123",
-        response_format={
+        response_format={  # pyright: ignore[reportArgumentType]
             "type": "json_schema",
             "json_schema": {
                 "name": "capital",
@@ -67,29 +70,30 @@ def test_openrouter_chat(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
+    attributes = span.attributes or {}
     assert span.name == "openrouter.chat"
-    assert span.attributes["lmnr.span.type"] == "LLM"
-    assert span.attributes["gen_ai.system"] == "openrouter"
-    assert span.attributes["lmnr.span.instrumentation_scope.name"] == "openrouter"
-    assert span.attributes["lmnr.span.instrumentation_scope.version"]
-    assert span.attributes["gen_ai.request.model"] == MODEL
-    assert span.attributes["gen_ai.request.max_tokens"] == 30
-    assert span.attributes["gen_ai.request.temperature"] == 0
-    assert span.attributes["gen_ai.request.frequency_penalty"] == 0.5
-    assert span.attributes["gen_ai.request.presence_penalty"] == 0.3
-    assert span.attributes["gen_ai.request.reasoning_effort"] == "low"
-    assert span.attributes["llm.user"] == "user-123"
-    schema = json.loads(span.attributes["gen_ai.request.structured_output_schema"])
+    assert attributes["lmnr.span.type"] == "LLM"
+    assert attributes["gen_ai.system"] == "openrouter"
+    assert attributes["lmnr.span.instrumentation_scope.name"] == "openrouter"
+    assert attributes["lmnr.span.instrumentation_scope.version"]
+    assert attributes["gen_ai.request.model"] == MODEL
+    assert attributes["gen_ai.request.max_tokens"] == 30
+    assert attributes["gen_ai.request.temperature"] == 0
+    assert attributes["gen_ai.request.frequency_penalty"] == 0.5
+    assert attributes["gen_ai.request.presence_penalty"] == 0.3
+    assert attributes["gen_ai.request.reasoning_effort"] == "low"
+    assert attributes["llm.user"] == "user-123"
+    schema = json.loads(cast(str, attributes["gen_ai.request.structured_output_schema"]))
     assert schema == CAPITAL_SCHEMA
-    assert span.attributes["gen_ai.response.model"] == MODEL
-    assert span.attributes["gen_ai.response.id"] == response.id
+    assert attributes["gen_ai.response.model"] == MODEL
+    assert attributes["gen_ai.response.id"] == response.id
     _assert_usage(span)
 
-    input_messages = json.loads(span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages == [
         {"role": "user", "content": "What is the capital of France?"}
     ]
-    output_messages = json.loads(span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output_messages[0]["message"]["role"] == "assistant"
     assert "Paris" in output_messages[0]["message"]["content"]
 
@@ -99,20 +103,21 @@ def test_openrouter_chat_no_trace_content(
     span_exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setenv("LMNR_TRACE_CONTENT", "false")
-    _client().chat.send(
+    _res = _client().chat.send(
         model=MODEL,
         messages=[{"role": "user", "content": "What is the capital of France?"}],
-        tools=[WEATHER_TOOL],
+        tools=[WEATHER_TOOL],  # pyright: ignore[reportArgumentType]
         max_tokens=20,
     )
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
-    assert "gen_ai.input.messages" not in span.attributes
-    assert "gen_ai.output.messages" not in span.attributes
-    assert "gen_ai.tool.definitions" not in span.attributes
-    assert span.attributes["gen_ai.request.model"] == MODEL
+    attributes = span.attributes or {}
+    assert "gen_ai.input.messages" not in attributes
+    assert "gen_ai.output.messages" not in attributes
+    assert "gen_ai.tool.definitions" not in attributes
+    assert attributes["gen_ai.request.model"] == MODEL
     _assert_usage(span)
 
 
@@ -134,22 +139,23 @@ def test_openrouter_chat_stream(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
+    attributes = span.attributes or {}
     assert span.name == "openrouter.chat"
-    assert span.attributes["llm.is_streaming"] is True
-    assert span.attributes["gen_ai.response.model"] == MODEL
+    assert attributes["llm.is_streaming"] is True
+    assert attributes["gen_ai.response.model"] == MODEL
     _assert_usage(span)
 
-    output_messages = json.loads(span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output_messages[0]["message"]["content"] == content
     assert output_messages[0]["finish_reason"] is not None
 
 
 @pytest.mark.vcr
 def test_openrouter_chat_stream_tool_calls(span_exporter: InMemorySpanExporter):
-    stream = _client().chat.send(
+    stream = _client().chat.send(  # pyright: ignore[reportCallIssue]
         model=MODEL,
         messages=[{"role": "user", "content": "What is the weather in Paris?"}],
-        tools=[WEATHER_TOOL],
+        tools=[WEATHER_TOOL],  # pyright: ignore[reportArgumentType]
         stream=True,
     )
     for _ in stream:
@@ -158,9 +164,10 @@ def test_openrouter_chat_stream_tool_calls(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
-    assert json.loads(span.attributes["gen_ai.tool.definitions"]) == [WEATHER_TOOL]
+    attributes = span.attributes or {}
+    assert json.loads(cast(str, attributes["gen_ai.tool.definitions"])) == [WEATHER_TOOL]
 
-    output_messages = json.loads(span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     tool_calls = output_messages[0]["message"]["tool_calls"]
     assert len(tool_calls) == 1
     assert tool_calls[0]["id"]
@@ -182,8 +189,8 @@ def test_openrouter_chat_stream_closed_unread(span_exporter: InMemorySpanExporte
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "openrouter.chat"
-    assert spans[0].attributes["gen_ai.request.model"] == MODEL
-    assert "gen_ai.output.messages" not in spans[0].attributes
+    assert (spans[0].attributes or {})["gen_ai.request.model"] == MODEL
+    assert "gen_ai.output.messages" not in (spans[0].attributes or {})
 
 
 @pytest.mark.vcr
@@ -224,7 +231,7 @@ async def test_openrouter_chat_async_stream_closed_unread(
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     assert spans[0].name == "openrouter.chat"
-    assert "gen_ai.output.messages" not in spans[0].attributes
+    assert "gen_ai.output.messages" not in (spans[0].attributes or {})
 
 
 @pytest.mark.vcr
@@ -239,8 +246,9 @@ async def test_openrouter_chat_async(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
+    attributes = span.attributes or {}
     assert span.name == "openrouter.chat"
-    assert span.attributes["gen_ai.response.id"] == response.id
+    assert attributes["gen_ai.response.id"] == response.id
     _assert_usage(span)
 
 
@@ -262,9 +270,10 @@ async def test_openrouter_chat_async_stream(span_exporter: InMemorySpanExporter)
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
+    attributes = span.attributes or {}
     assert span.name == "openrouter.chat"
     _assert_usage(span)
-    output_messages = json.loads(span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output_messages[0]["message"]["content"] == content
 
 
@@ -293,26 +302,27 @@ def test_openrouter_responses(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
+    attributes = span.attributes or {}
     assert span.name == "openrouter.responses"
-    assert span.attributes["lmnr.span.type"] == "LLM"
-    assert span.attributes["gen_ai.system"] == "openrouter"
-    assert span.attributes["gen_ai.request.model"] == MODEL
-    assert span.attributes["gen_ai.request.max_tokens"] == 50
-    assert span.attributes["gen_ai.request.frequency_penalty"] == 0.2
-    assert span.attributes["gen_ai.request.presence_penalty"] == 0.1
-    assert span.attributes["gen_ai.request.reasoning_effort"] == "low"
-    assert span.attributes["llm.user"] == "user-123"
-    schema = json.loads(span.attributes["gen_ai.request.structured_output_schema"])
+    assert attributes["lmnr.span.type"] == "LLM"
+    assert attributes["gen_ai.system"] == "openrouter"
+    assert attributes["gen_ai.request.model"] == MODEL
+    assert attributes["gen_ai.request.max_tokens"] == 50
+    assert attributes["gen_ai.request.frequency_penalty"] == 0.2
+    assert attributes["gen_ai.request.presence_penalty"] == 0.1
+    assert attributes["gen_ai.request.reasoning_effort"] == "low"
+    assert attributes["llm.user"] == "user-123"
+    schema = json.loads(cast(str, attributes["gen_ai.request.structured_output_schema"]))
     assert schema == CAPITAL_SCHEMA
-    assert span.attributes["gen_ai.response.id"] == response.id
+    assert attributes["gen_ai.response.id"] == response.id
     _assert_usage(span)
 
-    input_messages = json.loads(span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages == [
         {"role": "system", "content": "Answer in one word."},
         {"role": "user", "content": "What is the capital of France?"},
     ]
-    output = json.loads(span.attributes["gen_ai.output.messages"])
+    output = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output[0]["type"] == "message"
     assert "Paris" in output[0]["content"][0]["text"]
 
@@ -331,17 +341,18 @@ def test_openrouter_responses_stream(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
+    attributes = span.attributes or {}
     assert span.name == "openrouter.responses"
-    assert span.attributes["llm.is_streaming"] is True
-    assert span.attributes["gen_ai.response.id"] == events[-1].response.id
+    assert attributes["llm.is_streaming"] is True
+    assert attributes["gen_ai.response.id"] == events[-1].response.id
     _assert_usage(span)
-    output = json.loads(span.attributes["gen_ai.output.messages"])
+    output = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert "Paris" in output[0]["content"][0]["text"]
 
 
 @pytest.mark.vcr
 def test_openrouter_responses_incomplete(span_exporter: InMemorySpanExporter):
-    _client().responses.send(
+    _res = _client().responses.send(
         model=MODEL,
         input="Write a 500 word essay about the history of France.",
         max_output_tokens=16,
@@ -350,14 +361,16 @@ def test_openrouter_responses_incomplete(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
+    attributes = span.attributes or {}
     assert span.name == "openrouter.responses"
     assert span.status.status_code == StatusCode.ERROR
     assert span.status.description == "max_output_tokens"
-    assert span.attributes["error.type"] == "incomplete"
+    assert attributes["error.type"] == "incomplete"
 
 
 @pytest.mark.vcr
 def test_openrouter_embeddings(span_exporter: InMemorySpanExporter):
+    from openrouter.operations import CreateEmbeddingsResponse
     client = _client()
     response = client.embeddings.generate(
         model=EMBEDDINGS_MODEL,
@@ -368,34 +381,37 @@ def test_openrouter_embeddings(span_exporter: InMemorySpanExporter):
     )
     # A flat list of token ids is one document, not a batch of them.
     token_ids = [15339, 1917]
-    client.embeddings.generate(model=EMBEDDINGS_MODEL, input=token_ids, dimensions=8)
+    _emb = client.embeddings.generate(model=EMBEDDINGS_MODEL, input=cast(Any, token_ids), dimensions=8)
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 2
     span = spans[0]
+    attributes = span.attributes or {}
     assert span.name == "openrouter.embeddings"
-    assert span.attributes["lmnr.span.type"] == "LLM"
-    assert span.attributes["gen_ai.system"] == "openrouter"
-    assert span.attributes["gen_ai.request.model"] == EMBEDDINGS_MODEL
-    assert span.attributes["llm.user"] == "user-123"
-    assert span.attributes["gen_ai.response.id"] == response.id
-    assert span.attributes["gen_ai.response.model"]
-    assert span.attributes["gen_ai.usage.input_tokens"] > 0
-    assert span.attributes["llm.usage.total_tokens"] > 0
-    assert span.attributes["gen_ai.usage.cost"] > 0
-    assert span.attributes["gen_ai.usage.input_cost"] > 0
+    assert attributes["lmnr.span.type"] == "LLM"
+    assert attributes["gen_ai.system"] == "openrouter"
+    assert attributes["gen_ai.request.model"] == EMBEDDINGS_MODEL
+    assert attributes["llm.user"] == "user-123"
+    assert not isinstance(response, str)
+    assert attributes["gen_ai.response.id"] == response.id
+    assert attributes["gen_ai.response.model"]
+    assert cast(int, attributes["gen_ai.usage.input_tokens"]) > 0
+    assert cast(int, attributes["llm.usage.total_tokens"]) > 0
+    assert cast(int, attributes["gen_ai.usage.cost"]) > 0
+    assert cast(int, attributes["gen_ai.usage.input_cost"]) > 0
 
-    input_messages = json.loads(span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages == [{"content": "hello world"}, {"content": "bonjour"}]
 
-    token_input = json.loads(spans[1].attributes["gen_ai.input.messages"])
+    token_input = json.loads(cast(str, (spans[1].attributes or {})["gen_ai.input.messages"]))
     assert token_input == [{"content": token_ids}]
 
 
 @pytest.mark.vcr
 def test_openrouter_chat_error(span_exporter: InMemorySpanExporter):
-    with pytest.raises(Exception):
-        _client().chat.send(
+    from openrouter.errors.badrequestresponse_error import BadRequestResponseError
+    with pytest.raises(BadRequestResponseError):
+        _res = _client().chat.send(
             model="openai/this-model-does-not-exist",
             messages=[{"role": "user", "content": "Hello"}],
         )
@@ -403,7 +419,8 @@ def test_openrouter_chat_error(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
+    attributes = span.attributes or {}
     assert span.name == "openrouter.chat"
     assert span.status.status_code == StatusCode.ERROR
-    assert span.attributes["error.type"]
-    assert span.attributes["gen_ai.request.model"] == "openai/this-model-does-not-exist"
+    assert attributes["error.type"]
+    assert attributes["gen_ai.request.model"] == "openai/this-model-does-not-exist"

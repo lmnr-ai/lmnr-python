@@ -1,8 +1,8 @@
 import pytest
-
-from lmnr import Laminar, observe
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
+
+from lmnr import Laminar, observe
 
 
 def test_simple_event(span_exporter: InMemorySpanExporter):
@@ -179,7 +179,7 @@ def test_exception_with_attributes_and_session_id_observe(
     span_exporter: InMemorySpanExporter,
 ):
     @observe(session_id="test_session_id", user_id="test_user_id")
-    def observed_foo():
+    def observed_foo() -> None:
         raise ValueError("test_error")
 
     with pytest.raises(ValueError, match="test_error"):
@@ -192,18 +192,19 @@ def test_exception_with_attributes_and_session_id_observe(
     events = spans[0].events
     assert len(events) == 1
     assert events[0].name == "exception"
-    assert events[0].attributes.get("exception.type") == "ValueError"
-    assert events[0].attributes.get("exception.message") == "test_error"
-    assert events[0].attributes.get("exception.stacktrace") is not None
-    assert events[0].attributes.get("lmnr.event.session_id") == "test_session_id"
-    assert events[0].attributes.get("lmnr.event.user_id") == "test_user_id"
+    attributes = events[0].attributes or {}
+    assert attributes.get("exception.type") == "ValueError"
+    assert attributes.get("exception.message") == "test_error"
+    assert attributes.get("exception.stacktrace") is not None
+    assert attributes.get("lmnr.event.session_id") == "test_session_id"
+    assert attributes.get("lmnr.event.user_id") == "test_user_id"
 
 
 def test_exception_with_attributes_and_session_id(
     span_exporter: InMemorySpanExporter,
 ):
     @observe()
-    def observed_foo():
+    def observed_foo() -> None:
         Laminar.set_trace_session_id("test_session_id")
         Laminar.set_trace_user_id("test_user_id")
         raise ValueError("test_error")
@@ -218,8 +219,9 @@ def test_exception_with_attributes_and_session_id(
     events = spans[0].events
     assert len(events) == 1
     assert events[0].name == "exception"
-    assert events[0].attributes.get("exception.type") == "ValueError"
-    assert events[0].attributes.get("exception.message") == "test_error"
-    assert events[0].attributes.get("exception.stacktrace") is not None
-    assert events[0].attributes.get("lmnr.event.session_id") == "test_session_id"
-    assert events[0].attributes.get("lmnr.event.user_id") == "test_user_id"
+    attributes = events[0].attributes or {}
+    assert attributes.get("exception.type") == "ValueError"
+    assert attributes.get("exception.message") == "test_error"
+    assert attributes.get("exception.stacktrace") is not None
+    assert attributes.get("lmnr.event.session_id") == "test_session_id"
+    assert attributes.get("lmnr.event.user_id") == "test_user_id"

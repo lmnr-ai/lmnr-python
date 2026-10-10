@@ -1,24 +1,127 @@
 import base64
-import collections.abc
-import datetime
 import dataclasses
-import dotenv
+import datetime
 import enum
+import functools
 import inspect
 import os
-import orjson
-import pydantic
 import queue
 import re
-import typing
 import uuid
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from typing import Any, cast
+
+import dotenv
+import httpx
+import orjson
+import pydantic
+from opentelemetry.trace import Tracer
+from typing_extensions import TypeVar
 
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
 
+WrappedFunction = Callable[..., Any]
 
-def is_method(func: typing.Callable) -> bool:
+#: The shape wrapt's `wrap_function_wrapper` expects.
+InstrumentedWrapper = Callable[
+    [WrappedFunction, Any, tuple[Any, ...], dict[str, Any]],
+    Any,
+]
+
+#: Deliberately UNBOUND. `to_wrap` has no single shape across the legacy
+#: instrumentations — most pass a `dict`, but langgraph passes a bare `str`
+#: method path. Binding this to a spec type would break that caller. The
+#: instrumentations already on `BaseLaminarInstrumentor` use the typed
+#: `WrappedFunctionSpec` contract instead of these helpers.
+ToWrapT = TypeVar("ToWrapT")
+
+@dataclasses.dataclass
+class _WrappedCallable:
+    __wrapped__: Callable[..., Any]
+
+#: `wrapt`'s wrapper contract is genuinely untyped -- `instance`/`args`/`kwargs`
+#: (and the wrapped call's return value) can be anything, for any wrapped
+#: callable across every instrumentation. Explicit `Any` here is the honest
+#: type, not a shortcut; the `pyright: ignore`s below are load-bearing.
+def with_tracer_wrapper(
+    func: Callable[
+        [
+            Tracer,
+            ToWrapT,
+            WrappedFunction,
+            Any,
+            tuple[Any, ...],
+            dict[str, Any],
+        ],
+        Any,
+    ],
+) -> Callable[[Tracer, ToWrapT], InstrumentedWrapper]:
+    """Bind a tracer and a per-instrumented-method config into an instrumentation
+    function, producing the wrapper factory `wrapt.wrap_function_wrapper` expects.
+
+    `func` must accept `(tracer, to_wrap, wrapped, instance, args, kwargs)`; the
+    type of `to_wrap` flows through, so a wrapper annotating it as its own spec
+    type gets that type checked at the `wrap_function_wrapper` call site.
+
+    Usage:
+    `wrap_function_wrapper(mod, "method", with_tracer_wrapper(f)(tracer, to_wrap))`.
+    Use `with_tracer_only_wrapper` when there is no per-method config.
+    """
+
+    def _with_tracer(tracer: Tracer, to_wrap: ToWrapT) -> InstrumentedWrapper:
+        @functools.wraps(func)
+        def wrapper(
+            wrapped: WrappedFunction,
+            instance: Any,
+            args: tuple[Any, ...],
+            kwargs: dict[str, Any],
+        ) -> Any:
+            return func(
+                tracer, to_wrap, wrapped, instance, args, kwargs
+            )
+
+        return wrapper
+
+    return _with_tracer
+
+
+def with_tracer_only_wrapper(
+    func: Callable[
+        [
+            Tracer,
+            WrappedFunction,
+            Any,
+            tuple[Any, ...],
+            dict[str, Any],
+        ],
+        Any,
+    ],
+) -> Callable[[Tracer], InstrumentedWrapper]:
+    """`with_tracer_wrapper` for instrumentations with no per-method config.
+
+    `func` must accept `(tracer, wrapped, instance, args, kwargs)`. Every wrapper
+    in the openai tree is of this shape — it wraps a fixed set of hand-written
+    targets, so there is nothing per-method to thread through.
+    """
+
+    def _with_tracer(tracer: Tracer) -> InstrumentedWrapper:
+        @functools.wraps(func)
+        def wrapper(
+            wrapped: WrappedFunction,
+            instance: Any,
+            args: tuple[Any, ...],
+            kwargs: dict[str, Any],
+        ) -> Any:
+            return func(tracer, wrapped, instance, args, kwargs)
+
+        return wrapper
+
+    return _with_tracer
+
+
+def is_method(func: Callable[..., object]) -> bool:
     # inspect.ismethod is True for bound methods only, but in the decorator,
     # the method is not bound yet, so we need to check if the first parameter
     # is either 'self' or 'cls'. This only relies on naming conventions
@@ -29,13 +132,13 @@ def is_method(func: typing.Callable) -> bool:
     return len(params) > 0 and params[0] in ["self", "cls"]
 
 
-def is_async(func: typing.Callable) -> bool:
+def is_async(func: Callable[..., object] | _WrappedCallable) -> bool:
     # `__wrapped__` is set automatically by `functools.wraps` and
     # `functools.update_wrapper`
     # so we can use it to get the original function
     try:
         while hasattr(func, "__wrapped__"):
-            func = func.__wrapped__
+            func = cast(_WrappedCallable, func).__wrapped__
 
         if not inspect.isfunction(func):
             return False
@@ -53,16 +156,25 @@ def is_async(func: typing.Callable) -> bool:
         return False
 
 
-def is_async_iterator(o: typing.Any) -> bool:
+def is_async_iterator(o: object) -> bool:
     return hasattr(o, "__aiter__") and hasattr(o, "__anext__")
 
 
-def is_iterator(o: typing.Any) -> bool:
+def is_iterator(o: object) -> bool:
     return hasattr(o, "__iter__") and hasattr(o, "__next__")
 
 
-def serialize(obj: typing.Any) -> str | dict[str, typing.Any]:
-    def serialize_inner(o: typing.Any):
+#: Recursive JSON-like value produced by `serialize`. Dict keys are `JsonValue`
+#: too, not just `str`: a key goes through the same `serialize_inner` as any
+#: other value (e.g. an `int`/`float`/`bool`/`None` dict key round-trips
+#: unchanged, only a non-primitive key gets stringified), so it can't be
+#: narrowed to `str` without misrepresenting what the function actually
+#: returns for a dict with non-string keys.
+JsonValue = None | bool | int | float | str | list["JsonValue"] | dict["JsonValue", "JsonValue"]
+
+
+def serialize(obj: Any) -> JsonValue:
+    def serialize_inner(o: Any) -> JsonValue:
         if isinstance(o, (datetime.datetime, datetime.date)):
             return o.strftime("%Y-%m-%dT%H:%M:%S.%f%z")
         elif o is None:
@@ -73,20 +185,27 @@ def serialize(obj: typing.Any) -> str | dict[str, typing.Any]:
             return str(o)  # same as in final return, but explicit
         elif isinstance(o, enum.Enum):
             return o.value
-        elif dataclasses.is_dataclass(o):
-            return dataclasses.asdict(o)
+        elif dataclasses.is_dataclass(o) and not isinstance(o, type):
+            # `asdict` only recurses into nested dataclasses, so its dict/list
+            # values aren't necessarily `JsonValue` (e.g. a `datetime` field
+            # stays a `datetime`) -- this cast doesn't change that pre-existing
+            # behavior, it just describes the same shape the code always had.
+            return cast(JsonValue, dataclasses.asdict(o))
         elif isinstance(o, bytes):
             return o.decode("utf-8")
         elif isinstance(o, pydantic.BaseModel):
-            return o.model_dump()
-        elif isinstance(o, (tuple, set, frozenset)):
-            return [serialize_inner(item) for item in o]
-        elif isinstance(o, list):
-            return [serialize_inner(item) for item in o]
+            return serialize(o.model_dump())
+        elif isinstance(o, (tuple, set, frozenset, list)):
+            items = cast(Iterable[Any], o)
+            return [serialize_inner(item) for item in items]
         elif isinstance(o, dict):
-            return {serialize_inner(k): serialize_inner(v) for k, v in o.items()}
+            mapping = cast(dict[Any, Any], o)
+            return {
+                serialize_inner(k): serialize_inner(v)
+                for k, v in mapping.items()
+            }
         elif isinstance(o, queue.Queue):
-            return type(o).__name__
+            return type(o).__name__  # pyright: ignore[reportUnknownArgumentType]
 
         return str(o)
 
@@ -94,18 +213,20 @@ def serialize(obj: typing.Any) -> str | dict[str, typing.Any]:
 
 
 def get_input_from_func_args(
-    func: typing.Callable,
+    func: Callable[..., Any],
     is_method: bool = False,
-    func_args: list[typing.Any] = [],
-    func_kwargs: dict[str, typing.Any] = {},
+    func_args: Sequence[Any] | None = None,
+    func_kwargs: dict[str, Any] | None = None,
     ignore_inputs: list[str] | None = None,
-) -> dict[str, typing.Any]:
+) -> dict[str, Any]:
+    normalized_args = list(func_args if func_args is not None else [])
+    normalized_kwargs = func_kwargs if func_kwargs is not None else {}
     # Remove implicitly passed "self" or "cls" argument for
     # instance or class methods
     try:
         res = {
             k: v
-            for k, v in func_kwargs.items()
+            for k, v in normalized_kwargs.items()
             if not (ignore_inputs and k in ignore_inputs)
         }
         for i, k in enumerate(inspect.signature(func).parameters.keys()):
@@ -114,8 +235,8 @@ def get_input_from_func_args(
             if ignore_inputs and k in ignore_inputs:
                 continue
             # If param has default value, then it's not present in func args
-            if i < len(func_args):
-                res[k] = func_args[i]
+            if i < len(normalized_args):
+                res[k] = normalized_args[i]
         return res
     except Exception:
         logger.warning("Failed to get input from func args")
@@ -169,13 +290,13 @@ def get_frontend_url(
     return url
 
 
-def is_otel_attribute_value_type(value: typing.Any) -> bool:
-    def is_primitive_type(value: typing.Any) -> bool:
+def is_otel_attribute_value_type(value: object) -> bool:
+    def is_primitive_type(value: object) -> bool:
         return isinstance(value, (int, float, str, bool))
 
     if is_primitive_type(value):
         return True
-    elif isinstance(value, typing.Sequence):
+    elif isinstance(value, Sequence):
         if len(value) > 0:
             return is_primitive_type(value[0]) and all(
                 isinstance(v, type(value[0])) for v in value
@@ -225,7 +346,7 @@ def parse_otel_headers(headers_str: str | None) -> dict[str, str]:
     if not headers_str:
         return {}
 
-    headers = {}
+    headers: dict[str, str] = {}
     for pair in headers_str.split(","):
         if "=" in pair:
             key, value = pair.split("=", 1)
@@ -235,7 +356,7 @@ def parse_otel_headers(headers_str: str | None) -> dict[str, str]:
     return headers
 
 
-def format_id(id_value: str | int | uuid.UUID) -> str:
+def format_id(id_value: str | int | uuid.UUID | object) -> str:
     """Format trace/span/evaluation ID to a UUID string, or return valid UUID strings as-is.
 
     Args:
@@ -245,26 +366,26 @@ def format_id(id_value: str | int | uuid.UUID) -> str:
         str: UUID string representation
 
     Raises:
-        ValueError: If id_value cannot be converted to a valid UUID
+        TypeError: If id_value cannot be converted to a valid UUID
     """
     if isinstance(id_value, uuid.UUID):
         return str(id_value)
     elif isinstance(id_value, int):
         return str(uuid.UUID(int=id_value))
     elif isinstance(id_value, str):
-        uuid.UUID(id_value)
+        _check_result = uuid.UUID(id_value)
         return id_value
     else:
-        raise ValueError(f"Invalid ID type: {type(id_value)}")
+        raise TypeError(f"Invalid ID type: {type(id_value)}")
 
 
-DEFAULT_PLACEHOLDER = {}
+DEFAULT_PLACEHOLDER: dict[Any, Any] = {}
 
 
 _UNWRAP_MISS = object()
 
 
-def _unwrap_container(o: typing.Any) -> typing.Any:
+def _unwrap_container(o: object) -> dict[Any, Any] | list[Any] | object:
     """Open a container into a plain dict/list, or return `_UNWRAP_MISS`.
 
     Single source of truth for "what counts as a container", shared by
@@ -279,18 +400,18 @@ def _unwrap_container(o: typing.Any) -> typing.Any:
     """
     if isinstance(o, pydantic.BaseModel):
         return o.model_dump()
-    if isinstance(o, collections.abc.Mapping):
-        return dict(o)
+    if isinstance(o, Mapping):
+        return dict(cast(Mapping[Any, Any], o))
     if isinstance(o, (set, frozenset)):
-        return list(o)
-    if isinstance(o, collections.abc.Sequence) and not isinstance(
+        return list(cast("set[Any] | frozenset[Any]", o))
+    if isinstance(o, Sequence) and not isinstance(
         o, (str, bytes, bytearray)
     ):
-        return list(o)
+        return list(cast(Sequence[Any], o))
     return _UNWRAP_MISS
 
 
-def default_json(o):
+def default_json(o: object) -> str | dict[Any, Any] | list[Any]:
     # STANDARD base64 (`+`/`/`), not pydantic's URL-safe `ser_json_bytes`
     # alphabet: consumers decode with `base64.b64decode`, which defaults to
     # `validate=False` and silently DROPS out-of-alphabet characters instead of
@@ -305,20 +426,19 @@ def default_json(o):
     # SINGLE quotes — "{'a': 1}" — which is not JSON and no consumer can parse.
     unwrapped = _unwrap_container(o)
     if unwrapped is not _UNWRAP_MISS:
-        return unwrapped
+        return cast("dict[Any, Any] | list[Any]", unwrapped)
 
     try:
         return str(o)
     except Exception:
         logger.debug("Failed to serialize data to JSON, inner type: %s", type(o))
-        pass
     return DEFAULT_PLACEHOLDER
 
 
 MAX_ERROR_BODY_CHARS = 2000
 
 
-def describe_response(response) -> str:
+def describe_response(response: httpx.Response | None) -> str:
     """Render an HTTP error response as a readable one-liner.
 
     Error bodies are not always JSON — app-server returns plain text for
@@ -360,7 +480,7 @@ _ORJSON_NATIVE_KEY_TYPES = (
 )
 
 
-def _stringify_dict_keys(value: typing.Any) -> typing.Any:
+def _stringify_dict_keys(value: pydantic.BaseModel | JsonValue | Sequence[Any] | dict[Any, Any] | set[Any]) -> JsonValue:
     """Coerce the mapping keys orjson cannot encode into strings.
 
     `OPT_NON_STR_KEYS` only covers a fixed set of scalar key types, and orjson
@@ -375,29 +495,40 @@ def _stringify_dict_keys(value: typing.Any) -> typing.Any:
     """
     # bytes are a Sequence, so check them before unwrapping.
     if isinstance(value, (bytes, bytearray)):
-        return value
+        return cast(JsonValue, cast(object, value))
 
     opened = _unwrap_container(value)
     if opened is _UNWRAP_MISS:
-        return value
+        return cast(JsonValue, value)
+    opened = cast("dict[Any, Any] | list[Any]", opened)
 
     if isinstance(opened, dict):
-        return {
-            (
-                key
-                if isinstance(key, _ORJSON_NATIVE_KEY_TYPES)
-                else (
-                    base64.b64encode(key).decode("utf-8")
-                    if isinstance(key, (bytes, bytearray))
-                    else str(key)
-                )
-            ): _stringify_dict_keys(inner)
-            for key, inner in opened.items()
-        }
-    return [_stringify_dict_keys(item) for item in opened]
+        # Keys can stay non-`str` (e.g. `uuid.UUID`/`datetime`) here -- they're
+        # exactly the `_ORJSON_NATIVE_KEY_TYPES` orjson encodes itself, wider
+        # than what `JsonValue` allows as a key. `default_json` handles them at
+        # dump time, so this cast just describes what orjson actually accepts.
+        return cast(
+            "JsonValue",
+            {
+                (
+                    key
+                    if isinstance(key, _ORJSON_NATIVE_KEY_TYPES)
+                    else (
+                        base64.b64encode(key).decode("utf-8")
+                        if isinstance(key, (bytes, bytearray))
+                        else str(key)
+                    )
+                ): _stringify_dict_keys(inner)
+                for key, inner in opened.items()
+            },
+        )
+    return [
+        _stringify_dict_keys(item)
+        for item in opened
+    ]
 
 
-def json_dumps(data: dict | list) -> str:
+def json_dumps(data: pydantic.BaseModel | JsonValue | dict[str, Any] | Sequence[Any] | set[Any]) -> str:
     try:
         return orjson.dumps(
             data,
@@ -405,7 +536,7 @@ def json_dumps(data: dict | list) -> str:
             option=_JSON_DUMPS_OPTIONS,
         ).decode("utf-8")
     except Exception:
-        pass
+        logger.debug("Failed to json dump the value, trying with stringified keys...")
     try:
         # An unencodable mapping key is the one failure worth retrying — it
         # aborts the whole document, losing every sibling value with it.

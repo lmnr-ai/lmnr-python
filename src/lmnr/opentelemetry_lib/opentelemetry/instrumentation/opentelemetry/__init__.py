@@ -1,12 +1,27 @@
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry.instrumentation.utils import unwrap
-from opentelemetry.trace import TraceFlags, SpanContext
-from typing import Collection
-from wrapt import wrap_function_wrapper
-import logging
+from collections.abc import Callable, Collection, Sequence
+from importlib.metadata import version
+from typing import Any
+
+from typing_extensions import override
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
+    BaseLaminarInstrumentor,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WrappedFunctionSpec,
+)
+from opentelemetry.trace import SpanContext, TraceFlags
 
 
-def _wrap_span_context(fn, instance, args, kwargs):
+def _wrap_span_context(
+    _to_wrap: WrappedFunctionSpec,
+    fn: Callable[..., SpanContext],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> SpanContext:
     """
     DataDog does something to the OpenTelemetry Contexts, so that when any code
     tries to access the current active span, it returns a non-recording span.
@@ -47,23 +62,43 @@ def _wrap_span_context(fn, instance, args, kwargs):
     return new_span_context
 
 
-class OpentelemetryInstrumentor(BaseInstrumentor):
-    def __init__(self):
-        super().__init__()
+class OpentelemetryInstrumentor(BaseLaminarInstrumentor):
+    _scope: LaminarInstrumentationScopeAttributes | None = None
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return ("opentelemetry-api>=1.0.0",)
 
-    def _instrument(self, **kwargs):
-        try:
-            wrap_function_wrapper(
-                "opentelemetry.trace.span",
-                "NonRecordingSpan.get_span_context",
-                _wrap_span_context,
+    @override
+    def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
+        if self._scope is None:
+            try:
+                otel_version = version("opentelemetry-api")
+            except Exception:
+                otel_version = "unknown"
+            self._scope = LaminarInstrumentationScopeAttributes(
+                name="opentelemetry",
+                version=otel_version,
             )
+        return self._scope
 
-        except Exception as e:
-            logging.debug(f"Error wrapping SpanContext: {e}")
-
-    def _uninstrument(self, **kwargs):
-        unwrap("opentelemetry.trace.span", "NonRecordingSpan.get_span_context")
+    def __init__(self):
+        super().__init__()
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
+            wrapped_functions=[
+                WrappedFunctionSpec(
+                    package_name="opentelemetry.trace.span",
+                    object_name="NonRecordingSpan",
+                    method_name="get_span_context",
+                    is_async=False,
+                    is_streaming=False,
+                    # This wrapper repairs a SpanContext rather than tracing
+                    # anything, so it creates no span and reads no span_name /
+                    # span_type off the spec.
+                    span_name=None,
+                    span_type=None,
+                    instrumentation_scope=self.instrumentation_scope(),
+                    wrapper_function=_wrap_span_context,
+                ),
+            ]
+        )

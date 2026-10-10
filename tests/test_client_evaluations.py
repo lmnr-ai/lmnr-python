@@ -2,20 +2,25 @@
 Tests for the new evaluation methods on LaminarClient and AsyncLaminarClient.
 """
 
+import uuid
+from collections.abc import AsyncGenerator, Generator
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 import pytest_asyncio
-import uuid
-from unittest.mock import patch, MagicMock, AsyncMock
 
-from lmnr import LaminarClient, AsyncLaminarClient
-from lmnr.sdk.types import PartialEvaluationDatapoint
+from lmnr import AsyncLaminarClient, LaminarClient
+from lmnr.sdk.evaluations.models import (
+    EvaluationResultDatapoint,
+    PartialEvaluationDatapoint,
+)
 
 
 class TestAsyncLaminarClientEvaluations:
     """Test evaluation methods on AsyncLaminarClient."""
 
     @pytest_asyncio.fixture
-    async def async_client(self):
+    async def async_client(self) -> AsyncGenerator[AsyncLaminarClient]:
         """Create an AsyncLaminarClient for testing."""
         client = AsyncLaminarClient(
             base_url="http://test-api.com", project_api_key="test-key"
@@ -24,7 +29,7 @@ class TestAsyncLaminarClientEvaluations:
         await client.close()
 
     @pytest.fixture
-    def mock_eval_response(self):
+    def mock_eval_response(self) -> MagicMock:
         """Mock evaluation response."""
         mock_response = MagicMock()
         mock_response.id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
@@ -32,7 +37,11 @@ class TestAsyncLaminarClientEvaluations:
         return mock_response
 
     @pytest.mark.asyncio
-    async def test_create_evaluation_success(self, async_client, mock_eval_response):
+    async def test_create_evaluation_success(
+        self,
+        async_client: AsyncLaminarClient,
+        mock_eval_response: MagicMock,
+    ):
         """Test successful evaluation creation."""
         with patch.object(
             async_client.evals, "create_evaluation", new_callable=AsyncMock
@@ -54,7 +63,9 @@ class TestAsyncLaminarClientEvaluations:
 
     @pytest.mark.asyncio
     async def test_create_evaluation_with_defaults(
-        self, async_client, mock_eval_response
+        self,
+        async_client: AsyncLaminarClient,
+        mock_eval_response: MagicMock,
     ):
         """Test evaluation creation with default parameters."""
         with patch.object(
@@ -68,7 +79,10 @@ class TestAsyncLaminarClientEvaluations:
             mock_create.assert_called_once_with()
 
     @pytest.mark.asyncio
-    async def test_update_evaluation_success(self, async_client):
+    async def test_update_evaluation_success(
+        self,
+        async_client: AsyncLaminarClient,
+    ):
         """Test evaluation update sends name and metadata in the request body."""
         eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
 
@@ -99,11 +113,14 @@ class TestAsyncLaminarClientEvaluations:
             call_json = mock_post.call_args[1]["json"]
             assert call_json["name"] == "Renamed Evaluation"
             assert call_json["metadata"] == {"revision": 2}
-            assert result.id == eval_id
-            assert result.name == "Renamed Evaluation"
+            assert result["id"] == eval_id
+            assert result["name"] == "Renamed Evaluation"
 
     @pytest.mark.asyncio
-    async def test_update_evaluation_error(self, async_client):
+    async def test_update_evaluation_error(
+        self,
+        async_client: AsyncLaminarClient,
+    ):
         """Test evaluation update raises on non-200 responses."""
         mock_response = MagicMock()
         mock_response.status_code = 404
@@ -114,14 +131,13 @@ class TestAsyncLaminarClientEvaluations:
             "post",
             new_callable=AsyncMock,
             return_value=mock_response,
-        ):
-            with pytest.raises(ValueError, match="Error updating evaluation"):
-                await async_client.evals.update_evaluation(
-                    eval_id=uuid.uuid4(), name="New Name"
-                )
+        ), pytest.raises(ValueError, match="Error updating evaluation"):
+            _response = await async_client.evals.update_evaluation(
+                eval_id=uuid.uuid4(), name="New Name"
+            )
 
     @pytest.mark.asyncio
-    async def test_create_datapoint_success(self, async_client):
+    async def test_create_datapoint_success(self, async_client: AsyncLaminarClient):
         """Test successful datapoint creation."""
         eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
         test_data = {"input": "test input"}
@@ -158,7 +174,7 @@ class TestAsyncLaminarClientEvaluations:
             )
 
     @pytest.mark.asyncio
-    async def test_create_datapoint_with_defaults(self, async_client):
+    async def test_create_datapoint_with_defaults(self, async_client: AsyncLaminarClient):
         """Test datapoint creation with minimal parameters."""
         eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
         test_data = {"input": "test input"}
@@ -180,7 +196,7 @@ class TestAsyncLaminarClientEvaluations:
             mock_create.assert_called_once_with(eval_id=eval_id, data=test_data)
 
     @pytest.mark.asyncio
-    async def test_update_datapoint_success(self, async_client):
+    async def test_update_datapoint_success(self, async_client: AsyncLaminarClient):
         """Test successful datapoint update."""
         eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
         datapoint_id = uuid.UUID("87654321-4321-8765-cba9-987654321abc")
@@ -205,7 +221,7 @@ class TestAsyncLaminarClientEvaluations:
             )
 
     @pytest.mark.asyncio
-    async def test_update_datapoint_with_minimal_params(self, async_client):
+    async def test_update_datapoint_with_minimal_params(self, async_client: AsyncLaminarClient):
         """Test datapoint update with minimal parameters."""
         eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
         datapoint_id = uuid.UUID("87654321-4321-8765-cba9-987654321abc")
@@ -223,7 +239,7 @@ class TestAsyncLaminarClientEvaluations:
             )
 
     @pytest.mark.asyncio
-    async def test_update_datapoint_with_trace_id(self, async_client):
+    async def test_update_datapoint_with_trace_id(self, async_client: AsyncLaminarClient):
         """Test datapoint update includes trace_id in the request body."""
         eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
         datapoint_id = uuid.UUID("87654321-4321-8765-cba9-987654321abc")
@@ -252,7 +268,7 @@ class TestAsyncLaminarClientEvaluations:
             assert call_json["scores"] == scores
 
     @pytest.mark.asyncio
-    async def test_update_datapoint_without_trace_id(self, async_client):
+    async def test_update_datapoint_without_trace_id(self, async_client: AsyncLaminarClient):
         """Test datapoint update sends traceId as None when not provided."""
         eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
         datapoint_id = uuid.UUID("87654321-4321-8765-cba9-987654321abc")
@@ -282,7 +298,7 @@ class TestLaminarClientEvaluations:
     """Test evaluation methods on synchronous LaminarClient."""
 
     @pytest.fixture
-    def sync_client(self):
+    def sync_client(self) -> Generator[LaminarClient]:
         """Create a LaminarClient for testing."""
         client = LaminarClient(
             base_url="http://test-api.com", project_api_key="test-key"
@@ -291,14 +307,18 @@ class TestLaminarClientEvaluations:
         client.close()
 
     @pytest.fixture
-    def mock_eval_response(self):
+    def mock_eval_response(self) -> MagicMock:
         """Mock evaluation response."""
         mock_response = MagicMock()
         mock_response.id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
         mock_response.projectId = "test-project-id"
         return mock_response
 
-    def test_create_evaluation_success(self, sync_client, mock_eval_response):
+    def test_create_evaluation_success(
+        self,
+        sync_client: LaminarClient,
+        mock_eval_response: MagicMock,
+    ):
         """Test successful evaluation creation."""
         with patch.object(sync_client.evals, "create_evaluation") as mock_create:
             mock_create.return_value = mock_eval_response.id
@@ -316,7 +336,11 @@ class TestLaminarClientEvaluations:
                 metadata={"metadata": "test metadata"},
             )
 
-    def test_create_evaluation_with_defaults(self, sync_client, mock_eval_response):
+    def test_create_evaluation_with_defaults(
+        self,
+        sync_client: LaminarClient,
+        mock_eval_response: MagicMock,
+    ):
         """Test evaluation creation with default parameters."""
         with patch.object(sync_client.evals, "create_evaluation") as mock_create:
             mock_create.return_value = mock_eval_response.id
@@ -326,7 +350,7 @@ class TestLaminarClientEvaluations:
             assert eval_id == mock_eval_response.id
             mock_create.assert_called_once_with()
 
-    def test_update_evaluation_success(self, sync_client):
+    def test_update_evaluation_success(self, sync_client: LaminarClient):
         """Test evaluation update sends name and metadata in the request body."""
         eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
 
@@ -354,10 +378,10 @@ class TestLaminarClientEvaluations:
             call_json = mock_post.call_args[1]["json"]
             assert call_json["name"] == "Renamed Evaluation"
             assert call_json["metadata"] == {"revision": 2}
-            assert result.id == eval_id
-            assert result.name == "Renamed Evaluation"
+            assert result["id"] == eval_id
+            assert result["name"] == "Renamed Evaluation"
 
-    def test_update_evaluation_error(self, sync_client):
+    def test_update_evaluation_error(self, sync_client: LaminarClient):
         """Test evaluation update raises on non-200 responses."""
         mock_response = MagicMock()
         mock_response.status_code = 404
@@ -365,13 +389,12 @@ class TestLaminarClientEvaluations:
 
         with patch.object(
             sync_client.evals._client, "post", return_value=mock_response
-        ):
-            with pytest.raises(ValueError, match="Error updating evaluation"):
-                sync_client.evals.update_evaluation(
-                    eval_id=uuid.uuid4(), name="New Name"
-                )
+        ), pytest.raises(ValueError, match="Error updating evaluation"):
+            _response = sync_client.evals.update_evaluation(
+                eval_id=uuid.uuid4(), name="New Name"
+            )
 
-    def test_create_datapoint_success(self, sync_client):
+    def test_create_datapoint_success(self, sync_client: LaminarClient):
         """Test successful datapoint creation."""
         eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
         test_data = {"input": "test input"}
@@ -405,7 +428,7 @@ class TestLaminarClientEvaluations:
                 trace_id=custom_trace_id,
             )
 
-    def test_create_datapoint_with_defaults(self, sync_client):
+    def test_create_datapoint_with_defaults(self, sync_client: LaminarClient):
         """Test datapoint creation with minimal parameters."""
         eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
         test_data = {"input": "test input"}
@@ -424,7 +447,7 @@ class TestLaminarClientEvaluations:
             # Verify create_datapoint was called correctly
             mock_create.assert_called_once_with(eval_id=eval_id, data=test_data)
 
-    def test_update_datapoint_success(self, sync_client):
+    def test_update_datapoint_success(self, sync_client: LaminarClient):
         """Test successful datapoint update."""
         eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
         datapoint_id = uuid.UUID("87654321-4321-8765-cba9-987654321abc")
@@ -446,7 +469,7 @@ class TestLaminarClientEvaluations:
                 executor_output=executor_output,
             )
 
-    def test_update_datapoint_with_minimal_params(self, sync_client):
+    def test_update_datapoint_with_minimal_params(self, sync_client: LaminarClient):
         """Test datapoint update with minimal parameters."""
         eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
         datapoint_id = uuid.UUID("87654321-4321-8765-cba9-987654321abc")
@@ -461,7 +484,7 @@ class TestLaminarClientEvaluations:
                 eval_id=eval_id, datapoint_id=datapoint_id, scores=scores
             )
 
-    def test_update_datapoint_with_trace_id(self, sync_client):
+    def test_update_datapoint_with_trace_id(self, sync_client: LaminarClient):
         """Test datapoint update includes trace_id in the request body."""
         eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
         datapoint_id = uuid.UUID("87654321-4321-8765-cba9-987654321abc")
@@ -486,7 +509,7 @@ class TestLaminarClientEvaluations:
             assert call_json["traceId"] == "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
             assert call_json["scores"] == scores
 
-    def test_update_datapoint_without_trace_id(self, sync_client):
+    def test_update_datapoint_without_trace_id(self, sync_client: LaminarClient):
         """Test datapoint update sends traceId as None when not provided."""
         eval_id = uuid.UUID("12345678-1234-5678-9abc-123456789abc")
         datapoint_id = uuid.UUID("87654321-4321-8765-cba9-987654321abc")
@@ -633,7 +656,7 @@ class TestClientEvaluationErrorHandling:
                 mock_create.side_effect = ValueError("API Error")
 
                 with pytest.raises(ValueError, match="API Error"):
-                    await client.evals.create_evaluation()
+                    _id = await client.evals.create_evaluation()
         finally:
             await client.close()
 
@@ -670,7 +693,7 @@ class TestClientEvaluationErrorHandling:
                 mock_create.side_effect = ValueError("API Error")
 
                 with pytest.raises(ValueError, match="API Error"):
-                    client.evals.create_evaluation()
+                    _id = client.evals.create_evaluation()
         finally:
             client.close()
 
@@ -730,7 +753,11 @@ class TestSyncClientRetryLogic:
             ),
         ]
 
-    def test_save_datapoints_success_on_first_try(self, sync_client, sample_datapoints):
+    def test_save_datapoints_success_on_first_try(
+        self,
+        sync_client: LaminarClient,
+        sample_datapoints: list[PartialEvaluationDatapoint]
+    ):
         """Test successful save without needing retry."""
         eval_id = uuid.uuid4()
 
@@ -750,7 +777,11 @@ class TestSyncClientRetryLogic:
             call_args = mock_post.call_args
             assert f"/v1/evals/{eval_id}/datapoints" in call_args[0][0]
 
-    def test_save_datapoints_retry_on_413(self, sync_client, sample_datapoints):
+    def test_save_datapoints_retry_on_413(
+        self,
+        sync_client: LaminarClient,
+        sample_datapoints: list[PartialEvaluationDatapoint]
+    ):
         """Test retry logic when 413 Payload Too Large is returned."""
         eval_id = uuid.uuid4()
 
@@ -765,21 +796,24 @@ class TestSyncClientRetryLogic:
         with patch(
             "lmnr.sdk.client.synchronous.resources.evals.INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH",
             1000,
-        ):
-            with patch.object(
-                sync_client.evals._client,
-                "post",
-                side_effect=[mock_response_413, mock_response_200],
-            ) as mock_post:
-                sync_client.evals.save_datapoints(eval_id, sample_datapoints)
+        ), patch.object(
+            sync_client.evals._client,
+            "post",
+            side_effect=[mock_response_413, mock_response_200],
+        ) as mock_post:
+            sync_client.evals.save_datapoints(eval_id, sample_datapoints)
 
-                # Should be called twice (initial + 1 retry)
-                assert mock_post.call_count == 2
-                # Verify both calls were made to the correct endpoint
-                for call in mock_post.call_args_list:
-                    assert f"/v1/evals/{eval_id}/datapoints" in call[0][0]
+            # Should be called twice (initial + 1 retry)
+            assert mock_post.call_count == 2
+            # Verify both calls were made to the correct endpoint
+            for call in mock_post.call_args_list:
+                assert f"/v1/evals/{eval_id}/datapoints" in call[0][0]
 
-    def test_save_datapoints_multiple_retries(self, sync_client, sample_datapoints):
+    def test_save_datapoints_multiple_retries(
+        self,
+        sync_client: LaminarClient,
+        sample_datapoints: list[PartialEvaluationDatapoint]
+    ):
         """Test multiple retries with exponentially decreasing payload size."""
         eval_id = uuid.uuid4()
 
@@ -794,23 +828,26 @@ class TestSyncClientRetryLogic:
         with patch(
             "lmnr.sdk.client.synchronous.resources.evals.INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH",
             64,
-        ):
-            with patch.object(
-                sync_client.evals._client,
-                "post",
-                side_effect=[
-                    mock_response_413,
-                    mock_response_413,
-                    mock_response_413,
-                    mock_response_200,
-                ],
-            ) as mock_post:
-                sync_client.evals.save_datapoints(eval_id, sample_datapoints)
+        ), patch.object(
+            sync_client.evals._client,
+            "post",
+            side_effect=[
+                mock_response_413,
+                mock_response_413,
+                mock_response_413,
+                mock_response_200,
+            ],
+        ) as mock_post:
+            sync_client.evals.save_datapoints(eval_id, sample_datapoints)
 
-                # Should be called 4 times (initial + 3 retries)
-                assert mock_post.call_count == 4
+            # Should be called 4 times (initial + 3 retries)
+            assert mock_post.call_count == 4
 
-    def test_save_datapoints_max_retries_exceeded(self, sync_client, sample_datapoints):
+    def test_save_datapoints_max_retries_exceeded(
+        self,
+        sync_client: LaminarClient,
+        sample_datapoints: list[PartialEvaluationDatapoint]
+    ):
         """Test that ValueError is raised when max retries is exceeded."""
         eval_id = uuid.uuid4()
 
@@ -823,19 +860,22 @@ class TestSyncClientRetryLogic:
         with patch(
             "lmnr.sdk.client.synchronous.resources.evals.INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH",
             64,
-        ):
-            with patch.object(
-                sync_client.evals._client, "post", return_value=mock_response_413
-            ) as mock_post:
-                with pytest.raises(
-                    ValueError, match="Error saving evaluation datapoints"
-                ):
-                    sync_client.evals.save_datapoints(eval_id, sample_datapoints)
+        ), patch.object(
+            sync_client.evals._client, "post", return_value=mock_response_413
+        ) as mock_post:
+            with pytest.raises(
+                ValueError, match="Error saving evaluation datapoints"
+            ):
+                sync_client.evals.save_datapoints(eval_id, sample_datapoints)
 
-                # Should be called initial + max_retries times (21 total with default max_retries=20)
-                assert mock_post.call_count == 21
+            # Should be called initial + max_retries times (21 total with default max_retries=20)
+            assert mock_post.call_count == 21
 
-    def test_save_datapoints_length_becomes_zero(self, sync_client, sample_datapoints):
+    def test_save_datapoints_length_becomes_zero(
+        self,
+        sync_client: LaminarClient,
+        sample_datapoints: list[PartialEvaluationDatapoint]
+    ):
         """Test that ValueError is raised when data length becomes 0."""
         eval_id = uuid.uuid4()
 
@@ -847,28 +887,30 @@ class TestSyncClientRetryLogic:
         with patch(
             "lmnr.sdk.client.synchronous.resources.evals.INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH",
             2,
-        ):
-            # Override the _retry_save_datapoints method to use the patched constant
+        ), patch.object(
+            sync_client.evals, "_retry_save_datapoints"
+        ) as mock_retry:
+            mock_retry.side_effect = ValueError(
+                "Error saving evaluation datapoints"
+            )
+
             with patch.object(
-                sync_client.evals, "_retry_save_datapoints"
-            ) as mock_retry:
-                mock_retry.side_effect = ValueError(
-                    "Error saving evaluation datapoints"
-                )
+                sync_client.evals._client, "post", return_value=mock_response_413
+            ) as mock_post:
+                with pytest.raises(
+                    ValueError, match="Error saving evaluation datapoints"
+                ):
+                    sync_client.evals.save_datapoints(eval_id, sample_datapoints)
 
-                with patch.object(
-                    sync_client.evals._client, "post", return_value=mock_response_413
-                ) as mock_post:
-                    with pytest.raises(
-                        ValueError, match="Error saving evaluation datapoints"
-                    ):
-                        sync_client.evals.save_datapoints(eval_id, sample_datapoints)
+                # Should be called once (initial call gets 413, then retry method is called)
+                assert mock_post.call_count == 1
+                mock_retry.assert_called_once_with(eval_id, sample_datapoints, None)
 
-                    # Should be called once (initial call gets 413, then retry method is called)
-                    assert mock_post.call_count == 1
-                    mock_retry.assert_called_once_with(eval_id, sample_datapoints, None)
-
-    def test_save_datapoints_other_error_codes(self, sync_client, sample_datapoints):
+    def test_save_datapoints_other_error_codes(
+        self,
+        sync_client: LaminarClient,
+        sample_datapoints: list[PartialEvaluationDatapoint]
+    ):
         """Test that other error codes (not 413) are handled properly."""
         eval_id = uuid.uuid4()
 
@@ -889,7 +931,11 @@ class TestSyncClientRetryLogic:
             # Should only be called once (no retry for non-413 errors)
             assert mock_post.call_count == 1
 
-    def test_save_datapoints_with_group_name(self, sync_client, sample_datapoints):
+    def test_save_datapoints_with_group_name(
+        self,
+        sync_client: LaminarClient,
+        sample_datapoints: list[PartialEvaluationDatapoint]
+    ):
         """Test that group_name is properly passed through retries."""
         eval_id = uuid.uuid4()
         group_name = "test_group"
@@ -904,23 +950,24 @@ class TestSyncClientRetryLogic:
         with patch(
             "lmnr.sdk.client.synchronous.resources.evals.INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH",
             1000,
-        ):
-            with patch.object(
-                sync_client.evals._client,
-                "post",
-                side_effect=[mock_response_413, mock_response_200],
-            ) as mock_post:
-                sync_client.evals.save_datapoints(
-                    eval_id, sample_datapoints, group_name=group_name
-                )
+        ), patch.object(
+            sync_client.evals._client,
+            "post",
+            side_effect=[mock_response_413, mock_response_200],
+        ) as mock_post:
+            sync_client.evals.save_datapoints(
+                eval_id, sample_datapoints, group_name=group_name
+            )
 
-                # Verify group_name was passed in both calls
-                for call in mock_post.call_args_list:
-                    call_json = call[1]["json"]
-                    assert call_json["groupName"] == group_name
+            # Verify group_name was passed in both calls
+            for call in mock_post.call_args_list:
+                call_json = call[1]["json"]
+                assert call_json["groupName"] == group_name
 
     def test_retry_save_datapoints_data_length_halving(
-        self, sync_client, sample_datapoints
+        self,
+        sync_client: LaminarClient,
+        sample_datapoints: list[EvaluationResultDatapoint]
     ):
         """Test that data length is halved with each retry."""
         eval_id = uuid.uuid4()
@@ -928,9 +975,9 @@ class TestSyncClientRetryLogic:
 
         # Mock the _retry_save_datapoints method to capture the length parameter
         original_to_dict = PartialEvaluationDatapoint.to_dict
-        captured_lengths = []
+        captured_lengths: list[int] = []
 
-        def mock_to_dict(self, max_data_length=None):
+        def mock_to_dict(self: PartialEvaluationDatapoint, max_data_length: int = 0):
             captured_lengths.append(max_data_length)
             return original_to_dict(self, max_data_length)
 
@@ -944,35 +991,33 @@ class TestSyncClientRetryLogic:
         with patch(
             "lmnr.sdk.client.synchronous.resources.evals.INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH",
             initial_length,
-        ):
-            with patch.object(PartialEvaluationDatapoint, "to_dict", mock_to_dict):
-                # Mock the retry method to pass the correct initial_length
-                original_retry = sync_client.evals._retry_save_datapoints
+        ), patch.object(PartialEvaluationDatapoint, "to_dict", mock_to_dict):
+            # Mock the retry method to pass the correct initial_length
+            original_retry = sync_client.evals._retry_save_datapoints
 
-                def mock_retry_with_length(eval_id, datapoints, group_name):
-                    return original_retry(
-                        eval_id, datapoints, group_name, initial_length=initial_length
-                    )
+            def mock_retry_with_length(eval_id: uuid.UUID, datapoints: list[PartialEvaluationDatapoint], group_name: str):
+                return original_retry(
+                    eval_id, datapoints, group_name, initial_length=initial_length
+                )
 
-                with patch.object(
-                    sync_client.evals,
-                    "_retry_save_datapoints",
-                    side_effect=mock_retry_with_length,
-                ):
-                    with patch.object(
-                        sync_client.evals._client,
-                        "post",
-                        side_effect=[
-                            mock_response_413,
-                            mock_response_413,
-                            mock_response_200,
-                        ],
-                    ):
-                        sync_client.evals.save_datapoints(eval_id, sample_datapoints)
+            with patch.object(
+                sync_client.evals,
+                "_retry_save_datapoints",
+                side_effect=mock_retry_with_length,
+            ), patch.object(
+                sync_client.evals._client,
+                "post",
+                side_effect=[
+                    mock_response_413,
+                    mock_response_413,
+                    mock_response_200,
+                ],
+            ):
+                sync_client.evals.save_datapoints(eval_id, sample_datapoints)
 
         # Each datapoint calls to_dict, so we get multiple calls per request
         # Just check that we have the expected pattern of halving
-        unique_lengths = []
+        unique_lengths: list[int] = []
         for length in captured_lengths:
             if length not in unique_lengths:
                 unique_lengths.append(length)
@@ -983,7 +1028,9 @@ class TestSyncClientRetryLogic:
         assert unique_lengths[2] == initial_length // 4
 
     def test_retry_save_datapoints_direct_length_test(
-        self, sync_client, sample_datapoints
+        self,
+        sync_client: LaminarClient,
+        sample_datapoints: list[PartialEvaluationDatapoint]
     ):
         """Test the retry method directly with a small initial length to verify length becomes 0."""
         eval_id = uuid.uuid4()
@@ -1011,7 +1058,7 @@ class TestAsyncClientRetryLogic:
     """Test retry logic for payload too large errors in async client."""
 
     @pytest_asyncio.fixture
-    async def async_client(self):
+    async def async_client(self) -> AsyncGenerator[AsyncLaminarClient]:
         """Create an AsyncLaminarClient for testing."""
         client = AsyncLaminarClient(
             base_url="http://test-api.com", project_api_key="test-key"
@@ -1020,7 +1067,7 @@ class TestAsyncClientRetryLogic:
         await client.close()
 
     @pytest.fixture
-    def sample_datapoints(self):
+    def sample_datapoints(self) -> list[PartialEvaluationDatapoint]:
         """Create sample datapoints for testing."""
         return [
             PartialEvaluationDatapoint(
@@ -1045,7 +1092,9 @@ class TestAsyncClientRetryLogic:
 
     @pytest.mark.asyncio
     async def test_save_datapoints_success_on_first_try(
-        self, async_client, sample_datapoints
+        self,
+        async_client: AsyncLaminarClient,
+        sample_datapoints: list[PartialEvaluationDatapoint]
     ):
         """Test successful save without needing retry."""
         eval_id = uuid.uuid4()
@@ -1070,7 +1119,11 @@ class TestAsyncClientRetryLogic:
             assert f"/v1/evals/{eval_id}/datapoints" in call_args[0][0]
 
     @pytest.mark.asyncio
-    async def test_save_datapoints_retry_on_413(self, async_client, sample_datapoints):
+    async def test_save_datapoints_retry_on_413(
+        self,
+        async_client: AsyncLaminarClient,
+        sample_datapoints: list[PartialEvaluationDatapoint]
+    ):
         """Test retry logic when 413 Payload Too Large is returned."""
         eval_id = uuid.uuid4()
 
@@ -1085,24 +1138,25 @@ class TestAsyncClientRetryLogic:
         with patch(
             "lmnr.sdk.client.asynchronous.resources.evals.INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH",
             1000,
-        ):
-            with patch.object(
-                async_client.evals._client,
-                "post",
-                new_callable=AsyncMock,
-                side_effect=[mock_response_413, mock_response_200],
-            ) as mock_post:
-                await async_client.evals.save_datapoints(eval_id, sample_datapoints)
+        ), patch.object(
+            async_client.evals._client,
+            "post",
+            new_callable=AsyncMock,
+            side_effect=[mock_response_413, mock_response_200],
+        ) as mock_post:
+            await async_client.evals.save_datapoints(eval_id, sample_datapoints)
 
-                # Should be called twice (initial + 1 retry)
-                assert mock_post.call_count == 2
-                # Verify both calls were made to the correct endpoint
-                for call in mock_post.call_args_list:
-                    assert f"/v1/evals/{eval_id}/datapoints" in call[0][0]
+            # Should be called twice (initial + 1 retry)
+            assert mock_post.call_count == 2
+            # Verify both calls were made to the correct endpoint
+            for call in mock_post.call_args_list:
+                assert f"/v1/evals/{eval_id}/datapoints" in call[0][0]
 
     @pytest.mark.asyncio
     async def test_save_datapoints_multiple_retries(
-        self, async_client, sample_datapoints
+        self,
+        async_client: AsyncLaminarClient,
+        sample_datapoints: list[PartialEvaluationDatapoint]
     ):
         """Test multiple retries with exponentially decreasing payload size."""
         eval_id = uuid.uuid4()
@@ -1118,26 +1172,27 @@ class TestAsyncClientRetryLogic:
         with patch(
             "lmnr.sdk.client.asynchronous.resources.evals.INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH",
             64,
-        ):
-            with patch.object(
-                async_client.evals._client,
-                "post",
-                new_callable=AsyncMock,
-                side_effect=[
-                    mock_response_413,
-                    mock_response_413,
-                    mock_response_413,
-                    mock_response_200,
-                ],
-            ) as mock_post:
-                await async_client.evals.save_datapoints(eval_id, sample_datapoints)
+        ), patch.object(
+            async_client.evals._client,
+            "post",
+            new_callable=AsyncMock,
+            side_effect=[
+                mock_response_413,
+                mock_response_413,
+                mock_response_413,
+                mock_response_200,
+            ],
+        ) as mock_post:
+            await async_client.evals.save_datapoints(eval_id, sample_datapoints)
 
-                # Should be called 4 times (initial + 3 retries)
-                assert mock_post.call_count == 4
+            # Should be called 4 times (initial + 3 retries)
+            assert mock_post.call_count == 4
 
     @pytest.mark.asyncio
     async def test_save_datapoints_max_retries_exceeded(
-        self, async_client, sample_datapoints
+        self,
+        async_client: AsyncLaminarClient,
+        sample_datapoints: list[PartialEvaluationDatapoint]
     ):
         """Test that ValueError is raised when max retries is exceeded."""
         eval_id = uuid.uuid4()
@@ -1151,24 +1206,25 @@ class TestAsyncClientRetryLogic:
         with patch(
             "lmnr.sdk.client.asynchronous.resources.evals.INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH",
             64,
-        ):
-            with patch.object(
-                async_client.evals._client,
-                "post",
-                new_callable=AsyncMock,
-                return_value=mock_response_413,
-            ) as mock_post:
-                with pytest.raises(
-                    ValueError, match="Error saving evaluation datapoints"
-                ):
-                    await async_client.evals.save_datapoints(eval_id, sample_datapoints)
+        ), patch.object(
+            async_client.evals._client,
+            "post",
+            new_callable=AsyncMock,
+            return_value=mock_response_413,
+        ) as mock_post:
+            with pytest.raises(
+                ValueError, match="Error saving evaluation datapoints"
+            ):
+                await async_client.evals.save_datapoints(eval_id, sample_datapoints)
 
-                # Should be called initial + max_retries times (21 total with default max_retries=20)
-                assert mock_post.call_count == 21
+            # Should be called initial + max_retries times (21 total with default max_retries=20)
+            assert mock_post.call_count == 21
 
     @pytest.mark.asyncio
     async def test_save_datapoints_length_becomes_zero(
-        self, async_client, sample_datapoints
+        self,
+        async_client: AsyncLaminarClient,
+        sample_datapoints: list[PartialEvaluationDatapoint]
     ):
         """Test that ValueError is raised when data length becomes 0."""
         eval_id = uuid.uuid4()
@@ -1178,38 +1234,39 @@ class TestAsyncClientRetryLogic:
         mock_response_413.status_code = 413
 
         # Start with very small initial length so it quickly becomes 0
+        # Override the _retry_save_datapoints method to use the patched constant
         with patch(
             "lmnr.sdk.client.asynchronous.resources.evals.INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH",
             2,
-        ):
-            # Override the _retry_save_datapoints method to use the patched constant
+        ), patch.object(
+            async_client.evals, "_retry_save_datapoints", new_callable=AsyncMock
+        ) as mock_retry:
+            mock_retry.side_effect = ValueError(
+                "Error saving evaluation datapoints"
+            )
+
             with patch.object(
-                async_client.evals, "_retry_save_datapoints", new_callable=AsyncMock
-            ) as mock_retry:
-                mock_retry.side_effect = ValueError(
-                    "Error saving evaluation datapoints"
-                )
+                async_client.evals._client,
+                "post",
+                new_callable=AsyncMock,
+                return_value=mock_response_413,
+            ) as mock_post:
+                with pytest.raises(
+                    ValueError, match="Error saving evaluation datapoints"
+                ):
+                    await async_client.evals.save_datapoints(
+                        eval_id, sample_datapoints
+                    )
 
-                with patch.object(
-                    async_client.evals._client,
-                    "post",
-                    new_callable=AsyncMock,
-                    return_value=mock_response_413,
-                ) as mock_post:
-                    with pytest.raises(
-                        ValueError, match="Error saving evaluation datapoints"
-                    ):
-                        await async_client.evals.save_datapoints(
-                            eval_id, sample_datapoints
-                        )
-
-                    # Should be called once (initial call gets 413, then retry method is called)
-                    assert mock_post.call_count == 1
-                    mock_retry.assert_called_once_with(eval_id, sample_datapoints, None)
+                # Should be called once (initial call gets 413, then retry method is called)
+                assert mock_post.call_count == 1
+                mock_retry.assert_called_once_with(eval_id, sample_datapoints, None)
 
     @pytest.mark.asyncio
     async def test_save_datapoints_other_error_codes(
-        self, async_client, sample_datapoints
+        self,
+        async_client: AsyncLaminarClient,
+        sample_datapoints: list[PartialEvaluationDatapoint]
     ):
         """Test that other error codes (not 413) are handled properly."""
         eval_id = uuid.uuid4()
@@ -1236,7 +1293,9 @@ class TestAsyncClientRetryLogic:
 
     @pytest.mark.asyncio
     async def test_save_datapoints_with_group_name(
-        self, async_client, sample_datapoints
+        self,
+        async_client: AsyncLaminarClient,
+        sample_datapoints: list[PartialEvaluationDatapoint]
     ):
         """Test that group_name is properly passed through retries."""
         eval_id = uuid.uuid4()
@@ -1252,25 +1311,26 @@ class TestAsyncClientRetryLogic:
         with patch(
             "lmnr.sdk.client.asynchronous.resources.evals.INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH",
             1000,
-        ):
-            with patch.object(
-                async_client.evals._client,
-                "post",
-                new_callable=AsyncMock,
-                side_effect=[mock_response_413, mock_response_200],
-            ) as mock_post:
-                await async_client.evals.save_datapoints(
-                    eval_id, sample_datapoints, group_name=group_name
-                )
+        ), patch.object(
+            async_client.evals._client,
+            "post",
+            new_callable=AsyncMock,
+            side_effect=[mock_response_413, mock_response_200],
+        ) as mock_post:
+            await async_client.evals.save_datapoints(
+                eval_id, sample_datapoints, group_name=group_name
+            )
 
-                # Verify group_name was passed in both calls
-                for call in mock_post.call_args_list:
-                    call_json = call[1]["json"]
-                    assert call_json["groupName"] == group_name
+            # Verify group_name was passed in both calls
+            for call in mock_post.call_args_list:
+                call_json = call[1]["json"]
+                assert call_json["groupName"] == group_name
 
     @pytest.mark.asyncio
     async def test_retry_save_datapoints_data_length_halving(
-        self, async_client, sample_datapoints
+        self,
+        async_client: AsyncLaminarClient,
+        sample_datapoints: list[PartialEvaluationDatapoint]
     ):
         """Test that data length is halved with each retry."""
         eval_id = uuid.uuid4()
@@ -1278,9 +1338,9 @@ class TestAsyncClientRetryLogic:
 
         # Mock the _retry_save_datapoints method to capture the length parameter
         original_to_dict = PartialEvaluationDatapoint.to_dict
-        captured_lengths = []
+        captured_lengths: list[int] = []
 
-        def mock_to_dict(self, max_data_length=None):
+        def mock_to_dict(self: PartialEvaluationDatapoint, max_data_length: int = 0):
             captured_lengths.append(max_data_length)
             return original_to_dict(self, max_data_length)
 
@@ -1294,38 +1354,36 @@ class TestAsyncClientRetryLogic:
         with patch(
             "lmnr.sdk.client.asynchronous.resources.evals.INITIAL_EVALUATION_DATAPOINT_MAX_DATA_LENGTH",
             initial_length,
-        ):
-            with patch.object(PartialEvaluationDatapoint, "to_dict", mock_to_dict):
-                # Mock the retry method to pass the correct initial_length
-                original_retry = async_client.evals._retry_save_datapoints
+        ), patch.object(PartialEvaluationDatapoint, "to_dict", mock_to_dict):
+            # Mock the retry method to pass the correct initial_length
+            original_retry = async_client.evals._retry_save_datapoints
 
-                async def mock_retry_with_length(eval_id, datapoints, group_name):
-                    return await original_retry(
-                        eval_id, datapoints, group_name, initial_length=initial_length
-                    )
+            async def mock_retry_with_length(eval_id: uuid.UUID, datapoints: list[PartialEvaluationDatapoint], group_name: str):
+                return await original_retry(
+                    eval_id, datapoints, group_name, initial_length=initial_length
+                )
 
-                with patch.object(
-                    async_client.evals,
-                    "_retry_save_datapoints",
-                    side_effect=mock_retry_with_length,
-                ):
-                    with patch.object(
-                        async_client.evals._client,
-                        "post",
-                        new_callable=AsyncMock,
-                        side_effect=[
-                            mock_response_413,
-                            mock_response_413,
-                            mock_response_200,
-                        ],
-                    ):
-                        await async_client.evals.save_datapoints(
-                            eval_id, sample_datapoints
-                        )
+            with patch.object(
+                async_client.evals,
+                "_retry_save_datapoints",
+                side_effect=mock_retry_with_length,
+            ), patch.object(
+                async_client.evals._client,
+                "post",
+                new_callable=AsyncMock,
+                side_effect=[
+                    mock_response_413,
+                    mock_response_413,
+                    mock_response_200,
+                ],
+            ):
+                await async_client.evals.save_datapoints(
+                    eval_id, sample_datapoints
+                )
 
         # Each datapoint calls to_dict, so we get multiple calls per request
         # Just check that we have the expected pattern of halving
-        unique_lengths = []
+        unique_lengths: list[int] = []
         for length in captured_lengths:
             if length not in unique_lengths:
                 unique_lengths.append(length)
@@ -1337,7 +1395,9 @@ class TestAsyncClientRetryLogic:
 
     @pytest.mark.asyncio
     async def test_retry_save_datapoints_direct_length_test(
-        self, async_client, sample_datapoints
+        self,
+        async_client: AsyncLaminarClient,
+        sample_datapoints: list[PartialEvaluationDatapoint]
     ):
         """Test the retry method directly with a small initial length to verify length becomes 0."""
         eval_id = uuid.uuid4()

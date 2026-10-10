@@ -44,21 +44,23 @@ run method or the executor's worker thread."
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable, Collection, Sequence
 from concurrent import futures
-from typing import TYPE_CHECKING, Any, Callable, Collection
+from typing import TYPE_CHECKING, Any
 
-from wrapt import (
-    wrap_function_wrapper,  # type: ignore[reportUnknownVariableType]
-)
-
-from lmnr.opentelemetry_lib.tracing.context import (
-    get_current_context,
-    attach_context,
-    detach_context,
-)
 from opentelemetry import context
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
+from typing_extensions import override
+from wrapt import (
+    wrap_function_wrapper,
+)
+
+from lmnr.opentelemetry_lib.tracing.context import (
+    attach_context,
+    detach_context,
+    get_current_context,
+)
 
 _instruments = ()
 
@@ -69,6 +71,7 @@ if TYPE_CHECKING:
 
     class HasOtelContext(Protocol):
         _otel_context: context.Context
+        _lmnr_otel_context: context.Context
 
 
 class ThreadingInstrumentor(BaseInstrumentor):
@@ -76,14 +79,17 @@ class ThreadingInstrumentor(BaseInstrumentor):
     __WRAPPER_RUN_METHOD = "run"
     __WRAPPER_SUBMIT_METHOD = "submit"
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
+    @override
     def _instrument(self, **kwargs: Any):
         self._instrument_thread()
         self._instrument_timer()
         self._instrument_thread_pool()
 
+    @override
     def _uninstrument(self, **kwargs: Any):
         self._uninstrument_thread()
         self._uninstrument_timer()
@@ -154,7 +160,7 @@ class ThreadingInstrumentor(BaseInstrumentor):
     def __wrap_threading_run(
         call_wrapped: Callable[..., R],
         instance: HasOtelContext,
-        args: tuple[Any, ...],
+        args: Sequence[Any],
         kwargs: dict[str, Any],
     ) -> R:
         token = None
@@ -175,7 +181,7 @@ class ThreadingInstrumentor(BaseInstrumentor):
     @staticmethod
     def __wrap_thread_pool_submit(
         call_wrapped: Callable[..., R],
-        instance: futures.ThreadPoolExecutor,
+        _instance: futures.ThreadPoolExecutor,
         args: tuple[Callable[..., Any], ...],
         kwargs: dict[str, Any],
     ) -> R:

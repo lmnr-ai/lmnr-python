@@ -9,6 +9,7 @@ typed answers are a single assistant message whose content is the JSON answer
 list.
 """
 
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from opentelemetry import context as context_api
@@ -20,23 +21,30 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
 from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
-from opentelemetry.trace import Span, Tracer
+from opentelemetry.trace import Span
 from opentelemetry.trace.status import Status, StatusCode
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    WrappedFunctionSpec,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    dont_throw,
+    model_as_dict,
     safe_start_span,
+    set_span_attribute,
+    should_send_prompts,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    stamp_instrumentation_scope,
 )
 from lmnr.opentelemetry_lib.tracing.context import get_event_attributes_from_context
 from lmnr.sdk.utils import json_dumps
 from openai._legacy_response import LegacyAPIResponse
 
-from ..shared import model_as_dict, set_span_attribute
-from ..utils import dont_throw, should_send_prompts, with_tracer_wrapper
-
 SPAN_NAME = "openai.decision"
 
 
-def build_genai_input_messages(kwargs: dict) -> list[dict[str, Any]] | None:
+def build_genai_input_messages(kwargs: dict[str, Any]) -> list[dict[str, Any]] | None:
     """The shared user input as chat messages.
 
     Only materialized sequences are recorded (here and for `questions`): a
@@ -62,7 +70,7 @@ def _parse_decision(response: Any) -> Any:
 
 
 @dont_throw
-def _set_request_attributes(span: Span, kwargs: dict) -> None:
+def _set_request_attributes(span: Span, kwargs: dict[str, Any]) -> None:
     set_span_attribute(span, GEN_AI_REQUEST_MODEL, kwargs.get("model"))
     # Same key the chat path uses for its `user` param.
     set_span_attribute(span, "llm.user", kwargs.get("safety_identifier"))
@@ -115,11 +123,14 @@ def _set_response_attributes(span: Span, response: Any) -> None:
         )
 
 
-def _start_span(kwargs: dict) -> Span | None:
+def _start_span(to_wrap: WrappedFunctionSpec, kwargs: dict[str, Any]) -> Span | None:
     span = safe_start_span(
-        name=SPAN_NAME, attributes={"gen_ai.system": "openai"}, span_type="LLM"
+        name=to_wrap.get("span_name") or SPAN_NAME,
+        attributes={"gen_ai.system": "openai"},
+        span_type="LLM",
     )
     if span is not None:
+        stamp_instrumentation_scope(span, to_wrap)
         _set_request_attributes(span, kwargs)
     return span
 
@@ -131,12 +142,17 @@ def _end_span_with_error(span: Span, e: Exception) -> None:
     span.end()
 
 
-@with_tracer_wrapper
-def decisions_create_wrapper(tracer: Tracer, wrapped, instance, args, kwargs):
+def decisions_create_wrapper(
+    to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., Any],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
-    span = _start_span(kwargs)
+    span = _start_span(to_wrap, kwargs)
     if span is None:
         return wrapped(*args, **kwargs)
 
@@ -151,14 +167,17 @@ def decisions_create_wrapper(tracer: Tracer, wrapped, instance, args, kwargs):
     return response
 
 
-@with_tracer_wrapper
 async def async_decisions_create_wrapper(
-    tracer: Tracer, wrapped, instance, args, kwargs
+    to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., Any],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
 ):
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
-    span = _start_span(kwargs)
+    span = _start_span(to_wrap, kwargs)
     if span is None:
         return await wrapped(*args, **kwargs)
 

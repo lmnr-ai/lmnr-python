@@ -26,7 +26,7 @@ lockstep.
 """
 
 import json
-from typing import Any
+from typing import Any, cast
 
 from blake3 import blake3
 
@@ -39,17 +39,17 @@ def _canonical_json(value: Any) -> str:
     strings/numbers/bools/null). No whitespace, `","` / `":"` separators.
     """
     if isinstance(value, dict):
-        items = sorted(value.items(), key=lambda kv: kv[0])
+        items = sorted(value.items(), key=lambda kv: kv[0])  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType, reportUnknownVariableType]
         return (
             "{"
             + ",".join(
                 json.dumps(k, ensure_ascii=False) + ":" + _canonical_json(v)
-                for k, v in items
+                for k, v in items  # pyright: ignore[reportUnknownVariableType]
             )
             + "}"
         )
     if isinstance(value, list):
-        return "[" + ",".join(_canonical_json(v) for v in value) + "]"
+        return "[" + ",".join(_canonical_json(v) for v in value) + "]"  # pyright: ignore[reportUnknownVariableType]
     return json.dumps(value, ensure_ascii=False)
 
 
@@ -68,19 +68,19 @@ def _extract_system_remaining(messages: Any) -> list[Any] | None:
     sys_idx = next(
         (
             i
-            for i, m in enumerate(messages)
-            if isinstance(m, dict) and m.get("role") == "system"
+            for i, m in enumerate(messages) # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
+            if isinstance(m, dict) and cast(dict[str, str], m).get("role") == "system"
         ),
         None,
     )
     if sys_idx is None:
         return None
 
-    sys_text = _system_text(messages[sys_idx])
+    sys_text = _system_text(messages[sys_idx]) # pyright: ignore[reportUnknownArgumentType]
     if not sys_text:
         return None
 
-    return [m for i, m in enumerate(messages) if i != sys_idx]
+    return [m for i, m in enumerate(messages) if i != sys_idx] # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
 
 
 def _system_text(sys_msg: dict[str, Any]) -> str:
@@ -92,17 +92,18 @@ def _system_text(sys_msg: dict[str, Any]) -> str:
     # "content": [{"text": "...", "type": "text"}, ...] (Anthropic format)
     if isinstance(content, list):
         joined = " ".join(
-            block["text"]
-            for block in content
-            if isinstance(block, dict) and isinstance(block.get("text"), str)
+            block["text"]  # pyright: ignore[reportUnknownArgumentType]
+            for block in content  # pyright: ignore[reportUnknownVariableType]
+            if isinstance(block, dict) and isinstance(cast(dict[str, str], block).get("text"), str)
         )
         if joined:
             return joined
     # "parts" shapes — first part only (Gemini {"text"}, OTel {"content"}).
     parts = sys_msg.get("parts")
     if isinstance(parts, list) and parts:
-        first = parts[0]
+        first = parts[0]  # pyright: ignore[reportUnknownVariableType]
         if isinstance(first, dict):
+            first = cast(dict[str, str], first)
             text = first.get("text")
             if not isinstance(text, str):
                 text = first.get("content")

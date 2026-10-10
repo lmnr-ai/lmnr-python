@@ -1,14 +1,35 @@
 """OpenTelemetry OpenRouter instrumentation"""
 
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterable,
+    Awaitable,
+    Callable,
+    Collection,
+    Generator,
+    Iterable,
+    Sequence,
+)
 from importlib.metadata import version
-from typing import Collection
+from typing import Any, cast
 
 from opentelemetry import context as context_api
 from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.trace import Span
 from opentelemetry.trace.status import Status, StatusCode
-from openrouter.utils.eventstreaming import EventStream, EventStreamAsync
+from typing_extensions import TypeVar, override
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openrouter.span_utils import (
+    aggregate_chat_chunks,
+    response_from_stream_events,
+    responses_error_message,
+    set_chat_request_attributes,
+    set_chat_response_attributes,
+    set_embeddings_request_attributes,
+    set_embeddings_response_attributes,
+    set_responses_request_attributes,
+    set_responses_response_attributes,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
 )
@@ -22,20 +43,11 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     safe_start_span,
     to_dict,
 )
-
-from .span_utils import (
-    aggregate_chat_chunks,
-    response_from_stream_events,
-    responses_error_message,
-    set_chat_request_attributes,
-    set_chat_response_attributes,
-    set_embeddings_request_attributes,
-    set_embeddings_response_attributes,
-    set_responses_request_attributes,
-    set_responses_response_attributes,
-)
+from lmnr.sdk.types import LaminarSpanType
+from openrouter.utils.eventstreaming import EventStream, EventStreamAsync
 
 _instruments = ("openrouter >= 1.0.0",)
+T = TypeVar("T")
 
 # (kind, method name, is_async). `kind` doubles as the module and the span suffix.
 _WRAPPED_METHODS = (
@@ -62,29 +74,29 @@ _RESPONSE_ATTRIBUTE_SETTERS = {
 
 def _kind(to_wrap: WrappedFunctionSpec) -> str:
     """`chat`, `responses` or `embeddings`, derived from the span name."""
-    return to_wrap["span_name"].split(".")[-1]
+    return (to_wrap.get("span_name") or ".chat").split(".")[-1]
 
 
 def _start_span(to_wrap: WrappedFunctionSpec) -> Span | None:
     scope = to_wrap.get("instrumentation_scope", {})
     return safe_start_span(
-        name=to_wrap["span_name"],
+        name=to_wrap.get("span_name") or "openrouter",
         attributes={
             "gen_ai.system": "openrouter",
-            "lmnr.span.instrumentation_scope.name": scope.get("name"),
-            "lmnr.span.instrumentation_scope.version": scope.get("version"),
+            "lmnr.span.instrumentation_scope.name": cast(str, scope.get("name") or "openrouter"),
+            "lmnr.span.instrumentation_scope.version": cast(str, scope.get("version") or "unknown"),
         },
-        span_type=to_wrap["span_type"],
+        span_type=cast(LaminarSpanType, to_wrap.get("span_type") or "DEFAULT"),
     )
 
 
 @dont_throw
-def _set_request_attributes(span: Span, kind: str, kwargs: dict):
+def _set_request_attributes(span: Span, kind: str, kwargs: dict[str, Any]):
     _REQUEST_ATTRIBUTE_SETTERS[kind](span, kwargs)
 
 
 @dont_throw
-def _set_response_attributes(span: Span, kind: str, response: dict | None):
+def _set_response_attributes(span: Span, kind: str, response: dict[str, Any] | None):
     if not response:
         return
     _RESPONSE_ATTRIBUTE_SETTERS[kind](span, response)
@@ -101,7 +113,7 @@ def _record_error(span: Span, error: Exception):
     span.set_status(Status(StatusCode.ERROR, str(error)))
 
 
-def _finish_stream(span: Span, kind: str, chunks: list[dict]):
+def _finish_stream(span: Span, kind: str, chunks: list[dict[str, Any]]):
     # Called from both the wrapping generator and `close()`; only the first ends.
     if not span.is_recording():
         return
@@ -113,10 +125,10 @@ def _finish_stream(span: Span, kind: str, chunks: list[dict]):
     span.end()
 
 
-def _wrap_stream(stream: EventStream, span: Span, kind: str) -> EventStream:
-    chunks: list[dict] = []
+def _wrap_stream(stream: EventStream[Any], span: Span, kind: str) -> EventStream[Any]:
+    chunks: list[dict[str, Any]] = []
 
-    def generator(source):
+    def generator(source: Iterable[T]) -> Generator[T]:
         try:
             for chunk in source:
                 chunks.append(to_dict(chunk))
@@ -144,11 +156,11 @@ def _wrap_stream(stream: EventStream, span: Span, kind: str) -> EventStream:
 
 
 def _wrap_async_stream(
-    stream: EventStreamAsync, span: Span, kind: str
-) -> EventStreamAsync:
-    chunks: list[dict] = []
+    stream: EventStreamAsync[Any], span: Span, kind: str
+) -> EventStreamAsync[Any]:
+    chunks: list[dict[str, Any]] = []
 
-    async def generator(source):
+    async def generator(source: AsyncIterable[T]) -> AsyncGenerator[T]:
         try:
             async for chunk in source:
                 chunks.append(to_dict(chunk))
@@ -175,7 +187,13 @@ def _wrap_async_stream(
     return stream
 
 
-def _wrap(to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs):
+def _wrap(
+    to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., T],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T | EventStream[Any]:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
@@ -193,14 +211,20 @@ def _wrap(to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs):
         raise
 
     if isinstance(response, EventStream):
-        return _wrap_stream(response, span, kind)
+        return _wrap_stream(cast(EventStream[Any], response), span, kind)
 
     _set_response_attributes(span, kind, to_dict(response))
     span.end()
     return response
 
 
-async def _awrap(to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs):
+async def _awrap(
+    to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., Awaitable[T]],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T | EventStreamAsync[Any]:
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
@@ -218,7 +242,7 @@ async def _awrap(to_wrap: WrappedFunctionSpec, wrapped, instance, args, kwargs):
         raise
 
     if isinstance(response, EventStreamAsync):
-        return _wrap_async_stream(response, span, kind)
+        return _wrap_async_stream(cast(EventStreamAsync[Any], response), span, kind)
 
     _set_response_attributes(span, kind, to_dict(response))
     span.end()
@@ -230,9 +254,11 @@ class OpenRouterInstrumentor(BaseLaminarInstrumentor):
 
     _scope: LaminarInstrumentationScopeAttributes | None = None
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is None:
             try:
@@ -246,7 +272,7 @@ class OpenRouterInstrumentor(BaseLaminarInstrumentor):
 
     def __init__(self):
         super().__init__()
-        self.instrumentor_config = LaminarInstrumentorConfig(
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 WrappedFunctionSpec(
                     package_name=f"openrouter.{kind}",

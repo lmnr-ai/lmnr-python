@@ -1,6 +1,8 @@
 import json
 import os
 from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -8,7 +10,7 @@ from lmnr.sdk.debug.config import (
     build_debug_config,
     build_debug_config_from_context,
 )
-from lmnr.sdk.types import DebugContext, LaminarSpanContext
+from lmnr.sdk.types import DebugContext, LaminarSpanContext, deserialize_debug_context
 
 _DEBUG_ENV_KEYS = (
     "LMNR_DEBUG",
@@ -23,17 +25,21 @@ _VECTORS = json.loads(
 
 
 @pytest.fixture(autouse=True)
-def _clear_debug_env(monkeypatch):
+def _clear_debug_env(monkeypatch: pytest.MonkeyPatch):
     for key in _DEBUG_ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
 
 
 @pytest.mark.parametrize("case", _VECTORS, ids=[c["name"] for c in _VECTORS])
-def test_config_truth_table(case, tmp_path, monkeypatch):
+def test_config_truth_table(
+    case: dict[str, dict[str, str] | None],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
     # build_debug_config now reads `.lmnr/debug-session.json` from cwd
     # unconditionally; pin cwd to an empty temp dir so a stray file can't leak in.
     monkeypatch.chdir(tmp_path)
-    for key, value in case["env"].items():
+    for key, value in (case["env"] or {}).items():
         monkeypatch.setenv(key, value)
 
     config = build_debug_config()
@@ -50,7 +56,7 @@ def test_config_truth_table(case, tmp_path, monkeypatch):
     assert config.replay_enabled is expect["replay_enabled"]
 
 
-def test_session_id_defaults_to_uuid(tmp_path, monkeypatch):
+def test_session_id_defaults_to_uuid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("LMNR_DEBUG", "true")
     config = build_debug_config()
@@ -65,13 +71,16 @@ def test_disabled_when_env_absent():
     assert build_debug_config() is None
 
 
-def _write_session_file(tmp_path: Path, payload: dict) -> None:
+def _write_session_file(tmp_path: Path, payload: dict[str, Any]) -> None:
     session_dir = tmp_path / ".lmnr"
     session_dir.mkdir(parents=True, exist_ok=True)
-    (session_dir / "debug-session.json").write_text(json.dumps(payload))
+    _bytes_written = (session_dir / "debug-session.json").write_text(json.dumps(payload))
 
 
-def test_session_file_rejoins_silently_continuation_not_minted(tmp_path, monkeypatch):
+def test_session_file_rejoins_silently_continuation_not_minted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
     monkeypatch.chdir(tmp_path)
     _write_session_file(
         tmp_path,
@@ -99,7 +108,10 @@ def test_session_file_rejoins_silently_continuation_not_minted(tmp_path, monkeyp
     assert config.cache_until_span_id == "0123456789abcdef"
 
 
-def test_session_file_found_in_ancestor_joins_its_session(tmp_path, monkeypatch):
+def test_session_file_found_in_ancestor_joins_its_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
     # Nearest-ancestor resolution: a run started from a subdirectory of a
     # project joins the project's session, not a fresh one.
     _write_session_file(
@@ -124,7 +136,10 @@ def test_session_file_found_in_ancestor_joins_its_session(tmp_path, monkeypatch)
     assert config.session_minted is False
 
 
-def test_config_pins_session_dir_and_file_session_id(tmp_path, monkeypatch):
+def test_config_pins_session_dir_and_file_session_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
     # The anchor and the on-disk session id are captured at init for the
     # emit-side write/guard: session_dir is the resolved ancestor (chdir-safe
     # write target) and file_session_id is what the guard compares against
@@ -153,7 +168,10 @@ def test_config_pins_session_dir_and_file_session_id(tmp_path, monkeypatch):
     assert config.file_session_id == "session-on-disk"
 
 
-def test_session_file_reads_replay_and_cache_when_env_unset(tmp_path, monkeypatch):
+def test_session_file_reads_replay_and_cache_when_env_unset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
     monkeypatch.chdir(tmp_path)
     _write_session_file(
         tmp_path,
@@ -175,7 +193,10 @@ def test_session_file_reads_replay_and_cache_when_env_unset(tmp_path, monkeypatc
     assert config.replay_enabled is True
 
 
-def test_env_overrides_the_file_per_field(tmp_path, monkeypatch):
+def test_env_overrides_the_file_per_field(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
     monkeypatch.chdir(tmp_path)
     _write_session_file(
         tmp_path,
@@ -202,7 +223,10 @@ def test_env_overrides_the_file_per_field(tmp_path, monkeypatch):
     assert config.cache_until_span_id == "cafe"
 
 
-def test_mints_fresh_session_when_no_file_and_no_env_id(tmp_path, monkeypatch):
+def test_mints_fresh_session_when_no_file_and_no_env_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("LMNR_DEBUG", "true")
 
@@ -214,7 +238,10 @@ def test_mints_fresh_session_when_no_file_and_no_env_id(tmp_path, monkeypatch):
     assert config.replay_trace_id is None
 
 
-def test_local_origin_and_session_minted_from_env(tmp_path, monkeypatch):
+def test_local_origin_and_session_minted_from_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("LMNR_DEBUG", "true")
     config = build_debug_config()
@@ -223,7 +250,10 @@ def test_local_origin_and_session_minted_from_env(tmp_path, monkeypatch):
     assert config.session_minted is True
 
 
-def test_provided_session_id_not_minted(tmp_path, monkeypatch):
+def test_provided_session_id_not_minted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("LMNR_DEBUG", "true")
     monkeypatch.setenv("LMNR_DEBUG_SESSION_ID", "sess-123")
@@ -239,7 +269,7 @@ _REPLAY = "00000000-0000-0000-0000-0000000000bb"
 
 
 def test_debug_context_parse_camel_case():
-    ctx = DebugContext.deserialize(
+    ctx = deserialize_debug_context(
         {
             "enabled": True,
             "sessionId": _SESSION,
@@ -247,14 +277,14 @@ def test_debug_context_parse_camel_case():
             "cacheUntil": "0123-456789abcdef",
         }
     )
-    assert ctx.enabled is True
-    assert ctx.session_id == _SESSION
-    assert ctx.replay_trace_id == _REPLAY
-    assert ctx.cache_until == "0123-456789abcdef"
+    assert ctx.get("enabled") is True
+    assert ctx.get("session_id") == _SESSION
+    assert ctx.get("replay_trace_id") == _REPLAY
+    assert ctx.get("cache_until") == "0123-456789abcdef"
 
 
 def test_debug_context_parse_snake_case():
-    ctx = DebugContext.deserialize(
+    ctx = deserialize_debug_context(
         {
             "enabled": True,
             "session_id": _SESSION,
@@ -262,9 +292,9 @@ def test_debug_context_parse_snake_case():
             "cache_until": "abcdef",
         }
     )
-    assert ctx.session_id == _SESSION
-    assert ctx.replay_trace_id == _REPLAY
-    assert ctx.cache_until == "abcdef"
+    assert ctx.get("session_id") == _SESSION
+    assert ctx.get("replay_trace_id") == _REPLAY
+    assert ctx.get("cache_until") == "abcdef"
 
 
 def test_debug_context_keeps_non_uuid_ids_verbatim():
@@ -272,23 +302,23 @@ def test_debug_context_keeps_non_uuid_ids_verbatim():
     # and propagates that exact value, so the consumer must round-trip it
     # unchanged. Dropping non-UUID ids to None would make the downstream treat
     # the block as session-less and never join the run.
-    ctx = DebugContext.deserialize(
+    ctx = deserialize_debug_context(
         {
             "enabled": True,
             "session_id": "my-session",
             "replay_trace_id": "my-replay",
         }
     )
-    assert ctx.session_id == "my-session"
-    assert ctx.replay_trace_id == "my-replay"
+    assert ctx.get("session_id") == "my-session"
+    assert ctx.get("replay_trace_id") == "my-replay"
 
 
 def test_debug_context_empty_ids_become_none():
-    ctx = DebugContext.deserialize(
+    ctx = deserialize_debug_context(
         {"enabled": True, "session_id": "", "replay_trace_id": ""}
     )
-    assert ctx.session_id is None
-    assert ctx.replay_trace_id is None
+    assert ctx.get("session_id") is None
+    assert ctx.get("replay_trace_id") is None
 
 
 def test_debug_context_non_boolean_enabled_never_arms():
@@ -296,10 +326,10 @@ def test_debug_context_non_boolean_enabled_never_arms():
     # the string "false", or 1) is a malformed/forged block and must parse to
     # enabled=False, never arming a downstream runtime.
     for enabled in ("false", "true", 1, {"x": 1}):
-        ctx = DebugContext.deserialize(
+        ctx = deserialize_debug_context(
             {"enabled": enabled, "session_id": "my-session"}
         )
-        assert ctx.enabled is False
+        assert ctx.get("enabled") is False
 
 
 def test_laminar_span_context_parses_nested_debug():
@@ -311,8 +341,8 @@ def test_laminar_span_context_parses_nested_debug():
         }
     )
     assert sc.debug is not None
-    assert sc.debug.enabled is True
-    assert sc.debug.session_id == _SESSION
+    assert sc.debug.get("enabled") is True
+    assert sc.debug.get("session_id") == _SESSION
 
 
 def test_laminar_span_context_no_debug_is_none():

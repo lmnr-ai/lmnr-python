@@ -16,15 +16,20 @@ import select
 import signal
 import threading
 import time
+from collections.abc import Callable, Sequence
+from typing import Any, cast
 
 import pytest
-from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace import Event, ReadableSpan, SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
     SimpleSpanProcessor,
     SpanExporter,
     SpanExportResult,
 )
+from opentelemetry.trace import Link, Status, Tracer
+from opentelemetry.util.types import AttributeValue
+from typing_extensions import override
 
 from lmnr.opentelemetry_lib.tracing.batch_processor import (
     DEFAULT_MAX_EXPORT_BATCH_SIZE,
@@ -34,6 +39,8 @@ from lmnr.opentelemetry_lib.tracing.batch_processor import (
     utf8_size,
 )
 from lmnr.opentelemetry_lib.tracing.processor import LaminarSpanProcessor
+from lmnr.opentelemetry_lib.tracing.span import SDKSpan
+from lmnr.sdk.log import get_default_logger
 
 # Long enough that the schedule-delay trigger can never fire during a test.
 _NEVER_MILLIS = 600_000
@@ -53,16 +60,18 @@ _SPAN_BYTES = 4000
 # enqueues it before the flush thread runs.
 _SPANS_PER_BATCH = 25
 
+logger = get_default_logger(__name__)
 
 class RecordingExporter(SpanExporter):
     def __init__(self):
-        self.batches: list[list] = []
+        self.batches: list[list[ReadableSpan]] = []
         # Stands in for network time. Tests that assert on *where* an export
         # runs need it to take long enough to be observable.
-        self.export_delay_s = 0.0
-        self._lock = threading.Lock()
+        self.export_delay_s: float = 0.0
+        self._lock: threading.Lock = threading.Lock()
 
-    def export(self, spans) -> SpanExportResult:
+    @override
+    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
         spans = list(spans)
         if self.export_delay_s:
             time.sleep(self.export_delay_s)
@@ -70,9 +79,11 @@ class RecordingExporter(SpanExporter):
             self.batches.append(spans)
         return SpanExportResult.SUCCESS
 
+    @override
     def shutdown(self) -> None:
         pass
 
+    @override
     def force_flush(self, timeout_millis: int = 30000) -> bool:
         return True
 
@@ -92,7 +103,7 @@ class RecordingExporter(SpanExporter):
             return sum(len(batch) for batch in self.batches)
 
 
-_built_processors: list = []
+_built_processors: list[SpanProcessor] = []
 
 
 @pytest.fixture(autouse=True)
@@ -110,10 +121,10 @@ def _shutdown_processors():
         try:
             _built_processors.pop().shutdown()
         except Exception:
-            pass
+            logger.debug("Failed to shutdown test processor", exc_info=True)
 
 
-def _make_laminar_processor(**kwargs) -> LaminarSpanProcessor:
+def _make_laminar_processor(**kwargs: Any) -> LaminarSpanProcessor:
     """A `LaminarSpanProcessor` registered for shutdown; it wraps a batch
     processor and so owns a worker thread of its own.
     """
@@ -126,7 +137,7 @@ def _make_processor(
     max_export_batch_size_bytes: int,
     max_export_batch_size: int = 1000,
     schedule_delay_millis: float = _NEVER_MILLIS,
-):
+) -> tuple[RecordingExporter, SizeLimitedBatchSpanProcessor, Tracer]:
     """A processor whose only reachable flush trigger is the byte limit, unless
     a caller deliberately lowers the item count or the schedule delay.
     """
@@ -144,13 +155,13 @@ def _make_processor(
     return exporter, processor, provider.get_tracer(__name__)
 
 
-def _emit(tracer, name: str, payload_size: int = 0):
+def _emit(tracer: Tracer, name: str, payload_size: int = 0):
     with tracer.start_as_current_span(name) as span:
         if payload_size:
             span.set_attribute("gen_ai.input.messages", "x" * payload_size)
 
 
-def _wait_for(predicate, timeout: float = 10.0) -> bool:
+def _wait_for(predicate: Callable[..., bool], timeout: float = 10.0) -> bool:
     """Poll until the upstream worker thread has exported. Its flushes are
     asynchronous, so the count- and time-limit tests cannot assert immediately.
     """
@@ -179,7 +190,7 @@ def test_byte_limit_flushes_before_count_and_time_limits():
     # Without the byte limit nothing would have been exported yet: the item
     # limit is 1000 and the schedule delay is 10 minutes.
     assert _wait_for(lambda: exporter.batch_count >= 2)
-    processor.force_flush()
+    _success = processor.force_flush()
     assert exporter.batch_sizes == [_SPANS_PER_BATCH, _SPANS_PER_BATCH, 1]
     assert exporter.span_count == n_spans
 
@@ -196,7 +207,7 @@ def test_byte_limit_flush_does_not_block_the_ending_thread():
     )
     exporter.export_delay_s = 0.5
 
-    latencies = []
+    latencies: list[float] = []
     for i in range(_SPANS_PER_BATCH * 2 + 1):
         span = tracer.start_span(f"span-{i}")
         span.set_attribute("gen_ai.input.messages", "x" * _SPAN_BYTES)
@@ -228,7 +239,7 @@ def test_a_producer_outrunning_the_flush_thread_is_back_pressured():
     for i in range(n_spans):
         _emit(tracer, f"span-{i}", payload_size=_SPAN_BYTES)
 
-    processor.force_flush()
+    _flush_success = processor.force_flush()
 
     # Without backpressure this is one batch of every span emitted. The bound is
     # not exact -- spans keep arriving during the inline export -- so this
@@ -291,7 +302,7 @@ def test_small_spans_never_trip_the_byte_limit():
 
     assert exporter.batch_sizes == []
 
-    processor.force_flush()
+    _flush_success = processor.force_flush()
     assert exporter.span_count == 200
 
 
@@ -303,7 +314,7 @@ def test_span_larger_than_the_whole_limit_is_exported_alone():
     for i in range(3):
         _emit(tracer, f"huge-{i}", payload_size=50_000)
 
-    processor.force_flush()
+    _flush_success = processor.force_flush()
     assert exporter.batch_sizes == [1, 1, 1]
 
 
@@ -326,7 +337,7 @@ def test_spans_at_half_the_limit_do_not_pair_up():
     for i in range(6):
         _emit(tracer, f"big-{i}", payload_size=payload)
 
-    processor.force_flush()
+    _flush_success = processor.force_flush()
     assert exporter.batch_sizes == [1, 1, 1, 1, 1, 1]
     assert exporter.span_count == 6
 
@@ -346,7 +357,7 @@ def test_spans_below_half_the_limit_are_handed_off():
     exporter.export_delay_s = 0.4
     payload = int(_BYTE_LIMIT * 0.3)
 
-    latencies = []
+    latencies: list[float] = []
     for i in range(6):
         span = tracer.start_span(f"mid-{i}")
         span.set_attribute("gen_ai.input.messages", "x" * payload)
@@ -358,7 +369,7 @@ def test_spans_below_half_the_limit_are_handed_off():
     # The byte limit fired, but on the flush thread: no `end()` saw the 400 ms.
     assert _wait_for(lambda: exporter.batch_count >= 1)
 
-    processor.force_flush()
+    _flush_success = processor.force_flush()
     assert exporter.span_count == 6
 
 
@@ -369,31 +380,32 @@ def test_pending_size_resyncs_after_an_external_flush():
     exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=_BYTE_LIMIT)
 
     _emit(tracer, "first", payload_size=9000)
-    processor.force_flush()
+    _flush_success = processor.force_flush()
     assert exporter.batch_sizes == [1]
 
     _emit(tracer, "second", payload_size=9000)
     assert exporter.batch_sizes == [1], "stale pending total forced an early flush"
 
-    processor.force_flush()
+    _flush_success = processor.force_flush()
     assert exporter.batch_sizes == [1, 1]
 
 
 def test_unsampled_spans_are_not_counted():
     exporter, processor, _ = _make_processor(max_export_batch_size_bytes=1000)
+    default_attributes = {"gen_ai.input.messages": "x" * 50_000}
 
     class _Unsampled:
-        name = "unsampled"
-        attributes = {"gen_ai.input.messages": "x" * 50_000}
-        events = ()
-        links = ()
-        status = None
+        name: str= "unsampled"
+        attributes: dict[str, str] = default_attributes
+        events: tuple[Event, ...] = ()
+        links: tuple[Link, ...] = ()
+        status: Status | None = None
 
         class context:
             class trace_flags:
-                sampled = False
+                sampled: bool = False
 
-    processor.on_end(_Unsampled())
+    processor.on_end(cast(ReadableSpan, cast(object, _Unsampled())))
 
     assert exporter.batch_sizes == []
     assert processor._pending_size_bytes == 0
@@ -458,7 +470,7 @@ def test_spans_ending_during_an_export_are_not_lost():
         time.sleep(0.01)
 
     assert _wait_for(lambda: exporter.span_count >= _SPANS_PER_BATCH)
-    processor.force_flush()
+    _flush_success = processor.force_flush()
     assert exporter.span_count == n_spans
 
 
@@ -475,7 +487,7 @@ def test_concurrent_emitters_lose_no_spans():
     for thread in threads:
         thread.join()
 
-    processor.force_flush()
+    _flush_success = processor.force_flush()
     assert exporter.span_count == 8 * 50
 
 
@@ -484,7 +496,7 @@ _fork_required = pytest.mark.skipif(
 )
 
 
-def _run_in_fork(child, timeout: float = 30.0) -> str:
+def _run_in_fork(child: Callable[[Callable[[str], int]], None], timeout: float = 30.0) -> str:
     """Run `child(write_result)` in a forked process and return what it reported.
 
     The child cannot assert — a failed assertion there would exit non-zero
@@ -504,8 +516,8 @@ def _run_in_fork(child, timeout: float = 30.0) -> str:
         os.close(read_fd)
         try:
             child(lambda text: os.write(write_fd, text.encode()))
-        except BaseException as exc:  # noqa: BLE001 - reported, not swallowed
-            os.write(write_fd, f"EXCEPTION {type(exc).__name__}: {exc}".encode())
+        except BaseException as exc:
+            _bytes_written = os.write(write_fd, f"EXCEPTION {type(exc).__name__}: {exc}".encode())
         finally:
             os.close(write_fd)
             os._exit(0)
@@ -538,7 +550,7 @@ def _run_in_fork(child, timeout: float = 30.0) -> str:
                 os.kill(pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
-        os.waitpid(pid, 0)
+        _wait_status = os.waitpid(pid, 0)
     if timed_out:
         partial = b"".join(chunks).decode(errors="replace")
         return f"TIMEOUT after {timeout}s (child killed); partial output: {partial!r}"
@@ -564,16 +576,15 @@ def test_forked_child_can_still_flush_with_locks_held_at_fork():
     release = threading.Event()
 
     def hold_both_locks():
-        with processor._pending_size_lock:
-            with processor._flush_thread_lock:
-                holding.set()
-                release.wait(30)
+        with processor._pending_size_lock, processor._flush_thread_lock:
+            holding.set()
+            _success = release.wait(30)
 
     holder = threading.Thread(target=hold_both_locks, daemon=True)
     holder.start()
     assert holding.wait(5), "helper never acquired the locks"
 
-    def child(report):
+    def child(report: Callable[[str], int]):
         for i in range(_SPANS_PER_BATCH + 5):
             _emit(tracer, f"child-{i}", payload_size=_SPAN_BYTES)
         deadline = time.monotonic() + 10
@@ -582,7 +593,7 @@ def test_forked_child_can_still_flush_with_locks_held_at_fork():
         alive = any(
             t.name == "LmnrSizeLimitedSpanFlush" for t in threading.enumerate()
         )
-        report(f"exported={exporter.span_count} flush_thread_alive={alive}")
+        _result = report(f"exported={exporter.span_count} flush_thread_alive={alive}")
 
     try:
         result = _run_in_fork(child)
@@ -637,6 +648,7 @@ def test_approximate_span_size_counts_attribute_keys_and_values():
         span.set_attribute("k", "v" * 100)
         span.set_attribute("count", 7)
         span.set_attribute("tags", ["ab", "cd"])
+        span = cast(SDKSpan, span)
         readable = span._readable_span()
 
     size = approximate_span_size(readable)
@@ -649,6 +661,7 @@ def test_approximate_span_size_includes_events_and_status_description():
 
     with tracer.start_as_current_span("s") as span:
         span.add_event("boom", attributes={"detail": "d" * 50})
+        span = cast(SDKSpan, span)
         readable = span._readable_span()
 
     # "s"(1) + "boom"(4) + "detail"(6) + 50
@@ -718,6 +731,7 @@ def test_span_size_counts_multibyte_attributes_above_their_character_count():
 
     with tracer.start_as_current_span("s") as span:
         span.set_attribute("gen_ai.input.messages", "你好" * 2000)
+        span = cast(SDKSpan, span)
         readable = span._readable_span()
 
     size = approximate_span_size(readable)
@@ -774,8 +788,9 @@ def test_laminar_span_processor_forwards_both_limits():
         flush_by_size=True,
     )
 
-    assert processor.instance._max_export_batch_size_bytes == 1234
-    assert processor.instance._batch_processor._max_export_batch_size == 7
+    instance = cast(SizeLimitedBatchSpanProcessor, processor.instance)
+    assert instance._max_export_batch_size_bytes == 1234
+    assert instance._batch_processor._max_export_batch_size == 7
 
 
 def test_size_limit_is_ignored_without_the_flag():
@@ -822,7 +837,7 @@ def test_force_reinit_preserves_both_limits():
         flush_by_size=True,
     )
 
-    processor.force_reinit()
+    _success = processor.force_reinit()
 
     assert isinstance(processor.instance, SizeLimitedBatchSpanProcessor)
     assert processor.instance._max_export_batch_size_bytes == 1234
@@ -836,7 +851,8 @@ def test_force_reinit_preserves_the_default_transport():
         max_export_batch_size=7,
     )
 
-    processor.force_reinit()
+    _success = processor.force_reinit()
 
     assert not isinstance(processor.instance, SizeLimitedBatchSpanProcessor)
-    assert processor.instance._batch_processor._max_export_batch_size == 7
+    instance = cast(BatchSpanProcessor, processor.instance)
+    assert instance._batch_processor._max_export_batch_size == 7

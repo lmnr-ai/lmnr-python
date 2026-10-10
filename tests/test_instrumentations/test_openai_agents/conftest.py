@@ -3,6 +3,8 @@
 import os
 
 import pytest
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents import (
     OpenAIAgentsInstrumentor,
 )
@@ -15,11 +17,11 @@ def environment():
         os.environ["OPENAI_API_KEY"] = "test_api_key"
     yield
     if not had_key:
-        os.environ.pop("OPENAI_API_KEY", None)
+        _popped_val = os.environ.pop("OPENAI_API_KEY", None)
 
 
 @pytest.fixture(scope="function")
-def instrument_openai_agents(span_exporter):
+def instrument_openai_agents(span_exporter: InMemorySpanExporter):
     instrumentor = OpenAIAgentsInstrumentor()
     was_already_instrumented = instrumentor.is_instrumented_by_opentelemetry
     if not was_already_instrumented:

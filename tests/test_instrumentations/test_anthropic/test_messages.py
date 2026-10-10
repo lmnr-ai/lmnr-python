@@ -2,25 +2,28 @@ import asyncio
 import base64
 import json
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
+from anthropic import Anthropic, AsyncAnthropic
+from anthropic.types import ImageBlockParam, MessageParam, ToolParam
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-image_content_block = {
-    "type": "image",
-    "source": {
-        "type": "base64",
-        "media_type": "image/jpeg",
-        "data": base64.b64encode(
-            open(
-                Path(__file__).parent.joinpath("data/logo.jpg"),
-                "rb",
-            ).read()
-        ).decode("utf-8"),
-    },
-}
+with open(
+    Path(__file__).parent.joinpath("data/logo.jpg"),
+    "rb",
+) as f:
+    image_content_block: ImageBlockParam = {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": "image/jpeg",
+            "data": base64.b64encode(f.read()).decode("utf-8"),
+        },
+    }
 
 
-TOOLS = [
+TOOLS: list[ToolParam] = [
     {
         "name": "get_weather",
         "description": "Get the current weather in a given location",
@@ -59,7 +62,9 @@ TOOLS = [
 
 @pytest.mark.vcr
 def test_anthropic_message_create_legacy(
-    instrument_legacy, anthropic_client, span_exporter
+    instrumentor: Any,
+    anthropic_client: Anthropic,
+    span_exporter: InMemorySpanExporter,
 ):
     response = anthropic_client.messages.create(
         max_tokens=1024,
@@ -73,49 +78,53 @@ def test_anthropic_message_create_legacy(
         service_tier="standard_only",
     )
     try:
-        anthropic_client.messages.create(
+        anthropic_client.messages.create(  # pyright: ignore[reportCallIssue] intentional
             unknown_parameter="unknown",
         )
     except Exception:
-        pass
+        print("expected exception")
 
     spans = span_exporter.get_finished_spans()
     assert all(span.name == "anthropic.chat" for span in spans)
 
     anthropic_span = spans[0]
+    attributes = anthropic_span.attributes or {}
+    attributes = anthropic_span.attributes or {}
 
     # Verify input messages in new format
-    input_messages = json.loads(anthropic_span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert len(input_messages) == 1
     assert input_messages[0]["role"] == "user"
     assert input_messages[0]["content"] == "Tell me a joke about OpenTelemetry"
 
     # Verify output messages in new format
-    output_messages = json.loads(anthropic_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert len(output_messages) == 1
     assert output_messages[0]["role"] == "assistant"
     assert any(
-        block["type"] == "text" and block["text"] == response.content[0].text
+        block["type"] == "text" and block["text"] == response.content[0].text  # pyright: ignore[reportAttributeAccessIssue, reportUnknownArgumentType, reportUnknownMemberType]
         for block in output_messages[0]["content"]
     )
 
-    assert anthropic_span.attributes["gen_ai.usage.input_tokens"] == 17
+    assert attributes["gen_ai.usage.input_tokens"] == 17
     assert (
-        anthropic_span.attributes.get("gen_ai.response.id")
+        attributes.get("gen_ai.response.id")
         == "msg_01NgS2sXcQRKUKbwKFx1vVxC"
     )
     assert (
-        anthropic_span.attributes.get("anthropic.request.service_tier")
+        attributes.get("anthropic.request.service_tier")
         == "standard_only"
     )
     assert (
-        anthropic_span.attributes.get("anthropic.response.service_tier") == "standard"
+        attributes.get("anthropic.response.service_tier") == "standard"
     )
 
 
 @pytest.mark.vcr
 def test_anthropic_multi_modal_legacy(
-    instrument_legacy, anthropic_client, span_exporter
+    instrumentor: Any,
+    anthropic_client: Anthropic,
+    span_exporter: InMemorySpanExporter,
 ):
     response = anthropic_client.messages.create(
         max_tokens=1024,
@@ -139,9 +148,10 @@ def test_anthropic_multi_modal_legacy(
         "anthropic.chat",
     ]
     anthropic_span = spans[0]
+    attributes = anthropic_span.attributes or {}
 
     # Verify input messages in new format
-    input_messages = json.loads(anthropic_span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert len(input_messages) == 1
     assert input_messages[0]["role"] == "user"
     # Content should be a list with text and image parts
@@ -153,31 +163,33 @@ def test_anthropic_multi_modal_legacy(
     assert content[1]["source"]["type"] == "base64"
 
     # Verify output messages
-    output_messages = json.loads(anthropic_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert len(output_messages) == 1
     assert output_messages[0]["role"] == "assistant"
     assert any(
-        block["type"] == "text" and block["text"] == response.content[0].text
+        block["type"] == "text" and block["text"] == response.content[0].text  # pyright: ignore[reportAttributeAccessIssue, reportUnknownArgumentType, reportUnknownMemberType]
         for block in output_messages[0]["content"]
     )
 
-    assert anthropic_span.attributes["gen_ai.usage.input_tokens"] == 1381
+    assert attributes["gen_ai.usage.input_tokens"] == 1381
     assert (
-        anthropic_span.attributes.get("gen_ai.response.id")
+        attributes.get("gen_ai.response.id")
         == "msg_01B37ySLPzYj8KY6uZmiPoxd"
     )
 
 
 @pytest.mark.vcr
 def test_anthropic_image_with_history(
-    instrument_legacy, anthropic_client, span_exporter
+    instrumentor: Any,
+    anthropic_client: Anthropic,
+    span_exporter: InMemorySpanExporter,
 ):
     system_message = "You are a helpful assistant. Be concise and to the point."
-    user_message1 = {
+    user_message1: MessageParam = {
         "role": "user",
         "content": "Are you capable of describing an image?",
     }
-    user_message2 = {
+    user_message2: MessageParam = {
         "role": "user",
         "content": [
             {"type": "text", "text": "What do you see?"},
@@ -209,21 +221,21 @@ def test_anthropic_image_with_history(
     assert all(span.name == "anthropic.chat" for span in spans)
 
     # First span: system + 1 user message
-    input_messages_0 = json.loads(spans[0].attributes["gen_ai.input.messages"])
+    input_messages_0 = json.loads(cast(str, (spans[0].attributes or {})["gen_ai.input.messages"]))
     assert input_messages_0[0]["role"] == "system"
     assert input_messages_0[0]["content"] == system_message
     assert input_messages_0[1]["role"] == "user"
     assert input_messages_0[1]["content"] == "Are you capable of describing an image?"
 
-    output_messages_0 = json.loads(spans[0].attributes["gen_ai.output.messages"])
+    output_messages_0 = json.loads(cast(str, (spans[0].attributes or {})["gen_ai.output.messages"]))
     assert output_messages_0[0]["role"] == "assistant"
     assert any(
-        block.get("type") == "text" and block.get("text") == response1.content[0].text
+        block.get("type") == "text" and block.get("text") == response1.content[0].text  # pyright: ignore[reportAttributeAccessIssue, reportUnknownArgumentType, reportUnknownMemberType]
         for block in output_messages_0[0]["content"]
     )
 
     # Second span: system + 3 messages (user, assistant, user with image)
-    input_messages_1 = json.loads(spans[1].attributes["gen_ai.input.messages"])
+    input_messages_1 = json.loads(cast(str, (spans[1].attributes or {})["gen_ai.input.messages"]))
     assert input_messages_1[0]["role"] == "system"
     assert input_messages_1[0]["content"] == system_message
     assert input_messages_1[1]["role"] == "user"
@@ -236,10 +248,10 @@ def test_anthropic_image_with_history(
     assert content_3[0]["type"] == "text"
     assert content_3[0]["text"] == "What do you see?"
 
-    output_messages_1 = json.loads(spans[1].attributes["gen_ai.output.messages"])
+    output_messages_1 = json.loads(cast(str, (spans[1].attributes or {})["gen_ai.output.messages"]))
     assert output_messages_1[0]["role"] == "assistant"
     assert any(
-        block.get("type") == "text" and block.get("text") == response2.content[0].text
+        block.get("type") == "text" and block.get("text") == response2.content[0].text  # pyright: ignore[reportAttributeAccessIssue, reportUnknownArgumentType, reportUnknownMemberType]
         for block in output_messages_1[0]["content"]
     )
 
@@ -247,7 +259,9 @@ def test_anthropic_image_with_history(
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_anthropic_async_multi_modal_legacy(
-    instrument_legacy, async_anthropic_client, span_exporter
+    instrumentor: Any,
+    async_anthropic_client: AsyncAnthropic,
+    span_exporter: InMemorySpanExporter,
 ):
     response = await async_anthropic_client.messages.create(
         max_tokens=1024,
@@ -271,9 +285,10 @@ async def test_anthropic_async_multi_modal_legacy(
         "anthropic.chat",
     ]
     anthropic_span = spans[0]
+    attributes = anthropic_span.attributes or {}
 
     # Verify input messages in new format
-    input_messages = json.loads(anthropic_span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert len(input_messages) == 1
     assert input_messages[0]["role"] == "user"
     content = input_messages[0]["content"]
@@ -284,24 +299,26 @@ async def test_anthropic_async_multi_modal_legacy(
     assert content[1]["source"]["type"] == "base64"
 
     # Verify output messages
-    output_messages = json.loads(anthropic_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert len(output_messages) == 1
     assert output_messages[0]["role"] == "assistant"
     assert any(
-        block["type"] == "text" and block["text"] == response.content[0].text
+        block["type"] == "text" and block["text"] == response.content[0].text  # pyright: ignore[reportAttributeAccessIssue, reportUnknownArgumentType, reportUnknownMemberType]
         for block in output_messages[0]["content"]
     )
 
-    assert anthropic_span.attributes["gen_ai.usage.input_tokens"] == 1311
+    assert attributes["gen_ai.usage.input_tokens"] == 1311
     assert (
-        anthropic_span.attributes.get("gen_ai.response.id")
+        attributes.get("gen_ai.response.id")
         == "msg_01DWnmUo9hWk4Fk7V7Ddfa2w"
     )
 
 
 @pytest.mark.vcr
 def test_anthropic_message_streaming_legacy(
-    instrument_legacy, anthropic_client, span_exporter
+    instrumentor: Any,
+    anthropic_client: Anthropic,
+    span_exporter: InMemorySpanExporter,
 ):
     response = anthropic_client.messages.create(
         max_tokens=1024,
@@ -316,11 +333,11 @@ def test_anthropic_message_streaming_legacy(
         service_tier="standard_only",
     )
     try:
-        anthropic_client.messages.create(
+        anthropic_client.messages.create(  # pyright: ignore[reportCallIssue] intentional
             unknown_parameter="unknown",
         )
     except Exception:
-        pass
+        print("expected exception")
 
     response_content = ""
     for event in response:
@@ -332,15 +349,16 @@ def test_anthropic_message_streaming_legacy(
         "anthropic.chat",
     ]
     anthropic_span = spans[0]
+    attributes = anthropic_span.attributes or {}
 
     # Verify input messages
-    input_messages = json.loads(anthropic_span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert len(input_messages) == 1
     assert input_messages[0]["role"] == "user"
     assert input_messages[0]["content"] == "Tell me a joke about OpenTelemetry"
 
     # Verify output messages
-    output_messages = json.loads(anthropic_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert len(output_messages) == 1
     assert output_messages[0]["role"] == "assistant"
     assert any(
@@ -348,24 +366,26 @@ def test_anthropic_message_streaming_legacy(
         for block in output_messages[0]["content"]
     )
 
-    assert anthropic_span.attributes["gen_ai.usage.input_tokens"] == 17
+    assert attributes["gen_ai.usage.input_tokens"] == 17
     assert (
-        anthropic_span.attributes.get("gen_ai.response.id")
+        attributes.get("gen_ai.response.id")
         == "msg_019bVafnfSbR9K5SGmoy6gcX"
     )
     assert (
-        anthropic_span.attributes.get("anthropic.request.service_tier")
+        attributes.get("anthropic.request.service_tier")
         == "standard_only"
     )
     assert (
-        anthropic_span.attributes.get("anthropic.response.service_tier") == "standard"
+        attributes.get("anthropic.response.service_tier") == "standard"
     )
 
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_anthropic_message_create_legacy(
-    instrument_legacy, async_anthropic_client, span_exporter
+    instrumentor: Any,
+    async_anthropic_client: AsyncAnthropic,
+    span_exporter: InMemorySpanExporter,
 ):
     response = await async_anthropic_client.messages.create(
         max_tokens=1024,
@@ -379,58 +399,61 @@ async def test_async_anthropic_message_create_legacy(
         service_tier="standard_only",
     )
     try:
-        await async_anthropic_client.messages.create(
+        await async_anthropic_client.messages.create(  # pyright: ignore[reportCallIssue] intentional
             unknown_parameter="unknown",
         )
     except Exception:
-        pass
+        print("expected exception")
 
     spans = span_exporter.get_finished_spans()
     assert [span.name for span in spans] == [
         "anthropic.chat",
     ]
     anthropic_span = spans[0]
+    attributes = anthropic_span.attributes or {}
 
     # Verify input messages
-    input_messages = json.loads(anthropic_span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert len(input_messages) == 1
     assert input_messages[0]["role"] == "user"
     assert input_messages[0]["content"] == "Tell me a joke about OpenTelemetry"
 
     # Verify output messages
-    output_messages = json.loads(anthropic_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert len(output_messages) == 1
     assert output_messages[0]["role"] == "assistant"
     assert any(
-        block["type"] == "text" and block["text"] == response.content[0].text
+        block["type"] == "text" and block["text"] == response.content[0].text  # pyright: ignore[reportAttributeAccessIssue, reportUnknownArgumentType, reportUnknownMemberType]
         for block in output_messages[0]["content"]
     )
 
-    assert anthropic_span.attributes["gen_ai.usage.input_tokens"] == 17
+    assert attributes["gen_ai.usage.input_tokens"] == 17
     assert (
-        anthropic_span.attributes.get("gen_ai.response.id")
+        attributes.get("gen_ai.response.id")
         == "msg_01HCcR31VQpZtUqtJ6gZnX34"
     )
     assert (
-        anthropic_span.attributes.get("anthropic.request.service_tier")
+        attributes.get("anthropic.request.service_tier")
         == "standard_only"
     )
     assert (
-        anthropic_span.attributes.get("anthropic.response.service_tier") == "standard"
+        attributes.get("anthropic.response.service_tier") == "standard"
     )
 
 
 @pytest.mark.vcr(record_mode="once")
 @pytest.mark.asyncio
 async def test_async_anthropic_message_streaming_legacy(
-    instrument_legacy, async_anthropic_client, span_exporter
+    instrumentor: Any,
+    async_anthropic_client: AsyncAnthropic,
+    span_exporter: InMemorySpanExporter,
 ):
     try:
-        await async_anthropic_client.messages.create(
+        await async_anthropic_client.messages.create(  # pyright: ignore[reportCallIssue] intentional
             unknown_parameter="unknown",
         )
     except Exception:
-        pass
+        print("expected exception")
 
     response = await async_anthropic_client.messages.create(
         max_tokens=1024,
@@ -454,15 +477,16 @@ async def test_async_anthropic_message_streaming_legacy(
         "anthropic.chat",
     ]
     anthropic_span = spans[0]
+    attributes = anthropic_span.attributes or {}
 
     # Verify input messages
-    input_messages = json.loads(anthropic_span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert len(input_messages) == 1
     assert input_messages[0]["role"] == "user"
     assert input_messages[0]["content"] == "Tell me a joke about OpenTelemetry"
 
     # Verify output messages
-    output_messages = json.loads(anthropic_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert len(output_messages) == 1
     assert output_messages[0]["role"] == "assistant"
     assert any(
@@ -470,22 +494,26 @@ async def test_async_anthropic_message_streaming_legacy(
         for block in output_messages[0]["content"]
     )
 
-    assert anthropic_span.attributes["gen_ai.usage.input_tokens"] == 17
+    assert attributes["gen_ai.usage.input_tokens"] == 17
     assert (
-        anthropic_span.attributes.get("gen_ai.response.id")
+        attributes.get("gen_ai.response.id")
         == "msg_01TwQxsi2T5Pat3DNJW7m2wx"
     )
     assert (
-        anthropic_span.attributes.get("anthropic.request.service_tier")
+        attributes.get("anthropic.request.service_tier")
         == "standard_only"
     )
     assert (
-        anthropic_span.attributes.get("anthropic.response.service_tier") == "standard"
+        attributes.get("anthropic.response.service_tier") == "standard"
     )
 
 
 @pytest.mark.vcr
-def test_anthropic_tools_legacy(instrument_legacy, anthropic_client, span_exporter):
+def test_anthropic_tools_legacy(
+    instrumentor: Any,
+    anthropic_client: Anthropic,
+    span_exporter: InMemorySpanExporter,
+):
     response = anthropic_client.messages.create(
         model="claude-3-5-sonnet-20240620",
         max_tokens=1024,
@@ -498,23 +526,24 @@ def test_anthropic_tools_legacy(instrument_legacy, anthropic_client, span_export
         ],
     )
     try:
-        anthropic_client.messages.create(
+        anthropic_client.messages.create(  # pyright: ignore[reportCallIssue] intentional
             unknown_parameter="unknown",
         )
     except Exception:
-        pass
+        print("expected exception")
 
     spans = span_exporter.get_finished_spans()
     assert all(span.name == "anthropic.chat" for span in spans)
     assert len(spans) == 1
 
     anthropic_span = spans[0]
+    attributes = anthropic_span.attributes or {}
 
     # verify usage
-    assert anthropic_span.attributes["gen_ai.usage.input_tokens"] == 514
+    assert attributes["gen_ai.usage.input_tokens"] == 514
 
     # verify input messages
-    input_messages = json.loads(anthropic_span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert len(input_messages) == 1
     assert input_messages[0]["role"] == "user"
     assert (
@@ -523,10 +552,10 @@ def test_anthropic_tools_legacy(instrument_legacy, anthropic_client, span_export
     )
 
     # verify tools are still set as individual attributes
-    assert json.loads(anthropic_span.attributes["gen_ai.tool.definitions"]) == TOOLS
+    assert json.loads(cast(str, attributes["gen_ai.tool.definitions"])) == TOOLS
 
     # verify output messages
-    output_messages = json.loads(anthropic_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert len(output_messages) == 1
     assert output_messages[0]["role"] == "assistant"
     assert output_messages[0].get("stop_reason") == response.stop_reason
@@ -537,19 +566,21 @@ def test_anthropic_tools_legacy(instrument_legacy, anthropic_client, span_export
     tool_blocks = [b for b in content_blocks if b["type"] == "tool_use"]
 
     assert len(text_blocks) >= 1
-    assert text_blocks[0]["text"] == response.content[0].text
+    assert text_blocks[0]["text"] == response.content[0].text  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
     assert len(tool_blocks) >= 2
-    assert tool_blocks[0]["id"] == response.content[1].id
-    assert tool_blocks[0]["name"] == response.content[1].name
-    assert tool_blocks[0]["input"] == response.content[1].input
-    assert tool_blocks[1]["id"] == response.content[2].id
-    assert tool_blocks[1]["name"] == response.content[2].name
-    assert tool_blocks[1]["input"] == response.content[2].input
+    assert tool_blocks[0]["id"] == response.content[1].id  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+    assert tool_blocks[0]["name"] == response.content[1].name  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+    assert tool_blocks[0]["input"] == response.content[1].input  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+    assert tool_blocks[1]["id"] == response.content[2].id  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+    assert tool_blocks[1]["name"] == response.content[2].name  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+    assert tool_blocks[1]["input"] == response.content[2].input  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
 
 
 @pytest.mark.vcr
 def test_anthropic_tools_history_legacy(
-    instrument_legacy, anthropic_client, span_exporter
+    instrumentor: Any,
+    anthropic_client: Anthropic,
+    span_exporter: InMemorySpanExporter,
 ):
     response = anthropic_client.messages.create(
         model="claude-3-5-haiku-20241022",
@@ -593,9 +624,10 @@ def test_anthropic_tools_history_legacy(
     assert len(spans) == 1
 
     anthropic_span = spans[0]
+    attributes = anthropic_span.attributes or {}
 
     # verify input messages
-    input_messages = json.loads(anthropic_span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert len(input_messages) == 3
 
     # First message: user
@@ -627,20 +659,22 @@ def test_anthropic_tools_history_legacy(
     assert content_2[0]["tool_use_id"] == "call_1"
 
     # verify output messages
-    output_messages = json.loads(anthropic_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert len(output_messages) == 1
     assert output_messages[0]["role"] == "assistant"
     assert output_messages[0].get("stop_reason") == response.stop_reason
 
     tool_blocks = [b for b in output_messages[0]["content"] if b["type"] == "tool_use"]
     assert len(tool_blocks) >= 1
-    assert tool_blocks[0]["id"] == response.content[0].id
-    assert tool_blocks[0]["name"] == response.content[0].name
+    assert tool_blocks[0]["id"] == response.content[0].id  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
+    assert tool_blocks[0]["name"] == response.content[0].name  # pyright: ignore[reportAttributeAccessIssue, reportUnknownMemberType]
 
 
 @pytest.mark.vcr
 def test_anthropic_tools_streaming_legacy(
-    instrument_legacy, anthropic_client, span_exporter
+    instrumentor: Any,
+    anthropic_client: Anthropic,
+    span_exporter: InMemorySpanExporter,
 ):
     response = anthropic_client.messages.create(
         model="claude-3-5-sonnet-20240620",
@@ -656,16 +690,17 @@ def test_anthropic_tools_streaming_legacy(
     )
 
     # consume the streaming iterator
-    [event for event in response]
+    _ = [event for event in response]
 
     spans = span_exporter.get_finished_spans()
     assert all(span.name == "anthropic.chat" for span in spans)
     assert len(spans) == 1
 
     anthropic_span = spans[0]
+    attributes = anthropic_span.attributes or {}
 
     # verify input messages
-    input_messages = json.loads(anthropic_span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert len(input_messages) == 1
     assert input_messages[0]["role"] == "user"
     assert (
@@ -674,7 +709,7 @@ def test_anthropic_tools_streaming_legacy(
     )
 
     # verify output messages
-    output_messages = json.loads(anthropic_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert len(output_messages) == 1
     assert output_messages[0]["role"] == "assistant"
 
@@ -693,9 +728,11 @@ def test_anthropic_tools_streaming_legacy(
 
 @pytest.mark.vcr
 def test_with_asyncio_run_legacy(
-    instrument_legacy, async_anthropic_client, span_exporter
+    instrumentor: Any,
+    async_anthropic_client: AsyncAnthropic,
+    span_exporter: InMemorySpanExporter,
 ):
-    asyncio.run(
+    _ = asyncio.run(
         async_anthropic_client.messages.create(
             model="claude-3-5-sonnet-20240620",
             max_tokens=1024,
@@ -722,7 +759,9 @@ def test_with_asyncio_run_legacy(
 
 @pytest.mark.vcr(record_mode="once")
 def test_anthropic_message_stream_manager(
-    instrument_legacy, anthropic_client, span_exporter
+    instrumentor: Any,
+    anthropic_client: Anthropic,
+    span_exporter: InMemorySpanExporter,
 ):
     response_content = ""
     with anthropic_client.messages.stream(
@@ -745,15 +784,16 @@ def test_anthropic_message_stream_manager(
         "anthropic.chat",
     ]
     anthropic_span = spans[0]
+    attributes = anthropic_span.attributes or {}
 
     # Verify input messages
-    input_messages = json.loads(anthropic_span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert len(input_messages) == 1
     assert input_messages[0]["role"] == "user"
     assert input_messages[0]["content"] == "Tell me a joke about OpenTelemetry"
 
     # Verify output messages
-    output_messages = json.loads(anthropic_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert len(output_messages) == 1
     assert output_messages[0]["role"] == "assistant"
     assert any(
@@ -762,22 +802,24 @@ def test_anthropic_message_stream_manager(
     )
 
     assert (
-        anthropic_span.attributes.get("gen_ai.response.id")
+        attributes.get("gen_ai.response.id")
         == "msg_01MCkQZZtEKF3nVbFaExwATe"
     )
     assert (
-        anthropic_span.attributes.get("anthropic.request.service_tier")
+        attributes.get("anthropic.request.service_tier")
         == "standard_only"
     )
     assert (
-        anthropic_span.attributes.get("anthropic.response.service_tier") == "standard"
+        attributes.get("anthropic.response.service_tier") == "standard"
     )
 
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_async_anthropic_message_stream_manager(
-    instrument_legacy, async_anthropic_client, span_exporter
+    instrumentor: Any,
+    async_anthropic_client: AsyncAnthropic,
+    span_exporter: InMemorySpanExporter,
 ):
     response_content = ""
     async with async_anthropic_client.messages.stream(
@@ -800,15 +842,16 @@ async def test_async_anthropic_message_stream_manager(
         "anthropic.chat",
     ]
     anthropic_span = spans[0]
+    attributes = anthropic_span.attributes or {}
 
     # Verify input messages
-    input_messages = json.loads(anthropic_span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert len(input_messages) == 1
     assert input_messages[0]["role"] == "user"
     assert input_messages[0]["content"] == "Tell me a joke about OpenTelemetry"
 
     # Verify output messages
-    output_messages = json.loads(anthropic_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert len(output_messages) == 1
     assert output_messages[0]["role"] == "assistant"
     assert any(
@@ -817,13 +860,13 @@ async def test_async_anthropic_message_stream_manager(
     )
 
     assert (
-        anthropic_span.attributes.get("gen_ai.response.id")
+        attributes.get("gen_ai.response.id")
         == "msg_01QnFxEDGs7cHJegKR367cJ7"
     )
     assert (
-        anthropic_span.attributes.get("anthropic.request.service_tier")
+        attributes.get("anthropic.request.service_tier")
         == "standard_only"
     )
     assert (
-        anthropic_span.attributes.get("anthropic.response.service_tier") == "standard"
+        attributes.get("anthropic.response.service_tier") == "standard"
     )

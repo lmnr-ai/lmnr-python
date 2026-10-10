@@ -5,6 +5,7 @@ import os
 import re
 import socket
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -60,7 +61,7 @@ PROXY_NEUTRALIZED_ENV_KEYS = (*PROXY_ENV_KEYS, FOUNDRY_RESOURCE_ENV)
 UPSTREAM_SETTINGS_EXCLUDED_ENV_KEYS = PROXY_ENV_KEYS
 
 
-def is_truthy_env(value: str | None) -> bool:
+def is_truthy_env(value: str | bool | None) -> bool:
     """
     Check whether an env value enables a feature.
 
@@ -89,7 +90,7 @@ def _load_settings_file(path: Path) -> dict[str, Any] | None:
             data = json.load(f)
     except (OSError, ValueError):
         return None
-    return data if isinstance(data, dict) else None
+    return data if isinstance(data, dict) else None  # pyright: ignore[reportUnknownVariableType]
 
 
 def flag_settings_env(
@@ -115,7 +116,7 @@ def flag_settings_env(
             parsed = json.loads(stripped)
         except ValueError:
             return {}
-        return _settings_env_block(parsed) if isinstance(parsed, dict) else {}
+        return _settings_env_block(parsed) if isinstance(parsed, dict) else {}  # pyright: ignore[reportUnknownArgumentType]
 
     path = Path(stripped).expanduser()
     if not path.is_absolute() and cwd is not None:
@@ -128,7 +129,7 @@ def _settings_env_block(data: dict[str, Any]) -> dict[str, str]:
     env = data.get("env")
     if not isinstance(env, dict):
         return {}
-    return {str(k): str(v) for k, v in env.items() if v is not None}
+    return {str(k): str(v) for k, v in env.items() if v is not None}  # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
 
 
 def read_claude_settings_env(
@@ -189,7 +190,7 @@ def snapshot_env(keys: list[str]) -> tuple[dict[str, str | None], set[str]]:
     return snapshot, set_keys
 
 
-def restore_env(snapshot: dict[str, str | None], set_keys: set[str]) -> None:
+def restore_env(snapshot: Mapping[str, str | None], set_keys: set[str]) -> None:
     """
     Restore environment variables from snapshot.
 
@@ -201,7 +202,7 @@ def restore_env(snapshot: dict[str, str | None], set_keys: set[str]) -> None:
         if key in set_keys:
             os.environ[key] = value if value is not None else ""
         else:
-            os.environ.pop(key, None)
+            _popped_val = os.environ.pop(key, None)
 
 
 def is_port_open(port: int, timeout: float = 0.5) -> bool:
@@ -350,7 +351,7 @@ def resolve_target_url_from_env(
 
         # Foundry is enabled but misconfigured
         logger.error(
-            "%s is set but neither %s nor %s is configured. "
+            "%s is set but neither %s nor %s is configured. " +
             "Microsoft Foundry requires one of these values.",
             FOUNDRY_USE_ENV,
             FOUNDRY_BASE_URL_ENV,
@@ -374,7 +375,7 @@ def resolve_target_url_from_env(
             return f"https://bedrock-runtime.{region}.amazonaws.com"
 
         logger.error(
-            "%s is set but could not determine AWS region. "
+            "%s is set but could not determine AWS region. " +
             "Set %s or configure a region in ~/.aws/config for the active profile.",
             BEDROCK_USE_ENV,
             BEDROCK_AWS_REGION_ENV,
@@ -434,7 +435,7 @@ def build_proxy_flag_settings(
                 return None
             if not isinstance(parsed, dict):
                 return None
-            settings_obj = parsed
+            settings_obj = parsed  # pyright: ignore[reportUnknownVariableType]
         else:
             path = Path(stripped).expanduser()
             if not path.is_absolute() and cwd is not None:
@@ -542,7 +543,7 @@ def setup_proxy_env(
 
     # Remove HTTP_PROXY and HTTPS_PROXY (our proxy will forward to them)
     for proxy_var in PROXY_ENV_KEYS:
-        os.environ.pop(proxy_var, None)
+        _popped_val = os.environ.pop(proxy_var, None)
 
     # Handle Foundry-specific env vars
     if provider_enabled(FOUNDRY_USE_ENV):
@@ -550,7 +551,7 @@ def setup_proxy_env(
         snapshot[FOUNDRY_RESOURCE_ENV] = os.environ.get(FOUNDRY_RESOURCE_ENV)
 
         os.environ[FOUNDRY_BASE_URL_ENV] = proxy_url
-        os.environ.pop(FOUNDRY_RESOURCE_ENV, None)
+        _popped_val = os.environ.pop(FOUNDRY_RESOURCE_ENV, None)
 
     # Handle Bedrock-specific env vars
     if provider_enabled(BEDROCK_USE_ENV):

@@ -7,9 +7,11 @@ rather than silently passing.
 """
 
 import json
+from typing import Any, cast
 
 import httpx2
 import pytest
+from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
 from typesafe_sdk import (
@@ -82,33 +84,34 @@ def _ok_handler(request: httpx2.Request) -> httpx2.Response:
     return httpx2.Response(200, json=RESPONSE_BODY)
 
 
-def _client(handler=_ok_handler, **kwargs) -> TypeSafeClient:
+def _client(handler: Any = _ok_handler, **kwargs: Any) -> TypeSafeClient:
     return TypeSafeClient(
         api_key="test-key", transport=httpx2.MockTransport(handler), **kwargs
     )
 
 
-def _async_client(handler=_ok_handler, **kwargs) -> AsyncTypeSafeClient:
+def _async_client(handler: Any = _ok_handler, **kwargs: Any) -> AsyncTypeSafeClient:
     return AsyncTypeSafeClient(
         api_key="test-key", transport=httpx2.MockTransport(handler), **kwargs
     )
 
 
-def _assert_span_shape(span):
+def _assert_span_shape(span: ReadableSpan):
+    attributes = span.attributes or {}
     assert span.name == "typesafe.system_one"
-    assert span.attributes["lmnr.span.type"] == "LLM"
-    assert span.attributes["gen_ai.system"] == "typesafe"
-    assert span.attributes["lmnr.span.instrumentation_scope.name"] == "typesafe"
-    assert span.attributes["lmnr.span.instrumentation_scope.version"]
-    assert span.attributes["gen_ai.response.model"] == MODEL
-    assert span.attributes["gen_ai.usage.input_tokens"] == 312
-    assert span.attributes["gen_ai.usage.output_tokens"] == 48
+    assert attributes["lmnr.span.type"] == "LLM"
+    assert attributes["gen_ai.system"] == "typesafe"
+    assert attributes["lmnr.span.instrumentation_scope.name"] == "typesafe"
+    assert attributes["lmnr.span.instrumentation_scope.version"]
+    assert attributes["gen_ai.response.model"] == MODEL
+    assert attributes["gen_ai.usage.input_tokens"] == 312
+    assert attributes["gen_ai.usage.output_tokens"] == 48
 
-    input_messages = json.loads(span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages == [{"role": "user", "content": STATE}]
-    schema = json.loads(span.attributes["gen_ai.request.structured_output_schema"])
+    schema = json.loads(cast(str, attributes["gen_ai.request.structured_output_schema"]))
     assert schema == QUESTIONS_AS_DICTS
-    output_messages = json.loads(span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output_messages[0]["role"] == "assistant"
     assert json.loads(output_messages[0]["content"]) == ANSWERS
 
@@ -117,26 +120,28 @@ def test_typesafe_system_one(span_exporter: InMemorySpanExporter):
     response = _client().system_one(
         state=STATE, questions=QUESTIONS, model=MODEL
     )
-    assert response.answers["queue"].choice == "billing"
+    assert response.answers["queue"].choice == "billing"  # pyright: ignore[reportAttributeAccessIssue]
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
+    attributes = span.attributes or {}
     _assert_span_shape(span)
-    assert span.attributes["gen_ai.request.model"] == MODEL
+    assert attributes["gen_ai.request.model"] == MODEL
     assert span.status.status_code == StatusCode.UNSET
 
 
 def test_typesafe_system_one_positional_args(span_exporter: InMemorySpanExporter):
     # `state` and `questions` are positional-or-keyword; the client default
     # model backs `gen_ai.request.model` when no per-call model is given.
-    _client(model=MODEL).system_one(STATE, QUESTIONS)
+    _ = _client(model=MODEL).system_one(STATE, QUESTIONS)
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
+    attributes = span.attributes or {}
     _assert_span_shape(span)
-    assert span.attributes["gen_ai.request.model"] == MODEL
+    assert attributes["gen_ai.request.model"] == MODEL
 
 
 @pytest.mark.asyncio
@@ -150,18 +155,20 @@ async def test_typesafe_system_one_async(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
+    attributes = span.attributes or {}
     _assert_span_shape(span)
-    assert span.attributes["gen_ai.request.model"] == MODEL
+    assert attributes["gen_ai.request.model"] == MODEL
 
 
 def test_typesafe_system_one_dict_state(span_exporter: InMemorySpanExporter):
     state = {"message": STATE, "customer_tier": "pro"}
-    _client().system_one(state=state, questions=QUESTIONS, model=MODEL)
+    _ = _client().system_one(state=state, questions=QUESTIONS, model=MODEL)
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
-    input_messages = json.loads(span.attributes["gen_ai.input.messages"])
+    attributes = span.attributes or {}
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages[0]["role"] == "user"
     assert json.loads(input_messages[0]["content"]) == state
 
@@ -173,33 +180,35 @@ def test_typesafe_system_one_error(span_exporter: InMemorySpanExporter):
         )
 
     with pytest.raises(TypeSafeBadRequestError):
-        _client(handler).system_one(
+        _ = _client(handler).system_one(
             state=STATE, questions=QUESTIONS, model="jev-1.13"
         )
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
+    attributes = span.attributes or {}
     assert span.name == "typesafe.system_one"
     assert span.status.status_code == StatusCode.ERROR
-    assert span.attributes["error.type"] == "TypeSafeBadRequestError"
-    assert span.attributes["gen_ai.request.model"] == "jev-1.13"
-    assert "gen_ai.response.model" not in span.attributes
+    assert attributes["error.type"] == "TypeSafeBadRequestError"
+    assert attributes["gen_ai.request.model"] == "jev-1.13"
+    assert "gen_ai.response.model" not in attributes
 
 
 def test_typesafe_system_one_no_trace_content(
     span_exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setenv("LMNR_TRACE_CONTENT", "false")
-    _client().system_one(state=STATE, questions=QUESTIONS, model=MODEL)
+    _res = _client().system_one(state=STATE, questions=QUESTIONS, model=MODEL)
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 1
     span = spans[0]
-    assert "gen_ai.input.messages" not in span.attributes
-    assert "gen_ai.output.messages" not in span.attributes
-    assert "gen_ai.request.structured_output_schema" not in span.attributes
-    assert span.attributes["gen_ai.request.model"] == MODEL
-    assert span.attributes["gen_ai.response.model"] == MODEL
-    assert span.attributes["gen_ai.usage.input_tokens"] == 312
-    assert span.attributes["gen_ai.usage.output_tokens"] == 48
+    attributes = span.attributes or {}
+    assert "gen_ai.input.messages" not in attributes
+    assert "gen_ai.output.messages" not in attributes
+    assert "gen_ai.request.structured_output_schema" not in attributes
+    assert attributes["gen_ai.request.model"] == MODEL
+    assert attributes["gen_ai.response.model"] == MODEL
+    assert attributes["gen_ai.usage.input_tokens"] == 312
+    assert attributes["gen_ai.usage.output_tokens"] == 48

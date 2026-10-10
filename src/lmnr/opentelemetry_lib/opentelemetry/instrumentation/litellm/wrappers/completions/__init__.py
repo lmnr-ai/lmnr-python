@@ -1,21 +1,23 @@
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any, cast
 
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
+)
 from opentelemetry.trace import Span
 from pydantic import BaseModel
 
-from lmnr.sdk.utils import json_dumps
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.litellm.utils import (
+    infer_provider,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     extract_json_schema,
     set_span_attribute,
     to_dict,
 )
-from ...utils import infer_provider
-
-from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
-    GEN_AI_USAGE_INPUT_TOKENS,
-    GEN_AI_USAGE_OUTPUT_TOKENS,
-)
+from lmnr.sdk.utils import json_dumps
 
 
 @dont_throw
@@ -50,7 +52,7 @@ def process_completion_kwargs(
     set_span_attribute(
         span,
         "gen_ai.request.thinking_budget",
-        (kwargs.get("thinking") or {}).get("budget_tokens"),
+        (kwargs.get("thinking") or {}).get("budget_tokens"),  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType]
     )
     set_span_attribute(
         span,
@@ -61,15 +63,15 @@ def process_completion_kwargs(
         set_span_attribute(
             span,
             "gen_ai.request.structured_output_schema",
-            json_dumps(extract_json_schema(kwargs.get("response_format"))),
+            json_dumps(extract_json_schema(kwargs.get("response_format") or {})),
         )
 
 
 @dont_throw
 def process_completion_inputs(
     span: Span,
-    messages: list[dict],
-    tools: list[dict] | None = None,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None = None,
 ):
     # this for loop replicates `litellm.utils.validate_and_fix_openai_messages`
     attr_messages = []
@@ -79,11 +81,11 @@ def process_completion_inputs(
             message["role"] = "assistant"
         if isinstance(message.get("tool_calls"), list):
             message["tool_calls"] = [
-                to_dict(tool_call) for tool_call in message.get("tool_calls")
+                to_dict(tool_call) for tool_call in cast(list[Any], message.get("tool_calls"))
             ]
-        attr_messages.append(message)
+        attr_messages.append(message)  # pyright: ignore[reportUnknownMemberType]
 
-    span.set_attribute("gen_ai.input.messages", json_dumps(attr_messages))
+    span.set_attribute("gen_ai.input.messages", json_dumps(attr_messages))  # pyright: ignore[reportUnknownArgumentType]
 
     if tools:
         attr_tools = [to_dict(tool) for tool in tools]
@@ -93,7 +95,7 @@ def process_completion_inputs(
 @dont_throw
 def process_completion_response(
     span: Span,
-    response: BaseModel,
+    response: BaseModel | object,
     record_raw_response: bool = False,
 ):
     response_dict = to_dict(response)
@@ -107,21 +109,21 @@ def process_completion_response(
     choices = response_dict.get("choices", [])
     messages = [choice.get("message", {}) for choice in choices]
     span.set_attribute("gen_ai.output.messages", json_dumps(messages))
-    usage = to_dict(response_dict.get("usage", {}))
-    input_tokens = usage.get("prompt_tokens", usage.get("input_tokens", 0))
-    output_tokens = usage.get("completion_tokens", usage.get("output_tokens", 0))
-    total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
+    usage = cast(dict[str, int | dict[str, int]], to_dict(response_dict.get("usage", {})))
+    input_tokens = cast(int, usage.get("prompt_tokens", usage.get("input_tokens", 0)) or 0)
+    output_tokens = cast(int, usage.get("completion_tokens", usage.get("output_tokens", 0)) or 0)
+    total_tokens = cast(int, usage.get("total_tokens", input_tokens + output_tokens) or 0)
     set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, input_tokens)
     set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, output_tokens)
     set_span_attribute(span, "llm.usage.total_tokens", total_tokens)
     if input_details := usage.get("prompt_tokens_details"):
-        details = to_dict(input_details)
-        cache_read_tokens = details.get(
-            "cached_tokens", usage.get("cache_read_input_tokens", 0)
-        )
-        cache_creation_tokens = details.get(
-            "cache_creation_tokens", usage.get("cache_creation_input_tokens", 0)
-        )
+        details = cast(dict[str, int], to_dict(input_details))
+        cache_read_tokens = cast(int, details.get(
+            "cached_tokens", usage.get("cache_read_input_tokens")
+        ) or 0)
+        cache_creation_tokens = cast(int, details.get(
+            "cache_creation_tokens", usage.get("cache_creation_input_tokens")
+        ) or 0)
         set_span_attribute(
             span, "gen_ai.usage.cache_read_input_tokens", cache_read_tokens
         )

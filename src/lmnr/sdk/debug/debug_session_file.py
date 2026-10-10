@@ -21,12 +21,28 @@ session has no trace yet).
 import datetime
 import json
 import os
-from typing import Any
+from typing import Any, TypedDict, cast
 
 # Directory the debug-session file lives in, relative to the working dir.
 DEBUG_SESSION_DIR = ".lmnr"
 # Filename of the debug-session file inside DEBUG_SESSION_DIR.
 DEBUG_SESSION_FILE = "debug-session.json"
+
+
+class DebugSessionFile(TypedDict):
+    """The persisted `.lmnr/debug-session.json` record shape.
+
+    Field order matches the on-disk/console JSON and the TS `DebugSessionFile`
+    contract: `session_id` is first and primary (the field read at startup);
+    `trace_id` is `None` for a freshly-minted session that has no trace yet.
+    """
+
+    session_id: str
+    trace_id: str | None
+    replay_trace_id: str | None
+    cache_until: str | None
+    debugger_url: str | None
+    started_at: str
 
 
 def _str(value: Any) -> str | None:
@@ -38,7 +54,7 @@ def _str(value: Any) -> str | None:
     return value if isinstance(value, str) and len(value) > 0 else None
 
 
-def read_debug_session_file(directory: str | None = None) -> dict[str, Any] | None:
+def read_debug_session_file(directory: str | None = None) -> DebugSessionFile | None:
     """Read `${dir ?? cwd}/.lmnr/debug-session.json`.
 
     Best-effort: returns None on a missing / unreadable / malformed file, or one
@@ -52,6 +68,7 @@ def read_debug_session_file(directory: str | None = None) -> dict[str, Any] | No
             r = json.load(f)
         if not isinstance(r, dict):
             return None
+        r = cast(dict[str, str], r)
         session_id = _str(r.get("session_id"))
         if not session_id:
             return None
@@ -102,7 +119,7 @@ def resolve_debug_session_dir(start_dir: str | None = None) -> str:
 
 
 def write_debug_session_file(
-    file: dict[str, Any], directory: str | None = None
+    file: DebugSessionFile, directory: str | None = None
 ) -> bool:
     """Write the debug-session file (mkdir -p first). Best-effort.
 
@@ -116,7 +133,7 @@ def write_debug_session_file(
         with open(
             os.path.join(target_dir, DEBUG_SESSION_FILE), "w", encoding="utf-8"
         ) as f:
-            f.write(json.dumps(file, separators=(",", ":")))
+            _bytes_written = f.write(json.dumps(file, separators=(",", ":")))
         return True
     except Exception:
         return False

@@ -1,10 +1,10 @@
 from dataclasses import dataclass
-from typing import Any, List, Literal, Optional, TypedDict
+from typing import Any, Literal, TypedDict
 
 
 class _FunctionToolCall(TypedDict):
     function_name: str
-    arguments: Optional[dict[str, Any]]
+    arguments: dict[str, Any] | None
 
 
 class ToolCall(TypedDict):
@@ -19,7 +19,7 @@ class CompletionMessage(TypedDict):
     """Represents a message in the AI model."""
 
     content: Any
-    role: str = "assistant"
+    role: Literal["assistant"]
 
 
 @dataclass
@@ -28,7 +28,7 @@ class MessageEvent:
 
     content: Any
     role: str = "user"
-    tool_calls: Optional[List[ToolCall]] = None
+    tool_calls: list[ToolCall] | None = None
 
 
 @dataclass
@@ -38,4 +38,11 @@ class ChoiceEvent:
     index: int
     message: CompletionMessage
     finish_reason: str = "unknown"
-    tool_calls: Optional[List[ToolCall]] = None
+    tool_calls: list[ToolCall] | None = None
+
+
+@dataclass
+class Usage:
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int

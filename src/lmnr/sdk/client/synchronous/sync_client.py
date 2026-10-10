@@ -2,34 +2,28 @@
 Laminar HTTP client. Used to send data to/from the Laminar API.
 """
 
-import httpx
 import re
-from typing import TypeVar
 from types import TracebackType
+
+import httpx
+from typing_extensions import Self
 
 from lmnr.sdk.client.synchronous.resources import (
     BrowserEvents,
     Datasets,
     Evals,
-    Evaluators,
     RolloutSessions,
-    Tags,
     Sql,
+    Tags,
     Traces,
 )
 from lmnr.sdk.utils import from_env
-
-_T = TypeVar("_T", bound="LaminarClient")
 
 
 class LaminarClient:
     __base_url: str
     __project_api_key: str
-    __client: httpx.Client = None
-
-    __evals: Evals | None = None
-    __tags: Tags | None = None
-    __evaluators: Evaluators | None = None
+    __client: httpx.Client
 
     def __init__(
         self,
@@ -63,12 +57,13 @@ class LaminarClient:
 
         base_url = base_url.rstrip("/")
         self.__base_url = f"{base_url}:{port or 443}"
-        self.__project_api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
-        if not self.__project_api_key:
+        resolved_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
+        if not resolved_key:
             raise ValueError(
-                "Project API key is not set. Please set the LMNR_PROJECT_API_KEY environment "
+                "Project API key is not set. Please set the LMNR_PROJECT_API_KEY environment " +
                 "variable or pass project_api_key to the initializer."
             )
+        self.__project_api_key = resolved_key
         self.__client = httpx.Client(
             headers=self._headers(),
             timeout=timeout,
@@ -96,9 +91,6 @@ class LaminarClient:
 
         # Initialize resource objects
         self.__evals = Evals(self.__client, self.__base_url, self.__project_api_key)
-        self.__evaluators = Evaluators(
-            self.__client, self.__base_url, self.__project_api_key
-        )
         self.__browser_events = BrowserEvents(
             self.__client, self.__base_url, self.__project_api_key
         )
@@ -138,15 +130,6 @@ class LaminarClient:
             Tags: The Tags resource instance.
         """
         return self.__tags
-
-    @property
-    def evaluators(self) -> Evaluators:
-        """Get the Evaluators resource.
-
-        Returns:
-            Evaluators: The Evaluators resource instance.
-        """
-        return self.__evaluators
 
     @property
     def datasets(self) -> Datasets:
@@ -206,7 +189,7 @@ class LaminarClient:
         if hasattr(self, "__client"):
             self.__client.close()
 
-    def __enter__(self: _T) -> _T:
+    def __enter__(self: Self) -> Self:
         return self
 
     def __exit__(

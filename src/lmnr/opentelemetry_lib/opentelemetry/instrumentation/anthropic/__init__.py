@@ -1,176 +1,89 @@
 """OpenTelemetry Anthropic instrumentation"""
 
-import logging
-from typing import Callable, Collection
+from __future__ import annotations
+
+from collections.abc import (
+    AsyncGenerator,
+    Awaitable,
+    Callable,
+    Collection,
+    Generator,
+    Sequence,
+)
+from importlib.metadata import version
+from typing import TYPE_CHECKING, Any, cast
 
 from opentelemetry import context as context_api
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY, unwrap
+from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
-from opentelemetry.trace import Span, Tracer, get_tracer
+from opentelemetry.trace import Span
 from opentelemetry.trace.status import Status, StatusCode
-from wrapt import wrap_function_wrapper
+from typing_extensions import TypeVar, override
 
-from anthropic._streaming import AsyncStream, Stream
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
-    safe_start_span,
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.rollout import (
+    get_anthropic_rollout_wrapper,
 )
-
-from .config import Config
-from .rollout import get_anthropic_rollout_wrapper
-from .span_utils import (
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.span_utils import (
     aset_input_attributes,
     aset_response_attributes,
     set_response_attributes,
 )
-from .streaming import (
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.streaming import (
     WrappedAsyncMessageStreamManager,
     WrappedMessageStreamManager,
     abuild_from_streaming_response,
     build_from_streaming_response,
 )
-from .utils import (
-    dont_throw,
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.utils import (
     run_async,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
+    BaseLaminarInstrumentor,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WrappedFunctionSpec,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    dont_throw,
+    safe_start_span,
     set_span_attribute,
 )
-from .version import __version__
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    stamp_instrumentation_scope,
+)
+from lmnr.sdk.log import get_default_logger
 
-logger = logging.getLogger(__name__)
+# `anthropic` may be missing or older than the names below; keep these imports
+# annotation-only (safe under `from __future__ import annotations`). Runtime
+# checks import lazily inside the functions that need them.
+if TYPE_CHECKING:
+    from anthropic.lib.streaming import (
+        AsyncMessageStream,
+        AsyncMessageStreamManager,
+        MessageStream,
+        MessageStreamManager,
+        ParsedMessageStreamEvent,
+    )
 
+logger = get_default_logger(__name__)
+T = TypeVar("T")
 _instruments = ("anthropic >= 0.3.11",)
 
 
-WRAPPED_METHODS = [
-    {
-        "package": "anthropic.resources.completions",
-        "object": "Completions",
-        "method": "create",
-        "span_name": "anthropic.completion",
-    },
-    {
-        "package": "anthropic.resources.messages",
-        "object": "Messages",
-        "method": "create",
-        "span_name": "anthropic.chat",
-    },
-    {
-        "package": "anthropic.resources.messages",
-        "object": "Messages",
-        "method": "parse",
-        "span_name": "anthropic.chat",
-    },
-    {
-        "package": "anthropic.resources.messages",
-        "object": "Messages",
-        "method": "stream",
-        "span_name": "anthropic.chat",
-    },
-    # This method is on an async resource, but is meant to be called as
-    # an async context manager (async with), which we don't need to await;
-    # thus, we wrap it with a sync wrapper
-    {
-        "package": "anthropic.resources.messages",
-        "object": "AsyncMessages",
-        "method": "stream",
-        "span_name": "anthropic.chat",
-    },
-    # Beta API methods (regular Anthropic SDK)
-    {
-        "package": "anthropic.resources.beta.messages.messages",
-        "object": "Messages",
-        "method": "create",
-        "span_name": "anthropic.chat",
-    },
-    {
-        "package": "anthropic.resources.beta.messages.messages",
-        "object": "Messages",
-        "method": "parse",
-        "span_name": "anthropic.chat",
-    },
-    {
-        "package": "anthropic.resources.beta.messages.messages",
-        "object": "Messages",
-        "method": "stream",
-        "span_name": "anthropic.chat",
-    },
-    # read note on async with above
-    {
-        "package": "anthropic.resources.beta.messages.messages",
-        "object": "AsyncMessages",
-        "method": "stream",
-        "span_name": "anthropic.chat",
-    },
-    # Beta API methods (Bedrock SDK)
-    {
-        "package": "anthropic.lib.bedrock._beta_messages",
-        "object": "Messages",
-        "method": "create",
-        "span_name": "anthropic.chat",
-    },
-    {
-        "package": "anthropic.lib.bedrock._beta_messages",
-        "object": "Messages",
-        "method": "stream",
-        "span_name": "anthropic.chat",
-    },
-    # read note on async with above
-    {
-        "package": "anthropic.lib.bedrock._beta_messages",
-        "object": "AsyncMessages",
-        "method": "stream",
-        "span_name": "anthropic.chat",
-    },
-]
+def is_streaming_response(response: Any) -> bool:
+    obj: object = response
+    try:
+        from anthropic._streaming import AsyncStream, Stream
 
-WRAPPED_AMETHODS = [
-    {
-        "package": "anthropic.resources.completions",
-        "object": "AsyncCompletions",
-        "method": "create",
-        "span_name": "anthropic.completion",
-    },
-    {
-        "package": "anthropic.resources.messages",
-        "object": "AsyncMessages",
-        "method": "create",
-        "span_name": "anthropic.chat",
-    },
-    {
-        "package": "anthropic.resources.messages",
-        "object": "AsyncMessages",
-        "method": "parse",
-        "span_name": "anthropic.chat",
-    },
-    # Beta API async methods (regular Anthropic SDK)
-    {
-        "package": "anthropic.resources.beta.messages.messages",
-        "object": "AsyncMessages",
-        "method": "create",
-        "span_name": "anthropic.chat",
-    },
-    {
-        "package": "anthropic.resources.beta.messages.messages",
-        "object": "AsyncMessages",
-        "method": "parse",
-        "span_name": "anthropic.chat",
-    },
-    # Beta API async methods (Bedrock SDK)
-    {
-        "package": "anthropic.lib.bedrock._beta_messages",
-        "object": "AsyncMessages",
-        "method": "create",
-        "span_name": "anthropic.chat",
-    },
-]
-
-
-def is_streaming_response(response):
-    if isinstance(response, (Stream, AsyncStream)):
-        return True
+        if isinstance(obj, (Stream, AsyncStream)):
+            return True
+    except ImportError:
+        pass
 
     # For cached streams, they are generators, not Message objects.
     # We check for __next__ and __iter__ for sync generators,
@@ -181,7 +94,7 @@ def is_streaming_response(response):
     )
 
 
-def is_stream_manager(response):
+def is_stream_manager(response: Any) -> bool:
     """Check if response is a MessageStreamManager or AsyncMessageStreamManager"""
     try:
         from anthropic.lib.streaming._messages import (
@@ -200,17 +113,17 @@ def is_stream_manager(response):
 
 @dont_throw
 async def _aset_token_usage(
-    span,
-    anthropic,
-    request,
-    response,
+    span: Span,
+    anthropic: Any,
+    _request: Any,
+    response: Any,
 ):
     # Handle with_raw_response wrapped responses first
     if response and hasattr(response, "parse") and callable(response.parse):
         try:
             response = response.parse()
-        except Exception as e:
-            logger.debug(f"Failed to parse with_raw_response: {e}")
+        except Exception:
+            logger.debug("Failed to parse with_raw_response", exc_info=True)
             return
 
     usage = getattr(response, "usage", None) if response else None
@@ -257,17 +170,17 @@ async def _aset_token_usage(
 
 @dont_throw
 def _set_token_usage(
-    span,
-    anthropic,
-    request,
-    response,
+    span: Span,
+    anthropic: Any,
+    _request: Any,
+    response: Any,
 ):
     # Handle with_raw_response wrapped responses first
     if response and hasattr(response, "parse") and callable(response.parse):
         try:
             response = response.parse()
-        except Exception as e:
-            logger.debug(f"Failed to parse with_raw_response: {e}")
+        except Exception:
+            logger.debug("Failed to parse with_raw_response", exc_info=True)
             return
 
     usage = getattr(response, "usage", None) if response else None
@@ -312,95 +225,79 @@ def _set_token_usage(
     )
 
 
-def _with_chat_telemetry_wrapper(func):
-    """Helper for providing tracer for wrapper functions. Includes metric collectors."""
-
-    def _with_chat_telemetry(
-        tracer,
-        to_wrap,
-    ):
-        def wrapper(wrapped, instance, args, kwargs):
-            return func(
-                tracer,
-                to_wrap,
-                wrapped,
-                instance,
-                args,
-                kwargs,
-            )
-
-        return wrapper
-
-    return _with_chat_telemetry
-
-
 @dont_throw
-def _handle_input(span: Span, kwargs):
+def _handle_input(span: Span, kwargs: dict[str, Any]):
     if not span.is_recording():
         return
     run_async(aset_input_attributes(span, kwargs))
 
 
 @dont_throw
-async def _ahandle_input(span: Span, kwargs):
+async def _ahandle_input(span: Span, kwargs: dict[str, Any]):
     if not span.is_recording():
         return
     await aset_input_attributes(span, kwargs)
 
 
 @dont_throw
-def _handle_response(span: Span, response, record_raw_response=False):
+def _handle_response(span: Span, response: Any, record_raw_response: bool = False):
     if not span.is_recording():
         return
     set_response_attributes(span, response)
 
     if record_raw_response:
         try:
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.utils import (
+                extract_response_data,
+            )
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+                model_as_dict,
+            )
             from lmnr.sdk.utils import json_dumps
 
-            from .utils import _extract_response_data, model_as_dict
-
-            response_data = _extract_response_data(response)
+            response_data = extract_response_data(response)
             response_dict = model_as_dict(response_data)
             set_span_attribute(span, "lmnr.sdk.raw.response", json_dumps(response_dict))
         except Exception:
-            pass
+            logger.debug("Failed to record raw response", exc_info=True)
 
 
 @dont_throw
-async def _ahandle_response(span: Span, response, record_raw_response=False):
+async def _ahandle_response(span: Span, response: Any, record_raw_response: bool = False):
     if not span.is_recording():
         return
     await aset_response_attributes(span, response)
 
     if record_raw_response:
         try:
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.utils import (
+                aextract_response_data,
+            )
+            from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+                model_as_dict,
+            )
             from lmnr.sdk.utils import json_dumps
 
-            from .utils import _aextract_response_data, model_as_dict
-
-            response_data = await _aextract_response_data(response)
+            response_data = await aextract_response_data(response)
             response_dict = model_as_dict(response_data)
             set_span_attribute(span, "lmnr.sdk.raw.response", json_dumps(response_dict))
         except Exception:
-            pass
+            logger.debug("Failed to record raw response async", exc_info=True)
 
 
-@_with_chat_telemetry_wrapper
 def _wrap(
-    tracer: Tracer,
-    to_wrap,
-    wrapped,
-    instance,
-    args,
-    kwargs,
-):
-    """Instruments and calls every function defined in TO_WRAP."""
+    to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., T],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T | Generator[ParsedMessageStreamEvent] | WrappedAsyncMessageStreamManager | WrappedMessageStreamManager | None:
+    """Instruments and calls every function defined in WRAPPED_FUNCTIONS."""
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
     span = safe_start_span(
-        name=to_wrap.get("span_name"),
+        name=to_wrap.get("span_name") or "anthropic.chat",
         attributes={"gen_ai.system": "anthropic"},
         span_type="LLM",
     )
@@ -409,31 +306,29 @@ def _wrap(
         logger.warning("Failed to start span for anthropic chat")
         return wrapped(*args, **kwargs)
 
+    stamp_instrumentation_scope(span, to_wrap)
     _handle_input(span, kwargs)
 
     rollout_wrapper = get_anthropic_rollout_wrapper()
     is_rollout = rollout_wrapper is not None
 
-    try:
-        if rollout_wrapper:
-            response = rollout_wrapper.wrap_create(
-                wrapped,
-                instance,
-                args,
-                kwargs,
-                span=span,
-                is_streaming=kwargs.get("stream", False),
-                is_async=False,
-            )
-        else:
-            response = wrapped(*args, **kwargs)
-    except Exception as e:  # pylint: disable=broad-except
-        raise e
+    if rollout_wrapper:
+        response = rollout_wrapper.wrap_create(
+            wrapped,
+            instance,
+            args,
+            kwargs,
+            span=span,
+            is_streaming=kwargs.get("stream", False),
+            is_async=False,
+        )
+    else:
+        response = wrapped(*args, **kwargs)
 
     if kwargs.get("stream") or is_streaming_response(response):
         return build_from_streaming_response(
             span,
-            response,
+            cast("MessageStream", response),
             instance._client,
             kwargs,
             record_raw_response=is_rollout,
@@ -441,7 +336,7 @@ def _wrap(
     elif is_stream_manager(response):
         if response.__class__.__name__ == "AsyncMessageStreamManager":
             return WrappedAsyncMessageStreamManager(
-                response,
+                cast("AsyncMessageStreamManager", response),
                 span,
                 instance._client,
                 kwargs,
@@ -449,7 +344,7 @@ def _wrap(
             )
         else:
             return WrappedMessageStreamManager(
-                response,
+                cast("MessageStreamManager", response),
                 span,
                 instance._client,
                 kwargs,
@@ -465,10 +360,10 @@ def _wrap(
                     kwargs,
                     response,
                 )
-        except Exception as ex:  # pylint: disable=broad-except
+        except Exception:
             logger.warning(
-                "Failed to set response attributes for anthropic span, error: %s",
-                str(ex),
+                "Failed to set response attributes for anthropic span",
+                exc_info=True
             )
 
         if span.is_recording():
@@ -477,21 +372,19 @@ def _wrap(
     return response
 
 
-@_with_chat_telemetry_wrapper
 async def _awrap(
-    tracer,
-    to_wrap,
-    wrapped,
-    instance,
-    args,
-    kwargs,
-):
-    """Instruments and calls every function defined in TO_WRAP."""
+    to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., Awaitable[T]],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T | AsyncGenerator[ParsedMessageStreamEvent] | WrappedAsyncMessageStreamManager | WrappedMessageStreamManager | None:
+    """Instruments and calls every function defined in WRAPPED_FUNCTIONS."""
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
     span = safe_start_span(
-        name=to_wrap.get("span_name"),
+        name=to_wrap.get("span_name") or "anthropic.chat",
         attributes={"gen_ai.system": "anthropic"},
         span_type="LLM",
     )
@@ -500,31 +393,29 @@ async def _awrap(
         logger.warning("Failed to start span for async anthropic chat")
         return await wrapped(*args, **kwargs)
 
+    stamp_instrumentation_scope(span, to_wrap)
     await _ahandle_input(span, kwargs)
 
     rollout_wrapper = get_anthropic_rollout_wrapper()
     is_rollout = rollout_wrapper is not None
 
-    try:
-        if rollout_wrapper:
-            response = await rollout_wrapper.wrap_create(
-                wrapped,
-                instance,
-                args,
-                kwargs,
-                span=span,
-                is_streaming=kwargs.get("stream", False),
-                is_async=True,
-            )
-        else:
-            response = await wrapped(*args, **kwargs)
-    except Exception as e:  # pylint: disable=broad-except
-        raise e
+    if rollout_wrapper:
+        response = await rollout_wrapper.wrap_create(
+            wrapped,
+            instance,
+            args,
+            kwargs,
+            span=span,
+            is_streaming=kwargs.get("stream", False),
+            is_async=True,
+        )
+    else:
+        response = await wrapped(*args, **kwargs)
 
     if kwargs.get("stream") or is_streaming_response(response):
         return abuild_from_streaming_response(
             span,
-            response,
+            cast("AsyncMessageStream", response),
             instance._client,
             kwargs,
             record_raw_response=is_rollout,
@@ -532,7 +423,7 @@ async def _awrap(
     elif is_stream_manager(response):
         if response.__class__.__name__ == "AsyncMessageStreamManager":
             return WrappedAsyncMessageStreamManager(
-                response,
+                cast("AsyncMessageStreamManager", response),
                 span,
                 instance._client,
                 kwargs,
@@ -540,7 +431,7 @@ async def _awrap(
             )
         else:
             return WrappedMessageStreamManager(
-                response,
+                cast("MessageStreamManager", response),
                 span,
                 instance._client,
                 kwargs,
@@ -561,81 +452,191 @@ async def _awrap(
     return response
 
 
-class AnthropicInstrumentor(BaseInstrumentor):
+WRAPPED_FUNCTIONS: list[WrappedFunctionSpec] = [
+    WrappedFunctionSpec(
+        package_name="anthropic.resources.completions",
+        object_name="Completions",
+        method_name="create",
+        span_name="anthropic.completion",
+        is_async=False,
+        wrapper_function=_wrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="anthropic.resources.messages",
+        object_name="Messages",
+        method_name="create",
+        span_name="anthropic.chat",
+        is_async=False,
+        wrapper_function=_wrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="anthropic.resources.messages",
+        object_name="Messages",
+        method_name="parse",
+        span_name="anthropic.chat",
+        is_async=False,
+        wrapper_function=_wrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="anthropic.resources.messages",
+        object_name="Messages",
+        method_name="stream",
+        span_name="anthropic.chat",
+        is_async=False,
+        wrapper_function=_wrap,
+    ),
+    # This method is on an async resource, but is meant to be called as
+    # an async context manager (async with), which we don't need to await;
+    # thus, we wrap it with a sync wrapper
+    WrappedFunctionSpec(
+        package_name="anthropic.resources.messages",
+        object_name="AsyncMessages",
+        method_name="stream",
+        span_name="anthropic.chat",
+        is_async=False,
+        wrapper_function=_wrap,
+    ),
+    # Beta API methods (regular Anthropic SDK)
+    WrappedFunctionSpec(
+        package_name="anthropic.resources.beta.messages.messages",
+        object_name="Messages",
+        method_name="create",
+        span_name="anthropic.chat",
+        is_async=False,
+        wrapper_function=_wrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="anthropic.resources.beta.messages.messages",
+        object_name="Messages",
+        method_name="parse",
+        span_name="anthropic.chat",
+        is_async=False,
+        wrapper_function=_wrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="anthropic.resources.beta.messages.messages",
+        object_name="Messages",
+        method_name="stream",
+        span_name="anthropic.chat",
+        is_async=False,
+        wrapper_function=_wrap,
+    ),
+    # read note on async with above
+    WrappedFunctionSpec(
+        package_name="anthropic.resources.beta.messages.messages",
+        object_name="AsyncMessages",
+        method_name="stream",
+        span_name="anthropic.chat",
+        is_async=False,
+        wrapper_function=_wrap,
+    ),
+    # Beta API methods (Bedrock SDK)
+    WrappedFunctionSpec(
+        package_name="anthropic.lib.bedrock._beta_messages",
+        object_name="Messages",
+        method_name="create",
+        span_name="anthropic.chat",
+        is_async=False,
+        wrapper_function=_wrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="anthropic.lib.bedrock._beta_messages",
+        object_name="Messages",
+        method_name="stream",
+        span_name="anthropic.chat",
+        is_async=False,
+        wrapper_function=_wrap,
+    ),
+    # read note on async with above
+    WrappedFunctionSpec(
+        package_name="anthropic.lib.bedrock._beta_messages",
+        object_name="AsyncMessages",
+        method_name="stream",
+        span_name="anthropic.chat",
+        is_async=False,
+        wrapper_function=_wrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="anthropic.resources.completions",
+        object_name="AsyncCompletions",
+        method_name="create",
+        span_name="anthropic.completion",
+        is_async=True,
+        wrapper_function=_awrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="anthropic.resources.messages",
+        object_name="AsyncMessages",
+        method_name="create",
+        span_name="anthropic.chat",
+        is_async=True,
+        wrapper_function=_awrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="anthropic.resources.messages",
+        object_name="AsyncMessages",
+        method_name="parse",
+        span_name="anthropic.chat",
+        is_async=True,
+        wrapper_function=_awrap,
+    ),
+    # Beta API async methods (regular Anthropic SDK)
+    WrappedFunctionSpec(
+        package_name="anthropic.resources.beta.messages.messages",
+        object_name="AsyncMessages",
+        method_name="create",
+        span_name="anthropic.chat",
+        is_async=True,
+        wrapper_function=_awrap,
+    ),
+    WrappedFunctionSpec(
+        package_name="anthropic.resources.beta.messages.messages",
+        object_name="AsyncMessages",
+        method_name="parse",
+        span_name="anthropic.chat",
+        is_async=True,
+        wrapper_function=_awrap,
+    ),
+    # Beta API async methods (Bedrock SDK)
+    WrappedFunctionSpec(
+        package_name="anthropic.lib.bedrock._beta_messages",
+        object_name="AsyncMessages",
+        method_name="create",
+        span_name="anthropic.chat",
+        is_async=True,
+        wrapper_function=_awrap,
+    ),
+]
+
+
+class AnthropicInstrumentor(BaseLaminarInstrumentor):
     """An instrumentor for Anthropic's client library."""
 
-    def __init__(
-        self,
-        enrich_token_usage: bool = False,
-        exception_logger=None,
-        use_legacy_attributes: bool = True,
-        get_common_metrics_attributes: Callable[[], dict] = lambda: {},
-    ):
-        super().__init__()
-        Config.exception_logger = exception_logger
-        Config.enrich_token_usage = enrich_token_usage
-        Config.get_common_metrics_attributes = get_common_metrics_attributes
-        Config.use_legacy_attributes = use_legacy_attributes
+    _scope: LaminarInstrumentationScopeAttributes | None = None
 
+    def __init__(self):
+        super().__init__()
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
+            wrapped_functions=[
+                {**spec, "instrumentation_scope": self.instrumentation_scope()}
+                for spec in WRAPPED_FUNCTIONS
+            ]
+        )
+
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
-    def _instrument(self, **kwargs):
-        tracer_provider = kwargs.get("tracer_provider")
-        tracer = get_tracer(__name__, __version__, tracer_provider)
-
-        for wrapped_method in WRAPPED_METHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            wrap_method = wrapped_method.get("method")
-
+    @override
+    def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
+        if self._scope is None:
             try:
-                wrap_function_wrapper(
-                    wrap_package,
-                    f"{wrap_object}.{wrap_method}",
-                    _wrap(
-                        tracer,
-                        wrapped_method,
-                    ),
-                )
-                logger.debug(
-                    f"Successfully wrapped {wrap_package}.{wrap_object}.{wrap_method}"
-                )
-            except Exception as e:
-                logger.debug(
-                    f"Failed to wrap {wrap_package}.{wrap_object}.{wrap_method}: {e}"
-                )
-            except ModuleNotFoundError:
-                pass  # that's ok, we don't want to fail if some methods do not exist
-
-        for wrapped_method in WRAPPED_AMETHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            wrap_method = wrapped_method.get("method")
-            try:
-                wrap_function_wrapper(
-                    wrap_package,
-                    f"{wrap_object}.{wrap_method}",
-                    _awrap(
-                        tracer,
-                        wrapped_method,
-                    ),
-                )
+                anthropic_version = version("anthropic")
             except Exception:
-                pass  # that's ok, we don't want to fail if some methods do not exist
-
-    def _uninstrument(self, **kwargs):
-        for wrapped_method in WRAPPED_METHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            unwrap(
-                f"{wrap_package}.{wrap_object}",
-                wrapped_method.get("method"),
+                logger.debug("Failed to get anthropic version", exc_info=True)
+                anthropic_version = "unknown"
+            self._scope = LaminarInstrumentationScopeAttributes(
+                name="anthropic",
+                version=anthropic_version,
             )
-        for wrapped_method in WRAPPED_AMETHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            unwrap(
-                f"{wrap_package}.{wrap_object}",
-                wrapped_method.get("method"),
-            )
+        return self._scope

@@ -1,65 +1,20 @@
 import asyncio
-import inspect
 import json
-import logging
-import os
 import threading
-import traceback
-from importlib.metadata import version
+from collections.abc import Awaitable
+from types import CoroutineType
+from typing import Any
 
-from opentelemetry import context as context_api
-from .config import Config
+from typing_extensions import TypeVar, override
 
-_PYDANTIC_VERSION = version("pydantic")
+from lmnr.sdk.log import get_default_logger
 
-LMNR_TRACE_CONTENT = "LMNR_TRACE_CONTENT"
+logger = get_default_logger(__name__)
 
-
-def set_span_attribute(span, name, value):
-    if value is not None:
-        if value != "":
-            span.set_attribute(name, value)
-    return
+T = TypeVar("T")
 
 
-def should_send_prompts():
-    return (
-        os.getenv(LMNR_TRACE_CONTENT) or "true"
-    ).lower() == "true" or context_api.get_value("override_enable_content_tracing")
-
-
-def dont_throw(func):
-    """
-    A decorator that wraps the passed in function and logs exceptions instead of throwing them.
-    Works for both synchronous and asynchronous functions.
-    """
-    logger = logging.getLogger(func.__module__)
-
-    async def async_wrapper(*args, **kwargs):
-        try:
-            return await func(*args, **kwargs)
-        except Exception as e:
-            _handle_exception(e, func, logger)
-
-    def sync_wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            _handle_exception(e, func, logger)
-
-    def _handle_exception(e, func, logger):
-        logger.debug(
-            "OpenLLMetry failed to trace in %s, error: %s",
-            func.__name__,
-            traceback.format_exc(),
-        )
-        if Config.exception_logger:
-            Config.exception_logger(e)
-
-    return async_wrapper if inspect.iscoroutinefunction(func) else sync_wrapper
-
-
-async def _aextract_response_data(response):
+async def aextract_response_data(response: Any) -> dict[str, Any]:
     """Async version of _extract_response_data that can await coroutines."""
     import inspect
 
@@ -67,15 +22,12 @@ async def _aextract_response_data(response):
     if inspect.iscoroutine(response):
         try:
             response = await response
-        except Exception as e:
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.debug(f"Failed to await coroutine response: {e}")
+        except Exception:
+            logger.debug("Failed to await coroutine response", exc_info=True)
             return {}
 
     if isinstance(response, dict):
-        return response
+        return response  # pyright: ignore[reportUnknownVariableType]
 
     # Handle with_raw_response wrapped responses
     if hasattr(response, "parse") and callable(response.parse):
@@ -84,13 +36,11 @@ async def _aextract_response_data(response):
             parsed_response = response.parse()
             if not isinstance(parsed_response, dict):
                 parsed_response = parsed_response.__dict__
-            return parsed_response
-        except Exception as e:
-            import logging
-
-            logger = logging.getLogger(__name__)
+            return parsed_response  # pyright: ignore[reportUnknownVariableType]
+        except Exception:
             logger.debug(
-                f"Failed to parse response: {e}, response type: {type(response)}"
+                f"Failed to parse response, response type: {type(response)}",
+                exc_info=True,
             )
 
     # Fallback to __dict__ for regular response objects
@@ -101,22 +51,19 @@ async def _aextract_response_data(response):
     return {}
 
 
-def _extract_response_data(response):
+def extract_response_data(response: Any) -> dict[str, Any]:
     """Extract the actual response data from both regular and with_raw_response wrapped responses."""
     import inspect
 
     # If we get a coroutine, we cannot process it in sync context
     if inspect.iscoroutine(response):
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.warning(
             f"_extract_response_data received coroutine {response} - response processing skipped"
         )
         return {}
 
     if isinstance(response, dict):
-        return response
+        return response  # pyright: ignore[reportUnknownVariableType]
 
     # Handle with_raw_response wrapped responses
     if hasattr(response, "parse") and callable(response.parse):
@@ -125,13 +72,11 @@ def _extract_response_data(response):
             parsed_response = response.parse()
             if not isinstance(parsed_response, dict):
                 parsed_response = parsed_response.__dict__
-            return parsed_response
-        except Exception as e:
-            import logging
-
-            logger = logging.getLogger(__name__)
+            return parsed_response  # pyright: ignore[reportUnknownVariableType]
+        except Exception:
             logger.debug(
-                f"Failed to parse response: {e}, response type: {type(response)}"
+                f"Failed to parse response, response type: {type(response)}",
+                exc_info=True,
             )
 
     # Fallback to __dict__ for regular response objects
@@ -142,7 +87,7 @@ def _extract_response_data(response):
     return {}
 
 
-def run_async(method):
+def run_async(method: CoroutineType[Any, Any, Any] | Awaitable[None]):
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
@@ -157,7 +102,8 @@ def run_async(method):
 
 
 class JSONEncoder(json.JSONEncoder):
-    def default(self, o):
+    @override
+    def default(self, o: Any):
         if hasattr(o, "to_json"):
             return o.to_json()
 
@@ -167,20 +113,5 @@ class JSONEncoder(json.JSONEncoder):
         try:
             return str(o)
         except Exception:
-            logger = logging.getLogger(__name__)
             logger.debug("Failed to serialize object of type: %s", type(o).__name__)
             return ""
-
-
-def model_as_dict(model):
-    if isinstance(model, dict):
-        return model
-    if _PYDANTIC_VERSION < "2.0.0" and hasattr(model, "dict"):
-        return model.dict()
-    if hasattr(model, "model_dump"):
-        return model.model_dump()
-    else:
-        try:
-            return dict(model)
-        except Exception:
-            return model

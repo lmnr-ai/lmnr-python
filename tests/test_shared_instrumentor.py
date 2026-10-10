@@ -1,0 +1,317 @@
+"""Tests for the shared instrumentor contract in
+`opentelemetry_lib/opentelemetry/instrumentation/shared/`.
+
+These cover the generic machinery every migrated instrumentor relies on, so a
+regression here would silently affect all of them at once.
+"""
+
+import time
+from collections.abc import Callable, Sequence
+from typing import Any, cast
+
+import pytest
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import SpanKind
+from typing_extensions import TypeVar, override
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
+    BaseLaminarInstrumentor,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WrappedFunctionSpec,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
+    safe_start_span,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    add_spec_wrapper,
+    stamp_instrumentation_scope,
+)
+from lmnr.sdk.client.synchronous.sync_client import LaminarClient
+
+T = TypeVar("T")
+
+def _spec(**overrides: Any) -> WrappedFunctionSpec:
+    base = WrappedFunctionSpec(
+        package_name="pkg",
+        method_name="meth",
+        is_async=False,
+        wrapper_function=lambda *a, **k: None,  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    )
+    base.update(overrides)  # pyright: ignore[reportArgumentType, reportCallIssue]
+    return base
+
+
+class _FakeSpan:
+    """Minimal Span stand-in: `set_span_attribute` only needs `set_attribute`."""
+
+    def __init__(self):
+        self.attributes: dict[str, object] = {}
+
+    def set_attribute(self, key: str, value: object) -> None:
+        self.attributes[key] = value
+
+
+# ---------------------------------------------------------------------------
+# add_spec_wrapper
+# ---------------------------------------------------------------------------
+
+
+def test_add_spec_wrapper_binds_the_spec_as_the_first_argument():
+    seen = {}
+
+    def handler(
+        to_wrap: WrappedFunctionSpec,
+        wrapped: Callable[..., T],
+        _instance: Any,
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
+    ) -> T:
+        seen["spec"] = to_wrap
+        return wrapped(*args, **kwargs)
+
+    spec = _spec(span_name="my.span")
+    wrapper = add_spec_wrapper(handler, spec)
+
+    assert wrapper(lambda x: x * 2, None, (21,), {}) == 42  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    assert seen["spec"] is spec
+
+
+def test_add_spec_wrapper_normalizes_none_args_and_kwargs():
+    """wrapt always passes args/kwargs, but the parameters are declared optional
+    for direct callers. The handler must never receive None for either, or every
+    wrapper would need to defensively re-normalize (which is exactly the
+    `if kwargs is None` boilerplate the litellm wrappers still carry)."""
+    seen = {}
+
+    def handler(
+        _to_wrap: WrappedFunctionSpec,
+        _wrapped: Callable[..., T],
+        _instance: Any,
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
+    ):
+        seen["args"] = args
+        seen["kwargs"] = kwargs
+
+    add_spec_wrapper(handler, _spec())(lambda: None, None)  # pyright: ignore[reportCallIssue]
+
+    assert seen["args"] == ()
+    assert seen["kwargs"] == {}
+
+
+def test_add_spec_wrapper_forwards_handler_kwargs():
+    """This is the mechanism `wrapper_kwargs()` rides on, so that an
+    instrumentor-level collaborator (e.g. the browser group's client) reaches a
+    wrapper without being stuffed into per-method spec config."""
+    seen = {}
+
+    def handler(
+        _to_wrap: WrappedFunctionSpec,
+        _wrapped: Callable[..., T],
+        _instance: Any,
+        _args: Sequence[Any],
+        _kwargs: dict[str, Any],
+        *,
+        client: LaminarClient
+    ):
+        seen["client"] = client
+
+    sentinel = object()
+    add_spec_wrapper(handler, _spec(), client=sentinel)(lambda: None, None, (), {})  # pyright: ignore[reportArgumentType]
+
+    assert seen["client"] is sentinel
+
+
+# ---------------------------------------------------------------------------
+# stamp_instrumentation_scope
+# ---------------------------------------------------------------------------
+
+
+def test_stamp_instrumentation_scope_records_name_and_version():
+    span = _FakeSpan()
+    stamp_instrumentation_scope(
+        cast(Any, span),
+        _spec(
+            instrumentation_scope=LaminarInstrumentationScopeAttributes(
+                name="litellm", version="1.2.3"
+            )
+        ),
+    )
+
+    assert span.attributes == {
+        "lmnr.span.instrumentation_scope.name": "litellm",
+        "lmnr.span.instrumentation_scope.version": "1.2.3",
+    }
+
+
+def test_stamp_instrumentation_scope_is_a_noop_without_a_scope():
+    """`instrumentation_scope` is an optional spec key, so a spec that omits it
+    must not raise — that would abort the wrapper before the real call."""
+    span = _FakeSpan()
+    stamp_instrumentation_scope(cast(Any, span), _spec())
+
+    assert span.attributes == {}
+
+
+def test_stamp_instrumentation_scope_tolerates_a_none_span():
+    """`safe_start_span` returns None when Laminar is not initialized, and
+    wrappers stamp the scope before checking — so None must be a no-op."""
+    stamp_instrumentation_scope(
+        None,
+        _spec(
+            instrumentation_scope=LaminarInstrumentationScopeAttributes(
+                name="litellm", version="1.2.3"
+            )
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# safe_start_span
+# ---------------------------------------------------------------------------
+
+
+def test_safe_start_span_honors_a_retroactive_start_time(span_exporter: InMemorySpanExporter):
+    """The OpenAI responses/assistants wrappers only learn a call happened once
+    it finished, so they backdate the span. `Laminar.start_span` deliberately
+    does not expose this, hence the tracer path."""
+    start = time.time_ns() - 5_000_000_000  # 5s ago
+
+    span = safe_start_span("backdated", start_time=start)
+    assert span is not None
+    span.end()
+
+    (exported,) = span_exporter.get_finished_spans()
+    assert exported.start_time == start
+    assert (exported.attributes or {})["lmnr.span.type"] == "DEFAULT"
+
+
+def test_safe_start_span_honors_span_kind(span_exporter: InMemorySpanExporter):
+    span = safe_start_span("client-call", kind=SpanKind.CLIENT, span_type="LLM")
+    assert span is not None
+    span.end()
+
+    (exported,) = span_exporter.get_finished_spans()
+    assert exported.kind == SpanKind.CLIENT
+    assert (exported.attributes or {})["lmnr.span.type"] == "LLM"
+
+
+def test_safe_start_span_default_path_still_goes_through_laminar(span_exporter: InMemorySpanExporter):
+    """Without start_time/kind the helper must keep using the public
+    `Laminar.start_span`, which is what applies Laminar's own span bookkeeping."""
+    span = safe_start_span("plain", span_type="TOOL")
+    assert span is not None
+    span.end()
+
+    (exported,) = span_exporter.get_finished_spans()
+    assert exported.kind == SpanKind.INTERNAL
+    assert (exported.attributes or {})["lmnr.span.type"] == "TOOL"
+
+
+# ---------------------------------------------------------------------------
+# BaseLaminarInstrumentor
+# ---------------------------------------------------------------------------
+
+
+def test_base_instrumentor_is_abstract():
+    with pytest.raises(TypeError):
+        _ = BaseLaminarInstrumentor()  # pyright: ignore[reportAbstractUsage] intentional
+
+
+def test_wrapper_kwargs_defaults_to_empty_and_reaches_the_wrapper():
+    seen = {}
+
+    def handler(
+        _to_wrap: WrappedFunctionSpec,
+        _wrapped: Callable[..., T],
+        _instance: Any,
+        _args: Sequence[Any],
+        _kwargs: dict[str, Any],
+        **extra: Any,
+    ):
+        seen["extra"] = extra
+
+    class _Instrumentor(BaseLaminarInstrumentor):
+        @override
+        def instrumentation_dependencies(self):
+            return ()
+
+        @override
+        def instrumentation_scope(self):
+            return LaminarInstrumentationScopeAttributes(name="t", version="0")
+
+        @override
+        def wrapper_kwargs(self):
+            return {"client": "sentinel"}
+
+    inst = _Instrumentor()
+    inst.instrumentor_config = LaminarInstrumentorConfig(
+        wrapped_functions=[_spec(wrapper_function=handler)]
+    )
+
+    add_spec_wrapper(handler, _spec(), **inst.wrapper_kwargs())(
+        lambda: None, None, (), {}
+    )
+    assert seen["extra"] == {"client": "sentinel"}
+
+
+# ---------------------------------------------------------------------------
+# Every span-creating instrumentor stamps its scope
+# ---------------------------------------------------------------------------
+
+#: Migrated instrumentors that mint spans of their own. Since they all resolve
+#: the single `lmnr.tracer` OTel tracer, the real OTel InstrumentationScope
+#: cannot identify the source library — `lmnr.span.instrumentation_scope.*` is
+#: the only thing that can, so a package that creates spans without stamping
+#: emits unattributable spans. `langgraph` and `opentelemetry` are deliberately
+#: absent: they create no spans (langgraph only attaches context values,
+#: opentelemetry patches a DataDog `SpanContext` bug).
+_SPAN_CREATING_INSTRUMENTATION_PACKAGES = [
+    "anthropic",
+    "claude_agent",
+    "cua_agent",
+    "cua_computer",
+    "daytona",
+    "google_genai",
+    "groq",
+    "kernel",
+    "litellm",
+    "openai",
+    "skyvern",
+]
+
+
+@pytest.mark.parametrize("package", _SPAN_CREATING_INSTRUMENTATION_PACKAGES)
+def test_span_creating_instrumentors_stamp_their_scope(package: str):
+    """Source-level guard, because most of these packages need their third-party
+    SDK installed to exercise at runtime. It catches the failure mode that
+    actually happened: a wrapper migrated to the shared contract, receiving the
+    scope on its spec, but never stamping it onto the span it creates."""
+    import pathlib
+
+    import lmnr.opentelemetry_lib.opentelemetry.instrumentation as instrumentation_mod
+
+    # A namespace package (no `__init__.py`), so `__file__` is None.
+    root = pathlib.Path(next(iter(instrumentation_mod.__path__))) / package
+    sources = [p.read_text() for p in root.rglob("*.py")]
+
+    creates_spans = any(
+        marker in src
+        for src in sources
+        for marker in (
+            "safe_start_span(",
+            "Laminar.start_span(",
+            "Laminar.start_active_span(",
+            "Laminar.start_as_current_span(",
+        )
+    )
+    assert creates_spans, f"{package} no longer creates spans; update this list"
+
+    assert any(
+        "stamp_instrumentation_scope(" in src
+        or "set_instrumentation_scope_attributes(" in src
+        for src in sources
+    ), f"{package} creates spans but never stamps lmnr.span.instrumentation_scope.*"

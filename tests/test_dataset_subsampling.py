@@ -1,49 +1,50 @@
 import json
 import uuid
-from datetime import datetime
+from collections.abc import Awaitable, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
-    InMemorySpanExporter,
-)
+from typing_extensions import override
 
 from lmnr import Laminar
 from lmnr.sdk.datasets import EvaluationDataset, LaminarDataset
 from lmnr.sdk.datasets.seeded_perm import seeded_perm
 from lmnr.sdk.evaluations import evaluate
+from lmnr.sdk.evaluations.models import EvaluationRunResult
 from lmnr.sdk.types import Datapoint
-
 
 FIXTURE = (
     Path(__file__).parent / "data" / "dataset" / "seeded_perm_cases.json"
 )
-
 
 def make_dp(i: int) -> Datapoint:
     return Datapoint(
         id=uuid.uuid4(),
         data=i,
         target=i,
-        createdAt=datetime.now(),
+        createdAt=datetime.now(tz=UTC),
     )
 
 
 class InMemoryDataset(EvaluationDataset):
     """Tiny in-memory dataset implementing the base (size + by-index) contract."""
 
-    def __init__(self, datapoints):
-        self._dp = list(datapoints)
+    def __init__(self, datapoints: Sequence[Datapoint]):
+        self._dp: list[Datapoint] = list(datapoints)
 
+    @override
     def __len__(self) -> int:
         return len(self._dp)
 
-    def __getitem__(self, idx) -> Datapoint:
+    @override
+    def __getitem__(self, idx: int) -> Datapoint:
         return self._dp[idx]
 
 
-def values(ds: EvaluationDataset) -> list:
+def values(ds: EvaluationDataset) -> list[Any]:
     return [ds[i].data for i in range(len(ds))]
 
 
@@ -72,7 +73,7 @@ def test_take_non_integer_raises():
     ds = InMemoryDataset([make_dp(i) for i in range(5)])
     for bad in (2.5, 2.0, "2", True, None):
         with pytest.raises(TypeError) as exc:
-            len(ds.take(bad))  # pyright: ignore[reportArgumentType]
+            _length = len(ds.take(bad))  # pyright: ignore[reportArgumentType]
         assert "not an integer" in str(exc.value)
 
 
@@ -81,14 +82,16 @@ def test_take_resolves_once_and_caches():
     calls = {"n": 0}
 
     class CountingDataset(EvaluationDataset):
-        def __init__(self, base):
-            self._base = base
+        def __init__(self, base: EvaluationDataset):
+            self._base: EvaluationDataset = base
 
+        @override
         def __len__(self) -> int:
             calls["n"] += 1
             return len(self._base)
 
-        def __getitem__(self, idx) -> Datapoint:
+        @override
+        def __getitem__(self, idx: int) -> Datapoint:
             return self._base[idx]
 
     taken = CountingDataset(ds).take(4)
@@ -110,21 +113,21 @@ def test_select_order():
 def test_select_out_of_range_raises():
     ds = InMemoryDataset([make_dp(i) for i in range(3)])
     with pytest.raises(IndexError) as exc:
-        len(ds.select([0, 5]))
+        _length = len(ds.select([0, 5]))
     assert "5" in str(exc.value) and "3" in str(exc.value)
 
 
 def test_select_negative_raises():
     ds = InMemoryDataset([make_dp(i) for i in range(3)])
     with pytest.raises(IndexError):
-        len(ds.select([-1]))
+        _length = len(ds.select([-1]))
 
 
 def test_select_non_integer_raises():
     ds = InMemoryDataset([make_dp(i) for i in range(3)])
     for bad in (1.5, 1.0, "1", True, None):
         with pytest.raises(TypeError) as exc:
-            len(ds.select([bad]))  # pyright: ignore[reportArgumentType]
+            _length = len(ds.select([bad]))  # pyright: ignore[reportArgumentType]
         assert "not an integer" in str(exc.value)
 
 
@@ -223,11 +226,16 @@ def _paged_laminar_dataset(total: int, fetch_size: int):
     all_items = [make_dp(i) for i in range(total)]
     client = MagicMock()
 
-    def pull(name=None, id=None, offset=0, limit=fetch_size):
-        resp = MagicMock()
-        resp.items = all_items[offset : offset + limit]
-        resp.total_count = total
-        return resp
+    def pull(
+        name: int | None = None,
+        id: uuid.UUID | None = None,
+        offset: int = 0,
+        limit: int = fetch_size
+    ) -> dict[str, list[Datapoint] | int]:
+        return {
+            "items": all_items[offset : offset + limit],
+            "total_count": total,
+        }
 
     client.datasets.pull.side_effect = pull
     ds.set_client(client)
@@ -293,39 +301,44 @@ def test_seeded_perm_edge_cases():
 @patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.save_datapoints")
 @patch("lmnr.sdk.client.asynchronous.resources.evals.AsyncEvals.init")
 async def test_eval_over_chained_dataset_has_dataset_link(
-    mock_init,
-    mock_save_datapoints,
-    mock_pull,
-    span_exporter: InMemorySpanExporter,
+    mock_init: MagicMock,
+    mock_save_datapoints: MagicMock,
+    mock_pull: MagicMock,
 ):
     dataset_id = uuid.uuid4()
     all_items = [make_dp(i) for i in range(5)]
 
-    eval_resp = MagicMock()
-    eval_resp.id = "00000000-0000-0000-0000-000000000000"
-    eval_resp.projectId = "mock-project-id"
+    eval_resp = {
+        "id": "00000000-0000-0000-0000-000000000000",
+        "projectId": "mock-project-id",
+    }
     mock_init.return_value = eval_resp
 
-    def pull(name=None, id=None, offset=0, limit=25):
-        resp = MagicMock()
-        resp.items = all_items[offset : offset + limit]
-        resp.total_count = len(all_items)
-        return resp
+    def pull(
+        name: int | None = None,
+        id: uuid.UUID | None = None,
+        offset: int = 0,
+        limit: int = 25
+    ) -> dict[str, list[Datapoint] | int]:
+        return {
+            "items": all_items[offset : offset + limit],
+            "total_count": len(all_items),
+        }
 
     mock_pull.side_effect = pull
 
     data = LaminarDataset(id=dataset_id).shuffle(seed=1).take(2)
 
-    await evaluate(
+    _result = await cast(Awaitable[EvaluationRunResult], evaluate(
         data=data,
-        executor=lambda d: d,
+        executor=lambda d, _t=None: d,
         evaluators={"test": lambda output, target: 1},
         project_api_key="test",
-    )
-    Laminar.flush()
+    ))
+    _flushed = Laminar.flush()
 
     # Collect every datapoint passed to save_datapoints across all calls.
-    seen_links = []
+    seen_links: list[dict[str, str]] = []
     processed = 0
     for call in mock_save_datapoints.call_args_list:
         datapoints = call.args[1]
@@ -336,7 +349,7 @@ async def test_eval_over_chained_dataset_has_dataset_link(
 
     assert seen_links, "expected dataset_link on chained-dataset result datapoints"
     for link in seen_links:
-        assert link.dataset_id == dataset_id
+        assert link["dataset_id"] == dataset_id
     # shuffle(seed=1).take(2) over 5 datapoints -> 2 processed datapoints,
     # each saved twice (partial + final).
     assert processed == 4

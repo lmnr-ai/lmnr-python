@@ -65,16 +65,19 @@ and a hook failure never breaks the framework call.
 
 import inspect
 import os
-from contextvars import ContextVar
+from collections.abc import Callable, Collection, Generator, Sequence
 from contextlib import contextmanager
+from contextvars import ContextVar
 from importlib.metadata import version
-from typing import Any, Collection, Iterator
+from typing import Any, cast
 
 from opentelemetry import context as context_api
 from opentelemetry import trace
 from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY
+from opentelemetry.util.types import AttributeValue
+from typing_extensions import TypeVar, override
 
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (  # noqa: E501
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
@@ -94,6 +97,7 @@ from lmnr.opentelemetry_lib.tracing.context import (
 from lmnr.sdk.log import get_default_logger
 
 logger = get_default_logger(__name__)
+T = TypeVar("T")
 
 _OBSERVABILITY_MODULE = "agent_framework.observability"
 _MCP_MODULE = "agent_framework._mcp"
@@ -118,8 +122,8 @@ _MODEL_CALL_OPERATIONS = ("chat", "embeddings")
 _request_tools: ContextVar[Any] = ContextVar("lmnr_maf_request_tools", default=None)
 
 
-def _is_model_call_span(span: Any) -> bool:
-    attributes = getattr(span, "attributes", None) or {}
+def _is_model_call_span(span: trace.Span) -> bool:
+    attributes: dict[str, AttributeValue] = getattr(span, "attributes", None) or {}
     try:
         return attributes.get(_OPERATION_NAME) in _MODEL_CALL_OPERATIONS
     except Exception:
@@ -127,7 +131,7 @@ def _is_model_call_span(span: Any) -> bool:
 
 
 @contextmanager
-def _laminar_activation(span: Any, suppress_providers: bool) -> Iterator[None]:
+def _laminar_activation(span: Any, suppress_providers: bool) -> Generator[None]:
     """Make `span` current in Laminar's isolated context for the block, and
     optionally suppress provider instrumentation in the global context."""
     pushed = False
@@ -155,7 +159,7 @@ def _laminar_activation(span: Any, suppress_providers: bool) -> Iterator[None]:
 
 
 @contextmanager
-def _bridge_span_cm(cm: Any, span: Any = None) -> Iterator[Any]:
+def _bridge_span_cm(cm: Any, span: trace.Span | None = None) -> Generator[Any]:
     """Enter a framework context manager that activates a span, and mirror the
     activation into Laminar's context. `span` is taken from the context
     manager's value when not given (`_get_span`, `start_as_current_span`)."""
@@ -165,14 +169,27 @@ def _bridge_span_cm(cm: Any, span: Any = None) -> Iterator[Any]:
             yield value
 
 
-def _wrap_span_cm(to_wrap, wrapped, instance, args, kwargs):
+def _wrap_span_cm(
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., T],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+):
     return _bridge_span_cm(wrapped(*args, **kwargs))
 
 
-def _wrap_mcp_client_span(to_wrap, wrapped, instance, args, kwargs):
+def _wrap_mcp_client_span(
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., T],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+):
     try:
         attributes = kwargs.get("attributes")
         if isinstance(attributes, dict) and _OPERATION_NAME in attributes:
+            attributes = cast(dict[str, AttributeValue], attributes)
             kwargs = {
                 **kwargs,
                 "attributes": {
@@ -184,19 +201,32 @@ def _wrap_mcp_client_span(to_wrap, wrapped, instance, args, kwargs):
     return _bridge_span_cm(wrapped(*args, **kwargs))
 
 
-def _wrap_activate_span(to_wrap, wrapped, instance, args, kwargs):
+def _wrap_activate_span(
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., T],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+):
     span = kwargs.get("span", args[0] if args else None)
     return _bridge_span_cm(wrapped(*args, **kwargs), span=span)
 
 
-def _wrap_chat_get_response(to_wrap, wrapped, instance, args, kwargs):
+def _wrap_chat_get_response(
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., T],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T:
     tools = None
     try:
         options = kwargs.get("options")
         if isinstance(options, dict):
+            options = cast(dict[str, Any], options)
             tools = options.get("tools")
     except Exception:
-        pass
+        logger.debug("Failed to get tools from MAF request options", exc_info=True)
     if not tools:
         return wrapped(*args, **kwargs)
     token = _request_tools.set(tools)
@@ -206,10 +236,17 @@ def _wrap_chat_get_response(to_wrap, wrapped, instance, args, kwargs):
         _request_tools.reset(token)
 
 
-def _wrap_get_span_attributes(to_wrap, wrapped, instance, args, kwargs):
+def _wrap_get_span_attributes(
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., dict[str, AttributeValue] | T],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> dict[str, AttributeValue] | T:
     attributes = wrapped(*args, **kwargs)
     if not isinstance(attributes, dict):
         return attributes
+    attributes = cast(dict[str, AttributeValue], attributes)
     operation = attributes.get(_OPERATION_NAME)
     try:
         if (
@@ -225,7 +262,8 @@ def _wrap_get_span_attributes(to_wrap, wrapped, instance, args, kwargs):
         if operation == "chat" and tools and _TOOL_DEFINITIONS not in attributes:
             # Serialize the tools the way the framework does for the agent
             # span (its helpers are private and renamed across releases).
-            definitions = wrapped(options={"tools": tools}).get(_TOOL_DEFINITIONS)
+            attributes_tools = cast(dict[str, AttributeValue], wrapped(options={"tools": tools}))
+            definitions = attributes_tools.get(_TOOL_DEFINITIONS)
             if definitions:
                 attributes[_TOOL_DEFINITIONS] = definitions
     except Exception:
@@ -233,16 +271,22 @@ def _wrap_get_span_attributes(to_wrap, wrapped, instance, args, kwargs):
     return attributes
 
 
-def _wrap_get_response_attributes(to_wrap, wrapped, instance, args, kwargs):
-    attributes = wrapped(*args, **kwargs)
+def _wrap_get_response_attributes(
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., T],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T:
+    attributes = cast(dict[str, AttributeValue], wrapped(*args, **kwargs))
     try:
         _add_gemini_reasoning_tokens(attributes, args, kwargs)
     except Exception:
         logger.debug("Failed to add Gemini reasoning tokens", exc_info=True)
-    return attributes
+    return cast(Any, attributes)
 
 
-def _add_gemini_reasoning_tokens(attributes: Any, args: tuple, kwargs: dict) -> None:
+def _add_gemini_reasoning_tokens(attributes: Any, args: Sequence[Any], kwargs: dict[str, Any]) -> None:
     """Count Gemini thinking tokens as output tokens on `chat` spans.
 
     Read from the response's usage details rather than the span attributes:
@@ -259,8 +303,9 @@ def _add_gemini_reasoning_tokens(attributes: Any, args: tuple, kwargs: dict) -> 
         or kwargs.get("capture_usage") is False
     ):
         return
+    attributes = cast(dict[str, AttributeValue], attributes)
     response = kwargs.get("response", args[1] if len(args) > 1 else None)
-    usage = getattr(response, "usage_details", None) or {}
+    usage: dict[str, int | dict[str, int]] = getattr(response, "usage_details", None) or {}
     reasoning = usage.get("reasoning_output_token_count")
     output = attributes.get(_OUTPUT_TOKENS)
     if (
@@ -274,7 +319,7 @@ def _add_gemini_reasoning_tokens(attributes: Any, args: tuple, kwargs: dict) -> 
     attributes[_REASONING_TOKENS] = reasoning
 
 
-def _with_plain_name(args: tuple, kwargs: dict[str, Any]) -> tuple[tuple, dict]:
+def _with_plain_name(args: Sequence[Any], kwargs: dict[str, Any]) -> tuple[tuple[Any], dict[str, Any]]:
     """Coerce a `str` subclass span name (the framework's `OtelAttr` enum) to
     a plain `str`. Laminar copies span names into the `lmnr.span.path`
     sequence attribute, and OTel drops sequences holding non-`str` items."""
@@ -283,7 +328,7 @@ def _with_plain_name(args: tuple, kwargs: dict[str, Any]) -> tuple[tuple, dict]:
     name = kwargs.get("name")
     if isinstance(name, str) and type(name) is not str:
         kwargs = {**kwargs, "name": str.__str__(name)}
-    return args, kwargs
+    return cast(tuple[Any], args), kwargs
 
 
 class _LaminarActivatingTracer(trace.Tracer):
@@ -295,13 +340,14 @@ class _LaminarActivatingTracer(trace.Tracer):
     def __init__(
         self, tracer: trace.Tracer, scope: LaminarInstrumentationScopeAttributes
     ):
-        self._tracer = tracer
-        self._scope = scope
+        self._tracer: trace.Tracer = tracer
+        self._scope: LaminarInstrumentationScopeAttributes = scope
 
     def _stamp_scope(self, span: trace.Span) -> None:
         span.set_attribute(_SCOPE_NAME, self._scope["name"])
         span.set_attribute(_SCOPE_VERSION, self._scope["version"])
 
+    @override
     def start_span(self, *args: Any, **kwargs: Any) -> trace.Span:
         args, kwargs = _with_plain_name(args, kwargs)
         span = self._tracer.start_span(*args, **_with_association_context(args, kwargs))
@@ -309,7 +355,7 @@ class _LaminarActivatingTracer(trace.Tracer):
         return span
 
     @contextmanager
-    def start_as_current_span(self, *args: Any, **kwargs: Any) -> Iterator[trace.Span]:
+    def start_as_current_span(self, *args: Any, **kwargs: Any) -> Generator[trace.Span]:  # pyright: ignore[reportIncompatibleMethodOverride]
         args, kwargs = _with_plain_name(args, kwargs)
         kwargs = _with_association_context(args, kwargs)
         cm = self._tracer.start_as_current_span(*args, **kwargs)
@@ -326,7 +372,7 @@ _ASSOCIATION_KEYS = (
 )
 
 
-def _with_association_context(args: tuple, kwargs: dict[str, Any]) -> dict[str, Any]:
+def _with_association_context(args: Sequence[Any], kwargs: dict[str, Any]) -> dict[str, Any]:
     """Copy Laminar's association properties into the span's start context.
 
     Laminar's span processor reads session id, user id, metadata and trace type
@@ -396,11 +442,13 @@ class MicrosoftAgentFrameworkInstrumentor(BaseLaminarInstrumentor):
     _scope: LaminarInstrumentationScopeAttributes | None = None
     _tracer_provider: Any = None
     # Framework settings we changed, with their previous values.
-    _previous_settings: dict[str, bool] = {}
+    _previous_settings: dict[str, bool]
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return ("agent-framework-core >= 1.0.0, < 2.0.0",)
 
+    @override
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         if self._scope is None:
             try:
@@ -414,7 +462,8 @@ class MicrosoftAgentFrameworkInstrumentor(BaseLaminarInstrumentor):
 
     def __init__(self):
         super().__init__()
-        self.instrumentor_config = LaminarInstrumentorConfig(
+        self._previous_settings = {}
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
             wrapped_functions=[
                 WrappedFunctionSpec(
                     package_name=_OBSERVABILITY_MODULE,
@@ -439,7 +488,13 @@ class MicrosoftAgentFrameworkInstrumentor(BaseLaminarInstrumentor):
             ]
         )
 
-    def _wrap_get_tracer(self, to_wrap, wrapped, instance, args, kwargs):
+    def _wrap_get_tracer(self,
+        to_wrap: WrappedFunctionSpec,
+        wrapped: Callable[..., trace.Tracer],
+        _instance: Any,
+        args: Sequence[Any],
+        kwargs: dict[str, Any],
+    ) -> _LaminarActivatingTracer:
         tracer = None
         if self._tracer_provider is not None:
             try:
@@ -453,8 +508,9 @@ class MicrosoftAgentFrameworkInstrumentor(BaseLaminarInstrumentor):
                 logger.debug("Failed to get Laminar tracer", exc_info=True)
         if tracer is None:
             tracer = wrapped(*args, **kwargs)
-        return _LaminarActivatingTracer(tracer, to_wrap["instrumentation_scope"])
+        return _LaminarActivatingTracer(tracer, cast(Any, to_wrap.get("instrumentation_scope")))
 
+    @override
     def _instrument(self, **kwargs: Any):
         import agent_framework.observability as observability
 
@@ -476,6 +532,7 @@ class MicrosoftAgentFrameworkInstrumentor(BaseLaminarInstrumentor):
             except Exception:
                 logger.debug("Failed to set Agent Framework %s", setting, exc_info=True)
 
+    @override
     def _uninstrument(self, **kwargs: Any):
         super()._uninstrument(**kwargs)
         self._tracer_provider = None
@@ -486,5 +543,5 @@ class MicrosoftAgentFrameworkInstrumentor(BaseLaminarInstrumentor):
             for setting, value in self._previous_settings.items():
                 setattr(OBSERVABILITY_SETTINGS, setting, value)
         except Exception:
-            pass
+            logger.debug("Failed to uninstrument MAF", exc_info=True)
         self._previous_settings = {}

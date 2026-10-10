@@ -14,6 +14,10 @@ provider wrappers branch on:
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from lmnr.sdk.log import get_default_logger
+
+logger = get_default_logger(__name__)
+
 
 @dataclass(frozen=True)
 class CacheOutcome:

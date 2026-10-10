@@ -1,6 +1,9 @@
 import os
+from collections.abc import Iterable
+from typing import TypedDict, cast
 
 from opentelemetry.trace import Span
+from typing_extensions import Any, NotRequired
 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
@@ -23,23 +26,23 @@ def should_send_prompts() -> bool:
     return (os.getenv("LMNR_TRACE_CONTENT") or "true").lower() == "true"
 
 
-def _to_dicts(items: list) -> list:
+def _to_dicts(items: list[Any]) -> list[dict[str, Any]]:
     return [item if isinstance(item, dict) else to_dict(item) for item in items]
 
 
-def _aliased(d: dict, key: str):
+def _aliased(d: dict[str, Any], key: str) -> Any:
     """Speakeasy models dump `schema`/`format` as `schema_`/`format_`."""
     return d.get(key, d.get(f"{key}_"))
 
 
-def _set_structured_output_schema(span: Span, schema: dict | None):
+def _set_structured_output_schema(span: Span, schema: dict[str, Any] | None):
     if schema:
         set_span_attribute(
             span, "gen_ai.request.structured_output_schema", json_dumps(schema)
         )
 
 
-def _set_common_request_attributes(span: Span, kwargs: dict):
+def _set_common_request_attributes(span: Span, kwargs: dict[str, Any]):
     set_span_attribute(span, "gen_ai.request.model", kwargs.get("model"))
     set_span_attribute(span, "gen_ai.request.temperature", kwargs.get("temperature"))
     set_span_attribute(span, "gen_ai.request.top_p", kwargs.get("top_p"))
@@ -64,7 +67,7 @@ def _set_common_request_attributes(span: Span, kwargs: dict):
 
 
 @dont_throw
-def set_chat_request_attributes(span: Span, kwargs: dict):
+def set_chat_request_attributes(span: Span, kwargs: dict[str, Any]):
     _set_common_request_attributes(span, kwargs)
     set_span_attribute(span, "gen_ai.request.max_tokens", kwargs.get("max_tokens"))
 
@@ -80,7 +83,7 @@ def set_chat_request_attributes(span: Span, kwargs: dict):
 
 
 @dont_throw
-def set_responses_request_attributes(span: Span, kwargs: dict):
+def set_responses_request_attributes(span: Span, kwargs: dict[str, Any]):
     _set_common_request_attributes(span, kwargs)
     set_span_attribute(
         span, "gen_ai.request.max_tokens", kwargs.get("max_output_tokens")
@@ -92,7 +95,7 @@ def set_responses_request_attributes(span: Span, kwargs: dict):
 
     if not should_send_prompts():
         return
-    messages = []
+    messages: list[dict[str, Any]] = []
     if kwargs.get("instructions"):
         messages.append({"role": "system", "content": kwargs["instructions"]})
     input_value = kwargs.get("input")
@@ -105,17 +108,17 @@ def set_responses_request_attributes(span: Span, kwargs: dict):
 
 
 @dont_throw
-def _embeddings_input_messages(input_value) -> list[dict]:
+def _embeddings_input_messages(input_value: Any) -> list[dict[str, Any]]:
     """`input` is either one document or a batch of them."""
     if not isinstance(input_value, list):
         return [{"content": input_value}]
     # A flat list of numbers is one token-id sequence, not a batch of documents.
     if isinstance(input_value[0], (int, float)):
         return [{"content": input_value}]
-    return [{"content": document} for document in input_value]
+    return [{"content": document} for document in cast(Iterable[Any], input_value)]
 
 
-def set_embeddings_request_attributes(span: Span, kwargs: dict):
+def set_embeddings_request_attributes(span: Span, kwargs: dict[str, Any]):
     set_span_attribute(span, "gen_ai.request.model", kwargs.get("model"))
     set_span_attribute(span, "llm.user", kwargs.get("user"))
     input_value = kwargs.get("input")
@@ -129,7 +132,7 @@ def set_embeddings_request_attributes(span: Span, kwargs: dict):
 
 def _set_usage_attributes(
     span: Span,
-    usage: dict | None,
+    usage: dict[str, int | float | dict[str, int | float]] | None,
     input_key: str,
     output_key: str,
     input_cost_key: str,
@@ -137,11 +140,11 @@ def _set_usage_attributes(
 ):
     if not usage:
         return
-    set_span_attribute(span, "gen_ai.usage.input_tokens", usage.get(input_key))
-    set_span_attribute(span, "gen_ai.usage.output_tokens", usage.get(output_key))
-    set_span_attribute(span, "llm.usage.total_tokens", usage.get("total_tokens"))
+    set_span_attribute(span, "gen_ai.usage.input_tokens", cast(int, usage.get(input_key)))
+    set_span_attribute(span, "gen_ai.usage.output_tokens", cast(int, usage.get(output_key)))
+    set_span_attribute(span, "llm.usage.total_tokens", cast(int, usage.get("total_tokens")))
 
-    input_details = usage.get(f"{input_key}_details") or {}
+    input_details = cast(dict[str, int], usage.get(f"{input_key}_details") or {})
     set_span_attribute(
         span, "gen_ai.usage.cache_read_input_tokens", input_details.get("cached_tokens")
     )
@@ -150,13 +153,13 @@ def _set_usage_attributes(
         "gen_ai.usage.cache_creation_input_tokens",
         input_details.get("cache_write_tokens"),
     )
-    output_details = usage.get(f"{output_key}_details") or {}
+    output_details = cast(dict[str, int], usage.get(f"{output_key}_details") or {})
     set_span_attribute(
         span, "gen_ai.usage.reasoning_tokens", output_details.get("reasoning_tokens")
     )
 
-    set_span_attribute(span, "gen_ai.usage.cost", usage.get("cost"))
-    cost_details = usage.get("cost_details") or {}
+    set_span_attribute(span, "gen_ai.usage.cost", cast(float, usage.get("cost")))
+    cost_details = cast(dict[str, float], usage.get("cost_details") or {})
     set_span_attribute(
         span, "gen_ai.usage.input_cost", cost_details.get(input_cost_key)
     )
@@ -166,7 +169,7 @@ def _set_usage_attributes(
 
 
 @dont_throw
-def set_chat_response_attributes(span: Span, response: dict):
+def set_chat_response_attributes(span: Span, response: dict[str, Any]):
     set_span_attribute(span, "gen_ai.response.id", response.get("id"))
     set_span_attribute(span, "gen_ai.response.model", response.get("model"))
     _set_usage_attributes(
@@ -184,7 +187,7 @@ def set_chat_response_attributes(span: Span, response: dict):
 
 
 @dont_throw
-def set_embeddings_response_attributes(span: Span, response: dict):
+def set_embeddings_response_attributes(span: Span, response: dict[str, Any]):
     set_span_attribute(span, "gen_ai.response.id", response.get("id"))
     set_span_attribute(span, "gen_ai.response.model", response.get("model"))
     _set_usage_attributes(
@@ -198,7 +201,7 @@ def set_embeddings_response_attributes(span: Span, response: dict):
 
 
 @dont_throw
-def set_responses_response_attributes(span: Span, response: dict):
+def set_responses_response_attributes(span: Span, response: dict[str, Any]):
     set_span_attribute(span, "gen_ai.response.id", response.get("id"))
     set_span_attribute(span, "gen_ai.response.model", response.get("model"))
     _set_usage_attributes(
@@ -215,20 +218,55 @@ def set_responses_response_attributes(span: Span, response: dict):
         )
 
 
-def responses_error_message(response: dict) -> str | None:
+def responses_error_message(response: dict[str, Any]) -> str | None:
     """Message to fail the span with, or `None` if the response succeeded."""
     status = response.get("status")
     if status not in ERROR_RESPONSE_STATUSES:
         return None
-    error = response.get("error") or {}
-    incomplete_details = response.get("incomplete_details") or {}
+    error = cast(dict[str, str], response.get("error") or {})
+    incomplete_details = cast(dict[str, str], response.get("incomplete_details") or {})
     return error.get("message") or incomplete_details.get("reason") or status
 
 
-def aggregate_chat_chunks(chunks: list[dict]) -> dict:
-    result: dict = {"id": None, "model": None, "usage": None}
-    choices: dict[int, dict] = {}
-    tool_calls: dict[int, dict[int, dict]] = {}
+class _AggregatedFunction(TypedDict):
+    name: str
+    arguments: str
+
+
+class _AggregatedToolCall(TypedDict):
+    id: str | None
+    type: str
+    function: _AggregatedFunction
+
+
+class _AggregatedMessage(TypedDict):
+    role: str
+    content: str
+    tool_calls: NotRequired[list[_AggregatedToolCall]]  # only when tools were called
+
+
+class _AggregatedChoice(TypedDict):
+    index: int
+    message: _AggregatedMessage
+    finish_reason: str | None
+
+
+class _AggregatedChatCompletion(TypedDict):
+    id: str | None
+    model: str | None
+    usage: dict[str, Any] | None  # taken as-is from the last chunk carrying it
+    choices: list[_AggregatedChoice]
+
+
+def aggregate_chat_chunks(chunks: list[dict[str, Any]]) -> dict[str, Any]:
+    result: _AggregatedChatCompletion = {
+        "id": None,
+        "model": None,
+        "usage": None,
+        "choices": [],
+    }
+    choices: dict[int, _AggregatedChoice] = {}
+    tool_calls: dict[int, dict[int, _AggregatedToolCall]] = {}
 
     for chunk in chunks:
         result["id"] = result["id"] or chunk.get("id")
@@ -236,7 +274,7 @@ def aggregate_chat_chunks(chunks: list[dict]) -> dict:
         if chunk.get("usage"):
             result["usage"] = chunk["usage"]
 
-        for choice in chunk.get("choices") or []:
+        for choice in cast(list[dict[str, Any]], chunk.get("choices") or []):
             index = choice.get("index") or 0
             accumulated = choices.setdefault(
                 index,
@@ -246,12 +284,12 @@ def aggregate_chat_chunks(chunks: list[dict]) -> dict:
                     "finish_reason": None,
                 },
             )
-            delta = choice.get("delta") or {}
+            delta = cast(dict[str, Any], choice.get("delta") or {})
             if delta.get("role"):
                 accumulated["message"]["role"] = delta["role"]
             if delta.get("content"):
                 accumulated["message"]["content"] += delta["content"]
-            for call in delta.get("tool_calls") or []:
+            for call in cast(list[dict[str, Any]], delta.get("tool_calls") or []):
                 slot = tool_calls.setdefault(index, {}).setdefault(
                     call.get("index") or 0,
                     {
@@ -261,7 +299,7 @@ def aggregate_chat_chunks(chunks: list[dict]) -> dict:
                     },
                 )
                 slot["id"] = slot["id"] or call.get("id")
-                function = call.get("function") or {}
+                function = cast(dict[str, str], call.get("function") or {})
                 slot["function"]["name"] += function.get("name") or ""
                 slot["function"]["arguments"] += function.get("arguments") or ""
             if choice.get("finish_reason"):
@@ -270,10 +308,13 @@ def aggregate_chat_chunks(chunks: list[dict]) -> dict:
     for index, calls in tool_calls.items():
         choices[index]["message"]["tool_calls"] = [calls[i] for i in sorted(calls)]
     result["choices"] = [choices[i] for i in sorted(choices)]
-    return result
+    # Callers treat the response as a plain dict (same shape as a parsed response).
+    return cast("dict[str, Any]", cast(object, result))
 
 
-def response_from_stream_events(events: list[dict]) -> dict | None:
+def response_from_stream_events(
+    events: list[dict[str, Any]],
+) -> dict[str, Any] | None:
     for event in reversed(events):
         if event.get("type") in TERMINAL_RESPONSE_EVENTS:
             return event.get("response")

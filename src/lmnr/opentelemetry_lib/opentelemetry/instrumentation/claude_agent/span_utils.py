@@ -1,27 +1,42 @@
 """Span utilities for Claude Agent instrumentation."""
 
-from typing import Any
+from __future__ import annotations
 
-from lmnr import Laminar
-from lmnr.opentelemetry_lib.tracing import get_current_context
+from collections.abc import Callable, Sequence
+from typing import TYPE_CHECKING, Any, cast
+
+from opentelemetry import trace
+from opentelemetry.sdk.trace import Span as SDKSpan
+from opentelemetry.trace.span import Span
+
+from lmnr.sdk.laminar import Laminar
 from lmnr.opentelemetry_lib.tracing.attributes import SPAN_IDS_PATH, SPAN_PATH
+from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import get_input_from_func_args, is_method, json_dumps
 
-from opentelemetry import trace
-from opentelemetry.sdk.trace import ReadableSpan
+if TYPE_CHECKING:
+    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.types import (
+        ClaudeAgentSpec,
+        ProxyContext,
+    )
 
 logger = get_default_logger(__name__)
 
 
-def span_name(to_wrap: dict[str, str]) -> str:
+def span_name(to_wrap: ClaudeAgentSpec) -> str:
     """Generate span name from method metadata."""
     class_name = to_wrap.get("class_name")
-    method = to_wrap.get("method")
+    method = to_wrap["method_name"]
     return f"{class_name}.{method}" if class_name else method
 
 
-def record_input(span, wrapped, args, kwargs):
+def record_input(
+    span: Span,
+    wrapped: Callable[..., Any],
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+):
     """Record function input as span attribute."""
     try:
         span.set_attribute(
@@ -36,33 +51,38 @@ def record_input(span, wrapped, args, kwargs):
             ),
         )
     except Exception:
-        pass
+        logger.debug("Failed to record input on CAS span", exc_info=True)
 
 
-def record_output(span, to_wrap, value):
+def record_output(
+    span: Span,
+    _to_wrap: ClaudeAgentSpec,
+    value: Any,
+):
     """Record function output as span attribute."""
     try:
         span.set_attribute("lmnr.span.output", json_dumps(value))
     except Exception:
-        pass
+        logger.debug("Failed to record output on CAS span", exc_info=True)
 
 
-def get_span_context_payload() -> dict[str, str] | None:
+
+def get_span_context_payload() -> ProxyContext | None:
     """Extract current span context for publishing to proxy."""
-    current_span: ReadableSpan = trace.get_current_span(context=get_current_context())
+    current_span = trace.get_current_span(context=get_current_context())
     if current_span is trace.INVALID_SPAN:
         return None
 
     span_context = current_span.get_span_context()
-    if span_context is None or not span_context.is_valid:
+    if span_context is None or not span_context.is_valid:  # pyright: ignore[reportUnnecessaryComparison]
         return None
 
     span_ids_path = []
     span_path = []
     if hasattr(current_span, "attributes"):
-        readable_span: ReadableSpan = current_span
-        span_ids_path = list(readable_span.attributes.get(SPAN_IDS_PATH, tuple()))
-        span_path = list(readable_span.attributes.get(SPAN_PATH, tuple()))
+        readable_span = cast(SDKSpan, current_span)
+        span_ids_path = list(cast(tuple[str], (readable_span.attributes or {}).get(SPAN_IDS_PATH, ())))
+        span_path = list(cast(tuple[str], (readable_span.attributes or {}).get(SPAN_PATH, ())))
 
     project_api_key = Laminar.get_project_api_key()
     laminar_url = Laminar.get_base_http_url()
@@ -77,7 +97,7 @@ def get_span_context_payload() -> dict[str, str] | None:
     }
 
 
-def publish_span_context_for_transport(transport) -> None:
+def publish_span_context_for_transport(transport: Any) -> None:
     """Publish span context to transport's dedicated proxy."""
     if transport is None:
         logger.debug("No transport found")
@@ -95,13 +115,16 @@ def publish_span_context_for_transport(transport) -> None:
         return
 
     try:
-        context["proxy"].set_current_trace(
+        from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.proxy import (
+            LaminarProxyServer,
+        )
+        cast(LaminarProxyServer, context["proxy"]).set_current_trace(
             trace_id=payload["trace_id"],
             span_id=payload["span_id"],
             project_api_key=payload["project_api_key"],
             span_path=payload["span_path"],
             span_ids_path=payload["span_ids_path"],
-            laminar_url=payload["laminar_url"],
+            laminar_url=payload["laminar_url"] or "https://api.lmnr.ai",
         )
-    except Exception as e:  # pylint: disable=broad-except
-        logger.debug("Failed to publish span context to proxy: %s", e)
+    except Exception:
+        logger.debug("Failed to publish span context to proxy", exc_info=True)

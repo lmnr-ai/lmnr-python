@@ -1,8 +1,22 @@
 import threading
 import time
+
+from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import SpanContext
 
 from lmnr import Laminar, observe
+
+
+def _ctx(span: ReadableSpan) -> SpanContext:
+    ctx = span.get_span_context()
+    assert ctx is not None
+    return ctx
+
+
+def _parent(span: ReadableSpan) -> SpanContext:
+    assert span.parent is not None
+    return span.parent
 
 
 def sleep_and_print(do_observe: bool = False, span_name: str = "sleep_and_print"):
@@ -58,30 +72,30 @@ def test_threading_start_preserves_context(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 5
-    parent_span = [s for s in spans if s.name == "parent"][0]
-    sibling_span = [s for s in spans if s.name == "sibling"][0]
-    t1_span = [s for s in spans if s.name == "t1"][0]
-    t2_span = [s for s in spans if s.name == "t2"][0]
-    thread_sibling_span = [s for s in spans if s.name == "thread_sibling"][0]
+    parent_span = next(s for s in spans if s.name == "parent")
+    sibling_span = next(s for s in spans if s.name == "sibling")
+    t1_span = next(s for s in spans if s.name == "t1")
+    t2_span = next(s for s in spans if s.name == "t2")
+    thread_sibling_span = next(s for s in spans if s.name == "thread_sibling")
 
-    assert t1_span.parent.span_id == parent_span.get_span_context().span_id
-    assert t2_span.parent.span_id == parent_span.get_span_context().span_id
+    assert _parent(t1_span).span_id == _ctx(parent_span).span_id
+    assert _parent(t2_span).span_id == _ctx(parent_span).span_id
     assert (
-        t1_span.get_span_context().trace_id == parent_span.get_span_context().trace_id
+        _ctx(t1_span).trace_id == _ctx(parent_span).trace_id
     )
     assert (
-        t2_span.get_span_context().trace_id == parent_span.get_span_context().trace_id
+        _ctx(t2_span).trace_id == _ctx(parent_span).trace_id
     )
 
     assert (
-        sibling_span.get_span_context().trace_id
-        != parent_span.get_span_context().trace_id
+        _ctx(sibling_span).trace_id
+        != _ctx(parent_span).trace_id
     )
     assert (
-        thread_sibling_span.get_span_context().trace_id
-        == sibling_span.get_span_context().trace_id
+        _ctx(thread_sibling_span).trace_id
+        == _ctx(sibling_span).trace_id
     )
-    assert thread_sibling_span.parent.span_id == sibling_span.get_span_context().span_id
+    assert _parent(thread_sibling_span).span_id == _ctx(sibling_span).span_id
 
 
 def test_threading_run_preserves_context(span_exporter: InMemorySpanExporter):
@@ -110,27 +124,27 @@ def test_threading_run_preserves_context(span_exporter: InMemorySpanExporter):
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 5
-    parent_span = [s for s in spans if s.name == "parent"][0]
-    sibling_span = [s for s in spans if s.name == "sibling"][0]
-    t1_span = [s for s in spans if s.name == "t1"][0]
-    t2_span = [s for s in spans if s.name == "t2"][0]
-    thread_sibling_span = [s for s in spans if s.name == "thread_sibling"][0]
+    parent_span = next(s for s in spans if s.name == "parent")
+    sibling_span = next(s for s in spans if s.name == "sibling")
+    t1_span = next(s for s in spans if s.name == "t1")
+    t2_span = next(s for s in spans if s.name == "t2")
+    thread_sibling_span = next(s for s in spans if s.name == "thread_sibling")
 
-    assert t1_span.parent.span_id == parent_span.get_span_context().span_id
-    assert t2_span.parent.span_id == parent_span.get_span_context().span_id
+    assert _parent(t1_span).span_id == _ctx(parent_span).span_id
+    assert _parent(t2_span).span_id == _ctx(parent_span).span_id
     assert (
-        t1_span.get_span_context().trace_id == parent_span.get_span_context().trace_id
+        _ctx(t1_span).trace_id == _ctx(parent_span).trace_id
     )
     assert (
-        t2_span.get_span_context().trace_id == parent_span.get_span_context().trace_id
+        _ctx(t2_span).trace_id == _ctx(parent_span).trace_id
     )
 
     assert (
-        sibling_span.get_span_context().trace_id
-        != parent_span.get_span_context().trace_id
+        _ctx(sibling_span).trace_id
+        != _ctx(parent_span).trace_id
     )
     assert (
-        thread_sibling_span.get_span_context().trace_id
-        == sibling_span.get_span_context().trace_id
+        _ctx(thread_sibling_span).trace_id
+        == _ctx(sibling_span).trace_id
     )
-    assert thread_sibling_span.parent.span_id == sibling_span.get_span_context().span_id
+    assert _parent(thread_sibling_span).span_id == _ctx(sibling_span).span_id

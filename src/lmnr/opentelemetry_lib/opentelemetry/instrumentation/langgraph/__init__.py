@@ -1,31 +1,39 @@
 """OpenTelemetry Langgraph instrumentation"""
 
 import json
-import logging
-from typing import Collection
-
-from .utils import (
-    with_tracer_wrapper,
-)
+from collections.abc import AsyncIterable, Callable, Collection, Iterable, Sequence
+from importlib.metadata import version
+from typing import Any, cast
 
 from langchain_core.runnables.graph import Graph
-from opentelemetry.trace import Tracer
-from wrapt import wrap_function_wrapper
-from opentelemetry.trace import get_tracer
-from opentelemetry.context import get_value, attach, set_value
+from opentelemetry.context import attach, get_value, set_value
+from typing_extensions import TypeVar, override
 
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry.instrumentation.utils import unwrap
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
+    BaseLaminarInstrumentor,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WrappedFunctionSpec,
+)
+from lmnr.sdk.log import get_default_logger
 
-
-logger = logging.getLogger(__name__)
+logger = get_default_logger(__name__)
 
 _instruments = ("langgraph >= 0.1.0",)
 
+T = TypeVar("T")
 
-@with_tracer_wrapper
-def wrap_pregel_stream(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs):
-    graph: Graph = instance.get_graph()
+
+def wrap_pregel_stream(
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., Iterable[T]],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+)-> Iterable[T]:
+    graph = cast(Graph, instance.get_graph())
     nodes = [
         {
             "id": node.id,
@@ -46,17 +54,20 @@ def wrap_pregel_stream(tracer: Tracer, to_wrap, wrapped, instance, args, kwargs)
         "langgraph.edges": json.dumps(edges),
         "langgraph.nodes": json.dumps(nodes),
     }
-    association_properties = get_value("lmnr.langgraph.graph") or {}
+    association_properties = cast(dict[str, str], get_value("lmnr.langgraph.graph") or {})
     association_properties.update(d)
-    attach(set_value("lmnr.langgraph.graph", association_properties))
+    _attach_token = attach(set_value("lmnr.langgraph.graph", association_properties))
     return wrapped(*args, **kwargs)
 
 
-@with_tracer_wrapper
 async def async_wrap_pregel_stream(
-    tracer: Tracer, to_wrap, wrapped, instance, args, kwargs
-):
-    graph: Graph = await instance.aget_graph()
+    _to_wrap: WrappedFunctionSpec,
+    wrapped: Callable[..., AsyncIterable[T]],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+)-> AsyncIterable[T]:
+    graph = cast(Graph, await instance.aget_graph())
     nodes = [
         {
             "id": node.id,
@@ -78,44 +89,65 @@ async def async_wrap_pregel_stream(
         "langgraph.edges": json.dumps(edges),
         "langgraph.nodes": json.dumps(nodes),
     }
-    association_properties = get_value("lmnr.langgraph.graph") or {}
+    association_properties = cast(dict[str, str], get_value("lmnr.langgraph.graph") or {})
     association_properties.update(d)
-    attach(set_value("lmnr.langgraph.graph", association_properties))
+    _attach_token = attach(set_value("lmnr.langgraph.graph", association_properties))
 
     async for item in wrapped(*args, **kwargs):
         yield item
 
 
-class LanggraphInstrumentor(BaseInstrumentor):
+class LanggraphInstrumentor(BaseLaminarInstrumentor):
     """An instrumentor for Langgraph."""
 
-    def __init__(self):
-        super().__init__()
+    _scope: LaminarInstrumentationScopeAttributes | None = None
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
-    def _instrument(self, **kwargs):
-        tracer_provider = kwargs.get("tracer_provider")
-        tracer = get_tracer(__name__, "0.0.1a0", tracer_provider)
+    @override
+    def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
+        if self._scope is None:
+            try:
+                langgraph_version = version("langgraph")
+            except Exception:
+                logger.debug("Failed to get langgraph version", exc_info=True)
+                langgraph_version = "unknown"
+            self._scope = LaminarInstrumentationScopeAttributes(
+                name="langgraph",
+                version=langgraph_version,
+            )
+        return self._scope
 
-        wrap_function_wrapper(
-            "langgraph.pregel",
-            "Pregel.stream",
-            wrap_pregel_stream(tracer, "Pregel.stream"),
-        )
-        wrap_function_wrapper(
-            "langgraph.pregel",
-            "Pregel.astream",
-            async_wrap_pregel_stream(tracer, "Pregel.astream"),
-        )
-
-    def _uninstrument(self, **kwargs):
-        unwrap(
-            "langgraph.pregel",
-            "Pregel.stream",
-        )
-        unwrap(
-            "langgraph.pregel",
-            "Pregel.astream",
+    def __init__(self):
+        super().__init__()
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
+            wrapped_functions=[
+                WrappedFunctionSpec(
+                    package_name="langgraph.pregel",
+                    object_name="Pregel",
+                    method_name="stream",
+                    is_async=False,
+                    is_streaming=True,
+                    # These wrappers only attach graph topology onto the OTel
+                    # context for downstream spans to pick up; they open no span
+                    # of their own, so there is no span_name/span_type to read.
+                    span_name=None,
+                    span_type=None,
+                    instrumentation_scope=self.instrumentation_scope(),
+                    wrapper_function=wrap_pregel_stream,
+                ),
+                WrappedFunctionSpec(
+                    package_name="langgraph.pregel",
+                    object_name="Pregel",
+                    method_name="astream",
+                    is_async=True,
+                    is_streaming=True,
+                    span_name=None,
+                    span_type=None,
+                    instrumentation_scope=self.instrumentation_scope(),
+                    wrapper_function=async_wrap_pregel_stream,
+                ),
+            ]
         )

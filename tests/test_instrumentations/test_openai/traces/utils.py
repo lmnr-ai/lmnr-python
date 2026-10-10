@@ -1,19 +1,23 @@
-import httpx
-from opentelemetry.sdk.trace import Span
-from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
-from opentelemetry.trace.propagation import get_current_span
+from collections.abc import Callable
+from typing import Any
 from unittest.mock import MagicMock
 
+import httpx
+from opentelemetry.sdk.trace import Span
+from opentelemetry.trace.propagation import get_current_span
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from typing_extensions import TypeVar
 
+T = TypeVar("T")
 # from: https://stackoverflow.com/a/41599695/2749989
-def spy_decorator(method_to_decorate):
+def spy_decorator(method_to_decorate: Callable[..., T]) -> Callable[..., T]:
     mock = MagicMock()
 
-    def wrapper(self, *args, **kwargs):
+    def wrapper(self, *args: Any, **kwargs: Any) -> T:
         mock(*args, **kwargs)
         return method_to_decorate(self, *args, **kwargs)
 
-    wrapper.mock = mock
+    wrapper.mock = mock  # pyright: ignore[reportFunctionMemberAccess]
     return wrapper
 
 

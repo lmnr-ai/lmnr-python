@@ -1,5 +1,5 @@
 import json
-import logging
+from typing import Any, cast
 
 import pydantic
 from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
@@ -14,23 +14,31 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
 )
+from opentelemetry.trace.span import Span
+from typing_extensions import TypeVar
 
-from lmnr.sdk.utils import json_dumps
-
-from .event_models import AnthropicResponseMessage
-from .utils import (
-    _aextract_response_data,
-    _extract_response_data,
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.event_models import (
+    AnthropicContentBlock,
+    AnthropicResponseMessage,
+    StreamEvent,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.anthropic.utils import (
+    aextract_response_data,
+    extract_response_data,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     dont_throw,
     model_as_dict,
     set_span_attribute,
     should_send_prompts,
 )
+from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.utils import json_dumps
 
-logger = logging.getLogger(__name__)
+logger = get_default_logger(__name__)
+T = TypeVar("T")
 
-
-def _extract_structured_output_schema(kwargs) -> str | None:
+def _extract_structured_output_schema(kwargs: dict[str, Any]) -> str | None:
     """Extract the JSON schema from Anthropic `output_format` / `output_config` kwargs.
 
     `messages.parse` accepts `output_format` as either a Pydantic model, another
@@ -43,6 +51,7 @@ def _extract_structured_output_schema(kwargs) -> str | None:
     if output_format is not None:
         if isinstance(output_format, dict):
             # Raw JSON schema dict (either bare schema or JSONOutputFormatParam)
+            output_format  = cast(dict[str, dict[str, str]], output_format)
             schema = output_format.get("schema", output_format)
             try:
                 return json.dumps(schema)
@@ -54,7 +63,7 @@ def _extract_structured_output_schema(kwargs) -> str | None:
             try:
                 return json.dumps(output_format.model_json_schema())
             except Exception:
-                pass
+                logger.debug("Failed to serialize output JSON schema")
         try:
             return json.dumps(pydantic.TypeAdapter(output_format).json_schema())
         except Exception:
@@ -62,6 +71,7 @@ def _extract_structured_output_schema(kwargs) -> str | None:
 
     output_config = kwargs.get("output_config")
     if isinstance(output_config, dict):
+        output_config = cast(dict[str, dict[str, str]], output_config)
         fmt = output_config.get("format")
         if isinstance(fmt, dict) and fmt.get("schema") is not None:
             try:
@@ -72,7 +82,7 @@ def _extract_structured_output_schema(kwargs) -> str | None:
     return None
 
 
-def _process_content_for_message(content):
+def _process_content_for_message(content: str | list[Any] | T) -> str | list[dict[str, Any]] | T:
     """Convert message content to a serializable format.
 
     For strings, returns as-is. For lists, converts each item via model_as_dict.
@@ -80,14 +90,12 @@ def _process_content_for_message(content):
     if isinstance(content, str):
         return content
     elif isinstance(content, list):
-        return [model_as_dict(item) for item in content]
+        return [model_as_dict(item) for item in content]  # pyright: ignore[reportUnknownVariableType]
     return content
 
 
 @dont_throw
-async def aset_input_attributes(span, kwargs):
-    from .utils import set_span_attribute
-
+async def aset_input_attributes(span: Span, kwargs: dict[str, Any]):
     set_span_attribute(span, GEN_AI_REQUEST_MODEL, kwargs.get("model"))
     set_span_attribute(
         span, GEN_AI_REQUEST_MAX_TOKENS, kwargs.get("max_tokens_to_sample")
@@ -108,7 +116,7 @@ async def aset_input_attributes(span, kwargs):
     if should_send_prompts():
         if kwargs.get("prompt") is not None:
             # Legacy completions API
-            messages = [{"role": "user", "content": kwargs.get("prompt")}]
+            messages: list[dict[str, Any]] = [{"role": "user", "content": kwargs.get("prompt")}]
             set_span_attribute(span, "gen_ai.input.messages", json_dumps(messages))
 
         elif kwargs.get("messages") is not None:
@@ -120,7 +128,7 @@ async def aset_input_attributes(span, kwargs):
                 messages.append({"role": "system", "content": system_content})
 
             # Add all user/assistant messages
-            for i, message in enumerate(kwargs.get("messages")):
+            for message in cast(list[Any], kwargs.get("messages") or []):
                 msg = dict(message)
                 content = msg.get("content")
                 if content is not None:
@@ -145,13 +153,13 @@ async def aset_input_attributes(span, kwargs):
         )
 
 
-def _build_output_from_response(response):
+def _build_output_from_response(response: dict[str, Any]) -> list[dict[str, Any]]:
     """Build the output messages list from a non-streaming Anthropic response.
 
     Returns a list of content block dicts as returned by the Anthropic API,
     representing the single candidate/choice.
     """
-    result = {
+    result: dict[str, Any] = {
         "role": response.get("role", "assistant"),
         "content": [],
     }
@@ -168,33 +176,32 @@ def _build_output_from_response(response):
             }
         )
     elif response.get("content"):
-        for block in response.get("content"):
+        for block in cast(list[Any], response.get("content") or []):
             result["content"].append(model_as_dict(block))
 
     return [result]
 
 
-async def _aset_span_completions(span, response):
+async def _aset_span_completions(span: Span, response: Any):
     if not should_send_prompts():
         return
 
-    response = await _aextract_response_data(response)
+    response = await aextract_response_data(response)
     output = _build_output_from_response(response)
     set_span_attribute(span, "gen_ai.output.messages", json_dumps(output))
 
 
-def _set_span_completions(span, response):
+def _set_span_completions(span: Span, response: Any):
     if not should_send_prompts():
         return
-    from .utils import set_span_attribute
 
     output = _build_output_from_response(response)
     set_span_attribute(span, "gen_ai.output.messages", json_dumps(output))
 
 
 @dont_throw
-async def aset_response_attributes(span, response):
-    response = await _aextract_response_data(response)
+async def aset_response_attributes(span: Span, response: Any):
+    response = await aextract_response_data(response)
     set_span_attribute(span, GEN_AI_RESPONSE_MODEL, response.get("model"))
     set_span_attribute(span, GEN_AI_RESPONSE_ID, response.get("id"))
 
@@ -214,8 +221,8 @@ async def aset_response_attributes(span, response):
 
 
 @dont_throw
-def set_response_attributes(span, response):
-    response = _extract_response_data(response)
+def set_response_attributes(span: Span, response: Any):
+    response = extract_response_data(response)
     set_span_attribute(span, GEN_AI_RESPONSE_MODEL, response.get("model"))
     set_span_attribute(span, GEN_AI_RESPONSE_ID, response.get("id"))
 
@@ -236,16 +243,14 @@ def set_response_attributes(span, response):
 
 @dont_throw
 def set_streaming_response_attributes(
-    span, complete_response_events
+    span: Span, complete_response_events: list[StreamEvent]
 ) -> AnthropicResponseMessage | None:
     if not span or not span.is_recording() or not complete_response_events:
         return None
 
     # Build an output in the same format as non-streaming responses
-    result = {
-        "role": "assistant",
-        "content": [],
-    }
+    content: list[AnthropicContentBlock] = []
+    result: AnthropicResponseMessage = {"role": "assistant", "content": content}
 
     finish_reason = None
     for event in complete_response_events:
@@ -254,7 +259,7 @@ def set_streaming_response_attributes(
             finish_reason = event.get("finish_reason")
 
         if event_type == "thinking":
-            result["content"].append(
+            content.append(
                 {
                     "type": "thinking",
                     "thinking": event.get("text", ""),
@@ -263,12 +268,12 @@ def set_streaming_response_attributes(
         elif event_type == "tool_use":
             tool_input = event.get("input", "")
             # input may be a stringified JSON from streaming, try to parse
-            if isinstance(tool_input, str):
+            if isinstance(tool_input, str):  # pyright: ignore[reportUnnecessaryIsInstance]
                 try:
                     tool_input = json.loads(tool_input)
                 except (json.JSONDecodeError, TypeError):
                     pass
-            result["content"].append(
+            content.append(
                 {
                     "type": "tool_use",
                     "id": event.get("id", ""),
@@ -280,7 +285,7 @@ def set_streaming_response_attributes(
             # text block
             text = event.get("text", "")
             if text:
-                result["content"].append(
+                content.append(
                     {
                         "type": "text",
                         "text": text,
@@ -291,6 +296,8 @@ def set_streaming_response_attributes(
         result["stop_reason"] = finish_reason
 
     if should_send_prompts():
-        set_span_attribute(span, "gen_ai.output.messages", json_dumps([result]))
+        set_span_attribute(
+            span, "gen_ai.output.messages", json_dumps([dict(result)])
+        )
 
     return result

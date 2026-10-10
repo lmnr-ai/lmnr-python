@@ -1,20 +1,22 @@
 import base64
 import json
-import pytest
-
 from pathlib import Path
-from groq import Groq
+from typing import cast
+from unittest.mock import MagicMock
+
+import pytest
+from groq import AsyncGroq, Groq
+from groq.types.chat import ChatCompletionContentPartImageParam
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+with open(
+    Path(__file__).parent.parent.joinpath("data/logo.jpg"),
+    "rb",
+) as f:
+    image_base64 = base64.b64encode(f.read()).decode("utf-8")
 
 
-image_base64 = base64.b64encode(
-    open(
-        Path(__file__).parent.parent.joinpath("data/logo.jpg"),
-        "rb",
-    ).read()
-).decode("utf-8")
-
-
-image_content_block = {
+image_content_block: ChatCompletionContentPartImageParam = {
     "type": "image_url",
     "image_url": {
         "url": f"data:image/jpeg;base64,{image_base64}",
@@ -24,8 +26,12 @@ image_content_block = {
 
 
 @pytest.mark.vcr
-def test_chat_legacy(instrument_legacy, groq_client, span_exporter):
-    groq_client.chat.completions.create(
+def test_chat_legacy(
+    instrument_legacy: MagicMock,
+    groq_client: Groq,
+    span_exporter: InMemorySpanExporter
+):
+    _res = groq_client.chat.completions.create(
         model="llama3-8b-8192",
         messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
     )
@@ -37,22 +43,26 @@ def test_chat_legacy(instrument_legacy, groq_client, span_exporter):
     ]
     groq_span = spans[0]
     assert (
-        groq_span.attributes["gen_ai.prompt.0.content"]
+        (groq_span.attributes or {})["gen_ai.prompt.0.content"]
         == "Tell me a joke about opentelemetry"
     )
-    assert groq_span.attributes.get("gen_ai.completion.0.content")
-    assert groq_span.attributes.get("llm.is_streaming") is False
-    assert groq_span.attributes.get("gen_ai.usage.input_tokens") > 0
-    assert groq_span.attributes.get("gen_ai.usage.output_tokens") > 0
-    assert groq_span.attributes.get("llm.usage.total_tokens") > 0
+    assert (groq_span.attributes or {}).get("gen_ai.completion.0.content")
+    assert (groq_span.attributes or {}).get("llm.is_streaming") is False
+    assert cast(int, (groq_span.attributes or {}).get("gen_ai.usage.input_tokens")) > 0
+    assert cast(int, (groq_span.attributes or {}).get("gen_ai.usage.output_tokens")) > 0
+    assert cast(int, (groq_span.attributes or {}).get("llm.usage.total_tokens")) > 0
     assert (
-        groq_span.attributes.get("gen_ai.response.id")
+        (groq_span.attributes or {}).get("gen_ai.response.id")
         == "chatcmpl-645691ff-34af-4d0f-a1c1-fe888f8685cc"
     )
 
 
 @pytest.mark.vcr
-def test_chat_legacy_image(instrument_legacy, groq_client: Groq, span_exporter):
+def test_chat_legacy_image(
+    instrument_legacy: MagicMock,
+    groq_client: Groq,
+    span_exporter: InMemorySpanExporter,
+):
     response = groq_client.chat.completions.create(
         model="meta-llama/llama-guard-4-12b",
         messages=[
@@ -72,29 +82,33 @@ def test_chat_legacy_image(instrument_legacy, groq_client: Groq, span_exporter):
         "groq.chat",
     ]
     groq_span = spans[0]
-    assert json.loads(groq_span.attributes["gen_ai.prompt.0.content"]) == [
+    assert json.loads(cast(str, (groq_span.attributes or {})["gen_ai.prompt.0.content"])) == [
         {"type": "text", "text": "What is depicted in this image?"},
         image_content_block,
     ]
     assert (
-        groq_span.attributes.get("gen_ai.completion.0.content")
+        (groq_span.attributes or {}).get("gen_ai.completion.0.content")
         == response.choices[0].message.content
     )
-    assert groq_span.attributes.get("gen_ai.completion.0.role") == "assistant"
-    assert groq_span.attributes.get("llm.is_streaming") is False
-    assert groq_span.attributes.get("gen_ai.usage.input_tokens") > 0
-    assert groq_span.attributes.get("gen_ai.usage.output_tokens") > 0
-    assert groq_span.attributes.get("llm.usage.total_tokens") > 0
+    assert (groq_span.attributes or {}).get("gen_ai.completion.0.role") == "assistant"
+    assert (groq_span.attributes or {}).get("llm.is_streaming") is False
+    assert cast(int, (groq_span.attributes or {}).get("gen_ai.usage.input_tokens")) > 0
+    assert cast(int, (groq_span.attributes or {}).get("gen_ai.usage.output_tokens")) > 0
+    assert cast(int, (groq_span.attributes or {}).get("llm.usage.total_tokens")) > 0
     assert (
-        groq_span.attributes.get("gen_ai.response.id")
+        (groq_span.attributes or {}).get("gen_ai.response.id")
         == "chatcmpl-741dc0bb-6df1-4e88-9d35-920d0dddc3c0"
     )
 
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
-async def test_async_chat_legacy(instrument_legacy, async_groq_client, span_exporter):
-    await async_groq_client.chat.completions.create(
+async def test_async_chat_legacy(
+    instrument_legacy: MagicMock,
+    async_groq_client: AsyncGroq,
+    span_exporter: InMemorySpanExporter,
+):
+    _res = await async_groq_client.chat.completions.create(
         model="llama3-8b-8192",
         messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
     )
@@ -106,22 +120,26 @@ async def test_async_chat_legacy(instrument_legacy, async_groq_client, span_expo
     ]
     groq_span = spans[0]
     assert (
-        groq_span.attributes["gen_ai.prompt.0.content"]
+        (groq_span.attributes or {})["gen_ai.prompt.0.content"]
         == "Tell me a joke about opentelemetry"
     )
-    assert groq_span.attributes.get("gen_ai.completion.0.content")
-    assert groq_span.attributes.get("llm.is_streaming") is False
-    assert groq_span.attributes.get("gen_ai.usage.input_tokens") > 0
-    assert groq_span.attributes.get("gen_ai.usage.output_tokens") > 0
-    assert groq_span.attributes.get("llm.usage.total_tokens") > 0
+    assert (groq_span.attributes or {}).get("gen_ai.completion.0.content")
+    assert (groq_span.attributes or {}).get("llm.is_streaming") is False
+    assert cast(int, (groq_span.attributes or {}).get("gen_ai.usage.input_tokens")) > 0
+    assert cast(int, (groq_span.attributes or {}).get("gen_ai.usage.output_tokens")) > 0
+    assert cast(int, (groq_span.attributes or {}).get("llm.usage.total_tokens")) > 0
     assert (
-        groq_span.attributes.get("gen_ai.response.id")
+        (groq_span.attributes or {}).get("gen_ai.response.id")
         == "chatcmpl-ec0a74e9-df7f-4e91-aa09-e9618451f5c9"
     )
 
 
 @pytest.mark.vcr
-def test_chat_streaming_legacy(instrument_legacy, groq_client, span_exporter):
+def test_chat_streaming_legacy(
+    instrument_legacy: MagicMock,
+    groq_client: Groq,
+    span_exporter: InMemorySpanExporter,
+):
     response = groq_client.chat.completions.create(
         model="llama3-8b-8192",
         messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
@@ -140,11 +158,11 @@ def test_chat_streaming_legacy(instrument_legacy, groq_client, span_exporter):
     ]
     groq_span = spans[0]
     assert (
-        groq_span.attributes["gen_ai.prompt.0.content"]
+        (groq_span.attributes or {})["gen_ai.prompt.0.content"]
         == "Tell me a joke about opentelemetry"
     )
-    assert groq_span.attributes.get("gen_ai.completion.0.content") == content
-    assert groq_span.attributes.get("llm.is_streaming") is True
-    assert groq_span.attributes.get("gen_ai.usage.input_tokens") == 18
-    assert groq_span.attributes.get("gen_ai.usage.output_tokens") == 73
-    assert groq_span.attributes.get("llm.usage.total_tokens") == 91
+    assert (groq_span.attributes or {}).get("gen_ai.completion.0.content") == content
+    assert (groq_span.attributes or {}).get("llm.is_streaming") is True
+    assert (groq_span.attributes or {}).get("gen_ai.usage.input_tokens") == 18
+    assert (groq_span.attributes or {}).get("gen_ai.usage.output_tokens") == 73
+    assert (groq_span.attributes or {}).get("llm.usage.total_tokens") == 91

@@ -1,35 +1,50 @@
 import asyncio
-import logging
 import threading
 import time
+from collections.abc import Awaitable, Callable, Sequence
 from enum import Enum
+from typing import Any, cast
 
 from opentelemetry import context as context_api
-from opentelemetry.context import Context
-from opentelemetry.trace import Status, StatusCode, Span
-from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
-from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
-from opentelemetry._logs import LogRecord, Logger, get_logger
+from opentelemetry._logs import Logger, LogRecord, get_logger
 from opentelemetry._logs.severity import SeverityNumber
+from opentelemetry.context import _SUPPRESS_INSTRUMENTATION_KEY, Context
+from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
+from opentelemetry.trace import Span, Status, StatusCode
+from typing_extensions import TypeVar
 
-from lmnr import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
-    set_span_attribute,
     dont_throw,
+    set_span_attribute,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    stamp_instrumentation_scope,
 )
 from lmnr.opentelemetry_lib.tracing.attributes import SPAN_INPUT, SPAN_OUTPUT
 from lmnr.opentelemetry_lib.tracing.context import (
     get_current_context,
     get_event_attributes_from_context,
 )
+from lmnr.sdk.laminar import Laminar
+from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.types import LaminarSpanType
 from lmnr.sdk.utils import json_dumps
-from .version import __version__
+from lmnr.version import __version__
 
-log = logging.getLogger(__name__)
+log = get_default_logger(__name__)
 
+try:
+    from daytona import SessionExecuteRequest, SessionExecuteResponse
+    from daytona._async.process import AsyncProcess
+    from daytona._sync.process import Process
+except Exception:
+    log.debug("Failed to import from daytona", exc_info=True)
+
+
+T = TypeVar("T")
 
 DAYTONA_LOG_ATTRIBUTES = {
     "daytona.system": "daytona",
@@ -43,11 +58,13 @@ class LogStream(Enum):
 
 
 @dont_throw
-def _set_request_attributes(span: Span, session_id: str, request):
+def _set_request_attributes(span: Span, session_id: str | None, request: SessionExecuteRequest | None):
     """Set span attributes from the execute_session_command request."""
     set_span_attribute(span, "daytona.session_id", session_id)
 
     input_data = {"session_id": session_id}
+    if not request:
+        return
     if hasattr(request, "command"):
         set_span_attribute(span, "daytona.command", request.command)
         input_data["command"] = request.command
@@ -59,15 +76,22 @@ def _set_request_attributes(span: Span, session_id: str, request):
 
 
 @dont_throw
-def _set_response_attributes(span: Span, response):
+def _serialize_response(response: SessionExecuteResponse) -> str:
+    if hasattr(response, "model_dump_json") and isinstance(response.model_dump_json, Callable):  # pyright: ignore[reportUnnecessaryIsInstance]
+        return response.model_dump_json()
+    return json_dumps(cast(Any, response))
+
+
+@dont_throw
+def _set_response_attributes(span: Span, response: SessionExecuteResponse):
     """Set span attributes from the execute_session_command response."""
     if hasattr(response, "cmd_id"):
         set_span_attribute(span, "daytona.cmd_id", response.cmd_id)
-    if hasattr(response, "exit_code"):
+    if hasattr(response, "exit_code") and response.exit_code is not None:
         set_span_attribute(span, "daytona.exit_code", response.exit_code)
-    if hasattr(response, "output"):
+    if hasattr(response, "output") and response.output is not None:
         set_span_attribute(span, "daytona.output", response.output)
-    set_span_attribute(span, SPAN_OUTPUT, json_dumps(response))
+    set_span_attribute(span, SPAN_OUTPUT, _serialize_response(response) or "{}")
 
 
 def _emit_log(
@@ -102,7 +126,7 @@ def _emit_log(
             attributes.update(extra_attributes)
 
         logger.emit(
-            LogRecord(
+            LogRecord(  # pyright: ignore[reportEmptyAbstractUsage] not exactly sure why it's abstract but has a public initializer
                 timestamp=time.time_ns(),
                 context=ctx,
                 body=content,
@@ -111,13 +135,13 @@ def _emit_log(
                 event_name=event_name,
             )
         )
-    except Exception as e:
-        log.debug(f"Failed to emit Daytona log event: {e}")
+    except Exception:
+        log.debug("Failed to emit Daytona log event", exc_info=True)
 
 
 def _emit_logs_from_response(
     logger: Logger,
-    response,
+    response: SessionExecuteResponse,
     session_id: str,
     cmd_id: str,
     ctx: Context,
@@ -174,7 +198,7 @@ def _create_log_callbacks(
 
 async def _stream_logs_async(
     logger: Logger,
-    process,
+    process: Process | AsyncProcess,
     session_id: str,
     cmd_id: str,
     ctx: Context,
@@ -196,13 +220,13 @@ async def _stream_logs_async(
         )
     except asyncio.CancelledError:
         log.debug("Daytona log streaming was cancelled")
-    except Exception as e:
-        log.debug(f"Failed to stream Daytona logs: {e}")
+    except Exception:
+        log.debug("Failed to stream Daytona logs", exc_info=True)
 
 
 def _start_log_streaming(
     logger: Logger,
-    instance,
+    instance: Process | AsyncProcess,
     session_id: str,
     cmd_id: str,
     ctx: Context,
@@ -212,7 +236,7 @@ def _start_log_streaming(
     This function streams logs from the Daytona sandbox and emits them as
     OpenTelemetry log records.
 
-    The context is captured before calling this function so that 
+    The context is captured before calling this function so that
     logs arriving later are correctly associated with the original command span.
 
     For async contexts (when there's a running event loop), we use
@@ -223,15 +247,15 @@ def _start_log_streaming(
     async def stream_wrapper():
         try:
             await _stream_logs_async(logger, instance, session_id, cmd_id, ctx)
-        except Exception as e:
-            log.debug(f"Log streaming error: {e}")
+        except Exception:
+            log.debug("Log streaming error", exc_info=True)
 
     # Try to use existing event loop first (for async contexts)
     # This avoids cross-event-loop issues with aiohttp clients
     try:
         loop = asyncio.get_running_loop()
         # We're in an async context - create a task in the existing loop
-        loop.create_task(stream_wrapper())
+        _task = loop.create_task(stream_wrapper())
         return
     except RuntimeError:
         # No running event loop - fall back to thread approach (for sync contexts)
@@ -243,22 +267,22 @@ def _start_log_streaming(
             asyncio.run(
                 _stream_logs_async(logger, instance, session_id, cmd_id, ctx)
             )
-        except Exception as e:
-            log.debug(f"Log streaming thread error: {e}")
+        except Exception:
+            log.debug("Log streaming thread error", exc_info=True)
 
     try:
         thread = threading.Thread(target=run_in_thread, daemon=True)
         thread.start()
-    except Exception as e:
-        log.debug(f"Failed to start Daytona log streaming thread: {e}")
+    except Exception:
+        log.debug("Failed to start Daytona log streaming thread", exc_info=True)
 
 
 def _process_command_response(
     logger: Logger | None,
-    instance,
-    response,
+    instance: Process | AsyncProcess,
+    response: SessionExecuteResponse,
     session_id: str,
-    request,
+    request: SessionExecuteRequest | None,
     ctx: Context,
 ):
     """Handle response and emit logs or start log streaming.
@@ -266,7 +290,7 @@ def _process_command_response(
     For async commands (run_async/var_async=True): starts background log streaming.
     For sync commands: emits logs immediately from response.stdout/stderr.
     """
-    cmd_id = getattr(response, "cmd_id", None)
+    cmd_id = cast(str | None, getattr(response, "cmd_id", None))
     if not (cmd_id and session_id):
         return
 
@@ -283,13 +307,13 @@ def _process_command_response(
         _emit_logs_from_response(logger, response, session_id, cmd_id, ctx)
 
 
-def _wrap(
+def wrap(
     to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance,
-    args,
-    kwargs,
-):
+    wrapped: Callable[..., SessionExecuteResponse],
+    instance: Process,
+    args: Sequence[Any] | None,
+    kwargs: dict[str, Any] | None,
+) -> SessionExecuteResponse:
     """Wrapper for sync execute_session_command.
 
     Creates a span, executes the command, sets attributes, ends span, then emits logs.
@@ -305,13 +329,14 @@ def _wrap(
     logger: Logger | None = get_logger(__name__, __version__)
 
     span = Laminar.start_active_span(
-        name=to_wrap["span_name"],
-        span_type=to_wrap["span_type"],
-        user_id=(kwargs.get("metadata") or {}).get("user_id"),
-        session_id=(kwargs.get("metadata") or {}).get("session_id"),
-        tags=(kwargs.get("metadata") or {}).get("tags", []),
+        name=to_wrap.get("span_name") or "daytona_request",
+        span_type=cast(LaminarSpanType, to_wrap.get("span_type") or "DEFAULT"),
+        user_id=(kwargs.get("metadata") or {}).get("user_id"),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        session_id=(kwargs.get("metadata") or {}).get("session_id"),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        tags=(kwargs.get("metadata") or {}).get("tags", []),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
         metadata=(kwargs.get("metadata") or {}),
     )
+    stamp_instrumentation_scope(span, to_wrap)
 
     # Extract session_id and request from args/kwargs
     # execute_session_command(session_id, request)
@@ -345,21 +370,21 @@ def _wrap(
     # break the user's code after a successful Daytona command
     try:
         _process_command_response(
-            logger, instance, response, session_id, request, ctx
+            logger, instance, response, session_id or "", request, ctx
         )
-    except Exception as log_error:
-        log.debug(f"Failed to process Daytona command response for logging: {log_error}")
+    except Exception:
+        log.debug("Failed to process Daytona command response for logging", exc_info=True)
 
     return response
 
 
-async def _awrap(
+async def awrap(
     to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance,
-    args,
-    kwargs,
-):
+    wrapped: Callable[..., Awaitable[SessionExecuteResponse]],
+    instance: AsyncProcess,
+    args: Sequence[Any] | None,
+    kwargs: dict[str, Any] | None,
+)-> SessionExecuteResponse:
     """Wrapper for async execute_session_command.
 
     Creates a span, executes the command, sets attributes, ends span, then emits logs.
@@ -375,13 +400,14 @@ async def _awrap(
     logger: Logger | None = get_logger(__name__, __version__)
 
     span = Laminar.start_active_span(
-        name=to_wrap["span_name"],
-        span_type=to_wrap["span_type"],
-        user_id=(kwargs.get("metadata") or {}).get("user_id"),
-        session_id=(kwargs.get("metadata") or {}).get("session_id"),
-        tags=(kwargs.get("metadata") or {}).get("tags", []),
+        name=to_wrap.get("span_name") or "daytona_request",
+        span_type=cast(LaminarSpanType, to_wrap.get("span_type") or "DEFAULT"),
+        user_id=(kwargs.get("metadata") or {}).get("user_id"),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        session_id=(kwargs.get("metadata") or {}).get("session_id"),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        tags=(kwargs.get("metadata") or {}).get("tags", []),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
         metadata=(kwargs.get("metadata") or {}),
     )
+    stamp_instrumentation_scope(span, to_wrap)
 
     # Extract session_id and request from args/kwargs
     # execute_session_command(session_id, request)
@@ -415,10 +441,10 @@ async def _awrap(
     # break the user's code after a successful Daytona command
     try:
         _process_command_response(
-            logger, instance, response, session_id, request, ctx
+            logger, instance, response, session_id or "", request, ctx
         )
-    except Exception as log_error:
-        log.debug(f"Failed to process Daytona command response for logging: {log_error}")
+    except Exception:
+        log.debug("Failed to process Daytona command response for logging", exc_info=True)
 
     return response
 
@@ -434,16 +460,16 @@ def _set_exec_request_attributes(span: Span, command: str, cwd: str | None):
 
 
 @dont_throw
-def _set_exec_response_attributes(span: Span, response):
+def _set_exec_response_attributes(span: Span, response: SessionExecuteResponse):
     """Set span attributes from the exec response."""
     if hasattr(response, "exit_code"):
         set_span_attribute(span, "daytona.exit_code", response.exit_code)
-    set_span_attribute(span, SPAN_OUTPUT, json_dumps(response))
+    set_span_attribute(span, SPAN_OUTPUT, _serialize_response(response) or "{}")
 
 
 def _emit_exec_logs_from_response(
     logger: Logger,
-    response,
+    response: SessionExecuteResponse,
     command: str,
     ctx: Context,
 ):
@@ -459,13 +485,13 @@ def _emit_exec_logs_from_response(
         )
 
 
-def _wrap_exec(
+def wrap_exec(
     to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance,
-    args,
-    kwargs,
-):
+    wrapped: Callable[..., SessionExecuteResponse],
+    _instance: Process,
+    args: Sequence[Any] | None,
+    kwargs: dict[str, Any] | None,
+)-> SessionExecuteResponse:
     """Wrapper for sync Process.exec.
 
     Creates a span, executes the command, sets attributes, ends span, then emits logs.
@@ -478,20 +504,21 @@ def _wrap_exec(
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return wrapped(*args, **kwargs)
 
-    logger: Logger | None = get_logger(__name__, __version__)
+    logger: Logger = get_logger(__name__, __version__)
 
     span = Laminar.start_active_span(
-        name=to_wrap["span_name"],
-        span_type=to_wrap["span_type"],
-        user_id=(kwargs.get("metadata") or {}).get("user_id"),
-        session_id=(kwargs.get("metadata") or {}).get("session_id"),
-        tags=(kwargs.get("metadata") or {}).get("tags", []),
+        name=to_wrap.get("span_name") or "daytona_request",
+        span_type=cast(LaminarSpanType, to_wrap.get("span_type") or "DEFAULT"),
+        user_id=(kwargs.get("metadata") or {}).get("user_id"),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        session_id=(kwargs.get("metadata") or {}).get("session_id"),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        tags=(kwargs.get("metadata") or {}).get("tags", []),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
         metadata=(kwargs.get("metadata") or {}),
     )
+    stamp_instrumentation_scope(span, to_wrap)
 
     # Extract command and cwd from args/kwargs
     # exec(command, cwd=None, env=None, timeout=None)
-    command = args[0] if len(args) > 0 else kwargs.get("command", "")
+    command = cast(str, args[0] if len(args) > 0 else kwargs.get("command", ""))
     cwd = args[1] if len(args) > 1 else kwargs.get("cwd")
 
     if span.is_recording():
@@ -516,21 +543,20 @@ def _wrap_exec(
         raise
 
     try:
-        if logger is not None:
-            _emit_exec_logs_from_response(logger, response, command, ctx)
-    except Exception as log_error:
-        log.debug(f"Failed to process Daytona exec response for logging: {log_error}")
+        _emit_exec_logs_from_response(logger, response, command, ctx)
+    except Exception:
+        log.debug("Failed to process Daytona exec response for logging", exc_info=True)
 
     return response
 
 
-async def _awrap_exec(
+async def awrap_exec(
     to_wrap: WrappedFunctionSpec,
-    wrapped,
-    instance,
-    args,
-    kwargs,
-):
+    wrapped: Callable[..., Awaitable[SessionExecuteResponse]],
+    _instance: AsyncProcess,
+    args: Sequence[Any] | None,
+    kwargs: dict[str, Any] | None,
+)-> SessionExecuteResponse:
     """Wrapper for async AsyncProcess.exec.
 
     Creates a span, executes the command, sets attributes, ends span, then emits logs.
@@ -543,20 +569,21 @@ async def _awrap_exec(
     if context_api.get_value(_SUPPRESS_INSTRUMENTATION_KEY):
         return await wrapped(*args, **kwargs)
 
-    logger: Logger | None = get_logger(__name__, __version__)
+    logger: Logger = get_logger(__name__, __version__)
 
     span = Laminar.start_active_span(
-        name=to_wrap["span_name"],
-        span_type=to_wrap["span_type"],
-        user_id=(kwargs.get("metadata") or {}).get("user_id"),
-        session_id=(kwargs.get("metadata") or {}).get("session_id"),
-        tags=(kwargs.get("metadata") or {}).get("tags", []),
+        name=to_wrap.get("span_name") or "daytona_request",
+        span_type=cast(LaminarSpanType, to_wrap.get("span_type") or "DEFAULT"),
+        user_id=(kwargs.get("metadata") or {}).get("user_id"),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        session_id=(kwargs.get("metadata") or {}).get("session_id"),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        tags=(kwargs.get("metadata") or {}).get("tags", []),  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
         metadata=(kwargs.get("metadata") or {}),
     )
+    stamp_instrumentation_scope(span, to_wrap)
 
     # Extract command and cwd from args/kwargs
     # exec(command, cwd=None, env=None, timeout=None)
-    command = args[0] if len(args) > 0 else kwargs.get("command", "")
+    command = cast(str, args[0] if len(args) > 0 else kwargs.get("command", ""))
     cwd = args[1] if len(args) > 1 else kwargs.get("cwd")
 
     if span.is_recording():
@@ -581,9 +608,8 @@ async def _awrap_exec(
         raise
 
     try:
-        if logger is not None:
-            _emit_exec_logs_from_response(logger, response, command, ctx)
-    except Exception as log_error:
-        log.debug(f"Failed to process Daytona exec response for logging: {log_error}")
+        _emit_exec_logs_from_response(logger, response, command, ctx)
+    except Exception:
+        log.debug("Failed to process Daytona exec response for logging", exc_info=True)
 
     return response

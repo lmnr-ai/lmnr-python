@@ -1,0 +1,14 @@
+{
+  "reportAny": false,
+  "reportExplicitAny": false,
+  "executionEnvironments": [
+    {
+      "root": "tests",
+      "reportPrivateUsage": false,
+      "reportUnusedParameter": false
+    },
+    {
+      "root": "."
+    }
+  ]
+}

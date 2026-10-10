@@ -1,9 +1,15 @@
+import copy
 import json
 import os
+from pathlib import Path
+from unittest.mock import MagicMock
+
+from pytest import MonkeyPatch
 
 from lmnr.sdk.debug.debug_session_file import (
     DEBUG_SESSION_DIR,
     DEBUG_SESSION_FILE,
+    DebugSessionFile,
     find_debug_session_dir,
     read_debug_session_file,
     resolve_debug_session_dir,
@@ -53,7 +59,11 @@ def test_build_debug_session_file_keeps_trace_id_null_for_fresh_session():
     assert file["trace_id"] is None
 
 
-def test_emit_prints_prefixed_compact_json(tmp_path, monkeypatch, capsys):
+def test_emit_prints_prefixed_compact_json(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: MagicMock,
+):
     monkeypatch.chdir(tmp_path)
     file = build_debug_session_file("s", "t", None, None, None)
     emit_pointer(file)
@@ -66,7 +76,10 @@ def test_emit_prints_prefixed_compact_json(tmp_path, monkeypatch, capsys):
     assert json.loads(payload) == file
 
 
-def test_emit_always_writes_the_debug_session_file(tmp_path, monkeypatch):
+def test_emit_always_writes_the_debug_session_file(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+):
     # Default-on now: no env gate. The file is always written.
     monkeypatch.chdir(tmp_path)
     file = build_debug_session_file(
@@ -80,7 +93,11 @@ def test_emit_always_writes_the_debug_session_file(tmp_path, monkeypatch):
         assert json.load(f) == file
 
 
-def test_emit_best_effort_on_unwritable_dir(tmp_path, monkeypatch, capsys):
+def test_emit_best_effort_on_unwritable_dir(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+    capsys: MagicMock,
+):
     # Make the working directory's .lmnr path un-creatable by making makedirs
     # raise; emit must still print and not raise.
     monkeypatch.chdir(tmp_path)
@@ -101,7 +118,7 @@ def test_emit_best_effort_on_unwritable_dir(tmp_path, monkeypatch, capsys):
 
 # --- read_debug_session_file / write_debug_session_file (shared helpers) ---
 
-_SAMPLE = {
+_SAMPLE: DebugSessionFile = {
     "session_id": "sess-rt",
     "trace_id": "trace-rt",
     "replay_trace_id": "replay-rt",
@@ -111,34 +128,34 @@ _SAMPLE = {
 }
 
 
-def _write_raw(directory, contents: str) -> None:
+def _write_raw(directory: Path | str, contents: str) -> None:
     target = os.path.join(directory, DEBUG_SESSION_DIR)
     os.makedirs(target, exist_ok=True)
     with open(os.path.join(target, DEBUG_SESSION_FILE), "w", encoding="utf-8") as f:
-        f.write(contents)
+        _bytes_written = f.write(contents)
 
 
-def test_session_file_round_trips_write_then_read(tmp_path):
+def test_session_file_round_trips_write_then_read(tmp_path: Path):
     wrote = write_debug_session_file(_SAMPLE, str(tmp_path))
     assert wrote is True
     assert read_debug_session_file(str(tmp_path)) == _SAMPLE
 
 
-def test_read_returns_none_for_missing_file(tmp_path):
+def test_read_returns_none_for_missing_file(tmp_path: Path):
     assert read_debug_session_file(str(tmp_path)) is None
 
 
-def test_read_returns_none_for_malformed_file(tmp_path):
+def test_read_returns_none_for_malformed_file(tmp_path: Path):
     _write_raw(str(tmp_path), "not json")
     assert read_debug_session_file(str(tmp_path)) is None
 
 
-def test_read_returns_none_when_session_id_missing(tmp_path):
+def test_read_returns_none_when_session_id_missing(tmp_path: Path):
     _write_raw(str(tmp_path), json.dumps({"trace_id": "t"}))
     assert read_debug_session_file(str(tmp_path)) is None
 
 
-def test_read_coerces_non_string_fields_to_none(tmp_path):
+def test_read_coerces_non_string_fields_to_none(tmp_path: Path):
     _write_raw(
         str(tmp_path),
         json.dumps(
@@ -157,30 +174,35 @@ def test_read_coerces_non_string_fields_to_none(tmp_path):
 # --- find_debug_session_dir / resolve_debug_session_dir (nearest-ancestor anchor) ---
 
 
-def test_find_returns_none_when_no_ancestor_has_a_session(tmp_path):
+def test_find_returns_none_when_no_ancestor_has_a_session(tmp_path: Path):
     nested = tmp_path / "packages" / "app"
     nested.mkdir(parents=True)
     assert find_debug_session_dir(str(nested)) is None
 
 
-def test_find_walks_up_to_the_nearest_ancestor_with_a_session(tmp_path):
-    write_debug_session_file(_SAMPLE, str(tmp_path))
+def test_find_walks_up_to_the_nearest_ancestor_with_a_session(tmp_path: Path):
+    _success = write_debug_session_file(_SAMPLE, str(tmp_path))
     nested = tmp_path / "packages" / "app"
     nested.mkdir(parents=True)
     assert find_debug_session_dir(str(nested)) == str(tmp_path)
 
 
-def test_find_prefers_the_nearest_ancestor(tmp_path):
-    write_debug_session_file(_SAMPLE, str(tmp_path))
+def test_find_prefers_the_nearest_ancestor(tmp_path: Path):
+    _success = write_debug_session_file(_SAMPLE, str(tmp_path))
     mid = tmp_path / "packages"
     nested = mid / "app"
     nested.mkdir(parents=True)
-    write_debug_session_file(dict(_SAMPLE, session_id="sess-closer"), str(mid))
+    file_with_session = copy.deepcopy(_SAMPLE)
+    file_with_session["session_id"] = "sess-closer"
+    _success = write_debug_session_file(
+        file_with_session,
+        str(mid)
+    )
     assert find_debug_session_dir(str(nested)) == str(mid)
 
 
-def test_find_ignores_an_unusable_file_and_keeps_walking(tmp_path):
-    write_debug_session_file(_SAMPLE, str(tmp_path))
+def test_find_ignores_an_unusable_file_and_keeps_walking(tmp_path: Path):
+    _success = write_debug_session_file(_SAMPLE, str(tmp_path))
     nested = tmp_path / "packages" / "app"
     nested.mkdir(parents=True)
     # A malformed nested file (no usable session_id) must not stop the walk.
@@ -188,17 +210,17 @@ def test_find_ignores_an_unusable_file_and_keeps_walking(tmp_path):
     assert find_debug_session_dir(str(nested)) == str(tmp_path)
 
 
-def test_resolve_falls_back_to_start_dir(tmp_path):
+def test_resolve_falls_back_to_start_dir(tmp_path: Path):
     nested = tmp_path / "packages" / "app"
     nested.mkdir(parents=True)
     assert resolve_debug_session_dir(str(nested)) == str(nested)
 
 
 def test_emit_from_subdirectory_writes_back_to_the_ancestor_anchor(
-    tmp_path, monkeypatch, capsys
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: MagicMock,
 ):
     existing = build_debug_session_file("s", None, None, None, None)
-    write_debug_session_file(existing, str(tmp_path))
+    _success = write_debug_session_file(existing, str(tmp_path))
     nested = tmp_path / "packages" / "app"
     nested.mkdir(parents=True)
     monkeypatch.chdir(nested)
@@ -215,12 +237,12 @@ def test_emit_from_subdirectory_writes_back_to_the_ancestor_anchor(
 
 
 def test_emit_skips_the_write_when_on_disk_session_differs(
-    tmp_path, monkeypatch, capsys
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: MagicMock,
 ):
     # A fresher session minted on disk while this run was in flight (e.g.
     # `lmnr-cli debug session new`) must not be clobbered.
     fresher = build_debug_session_file("sess-fresher", None, None, None, None)
-    write_debug_session_file(fresher, str(tmp_path))
+    _success = write_debug_session_file(fresher, str(tmp_path))
     monkeypatch.chdir(tmp_path)
 
     ours = build_debug_session_file("sess-ours", "t", None, None, None)
@@ -233,13 +255,13 @@ def test_emit_skips_the_write_when_on_disk_session_differs(
 
 
 def test_emit_persists_env_session_override_when_file_unchanged(
-    tmp_path, monkeypatch, capsys
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: MagicMock,
 ):
     # LMNR_DEBUG_SESSION_ID overrode the file's session at init; the file is
     # unchanged since that read, so this run still owns it and the override
     # must persist (guard compares against the id read at init, not just ours).
     original = build_debug_session_file("sess-from-file", None, None, None, None)
-    write_debug_session_file(original, str(tmp_path))
+    _success = write_debug_session_file(original, str(tmp_path))
     monkeypatch.chdir(tmp_path)
 
     ours = build_debug_session_file("sess-from-env", "t", None, None, None)
@@ -249,11 +271,13 @@ def test_emit_persists_env_session_override_when_file_unchanged(
     capsys.readouterr()
 
 
-def test_emit_skips_when_file_changed_since_init(tmp_path, monkeypatch, capsys):
+def test_emit_skips_when_file_changed_since_init(
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: MagicMock,
+):
     # Init read sess-at-init, but a fresher session replaced it mid-run — even
     # an env-overridden run no longer owns the file.
     fresher = build_debug_session_file("sess-fresher", None, None, None, None)
-    write_debug_session_file(fresher, str(tmp_path))
+    _success = write_debug_session_file(fresher, str(tmp_path))
     monkeypatch.chdir(tmp_path)
 
     ours = build_debug_session_file("sess-from-env", "t", None, None, None)
@@ -264,7 +288,7 @@ def test_emit_skips_when_file_changed_since_init(tmp_path, monkeypatch, capsys):
 
 
 def test_emit_writes_to_the_pinned_directory_after_chdir(
-    tmp_path, monkeypatch, capsys
+    tmp_path: Path, monkeypatch: MonkeyPatch, capsys: MagicMock,
 ):
     # The anchor is resolved once at init and passed in; a chdir between init
     # and shutdown must not retarget the write.
@@ -273,7 +297,7 @@ def test_emit_writes_to_the_pinned_directory_after_chdir(
     anchor.mkdir()
     elsewhere.mkdir()
     existing = build_debug_session_file("s", None, None, None, None)
-    write_debug_session_file(existing, str(anchor))
+    _sucess = write_debug_session_file(existing, str(anchor))
     monkeypatch.chdir(elsewhere)
 
     updated = build_debug_session_file("s", "t-new", None, None, None)
