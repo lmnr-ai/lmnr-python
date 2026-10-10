@@ -1,14 +1,22 @@
 import asyncio
 import json
+from typing import Any, cast
 from unittest.mock import patch
 
 import httpx
 import pytest
-from openai.types.chat.chat_completion_message_tool_call import (
+from openai import AsyncOpenAI, AuthenticationError, OpenAI
+from openai.types.chat import ChatCompletionUserMessageParam
+from openai.types.chat.chat_completion_message_function_tool_call import (
     ChatCompletionMessageFunctionToolCall,
 )
+from openai.types.chat.chat_completion_message_tool_call import Function
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import (
+    OpenAIInstrumentor,
+)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
     is_reasoning_supported,
 )
@@ -21,8 +29,12 @@ from .utils import (
 
 
 @pytest.mark.vcr
-def test_chat(instrumentor, span_exporter, openai_client):
-    openai_client.chat.completions.create(
+def test_chat(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
+):
+    _result = openai_client.chat.completions.create(
         model="gpt-5-nano",
         messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
         service_tier="default",
@@ -34,26 +46,31 @@ def test_chat(instrumentor, span_exporter, openai_client):
         "openai.chat",
     ]
     open_ai_span = spans[0]
-    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    attributes = open_ai_span.attributes or {}
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
-    output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output_messages[0]["message"]["content"]
     assert (
-        open_ai_span.attributes.get("gen_ai.request.base_url")
+        attributes.get("gen_ai.request.base_url")
         == "https://api.openai.com/v1/"
     )
-    assert open_ai_span.attributes.get("llm.is_streaming") is False
+    assert attributes.get("llm.is_streaming") is False
     assert (
-        open_ai_span.attributes.get("gen_ai.response.id")
+        attributes.get("gen_ai.response.id")
         == "chatcmpl-CdGqqj1iK4R9EgoAo2k2ZvzxgmgGt"
     )
-    assert open_ai_span.attributes.get("openai.request.service_tier") == "default"
-    assert open_ai_span.attributes.get("openai.response.service_tier") == "default"
+    assert attributes.get("openai.request.service_tier") == "default"
+    assert attributes.get("openai.response.service_tier") == "default"
 
 
 @pytest.mark.vcr
-def test_chat_tool_calls(instrumentor, span_exporter, openai_client):
-    openai_client.chat.completions.create(
+def test_chat_tool_calls(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
+):
+    _ = openai_client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
             {
@@ -83,7 +100,8 @@ def test_chat_tool_calls(instrumentor, span_exporter, openai_client):
         "openai.chat",
     ]
     open_ai_span = spans[0]
-    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    attributes = open_ai_span.attributes or {}
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert "content" not in input_messages[0]
     assert (
         input_messages[0]["tool_calls"][0]["function"]["name"] == "get_current_weather"
@@ -99,28 +117,30 @@ def test_chat_tool_calls(instrumentor, span_exporter, openai_client):
     )
     assert input_messages[1]["tool_call_id"] == "1"
     assert (
-        open_ai_span.attributes.get("gen_ai.response.id")
+        attributes.get("gen_ai.response.id")
         == "chatcmpl-9gKNZbUWSC4s2Uh2QfVV7PYiqWIuH"
     )
 
 
 @pytest.mark.vcr
 def test_chat_pydantic_based_tool_calls(
-    instrumentor, span_exporter, openai_client
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
 ):
-    openai_client.chat.completions.create(
+    _ = openai_client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
-            {
+            {  # pyright: ignore[reportArgumentType]
                 "role": "assistant",
                 "tool_calls": [
                     ChatCompletionMessageFunctionToolCall(
                         id="1",
                         type="function",
-                        function={
-                            "name": "get_current_weather",
-                            "arguments": '{"location": "San Francisco"}',
-                        },
+                        function=Function(
+                            name="get_current_weather",
+                            arguments='{"location": "San Francisco"}'
+                        )
                     )
                 ],
             },
@@ -138,8 +158,9 @@ def test_chat_pydantic_based_tool_calls(
         "openai.chat",
     ]
     open_ai_span = spans[0]
+    attributes = open_ai_span.attributes or {}
 
-    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert "content" not in input_messages[0]
     assert (
         input_messages[0]["tool_calls"][0]["function"]["name"] == "get_current_weather"
@@ -155,13 +176,17 @@ def test_chat_pydantic_based_tool_calls(
     )
     assert input_messages[1]["tool_call_id"] == "1"
     assert (
-        open_ai_span.attributes.get("gen_ai.response.id")
+        attributes.get("gen_ai.response.id")
         == "chatcmpl-9lvGJKrBUPeJjHi3KKSEbGfcfomOP"
     )
 
 
 @pytest.mark.vcr
-def test_chat_streaming(instrumentor, span_exporter, openai_client):
+def test_chat_streaming(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
+):
     response = openai_client.chat.completions.create(
         model="gpt-5-nano",
         messages=[{"role": "user", "content": "Tell me a joke about opentelemetry"}],
@@ -179,31 +204,34 @@ def test_chat_streaming(instrumentor, span_exporter, openai_client):
         "openai.chat",
     ]
     open_ai_span = spans[0]
-    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    attributes = open_ai_span.attributes or {}
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
-    output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output_messages[0]["message"]["content"]
     assert (
-        open_ai_span.attributes.get("gen_ai.request.base_url")
+        attributes.get("gen_ai.request.base_url")
         == "https://api.openai.com/v1/"
     )
-    assert open_ai_span.attributes.get("llm.is_streaming") is True
+    assert attributes.get("llm.is_streaming") is True
 
     events = open_ai_span.events
     assert len(events) == chunk_count
 
     assert (
-        open_ai_span.attributes.get("gen_ai.response.id")
+        attributes.get("gen_ai.response.id")
         == "chatcmpl-CdGr0EeaCKMNoLQ4cH79NjnMpgckv"
     )
-    assert open_ai_span.attributes.get("openai.request.service_tier") == "default"
-    assert open_ai_span.attributes.get("openai.response.service_tier") == "default"
+    assert attributes.get("openai.request.service_tier") == "default"
+    assert attributes.get("openai.response.service_tier") == "default"
 
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_chat_async_streaming(
-    instrumentor, span_exporter, async_openai_client
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    async_openai_client: AsyncOpenAI,
 ):
     response = await async_openai_client.chat.completions.create(
         model="gpt-4.1-nano",
@@ -221,28 +249,33 @@ async def test_chat_async_streaming(
         "openai.chat",
     ]
     open_ai_span = spans[0]
-    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    attributes = open_ai_span.attributes or {}
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
-    output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output_messages[0]["message"]["content"]
     assert (
-        open_ai_span.attributes.get("gen_ai.request.base_url")
+        attributes.get("gen_ai.request.base_url")
         == "https://api.openai.com/v1/"
     )
-    assert open_ai_span.attributes.get("llm.is_streaming") is True
+    assert attributes.get("llm.is_streaming") is True
 
     events = open_ai_span.events
     assert len(events) == chunk_count
 
     assert (
-        open_ai_span.attributes.get("gen_ai.response.id")
+        attributes.get("gen_ai.response.id")
         == "chatcmpl-CdGt5qCx5Rzql1NaxAplDRwFojACg"
     )
 
 
 @pytest.mark.vcr
-def test_with_asyncio_run(instrumentor, span_exporter, async_openai_client):
-    asyncio.run(
+def test_with_asyncio_run(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    async_openai_client: AsyncOpenAI,
+):
+    _ = asyncio.run(
         async_openai_client.chat.completions.create(
             model="gpt-4.1-nano",
             messages=[
@@ -256,17 +289,22 @@ def test_with_asyncio_run(instrumentor, span_exporter, async_openai_client):
         "openai.chat",
     ]
     open_ai_span = spans[0]
+    attributes = open_ai_span.attributes or {}
     assert (
-        open_ai_span.attributes.get("gen_ai.response.id")
+        attributes.get("gen_ai.response.id")
         == "chatcmpl-CdGt66e4DLUiaHScvU4EpKsSU0sCu"
     )
 
 
 @pytest.mark.vcr
-def test_chat_context_propagation(instrumentor, span_exporter, vllm_openai_client):
+def test_chat_context_propagation(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    vllm_openai_client: OpenAI,
+):
     send_spy = spy_decorator(httpx.Client.send)
     with patch.object(httpx.Client, "send", send_spy):
-        vllm_openai_client.chat.completions.create(
+        _ = vllm_openai_client.chat.completions.create(
             model="meta-llama/Llama-3.2-1B-Instruct",
             messages=[
                 {"role": "user", "content": "Tell me a joke about opentelemetry"}
@@ -278,23 +316,26 @@ def test_chat_context_propagation(instrumentor, span_exporter, vllm_openai_clien
         "openai.chat",
     ]
     open_ai_span = spans[0]
+    attributes = open_ai_span.attributes or {}
     assert (
-        open_ai_span.attributes.get("gen_ai.response.id")
+        attributes.get("gen_ai.response.id")
         == "chat-43f4347c3299481e9704ab77439fbdb8"
     )
-    request = single_request_to_path(send_spy.mock, "/v1/chat/completions")
+    request = single_request_to_path(send_spy.mock, "/v1/chat/completions")  # pyright: ignore[reportFunctionMemberAccess]
 
-    assert_request_contains_tracecontext(request, open_ai_span)
+    assert_request_contains_tracecontext(request, cast(Any, open_ai_span))
 
 
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_chat_async_context_propagation(
-    instrumentor, span_exporter, async_vllm_openai_client
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    async_vllm_openai_client: AsyncOpenAI,
 ):
     send_spy = spy_decorator(httpx.AsyncClient.send)
     with patch.object(httpx.AsyncClient, "send", send_spy):
-        await async_vllm_openai_client.chat.completions.create(
+        _ = await async_vllm_openai_client.chat.completions.create(
             model="meta-llama/Llama-3.2-1B-Instruct",
             messages=[
                 {"role": "user", "content": "Tell me a joke about opentelemetry"}
@@ -306,22 +347,27 @@ async def test_chat_async_context_propagation(
         "openai.chat",
     ]
     open_ai_span = spans[0]
+    attributes = open_ai_span.attributes or {}
     assert (
-        open_ai_span.attributes.get("gen_ai.response.id")
+        attributes.get("gen_ai.response.id")
         == "chat-4db07f02ecae49cbafe1d359db1650df"
     )
-    request = single_request_to_path(send_spy.mock, "/v1/chat/completions")
+    request = single_request_to_path(send_spy.mock, "/v1/chat/completions")  # pyright: ignore[reportFunctionMemberAccess]
 
-    assert_request_contains_tracecontext(request, open_ai_span)
+    assert_request_contains_tracecontext(request, cast(Any, open_ai_span))
 
 
 @pytest.mark.vcr
-def test_chat_history_message_dict(instrumentor, span_exporter, openai_client):
-    first_user_message = {
+def test_chat_history_message_dict(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
+):
+    first_user_message: ChatCompletionUserMessageParam = {
         "role": "user",
         "content": "Generate a random noun in Korean. Respond with just that word.",
     }
-    second_user_message = {
+    second_user_message: ChatCompletionUserMessageParam = {
         "role": "user",
         "content": "Now, generate a sentence using the word you just gave me.",
     }
@@ -346,11 +392,12 @@ def test_chat_history_message_dict(instrumentor, span_exporter, openai_client):
 
     assert len(spans) == 2
     first_span = spans[0]
+    first_attributes = first_span.attributes or {}
     assert first_span.name == "openai.chat"
-    first_input = json.loads(first_span.attributes["gen_ai.input.messages"])
+    first_input = json.loads(cast(str, first_attributes["gen_ai.input.messages"]))
     assert first_input[0]["content"] == first_user_message["content"]
     assert first_input[0]["role"] == first_user_message["role"]
-    first_output = json.loads(first_span.attributes["gen_ai.output.messages"])
+    first_output = json.loads(cast(str, first_attributes["gen_ai.output.messages"]))
     assert (
         first_output[0]["message"]["content"]
         == first_response.choices[0].message.content
@@ -358,10 +405,11 @@ def test_chat_history_message_dict(instrumentor, span_exporter, openai_client):
     assert first_output[0]["message"]["role"] == "assistant"
 
     second_span = spans[1]
+    second_attributes = second_span.attributes or {}
     assert second_span.name == "openai.chat"
-    second_input = json.loads(second_span.attributes["gen_ai.input.messages"])
+    second_input = json.loads(cast(str, second_attributes["gen_ai.input.messages"]))
     assert second_input[0]["content"] == first_user_message["content"]
-    second_output = json.loads(second_span.attributes["gen_ai.output.messages"])
+    second_output = json.loads(cast(str, second_attributes["gen_ai.output.messages"]))
     assert (
         second_output[0]["message"]["content"]
         == second_response.choices[0].message.content
@@ -373,12 +421,16 @@ def test_chat_history_message_dict(instrumentor, span_exporter, openai_client):
 
 
 @pytest.mark.vcr
-def test_chat_history_message_pydantic(instrumentor, span_exporter, openai_client):
-    first_user_message = {
+def test_chat_history_message_pydantic(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
+):
+    first_user_message: ChatCompletionUserMessageParam = {
         "role": "user",
         "content": "Generate a random noun in Korean. Respond with just that word.",
     }
-    second_user_message = {
+    second_user_message: ChatCompletionUserMessageParam = {
         "role": "user",
         "content": "Now, generate a sentence using the word you just gave me.",
     }
@@ -391,7 +443,7 @@ def test_chat_history_message_pydantic(instrumentor, span_exporter, openai_clien
         model="gpt-4.1-nano",
         messages=[
             first_user_message,
-            first_response.choices[0].message,
+            first_response.choices[0].message,  # pyright: ignore[reportArgumentType]
             second_user_message,
         ],
     )
@@ -400,11 +452,12 @@ def test_chat_history_message_pydantic(instrumentor, span_exporter, openai_clien
 
     assert len(spans) == 2
     first_span = spans[0]
+    first_attributes = first_span.attributes or {}
     assert first_span.name == "openai.chat"
-    first_input = json.loads(first_span.attributes["gen_ai.input.messages"])
+    first_input = json.loads(cast(str, first_attributes["gen_ai.input.messages"]))
     assert first_input[0]["content"] == first_user_message["content"]
     assert first_input[0]["role"] == first_user_message["role"]
-    first_output = json.loads(first_span.attributes["gen_ai.output.messages"])
+    first_output = json.loads(cast(str, first_attributes["gen_ai.output.messages"]))
     assert (
         first_output[0]["message"]["content"]
         == first_response.choices[0].message.content
@@ -412,10 +465,11 @@ def test_chat_history_message_pydantic(instrumentor, span_exporter, openai_clien
     assert first_output[0]["message"]["role"] == "assistant"
 
     second_span = spans[1]
+    second_attributes = second_span.attributes or {}
     assert second_span.name == "openai.chat"
-    second_input = json.loads(second_span.attributes["gen_ai.input.messages"])
+    second_input = json.loads(cast(str, second_attributes["gen_ai.input.messages"]))
     assert second_input[0]["content"] == first_user_message["content"]
-    second_output = json.loads(second_span.attributes["gen_ai.output.messages"])
+    second_output = json.loads(cast(str, second_attributes["gen_ai.output.messages"]))
     assert (
         second_output[0]["message"]["content"]
         == second_response.choices[0].message.content
@@ -431,8 +485,12 @@ def test_chat_history_message_pydantic(instrumentor, span_exporter, openai_clien
     not is_reasoning_supported(),
     reason="Reasoning is not supported in older OpenAI library versions",
 )
-def test_chat_reasoning(instrumentor, span_exporter, openai_client):
-    openai_client.chat.completions.create(
+def test_chat_reasoning(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
+):
+    _ = openai_client.chat.completions.create(
         model="gpt-5-nano",
         messages=[{"role": "user", "content": "Count r's in strawberry"}],
         reasoning_effort="low",
@@ -440,14 +498,19 @@ def test_chat_reasoning(instrumentor, span_exporter, openai_client):
     spans = span_exporter.get_finished_spans()
     assert len(spans) >= 1
     span = spans[-1]
-    assert span.attributes["gen_ai.request.reasoning_effort"] == "low"
-    assert span.attributes["gen_ai.usage.reasoning_tokens"] > 0
+    attributes = span.attributes or {}
+    assert attributes["gen_ai.request.reasoning_effort"] == "low"
+    assert cast(int, attributes["gen_ai.usage.reasoning_tokens"]) > 0
 
 
-def test_chat_exception(instrumentor, span_exporter, openai_client):
+def test_chat_exception(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
+):
     openai_client.api_key = "invalid"
-    with pytest.raises(Exception):
-        openai_client.chat.completions.create(
+    with pytest.raises(AuthenticationError):
+        _ = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "user", "content": "Tell me a joke about opentelemetry"}
@@ -460,36 +523,40 @@ def test_chat_exception(instrumentor, span_exporter, openai_client):
         "openai.chat",
     ]
     open_ai_span = spans[0]
-    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    attributes = open_ai_span.attributes or {}
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     assert (
-        open_ai_span.attributes.get("gen_ai.request.base_url")
+        attributes.get("gen_ai.request.base_url")
         == "https://api.openai.com/v1/"
     )
-    assert open_ai_span.attributes.get("llm.is_streaming") is False
+    assert attributes.get("llm.is_streaming") is False
     assert open_ai_span.status.status_code == StatusCode.ERROR
-    assert open_ai_span.status.description.startswith("Error code: 401")
+    assert (open_ai_span.status.description or "").startswith("Error code: 401")
     events = open_ai_span.events
     assert len(events) == 1
     event = events[0]
+    event_attributes = event.attributes or {}
     assert event.name == "exception"
-    assert event.attributes["exception.type"] == "openai.AuthenticationError"
-    assert event.attributes["exception.message"].startswith("Error code: 401")
-    assert open_ai_span.attributes.get("error.type") == "AuthenticationError"
+    assert event_attributes["exception.type"] == "openai.AuthenticationError"
+    assert cast(str, event_attributes["exception.message"]).startswith("Error code: 401")
+    assert attributes.get("error.type") == "AuthenticationError"
     assert (
-        "Traceback (most recent call last):" in event.attributes["exception.stacktrace"]
+        "Traceback (most recent call last):" in cast(str, event_attributes["exception.stacktrace"])
     )
-    assert "openai.AuthenticationError" in event.attributes["exception.stacktrace"]
-    assert "invalid_api_key" in event.attributes["exception.stacktrace"]
+    assert "openai.AuthenticationError" in cast(str, event_attributes["exception.stacktrace"])
+    assert "invalid_api_key" in cast(str, event_attributes["exception.stacktrace"])
 
 
 @pytest.mark.asyncio
 async def test_chat_async_exception(
-    instrumentor, span_exporter, async_openai_client
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    async_openai_client: AsyncOpenAI,
 ):
     async_openai_client.api_key = "invalid"
-    with pytest.raises(Exception):
-        await async_openai_client.chat.completions.create(
+    with pytest.raises(AuthenticationError):
+        _ = await async_openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "user", "content": "Tell me a joke about opentelemetry"}
@@ -502,31 +569,37 @@ async def test_chat_async_exception(
         "openai.chat",
     ]
     open_ai_span = spans[0]
-    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    attributes = open_ai_span.attributes or {}
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     assert (
-        open_ai_span.attributes.get("gen_ai.request.base_url")
+        attributes.get("gen_ai.request.base_url")
         == "https://api.openai.com/v1/"
     )
-    assert open_ai_span.attributes.get("llm.is_streaming") is False
+    assert attributes.get("llm.is_streaming") is False
     assert open_ai_span.status.status_code == StatusCode.ERROR
-    assert open_ai_span.status.description.startswith("Error code: 401")
+    assert (open_ai_span.status.description or "").startswith("Error code: 401")
     events = open_ai_span.events
     assert len(events) == 1
     event = events[0]
+    event_attributes = event.attributes or {}
     assert event.name == "exception"
-    assert event.attributes["exception.type"] == "openai.AuthenticationError"
-    assert event.attributes["exception.message"].startswith("Error code: 401")
+    assert event_attributes["exception.type"] == "openai.AuthenticationError"
+    assert cast(str, event_attributes["exception.message"]).startswith("Error code: 401")
     assert (
-        "Traceback (most recent call last):" in event.attributes["exception.stacktrace"]
+        "Traceback (most recent call last):" in cast(str, event_attributes["exception.stacktrace"])
     )
-    assert "openai.AuthenticationError" in event.attributes["exception.stacktrace"]
-    assert "invalid_api_key" in event.attributes["exception.stacktrace"]
-    assert open_ai_span.attributes.get("error.type") == "AuthenticationError"
+    assert "openai.AuthenticationError" in cast(str, event_attributes["exception.stacktrace"])
+    assert "invalid_api_key" in cast(str, event_attributes["exception.stacktrace"])
+    assert attributes.get("error.type") == "AuthenticationError"
 
 
 @pytest.mark.vcr
-def test_chat_streaming_not_consumed(instrumentor, span_exporter, openai_client):
+def test_chat_streaming_not_consumed(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
+):
     """Test that streaming responses are properly instrumented even when not consumed"""
 
     # Create streaming response but don't consume it
@@ -542,30 +615,33 @@ def test_chat_streaming_not_consumed(instrumentor, span_exporter, openai_client)
     # Force garbage collection to trigger cleanup
     import gc
 
-    gc.collect()
+    _ = gc.collect()
 
     spans = span_exporter.get_finished_spans()
 
     assert len(spans) == 1
     open_ai_span = spans[0]
+    attributes = open_ai_span.attributes or {}
     assert open_ai_span.name == "openai.chat"
 
     # Verify span was properly closed
     assert open_ai_span.status.status_code == StatusCode.OK
     assert open_ai_span.end_time is not None
-    assert open_ai_span.end_time > open_ai_span.start_time
+    assert (open_ai_span.end_time or 0) > (open_ai_span.start_time or 0)
 
-    assert open_ai_span.attributes.get("gen_ai.request.model") == "gpt-3.5-turbo"
-    assert open_ai_span.attributes.get("llm.is_streaming") is True
+    assert attributes.get("gen_ai.request.model") == "gpt-3.5-turbo"
+    assert attributes.get("llm.is_streaming") is True
 
-    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == "Tell me a joke about opentelemetry"
     assert input_messages[0]["role"] == "user"
 
 
 @pytest.mark.vcr
 def test_chat_streaming_partial_consumption(
-    instrumentor, span_exporter, openai_client
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
 ):
     """Test that streaming responses are properly instrumented when partially consumed"""
 
@@ -583,19 +659,20 @@ def test_chat_streaming_partial_consumption(
 
     import gc
 
-    gc.collect()
+    _ = gc.collect()
 
     spans = span_exporter.get_finished_spans()
 
     assert len(spans) == 1
     open_ai_span = spans[0]
+    attributes = open_ai_span.attributes or {}
     assert open_ai_span.name == "openai.chat"
 
     assert open_ai_span.status.status_code == StatusCode.OK
     assert open_ai_span.end_time is not None
 
-    assert open_ai_span.attributes.get("gen_ai.request.model") == "gpt-3.5-turbo"
-    assert open_ai_span.attributes.get("llm.is_streaming") is True
+    assert attributes.get("gen_ai.request.model") == "gpt-3.5-turbo"
+    assert attributes.get("llm.is_streaming") is True
 
     # Should have at least one event from the consumed chunk
     events = open_ai_span.events
@@ -604,7 +681,9 @@ def test_chat_streaming_partial_consumption(
 
 @pytest.mark.vcr
 def test_chat_streaming_exception_during_consumption(
-    instrumentor, span_exporter, openai_client
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
 ):
     """Test that streaming responses handle exceptions during consumption properly"""
 
@@ -617,16 +696,16 @@ def test_chat_streaming_exception_during_consumption(
     # Simulate exception during consumption
     count = 0
     try:
-        for chunk in response:
+        for _chunk in response:
             count += 1
             if count == 2:  # Interrupt after second chunk
-                raise Exception("Simulated interruption")
+                raise RuntimeError("Simulated interruption")
     except Exception as e:
         # Force cleanup by deleting the response object
         del response
         import gc
 
-        gc.collect()
+        _ = gc.collect()
         # Re-raise to verify the exception was caught
         assert "Simulated interruption" in str(e)
 
@@ -647,7 +726,9 @@ def test_chat_streaming_exception_during_consumption(
 
 @pytest.mark.vcr
 def test_chat_streaming_memory_leak_prevention(
-    instrumentor, span_exporter, openai_client
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
 ):
     """Test that creating many streams without consuming them doesn't cause memory leaks"""
     import gc
@@ -667,7 +748,7 @@ def test_chat_streaming_memory_leak_prevention(
 
     del response
 
-    gc.collect()
+    _ = gc.collect()
 
     # Verify object was garbage collected
     assert weak_ref() is None, "Stream object was not garbage collected"

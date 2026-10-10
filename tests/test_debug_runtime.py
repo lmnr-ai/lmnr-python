@@ -371,7 +371,7 @@ def test_emit_pointer_persists_cache_until_span_id(
 
 def test_emit_pointer_only_once(
     tmp_path: Path,
-    monkeypatch: MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch,
     capsys: MagicMock,
     make_runtime: Callable[..., DebugRuntime]
 ):
@@ -671,7 +671,7 @@ def test_init_logs_debugger_url_when_project_id_returned(
     _reset_runtime()
 
 
-def test_init_survives_registration_failure(monkeypatch: pyetst.MonkeyPatch):
+def test_init_survives_registration_failure(monkeypatch: pytest.MonkeyPatch):
     # Registration is best-effort: a backend error must never crash init.
     from lmnr.sdk.laminar import Laminar
 

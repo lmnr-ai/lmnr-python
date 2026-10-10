@@ -3,10 +3,18 @@ import json
 
 import pytest
 import requests
+from typing import cast
+from openai import OpenAI
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import OpenAIInstrumentor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 
 @pytest.mark.vcr
-def test_vision(instrumentor, span_exporter, openai_client):
+def test_vision(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
+):
     response = openai_client.chat.completions.create(
         model="gpt-4-vision-preview",
         messages=[
@@ -33,7 +41,8 @@ def test_vision(instrumentor, span_exporter, openai_client):
         "openai.chat",
     ]
     open_ai_span = spans[0]
-    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    attributes = open_ai_span.attributes or {}
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages[0]["content"] == [
         {"type": "text", "text": "What is in this image?"},
         {
@@ -42,20 +51,24 @@ def test_vision(instrumentor, span_exporter, openai_client):
         },
     ]
 
-    output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output_messages[0]["message"]["content"]
     assert (
-        open_ai_span.attributes["gen_ai.request.base_url"]
+        attributes["gen_ai.request.base_url"]
         == "https://api.openai.com/v1/"
     )
     assert (
-        open_ai_span.attributes.get("gen_ai.response.id")
+        attributes.get("gen_ai.response.id")
         == "chatcmpl-8wq4EsSXTQC0JbGzob3SBHg6pS7Tt"
     )
 
 
 @pytest.mark.vcr
-def test_vision_base64(instrumentor, span_exporter, openai_client):
+def test_vision_base64(
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
+):
     # Fetch the image from the URL
     response = requests.get(
         "https://upload.wikimedia.org/wikipedia/commons/"
@@ -92,7 +105,8 @@ def test_vision_base64(instrumentor, span_exporter, openai_client):
         "openai.chat",
     ]
     open_ai_span = spans[0]
-    input_messages = json.loads(open_ai_span.attributes["gen_ai.input.messages"])
+    attributes = open_ai_span.attributes or {}
+    input_messages = json.loads(cast(str, attributes["gen_ai.input.messages"]))
     assert input_messages[0]["content"][0] == {
         "type": "text",
         "text": "What is in this image?",
@@ -102,13 +116,13 @@ def test_vision_base64(instrumentor, span_exporter, openai_client):
         "data:image/jpeg;base64,"
     )
 
-    output_messages = json.loads(open_ai_span.attributes["gen_ai.output.messages"])
+    output_messages = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert output_messages[0]["message"]["content"]
     assert (
-        open_ai_span.attributes["gen_ai.request.base_url"]
+        attributes["gen_ai.request.base_url"]
         == "https://api.openai.com/v1/"
     )
     assert (
-        open_ai_span.attributes.get("gen_ai.response.id")
+        attributes.get("gen_ai.response.id")
         == "chatcmpl-AC7YAG2uy8c4VfbqJp4QkdHc5PDZ4"
     )

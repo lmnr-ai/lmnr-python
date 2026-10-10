@@ -698,7 +698,7 @@ def test_deepagents_auto_enabled_removes_langchain_and_langgraph():
     assert Instruments.DEEPAGENTS not in _DEEPAGENTS_NOISE_CONFLICTS
 
 
-def test_deepagents_initializer_returns_none_when_package_missing(monkeypatch: MonkeyPatch):
+def test_deepagents_initializer_returns_none_when_package_missing(monkeypatch: pytest.MonkeyPatch):
     from lmnr.opentelemetry_lib.tracing import _instrument_initializers as inits
 
     monkeypatch.setattr(inits, "is_package_installed", lambda name: False)  # pyright: ignore[reportUnknownLambdaType]
@@ -706,7 +706,7 @@ def test_deepagents_initializer_returns_none_when_package_missing(monkeypatch: M
     assert result is None
 
 
-def test_deepagents_initializer_returns_none_when_langchain_missing(monkeypatch: MonkeyPatch):
+def test_deepagents_initializer_returns_none_when_langchain_missing(monkeypatch: pytest.MonkeyPatch):
     from lmnr.opentelemetry_lib.tracing import _instrument_initializers as inits
 
     def only_deepagents(name: str) -> bool:
