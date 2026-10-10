@@ -8,8 +8,14 @@ than hard-coded scores, so re-recording doesn't require editing them.
 """
 
 import json
+from typing import Any, cast
 
 import pytest
+from opentelemetry.sdk.trace import ReadableSpan
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai import (
+    OpenAIInstrumentor,
+)
 
 pytest.importorskip("openai.resources.decisions")
 
@@ -51,31 +57,32 @@ def _only_span(span_exporter: InMemorySpanExporter):
     return spans[0]
 
 
-def _assert_decision_span(span, decision) -> None:
+def _assert_decision_span(span: ReadableSpan, decision: Any) -> None:
+    attributes = span.attributes or {}
     assert span.name == "openai.decision"
-    assert span.attributes["lmnr.span.type"] == "LLM"
-    assert span.attributes["gen_ai.system"] == "openai"
-    assert span.attributes["gen_ai.request.model"] == MODEL
-    assert span.attributes["gen_ai.response.model"] == decision.model
+    assert attributes["lmnr.span.type"] == "LLM"
+    assert attributes["gen_ai.system"] == "openai"
+    assert attributes["gen_ai.request.model"] == MODEL
+    assert attributes["gen_ai.response.model"] == decision.model
 
     usage = decision.usage
-    assert span.attributes["gen_ai.usage.input_tokens"] == usage.input_tokens
-    assert span.attributes["gen_ai.usage.output_tokens"] == usage.output_tokens
-    assert span.attributes["llm.usage.total_tokens"] == usage.total_tokens
+    assert attributes["gen_ai.usage.input_tokens"] == usage.input_tokens
+    assert attributes["gen_ai.usage.output_tokens"] == usage.output_tokens
+    assert attributes["llm.usage.total_tokens"] == usage.total_tokens
     assert (
-        span.attributes["gen_ai.usage.cache_read_input_tokens"]
+        attributes["gen_ai.usage.cache_read_input_tokens"]
         == usage.input_tokens_details.cached_tokens
     )
     assert (
-        span.attributes["gen_ai.usage.cache_creation_input_tokens"]
+        attributes["gen_ai.usage.cache_creation_input_tokens"]
         == usage.input_tokens_details.cache_write_tokens
     )
     assert (
-        span.attributes["gen_ai.usage.reasoning_tokens"]
+        attributes["gen_ai.usage.reasoning_tokens"]
         == usage.output_tokens_details.reasoning_tokens
     )
 
-    output = json.loads(span.attributes["gen_ai.output.messages"])
+    output = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert len(output) == 1
     assert output[0]["role"] == "assistant"
     assert json.loads(output[0]["content"]) == [
@@ -85,9 +92,9 @@ def _assert_decision_span(span, decision) -> None:
 
 @pytest.mark.vcr
 def test_decisions_create(
-    instrument_legacy, span_exporter: InMemorySpanExporter, openai_client: OpenAI
+    instrumentor: OpenAIInstrumentor, span_exporter: InMemorySpanExporter, openai_client: OpenAI
 ):
-    decision = openai_client.decisions.create(
+    decision = openai_client.decisions.create(  # pyright: ignore[reportAttributeAccessIssue] requires openai >= 3.26
         model=MODEL,
         input=INPUT,
         questions=QUESTIONS,
@@ -97,13 +104,14 @@ def test_decisions_create(
     assert [a.type for a in decision.answers] == ["predicate", "choice", "score"]
 
     span = _only_span(span_exporter)
+    attributes = span.attributes or {}
     _assert_decision_span(span, decision)
-    assert span.attributes["llm.user"] == "user-123"
-    assert json.loads(span.attributes["gen_ai.input.messages"]) == [
+    assert attributes["llm.user"] == "user-123"
+    assert json.loads(cast(str, attributes["gen_ai.input.messages"])) == [
         {"role": "user", "content": INPUT}
     ]
     assert (
-        json.loads(span.attributes["gen_ai.request.structured_output_schema"])
+        json.loads(cast(str, attributes["gen_ai.request.structured_output_schema"]))
         == QUESTIONS
     )
 
@@ -111,7 +119,7 @@ def test_decisions_create(
 @pytest.mark.vcr
 @pytest.mark.asyncio
 async def test_decisions_create_async_with_message_input(
-    instrument_legacy,
+    instrumentor: OpenAIInstrumentor,
     span_exporter: InMemorySpanExporter,
     async_openai_client: AsyncOpenAI,
 ):
@@ -124,24 +132,27 @@ async def test_decisions_create_async_with_message_input(
             ],
         }
     ]
-    decision = await async_openai_client.decisions.create(
+    decision = await async_openai_client.decisions.create(  # pyright: ignore[reportAttributeAccessIssue] requires openai >= 3.26
         model=MODEL, input=messages, questions=QUESTIONS
     )
 
     span = _only_span(span_exporter)
+    attributes = span.attributes or {}
     _assert_decision_span(span, decision)
-    assert json.loads(span.attributes["gen_ai.input.messages"]) == messages
+    assert json.loads(cast(str, attributes["gen_ai.input.messages"])) == messages
     assert (
-        json.loads(span.attributes["gen_ai.request.structured_output_schema"])
+        json.loads(cast(str, attributes["gen_ai.request.structured_output_schema"]))
         == QUESTIONS
     )
 
 
 @pytest.mark.vcr
 def test_decisions_create_with_raw_response(
-    instrument_legacy, span_exporter: InMemorySpanExporter, openai_client: OpenAI
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
 ):
-    raw = openai_client.decisions.with_raw_response.create(
+    raw = openai_client.decisions.with_raw_response.create(  # pyright: ignore[reportAttributeAccessIssue] requires openai >= 3.26
         model=MODEL, input=INPUT, questions=QUESTIONS
     )
 
@@ -150,57 +161,64 @@ def test_decisions_create_with_raw_response(
 
 @pytest.mark.vcr
 def test_decisions_create_error(
-    instrument_legacy, span_exporter: InMemorySpanExporter, openai_client: OpenAI
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
 ):
     with pytest.raises(BadRequestError):
-        openai_client.decisions.create(
+        openai_client.decisions.create(  # pyright: ignore[reportAttributeAccessIssue] requires openai >= 3.26
             model=MODEL,
             input=INPUT,
             questions=[{"type": "choice", "instructions": "Pick one.", "choices": []}],
         )
 
     span = _only_span(span_exporter)
+    attributes = span.attributes or {}
     assert span.name == "openai.decision"
     assert span.status.status_code == StatusCode.ERROR
-    assert span.attributes["error.type"] == "BadRequestError"
-    assert span.attributes["gen_ai.request.model"] == MODEL
-    assert "gen_ai.input.messages" in span.attributes
-    assert "gen_ai.request.structured_output_schema" in span.attributes
-    assert "gen_ai.output.messages" not in span.attributes
+    assert attributes["error.type"] == "BadRequestError"
+    assert attributes["gen_ai.request.model"] == MODEL
+    assert "gen_ai.input.messages" in attributes
+    assert "gen_ai.request.structured_output_schema" in attributes
+    assert "gen_ai.output.messages" not in attributes
     assert span.events[0].name == "exception"
 
 
 @pytest.mark.vcr
 def test_decisions_create_does_not_consume_iterator_params(
-    instrument_legacy, span_exporter: InMemorySpanExporter, openai_client: OpenAI
+    instrumentor: OpenAIInstrumentor,
+    span_exporter: InMemorySpanExporter,
+    openai_client: OpenAI,
 ):
-    decision = openai_client.decisions.create(
+    decision = openai_client.decisions.create(  # pyright: ignore[reportAttributeAccessIssue] requires openai >= 3.26
         model=MODEL, input=INPUT, questions=(q for q in QUESTIONS)
     )
 
     # The SDK still sends every question; we just don't record them.
     assert len(decision.answers) == len(QUESTIONS)
     span = _only_span(span_exporter)
-    assert json.loads(span.attributes["gen_ai.input.messages"]) == [
+    attributes = span.attributes or {}
+    assert json.loads(cast(str, attributes["gen_ai.input.messages"])) == [
         {"role": "user", "content": INPUT}
     ]
-    assert "gen_ai.request.structured_output_schema" not in span.attributes
+    assert "gen_ai.request.structured_output_schema" not in attributes
 
 
 @pytest.mark.vcr
 def test_decisions_create_without_content_tracing(
-    instrument_legacy,
+    instrumentor: OpenAIInstrumentor,
     span_exporter: InMemorySpanExporter,
     openai_client: OpenAI,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setenv("LMNR_TRACE_CONTENT", "false")
-    decision = openai_client.decisions.create(
+    decision = openai_client.decisions.create(  # pyright: ignore[reportAttributeAccessIssue] requires openai >= 3.26
         model=MODEL, input=INPUT, questions=QUESTIONS
     )
 
     span = _only_span(span_exporter)
-    assert span.attributes["gen_ai.usage.input_tokens"] == decision.usage.input_tokens
-    assert "gen_ai.input.messages" not in span.attributes
-    assert "gen_ai.request.structured_output_schema" not in span.attributes
-    assert "gen_ai.output.messages" not in span.attributes
+    attributes = span.attributes or {}
+    assert attributes["gen_ai.usage.input_tokens"] == decision.usage.input_tokens
+    assert "gen_ai.input.messages" not in attributes
+    assert "gen_ai.request.structured_output_schema" not in attributes
+    assert "gen_ai.output.messages" not in attributes
