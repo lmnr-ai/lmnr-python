@@ -1,261 +1,54 @@
 """OpenTelemetry CUA instrumentation"""
 
-import logging
-from typing import Collection
-
-from lmnr.sdk.utils import get_input_from_func_args, json_dumps
-from lmnr import Laminar
-from lmnr.opentelemetry_lib.tracing.context import get_current_context
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry.instrumentation.utils import unwrap
+from collections.abc import Awaitable, Callable, Collection, Sequence
+from importlib.metadata import version
+from typing import Any, TypeVar
 
 from opentelemetry import trace
 from opentelemetry.trace import Span
 from opentelemetry.trace.status import Status, StatusCode
-from wrapt import wrap_function_wrapper
+from typing_extensions import override
 
-from .utils import payload_to_placeholder
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.cua_computer.utils import (
+    payload_to_placeholder,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
+    BaseLaminarInstrumentor,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WrappedFunctionSpec,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    stamp_instrumentation_scope,
+)
+from lmnr.opentelemetry_lib.tracing.context import get_current_context
+from lmnr.sdk.laminar import Laminar
+from lmnr.sdk.log import get_default_logger, levelToName
+from lmnr.sdk.utils import get_input_from_func_args, json_dumps
 
-logger = logging.getLogger(__name__)
+logger = get_default_logger(__name__)
 
 _instruments = ("cua-computer >= 0.4.0",)
 
 
-WRAPPED_METHODS = [
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "close",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "force_close",
-    },
-]
-WRAPPED_AMETHODS = [
-    {
-        "package": "computer.computer",
-        "object": "Computer",
-        "method": "__aenter__",
-        "action": "start_parent_span",
-    },
-    {
-        "package": "computer.computer",
-        "object": "Computer",
-        "method": "__aexit__",
-        "action": "end_parent_span",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "mouse_down",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "mouse_up",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "left_click",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "right_click",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "double_click",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "move_cursor",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "drag_to",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "drag",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "key_down",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "key_up",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "type_text",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "press",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "hotkey",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "scroll",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "scroll_down",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "scroll_up",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "screenshot",
-        "output_formatter": payload_to_placeholder,
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "get_screen_size",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "get_cursor_position",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "copy_to_clipboard",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "set_clipboard",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "file_exists",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "directory_exists",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "list_dir",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "read_text",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "write_text",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "read_bytes",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "write_bytes",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "delete_file",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "create_dir",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "delete_dir",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "get_file_size",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "run_command",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "get_accessibility_tree",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "to_screen_coordinates",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "get_active_window_bounds",
-    },
-    {
-        "package": "computer.interface.generic",
-        "object": "GenericComputerInterface",
-        "method": "to_screenshot_coordinates",
-    },
-]
+T = TypeVar("T")
 
 
-def _with_wrapper(func):
-    """Helper for providing tracer for wrapper functions. Includes metric collectors."""
+class CuaComputerSpec(WrappedFunctionSpec, total=False):
+    """cua-computer's per-method extras.
 
-    def wrapper(
-        to_wrap,
-    ):
-        def wrapper(wrapped, instance, args, kwargs):
-            return func(
-                to_wrap,
-                wrapped,
-                instance,
-                args,
-                kwargs,
-            )
+    `action` tags the two lifecycle methods that open/close the parent
+    `computer.run` span rather than tracing a call; `output_formatter` replaces
+    a large payload (e.g. a screenshot) with a placeholder before it is recorded.
+    """
 
-        return wrapper
-
-    return wrapper
+    action: str
+    output_formatter: Callable[[Any], Any]
 
 
-def add_input_to_parent_span(span, instance):
+def add_input_to_parent_span(span: Span, instance: Any):
     # api_key is skipped on purpose
     params = {}
     if hasattr(instance, "display"):
@@ -277,9 +70,9 @@ def add_input_to_parent_span(span, instance):
     if hasattr(instance, "verbosity"):
         if (
             isinstance(instance.verbosity, int)
-            and instance.verbosity in logging._levelToName
+            and instance.verbosity in levelToName
         ):
-            params["verbosity"] = logging._levelToName[instance.verbosity]
+            params["verbosity"] = levelToName[instance.verbosity]
         else:
             params["verbosity"] = instance.verbosity
     if hasattr(instance, "telemetry_enabled"):
@@ -298,34 +91,34 @@ def add_input_to_parent_span(span, instance):
         params["ephemeral"] = instance.ephemeral
     if hasattr(instance, "experiments"):
         params["experiments"] = instance.experiments
-    span.set_attribute("lmnr.span.input", json_dumps(params))
+    span.set_attribute("lmnr.span.input", json_dumps(params))  # pyright: ignore[reportUnknownArgumentType]
 
 
-@_with_wrapper
 def _wrap(
-    to_wrap,
-    wrapped,
-    instance,
-    args,
-    kwargs,
-):
+    to_wrap: CuaComputerSpec,
+    wrapped: Callable[..., T],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T:
     if to_wrap.get("action") == "start_parent_span":
         parent_span = Laminar.start_span("computer.run")
+        stamp_instrumentation_scope(parent_span, to_wrap)
         add_input_to_parent_span(parent_span, instance)
         result = wrapped(*args, **kwargs)
         try:
             instance._interface._lmnr_parent_span = parent_span
         except Exception:
-            pass
+            logger.debug("Failed to set parent span on CUA computer instance", exc_info=True)
         return result
     elif to_wrap.get("action") == "end_parent_span":
         result = wrapped(*args, **kwargs)
         try:
-            parent_span: Span = instance._interface._lmnr_parent_span
+            parent_span = instance._interface._lmnr_parent_span
             if parent_span and parent_span.is_recording():
                 parent_span.end()
         except Exception:
-            pass
+            logger.debug("Failed to get parent span from CUA computer instance", exc_info=True)
         return result
 
     # if there's no parent span, use
@@ -334,56 +127,57 @@ def _wrap(
         if instance._lmnr_parent_span:
             parent_span: Span = instance._lmnr_parent_span
     except Exception:
-        pass
+        logger.debug("Failed to get parent span from CUA computer instance", exc_info=True)
 
     with Laminar.use_span(parent_span):
         instance_name = "interface"
         with Laminar.start_as_current_span(
-            f"{instance_name}.{to_wrap.get('method')}", span_type="TOOL"
+            f"{instance_name}.{to_wrap['method_name']}", span_type="TOOL"
         ) as span:
+            stamp_instrumentation_scope(span, to_wrap)
             span.set_attribute(
                 "lmnr.span.input",
                 json_dumps(get_input_from_func_args(wrapped, True, args, kwargs)),
             )
             try:
                 result = wrapped(*args, **kwargs)
-            except Exception as e:  # pylint: disable=broad-except
+            except Exception as e:
                 span.set_status(Status(StatusCode.ERROR))
                 span.record_exception(e)
                 span.end()
                 raise
-            output_formatter = to_wrap.get("output_formatter") or (
-                lambda x: json_dumps(x)
+            output_formatter = to_wrap.get("output_formatter") or (  # pyright: ignore[reportUnknownVariableType]
+                lambda x: json_dumps(x)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
             )
             span.set_attribute("lmnr.span.output", output_formatter(result))
             return result
 
 
-@_with_wrapper
 async def _wrap_async(
-    to_wrap,
-    wrapped,
-    instance,
-    args,
-    kwargs,
-):
+    to_wrap: CuaComputerSpec,
+    wrapped: Callable[..., Awaitable[T]],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+)-> T:
     if to_wrap.get("action") == "start_parent_span":
         parent_span = Laminar.start_span("computer.run")
+        stamp_instrumentation_scope(parent_span, to_wrap)
         add_input_to_parent_span(parent_span, instance)
         result = await wrapped(*args, **kwargs)
         try:
             instance._interface._lmnr_parent_span = parent_span
         except Exception:
-            pass
+            logger.debug("Failed to set parent span on CUA computer instance", exc_info=True)
         return result
     elif to_wrap.get("action") == "end_parent_span":
         result = await wrapped(*args, **kwargs)
         try:
-            parent_span: Span = instance._interface._lmnr_parent_span
+            parent_span = instance._interface._lmnr_parent_span
             if parent_span and parent_span.is_recording():
                 parent_span.end()
         except Exception:
-            pass
+            logger.debug("Failed to get parent span from CUA computer instance", exc_info=True)
         return result
 
     # if there's no parent span, use
@@ -391,86 +185,353 @@ async def _wrap_async(
     try:
         parent_span: Span = instance._lmnr_parent_span
     except Exception:
-        pass
+        logger.debug("Failed to get parent span from CUA computer instance", exc_info=True)
 
     with Laminar.use_span(parent_span):
         instance_name = "interface"
         with Laminar.start_as_current_span(
-            f"{instance_name}.{to_wrap.get('method')}",
+            f"{instance_name}.{to_wrap['method_name']}",
             span_type="TOOL",
         ) as span:
+            stamp_instrumentation_scope(span, to_wrap)
             span.set_attribute(
                 "lmnr.span.input",
                 json_dumps(get_input_from_func_args(wrapped, True, args, kwargs)),
             )
             try:
                 result = await wrapped(*args, **kwargs)
-            except Exception as e:  # pylint: disable=broad-except
+            except Exception as e:
                 span.set_status(Status(StatusCode.ERROR))
                 span.record_exception(e)
                 span.end()
                 raise
-            output_formatter = to_wrap.get("output_formatter") or (
-                lambda x: json_dumps(x)
+            output_formatter = to_wrap.get("output_formatter") or (  # pyright: ignore[reportUnknownVariableType]
+                lambda x: json_dumps(x)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
             )
             span.set_attribute("lmnr.span.output", output_formatter(result))
             return result
 
 
-class CuaComputerInstrumentor(BaseInstrumentor):
-    def __init__(self):
-        super().__init__()
+WRAPPED_FUNCTIONS: list[CuaComputerSpec] = [
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="close",
+        is_async=False,
+        wrapper_function=_wrap,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="force_close",
+        is_async=False,
+        wrapper_function=_wrap,
+    ),
+    CuaComputerSpec(
+        package_name="computer.computer",
+        object_name="Computer",
+        method_name="__aenter__",
+        is_async=True,
+        action="start_parent_span",
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.computer",
+        object_name="Computer",
+        method_name="__aexit__",
+        is_async=True,
+        action="end_parent_span",
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="mouse_down",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="mouse_up",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="left_click",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="right_click",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="double_click",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="move_cursor",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="drag_to",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="drag",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="key_down",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="key_up",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="type_text",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="press",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="hotkey",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="scroll",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="scroll_down",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="scroll_up",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="screenshot",
+        is_async=True,
+        output_formatter=payload_to_placeholder,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="get_screen_size",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="get_cursor_position",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="copy_to_clipboard",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="set_clipboard",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="file_exists",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="directory_exists",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="list_dir",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="read_text",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="write_text",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="read_bytes",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="write_bytes",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="delete_file",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="create_dir",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="delete_dir",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="get_file_size",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="run_command",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="get_accessibility_tree",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="to_screen_coordinates",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="get_active_window_bounds",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+    CuaComputerSpec(
+        package_name="computer.interface.generic",
+        object_name="GenericComputerInterface",
+        method_name="to_screenshot_coordinates",
+        is_async=True,
+        wrapper_function=_wrap_async,
+    ),
+]
 
+
+class CuaComputerInstrumentor(BaseLaminarInstrumentor):
+    _scope: LaminarInstrumentationScopeAttributes | None = None
+
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
-    def _instrument(self, **kwargs):
-        for wrapped_method in WRAPPED_METHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            wrap_method = wrapped_method.get("method")
-
+    @override
+    def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
+        if self._scope is None:
             try:
-                wrap_function_wrapper(
-                    wrap_package,
-                    f"{wrap_object}.{wrap_method}",
-                    _wrap(wrapped_method),
-                )
-            except ModuleNotFoundError:
-                pass  # that's ok, we don't want to fail if some methods do not exist
+                cua_version = version("cua-computer")
+            except Exception:
+                logger.debug("Failed to get cua-computer version", exc_info=True)
+                cua_version = "unknown"
+            self._scope = LaminarInstrumentationScopeAttributes(
+                name="cua-computer",
+                version=cua_version,
+            )
+        return self._scope
 
-        for wrapped_method in WRAPPED_AMETHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            wrap_method = wrapped_method.get("method")
-            try:
-                wrap_function_wrapper(
-                    wrap_package,
-                    f"{wrap_object}.{wrap_method}",
-                    _wrap_async(wrapped_method),
-                )
-            except ModuleNotFoundError:
-                pass  # that's ok, we don't want to fail if some methods do not exist
-
-    def _uninstrument(self, **kwargs):
-        for wrapped_method in WRAPPED_METHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            try:
-                unwrap(
-                    f"{wrap_package}.{wrap_object}",
-                    wrapped_method.get("method"),
-                )
-            except ModuleNotFoundError:
-                pass  # that's ok, we don't want to fail if some methods do not exist
-
-        for wrapped_method in WRAPPED_AMETHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            try:
-                unwrap(
-                    f"{wrap_package}.{wrap_object}",
-                    wrapped_method.get("method"),
-                )
-            except ModuleNotFoundError:
-                pass  # that's ok, we don't want to fail if some methods do not exist
+    def __init__(self):
+        super().__init__()
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
+            wrapped_functions=[
+                {**spec, "instrumentation_scope": self.instrumentation_scope()}
+                for spec in WRAPPED_FUNCTIONS
+            ]
+        )

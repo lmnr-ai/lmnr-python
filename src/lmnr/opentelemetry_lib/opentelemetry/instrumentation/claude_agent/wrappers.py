@@ -2,157 +2,189 @@
 
 import asyncio
 import os
-from typing import Any
-
-from lmnr import Laminar
-from lmnr.sdk.log import get_default_logger
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Sequence
+from typing import Any, cast
 
 from opentelemetry.trace import Status, StatusCode
+from opentelemetry.trace.span import Span
+from typing_extensions import TypeVar
 
-from .proxy import create_proxy_for_transport, start_proxy, stop_proxy, _release_port
-from .span_utils import (
-    span_name,
+from lmnr.sdk.laminar import Laminar
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.proxy import (
+    create_proxy_for_transport,
+    release_port,
+    start_proxy,
+    stop_proxy,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.span_utils import (
+    publish_span_context_for_transport,
     record_input,
     record_output,
-    publish_span_context_for_transport,
+    span_name,
 )
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.types import (
+    CASLaminarContext,
+    ClaudeAgentSpec,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    add_spec_wrapper,
+    stamp_instrumentation_scope,
+)
+from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.types import LaminarSpanType
+
 from .utils import (
-    setup_proxy_env,
-    restore_env,
-    resolve_target_url_from_env,
-    is_truthy_env,
-    build_proxy_flag_settings,
-    read_claude_settings_env,
-    PROXY_BASE_URL_ENV_KEYS,
-    PROXY_ENV_KEYS,
+    BEDROCK_BASE_URL_ENV,
+    BEDROCK_USE_ENV,
     FOUNDRY_BASE_URL_ENV,
     FOUNDRY_RESOURCE_ENV,
     FOUNDRY_USE_ENV,
-    BEDROCK_BASE_URL_ENV,
-    BEDROCK_USE_ENV,
+    PROXY_BASE_URL_ENV_KEYS,
+    PROXY_ENV_KEYS,
     VERTEX_BASE_URL_ENV,
     VERTEX_USE_ENV,
+    build_proxy_flag_settings,
+    is_truthy_env,
+    read_claude_settings_env,
+    resolve_target_url_from_env,
+    restore_env,
+    setup_proxy_env,
 )
 
 logger = get_default_logger(__name__)
 
 # Timeout for cleanup operations to prevent hanging on stuck underlying calls
 DEFAULT_CLEANUP_TIMEOUT = 4.0
+T = TypeVar("T")
 
 
-def wrap_sync(to_wrap: dict[str, Any]):
+def wrap_sync(
+    to_wrap: ClaudeAgentSpec,
+    wrapped: Callable[..., T],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T:
     """Wrapper for synchronous methods."""
 
-    def wrapper(wrapped, instance, args, kwargs):
-        with Laminar.start_as_current_span(
-            span_name(to_wrap),
-            span_type=to_wrap.get("span_type", "DEFAULT"),
-        ) as span:
-            record_input(span, wrapped, args, kwargs)
+    with Laminar.start_as_current_span(
+        span_name(to_wrap),
+        span_type=cast(LaminarSpanType, to_wrap.get("span_type") or "DEFAULT"),
+    ) as span:
+        stamp_instrumentation_scope(span, to_wrap)
+        record_input(span, wrapped, args, kwargs)
 
-            try:
-                result = wrapped(*args, **kwargs)
-            except Exception as e:  # pylint: disable=broad-except
-                span.set_status(Status(StatusCode.ERROR))
-                span.record_exception(e)
-                raise
+        try:
+            result = wrapped(*args, **kwargs)
+        except Exception as e:
+            span.set_status(Status(StatusCode.ERROR))
+            span.record_exception(e)
+            raise
 
-            record_output(span, to_wrap, result)
-            return result
-
-    return wrapper
+        record_output(span, to_wrap, result)
+        return result
 
 
-def wrap_async(to_wrap: dict[str, Any]):
+async def wrap_async(
+    to_wrap: ClaudeAgentSpec,
+    wrapped: Callable[..., Awaitable[T]],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T:
     """Wrapper for async methods."""
 
-    async def wrapper(wrapped, instance, args, kwargs):
-        with Laminar.start_as_current_span(
-            span_name(to_wrap),
-            span_type=to_wrap.get("span_type", "DEFAULT"),
-        ) as span:
-            record_input(span, wrapped, args, kwargs)
+    with Laminar.start_as_current_span(
+        span_name(to_wrap),
+        span_type=cast(LaminarSpanType, to_wrap.get("span_type") or "DEFAULT"),
+    ) as span:
+        stamp_instrumentation_scope(span, to_wrap)
+        record_input(span, wrapped, args, kwargs)
 
-            if to_wrap.get("should_publish_span_context"):
-                # Get transport from instance (ClaudeSDKClient._transport)
+        # Get transport from instance (ClaudeSDKClient._transport)
+        if to_wrap.get("should_publish_span_context") and hasattr(instance, "_transport"):
+            publish_span_context_for_transport(instance._transport)
+
+        try:
+            result = await wrapped(*args, **kwargs)
+        except Exception as e:
+            span.set_status(Status(StatusCode.ERROR))
+            span.record_exception(e)
+            raise
+
+        record_output(span, to_wrap, result)
+
+        return result
+
+
+def wrap_async_gen(
+    to_wrap: ClaudeAgentSpec,
+    wrapped: Callable[..., AsyncGenerator[Any, Any]],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+):
+    """Wrapper for async generator methods (streaming)."""
+
+    async def generator():
+        span = Laminar.start_span(
+            span_name(to_wrap),
+            span_type=cast(LaminarSpanType, to_wrap.get("span_type") or "DEFAULT"),
+        )
+        stamp_instrumentation_scope(span, to_wrap)
+        collected = []
+        async_iter = None
+
+        if to_wrap.get("should_publish_span_context"):
+            with Laminar.use_span(span):
                 if hasattr(instance, "_transport"):
                     publish_span_context_for_transport(instance._transport)
 
-            try:
-                result = await wrapped(*args, **kwargs)
-            except Exception as e:  # pylint: disable=broad-except
+        try:
+            with Laminar.use_span(span):
+                record_input(span, wrapped, args, kwargs)
+                async_source = wrapped(*args, **kwargs)
+                async_iter = (
+                    async_source.__aiter__()
+                    if hasattr(async_source, "__aiter__")
+                    else async_source
+                )
+
+            while True:
+                try:
+                    with Laminar.use_span(
+                        span, record_exception=False, set_status_on_exception=False
+                    ):
+                        item = await async_iter.__anext__()
+                        collected.append(item) # pyright: ignore[reportUnknownMemberType]
+                except StopAsyncIteration:
+                    break
+                yield item
+        except GeneratorExit:
+            # User broke out of the loop - this is normal, don't record as error
+            raise
+        except asyncio.CancelledError:
+            # Request was cancelled (e.g., FastAPI client disconnect)
+            # Don't record as error, just propagate
+            raise
+        except Exception as e:
+            with Laminar.use_span(span):
                 span.set_status(Status(StatusCode.ERROR))
                 span.record_exception(e)
-                raise
+            raise
+        finally:
+            await _cleanup_async_iter(async_iter, span)
+            with Laminar.use_span(span):
+                record_output(span, to_wrap, collected)
+            span.end()
 
-            record_output(span, to_wrap, result)
-
-            return result
-
-    return wrapper
-
-
-def wrap_async_gen(to_wrap: dict[str, Any]):
-    """Wrapper for async generator methods (streaming)."""
-
-    def wrapper(wrapped, instance, args, kwargs):
-        async def generator():
-            span = Laminar.start_span(
-                span_name(to_wrap),
-                span_type=to_wrap.get("span_type", "DEFAULT"),
-            )
-            collected = []
-            async_iter = None
-
-            if to_wrap.get("should_publish_span_context"):
-                with Laminar.use_span(span):
-                    if hasattr(instance, "_transport"):
-                        publish_span_context_for_transport(instance._transport)
-
-            try:
-                with Laminar.use_span(span):
-                    record_input(span, wrapped, args, kwargs)
-                    async_source = wrapped(*args, **kwargs)
-                    async_iter = (
-                        async_source.__aiter__()
-                        if hasattr(async_source, "__aiter__")
-                        else async_source
-                    )
-
-                while True:
-                    try:
-                        with Laminar.use_span(
-                            span, record_exception=False, set_status_on_exception=False
-                        ):
-                            item = await async_iter.__anext__()
-                            collected.append(item)
-                    except StopAsyncIteration:
-                        break
-                    yield item
-            except GeneratorExit:
-                # User broke out of the loop - this is normal, don't record as error
-                raise
-            except asyncio.CancelledError:
-                # Request was cancelled (e.g., FastAPI client disconnect)
-                # Don't record as error, just propagate
-                raise
-            except Exception as e:  # pylint: disable=broad-except
-                with Laminar.use_span(span):
-                    span.set_status(Status(StatusCode.ERROR))
-                    span.record_exception(e)
-                raise
-            finally:
-                await _cleanup_async_iter(async_iter, span)
-                with Laminar.use_span(span):
-                    record_output(span, to_wrap, collected)
-                span.end()
-
-        return generator()
-
-    return wrapper
+    return generator()
 
 
-async def _cleanup_async_iter(async_iter, span) -> None:
+async def _cleanup_async_iter(
+    async_iter: AsyncGenerator[Any, Any] | AsyncIterator[Any] | None,
+    span: Span,
+) -> None:
     """
     Clean up an async iterator with timeout and cancellation protection.
 
@@ -167,148 +199,151 @@ async def _cleanup_async_iter(async_iter, span) -> None:
         with Laminar.use_span(span):
             # Shield from cancellation and add timeout to prevent hanging
             await asyncio.wait_for(
-                asyncio.shield(async_iter.aclose()), timeout=DEFAULT_CLEANUP_TIMEOUT
+                asyncio.shield(cast(AsyncGenerator[Any, Any], async_iter).aclose()),
+                timeout=DEFAULT_CLEANUP_TIMEOUT,
             )
     except BaseException:
         # Swallow all exceptions - cleanup failures are expected when:
         # - Subprocess already terminated (ProcessError)
         # - User broke out of generator early (GeneratorExit)
         # - Request was cancelled (CancelledError, TimeoutError)
-        pass
+        logger.debug("Expected BaseException when cleaning up CAS iterator")
 
 
-def wrap_transport_connect(to_wrap: dict[str, Any]):
+async def wrap_transport_connect(
+    _to_wrap: ClaudeAgentSpec,
+    wrapped: Callable[..., Awaitable[T]],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+)-> T:
     """Wrap Transport.connect to start proxy before connecting."""
-
-    async def wrapper(wrapped, instance, args, kwargs):
-        try:
-            from claude_agent_sdk._internal.transport.subprocess_cli import (
-                SubprocessCLITransport,
-            )
-        except (ImportError, ModuleNotFoundError):
-            logger.warning(
-                "Failed to import SubprocessCLITransport, skipping proxy setup"
-            )
-            return await wrapped(*args, **kwargs)
-
-        # Read options.env BEFORE modifying to avoid circular proxy config
-        options = getattr(instance, "_options", None)
-        env_dict = options.env if options is not None else {}
-        session_cwd = getattr(options, "cwd", None)
-        # Read the DOCUMENTED options.setting_sources only. Do not try to infer
-        # the SDK's private skills-based default (_apply_skills_defaults narrows
-        # this to user,project) — that is an internal we must not track. Reading
-        # a layer the CLI ignored is a safe over-read for upstream resolution:
-        # the flag layer still forces every base URL to the proxy.
-        setting_sources = getattr(options, "setting_sources", None)
-        target_url = resolve_target_url_from_env(
-            env_dict,
-            cwd=session_cwd,
-            setting_sources=setting_sources,
-            # options.settings is the highest layer the CLI reads and
-            # apply_settings_proxy_override rewrites its base URLs to the proxy.
-            settings=getattr(options, "settings", None),
+    try:
+        from claude_agent_sdk._internal.transport.subprocess_cli import (
+            SubprocessCLITransport,
         )
+    except (ImportError, ModuleNotFoundError):
+        logger.warning(
+            "Failed to import SubprocessCLITransport, skipping proxy setup"
+        )
+        return await wrapped(*args, **kwargs)
 
-        if target_url is None:
-            raise RuntimeError("Invalid provider configuration")
+    # Read options.env BEFORE modifying to avoid circular proxy config
+    options = getattr(instance, "_options", None)
+    env_dict = options.env if options is not None else {}  # pyright: ignore[reportUnknownVariableType]
+    session_cwd = getattr(options, "cwd", None)
+    # Read the DOCUMENTED options.setting_sources only. Do not try to infer
+    # the SDK's private skills-based default (_apply_skills_defaults narrows
+    # this to user,project) — that is an internal we must not track. Reading
+    # a layer the CLI ignored is a safe over-read for upstream resolution:
+    # the flag layer still forces every base URL to the proxy.
+    setting_sources = getattr(options, "setting_sources", None)
+    target_url = resolve_target_url_from_env(
+        env_dict,  # pyright: ignore[reportUnknownArgumentType]
+        cwd=session_cwd,
+        setting_sources=setting_sources,
+        # options.settings is the highest layer the CLI reads and
+        # apply_settings_proxy_override rewrites its base URLs to the proxy.
+        settings=getattr(options, "settings", None),
+    )
 
-        proxy = create_proxy_for_transport()
-        proxy_url = start_proxy(proxy, target_url=target_url)
+    if target_url is None:
+        raise RuntimeError("Invalid provider configuration")
 
-        # Custom transports use global env, SubprocessCLITransport uses options.env
-        is_custom = not isinstance(instance, SubprocessCLITransport)
+    proxy = create_proxy_for_transport()
+    proxy_url = start_proxy(proxy, target_url=target_url)
 
-        options_env_snapshot = {}
-        original_settings: Any = None
-        settings_overridden = False
-        if is_custom:
-            original_env = setup_proxy_env(proxy_url, session_cwd)
-            env_set_keys = {k for k, v in original_env.items() if v is not None}
-        else:
-            if options is not None:
-                options_env_snapshot = snapshot_options_env_for_proxy(options)
-                update_options_env_for_proxy(options, proxy_url, target_url)
-                original_settings = getattr(options, "settings", None)
-                settings_overridden = apply_settings_proxy_override(
-                    options, proxy_url
-                )
+    # Custom transports use global env, SubprocessCLITransport uses options.env
+    is_custom = not isinstance(instance, SubprocessCLITransport)
 
-            original_env = {}
-            env_set_keys = set()
+    options_env_snapshot = {}
+    original_settings: Any = None
+    settings_overridden = False
+    if is_custom:
+        original_env = setup_proxy_env(proxy_url, session_cwd)
+        env_set_keys = {k for k, v in original_env.items() if v is not None}
+    else:
+        if options is not None:
+            options_env_snapshot = snapshot_options_env_for_proxy(options)
+            update_options_env_for_proxy(options, proxy_url, target_url)
+            original_settings = getattr(options, "settings", None)
+            settings_overridden = apply_settings_proxy_override(options, proxy_url)
 
-            # Remove from os.environ (mutually exclusive with ANTHROPIC_BASE_URL)
-            if FOUNDRY_RESOURCE_ENV in os.environ:
-                original_env[FOUNDRY_RESOURCE_ENV] = os.environ[FOUNDRY_RESOURCE_ENV]
-                env_set_keys.add(FOUNDRY_RESOURCE_ENV)
-                os.environ.pop(FOUNDRY_RESOURCE_ENV)
+        original_env = {}
+        env_set_keys: set[str] = set()
 
-            # Prevent subprocess from routing through corporate proxy
-            for proxy_var in PROXY_ENV_KEYS:
-                if proxy_var in os.environ:
-                    original_env[proxy_var] = os.environ[proxy_var]
-                    env_set_keys.add(proxy_var)
-                    os.environ.pop(proxy_var)
+        # Remove from os.environ (mutually exclusive with ANTHROPIC_BASE_URL)
+        if FOUNDRY_RESOURCE_ENV in os.environ:
+            original_env[FOUNDRY_RESOURCE_ENV] = os.environ[FOUNDRY_RESOURCE_ENV]
+            env_set_keys.add(FOUNDRY_RESOURCE_ENV)
+            _popped_val = os.environ.pop(FOUNDRY_RESOURCE_ENV)
 
-        context: dict[str, Any] = {
-            "proxy": proxy,
-            "proxy_url": proxy_url,
-            "is_custom_transport": is_custom,
-            "original_env": original_env,
-            "env_set_keys": env_set_keys,
-            "options_env_snapshot": options_env_snapshot,
-            "original_settings": original_settings,
-            "settings_overridden": settings_overridden,
-        }
+        # Prevent subprocess from routing through corporate proxy
+        for proxy_var in PROXY_ENV_KEYS:
+            if proxy_var in os.environ:
+                original_env[proxy_var] = os.environ[proxy_var]
+                env_set_keys.add(proxy_var)
+                _popped_val = os.environ.pop(proxy_var)
 
-        instance.__lmnr_context = context
-        instance.__lmnr_wrapped = True
+    context: CASLaminarContext = {
+        "proxy": proxy,
+        "proxy_url": proxy_url,
+        "is_custom_transport": is_custom,
+        "original_env": original_env,
+        "env_set_keys": env_set_keys,
+        "options_env_snapshot": options_env_snapshot,
+        "original_settings": original_settings,
+        "settings_overridden": settings_overridden,
+    }
+
+    instance.__lmnr_context = context
+    instance.__lmnr_wrapped = True
+
+    try:
+        result = await wrapped(*args, **kwargs)
+        publish_span_context_for_transport(instance)
+        return result
+    except Exception:
+        stop_proxy(proxy)
+
+        if original_env:
+            restore_env(original_env, env_set_keys or set())
+
+        if options_env_snapshot and options is not None:
+            restore_options_env_from_snapshot(options, options_env_snapshot)
+
+        if settings_overridden and options is not None:
+            options.settings = original_settings
 
         try:
-            result = await wrapped(*args, **kwargs)
-            publish_span_context_for_transport(instance)
-            return result
+            delattr(instance, "__lmnr_context")
         except Exception:
-            stop_proxy(proxy)
-
-            if original_env:
-                restore_env(original_env, env_set_keys or set())
-
-            if options_env_snapshot and options is not None:
-                restore_options_env_from_snapshot(options, options_env_snapshot)
-
-            if settings_overridden and options is not None:
-                options.settings = original_settings
-
-            try:
-                delattr(instance, "__lmnr_context")
-            except Exception:
-                pass
-            raise
-
-    return wrapper
+            logger.debug("Failed to remove `__lmnr_context` from CC proxy instance", exc_info=True)
+        raise
 
 
-def wrap_transport_close(to_wrap: dict[str, Any]):
+async def wrap_transport_close(
+    _to_wrap: ClaudeAgentSpec,
+    wrapped: Callable[..., Awaitable[T]],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+)-> T:
     """Wrap Transport.close to stop proxy after closing."""
-
-    async def wrapper(wrapped, instance, args, kwargs):
-        try:
-            return await wrapped(*args, **kwargs)
-        finally:
-            await _cleanup_transport_context(instance)
-
-    return wrapper
+    try:
+        return await wrapped(*args, **kwargs)
+    finally:
+        await _cleanup_transport_context(instance)
 
 
-async def _cleanup_transport_context(instance) -> None:
+async def _cleanup_transport_context(instance: Any) -> None:
     """
     Cleanup proxy and restore environment when transport closes.
 
     Shields from cancellation and adds timeout to prevent hanging. Runs proxy stop
     in thread pool to avoid blocking event loop while ensuring cleanup completes.
     """
-    context: dict[str, Any] | None = getattr(instance, "__lmnr_context", None)
+    context: CASLaminarContext | None = getattr(instance, "__lmnr_context", None)
     if not context:
         return
 
@@ -327,13 +362,10 @@ async def _cleanup_transport_context(instance) -> None:
             # Release port immediately to prevent leaks
             # Must happen before background cleanup in case event loop shuts down
             proxy = context.get("proxy")
-            if proxy and hasattr(proxy, "_allocated_port"):
-                _release_port(proxy._allocated_port)  # type: ignore
+            if proxy and proxy.allocated_port is not None:
+                release_port(proxy.allocated_port)
                 # Prevent double-release in stop_proxy
-                try:
-                    delattr(proxy, "_allocated_port")
-                except Exception:
-                    pass
+                proxy.allocated_port = None
 
             if proxy:
                 try:
@@ -343,12 +375,12 @@ async def _cleanup_transport_context(instance) -> None:
                     try:
                         stop_proxy(proxy)
                     except Exception:
-                        pass
+                        logger.debug("failed to stop CAS proxy", exc_info=True)
         finally:
             try:
                 delattr(instance, "__lmnr_context")
             except Exception:
-                pass
+                logger.debug("failed to delete `__lmnr_context` from CAS proxy instance", exc_info=True)
 
     try:
         await asyncio.wait_for(
@@ -356,10 +388,10 @@ async def _cleanup_transport_context(instance) -> None:
         )
     except BaseException:
         # Swallow all exceptions - cleanup failures are expected
-        pass
+        logger.debug("Expected `BaseException` during CAS proxy cleanup", exc_info=True)
 
 
-def snapshot_options_env_for_proxy(options) -> dict[str, str | None]:
+def snapshot_options_env_for_proxy(options: Any) -> dict[str, str | None]:
     """
     Snapshot keys in options.env that will be modified by update_options_env_for_proxy.
 
@@ -391,10 +423,10 @@ def snapshot_options_env_for_proxy(options) -> dict[str, str | None]:
     for key in keys_to_snapshot:
         snapshot[key] = options.env.get(key)
 
-    return snapshot
+    return snapshot  # pyright: ignore [reportUnknownVariableType]
 
 
-def restore_options_env_from_snapshot(options, snapshot: dict[str, str | None]) -> None:
+def restore_options_env_from_snapshot(options: Any, snapshot: dict[str, str | None]) -> None:
     """
     Restore options.env from a snapshot created by snapshot_options_env_for_proxy.
 
@@ -411,7 +443,7 @@ def restore_options_env_from_snapshot(options, snapshot: dict[str, str | None]) 
             options.env[key] = value
 
 
-def apply_settings_proxy_override(options, proxy_url: str) -> bool:
+def apply_settings_proxy_override(options: Any, proxy_url: str) -> bool:
     """
     Point ``options.settings`` at the proxy so settings.json can't bypass it.
 
@@ -432,11 +464,11 @@ def apply_settings_proxy_override(options, proxy_url: str) -> bool:
 
     original = options.settings
     updated = build_proxy_flag_settings(
-        original, proxy_url, cwd=session_cwd, setting_sources=setting_sources
+        original, proxy_url, cwd=session_cwd, setting_sources=setting_sources,
     )
     if updated is None:
         logger.warning(
-            "Could not read options.settings %r; Claude Code settings that define "
+            "Could not read options.settings %r; Claude Code settings that define " +
             "a base URL will bypass the Laminar proxy and produce no LLM spans.",
             original,
         )
@@ -453,8 +485,8 @@ def apply_settings_proxy_override(options, proxy_url: str) -> bool:
     ]
     if conflicting:
         logger.info(
-            "Claude Code settings define %s, which outranks the subprocess "
-            "environment. Injected --settings so the Laminar proxy at %s still "
+            "Claude Code settings define %s, which outranks the subprocess " +
+            "environment. Injected --settings so the Laminar proxy at %s still " +
             "intercepts API traffic; your settings files were not modified.",
             ", ".join(sorted(conflicting)),
             proxy_url,
@@ -463,7 +495,7 @@ def apply_settings_proxy_override(options, proxy_url: str) -> bool:
     return True
 
 
-def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> None:
+def update_options_env_for_proxy(options: Any, proxy_url: str, target_url: str) -> None:
     """
     Update options.env to point subprocess to proxy.
 
@@ -524,90 +556,93 @@ def update_options_env_for_proxy(options, proxy_url: str, target_url: str) -> No
         options.env[VERTEX_BASE_URL_ENV] = proxy_url
 
 
-def wrap_query(to_wrap: dict[str, Any]):
+def wrap_query(
+    to_wrap: ClaudeAgentSpec,
+    wrapped: Callable[..., AsyncGenerator[T]],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> AsyncGenerator[T]:
     """Wrap query() function - handles custom transport wrapping."""
+    transport = kwargs.get("transport")
 
-    def wrapper(wrapped, instance, args, kwargs):
-        transport = kwargs.get("transport")
-
-        if transport:
-            try:
-                from claude_agent_sdk._internal.transport.subprocess_cli import (
-                    SubprocessCLITransport,
-                )
-
-                if not isinstance(transport, SubprocessCLITransport):
-                    wrap_custom_transport_if_needed(transport)
-            except (ImportError, ModuleNotFoundError):
-                wrap_custom_transport_if_needed(transport)
-
-        async def generator():
-            with Laminar.start_as_current_span(
-                span_name(to_wrap),
-                span_type=to_wrap.get("span_type", "DEFAULT"),
-            ) as span:
-                record_input(span, wrapped, args, kwargs)
-
-                collected = []
-                async_iter = None
-                try:
-                    async_iter = wrapped(*args, **kwargs)
-
-                    async for item in async_iter:
-                        collected.append(item)
-                        yield item
-                except GeneratorExit:
-                    raise
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    span.set_status(Status(StatusCode.ERROR))
-                    span.record_exception(e)
-                    raise
-                finally:
-                    await _cleanup_async_iter(async_iter, span)
-                    record_output(span, to_wrap, collected)
-
-        return generator()
-
-    return wrapper
-
-
-def wrap_client_init(to_wrap: dict[str, Any]):
-    """Wrap ClaudeSDKClient.__init__ to handle custom transport wrapping."""
-
-    def wrapper(wrapped, instance, args, kwargs):
+    if transport:
         try:
             from claude_agent_sdk._internal.transport.subprocess_cli import (
                 SubprocessCLITransport,
             )
+
+            if not isinstance(transport, SubprocessCLITransport):
+                wrap_custom_transport_if_needed(transport)
         except (ImportError, ModuleNotFoundError):
-            logger.warning(
-                "Failed to import SubprocessCLITransport, skipping proxy setup"
-            )
-            return wrapped(*args, **kwargs)
-
-        transport = None
-        if args and len(args) > 1:
-            transport = args[1]
-        if "transport" in kwargs:
-            transport = kwargs["transport"]
-
-        # If user provided a custom transport, wrap it for proxy lifecycle
-        # SubprocessCLITransport is already wrapped globally
-        if transport and not isinstance(transport, SubprocessCLITransport):
             wrap_custom_transport_if_needed(transport)
 
-        # Note: We don't pre-configure proxy URL here because we don't know the port
-        # until the proxy is actually created in wrap_transport_connect
+    async def generator() -> AsyncGenerator[Any, None]:
+        with Laminar.start_as_current_span(
+            span_name(to_wrap),
+            span_type=cast(LaminarSpanType, to_wrap.get("span_type") or "DEFAULT"),
+        ) as span:
+            stamp_instrumentation_scope(span, to_wrap)
+            record_input(span, wrapped, args, kwargs)
 
-        # Call original init
+            collected = []
+            async_iter = None
+            try:
+                async_iter = wrapped(*args, **kwargs)
+
+                async for item in async_iter:
+                    collected.append(item)  # pyright: ignore[reportUnknownMemberType]
+                    yield item
+            except GeneratorExit:
+                raise
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                span.set_status(Status(StatusCode.ERROR))
+                span.record_exception(e)
+                raise
+            finally:
+                await _cleanup_async_iter(async_iter, span)
+                record_output(span, to_wrap, collected)
+
+    return generator()
+
+
+def wrap_client_init(
+    _to_wrap: ClaudeAgentSpec,
+    wrapped: Callable[..., T],
+    _instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+) -> T:
+    """Wrap ClaudeSDKClient.__init__ to handle custom transport wrapping."""
+    try:
+        from claude_agent_sdk._internal.transport.subprocess_cli import (
+            SubprocessCLITransport,
+        )
+    except (ImportError, ModuleNotFoundError):
+        logger.warning("Failed to import SubprocessCLITransport, skipping proxy setup")
         return wrapped(*args, **kwargs)
 
-    return wrapper
+    transport = None
+    if args and len(args) > 1:
+        transport = args[1]
+    if "transport" in kwargs:
+        transport = kwargs["transport"]
+
+    # If user provided a custom transport, wrap it for proxy lifecycle
+    # SubprocessCLITransport is already wrapped globally
+    if transport and not isinstance(transport, SubprocessCLITransport):
+        wrap_custom_transport_if_needed(transport)
+
+    # Note: We don't pre-configure proxy URL here because we don't know the port
+    # until the proxy is actually created in wrap_transport_connect
+
+    # Call original init
+    return wrapped(*args, **kwargs)
 
 
-def wrap_custom_transport_if_needed(transport):
+def wrap_custom_transport_if_needed(transport: Any):
     """
     Dynamically wrap custom transport's connect/close methods.
 
@@ -620,8 +655,28 @@ def wrap_custom_transport_if_needed(transport):
 
     transport.__lmnr_wrapped = True
 
-    connect_wrapper = wrap_transport_connect({"is_transport_connect": True})
-    close_wrapper = wrap_transport_close({"is_transport_close": True})
+    # A custom transport is wrapped per-instance at runtime, so it has no row in
+    # WRAPPED_FUNCTIONS. `add_spec_wrapper` is the same adapter the instrumentor
+    # uses, binding a spec so the handler still gets the wrapt-shaped call.
+    # Neither transport handler reads the spec, so a minimal one is enough.
+    connect_wrapper = add_spec_wrapper(
+        wrap_transport_connect,
+        ClaudeAgentSpec(
+            package_name="",
+            method_name="connect",
+            is_async=True,
+            wrapper_function=wrap_transport_connect,
+        ),
+    )
+    close_wrapper = add_spec_wrapper(
+        wrap_transport_close,
+        ClaudeAgentSpec(
+            package_name="",
+            method_name="close",
+            is_async=True,
+            wrapper_function=wrap_transport_close,
+        ),
+    )
 
     original_connect = transport.connect
     original_close = transport.close

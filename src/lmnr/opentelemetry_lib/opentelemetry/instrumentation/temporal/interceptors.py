@@ -23,22 +23,31 @@ client patch, worker patch, and bundled workflow module) into one object.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from types import CoroutineType
 from typing import Any
 
 import temporalio.activity
 import temporalio.client
 import temporalio.worker
+from opentelemetry.trace import Span
+from typing_extensions import TypeVar, override
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.temporal.helpers import (
+    build_headers,
+    restore_context_from_headers,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.temporal.workflow_interceptor import (
+    LaminarWorkflowInboundInterceptor,
+)
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
 
-from .helpers import build_headers, restore_context_from_headers
-from .workflow_interceptor import LaminarWorkflowInboundInterceptor
-
 logger = get_default_logger(__name__)
 
+T = TypeVar("T")
 
 @dataclass
 class LaminarTemporalInterceptorOptions:
@@ -69,18 +78,22 @@ class LaminarTracingInterceptor(
     def __init__(
         self, options: LaminarTemporalInterceptorOptions | None = None
     ) -> None:
-        self.options = options or LaminarTemporalInterceptorOptions()
+        super().__init__()
+        self.options: LaminarTemporalInterceptorOptions = options or LaminarTemporalInterceptorOptions()
 
+    @override
     def intercept_client(
         self, next: temporalio.client.OutboundInterceptor
     ) -> temporalio.client.OutboundInterceptor:
         return _LaminarClientOutboundInterceptor(next, self)
 
+    @override
     def intercept_activity(
         self, next: temporalio.worker.ActivityInboundInterceptor
     ) -> temporalio.worker.ActivityInboundInterceptor:
         return _LaminarActivityInboundInterceptor(next, self)
 
+    @override
     def workflow_interceptor_class(
         self, input: temporalio.worker.WorkflowInterceptorClassInput
     ) -> type[temporalio.worker.WorkflowInboundInterceptor]:
@@ -94,8 +107,9 @@ class _LaminarClientOutboundInterceptor(temporalio.client.OutboundInterceptor):
         root: LaminarTracingInterceptor,
     ) -> None:
         super().__init__(next)
-        self.root = root
+        self.root: LaminarTracingInterceptor = root
 
+    @override
     async def start_workflow(
         self, input: temporalio.client.StartWorkflowInput
     ) -> temporalio.client.WorkflowHandle[Any, Any]:
@@ -117,6 +131,7 @@ class _LaminarClientOutboundInterceptor(temporalio.client.OutboundInterceptor):
         _wrap_workflow_handle(handle, span)
         return handle
 
+    @override
     async def signal_workflow(
         self, input: temporalio.client.SignalWorkflowInput
     ) -> None:
@@ -125,6 +140,7 @@ class _LaminarClientOutboundInterceptor(temporalio.client.OutboundInterceptor):
         )
         return await super().signal_workflow(input)
 
+    @override
     async def query_workflow(
         self, input: temporalio.client.QueryWorkflowInput
     ) -> Any:
@@ -133,6 +149,7 @@ class _LaminarClientOutboundInterceptor(temporalio.client.OutboundInterceptor):
         )
         return await super().query_workflow(input)
 
+    @override
     async def start_workflow_update(
         self, input: temporalio.client.StartWorkflowUpdateInput
     ) -> temporalio.client.WorkflowUpdateHandle[Any]:
@@ -143,7 +160,7 @@ class _LaminarClientOutboundInterceptor(temporalio.client.OutboundInterceptor):
 
 
 def _wrap_workflow_handle(
-    handle: temporalio.client.WorkflowHandle[Any, Any], span: Any
+    handle: temporalio.client.WorkflowHandle[Any, Any], span: Span,
 ) -> None:
     """Wrap a workflow handle so the lifecycle span ends on the FIRST terminal
     call — ``result()`` resolving/raising, ``cancel()`` or ``terminate()``.
@@ -175,13 +192,16 @@ def _wrap_workflow_handle(
         if isinstance(span, LaminarSpan):
             try:
                 span.set_output(res)
-            except Exception as e:
-                logger.debug(f"failed to set workflow span output: {e}")
+            except Exception:
+                logger.debug("failed to set workflow span output", exc_info=True)
         close()
         return res
 
-    def _wrap_terminating(name: str, orig: Any) -> Any:
-        async def terminating(*args: Any, **kwargs: Any) -> Any:
+    def _wrap_terminating(
+        name: str,
+        orig: Callable[..., CoroutineType[Any, Any, T]],
+    ) -> Callable[..., CoroutineType[Any, Any, T]]:
+        async def terminating(*args: Any, **kwargs: Any) -> T:
             if state["closed"]:
                 return await orig(*args, **kwargs)
             child = Laminar.start_span(
@@ -216,8 +236,9 @@ class _LaminarActivityInboundInterceptor(
         root: LaminarTracingInterceptor,
     ) -> None:
         super().__init__(next)
-        self.root = root
+        self.root: LaminarTracingInterceptor = root
 
+    @override
     async def execute_activity(
         self, input: temporalio.worker.ExecuteActivityInput
     ) -> Any:
@@ -249,6 +270,6 @@ class _LaminarActivityInboundInterceptor(
             ):
                 try:
                     span.set_output(res)
-                except Exception as e:
-                    logger.debug(f"failed to set activity span output: {e}")
+                except Exception:
+                    logger.debug("failed to set activity span output", exc_info=True)
             return res

@@ -1,6 +1,7 @@
+import csv
 from pathlib import Path
 from typing import Any
-import csv
+
 import orjson
 
 from lmnr.sdk.log import get_default_logger
@@ -20,7 +21,7 @@ def _collect_files(paths: list[Path], recursive: bool = False) -> list[Path]:
     Handles both files and directories. If a path is a directory,
     collects all supported files within it (recursively if specified).
     """
-    collected_files = []
+    collected_files: list[Path] = []
 
     for path in paths:
         if path.is_file():
@@ -46,7 +47,7 @@ def _read_file(file: Path) -> list[dict[str, Any]]:
     if file.suffix == ".json":
         result = orjson.loads(file.read_bytes())
         if isinstance(result, list):
-            return result
+            return result  # pyright: ignore[reportUnknownVariableType])
         else:
             return [result]
     elif file.suffix == ".csv":
@@ -73,14 +74,14 @@ def load_from_paths(paths: list[Path], recursive: bool = False) -> list[dict[str
 
     LOG.info(f"Found {len(files)} file(s) to read")
 
-    result = []
+    result: list[dict[str, Any]] = []
     for file in files:
         try:
             data = _read_file(file)
             result.extend(data)
             LOG.info(f"Read {len(data)} record(s) from {file}")
-        except Exception as e:
-            LOG.error(f"Error reading file {file}: {e}")
+        except Exception:
+            LOG.exception(f"Error reading file {file}")
             raise
 
     return result

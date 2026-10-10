@@ -1,19 +1,42 @@
 import asyncio
 import uuid
+from collections.abc import Callable, Collection, Coroutine, Sequence
+from importlib.metadata import version
+from typing import Any, TypeVar
 
-from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
-from lmnr.sdk.browser.utils import with_tracer_and_client_wrapper
-from lmnr.version import __version__
+from typing_extensions import override
+
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
+    BaseLaminarInstrumentor,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WrappedFunctionSpec,
+)
 from lmnr.sdk.browser.cdp_utils import (
     start_recording_events,
     take_full_snapshot,
 )
+from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
+from lmnr.sdk.log import get_default_logger
 
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-from opentelemetry.instrumentation.utils import unwrap
-from opentelemetry.trace import get_tracer, Tracer
-from typing import Collection
-from wrapt import wrap_function_wrapper
+logger = get_default_logger(__name__)
+
+#: `_wrap` returns exactly what `wrapped` returns, whatever that is per
+#: call site — bounding it lets pyright track that identity instead of
+#: widening to `Any`.
+T = TypeVar("T")
+
+
+class BrowserUseCdpSpec(WrappedFunctionSpec, total=False):
+    """browser-use CDP's per-method extra.
+
+    `action` selects what `process_wrapped_result` does with the return value —
+    these wrappers open no spans, they bootstrap session recording.
+    """
+
+    action: str
 
 # Stable versions, e.g. 0.6.0, satisfy this condition too
 _instruments = ("browser-use >= 0.6.0rc1",)
@@ -23,25 +46,15 @@ _instruments = ("browser-use >= 0.6.0rc1",)
 # so this must be a fast O(1) lookup instead of a CDP evaluate call.
 _initialized_sessions: set[str] = set()
 
-WRAPPED_METHODS = [
-    {
-        "package": "browser_use.browser.session",
-        "object": "BrowserSession",
-        "method": "get_or_create_cdp_session",
-        "action": "inject_session_recorder",
-    },
-    {
-        "package": "browser_use.browser.session",
-        "object": "BrowserSession",
-        "method": "on_SwitchTabEvent",
-        "action": "take_full_snapshot",
-    },
-]
 
-
-async def process_wrapped_result(result, instance, client, to_wrap):
+async def process_wrapped_result(
+    result: Any,
+    instance: Any,
+    client: AsyncLaminarClient,
+    to_wrap: BrowserUseCdpSpec,
+):
     if to_wrap.get("action") == "inject_session_recorder":
-        session_id = result.session_id
+        session_id = str(result.session_id)
         if session_id in _initialized_sessions:
             return
         # Add eagerly to prevent parallel calls from double-initializing
@@ -59,56 +72,89 @@ async def process_wrapped_result(result, instance, client, to_wrap):
         target_id = result
         if target_id:
             cdp_session = await instance.get_or_create_cdp_session(target_id)
-            await take_full_snapshot(cdp_session)
+            _success = await take_full_snapshot(cdp_session)
 
 
-@with_tracer_and_client_wrapper
 async def _wrap(
-    tracer: Tracer, client: AsyncLaminarClient, to_wrap, wrapped, instance, args, kwargs
-):
+    to_wrap: BrowserUseCdpSpec,
+    wrapped: Callable[..., Coroutine[Any, Any, T]],
+    instance: Any,
+    args: Sequence[Any],
+    kwargs: dict[str, Any],
+    *,
+    client: AsyncLaminarClient,
+) -> T:
     result = await wrapped(*args, **kwargs)
-    asyncio.create_task(process_wrapped_result(result, instance, client, to_wrap))
+    _process_task = asyncio.create_task(
+        process_wrapped_result(result, instance, client, to_wrap)
+    )
 
     return result
 
 
-class BrowserUseInstrumentor(BaseInstrumentor):
+WRAPPED_FUNCTIONS: list[BrowserUseCdpSpec] = [
+    BrowserUseCdpSpec(
+        package_name="browser_use.browser.session",
+        object_name="BrowserSession",
+        method_name="get_or_create_cdp_session",
+        is_async=True,
+        action="inject_session_recorder",
+        # `_wrap` takes a keyword-only `client`, forwarded via `wrapper_kwargs()`
+        # below (see wrapper_helpers.add_spec_wrapper) — WrapperHandler can't
+        # express that extra parameter, so this is a known-safe mismatch.
+        wrapper_function=_wrap,  # pyright: ignore[reportArgumentType]
+    ),
+    BrowserUseCdpSpec(
+        package_name="browser_use.browser.session",
+        object_name="BrowserSession",
+        method_name="on_SwitchTabEvent",
+        is_async=True,
+        action="take_full_snapshot",
+        wrapper_function=_wrap,  # pyright: ignore[reportArgumentType]
+    ),
+]
+
+
+class BrowserUseInstrumentor(BaseLaminarInstrumentor):
+    _scope: LaminarInstrumentationScopeAttributes | None = None
+
     def __init__(self, async_client: AsyncLaminarClient):
         super().__init__()
-        self.async_client = async_client
+        self.async_client: AsyncLaminarClient = async_client
+        self.instrumentor_config: LaminarInstrumentorConfig = LaminarInstrumentorConfig(
+            wrapped_functions=[
+                {**spec, "instrumentation_scope": self.instrumentation_scope()}
+                for spec in WRAPPED_FUNCTIONS
+            ]
+        )
 
+    @override
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
-    def _instrument(self, **kwargs):
-        tracer_provider = kwargs.get("tracer_provider")
-        tracer = get_tracer(__name__, __version__, tracer_provider)
-
-        for wrapped_method in WRAPPED_METHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            wrap_method = wrapped_method.get("method")
-
+    @override
+    def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
+        if self._scope is None:
             try:
-                wrap_function_wrapper(
-                    wrap_package,
-                    f"{wrap_object}.{wrap_method}",
-                    _wrap(
-                        tracer,
-                        self.async_client,
-                        wrapped_method,
-                    ),
-                )
-            except (ModuleNotFoundError, ImportError):
-                pass  # that's ok, we're not instrumenting everything
-
-    def _uninstrument(self, **kwargs):
-        for wrapped_method in WRAPPED_METHODS:
-            wrap_package = wrapped_method.get("package")
-            wrap_object = wrapped_method.get("object")
-            wrap_method = wrapped_method.get("method")
-
-            unwrap(
-                f"{wrap_package}.{wrap_object}" if wrap_object else wrap_package,
-                wrap_method,
+                bu_version = version("browser-use")
+            except Exception:
+                logger.debug("Failed to get browser-use version", exc_info=True)
+                bu_version = "unknown"
+            self._scope = LaminarInstrumentationScopeAttributes(
+                name="browser-use",
+                version=bu_version,
             )
+        return self._scope
+
+    @override
+    def wrapper_kwargs(self) -> dict[str, AsyncLaminarClient]:
+        # The client is instrumentor-level, not per-method, so it rides the
+        # base's handler-kwargs channel rather than being stuffed into each spec.
+        return {"client": self.async_client}
+
+    @override
+    def _uninstrument(self, **kwargs: dict[str, Any]):
+        super()._uninstrument(**kwargs)
+        # Session ids must not outlive the instrumentation: a stale entry would
+        # make a later run skip recorder injection for a reused session id.
+        _initialized_sessions.clear()

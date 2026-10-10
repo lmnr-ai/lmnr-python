@@ -1,9 +1,11 @@
-from openai import OpenAI
 import os
-from dotenv import load_dotenv
-from schemas import Ticket, TicketCategory, TicketClassification
 
-load_dotenv(override=True)
+from dotenv import load_dotenv
+from openai import OpenAI
+
+from .schemas import Ticket, TicketCategory, TicketClassification
+
+_success = load_dotenv(override=True)
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -29,5 +31,5 @@ Customer Email: {ticket.customer_email}""",
 
     return response.choices[0].message.parsed or TicketClassification(
         category=TicketCategory.OTHER,
-        reasoning=response.choices[0].message.content,
+        reasoning=response.choices[0].message.content or "",
     )

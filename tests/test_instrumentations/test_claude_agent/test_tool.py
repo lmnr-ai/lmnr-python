@@ -1,14 +1,17 @@
-import pytest
+from datetime import UTC
 from typing import Any
+
+import pytest
 from claude_agent_sdk import (
-    tool,
-    create_sdk_mcp_server,
     ClaudeAgentOptions,
     ClaudeSDKClient,
+    create_sdk_mcp_server,
+    tool,
+)
+from mock_transport import (  # pyright: ignore[reportImplicitRelativeImport]
+    MockClaudeTransport,
 )
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-
-from mock_transport import MockClaudeTransport
 
 
 @tool("calculate", "Perform mathematical calculations", {"expression": str})
@@ -18,7 +21,7 @@ async def calculate(args: dict[str, Any]) -> dict[str, Any]:
         return {"content": [{"type": "text", "text": f"Result: {result}"}]}
     except Exception as e:
         return {
-            "content": [{"type": "text", "text": f"Error: {str(e)}"}],
+            "content": [{"type": "text", "text": f"Error: {e!s}"}],
             "is_error": True,
         }
 
@@ -27,7 +30,7 @@ async def calculate(args: dict[str, Any]) -> dict[str, Any]:
 async def get_time(args: dict[str, Any]) -> dict[str, Any]:
     from datetime import datetime
 
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    current_time = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S")
     return {"content": [{"type": "text", "text": f"Current time: {current_time}"}]}
 
 
@@ -54,7 +57,7 @@ async def test_claude_agent_tool(span_exporter: InMemorySpanExporter):
             pass
 
     spans_tuple = span_exporter.get_finished_spans()
-    spans = sorted(list(spans_tuple), key=lambda x: x.start_time)
+    spans = sorted(spans_tuple, key=lambda x: x.start_time or 0)
 
     assert len(spans) == 9
     assert spans[0].name == "create_sdk_mcp_server"

@@ -1,6 +1,6 @@
 """SQL query resource for synchronous client."""
 
-from typing import Any
+from typing import Any, cast
 
 from lmnr.sdk.client.synchronous.resources.base import BaseResource
 from lmnr.sdk.log import get_default_logger
@@ -43,7 +43,7 @@ class Sql(BaseResource):
             headers=self._headers(),
             json=payload,
         )
-        response.raise_for_status()
+        _ = response.raise_for_status()
 
-        result = response.json()
+        result = cast(dict[str, list[Any]], response.json())
         return result.get("data", [])

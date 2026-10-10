@@ -1,5 +1,7 @@
 import os
 import threading
+from collections.abc import Generator
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -11,7 +13,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.utils imp
 _MONITOR_PREFIX = "proxy-monitor-"
 
 
-def _force_delenv(monkeypatch, key: str) -> None:
+def _force_delenv(monkeypatch: pytest.MonkeyPatch, key: str):
     """Delete ``key`` for the test and ensure undo deletes it if it was absent.
 
     ``monkeypatch.delenv(raising=False)`` is a no-op when the key is missing, so a
@@ -26,7 +28,7 @@ def _force_delenv(monkeypatch, key: str) -> None:
 
 
 @pytest.fixture(autouse=True)
-def isolate_claude_settings(tmp_path_factory, monkeypatch):
+def isolate_claude_settings(tmp_path_factory: MagicMock, monkeypatch: pytest.MonkeyPatch):
     """Keep every test away from the developer's real Claude settings.
 
     ``resolve_target_url_from_env`` / ``setup_proxy_env`` / ``read_claude_settings_env``
@@ -72,7 +74,7 @@ def cleanup_claude_proxy():
 
 
 @pytest.fixture(autouse=True)
-def no_leaked_proxy_monitor_threads():
+def no_leaked_proxy_monitor_threads() -> Generator[None]:
     """Fail the test that leaves a live proxy health-monitor thread behind.
 
     ``ProxyServer.run_server`` spawns a daemon ``proxy-monitor-<port>`` thread that
@@ -104,10 +106,10 @@ def start_claude_proxy():
     try:
         from lmnr_claude_code_proxy import run_server
 
-        run_server()
-    except Exception:
+        run_server()  # pyright: ignore[reportCallIssue] TODO: how?
+    except Exception as e:
         # Ignore errors if the proxy couldn't be started
-        pass
+        print(f"error running proxy {e!s}")
 
 
 def _cleanup_proxy():
@@ -116,6 +118,6 @@ def _cleanup_proxy():
         from lmnr_claude_code_proxy import stop_server
 
         stop_server()
-    except Exception:
+    except Exception as e:
         # Ignore errors if the proxy wasn't running or module not available
-        pass
+        print(f"error stopping proxy {e!s}")

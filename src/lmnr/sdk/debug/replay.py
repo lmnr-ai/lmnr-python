@@ -14,9 +14,10 @@ and consumed by the wrappers.
 import json
 from typing import Any
 
-from opentelemetry.trace import Span
+from opentelemetry.sdk.trace import Span
 
-from lmnr.sdk.debug import get_runtime
+from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
+from lmnr.sdk.debug import get_runtime, is_debug_run_live, set_debug_run_live
 from lmnr.sdk.debug.hash import debug_input_hash
 from lmnr.sdk.debug.outcome import CacheOutcome
 from lmnr.sdk.log import get_default_logger
@@ -45,7 +46,7 @@ def replay_enabled() -> bool:
     return runtime is not None and runtime.replay_configured
 
 
-def input_messages_from_span(span: Span | None) -> list[Any] | None:
+def input_messages_from_span(span: Span | LaminarSpan | None) -> list[Any] | None:
     """Read and parse the `gen_ai.input.messages` JSON off a live span.
 
     Every provider sets this attribute (via `json_dumps`) before the rollout
@@ -57,18 +58,18 @@ def input_messages_from_span(span: Span | None) -> list[Any] | None:
     if span is None:
         return None
     try:
-        raw = span.attributes.get(GEN_AI_INPUT_MESSAGES_ATTRIBUTE)
+        raw = (span.attributes or {}).get(GEN_AI_INPUT_MESSAGES_ATTRIBUTE)
         if not raw:
             return None
         messages = json.loads(raw) if isinstance(raw, str) else raw
         if isinstance(messages, list):
-            return messages
+            return messages  # pyright: ignore[reportUnknownVariableType]
     except Exception:
-        pass
+       logger.debug("Failed to get input mesages from span", exc_info=True)
     return None
 
 
-def cache_outcome_for(span: Span | None) -> CacheOutcome | None:
+def cache_outcome_for(span: Span | LaminarSpan | None) -> CacheOutcome | None:
     """Decide HIT / MISS / LIVE for one live LLM call (sync path).
 
     Returns None when there is nothing to do (debug off, replay not configured,
@@ -84,10 +85,7 @@ def cache_outcome_for(span: Span | None) -> CacheOutcome | None:
     runtime = get_runtime()
     if runtime is None or not runtime.replay_configured:
         return None
-    # Function-local import to avoid the laminar <-> debug import cycle.
-    from lmnr.sdk.laminar import Laminar
-
-    if Laminar.is_debug_run_live():
+    if is_debug_run_live():
         return CacheOutcome(kind="live")
     input_messages = input_messages_from_span(span)
     if input_messages is None:
@@ -100,11 +98,11 @@ def cache_outcome_for(span: Span | None) -> CacheOutcome | None:
         input_hash=input_hash,
     )
     if outcome.kind == "miss":
-        Laminar.set_debug_run_live(True)
+        set_debug_run_live(True)
     return outcome
 
 
-async def acache_outcome_for(span: Span | None) -> CacheOutcome | None:
+async def acache_outcome_for(span: Span | LaminarSpan | None) -> CacheOutcome | None:
     """Async variant of `cache_outcome_for` — uses the async cache client.
 
     Identical decision logic; only the cache HTTP is awaited through the
@@ -114,9 +112,7 @@ async def acache_outcome_for(span: Span | None) -> CacheOutcome | None:
     runtime = get_runtime()
     if runtime is None or not runtime.replay_configured:
         return None
-    from lmnr.sdk.laminar import Laminar
-
-    if Laminar.is_debug_run_live():
+    if is_debug_run_live():
         return CacheOutcome(kind="live")
     input_messages = input_messages_from_span(span)
     if input_messages is None:
@@ -129,11 +125,11 @@ async def acache_outcome_for(span: Span | None) -> CacheOutcome | None:
         input_hash=input_hash,
     )
     if outcome.kind == "miss":
-        Laminar.set_debug_run_live(True)
+        set_debug_run_live(True)
     return outcome
 
 
-def mark_span_cached(span: Span | None) -> None:
+def mark_span_cached(span: Span | LaminarSpan | None) -> None:
     """Stamp the CACHED boundary attributes the frontend renders (§9)."""
     try:
         if span and span.is_recording():
@@ -144,4 +140,4 @@ def mark_span_cached(span: Span | None) -> None:
                 }
             )
     except Exception:
-        pass
+        logger.debug("Failed to mark span as cached", exc_info=True)

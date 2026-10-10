@@ -6,21 +6,20 @@ from typing import TYPE_CHECKING, Any
 
 from opentelemetry.trace import Status, StatusCode
 
+from lmnr.sdk.log import get_default_logger
+
 if TYPE_CHECKING:
     from agents.tracing import Span as AgentsSpan
 
     from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
 
-from lmnr.opentelemetry_lib.tracing.attributes import Attributes
-from lmnr.sdk.utils import json_dumps
-
-from .helpers import (
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.helpers import (
     export_span_data,
     get_current_system_instructions,
     name_from_span_data,
     span_kind,
 )
-from .messages import (
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.messages import (
     apply_llm_attributes,
     response_to_llm_data,
     set_gen_ai_input_messages,
@@ -29,6 +28,10 @@ from .messages import (
     set_lmnr_span_io,
     set_tool_definitions_from_response,
 )
+from lmnr.opentelemetry_lib.tracing.attributes import Attributes
+from lmnr.sdk.utils import json_dumps
+
+logger = get_default_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Error handling
@@ -43,7 +46,7 @@ def apply_span_error(lmnr_span: LaminarSpan, span: AgentsSpan[Any]) -> None:
         message = getattr(error, "message", None) or str(error)
         lmnr_span.set_status(Status(StatusCode.ERROR, message))
     except Exception:
-        pass
+        logger.debug("Failed to apply span error", exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +232,7 @@ def _apply_speech_span_data(lmnr_span: LaminarSpan, span_data: Any) -> None:
     if output_data:
         if isinstance(output_data, dict):
             # Speech output is {data: ..., format: ...}
-            set_gen_ai_output_messages(lmnr_span, output_data.get("data"))
+            set_gen_ai_output_messages(lmnr_span, output_data.get("data"))  # pyright: ignore[reportUnknownMemberType]
         else:
             set_gen_ai_output_messages(lmnr_span, output_data)
 
@@ -247,7 +250,7 @@ def _apply_transcription_span_data(lmnr_span: LaminarSpan, span_data: Any) -> No
         input_data = getattr(span_data, "input", None)
     if input_data:
         if isinstance(input_data, dict):
-            set_gen_ai_input_messages(lmnr_span, input_data.get("data"))
+            set_gen_ai_input_messages(lmnr_span, input_data.get("data"))  # pyright: ignore[reportUnknownMemberType]
         else:
             set_gen_ai_input_messages(lmnr_span, input_data)
 

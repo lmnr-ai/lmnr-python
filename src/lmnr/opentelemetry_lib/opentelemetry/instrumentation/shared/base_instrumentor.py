@@ -1,32 +1,53 @@
-from abc import abstractmethod
+import importlib
+import sys
+from abc import ABC, abstractmethod
+from collections.abc import Callable
 from logging import Logger
 from typing import Any
 
-import importlib
-import sys
-
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.instrumentation.utils import unwrap
-from wrapt import wrap_function_wrapper, FunctionWrapper
+from typing_extensions import override
+from wrapt import FunctionWrapper, wrap_function_wrapper
 
-from .types import LaminarInstrumentationScopeAttributes, LaminarInstrumentorConfig
-from .wrapper_helpers import add_spec_wrapper
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
+    LaminarInstrumentationScopeAttributes,
+    LaminarInstrumentorConfig,
+    WraptWrapper,
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
+    add_spec_wrapper,
+)
 from lmnr.sdk.log import get_default_logger
 
 
-class BaseLaminarInstrumentor(BaseInstrumentor):
+class BaseLaminarInstrumentor(BaseInstrumentor, ABC):
     instrumentor_config: LaminarInstrumentorConfig
     logger: Logger = get_default_logger(__name__)
 
     # Store original functions for alias replacement and uninstrumentation
-    _module_function_originals: dict[tuple[str, str], Any] = {}
+    _module_function_originals: dict[tuple[str, str], Callable[..., Any]] | None = None
 
     @abstractmethod
     def instrumentation_scope(self) -> LaminarInstrumentationScopeAttributes:
         pass
 
+    def wrapper_kwargs(self) -> dict[str, Any]:
+        """Extra keyword arguments handed to every wrapper on every call.
+
+        Override when a wrapper needs an instrumentor-level collaborator that is
+        not per-method config and so does not belong in the spec — the browser
+        instrumentors use this to pass their `AsyncLaminarClient`. Returned
+        values are forwarded by `add_spec_wrapper`, so a wrapper receives them as
+        keyword-only arguments after `(to_wrap, wrapped, instance, args, kwargs)`.
+        """
+        return {}
+
     @staticmethod
-    def _replace_function_aliases(original, wrapped):
+    def _replace_function_aliases(
+        original: Callable[..., Any],
+        wrapped: Callable[..., Any],
+    ) -> None:
         """
         Replace all references to the original function across ALL loaded modules.
 
@@ -55,7 +76,7 @@ class BaseLaminarInstrumentor(BaseInstrumentor):
                         pass
 
     def _wrap_module_function_with_alias_replacement(
-        self, module_name: str, function_name: str, wrapper
+        self, module_name: str, function_name: str, wrapper: WraptWrapper
     ) -> bool:
         """
         Wrap a module-level function and replace all aliases across loaded modules.
@@ -80,21 +101,23 @@ class BaseLaminarInstrumentor(BaseInstrumentor):
         except AttributeError:
             return False
 
+        if self._module_function_originals is None:
+            self._module_function_originals = {}
         key = (module_name, function_name)
         if key not in self._module_function_originals:
             self._module_function_originals[key] = original
 
-        wrapped_function = FunctionWrapper(original, wrapper)
+        wrapped_function = FunctionWrapper(original, wrapper)  # pyright: ignore[reportUnknownVariableType]
         setattr(module, function_name, wrapped_function)
 
         # Replace all existing references to the original function across ALL loaded modules
-        self._replace_function_aliases(original, wrapped_function)
+        self._replace_function_aliases(original, wrapped_function)  # pyright: ignore[reportUnknownArgumentType]
 
         return True
 
     def _unwrap_module_function_with_alias_replacement(
         self, module_name: str, function_name: str
-    ):
+    ) -> None:
         """
         Restore the original function and replace all aliases back.
 
@@ -103,7 +126,7 @@ class BaseLaminarInstrumentor(BaseInstrumentor):
             function_name: The name of the function to unwrap
         """
         key = (module_name, function_name)
-        original = self._module_function_originals.get(key)
+        original = (self._module_function_originals or {}).get(key)
         if not original:
             return
 
@@ -115,10 +138,13 @@ class BaseLaminarInstrumentor(BaseInstrumentor):
         setattr(module, function_name, original)
         if current is not None:
             self._replace_function_aliases(current, original)
-        del self._module_function_originals[key]
+        if self._module_function_originals is not None:
+            del self._module_function_originals[key]
 
     # default implementation, can be overridden by subclasses
-    def _instrument(self, **kwargs):
+    @override
+    def _instrument(self, **kwargs: dict[str, Any]):
+        handler_kwargs = self.wrapper_kwargs()
         for wrapped_function_spec in self.instrumentor_config["wrapped_functions"]:
             package_name = wrapped_function_spec["package_name"]
             object_name = wrapped_function_spec.get("object_name")
@@ -130,7 +156,9 @@ class BaseLaminarInstrumentor(BaseInstrumentor):
 
             target = f"{object_name}.{method_name}" if object_name else method_name
 
-            wrapper = add_spec_wrapper(wrapper_function, wrapped_function_spec)
+            wrapper = add_spec_wrapper(
+                wrapper_function, wrapped_function_spec, **handler_kwargs
+            )
 
             try:
                 if replace_aliases and not object_name:
@@ -152,15 +180,16 @@ class BaseLaminarInstrumentor(BaseInstrumentor):
                     self.logger.debug(
                         f"Successfully instrumented {package_name}.{target}"
                     )
-            except (AttributeError, ModuleNotFoundError, ImportError) as e:
+            except (AttributeError, ModuleNotFoundError, ImportError):
                 # that's ok, we don't want to fail if some methods do not exist
-                self.logger.debug(f"Failed to instrument {package_name}.{target}: {e}")
-            except Exception as e:
-                self.logger.error(f"Failed to instrument {package_name}.{target}: {e}")
+                self.logger.debug(f"Failed to instrument {package_name}.{target}", exc_info=True)
+            except Exception:
+                self.logger.exception(f"Failed to instrument {package_name}.{target}")
                 # don't re-raise, we don't want to fail the entire program
 
     # default implementation, can be overridden by subclasses
-    def _uninstrument(self, **kwargs):
+    @override
+    def _uninstrument(self, **kwargs: dict[str, Any]):
         for wrapped_function_spec in self.instrumentor_config["wrapped_functions"]:
             package_name = wrapped_function_spec["package_name"]
             object_name = wrapped_function_spec.get("object_name")
@@ -181,9 +210,23 @@ class BaseLaminarInstrumentor(BaseInstrumentor):
                     # to be part of the path, not of the method name.
                     unwrap(f"{package_name}.{object_name}", method_name)
                 else:
-                    unwrap(package_name, method_name)
-            except Exception as e:
+                    # NOTE the split differs from `wrap_function_wrapper` above.
+                    # wrapt takes (module, "Object.method") and resolves the
+                    # dotted attribute path itself; `unwrap` takes
+                    # (holder, "attr") and does a single `getattr`. Passing
+                    # wrapt's split here makes `unwrap` look up an attribute
+                    # literally named "Object.method", find nothing, and return
+                    # silently — so uninstrument becomes a no-op that leaves
+                    # every method wrapped. Pinned by
+                    # tests/test_instrumentor_targets.py.
+                    holder = (
+                        f"{package_name}.{object_name}" if object_name
+                        else package_name
+                    )
+                    unwrap(holder, method_name)
+            except Exception:
                 self.logger.debug(
-                    f"Failed to uninstrument {package_name}.{target}: {e}"
+                    f"Failed to uninstrument {package_name}.{target}",
+                    exc_info=True,
                 )
                 # don't re-raise, we don't want to fail the entire program

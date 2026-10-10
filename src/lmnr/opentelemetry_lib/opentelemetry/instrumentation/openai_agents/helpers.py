@@ -3,11 +3,11 @@
 import contextvars
 from typing import Any
 
-from lmnr.sdk.types import LaminarSpanType
-from lmnr.sdk.log import get_default_logger
-
+from agents.tracing import Span
 from opentelemetry.context import create_key
-from pydantic import BaseModel
+
+from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.types import LaminarSpanType
 
 logger = get_default_logger(__name__)
 
@@ -45,7 +45,7 @@ def reset_current_system_instructions(
     _current_system_instructions.reset(token)
 
 
-def span_name(span: Any, span_data: Any) -> str:
+def span_name(span: Span[Any], span_data: Any) -> str:
     name = getattr(span, "name", None)
     if name:
         return name
@@ -79,7 +79,7 @@ def export_span_data(span_data: Any) -> dict[str, Any]:
         try:
             exported = span_data.export()
             if isinstance(exported, dict):
-                return exported
+                return exported  # pyright: ignore[reportUnknownVariableType]
         except Exception:
             return {}
     return {}
@@ -95,21 +95,21 @@ def normalize_messages(data: Any, role: str = "user") -> list[dict[str, Any]]:
 
     if isinstance(data, list):
         messages = []
-        for item in data:
+        for item in data:  # pyright: ignore[reportUnknownVariableType]
             if isinstance(item, dict):
-                messages.append(item)
-            elif hasattr(item, "model_dump"):
+                messages.append(item)  # pyright: ignore[reportUnknownMemberType]
+            elif hasattr(item, "model_dump"):  # pyright: ignore[reportUnknownArgumentType]
                 try:
-                    messages.append(item.model_dump())
+                    messages.append(item.model_dump())  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
                 except Exception:
-                    messages.append({"content": str(item)})
+                    messages.append({"content": str(item)})  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
             else:
                 item_dict = model_as_dict(item)
                 if item_dict:
-                    messages.append(item_dict)
+                    messages.append(item_dict)  # pyright: ignore[reportUnknownMemberType]
                 else:
-                    messages.append({"content": str(item)})
-        return messages
+                    messages.append({"content": str(item)})  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        return messages  # pyright: ignore[reportUnknownVariableType]
 
     if isinstance(data, dict):
         return [data]
@@ -127,17 +127,17 @@ def model_as_dict(obj: Any) -> dict[str, Any] | None:
     if obj is None:
         return None
     if isinstance(obj, dict):
-        return obj
+        return obj  # pyright: ignore[reportUnknownVariableType]
     if hasattr(obj, "model_dump"):
         try:
             return obj.model_dump()
         except Exception:
-            pass
+            logger.debug("failed to dump openai agents model", exc_info=True)
     if hasattr(obj, "dict"):
         try:
             return obj.dict()
         except Exception:
-            pass
+            logger.debug("failed to dump openai agents model", exc_info=True)
     if hasattr(obj, "__dict__"):
         return {k: v for k, v in obj.__dict__.items() if not k.startswith("_")}
     return None
@@ -145,15 +145,15 @@ def model_as_dict(obj: Any) -> dict[str, Any] | None:
 
 def name_from_span_data(agent: Any) -> str:
     if isinstance(agent, dict):
-        return agent.get("name") or ""
+        return agent.get("name") or "" ## pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
     if isinstance(agent, str):
         return agent
     if hasattr(agent, "name"):
-        return getattr(agent, "name") or ""
+        return getattr(agent, "name", "") or ""
     return ""
 
 
-def get_first_not_none(d: dict, *keys: str) -> Any:
+def get_first_not_none(d: dict[str, Any], *keys: str) -> Any:
     """Get the first key whose value is not None from a dict."""
     for key in keys:
         val = d.get(key)
@@ -171,21 +171,3 @@ def get_attr_not_none(obj: Any, *attrs: str) -> Any:
     return None
 
 
-def to_dict(
-    obj: BaseModel | dict, pydantic_kwargs: dict[str, Any] | None = None
-) -> dict[str, Any]:
-    try:
-        if isinstance(obj, BaseModel):
-            return obj.model_dump(**(pydantic_kwargs or {}))
-        elif isinstance(obj, dict):
-            return obj
-        elif obj is None:
-            return {}
-        else:
-            return dict(obj)
-    except Exception as e:
-        logger.debug(f"Error converting to dict: {obj}, error: {e}")
-        try:
-            return dict(obj)
-        except Exception:
-            return {}

@@ -11,17 +11,14 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from opentelemetry.context import get_value
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from typing_extensions import override
 
 from lmnr import Laminar
-from lmnr.opentelemetry_lib.tracing.context import (
-    CONTEXT_METADATA_KEY,
-    get_current_context,
-)
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.temporal.consts import (
     LAMINAR_SPAN_CONTEXT_HEADER,
     TRACEPARENT_HEADER,
@@ -41,10 +38,14 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.temporal.interceptors 
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.temporal.workflow_interceptor import (  # noqa: E501
     LaminarWorkflowInboundInterceptor,
 )
+from lmnr.opentelemetry_lib.tracing.context import (
+    CONTEXT_METADATA_KEY,
+    get_current_context,
+)
 from lmnr.sdk.types import DebugContext, LaminarSpanContext
 
 
-def _span_context(**kwargs) -> LaminarSpanContext:
+def _span_context(**kwargs: Any) -> LaminarSpanContext:
     """A LaminarSpanContext with a valid 64-bit span id.
 
     OTel span ids are 64-bit; `LaminarSpanContext` stores them padded into a
@@ -66,35 +67,35 @@ def _span_context(**kwargs) -> LaminarSpanContext:
 class _FakeClientNext:
     """Records what the wrapped client interceptor forwarded."""
 
-    def __init__(self, handle=None):
-        self.handle = handle or SimpleNamespace()
-        self.start_input = None
-        self.signal_input = None
-        self.query_input = None
-        self.update_input = None
+    def __init__(self, handle: Any = None):
+        self.handle: Any = handle or SimpleNamespace()
+        self.start_input: Any = None
+        self.signal_input: Any = None
+        self.query_input: Any = None
+        self.update_input: Any = None
 
-    async def start_workflow(self, input):
+    async def start_workflow(self, input: Any) -> Any:
         self.start_input = input
         return self.handle
 
-    async def signal_workflow(self, input):
+    async def signal_workflow(self, input: Any):
         self.signal_input = input
 
-    async def query_workflow(self, input):
+    async def query_workflow(self, input: Any) -> str:
         self.query_input = input
         return "query-result"
 
-    async def start_workflow_update(self, input):
+    async def start_workflow_update(self, input: Any) -> SimpleNamespace:
         self.update_input = input
         return SimpleNamespace()
 
 
 class _FakeActivityNext:
-    def __init__(self, result="activity-result"):
-        self.result = result
-        self.executed_input = None
+    def __init__(self, result: str = "activity-result"):
+        self.result: str = result
+        self.executed_input: Any = None
 
-    async def execute_activity(self, input):
+    async def execute_activity(self, input: Any):
         self.executed_input = input
         return self.result
 
@@ -103,17 +104,17 @@ class _RecordingWorkflowNext:
     """Inbound + outbound recorder for the workflow interceptor chain."""
 
     def __init__(self):
-        self.outbound = None
-        self.start_activity_input = None
-        self.start_local_activity_input = None
-        self.start_child_workflow_input = None
-        self.continue_as_new_input = None
+        self.outbound: Any = None
+        self.start_activity_input: Any = None
+        self.start_local_activity_input: Any = None
+        self.start_child_workflow_input: Any = None
+        self.continue_as_new_input: Any = None
 
     # inbound
-    def init(self, outbound):
+    def init(self, outbound: Any):
         self.outbound = outbound
 
-    async def execute_workflow(self, input):
+    async def execute_workflow(self, _input: Any) -> str:
         # Schedule an activity from inside the workflow body via the outbound
         # interceptor the chain handed us.
         self.outbound.start_activity(
@@ -121,31 +122,31 @@ class _RecordingWorkflowNext:
         )
         return "wf-result"
 
-    async def handle_signal(self, input):
+    async def handle_signal(self, _input: Any):
         self.outbound.start_activity(
             SimpleNamespace(activity="act", headers={})
         )
 
-    async def handle_update_handler(self, input):
+    async def handle_update_handler(self, _input: Any) -> str:
         self.outbound.start_activity(
             SimpleNamespace(activity="act", headers={})
         )
         return "update-result"
 
     # outbound
-    def start_activity(self, input):
+    def start_activity(self, input: Any) -> SimpleNamespace:
         self.start_activity_input = input
         return SimpleNamespace()
 
-    def start_local_activity(self, input):
+    def start_local_activity(self, input: Any) -> SimpleNamespace:
         self.start_local_activity_input = input
         return SimpleNamespace()
 
-    async def start_child_workflow(self, input):
+    async def start_child_workflow(self, input: Any) -> SimpleNamespace:
         self.start_child_workflow_input = input
         return SimpleNamespace()
 
-    def continue_as_new(self, input):
+    def continue_as_new(self, input: Any):
         self.continue_as_new_input = input
 
 
@@ -196,8 +197,8 @@ def test_restore_preserves_debug_block():
     restored = restore_context_from_headers(headers)
     assert restored is not None
     assert restored.debug is not None
-    assert restored.debug.enabled is True
-    assert restored.debug.cache_until == "abcdef"
+    assert restored.debug.get("enabled") is True
+    assert restored.debug.get("cache_until") == "abcdef"
 
 
 def test_restore_falls_back_to_traceparent():
@@ -227,18 +228,18 @@ async def test_start_workflow_injects_headers_and_spans(
     span_exporter.clear()
     root = LaminarTracingInterceptor()
     next_ = _FakeClientNext()
-    interceptor = _LaminarClientOutboundInterceptor(next_, root)
+    interceptor = _LaminarClientOutboundInterceptor(cast(Any, next_), root)
 
     handle = SimpleNamespace(
-        result=lambda *a, **k: None,
-        cancel=lambda *a, **k: None,
-        terminate=lambda *a, **k: None,
+        result=lambda *a, **k: None,  # pyright: ignore[reportUnknownLambdaType]
+        cancel=lambda *a, **k: None,  # pyright: ignore[reportUnknownLambdaType]
+        terminate=lambda *a, **k: None,  # pyright: ignore[reportUnknownLambdaType]
     )
     next_ = _FakeClientNext(handle=handle)
-    interceptor = _LaminarClientOutboundInterceptor(next_, root)
+    interceptor = _LaminarClientOutboundInterceptor(cast(Any, next_), root)
 
     input = SimpleNamespace(workflow="MyWorkflow", args=[1, 2], headers={})
-    returned = await interceptor.start_workflow(input)
+    returned = await interceptor.start_workflow(cast(Any, input))
 
     # Headers were injected on the forwarded input.
     assert LAMINAR_SPAN_CONTEXT_HEADER in next_.start_input.headers
@@ -259,11 +260,11 @@ async def test_signal_forwards_active_context(span_exporter: InMemorySpanExporte
     span_exporter.clear()
     root = LaminarTracingInterceptor()
     next_ = _FakeClientNext()
-    interceptor = _LaminarClientOutboundInterceptor(next_, root)
+    interceptor = _LaminarClientOutboundInterceptor(cast(Any, next_), root)
 
     with Laminar.start_as_current_span("caller"):
         input = SimpleNamespace(signal="sig", headers={})
-        await interceptor.signal_workflow(input)
+        await interceptor.signal_workflow(cast(Any, input))
 
     # Active caller span context was forwarded.
     assert LAMINAR_SPAN_CONTEXT_HEADER in next_.signal_input.headers
@@ -276,19 +277,19 @@ async def test_workflow_handle_lifecycle_span_ends_on_result(
     span_exporter.clear()
     root = LaminarTracingInterceptor()
 
-    async def _orig_result(*a, **k):
+    async def _orig_result(*_a: Any, **_k: Any) -> str:
         return "the-output"
 
     handle = SimpleNamespace(
         result=_orig_result,
-        cancel=lambda *a, **k: None,
-        terminate=lambda *a, **k: None,
+        cancel=lambda *a, **k: None,  # pyright: ignore[reportUnknownLambdaType]
+        terminate=lambda *a, **k: None,  # pyright: ignore[reportUnknownLambdaType]
     )
     next_ = _FakeClientNext(handle=handle)
-    interceptor = _LaminarClientOutboundInterceptor(next_, root)
+    interceptor = _LaminarClientOutboundInterceptor(cast(Any, next_), root)
 
     input = SimpleNamespace(workflow="W", args=["in"], headers={})
-    h = await interceptor.start_workflow(input)
+    h = await interceptor.start_workflow(cast(Any, input))
     result = await h.result()
     assert result == "the-output"
 
@@ -302,12 +303,12 @@ async def test_workflow_handle_lifecycle_span_ends_on_result(
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
 async def test_activity_restores_context_and_spans(
-    span_exporter: InMemorySpanExporter, monkeypatch
+    span_exporter: InMemorySpanExporter, monkeypatch: pytest.MonkeyPatch,
 ):
     span_exporter.clear()
     root = LaminarTracingInterceptor()
     next_ = _FakeActivityNext(result="out")
-    interceptor = _LaminarActivityInboundInterceptor(next_, root)
+    interceptor = _LaminarActivityInboundInterceptor(cast(Any, next_), root)
 
     parent = _span_context()
     headers = build_headers({}, parent)
@@ -318,13 +319,14 @@ async def test_activity_restores_context_and_spans(
     )
 
     input = SimpleNamespace(args=["a"], headers=headers)
-    result = await interceptor.execute_activity(input)
+    result = await interceptor.execute_activity(cast(Any, input))
     assert result == "out"
 
     spans = span_exporter.get_finished_spans()
     act = [s for s in spans if s.name == "MyActivity"]
     assert len(act) == 1
     # Parented to the propagated remote trace.
+    assert act[0].context is not None
     assert act[0].context.trace_id == parent.trace_id.int
 
 
@@ -337,13 +339,13 @@ async def test_activity_no_wrapper_span_when_disabled(
         LaminarTemporalInterceptorOptions(create_activity_span=False)
     )
     next_ = _FakeActivityNext(result="out")
-    interceptor = _LaminarActivityInboundInterceptor(next_, root)
+    interceptor = _LaminarActivityInboundInterceptor(cast(Any, next_), root)
 
     parent = _span_context()
     headers = build_headers({}, parent)
     input = SimpleNamespace(args=["a"], headers=headers)
 
-    result = await interceptor.execute_activity(input)
+    result = await interceptor.execute_activity(cast(Any, input))
     assert result == "out"
     assert next_.executed_input is input
     # No wrapper span named after the activity is created.
@@ -363,26 +365,28 @@ async def test_activity_disabled_still_nests_inner_spans(
     )
 
     class _InnerSpanNext(_FakeActivityNext):
-        async def execute_activity(self, input):
+        @override
+        async def execute_activity(self, input: Any) -> str:
             # Simulate a user `observe`/manual span inside the activity body.
             with Laminar.start_as_current_span("inner-work"):
                 pass
             return await super().execute_activity(input)
 
     next_ = _InnerSpanNext(result="out")
-    interceptor = _LaminarActivityInboundInterceptor(next_, root)
+    interceptor = _LaminarActivityInboundInterceptor(cast(Any, next_), root)
 
     parent = _span_context()
     headers = build_headers({}, parent)
     input = SimpleNamespace(args=["a"], headers=headers)
 
-    result = await interceptor.execute_activity(input)
+    result = await interceptor.execute_activity(cast(Any, input))
     assert result == "out"
 
     spans = span_exporter.get_finished_spans()
     inner = [s for s in spans if s.name == "inner-work"]
     assert len(inner) == 1
     # The inner span joined the propagated trace and parents to the remote span.
+    assert inner[0].context is not None
     assert inner[0].context.trace_id == parent.trace_id.int
     assert inner[0].parent is not None
     assert inner[0].parent.span_id == parent.span_id.int & ((1 << 64) - 1)
@@ -395,10 +399,10 @@ async def test_activity_no_span_without_context(
     span_exporter.clear()
     root = LaminarTracingInterceptor()
     next_ = _FakeActivityNext(result="out")
-    interceptor = _LaminarActivityInboundInterceptor(next_, root)
+    interceptor = _LaminarActivityInboundInterceptor(cast(Any, next_), root)
 
     input = SimpleNamespace(args=["a"], headers={})
-    result = await interceptor.execute_activity(input)
+    result = await interceptor.execute_activity(cast(Any, input))
     assert result == "out"
     assert span_exporter.get_finished_spans() == ()
 
@@ -428,19 +432,20 @@ async def test_activity_disabled_preserves_global_metadata(
     # Stand in for a debug run's global metadata stamped at init.
     global_meta = {"rollout.session_id": "sess-123"}
     prev_global = getattr(Laminar, "_Laminar__global_metadata", {})
-    Laminar._Laminar__global_metadata = global_meta
+    Laminar._Laminar__global_metadata = global_meta  # pyright: ignore[reportAttributeAccessIssue]
 
     captured: dict[str, Any] = {}
 
     class _CaptureNext(_FakeActivityNext):
-        async def execute_activity(self, input):
+        @override
+        async def execute_activity(self, input: Any) -> str:
             captured["metadata"] = get_value(
                 CONTEXT_METADATA_KEY, get_current_context()
             )
             return await super().execute_activity(input)
 
     next_ = _CaptureNext(result="out")
-    interceptor = _LaminarActivityInboundInterceptor(next_, root)
+    interceptor = _LaminarActivityInboundInterceptor(cast(Any, next_), root)
 
     # Parent context carries a DIFFERENT, non-empty metadata map.
     parent = LaminarSpanContext(
@@ -452,9 +457,9 @@ async def test_activity_disabled_preserves_global_metadata(
     input = SimpleNamespace(args=["a"], headers=headers)
 
     try:
-        result = await interceptor.execute_activity(input)
+        result = await interceptor.execute_activity(cast(Any, input))
     finally:
-        Laminar._Laminar__global_metadata = prev_global
+        Laminar._Laminar__global_metadata = prev_global  # pyright: ignore[reportAttributeAccessIssue]
 
     assert result == "out"
     # Both the global (debug) metadata AND the parent metadata survive on the
@@ -468,10 +473,10 @@ async def test_activity_disabled_preserves_global_metadata(
 # --------------------------------------------------------------------------- #
 # workflow inbound/outbound interceptor (sandbox-side header forwarding)
 # --------------------------------------------------------------------------- #
-def _wf_interceptor():
+def _wf_interceptor() -> tuple[LaminarWorkflowInboundInterceptor, Any]:
     next_ = _RecordingWorkflowNext()
-    inbound = LaminarWorkflowInboundInterceptor(next_)
-    inbound.init(next_)
+    inbound = LaminarWorkflowInboundInterceptor(cast(Any, next_))
+    inbound.init(cast(Any, next_))
     return inbound, next_
 
 
@@ -482,7 +487,7 @@ async def test_workflow_forwards_start_headers_to_activity():
     start_headers = build_headers({}, ctx)
 
     await inbound.execute_workflow(
-        SimpleNamespace(headers=start_headers)
+        cast(Any, SimpleNamespace(headers=start_headers))
     )
 
     forwarded = next_.start_activity_input.headers
@@ -497,12 +502,12 @@ async def test_workflow_signal_scopes_handler_headers():
     inbound, next_ = _wf_interceptor()
     start_ctx = _span_context()
     await inbound.execute_workflow(
-        SimpleNamespace(headers=build_headers({}, start_ctx))
+        cast(Any, SimpleNamespace(headers=build_headers({}, start_ctx)))
     )
 
     signal_ctx = _span_context()
     signal_headers = build_headers({}, signal_ctx)
-    await inbound.handle_signal(SimpleNamespace(headers=signal_headers))
+    await inbound.handle_signal(cast(Any, SimpleNamespace(headers=signal_headers)))
 
     # The activity scheduled inside the signal handler used the SIGNAL trace,
     # not the workflow-start trace.
@@ -518,10 +523,10 @@ async def test_workflow_signal_without_context_uses_start_headers():
     inbound, next_ = _wf_interceptor()
     start_ctx = _span_context()
     start_headers = build_headers({}, start_ctx)
-    await inbound.execute_workflow(SimpleNamespace(headers=start_headers))
+    await inbound.execute_workflow(cast(Any, SimpleNamespace(headers=start_headers)))
 
     # Signal with no injected trace context — must fall back to start headers.
-    await inbound.handle_signal(SimpleNamespace(headers={}))
+    await inbound.handle_signal(cast(Any, SimpleNamespace(headers={})))
     forwarded = next_.start_activity_input.headers
     assert (
         forwarded[LAMINAR_SPAN_CONTEXT_HEADER]
@@ -540,13 +545,13 @@ async def test_workflow_signal_with_undecodable_headers_uses_start_headers():
     inbound, next_ = _wf_interceptor()
     start_ctx = _span_context()
     start_headers = build_headers({}, start_ctx)
-    await inbound.execute_workflow(SimpleNamespace(headers=start_headers))
+    await inbound.execute_workflow(cast(Any, SimpleNamespace(headers=start_headers)))
 
     # Present-but-undecodable payload under a Laminar key (non-json/plain
     # encoding so the default converter raises rather than returning a string).
     junk = Payload(metadata={"encoding": b"binary/null"}, data=b"\x00\x01\x02")
     await inbound.handle_signal(
-        SimpleNamespace(headers={TRACEPARENT_HEADER: junk})
+        cast(Any, SimpleNamespace(headers={TRACEPARENT_HEADER: junk}))
     )
     forwarded = next_.start_activity_input.headers
     assert (

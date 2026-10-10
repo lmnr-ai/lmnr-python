@@ -16,10 +16,15 @@ use `runtime.client` / `runtime.async_client` to call the cache endpoint. When
 debug mode is off, `get_runtime()` returns None and everything is inert.
 """
 
+from __future__ import annotations
+
 import datetime
 import threading
-from typing import Any
+from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from lmnr.sdk.client.asynchronous.async_client import AsyncLaminarClient
+    from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 from lmnr.sdk.debug.config import (
     DebugConfig,
     build_debug_config,
@@ -27,6 +32,7 @@ from lmnr.sdk.debug.config import (
 )
 from lmnr.sdk.debug.pointer import build_debug_session_file, emit_pointer
 from lmnr.sdk.log import get_default_logger
+from lmnr.sdk.types import DebugContext
 
 logger = get_default_logger(__name__)
 
@@ -43,21 +49,21 @@ class DebugRuntime:
     def __init__(
         self,
         config: DebugConfig,
-        client: Any,
-        async_client: Any,
+        client: LaminarClient,
+        async_client: AsyncLaminarClient,
         debugger_url: str | None,
     ):
-        self._config = config
-        self._client = client
-        self._async_client = async_client
-        self._debugger_url = debugger_url
+        self._config: DebugConfig = config
+        self._client: LaminarClient = client
+        self._async_client: AsyncLaminarClient = async_client
+        self._debugger_url: str | None = debugger_url
         self._trace_id: str | None = None
         self._project_id: str | None = None
-        self._emitted = False
-        self._lock = threading.Lock()
+        self._emitted: bool = False
+        self._lock: threading.Lock = threading.Lock()
         # Captured at construction (SDK init) so the pointer's `started_at`
         # reflects when the run began, not when the pointer is emitted (shutdown).
-        self._started_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        self._started_at: str = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
     @property
     def session_id(self) -> str:
@@ -92,12 +98,12 @@ class DebugRuntime:
         return self._config.local_origin and self._config.session_minted
 
     @property
-    def client(self) -> Any:
+    def client(self) -> LaminarClient:
         """The retained synchronous `LaminarClient` for cache lookups."""
         return self._client
 
     @property
-    def async_client(self) -> Any:
+    def async_client(self) -> AsyncLaminarClient:
         """The retained asynchronous `AsyncLaminarClient` for cache lookups."""
         return self._async_client
 
@@ -218,6 +224,22 @@ class DebugRuntime:
 
 _runtime: DebugRuntime | None = None
 _initialized = False
+# Process-wide "run live" latch for v2 debugger replay (shared spec §7.3). Set
+# True on the first cache MISS so every later LLM call in this process skips the
+# cache endpoint and runs live; reset by `Laminar.shutdown()`. Lives here (not on
+# `Laminar`) so `replay.py` does not need to import `laminar`.
+_run_live = False
+
+
+def is_debug_run_live() -> bool:
+    """True once any LLM call in this run has seen a cache MISS."""
+    return _run_live
+
+
+def set_debug_run_live(value: bool) -> None:
+    """Latch (or reset) the process-wide debugger run-live flag."""
+    global _run_live
+    _run_live = value
 # Serializes the check-and-set of the one-shot init globals. Span creation runs
 # `init_debug_runtime_from_context` from arbitrary worker threads, so the
 # `_initialized` read and the `_runtime` write must be atomic or two threads
@@ -244,8 +266,8 @@ def reset_debug_runtime() -> None:
 
 
 def init_debug_runtime(
-    client: Any,
-    async_client: Any,
+    client: LaminarClient,
+    async_client: AsyncLaminarClient,
     debugger_url: str | None = None,
 ) -> DebugRuntime | None:
     """Build the debug runtime once. Idempotent; safe to call from initialize().
@@ -278,9 +300,9 @@ def init_debug_runtime(
 
 
 def init_debug_runtime_from_context(
-    debug: Any,
-    client: Any,
-    async_client: Any,
+    debug: DebugContext | None,
+    client: LaminarClient,
+    async_client: AsyncLaminarClient,
     debugger_url: str | None = None,
 ) -> tuple[DebugRuntime | None, bool]:
     """Arm OR refresh the debug runtime from a propagated `DebugContext`.
@@ -314,8 +336,8 @@ def init_debug_runtime_from_context(
 
     try:
         config = build_debug_config_from_context(debug)
-    except Exception as exc:
-        logger.debug("Failed to build debug config from context: %s", exc)
+    except Exception:
+        logger.debug("Failed to build debug config from context", exc_info=True)
         return None, False
     if config is None:
         # No coordinates to apply, but a runtime may already exist (env or a
