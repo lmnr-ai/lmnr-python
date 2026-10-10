@@ -17,7 +17,6 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.shared import (
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai.utils import (
     is_openai_v1,
 )
-from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import should_send_prompts
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     WrappedFunctionSpec,
 )
@@ -26,6 +25,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import (
     model_as_dict,
     safe_start_span,
     set_span_attribute,
+    should_send_prompts,
 )
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers import (
     stamp_instrumentation_scope,
@@ -124,7 +124,7 @@ def _handle_request(
     set_request_attributes(span, kwargs, instance)
 
     if should_send_prompts():
-        _set_prompts(span, cast(str|list[str], kwargs.get("input")))
+        _set_prompts(span, cast(str | list[str], kwargs.get("input")))
 
     set_client_attributes(span, instance)
 
@@ -144,10 +144,7 @@ def _handle_response(
     set_response_attributes(span, response_dict)
 
 
-def _set_prompts(
-    span: Span,
-    prompt: str | list[str]
-):
+def _set_prompts(span: Span, prompt: str | list[str]):
     if not span.is_recording() or not prompt:
         return
 

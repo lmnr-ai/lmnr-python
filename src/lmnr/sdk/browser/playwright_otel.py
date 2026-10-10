@@ -170,7 +170,7 @@ def _wrap_bring_to_front_sync(
     args: Sequence[Any],
     kwargs: dict[str, Any],
     *,
-    client: AsyncLaminarClient,  #pyright: ignore[reportUnusedParameter] set for compatibility with common wrappers though unused
+    client: AsyncLaminarClient,  # pyright: ignore[reportUnusedParameter] set for compatibility with common wrappers though unused
 ) -> None:
     wrapped(*args, **kwargs)
     _snapshot_taken = take_full_snapshot(instance)
@@ -183,7 +183,7 @@ async def _wrap_bring_to_front_async(
     args: Sequence[Any],
     kwargs: dict[str, Any],
     *,
-    client: AsyncLaminarClient,  #pyright: ignore[reportUnusedParameter] set for compatibility with common wrappers though unused
+    client: AsyncLaminarClient,  # pyright: ignore[reportUnusedParameter] set for compatibility with common wrappers though unused
 ) -> None:
     await wrapped(*args, **kwargs)
     _snapshot_taken = await take_full_snapshot_async(instance)
@@ -217,8 +217,6 @@ async def _wrap_browser_new_page_async(
     session_id = str(uuid.uuid4().hex)
     await start_recording_events_async(page, session_id, client)
     return page
-
-
 
 
 # Every wrapper below takes a keyword-only `client`, forwarded via

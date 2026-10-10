@@ -34,22 +34,22 @@ def test_anthropic_completion_legacy(
     anthropic_span = spans[0]
 
     # Verify input messages in new format
-    input_messages = json.loads(cast(str, (anthropic_span.attributes or {})["gen_ai.input.messages"]))
+    input_messages = json.loads(
+        cast(str, (anthropic_span.attributes or {})["gen_ai.input.messages"])
+    )
     assert len(input_messages) == 1
     assert input_messages[0]["role"] == "user"
-    assert (
-        input_messages[0]["content"]
-        == f"{HUMAN_PROMPT}\nHello world\n{AI_PROMPT}"
-    )
+    assert input_messages[0]["content"] == f"{HUMAN_PROMPT}\nHello world\n{AI_PROMPT}"
 
     # Verify output messages in new format
-    output_messages = json.loads(cast(str, (anthropic_span.attributes or {})["gen_ai.output.messages"]))
+    output_messages = json.loads(
+        cast(str, (anthropic_span.attributes or {})["gen_ai.output.messages"])
+    )
     assert len(output_messages) == 1
     assert output_messages[0]["role"] == "assistant"
     assert len(output_messages[0]["content"]) >= 1
     assert output_messages[0]["content"][0]["type"] == "text"
 
-    assert (
-        (anthropic_span.attributes or {}).get("gen_ai.response.id")
-        == "compl_01EjfrPvPEsRDRUKD6VoBxtK"
-    )
+    assert (anthropic_span.attributes or {}).get(
+        "gen_ai.response.id"
+    ) == "compl_01EjfrPvPEsRDRUKD6VoBxtK"

@@ -28,7 +28,6 @@ from opentelemetry.sdk.trace.export import (
     SpanExportResult,
 )
 from opentelemetry.trace import Link, Status, Tracer
-from opentelemetry.util.types import AttributeValue
 from typing_extensions import override
 
 from lmnr.opentelemetry_lib.tracing.batch_processor import (
@@ -61,6 +60,7 @@ _SPAN_BYTES = 4000
 _SPANS_PER_BATCH = 25
 
 logger = get_default_logger(__name__)
+
 
 class RecordingExporter(SpanExporter):
     def __init__(self):
@@ -174,9 +174,7 @@ def _wait_for(predicate: Callable[..., bool], timeout: float = 10.0) -> bool:
 
 
 def test_byte_limit_flushes_before_count_and_time_limits():
-    exporter, processor, tracer = _make_processor(
-        max_export_batch_size_bytes=_BYTE_LIMIT
-    )
+    exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=_BYTE_LIMIT)
 
     n_spans = _SPANS_PER_BATCH * 2 + 1
     for i in range(n_spans):
@@ -202,9 +200,7 @@ def test_byte_limit_flush_does_not_block_the_ending_thread():
     default: the previous implementation called `force_flush()` from `on_end`,
     which the load tests measured at a p99 of 664 ms.
     """
-    exporter, processor, tracer = _make_processor(
-        max_export_batch_size_bytes=_BYTE_LIMIT
-    )
+    exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=_BYTE_LIMIT)
     exporter.export_delay_s = 0.5
 
     latencies: list[float] = []
@@ -228,9 +224,7 @@ def test_a_producer_outrunning_the_flush_thread_is_back_pressured():
     `max_export_batch_size` instead. Measured before the inline fallback existed:
     95 MiB exports against a 16 MiB limit at a 512-span count limit.
     """
-    exporter, processor, tracer = _make_processor(
-        max_export_batch_size_bytes=_BYTE_LIMIT
-    )
+    exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=_BYTE_LIMIT)
     exporter.export_delay_s = 0.2
 
     # No pause between spans: the flush thread cannot keep up, so `on_end` has
@@ -329,9 +323,7 @@ def test_spans_at_half_the_limit_do_not_pair_up():
     34 MiB exports and tripled the 413 count.
     """
     # Spans at ~60% of the limit: over half, comfortably under the whole thing.
-    exporter, processor, tracer = _make_processor(
-        max_export_batch_size_bytes=_BYTE_LIMIT
-    )
+    exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=_BYTE_LIMIT)
     payload = int(_BYTE_LIMIT * 0.6)
 
     for i in range(6):
@@ -351,9 +343,7 @@ def test_spans_below_half_the_limit_are_handed_off():
     30% of the limit is under the threshold, so `on_end` must return without
     exporting.
     """
-    exporter, processor, tracer = _make_processor(
-        max_export_batch_size_bytes=_BYTE_LIMIT
-    )
+    exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=_BYTE_LIMIT)
     exporter.export_delay_s = 0.4
     payload = int(_BYTE_LIMIT * 0.3)
 
@@ -395,7 +385,7 @@ def test_unsampled_spans_are_not_counted():
     default_attributes = {"gen_ai.input.messages": "x" * 50_000}
 
     class _Unsampled:
-        name: str= "unsampled"
+        name: str = "unsampled"
         attributes: dict[str, str] = default_attributes
         events: tuple[Event, ...] = ()
         links: tuple[Link, ...] = ()
@@ -457,9 +447,7 @@ def test_spans_ending_during_an_export_are_not_lost():
     would swallow that request and leave the span buffered until the schedule
     delay — which the tests set to 10 minutes.
     """
-    exporter, processor, tracer = _make_processor(
-        max_export_batch_size_bytes=_BYTE_LIMIT
-    )
+    exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=_BYTE_LIMIT)
     exporter.export_delay_s = 0.3
 
     # Enough spans to trip the limit twice, paced so later spans arrive while the
@@ -590,9 +578,7 @@ def test_forked_child_can_still_flush_with_locks_held_at_fork():
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline and exporter.span_count == 0:
             time.sleep(0.05)
-        alive = any(
-            t.name == "LmnrSizeLimitedSpanFlush" for t in threading.enumerate()
-        )
+        alive = any(t.name == "LmnrSizeLimitedSpanFlush" for t in threading.enumerate())
         _result = report(f"exported={exporter.span_count} flush_thread_alive={alive}")
 
     try:
@@ -611,9 +597,7 @@ def test_forked_child_can_still_flush_with_locks_held_at_fork():
 
 @_fork_required
 def test_fork_reinit_replaces_inherited_locks_and_resets_state():
-    exporter, processor, tracer = _make_processor(
-        max_export_batch_size_bytes=_BYTE_LIMIT
-    )
+    exporter, processor, tracer = _make_processor(max_export_batch_size_bytes=_BYTE_LIMIT)
     _emit(tracer, "before-fork", payload_size=_SPAN_BYTES)
     assert processor._pending_size_bytes > 0
 
@@ -688,9 +672,7 @@ def test_utf8_size_is_within_five_percent_of_the_real_encoding(text: str):
     actual = len(text.encode("utf-8"))
     estimate = utf8_size(text)
 
-    assert abs(estimate - actual) / actual < 0.05, (
-        f"estimated {estimate}, actual {actual}"
-    )
+    assert abs(estimate - actual) / actual < 0.05, f"estimated {estimate}, actual {actual}"
 
 
 @pytest.mark.parametrize(
@@ -754,8 +736,7 @@ def test_default_is_the_plain_upstream_batch_processor():
     # The 64-span default is Laminar's, applied here rather than left to OTel's
     # own default of 512 — and it must hold on the default path too.
     assert (
-        processor.instance._batch_processor._max_export_batch_size
-        == DEFAULT_MAX_EXPORT_BATCH_SIZE
+        processor.instance._batch_processor._max_export_batch_size == DEFAULT_MAX_EXPORT_BATCH_SIZE
     )
 
 
@@ -768,13 +749,9 @@ def test_flush_by_size_opts_into_the_size_limited_batch_processor():
     )
 
     assert isinstance(processor.instance, SizeLimitedBatchSpanProcessor)
+    assert processor.instance._max_export_batch_size_bytes == DEFAULT_MAX_EXPORT_BATCH_SIZE_BYTES
     assert (
-        processor.instance._max_export_batch_size_bytes
-        == DEFAULT_MAX_EXPORT_BATCH_SIZE_BYTES
-    )
-    assert (
-        processor.instance._batch_processor._max_export_batch_size
-        == DEFAULT_MAX_EXPORT_BATCH_SIZE
+        processor.instance._batch_processor._max_export_batch_size == DEFAULT_MAX_EXPORT_BATCH_SIZE
     )
 
 

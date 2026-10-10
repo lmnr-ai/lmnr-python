@@ -67,6 +67,7 @@ class LaminarProxyServer:
             laminar_url=laminar_url,
         )
 
+
 # Thread-safe port allocation
 _PORT_LOCK = threading.Lock()
 _DEFAULT_PORT = 45667
@@ -108,8 +109,8 @@ def _allocate_port() -> int:
                 _next_port = _DEFAULT_PORT + attempts
                 if _next_port > 65535:
                     raise RuntimeError(
-                        f"All {max_ports} proxy ports are in use. " +
-                        "Increase LMNR_CC_PROXY_MAX_PORTS or wait for ports to be released."
+                        f"All {max_ports} proxy ports are in use. "
+                        + "Increase LMNR_CC_PROXY_MAX_PORTS or wait for ports to be released."
                     )
 
         port = _next_port
@@ -135,9 +136,7 @@ def create_proxy_for_transport() -> LaminarProxyServer:
     return LaminarProxyServer(ProxyServer(port=port), allocated_port=port)
 
 
-def start_proxy(
-    proxy: LaminarProxyServer, target_url: str, max_retries: int = 10
-) -> str:
+def start_proxy(proxy: LaminarProxyServer, target_url: str, max_retries: int = 10) -> str:
     """
     Start a proxy server, retrying with different ports if occupied.
 

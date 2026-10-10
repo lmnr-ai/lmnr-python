@@ -27,12 +27,8 @@ def test_clear_context_observe(span_exporter: InMemorySpanExporter):
     assert len(spans) == 2
     outer_span = next(s for s in spans if s.name == "outer")
     inner_span = next(s for s in spans if s.name == "inner")
-    assert (outer_span.attributes or {})[
-        "lmnr.association.properties.user_id"
-    ] == "test_user_id_1"
-    assert (inner_span.attributes or {})[
-        "lmnr.association.properties.user_id"
-    ] == "test_user_id_2"
+    assert (outer_span.attributes or {})["lmnr.association.properties.user_id"] == "test_user_id_1"
+    assert (inner_span.attributes or {})["lmnr.association.properties.user_id"] == "test_user_id_2"
 
     assert inner_span.parent is None or inner_span.parent.span_id == INVALID_SPAN_ID
     inner_context = inner_span.get_span_context()
@@ -53,12 +49,8 @@ def test_clear_context_start_as_current_span(span_exporter: InMemorySpanExporter
     assert len(spans) == 2
     outer_span = next(s for s in spans if s.name == "outer")
     inner_span = next(s for s in spans if s.name == "inner")
-    assert (outer_span.attributes or {})[
-        "lmnr.association.properties.user_id"
-    ] == "test_user_id_1"
-    assert (inner_span.attributes or {})[
-        "lmnr.association.properties.user_id"
-    ] == "test_user_id_2"
+    assert (outer_span.attributes or {})["lmnr.association.properties.user_id"] == "test_user_id_1"
+    assert (inner_span.attributes or {})["lmnr.association.properties.user_id"] == "test_user_id_2"
 
     assert inner_span.parent is None or inner_span.parent.span_id == INVALID_SPAN_ID
     inner_context = inner_span.get_span_context()
@@ -81,12 +73,8 @@ def test_clear_context_start_active_span(span_exporter: InMemorySpanExporter):
     assert len(spans) == 2
     outer_span = next(s for s in spans if s.name == "outer")
     inner_span = next(s for s in spans if s.name == "inner")
-    assert (outer_span.attributes or {})[
-        "lmnr.association.properties.user_id"
-    ] == "test_user_id_1"
-    assert (inner_span.attributes or {})[
-        "lmnr.association.properties.user_id"
-    ] == "test_user_id_2"
+    assert (outer_span.attributes or {})["lmnr.association.properties.user_id"] == "test_user_id_1"
+    assert (inner_span.attributes or {})["lmnr.association.properties.user_id"] == "test_user_id_2"
 
     assert inner_span.parent is None or inner_span.parent.span_id == INVALID_SPAN_ID
     inner_context = inner_span.get_span_context()

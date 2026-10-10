@@ -33,6 +33,7 @@ from lmnr.sdk.client.synchronous.sync_client import LaminarClient
 
 T = TypeVar("T")
 
+
 def _spec(**overrides: Any) -> WrappedFunctionSpec:
     base = WrappedFunctionSpec(
         package_name="pkg",
@@ -115,7 +116,7 @@ def test_add_spec_wrapper_forwards_handler_kwargs():
         _args: Sequence[Any],
         _kwargs: dict[str, Any],
         *,
-        client: LaminarClient
+        client: LaminarClient,
     ):
         seen["client"] = client
 
@@ -199,7 +200,9 @@ def test_safe_start_span_honors_span_kind(span_exporter: InMemorySpanExporter):
     assert (exported.attributes or {})["lmnr.span.type"] == "LLM"
 
 
-def test_safe_start_span_default_path_still_goes_through_laminar(span_exporter: InMemorySpanExporter):
+def test_safe_start_span_default_path_still_goes_through_laminar(
+    span_exporter: InMemorySpanExporter,
+):
     """Without start_time/kind the helper must keep using the public
     `Laminar.start_span`, which is what applies Laminar's own span bookkeeping."""
     span = safe_start_span("plain", span_type="TOOL")
@@ -252,9 +255,7 @@ def test_wrapper_kwargs_defaults_to_empty_and_reaches_the_wrapper():
         wrapped_functions=[_spec(wrapper_function=handler)]
     )
 
-    add_spec_wrapper(handler, _spec(), **inst.wrapper_kwargs())(
-        lambda: None, None, (), {}
-    )
+    add_spec_wrapper(handler, _spec(), **inst.wrapper_kwargs())(lambda: None, None, (), {})
     assert seen["extra"] == {"client": "sentinel"}
 
 
@@ -311,7 +312,6 @@ def test_span_creating_instrumentors_stamp_their_scope(package: str):
     assert creates_spans, f"{package} no longer creates spans; update this list"
 
     assert any(
-        "stamp_instrumentation_scope(" in src
-        or "set_instrumentation_scope_attributes(" in src
+        "stamp_instrumentation_scope(" in src or "set_instrumentation_scope_attributes(" in src
         for src in sources
     ), f"{package} creates spans but never stamps lmnr.span.instrumentation_scope.*"

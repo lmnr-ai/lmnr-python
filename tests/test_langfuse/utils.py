@@ -84,7 +84,11 @@ def reset_langfuse_bridge_state() -> None:
 class FakeSpan:
     """Minimal stand-in for `opentelemetry.sdk.trace.Span` + `ReadableSpan`."""
 
-    def __init__(self, attributes: dict[str, AttributeValue | dict[str, int]], scope_name: str = "langfuse-sdk"):
+    def __init__(
+        self,
+        attributes: dict[str, AttributeValue | dict[str, int]],
+        scope_name: str = "langfuse-sdk",
+    ):
         self._attributes: dict[str, AttributeValue] = cast(Any, dict(attributes))
         scope = MagicMock()
         scope.name = scope_name
@@ -120,7 +124,6 @@ def silence_langfuse_background_threads(instances: Iterable[Any]):
     """
     import atexit
 
-
     class _NoopExporter(SpanExporter):
         @override
         def export(self, spans: Sequence[ReadableSpan]):
@@ -137,9 +140,7 @@ def silence_langfuse_background_threads(instances: Iterable[Any]):
                 if hasattr(proc, "_batch_processor"):
                     proc._batch_processor._exporter = _NoopExporter()
 
-        task_manager = getattr(
-            getattr(instance, "prompt_cache", None), "_task_manager", None
-        )
+        task_manager = getattr(getattr(instance, "prompt_cache", None), "_task_manager", None)
         if task_manager is not None:
             atexit.unregister(task_manager.shutdown)
             for consumer in task_manager._consumers:

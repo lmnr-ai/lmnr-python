@@ -94,21 +94,13 @@ def set_instrumentation_scope_attributes(
     """
     if span is None or not scope:
         return
-    set_span_attribute(
-        span, "lmnr.span.instrumentation_scope.name", scope.get("name")
-    )
-    set_span_attribute(
-        span, "lmnr.span.instrumentation_scope.version", scope.get("version")
-    )
+    set_span_attribute(span, "lmnr.span.instrumentation_scope.name", scope.get("name"))
+    set_span_attribute(span, "lmnr.span.instrumentation_scope.version", scope.get("version"))
 
 
-def stamp_instrumentation_scope(
-    span: Span | None, to_wrap: WrappedFunctionSpec
-) -> None:
+def stamp_instrumentation_scope(span: Span | None, to_wrap: WrappedFunctionSpec) -> None:
     """Record which instrumentation produced this span, reading the spec.
 
     See `set_instrumentation_scope_attributes` for why these attributes exist.
     """
-    set_instrumentation_scope_attributes(
-        span, to_wrap.get("instrumentation_scope")
-    )
+    set_instrumentation_scope_attributes(span, to_wrap.get("instrumentation_scope"))

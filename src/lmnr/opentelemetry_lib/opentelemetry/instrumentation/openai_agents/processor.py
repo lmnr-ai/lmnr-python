@@ -27,7 +27,6 @@ if TYPE_CHECKING:
 
     from lmnr.sdk.types import LaminarSpanContext
 
-from lmnr.sdk.laminar import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.helpers import (
     DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY,
     export_span_data,
@@ -42,6 +41,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.openai_agents.span_dat
 )
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
 from lmnr.opentelemetry_lib.tracing.span import LaminarSpan
+from lmnr.sdk.laminar import Laminar
 
 logger = get_default_logger(__name__)
 
@@ -145,8 +145,7 @@ class LaminarAgentsTraceProcessor(_Base):
             # the subagent is nested under the handoff that triggered it.
             if span_kind(span_data) == "agent":
                 this_agent = name_from_span_data(
-                    export_span_data(span_data).get("name")
-                    or getattr(span_data, "name", None)
+                    export_span_data(span_data).get("name") or getattr(span_data, "name", None)
                 )
                 with self._lock:
                     handoff_ctx = state.pending_handoff_ctxs.pop(this_agent, None)
@@ -154,16 +153,17 @@ class LaminarAgentsTraceProcessor(_Base):
                     parent_ctx = handoff_ctx
 
             otel_ctx = get_current_context()
-            ctx = set_value(
-                DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY, True, otel_ctx
-            )
+            ctx = set_value(DISABLE_OPENAI_RESPONSES_INSTRUMENTATION_CONTEXT_KEY, True, otel_ctx)
 
-            lmnr_span = cast(LaminarSpan, Laminar.start_active_span(
-                name=name,
-                span_type=span_type,
-                parent_span_context=parent_ctx,
-                context=ctx,
-            ))
+            lmnr_span = cast(
+                LaminarSpan,
+                Laminar.start_active_span(
+                    name=name,
+                    span_type=span_type,
+                    parent_span_context=parent_ctx,
+                    context=ctx,
+                ),
+            )
             # Use span_id as key so parent_id lookups in on_span_start
             # match correctly. The SDK always generates a span_id.
             key = span.span_id
@@ -227,13 +227,9 @@ class LaminarAgentsTraceProcessor(_Base):
                     if to_agent:
                         parent_id = getattr(span, "parent_id", None)
                         with self._lock:
-                            parent_entry = (
-                                state.spans.get(parent_id) if parent_id else None
-                            )
+                            parent_entry = state.spans.get(parent_id) if parent_id else None
                         parent_lmnr_span = (
-                            parent_entry.lmnr_span
-                            if parent_entry is not None
-                            else state.root_span
+                            parent_entry.lmnr_span if parent_entry is not None else state.root_span
                         )
                         if parent_lmnr_span is not None:
                             handoff_ctx = parent_lmnr_span.get_laminar_span_context()
@@ -286,7 +282,7 @@ class LaminarAgentsTraceProcessor(_Base):
         # where a new on_span_end increments pending_ends between the
         # wait() return and the lock acquisition.
         for _ in range(3):  # bounded retries
-            _not_timeout =  state.pending_ends_done.wait(timeout=self._SHUTDOWN_TIMEOUT)
+            _not_timeout = state.pending_ends_done.wait(timeout=self._SHUTDOWN_TIMEOUT)
             with self._lock:
                 if state.pending_ends == 0:
                     remaining = list(state.spans.values())
@@ -317,7 +313,8 @@ class LaminarAgentsTraceProcessor(_Base):
             logger.debug("Failed to end root span", exc_info=True)
 
     def _get_or_create_trace(
-        self, trace_or_span: Trace | AgentsSpan[Any],
+        self,
+        trace_or_span: Trace | AgentsSpan[Any],
     ) -> _TraceState:
         trace_id = getattr(trace_or_span, "trace_id", None)
         if not trace_id:
@@ -333,9 +330,12 @@ class LaminarAgentsTraceProcessor(_Base):
             try:
                 # Use a generic name; on_trace_start will update it
                 # to the actual trace name via update_name.
-                root_span = cast(LaminarSpan, Laminar.start_active_span(
-                    "agents.trace",
-                ))
+                root_span = cast(
+                    LaminarSpan,
+                    Laminar.start_active_span(
+                        "agents.trace",
+                    ),
+                )
                 state.root_span = root_span
             except Exception:
                 state.failed = True
@@ -350,9 +350,7 @@ class LaminarAgentsTraceProcessor(_Base):
                 raise RuntimeError("Root span creation failed for this trace")
         return state
 
-    def _apply_trace_metadata(
-        self, root_span: LaminarSpan | None, trace: Trace
-    ) -> None:
+    def _apply_trace_metadata(self, root_span: LaminarSpan | None, trace: Trace) -> None:
         if root_span is None:
             return
         metadata: dict[str, Any] = {}

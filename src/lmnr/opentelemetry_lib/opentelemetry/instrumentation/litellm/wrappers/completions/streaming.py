@@ -144,31 +144,25 @@ def _set_accumulated_attributes(
                 {
                     "index": choice["index"],
                     # if the content is empty, set it to None
-                    "content": (
-                        choice["content"] if len(choice["content"]) > 0 else None
-                    ),
+                    "content": (choice["content"] if len(choice["content"]) > 0 else None),
                     "role": choice["role"],
                     "reasoning_content": choice["reasoning_content"] or None,
-                    "finish_reason": (
-                        choice["finish_reason"] if choice["finish_reason"] else None
-                    ),
+                    "finish_reason": (choice["finish_reason"] if choice["finish_reason"] else None),
                     "tool_calls": (
-                        list(choice["tool_calls"].values())
-                        if choice["tool_calls"]
-                        else None
+                        list(choice["tool_calls"].values()) if choice["tool_calls"] else None
                     ),
                 }
             )
 
         set_span_attribute(
-            span, "gen_ai.output.messages", json_dumps(formatted_choices)  # pyright: ignore[reportUnknownArgumentType]
+            span,
+            "gen_ai.output.messages",
+            json_dumps(formatted_choices),  # pyright: ignore[reportUnknownArgumentType]
         )
 
         if usage := accumulated.get("usage"):
             input_tokens = usage.get("prompt_tokens", usage.get("input_tokens", 0))
-            output_tokens = usage.get(
-                "completion_tokens", usage.get("output_tokens", 0)
-            )
+            output_tokens = usage.get("completion_tokens", usage.get("output_tokens", 0))
             total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
             set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, input_tokens)
             set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, output_tokens)
@@ -216,11 +210,7 @@ def _set_accumulated_attributes(
                         "index": choice["index"],
                         "message": {
                             "role": choice["role"],
-                            "content": (
-                                choice["content"]
-                                if len(choice["content"]) > 0
-                                else None
-                            ),
+                            "content": (choice["content"] if len(choice["content"]) > 0 else None),
                             "reasoning_content": (choice["reasoning_content"] or None),
                             "tool_calls": (
                                 list(choice["tool_calls"].values())

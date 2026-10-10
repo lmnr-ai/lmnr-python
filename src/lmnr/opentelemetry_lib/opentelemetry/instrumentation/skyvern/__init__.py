@@ -25,18 +25,19 @@ from lmnr.sdk.utils import JsonValue, get_input_from_func_args, json_dumps
 logger = get_default_logger(__name__)
 
 try:
-    from skyvern import Skyvern  # pyright: ignore[reportMissingImports]: TODO: Python 3.11 upgrade and install as a dev dep
+    from skyvern import Skyvern  # pyright: ignore[reportMissingImports]: # noqa: F401 TODO: Python 3.11 upgrade and install as a dev dep
 except ImportError as e:
     raise ImportError(
-        f"Attempted to import {__file__}, but it is designed " +
-        "to patch Skyvern, which is not installed. Use `pip install skyvern` " +
-        "to install Skyvern or remove this import."
+        f"Attempted to import {__file__}, but it is designed "
+        + "to patch Skyvern, which is not installed. Use `pip install skyvern` "
+        + "to install Skyvern or remove this import."
     ) from e
 
 _instruments = ("skyvern >= 0.1.0",)
 
 
 T = TypeVar("T")
+
 
 async def _wrap(
     to_wrap: WrappedFunctionSpec,
@@ -49,7 +50,7 @@ async def _wrap(
     attributes = {
         "lmnr.span.type": to_wrap.get("span_type"),
     }
-    attributes = {k: v for k,v in attributes.items() if v is not None}
+    attributes = {k: v for k, v in attributes.items() if v is not None}
 
     attributes["lmnr.span.input"] = json_dumps(
         get_input_from_func_args(wrapped, True, args, kwargs)
@@ -58,7 +59,9 @@ async def _wrap(
     # `Laminar.start_as_current_span` rather than a per-library tracer: this
     # instrumentor no longer receives one. The attributes are passed through
     # verbatim so the emitted span is unchanged.
-    with Laminar.start_as_current_span(span_name, attributes=cast(dict[str, AttributeValue], attributes)) as span:
+    with Laminar.start_as_current_span(
+        span_name, attributes=cast(dict[str, AttributeValue], attributes)
+    ) as span:
         stamp_instrumentation_scope(span, to_wrap)
         try:
             result = await wrapped(*args, **kwargs)
@@ -104,12 +107,14 @@ def instrument_llm_handler(
             "lmnr.span.type": "DEFAULT",
         }
 
-        with Laminar.start_as_current_span(span_name, attributes=cast(dict[str, AttributeValue], attributes)) as span:
+        with Laminar.start_as_current_span(
+            span_name, attributes=cast(dict[str, AttributeValue], attributes)
+        ) as span:
             set_instrumentation_scope_attributes(span, scope)
             try:
                 result = await original_handler(*args, **kwargs)  # pyright: ignore[reportUnknownVariableType]
 
-                to_serialize = result# pyright: ignore[reportUnknownVariableType]
+                to_serialize = result  # pyright: ignore[reportUnknownVariableType]
                 serialized = (
                     to_serialize.model_dump_json()
                     if isinstance(to_serialize, pydantic.BaseModel)
@@ -232,9 +237,7 @@ class SkyvernInstrumentor(BaseLaminarInstrumentor):
         # `_instrument` before any method was wrapped, so a single uninitialized
         # global left ALL seven unwrapped — skyvern tracing silently did nothing.
         try:
-            self._original_llm_handler = instrument_llm_handler(
-                self.instrumentation_scope()
-            )
+            self._original_llm_handler = instrument_llm_handler(self.instrumentation_scope())
         except Exception:
             logger.debug("Failed to instrument skyvern LLM_API_HANDLER", exc_info=True)
 

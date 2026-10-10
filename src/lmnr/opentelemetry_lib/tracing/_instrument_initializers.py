@@ -326,23 +326,23 @@ class LangfuseInstrumentorInitializer(InstrumentorInitializer):
         # valid install.
         if version is None:
             logger.warning(
-                "Could not read installed `langfuse` version; skipping " +
-                "Laminar/Langfuse bridge. Bridge requires langfuse >= 3.0."
+                "Could not read installed `langfuse` version; skipping "
+                + "Laminar/Langfuse bridge. Bridge requires langfuse >= 3.0."
             )
             return None
         try:
             parsed = parse(version)
         except InvalidVersion:
             logger.warning(
-                "Installed `langfuse` version %r is not a valid PEP 440 " +
-                "version; skipping Laminar/Langfuse bridge.",
+                "Installed `langfuse` version %r is not a valid PEP 440 "
+                + "version; skipping Laminar/Langfuse bridge.",
                 version,
             )
             return None
         if parsed < parse("3.0.0"):
             logger.warning(
-                "Langfuse SDK >= 3.0 is required for the Laminar/Langfuse " +
-                "bridge (found %s). Upgrade with `pip install -U langfuse`.",
+                "Langfuse SDK >= 3.0 is required for the Laminar/Langfuse "
+                + "bridge (found %s). Upgrade with `pip install -U langfuse`.",
                 version,
             )
             return None
@@ -379,13 +379,9 @@ class LitellmInstrumentorInitializer(InstrumentorInitializer):
 class LlamaIndexInstrumentorInitializer(InstrumentorInitializer):
     @override
     def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
-        if not (
-            is_package_installed(
-                "llama-index") or is_package_installed("llama_index")
-        ):
+        if not (is_package_installed("llama-index") or is_package_installed("llama_index")):
             return None
-        if not is_package_installed(
-                "opentelemetry-instrumentation-llamaindex"):
+        if not is_package_installed("opentelemetry-instrumentation-llamaindex"):
             return None
 
         from opentelemetry.instrumentation.llamaindex import LlamaIndexInstrumentor
@@ -570,10 +566,7 @@ class PlaywrightInstrumentorInitializer(InstrumentorInitializer):
 class PydanticAIInstrumentorInitializer(InstrumentorInitializer):
     @override
     def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
-        if not (
-            is_package_installed("pydantic-ai-slim")
-            or is_package_installed("pydantic-ai")
-        ):
+        if not (is_package_installed("pydantic-ai-slim") or is_package_installed("pydantic-ai")):
             return None
 
         from ..opentelemetry.instrumentation.pydantic_ai import (
@@ -662,8 +655,7 @@ class TransformersInstrumentorInitializer(InstrumentorInitializer):
     def init_instrumentor(self, *args: Any, **kwargs: Any) -> BaseInstrumentor | None:
         if not is_package_installed("transformers"):
             return None
-        if not is_package_installed(
-                "opentelemetry-instrumentation-transformers"):
+        if not is_package_installed("opentelemetry-instrumentation-transformers"):
             return None
 
         from opentelemetry.instrumentation.transformers import TransformersInstrumentor

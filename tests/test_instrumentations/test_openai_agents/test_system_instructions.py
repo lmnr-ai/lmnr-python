@@ -58,9 +58,7 @@ def test_set_gen_ai_input_messages_system_only_still_emits():
     """If the model was called with only system instructions and no other
     input, the span should still surface the system turn."""
     span, captured = _captured_attrs()
-    set_gen_ai_input_messages(
-        span, None, system_instructions="Always respond in French."
-    )
+    set_gen_ai_input_messages(span, None, system_instructions="Always respond in French.")
     messages = json.loads(cast(str, captured["gen_ai.input.messages"]))
     assert messages == [
         {

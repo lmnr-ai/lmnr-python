@@ -14,7 +14,7 @@ def retry_sync(
     func: Callable[[], T],
     retries: int = 5,
     delay: float = 0.5,
-    error_message: str = "Operation failed"
+    error_message: str = "Operation failed",
 ) -> T | None:
     """Utility function for retry logic in synchronous operations"""
     for attempt in range(retries):
@@ -37,7 +37,7 @@ async def retry_async(
     func: Callable[[], Awaitable[T]],
     retries: int = 5,
     delay: float = 0.5,
-    error_message: str = "Operation failed"
+    error_message: str = "Operation failed",
 ) -> T | None:
     """Utility function for retry logic in asynchronous operations"""
     for attempt in range(retries):

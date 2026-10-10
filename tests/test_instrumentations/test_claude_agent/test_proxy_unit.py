@@ -71,9 +71,7 @@ def test_snapshot_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("TEST_KEY1", "value1")
     monkeypatch.setenv("TEST_KEY2", "value2")
 
-    snapshot, set_keys = claude_utils.snapshot_env(
-        ["TEST_KEY1", "TEST_KEY2", "TEST_KEY3"]
-    )
+    snapshot, set_keys = claude_utils.snapshot_env(["TEST_KEY1", "TEST_KEY2", "TEST_KEY3"])
 
     assert snapshot["TEST_KEY1"] == "value1"
     assert snapshot["TEST_KEY2"] == "value2"
@@ -341,7 +339,7 @@ def test_start_proxy_server_fails(
 
     with (
         patch.object(proxy, "run_server", side_effect=Exception("Server error")),
-        pytest.raises(RuntimeError, match="Failed to start proxy")
+        pytest.raises(RuntimeError, match="Failed to start proxy"),
     ):
         _url = claude_proxy.start_proxy(proxy, "https://api.anthropic.com")
 
@@ -362,7 +360,7 @@ def test_start_proxy_not_ready(
         patch.object(proxy, "run_server"),
         patch.object(claude_proxy, "wait_for_port", return_value=False),
         patch.object(proxy, "stop_server") as mock_stop,
-        pytest.raises(RuntimeError, match="Proxy failed to start")
+        pytest.raises(RuntimeError, match="Proxy failed to start"),
     ):
         _url = claude_proxy.start_proxy(proxy, "https://api.anthropic.com")
 

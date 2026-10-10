@@ -36,9 +36,7 @@ class TestOtelEnvVarUtils:
         ):
             assert get_otel_env_var("ENDPOINT") == "http://otlp-endpoint"
 
-        with patch.dict(
-            os.environ, {"OTEL_ENDPOINT": "http://otel-endpoint"}, clear=False
-        ):
+        with patch.dict(os.environ, {"OTEL_ENDPOINT": "http://otel-endpoint"}, clear=False):
             assert get_otel_env_var("ENDPOINT") == "http://otel-endpoint"
 
     def test_get_otel_env_var_not_found(self):
@@ -92,9 +90,7 @@ class TestLaminarSpanExporterOtel:
 
     def test_otel_config_defaults(self):
         """Test OTEL config with defaults."""
-        with patch.dict(
-            os.environ, {"OTEL_ENDPOINT": "http://simple-endpoint"}, clear=True
-        ):
+        with patch.dict(os.environ, {"OTEL_ENDPOINT": "http://simple-endpoint"}, clear=True):
             exporter = LaminarSpanExporter()
 
             assert exporter.endpoint == "http://simple-endpoint"
@@ -154,14 +150,17 @@ class TestLaminarOtelInitialization:
 
     def test_laminar_config_takes_precedence(self):
         """Test Laminar config takes precedence over OTEL config."""
-        with patch.dict(
-            os.environ,
-            {
-                "LMNR_PROJECT_API_KEY": "laminar-key",
-                "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://custom-endpoint:4318",
-            },
-            clear=True,
-        ), patch("lmnr.sdk.laminar.init_tracing") as mock_init:
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "LMNR_PROJECT_API_KEY": "laminar-key",
+                    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://custom-endpoint:4318",
+                },
+                clear=True,
+            ),
+            patch("lmnr.sdk.laminar.init_tracing") as mock_init,
+        ):
             Laminar.initialize()
 
             mock_init.assert_called_once()
@@ -170,15 +169,16 @@ class TestLaminarOtelInitialization:
 
     def test_base_url_param_prevents_otel_config(self):
         """Test that providing base_url parameter prevents OTEL config."""
-        with patch.dict(
-            os.environ,
-            {"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://custom-endpoint:4318"},
-            clear=True,
-        ), patch("lmnr.sdk.laminar.init_tracing") as mock_init:
+        with (
+            patch.dict(
+                os.environ,
+                {"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://custom-endpoint:4318"},
+                clear=True,
+            ),
+            patch("lmnr.sdk.laminar.init_tracing") as mock_init,
+        ):
             # Need to provide API key when base_url is specified
-            Laminar.initialize(
-                base_url="https://custom.lmnr.ai", project_api_key="test-key"
-            )
+            Laminar.initialize(base_url="https://custom.lmnr.ai", project_api_key="test-key")
 
             mock_init.assert_called_once()
             call_kwargs = mock_init.call_args[1]
@@ -186,18 +186,22 @@ class TestLaminarOtelInitialization:
 
     def test_error_when_no_config_available(self):
         """Test error when neither Laminar nor OTEL config is available."""
-        with patch.dict(os.environ, {}, clear=True), pytest.raises(
-            ValueError, match="Please initialize the Laminar object"
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            pytest.raises(ValueError, match="Please initialize the Laminar object"),
         ):
             Laminar.initialize()
 
     def test_otel_config_with_explicit_api_key_fails(self):
         """Test that providing API key prevents OTEL config even with OTEL vars."""
-        with patch.dict(
-            os.environ,
-            {"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://custom-endpoint:4318"},
-            clear=True,
-        ), patch("lmnr.sdk.laminar.init_tracing") as mock_init:
+        with (
+            patch.dict(
+                os.environ,
+                {"OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://custom-endpoint:4318"},
+                clear=True,
+            ),
+            patch("lmnr.sdk.laminar.init_tracing") as mock_init,
+        ):
             Laminar.initialize(project_api_key="explicit-key")
 
             mock_init.assert_called_once()
@@ -218,16 +222,19 @@ class TestOtelConfigIntegration:
 
     def test_end_to_end_otel_initialization(self):
         """Test end-to-end OTEL initialization flow."""
-        with patch.dict(
-            os.environ,
-            {
-                "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://otel-collector:4318/v1/traces",
-                "OTEL_EXPORTER_OTLP_TRACES_HEADERS": "Authorization=Bearer%20otel-token,x-custom=value",
-                "OTEL_EXPORTER_OTLP_TRACES_TIMEOUT": "60s",
-                "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "http/protobuf",
-            },
-            clear=True,
-        ), patch("lmnr.sdk.laminar.init_tracing") as mock_init:
+        with (
+            patch.dict(
+                os.environ,
+                {
+                    "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT": "http://otel-collector:4318/v1/traces",
+                    "OTEL_EXPORTER_OTLP_TRACES_HEADERS": "Authorization=Bearer%20otel-token,x-custom=value",
+                    "OTEL_EXPORTER_OTLP_TRACES_TIMEOUT": "60s",
+                    "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL": "http/protobuf",
+                },
+                clear=True,
+            ),
+            patch("lmnr.sdk.laminar.init_tracing") as mock_init,
+        ):
             Laminar.initialize()
 
             # Verify init_tracing was called with OTEL config

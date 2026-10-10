@@ -10,6 +10,7 @@ from lmnr.sdk.types import SessionBlock, SessionBlockContent, SessionBlockType
 
 logger = get_default_logger(__name__)
 
+
 def _parse_cache_outcome(data: object) -> CacheOutcome:
     """Map app-server's `{outcome: hit|miss|live, response?}` body to CacheOutcome.
 
@@ -31,6 +32,7 @@ def _parse_cache_outcome(data: object) -> CacheOutcome:
         return CacheOutcome(kind="miss")
     return CacheOutcome(kind="live")
 
+
 class AsyncRolloutSessions(BaseAsyncResource):
     """Register / delete debug sessions on the backend.
 
@@ -40,9 +42,7 @@ class AsyncRolloutSessions(BaseAsyncResource):
     backend never learns the session id the SDK minted.
     """
 
-    async def register(
-        self, session_id: uuid.UUID | str, name: str | None = None
-    ) -> str | None:
+    async def register(self, session_id: uuid.UUID | str, name: str | None = None) -> str | None:
         """Idempotently register (upsert) a debug session.
 
         A null/omitted `name` never clobbers a name set elsewhere (e.g. the UI).

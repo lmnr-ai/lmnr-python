@@ -40,9 +40,7 @@ def test_global_metadata_no_trace_metadata(span_exporter: InMemorySpanExporter):
 def test_global_metadata_no_trace_metadata_start_span_merge(
     span_exporter: InMemorySpanExporter,
 ):
-    Laminar.initialize(
-        project_api_key="test_key", metadata={"foo": "bar", "replace": "me"}
-    )
+    Laminar.initialize(project_api_key="test_key", metadata={"foo": "bar", "replace": "me"})
     span = Laminar.start_span("test", metadata={"baz": "qux", "replace": "new"})
     span.end()
 
@@ -58,12 +56,8 @@ def test_global_metadata_no_trace_metadata_start_span_merge(
 def test_global_metadata_no_trace_metadata_start_as_current_span_merge(
     span_exporter: InMemorySpanExporter,
 ):
-    Laminar.initialize(
-        project_api_key="test_key", metadata={"foo": "bar", "replace": "me"}
-    )
-    with Laminar.start_as_current_span(
-        "test", metadata={"baz": "qux", "replace": "new"}
-    ):
+    Laminar.initialize(project_api_key="test_key", metadata={"foo": "bar", "replace": "me"})
+    with Laminar.start_as_current_span("test", metadata={"baz": "qux", "replace": "new"}):
         pass
 
     spans = span_exporter.get_finished_spans()
@@ -78,9 +72,7 @@ def test_global_metadata_no_trace_metadata_start_as_current_span_merge(
 def test_global_metadata_no_trace_metadata_start_active_span_merge(
     span_exporter: InMemorySpanExporter,
 ):
-    Laminar.initialize(
-        project_api_key="test_key", metadata={"foo": "bar", "replace": "me"}
-    )
+    Laminar.initialize(project_api_key="test_key", metadata={"foo": "bar", "replace": "me"})
     span = Laminar.start_active_span("test", metadata={"baz": "qux", "replace": "new"})
     span.end()
 

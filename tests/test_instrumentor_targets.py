@@ -231,10 +231,10 @@ def reinstrumented(request: Any) -> Generator[tuple[BaseInstrumentor, set[tuple[
             instrumentor.uninstrument()
 
 
-@pytest.mark.parametrize(
-    "reinstrumented", sorted(INSTRUMENTOR_TARGETS), indirect=True
-)
-def test_instrument_wraps_exactly_the_declared_targets(reinstrumented: tuple[BaseInstrumentor, set[tuple[str, str]]]):
+@pytest.mark.parametrize("reinstrumented", sorted(INSTRUMENTOR_TARGETS), indirect=True)
+def test_instrument_wraps_exactly_the_declared_targets(
+    reinstrumented: tuple[BaseInstrumentor, set[tuple[str, str]]],
+):
     instrumentor, targets = reinstrumented
     targets = _reachable(targets)
     if not targets:
@@ -248,15 +248,13 @@ def test_instrument_wraps_exactly_the_declared_targets(reinstrumented: tuple[Bas
 
     instrumentor.instrument()
     for module_name, target in targets:
-        assert _is_wrapped(module_name, target), (
-            f"failed to wrap {module_name}.{target}"
-        )
+        assert _is_wrapped(module_name, target), f"failed to wrap {module_name}.{target}"
 
 
-@pytest.mark.parametrize(
-    "reinstrumented", sorted(INSTRUMENTOR_TARGETS), indirect=True
-)
-def test_uninstrument_restores_the_original_attribute(reinstrumented: tuple[BaseInstrumentor, set[tuple[str, str]]]):
+@pytest.mark.parametrize("reinstrumented", sorted(INSTRUMENTOR_TARGETS), indirect=True)
+def test_uninstrument_restores_the_original_attribute(
+    reinstrumented: tuple[BaseInstrumentor, set[tuple[str, str]]],
+):
     """A migration that wraps correctly but leaks on teardown would still break
     any host that re-initializes Laminar (test suites, notebooks)."""
     instrumentor, targets = reinstrumented
@@ -278,7 +276,6 @@ def test_uninstrument_restores_the_original_attribute(reinstrumented: tuple[Base
         assert getattr(holder, attr) is original, (
             f"did not restore {module_name}.{target} to the original function"
         )
-
 
 
 def test_claude_agent_alias_replacement_reaches_prior_from_imports():
@@ -362,9 +359,7 @@ def test_playwright_wraps_and_restores_every_target(async_client: AsyncLaminarCl
         instrumentor.uninstrument()
         for (module_name, target), original in originals.items():
             holder, attr = _resolve(module_name, target)
-            assert getattr(holder, attr) is original, (
-                f"did not restore {module_name}.{target}"
-            )
+            assert getattr(holder, attr) is original, f"did not restore {module_name}.{target}"
     finally:
         if instrumentor.is_instrumented_by_opentelemetry:
             instrumentor.uninstrument()
@@ -395,7 +390,7 @@ def test_wrapper_kwargs_delivers_the_client_to_a_browser_wrapper(
         args: Sequence[Any],
         kwargs: dict[str, Any],
         *,
-        client: AsyncLaminarClient
+        client: AsyncLaminarClient,
     ):
         seen["client"] = client
         return wrapped(*args, **kwargs)
@@ -403,7 +398,7 @@ def test_wrapper_kwargs_delivers_the_client_to_a_browser_wrapper(
     wrapper = add_spec_wrapper(
         cast(WrapperHandler[WrappedFunctionSpec], handler),
         cast(Any, {}),
-        **instrumentor.wrapper_kwargs()
+        **instrumentor.wrapper_kwargs(),
     )
     assert wrapper(lambda: "ok", None, (), {}) == "ok"
     assert seen["client"] is async_client
@@ -506,9 +501,7 @@ def test_kernel_table_covers_the_sync_async_and_app_action_wraps():
     assert len(WRAPPED_FUNCTIONS) == 41
 
     sync = [
-        r
-        for r in WRAPPED_FUNCTIONS
-        if not r["is_async"] and r.get("object_name") != "KernelApp"
+        r for r in WRAPPED_FUNCTIONS if not r["is_async"] and r.get("object_name") != "KernelApp"
     ]
     async_ = [r for r in WRAPPED_FUNCTIONS if r["is_async"]]
     assert len(sync) == 20
@@ -517,8 +510,7 @@ def test_kernel_table_covers_the_sync_async_and_app_action_wraps():
     # each async row is the `Async`-prefixed twin of a sync row, on the same
     # package and method — that is exactly what the second pass used to build.
     assert {
-        (r["package_name"], f"Async{r.get('object_name')}", r["method_name"])
-        for r in sync
+        (r["package_name"], f"Async{r.get('object_name')}", r["method_name"]) for r in sync
     } == {(r["package_name"], r.get("object_name"), r["method_name"]) for r in async_}
 
     app_action = [r for r in WRAPPED_FUNCTIONS if r.get("object_name") == "KernelApp"]
@@ -568,8 +560,7 @@ def test_cua_computer_merged_table_preserves_every_row():
 
     # every row targets a distinct (package, object, method)
     targets = {
-        (r["package_name"], r.get("object_name"), r["method_name"])
-        for r in WRAPPED_FUNCTIONS
+        (r["package_name"], r.get("object_name"), r["method_name"]) for r in WRAPPED_FUNCTIONS
     }
     assert len(targets) == len(WRAPPED_FUNCTIONS)
 

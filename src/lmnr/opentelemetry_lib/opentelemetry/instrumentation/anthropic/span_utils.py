@@ -38,6 +38,7 @@ from lmnr.sdk.utils import json_dumps
 logger = get_default_logger(__name__)
 T = TypeVar("T")
 
+
 def _extract_structured_output_schema(kwargs: dict[str, Any]) -> str | None:
     """Extract the JSON schema from Anthropic `output_format` / `output_config` kwargs.
 
@@ -51,15 +52,13 @@ def _extract_structured_output_schema(kwargs: dict[str, Any]) -> str | None:
     if output_format is not None:
         if isinstance(output_format, dict):
             # Raw JSON schema dict (either bare schema or JSONOutputFormatParam)
-            output_format  = cast(dict[str, dict[str, str]], output_format)
+            output_format = cast(dict[str, dict[str, str]], output_format)
             schema = output_format.get("schema", output_format)
             try:
                 return json.dumps(schema)
             except Exception:
                 return None
-        if isinstance(output_format, type) and issubclass(
-            output_format, pydantic.BaseModel
-        ):
+        if isinstance(output_format, type) and issubclass(output_format, pydantic.BaseModel):
             try:
                 return json.dumps(output_format.model_json_schema())
             except Exception:
@@ -97,21 +96,13 @@ def _process_content_for_message(content: str | list[Any] | T) -> str | list[dic
 @dont_throw
 async def aset_input_attributes(span: Span, kwargs: dict[str, Any]):
     set_span_attribute(span, GEN_AI_REQUEST_MODEL, kwargs.get("model"))
-    set_span_attribute(
-        span, GEN_AI_REQUEST_MAX_TOKENS, kwargs.get("max_tokens_to_sample")
-    )
+    set_span_attribute(span, GEN_AI_REQUEST_MAX_TOKENS, kwargs.get("max_tokens_to_sample"))
     set_span_attribute(span, GEN_AI_REQUEST_TEMPERATURE, kwargs.get("temperature"))
     set_span_attribute(span, GEN_AI_REQUEST_TOP_P, kwargs.get("top_p"))
-    set_span_attribute(
-        span, GEN_AI_REQUEST_FREQUENCY_PENALTY, kwargs.get("frequency_penalty")
-    )
-    set_span_attribute(
-        span, GEN_AI_REQUEST_PRESENCE_PENALTY, kwargs.get("presence_penalty")
-    )
+    set_span_attribute(span, GEN_AI_REQUEST_FREQUENCY_PENALTY, kwargs.get("frequency_penalty"))
+    set_span_attribute(span, GEN_AI_REQUEST_PRESENCE_PENALTY, kwargs.get("presence_penalty"))
     set_span_attribute(span, "llm.is_streaming", kwargs.get("stream"))
-    set_span_attribute(
-        span, "anthropic.request.service_tier", kwargs.get("service_tier")
-    )
+    set_span_attribute(span, "anthropic.request.service_tier", kwargs.get("service_tier"))
 
     if should_send_prompts():
         if kwargs.get("prompt") is not None:
@@ -296,8 +287,6 @@ def set_streaming_response_attributes(
         result["stop_reason"] = finish_reason
 
     if should_send_prompts():
-        set_span_attribute(
-            span, "gen_ai.output.messages", json_dumps([dict(result)])
-        )
+        set_span_attribute(span, "gen_ai.output.messages", json_dumps([dict(result)]))
 
     return result

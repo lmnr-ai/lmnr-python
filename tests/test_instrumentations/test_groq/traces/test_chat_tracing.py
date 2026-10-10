@@ -27,9 +27,7 @@ image_content_block: ChatCompletionContentPartImageParam = {
 
 @pytest.mark.vcr
 def test_chat_legacy(
-    instrument_legacy: MagicMock,
-    groq_client: Groq,
-    span_exporter: InMemorySpanExporter
+    instrument_legacy: MagicMock, groq_client: Groq, span_exporter: InMemorySpanExporter
 ):
     _res = groq_client.chat.completions.create(
         model="llama3-8b-8192",
@@ -42,19 +40,17 @@ def test_chat_legacy(
         "groq.chat",
     ]
     groq_span = spans[0]
-    assert (
-        (groq_span.attributes or {})["gen_ai.prompt.0.content"]
-        == "Tell me a joke about opentelemetry"
-    )
+    assert (groq_span.attributes or {})[
+        "gen_ai.prompt.0.content"
+    ] == "Tell me a joke about opentelemetry"
     assert (groq_span.attributes or {}).get("gen_ai.completion.0.content")
     assert (groq_span.attributes or {}).get("llm.is_streaming") is False
     assert cast(int, (groq_span.attributes or {}).get("gen_ai.usage.input_tokens")) > 0
     assert cast(int, (groq_span.attributes or {}).get("gen_ai.usage.output_tokens")) > 0
     assert cast(int, (groq_span.attributes or {}).get("llm.usage.total_tokens")) > 0
-    assert (
-        (groq_span.attributes or {}).get("gen_ai.response.id")
-        == "chatcmpl-645691ff-34af-4d0f-a1c1-fe888f8685cc"
-    )
+    assert (groq_span.attributes or {}).get(
+        "gen_ai.response.id"
+    ) == "chatcmpl-645691ff-34af-4d0f-a1c1-fe888f8685cc"
 
 
 @pytest.mark.vcr
@@ -86,19 +82,17 @@ def test_chat_legacy_image(
         {"type": "text", "text": "What is depicted in this image?"},
         image_content_block,
     ]
-    assert (
-        (groq_span.attributes or {}).get("gen_ai.completion.0.content")
-        == response.choices[0].message.content
-    )
+    assert (groq_span.attributes or {}).get("gen_ai.completion.0.content") == response.choices[
+        0
+    ].message.content
     assert (groq_span.attributes or {}).get("gen_ai.completion.0.role") == "assistant"
     assert (groq_span.attributes or {}).get("llm.is_streaming") is False
     assert cast(int, (groq_span.attributes or {}).get("gen_ai.usage.input_tokens")) > 0
     assert cast(int, (groq_span.attributes or {}).get("gen_ai.usage.output_tokens")) > 0
     assert cast(int, (groq_span.attributes or {}).get("llm.usage.total_tokens")) > 0
-    assert (
-        (groq_span.attributes or {}).get("gen_ai.response.id")
-        == "chatcmpl-741dc0bb-6df1-4e88-9d35-920d0dddc3c0"
-    )
+    assert (groq_span.attributes or {}).get(
+        "gen_ai.response.id"
+    ) == "chatcmpl-741dc0bb-6df1-4e88-9d35-920d0dddc3c0"
 
 
 @pytest.mark.vcr
@@ -119,19 +113,17 @@ async def test_async_chat_legacy(
         "groq.chat",
     ]
     groq_span = spans[0]
-    assert (
-        (groq_span.attributes or {})["gen_ai.prompt.0.content"]
-        == "Tell me a joke about opentelemetry"
-    )
+    assert (groq_span.attributes or {})[
+        "gen_ai.prompt.0.content"
+    ] == "Tell me a joke about opentelemetry"
     assert (groq_span.attributes or {}).get("gen_ai.completion.0.content")
     assert (groq_span.attributes or {}).get("llm.is_streaming") is False
     assert cast(int, (groq_span.attributes or {}).get("gen_ai.usage.input_tokens")) > 0
     assert cast(int, (groq_span.attributes or {}).get("gen_ai.usage.output_tokens")) > 0
     assert cast(int, (groq_span.attributes or {}).get("llm.usage.total_tokens")) > 0
-    assert (
-        (groq_span.attributes or {}).get("gen_ai.response.id")
-        == "chatcmpl-ec0a74e9-df7f-4e91-aa09-e9618451f5c9"
-    )
+    assert (groq_span.attributes or {}).get(
+        "gen_ai.response.id"
+    ) == "chatcmpl-ec0a74e9-df7f-4e91-aa09-e9618451f5c9"
 
 
 @pytest.mark.vcr
@@ -157,10 +149,9 @@ def test_chat_streaming_legacy(
         "groq.chat",
     ]
     groq_span = spans[0]
-    assert (
-        (groq_span.attributes or {})["gen_ai.prompt.0.content"]
-        == "Tell me a joke about opentelemetry"
-    )
+    assert (groq_span.attributes or {})[
+        "gen_ai.prompt.0.content"
+    ] == "Tell me a joke about opentelemetry"
     assert (groq_span.attributes or {}).get("gen_ai.completion.0.content") == content
     assert (groq_span.attributes or {}).get("llm.is_streaming") is True
     assert (groq_span.attributes or {}).get("gen_ai.usage.input_tokens") == 18

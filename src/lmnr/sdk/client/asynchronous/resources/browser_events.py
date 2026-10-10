@@ -36,6 +36,4 @@ class AsyncBrowserEvents(BaseAsyncResource):
             },
         )
         if response.status_code != 200:
-            raise ValueError(
-                f"Failed to send events: [{response.status_code}] {response.text}"
-            )
+            raise ValueError(f"Failed to send events: [{response.status_code}] {response.text}")

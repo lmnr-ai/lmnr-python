@@ -133,7 +133,9 @@ def test_agent_run_span_tree(span_exporter: InMemorySpanExporter):
     assert "Sunny" in cast(str, (tool_span.attributes or {})["gen_ai.tool.call.result"])
 
     framework_spans = [
-        s for s in spans if s.instrumentation_scope is not None and s.instrumentation_scope.name == "agent_framework"
+        s
+        for s in spans
+        if s.instrumentation_scope is not None and s.instrumentation_scope.name == "agent_framework"
     ]
     assert framework_spans
     for span in framework_spans:
@@ -161,10 +163,7 @@ def test_session_id_propagates_to_framework_spans(span_exporter: InMemorySpanExp
     ]
     assert framework_spans
     for span in framework_spans:
-        assert (
-            (span.attributes or {})["lmnr.association.properties.session_id"]
-            == "maf-session"
-        )
+        assert (span.attributes or {})["lmnr.association.properties.session_id"] == "maf-session"
 
 
 @pytest.mark.vcr
@@ -191,7 +190,7 @@ def test_framework_spans_use_laminar_provider_without_global_provider():
 
 def test_uninstrument_restores_every_hook():
     import agent_framework._mcp as mcp
-    import agent_framework.observability as observability
+    from agent_framework import observability
     from wrapt import ObjectProxy
 
     def wrapped_hooks():
@@ -284,11 +283,11 @@ def test_workflow_spans_keep_span_path(span_exporter: InMemorySpanExporter):
     spans = span_exporter.get_finished_spans()
     by_id = {_ctx(s).span_id: s for s in spans}
     framework_spans = [
-        s for s in spans if s.instrumentation_scope is not None and s.instrumentation_scope.name == "agent_framework"
+        s
+        for s in spans
+        if s.instrumentation_scope is not None and s.instrumentation_scope.name == "agent_framework"
     ]
-    assert {"workflow.build", "workflow.run", "message.send"} <= {
-        s.name for s in framework_spans
-    }
+    assert {"workflow.build", "workflow.run", "message.send"} <= {s.name for s in framework_spans}
     for span in framework_spans:
         assert type(span.name) is str
         path = list(cast(tuple[str, ...], (span.attributes or {})["lmnr.span.path"]))

@@ -6,7 +6,6 @@ from opentelemetry.trace import Status, StatusCode
 from opentelemetry.util.types import AttributeValue
 from typing_extensions import TypeVar
 
-from lmnr.sdk.laminar import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.litellm.rollout import (
     DualIteratorWrapper,
 )
@@ -39,11 +38,13 @@ from lmnr.opentelemetry_lib.tracing.context import (
     reset_in_litellm_context,
     set_in_litellm_context,
 )
+from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import LaminarSpanType
 
 logger = get_default_logger(__name__)
 T = TypeVar("T")
+
 
 class PassedMetadata(TypedDict):
     user_id: str
@@ -51,7 +52,9 @@ class PassedMetadata(TypedDict):
     tags: list[str]
 
 
-def _get_rollout_wrapper()-> tuple[object | None, bool]:  # object == LiteLLMRolloutWrapper, avoiding circular import
+def _get_rollout_wrapper() -> tuple[
+    object | None, bool
+]:  # object == LiteLLMRolloutWrapper, avoiding circular import
     """Lazy import and get rollout wrapper to avoid circular imports."""
     try:
         from lmnr.sdk.debug.replay import replay_enabled
@@ -104,6 +107,7 @@ def wrap_completion(
         # If in rollout mode, delegate to rollout wrapper
         if rollout_wrapper:
             from ..rollout import LiteLLMRolloutWrapper
+
             rollout_wrapper = cast(LiteLLMRolloutWrapper, rollout_wrapper)
             with Laminar.use_span(span), in_litellm_context():
                 result = rollout_wrapper.wrap_completion(
@@ -144,7 +148,9 @@ def wrap_completion(
                             processed: AsyncGenerator[Any] = cast(
                                 Any,
                                 process_completion_async_streaming_response(
-                                    span, actual_result, record_raw_response=is_rollout,
+                                    span,
+                                    actual_result,
+                                    record_raw_response=is_rollout,
                                 ),
                             )
                             async for item in processed:
@@ -152,7 +158,9 @@ def wrap_completion(
                         elif hasattr(actual_result, "__iter__"):
                             # Sync iterator from async context - yield from sync processor
                             for item in process_completion_streaming_response(
-                                span, actual_result, record_raw_response=is_rollout,
+                                span,
+                                actual_result,
+                                record_raw_response=is_rollout,
                             ):
                                 yield item
                         else:
@@ -203,12 +211,16 @@ def wrap_completion(
             elif hasattr(result, "__iter__"):
                 streaming_handled = True
                 return process_completion_streaming_response(
-                    span, cast(Generator[Any], result), record_raw_response=is_rollout,
+                    span,
+                    cast(Generator[Any], result),
+                    record_raw_response=is_rollout,
                 )
             elif hasattr(result, "__aiter__"):
                 streaming_handled = True
                 return process_completion_async_streaming_response(
-                    span, cast(AsyncGenerator[Any], result), record_raw_response=is_rollout,
+                    span,
+                    cast(AsyncGenerator[Any], result),
+                    record_raw_response=is_rollout,
                 )
             else:
                 logger.warning(
@@ -216,7 +228,9 @@ def wrap_completion(
                 )
                 return result
         else:
-            _processed_result = process_completion_response(span, result, record_raw_response=is_rollout)
+            _processed_result = process_completion_response(
+                span, result, record_raw_response=is_rollout
+            )
             return result
     except Exception as e:
         span.record_exception(e)
@@ -262,6 +276,7 @@ def wrap_responses(
         # If in rollout mode, delegate to rollout wrapper
         if rollout_wrapper:
             from ..rollout import LiteLLMRolloutWrapper
+
             rollout_wrapper = cast(LiteLLMRolloutWrapper, rollout_wrapper)
             with Laminar.use_span(span):
                 result = rollout_wrapper.wrap_responses(
@@ -294,7 +309,9 @@ def wrap_responses(
                             processed: AsyncIterator[Any] = cast(
                                 Any,
                                 process_responses_async_streaming_response(
-                                    span, actual_result, record_raw_response=is_rollout,
+                                    span,
+                                    actual_result,
+                                    record_raw_response=is_rollout,
                                 ),
                             )
                             async for item in processed:
@@ -302,7 +319,9 @@ def wrap_responses(
                         elif hasattr(actual_result, "__iter__"):
                             # Sync iterator from async context - yield from sync processor
                             for item in process_responses_streaming_response(
-                                span, actual_result, record_raw_response=is_rollout,
+                                span,
+                                actual_result,
+                                record_raw_response=is_rollout,
                             ):
                                 yield item
                         else:
@@ -353,12 +372,16 @@ def wrap_responses(
             elif hasattr(result, "__iter__"):
                 streaming_handled = True
                 return process_responses_streaming_response(
-                    span, cast(Generator[Any], result), record_raw_response=is_rollout,
+                    span,
+                    cast(Generator[Any], result),
+                    record_raw_response=is_rollout,
                 )
             elif hasattr(result, "__aiter__"):
                 streaming_handled = True
                 return process_responses_async_streaming_response(
-                    span, cast(AsyncGenerator[Any], result), record_raw_response=is_rollout,
+                    span,
+                    cast(AsyncGenerator[Any], result),
+                    record_raw_response=is_rollout,
                 )
             else:
                 logger.warning(

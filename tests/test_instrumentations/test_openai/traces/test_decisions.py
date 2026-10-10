@@ -78,16 +78,13 @@ def _assert_decision_span(span: ReadableSpan, decision: Any) -> None:
         == usage.input_tokens_details.cache_write_tokens
     )
     assert (
-        attributes["gen_ai.usage.reasoning_tokens"]
-        == usage.output_tokens_details.reasoning_tokens
+        attributes["gen_ai.usage.reasoning_tokens"] == usage.output_tokens_details.reasoning_tokens
     )
 
     output = json.loads(cast(str, attributes["gen_ai.output.messages"]))
     assert len(output) == 1
     assert output[0]["role"] == "assistant"
-    assert json.loads(output[0]["content"]) == [
-        answer.model_dump() for answer in decision.answers
-    ]
+    assert json.loads(output[0]["content"]) == [answer.model_dump() for answer in decision.answers]
 
 
 @pytest.mark.vcr
@@ -110,10 +107,7 @@ def test_decisions_create(
     assert json.loads(cast(str, attributes["gen_ai.input.messages"])) == [
         {"role": "user", "content": INPUT}
     ]
-    assert (
-        json.loads(cast(str, attributes["gen_ai.request.structured_output_schema"]))
-        == QUESTIONS
-    )
+    assert json.loads(cast(str, attributes["gen_ai.request.structured_output_schema"])) == QUESTIONS
 
 
 @pytest.mark.vcr
@@ -140,10 +134,7 @@ async def test_decisions_create_async_with_message_input(
     attributes = span.attributes or {}
     _assert_decision_span(span, decision)
     assert json.loads(cast(str, attributes["gen_ai.input.messages"])) == messages
-    assert (
-        json.loads(cast(str, attributes["gen_ai.request.structured_output_schema"]))
-        == QUESTIONS
-    )
+    assert json.loads(cast(str, attributes["gen_ai.request.structured_output_schema"])) == QUESTIONS
 
 
 @pytest.mark.vcr

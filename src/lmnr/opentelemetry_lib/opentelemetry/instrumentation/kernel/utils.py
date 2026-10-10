@@ -29,7 +29,9 @@ def process_tool_output_formatter(output: Any) -> str:
     if not isinstance(output, (dict, BaseModel)):
         return json_dumps(output)
 
-    output = cast(dict[str, Any], output.model_dump() if isinstance(output, BaseModel) else deepcopy(output))  # pyright: ignore[reportUnknownArgumentType]
+    output = cast(
+        dict[str, Any], output.model_dump() if isinstance(output, BaseModel) else deepcopy(output)
+    )  # pyright: ignore[reportUnknownArgumentType]
     if "stderr_b64" in output:
         output["stderr"] = base64.b64decode(output["stderr_b64"]).decode("utf-8")
     if "stdout_b64" in output:

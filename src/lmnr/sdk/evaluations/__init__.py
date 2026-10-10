@@ -30,12 +30,8 @@ def evaluate(
     http_port: int | None = None,
     grpc_port: int | None = None,
     frontend_port: int | None = None,
-    instruments: (
-        set[Instruments] | list[Instruments] | tuple[Instruments] | None
-    ) = None,
-    disabled_instruments: (
-        set[Instruments] | list[Instruments] | tuple[Instruments] | None
-    ) = None,
+    instruments: (set[Instruments] | list[Instruments] | tuple[Instruments] | None) = None,
+    disabled_instruments: (set[Instruments] | list[Instruments] | tuple[Instruments] | None) = None,
     max_export_batch_size: int | None = MAX_EXPORT_BATCH_SIZE,
     trace_export_timeout_seconds: int | None = None,
 ) -> EvaluationRunResult | CoroutineType[Any, Any, EvaluationRunResult] | None:

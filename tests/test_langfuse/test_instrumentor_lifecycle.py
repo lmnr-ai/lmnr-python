@@ -68,17 +68,15 @@ def test_instrumentor_skips_laminar_own_provider():
 
     wrapper = get_tracer_wrapper()
     assert wrapper is not None
-    initial_count = len(
-        wrapper.tracer_provider._active_span_processor._span_processors
-    )
+    initial_count = len(wrapper.tracer_provider._active_span_processor._span_processors)
     provider_attachment = ProviderAttachment(
         translator=None, lmnr_span_processor=wrapper.span_processor
     )
     provider_attachment.attach(wrapper.tracer_provider)
     after_count = len(wrapper.tracer_provider._active_span_processor._span_processors)
-    assert (
-        after_count == initial_count
-    ), "attached to Laminar's own provider — would cause duplicate exports"
+    assert after_count == initial_count, (
+        "attached to Laminar's own provider — would cause duplicate exports"
+    )
 
 
 def test_instrument_rolls_back_translator_if_attach_phase_raises():
@@ -124,9 +122,7 @@ def test_instrument_rolls_back_translator_if_attach_phase_raises():
         ProviderAttachment.attach_to_existing_langfuse_providers = original_attach
 
     # Translator must have been rolled back.
-    assert (
-        count_translators() == baseline
-    ), "translator must be removed on partial install failure"
+    assert count_translators() == baseline, "translator must be removed on partial install failure"
     assert instrumentor.is_instrumented_by_opentelemetry is False
     assert instrumentor._translator is None
 
@@ -174,18 +170,13 @@ def test_instrument_skips_shared_laminar_provider_without_tracerwrapper():
 
     # One translator from `_prepend_span_processor` in `instrument()` —
     # baseline.
-    processors_after_install = list(
-        shared_provider._active_span_processor._span_processors
-    )
+    processors_after_install = list(shared_provider._active_span_processor._span_processors)
     translator_count = sum(
-        1
-        for p in processors_after_install
-        if isinstance(p, LangfuseAttributeTranslator)
+        1 for p in processors_after_install if isinstance(p, LangfuseAttributeTranslator)
     )
     assert translator_count == 1
     assert mock_processor not in processors_after_install, (
-        "Laminar span processor should NOT be attached to Laminar's own "
-        "provider — the translator is enough there"
+        "Laminar span processor should NOT be attached to Laminar's own provider — the translator is enough there"
     )
 
     # Now simulate Langfuse's resource manager calling `attach` with the same
@@ -197,16 +188,13 @@ def test_instrument_skips_shared_laminar_provider_without_tracerwrapper():
         shared_provider._active_span_processor._span_processors
     )
     translator_count_after = sum(
-        1
-        for p in processors_after_simulated_langfuse
-        if isinstance(p, LangfuseAttributeTranslator)
+        1 for p in processors_after_simulated_langfuse if isinstance(p, LangfuseAttributeTranslator)
     )
-    assert (
-        translator_count_after == 1
-    ), "translator should not be attached twice to Laminar's provider"
+    assert translator_count_after == 1, (
+        "translator should not be attached twice to Laminar's provider"
+    )
     assert mock_processor not in processors_after_simulated_langfuse, (
-        "Laminar span processor should not be appended to Laminar's own "
-        "provider via the Langfuse attach path"
+        "Laminar span processor should not be appended to Laminar's own provider via the Langfuse attach path"
     )
 
     instrumentor.uninstrument()
@@ -365,12 +353,12 @@ def test_uninstrument_detaches_processors_from_langfuse_providers(span_exporter)
     instrumentor.uninstrument()
 
     after_uninstall = list(fake_lf_provider._active_span_processor._span_processors)
-    assert not any(
-        isinstance(p, LangfuseAttributeTranslator) for p in after_uninstall
-    ), "translator should be removed from the Langfuse-owned provider"
-    assert (
-        lmnr_processor not in after_uninstall
-    ), "Laminar span processor should be removed from the Langfuse-owned provider"
+    assert not any(isinstance(p, LangfuseAttributeTranslator) for p in after_uninstall), (
+        "translator should be removed from the Langfuse-owned provider"
+    )
+    assert lmnr_processor not in after_uninstall, (
+        "Laminar span processor should be removed from the Langfuse-owned provider"
+    )
     # Ordering of unrelated processors should be preserved.
     assert after_uninstall == baseline
 

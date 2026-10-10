@@ -109,12 +109,12 @@ def process_responses_response(
 
     if usage := response_dict.get("usage"):
         usage_dict = to_dict(usage)
-        input_tokens = cast(int, usage_dict.get(
-            "input_tokens", usage_dict.get("prompt_tokens")
-        ) or 0)
-        output_tokens = cast(int, usage_dict.get(
-            "output_tokens", usage_dict.get("completion_tokens")
-        ) or 0)
+        input_tokens = cast(
+            int, usage_dict.get("input_tokens", usage_dict.get("prompt_tokens")) or 0
+        )
+        output_tokens = cast(
+            int, usage_dict.get("output_tokens", usage_dict.get("completion_tokens")) or 0
+        )
         total_tokens = cast(int, usage_dict.get("total_tokens", input_tokens + output_tokens) or 0)
         set_span_attribute(span, GEN_AI_USAGE_INPUT_TOKENS, input_tokens)
         set_span_attribute(span, GEN_AI_USAGE_OUTPUT_TOKENS, output_tokens)
@@ -122,9 +122,7 @@ def process_responses_response(
         if input_details := usage_dict.get("input_tokens_details"):
             details = to_dict(input_details)
             cache_read_tokens = cast(int, details.get("cached_tokens") or 0)
-            set_span_attribute(
-                span, "gen_ai.usage.cache_read_input_tokens", cache_read_tokens
-            )
+            set_span_attribute(span, "gen_ai.usage.cache_read_input_tokens", cache_read_tokens)
 
     final_items = []
     if reasoning := response_dict.get("reasoning"):

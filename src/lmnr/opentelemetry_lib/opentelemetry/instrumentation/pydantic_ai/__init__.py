@@ -24,6 +24,7 @@ duplicates ingestion and storage cost for what is effectively the
 concatenation of the children. The accompanying `logfire.json_schema` entry
 is updated in lockstep so backends that read it stay consistent.
 """
+
 import json
 from collections.abc import Callable, Collection, Sequence
 from typing import Any, TypeVar
@@ -45,6 +46,7 @@ _RUN_SPAN_END_ATTRS = "Agent._run_span_end_attributes"
 _DUPLICATE_MESSAGE_ATTRS = ("pydantic_ai.all_messages", "all_messages_events")
 
 logger = get_default_logger(__name__)
+
 
 def _strip_duplicate_message_attrs(
     attrs: dict[str, Any],
@@ -118,9 +120,7 @@ class PydanticAIInstrumentor(BaseInstrumentor):
             return _strip_duplicate_message_attrs(attrs)  # pyright: ignore[reportUnknownArgumentType]
 
         try:
-            wrap_function_wrapper(
-                _AGENT_MODULE, _RUN_SPAN_END_ATTRS, _wrap_run_span_end_attrs
-            )
+            wrap_function_wrapper(_AGENT_MODULE, _RUN_SPAN_END_ATTRS, _wrap_run_span_end_attrs)
         except Exception:
             wrap_function_wrapper(
                 "pydantic_ai.capabilities",
@@ -142,7 +142,10 @@ class PydanticAIInstrumentor(BaseInstrumentor):
         from pydantic_ai import Agent
         from pydantic_ai.models.instrumented import InstrumentationSettings
 
-        if hasattr(self, "_previous_instrument_default") and self._previous_instrument_default is not None:
+        if (
+            hasattr(self, "_previous_instrument_default")
+            and self._previous_instrument_default is not None
+        ):
             Agent._instrument_default = self._previous_instrument_default
         self._previous_instrument_default = None
 
@@ -153,6 +156,6 @@ class PydanticAIInstrumentor(BaseInstrumentor):
 
             unwrap(Instrumentation, "_run_span_end_attributes")
         except Exception:
-           logger.debug("Failed to uninstrument Pydantic AI SDK", exc_info=True)
+            logger.debug("Failed to uninstrument Pydantic AI SDK", exc_info=True)
 
         self._enabled = False

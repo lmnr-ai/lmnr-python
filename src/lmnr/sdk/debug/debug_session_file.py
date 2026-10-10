@@ -118,9 +118,7 @@ def resolve_debug_session_dir(start_dir: str | None = None) -> str:
     return os.path.abspath(start_dir if start_dir is not None else os.getcwd())
 
 
-def write_debug_session_file(
-    file: DebugSessionFile, directory: str | None = None
-) -> bool:
+def write_debug_session_file(file: DebugSessionFile, directory: str | None = None) -> bool:
     """Write the debug-session file (mkdir -p first). Best-effort.
 
     Swallows any IO error so a read-only working directory never breaks a run.
@@ -130,9 +128,7 @@ def write_debug_session_file(
     try:
         target_dir = os.path.join(directory, DEBUG_SESSION_DIR)
         os.makedirs(target_dir, exist_ok=True)
-        with open(
-            os.path.join(target_dir, DEBUG_SESSION_FILE), "w", encoding="utf-8"
-        ) as f:
+        with open(os.path.join(target_dir, DEBUG_SESSION_FILE), "w", encoding="utf-8") as f:
             _bytes_written = f.write(json.dumps(file, separators=(",", ":")))
         return True
     except Exception:

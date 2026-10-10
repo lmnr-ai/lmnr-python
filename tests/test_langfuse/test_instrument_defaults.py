@@ -28,9 +28,9 @@ def test_langfuse_not_installed_defaults_exclude_it(
     init_instrumentations(tracer_provider=MagicMock(), instruments=None)
     assert Instruments.LANGFUSE not in track_initializers
     for instrument in LANGFUSE_OVERLAP_PROVIDERS:
-        assert (
-            instrument in track_initializers
-        ), f"{instrument} should remain when langfuse isn't installed"
+        assert instrument in track_initializers, (
+            f"{instrument} should remain when langfuse isn't installed"
+        )
 
 
 def test_langfuse_initializer_skips_on_unreadable_or_invalid_version(monkeypatch: MonkeyPatch):
@@ -117,9 +117,9 @@ def test_langfuse_installed_is_never_in_default_set(
     )
     assert Instruments.LANGFUSE not in track_initializers
     for instrument in LANGFUSE_OVERLAP_PROVIDERS:
-        assert (
-            instrument in track_initializers
-        ), f"{instrument} should remain when the bridge isn't opted into"
+        assert instrument in track_initializers, (
+            f"{instrument} should remain when the bridge isn't opted into"
+        )
 
 
 def test_langfuse_opt_in_via_explicit_instruments(

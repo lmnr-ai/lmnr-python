@@ -33,9 +33,7 @@ def test_responses(
     assert attributes["gen_ai.system"] == "openai"
     assert attributes["gen_ai.request.model"] == "gpt-4.1-nano"
     assert attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
-    assert (
-        attributes["gen_ai.prompt.0.content"] == "What is the capital of France?"
-    )
+    assert attributes["gen_ai.prompt.0.content"] == "What is the capital of France?"
     assert attributes["gen_ai.prompt.0.role"] == "user"
     assert attributes["gen_ai.completion.0.content"] == response.output_text
     assert attributes["gen_ai.completion.0.role"] == "assistant"
@@ -64,9 +62,7 @@ async def test_responses_async(
     assert attributes["gen_ai.system"] == "openai"
     assert attributes["gen_ai.request.model"] == "gpt-4.1-nano"
     assert attributes["gen_ai.response.model"] == "gpt-4.1-nano-2025-04-14"
-    assert (
-        attributes["gen_ai.prompt.0.content"] == "What is the capital of France?"
-    )
+    assert attributes["gen_ai.prompt.0.content"] == "What is the capital of France?"
     assert attributes["gen_ai.prompt.0.role"] == "user"
     assert attributes["gen_ai.completion.0.content"] == response.output_text
     assert attributes["gen_ai.completion.0.role"] == "assistant"
@@ -126,10 +122,7 @@ def test_responses_with_input_history(
         }
     ]
     assert attributes["gen_ai.prompt.1.role"] == "assistant"
-    assert (
-        attributes["gen_ai.prompt.2.content"]
-        == "Can you explain why you chose that word?"
-    )
+    assert attributes["gen_ai.prompt.2.content"] == "Can you explain why you chose that word?"
     assert attributes["gen_ai.prompt.2.role"] == "user"
     assert attributes["gen_ai.completion.0.content"] == response.output_text
     assert attributes["gen_ai.completion.0.role"] == "assistant"
@@ -186,18 +179,14 @@ def test_responses_tool_calls(
     assert attributes["gen_ai.prompt.0.role"] == "user"
     assert attributes["gen_ai.completion.0.role"] == "assistant"
     assert attributes["gen_ai.completion.0.tool_calls.0.name"] == "get_weather"
-    assert (
-        attributes["gen_ai.completion.0.tool_calls.0.arguments"]
-        == '{"location":"London"}'
-    )
+    assert attributes["gen_ai.completion.0.tool_calls.0.arguments"] == '{"location":"London"}'
     assert json.loads(cast(str, attributes["gen_ai.tool.definitions"])) == tools
     assert (
         attributes["gen_ai.completion.0.tool_calls.0.id"]
         == "fc_685ff89422ec819a977b2ea385bc9b6601c537ddeff5c2a2"
     )
     assert (
-        attributes["gen_ai.response.id"]
-        == "resp_685ff8928dc4819aac45e085ba66838101c537ddeff5c2a2"
+        attributes["gen_ai.response.id"] == "resp_685ff8928dc4819aac45e085ba66838101c537ddeff5c2a2"
     )
 
 

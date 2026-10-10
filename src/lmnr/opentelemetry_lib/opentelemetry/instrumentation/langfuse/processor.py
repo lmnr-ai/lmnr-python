@@ -124,8 +124,7 @@ def prepend_span_processor(provider: TracerProvider, processor: SpanProcessor) -
             active._span_processors = new_order
     except Exception:
         logger.debug(
-            "Could not reorder span processors on %r; translator will run " +
-            "after the exporter",
+            "Could not reorder span processors on %r; translator will run " + "after the exporter",
             provider,
             exc_info=True,
         )
@@ -211,7 +210,7 @@ def _write_attrs(span: ReadableSpan, new_attrs: dict[str, AttributeValue]) -> No
             try:
                 target[k] = v
             except Exception:
-               logger.debug("Failed to set attribute to span", exc_info=True)
+                logger.debug("Failed to set attribute to span", exc_info=True)
     finally:
         if was_immutable:
             _set_immutable(True)
@@ -242,7 +241,9 @@ def _promote_trace_attributes(
     tags = attrs.get(_TRACE_TAGS)
     if isinstance(tags, (list, tuple)) and tags:
         if all(isinstance(tag, float) for tag in tags):
-            new_attrs[f"{ASSOCIATION_PROPERTIES}.tags"] = list(cast(list[float] | tuple[float], tags))
+            new_attrs[f"{ASSOCIATION_PROPERTIES}.tags"] = list(
+                cast(list[float] | tuple[float], tags)
+            )
         else:
             new_attrs[f"{ASSOCIATION_PROPERTIES}.tags"] = [str(tag) for tag in tags]
 
@@ -258,9 +259,7 @@ def _promote_trace_attributes(
                 if isinstance(parsed, dict):
                     for mk, mv in (cast(dict[str, Any], parsed)).items():
                         new_attrs[f"{ASSOCIATION_PROPERTIES}.metadata.{mk}"] = (
-                            mv
-                            if isinstance(mv, (str, int, float, bool))
-                            else json.dumps(mv)
+                            mv if isinstance(mv, (str, int, float, bool)) else json.dumps(mv)
                         )
                 break
             if k.startswith(prefix + "."):
@@ -291,25 +290,25 @@ def _translate(span: ReadableSpan) -> None:
         _existing = new_attrs.setdefault(_GEN_AI_RESPONSE_MODEL, model)
 
     # Usage details (tokens)
-    usage_raw = cast(dict[str, float | dict[str, float]], parse_json(attrs.get(_OBSERVATION_USAGE_DETAILS)))
-    input_tokens = usage_field(usage_raw, "input", "prompt_tokens", "input_tokens")
-    output_tokens = usage_field(
-        usage_raw, "output", "completion_tokens", "output_tokens"
+    usage_raw = cast(
+        dict[str, float | dict[str, float]], parse_json(attrs.get(_OBSERVATION_USAGE_DETAILS))
     )
+    input_tokens = usage_field(usage_raw, "input", "prompt_tokens", "input_tokens")
+    output_tokens = usage_field(usage_raw, "output", "completion_tokens", "output_tokens")
     total_tokens = usage_field(usage_raw, "total", "total_tokens")
     if input_tokens is not None:
         new_attrs[_GEN_AI_USAGE_INPUT_TOKENS] = input_tokens
     if output_tokens is not None:
         new_attrs[_GEN_AI_USAGE_OUTPUT_TOKENS] = output_tokens
-    if total_tokens is None and (
-        input_tokens is not None or output_tokens is not None
-    ):
+    if total_tokens is None and (input_tokens is not None or output_tokens is not None):
         total_tokens = (input_tokens or 0) + (output_tokens or 0)
     if total_tokens is not None:
         new_attrs[_GEN_AI_USAGE_TOTAL_TOKENS] = total_tokens
 
     # Cost details
-    cost_raw = cast(dict[str, float | dict[str, float]], parse_json(attrs.get(_OBSERVATION_COST_DETAILS)))
+    cost_raw = cast(
+        dict[str, float | dict[str, float]], parse_json(attrs.get(_OBSERVATION_COST_DETAILS))
+    )
     input_cost = cost_field(cost_raw, "input")
     output_cost = cost_field(cost_raw, "output")
     total_cost = cost_field(cost_raw, "total")
@@ -345,12 +344,7 @@ def _translate(span: ReadableSpan) -> None:
             elif lc_tools:
                 new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(lc_tools)
             input_handled = True
-    if (
-        not input_handled
-        and isinstance(input_raw, str)
-        and input_raw
-        and SPAN_INPUT not in attrs
-    ):
+    if not input_handled and isinstance(input_raw, str) and input_raw and SPAN_INPUT not in attrs:
         new_attrs[SPAN_INPUT] = input_raw
 
     output_raw = attrs.get(_OBSERVATION_OUTPUT)
@@ -362,7 +356,8 @@ def _translate(span: ReadableSpan) -> None:
         if messages is not None:
             if isinstance(messages, list):
                 messages = convert_openai_tool_calls_to_content_parts(
-                    messages, True,  # pyright: ignore[reportUnknownArgumentType]
+                    messages,
+                    True,  # pyright: ignore[reportUnknownArgumentType]
                 )
             new_attrs[_GEN_AI_OUTPUT_MESSAGES] = json_dumps(messages)
             output_handled = True
@@ -410,15 +405,11 @@ def _translate_openinference(span: ReadableSpan) -> None:
         or _OI_TOKEN_TOTAL in attrs
         or any(
             isinstance(k, str)  # pyright: ignore[reportUnnecessaryIsInstance]
-            and (
-                k.startswith((_OI_LLM_INPUT_MESSAGES + ".", _OI_LLM_OUTPUT_MESSAGES + "."))
-            )
+            and (k.startswith((_OI_LLM_INPUT_MESSAGES + ".", _OI_LLM_OUTPUT_MESSAGES + ".")))
             for k in attrs
         )
     )
-    is_llm = (
-        isinstance(kind, str) and kind.upper() in _OI_LLM_SPAN_KINDS
-    ) or has_llm_signals
+    is_llm = (isinstance(kind, str) and kind.upper() in _OI_LLM_SPAN_KINDS) or has_llm_signals
     if is_llm:
         new_attrs[SPAN_TYPE] = "LLM"
     elif isinstance(kind, str) and kind.upper() == "TOOL":
@@ -440,31 +431,25 @@ def _translate_openinference(span: ReadableSpan) -> None:
         new_attrs[_GEN_AI_USAGE_OUTPUT_TOKENS] = int(completion_tokens)
     if isinstance(total_tokens, (int, float)):
         new_attrs[_GEN_AI_USAGE_TOTAL_TOKENS] = int(total_tokens)
-    elif isinstance(prompt_tokens, (int, float)) or isinstance(
-        completion_tokens, (int, float)
-    ):
+    elif isinstance(prompt_tokens, (int, float)) or isinstance(completion_tokens, (int, float)):
         new_attrs[_GEN_AI_USAGE_TOTAL_TOKENS] = int(
             (cast(int | float, prompt_tokens) or 0) + (cast(int | float, completion_tokens) or 0)
         )
 
     # Messages
     input_messages = [
-        oi_message_to_genai(m)
-        for m in oi_collect_indexed(attrs, _OI_LLM_INPUT_MESSAGES)
+        oi_message_to_genai(m) for m in oi_collect_indexed(attrs, _OI_LLM_INPUT_MESSAGES)
     ]
     if input_messages:
         new_attrs[_GEN_AI_INPUT_MESSAGES] = json_dumps(input_messages)
     output_messages = [
-        oi_message_to_genai(m)
-        for m in oi_collect_indexed(attrs, _OI_LLM_OUTPUT_MESSAGES)
+        oi_message_to_genai(m) for m in oi_collect_indexed(attrs, _OI_LLM_OUTPUT_MESSAGES)
     ]
     if output_messages:
         new_attrs[_GEN_AI_OUTPUT_MESSAGES] = json_dumps(output_messages)
 
     # Tool definitions
-    tools = [
-        oi_tool_to_genai(t) for t in oi_collect_indexed(attrs, _OI_LLM_TOOLS)
-    ]
+    tools = [oi_tool_to_genai(t) for t in oi_collect_indexed(attrs, _OI_LLM_TOOLS)]
     tools = [t for t in tools if t]
     if tools:
         new_attrs[_GEN_AI_TOOL_DEFINITIONS] = json_dumps(tools)
@@ -537,7 +522,7 @@ class LangfuseAttributeTranslator(SpanProcessor):
                 _translate_openinference(span)
             elif is_langfuse_span(span):
                 _translate(span)
-        except Exception as exc:
+        except Exception:
             logger.debug("Langfuse attribute translation failed", exc_info=True)
 
     @override

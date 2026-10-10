@@ -68,10 +68,7 @@ def add_input_to_parent_span(span: Span, instance: Any):
     if hasattr(instance, "use_host_computer_server"):
         params["use_host_computer_server"] = instance.use_host_computer_server
     if hasattr(instance, "verbosity"):
-        if (
-            isinstance(instance.verbosity, int)
-            and instance.verbosity in levelToName
-        ):
+        if isinstance(instance.verbosity, int) and instance.verbosity in levelToName:
             params["verbosity"] = levelToName[instance.verbosity]
         else:
             params["verbosity"] = instance.verbosity
@@ -159,7 +156,7 @@ async def _wrap_async(
     instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-)-> T:
+) -> T:
     if to_wrap.get("action") == "start_parent_span":
         parent_span = Laminar.start_span("computer.run")
         stamp_instrumentation_scope(parent_span, to_wrap)

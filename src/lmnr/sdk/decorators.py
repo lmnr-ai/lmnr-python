@@ -111,7 +111,8 @@ def observe(
             association_properties["trace_type"] = TraceType.EVALUATION.value
         if tags is not None:
             if not isinstance(tags, list) or not all(  # pyright: ignore[reportUnnecessaryIsInstance]
-                isinstance(tag, str) for tag in tags  # pyright: ignore[reportUnnecessaryIsInstance]
+                isinstance(tag, str)
+                for tag in tags  # pyright: ignore[reportUnnecessaryIsInstance]
             ):
                 logger.warning("Tags must be a list of strings. Tags will be ignored.")
             else:
@@ -119,22 +120,22 @@ def observe(
                 association_properties["tags"] = list(set(tags))
         if input_formatter is not None and ignore_input:
             logger.warning(
-                f"observe, function {func_name}: Input formatter" +
-                " is ignored because `ignore_input` is True. Specify only one of" +
-                " `ignore_input` or `input_formatter`."
+                f"observe, function {func_name}: Input formatter"
+                + " is ignored because `ignore_input` is True. Specify only one of"
+                + " `ignore_input` or `input_formatter`."
             )
         if input_formatter is not None and ignore_inputs is not None:
             logger.warning(
-                f"observe, function {func_name}: Both input formatter and" +
-                " `ignore_inputs` are specified. Input formatter" +
-                " will pass all arguments to the formatter regardless of" +
-                " `ignore_inputs`."
+                f"observe, function {func_name}: Both input formatter and"
+                + " `ignore_inputs` are specified. Input formatter"
+                + " will pass all arguments to the formatter regardless of"
+                + " `ignore_inputs`."
             )
         if output_formatter is not None and ignore_output:
             logger.warning(
-                f"observe, function {func_name}: Output formatter" +
-                " is ignored because `ignore_output` is True. Specify only one of" +
-                " `ignore_output` or `output_formatter`."
+                f"observe, function {func_name}: Output formatter"
+                + " is ignored because `ignore_output` is True. Specify only one of"
+                + " `ignore_output` or `output_formatter`."
             )
 
         if is_async(func):

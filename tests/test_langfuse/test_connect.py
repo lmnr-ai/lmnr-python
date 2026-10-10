@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from typing import Any, cast
-from unittest.mock import MagicMock
 
 from opentelemetry.sdk.trace import ReadableSpan, SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.export import (
@@ -66,7 +65,8 @@ def test_connect_to_langfuse_dual_exports_observation(span_exporter: InMemorySpa
 
 
 def test_connect_to_langfuse_translates_generation_attributes(
-    span_exporter: InMemorySpanExporter, langfuse_client: Any,
+    span_exporter: InMemorySpanExporter,
+    langfuse_client: Any,
 ):
     assert Laminar.connect_to_langfuse() is True
 
@@ -95,7 +95,8 @@ def test_connect_to_langfuse_translates_generation_attributes(
 
 
 def test_connect_to_langfuse_splits_openai_generation_input(
-    span_exporter: InMemorySpanExporter, langfuse_client: Any,
+    span_exporter: InMemorySpanExporter,
+    langfuse_client: Any,
 ):
     """End-to-end: a generation whose input is the OpenAI {messages, tools}
     shape (what `langfuse.openai` ships) is split into gen_ai.input.messages +
@@ -123,17 +124,21 @@ def test_connect_to_langfuse_splits_openai_generation_input(
 
 
 def test_connect_to_langfuse_promotes_trace_session_and_user(
-     span_exporter: InMemorySpanExporter, langfuse_client: Any,
+    span_exporter: InMemorySpanExporter,
+    langfuse_client: Any,
 ):
     assert Laminar.connect_to_langfuse() is True
 
     from langfuse import propagate_attributes
 
-    with langfuse_client.start_as_current_observation(name="root") as root, propagate_attributes(
-        user_id="user-42",
-        session_id="session-7",
-        tags=["env:test"],
-        metadata={"feature": "beta"},
+    with (
+        langfuse_client.start_as_current_observation(name="root") as root,
+        propagate_attributes(
+            user_id="user-42",
+            session_id="session-7",
+            tags=["env:test"],
+            metadata={"feature": "beta"},
+        ),
     ):
         pass
 
@@ -199,9 +204,9 @@ def test_translator_mutates_before_synchronous_exporter():
     span.end()
 
     assert len(exported) == 1
-    assert (
-        exported[0].get("gen_ai.request.model") == "gpt-4o"
-    ), f"translator must run before exporter, got {exported[0]}"
+    assert exported[0].get("gen_ai.request.model") == "gpt-4o", (
+        f"translator must run before exporter, got {exported[0]}"
+    )
 
 
 def test_connect_to_langfuse_swallows_install_exceptions(monkeypatch: MonkeyPatch):

@@ -16,6 +16,7 @@ from lmnr.sdk.log import get_default_logger
 logger = get_default_logger(__name__)
 T = TypeVar("T")
 
+
 class ProcessChunkResult(TypedDict):
     role: str
     model_version: str | None
@@ -43,9 +44,7 @@ def merge_text_parts(
             merged_parts.append(
                 types.Part(
                     file_data=types.FileData(
-                        display_name=part.display_name,
-                        file_uri=part.uri,
-                        mime_type=part.mime_type
+                        display_name=part.display_name, file_uri=part.uri, mime_type=part.mime_type
                     )
                 )
             )

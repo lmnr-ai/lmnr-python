@@ -9,7 +9,6 @@ from opentelemetry.trace import Status, StatusCode
 from opentelemetry.trace.span import Span
 from typing_extensions import TypeVar
 
-from lmnr.sdk.laminar import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.claude_agent.proxy import (
     create_proxy_for_transport,
     release_port,
@@ -30,6 +29,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.wrapper_helpers
     add_spec_wrapper,
     stamp_instrumentation_scope,
 )
+from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.types import LaminarSpanType
 
@@ -145,9 +145,7 @@ def wrap_async_gen(
                 record_input(span, wrapped, args, kwargs)
                 async_source = wrapped(*args, **kwargs)
                 async_iter = (
-                    async_source.__aiter__()
-                    if hasattr(async_source, "__aiter__")
-                    else async_source
+                    async_source.__aiter__() if hasattr(async_source, "__aiter__") else async_source
                 )
 
             while True:
@@ -156,7 +154,7 @@ def wrap_async_gen(
                         span, record_exception=False, set_status_on_exception=False
                     ):
                         item = await async_iter.__anext__()
-                        collected.append(item) # pyright: ignore[reportUnknownMemberType]
+                        collected.append(item)  # pyright: ignore[reportUnknownMemberType]
                 except StopAsyncIteration:
                     break
                 yield item
@@ -216,16 +214,14 @@ async def wrap_transport_connect(
     instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-)-> T:
+) -> T:
     """Wrap Transport.connect to start proxy before connecting."""
     try:
         from claude_agent_sdk._internal.transport.subprocess_cli import (
             SubprocessCLITransport,
         )
     except (ImportError, ModuleNotFoundError):
-        logger.warning(
-            "Failed to import SubprocessCLITransport, skipping proxy setup"
-        )
+        logger.warning("Failed to import SubprocessCLITransport, skipping proxy setup")
         return await wrapped(*args, **kwargs)
 
     # Read options.env BEFORE modifying to avoid circular proxy config
@@ -328,7 +324,7 @@ async def wrap_transport_close(
     instance: Any,
     args: Sequence[Any],
     kwargs: dict[str, Any],
-)-> T:
+) -> T:
     """Wrap Transport.close to stop proxy after closing."""
     try:
         return await wrapped(*args, **kwargs)
@@ -380,12 +376,12 @@ async def _cleanup_transport_context(instance: Any) -> None:
             try:
                 delattr(instance, "__lmnr_context")
             except Exception:
-                logger.debug("failed to delete `__lmnr_context` from CAS proxy instance", exc_info=True)
+                logger.debug(
+                    "failed to delete `__lmnr_context` from CAS proxy instance", exc_info=True
+                )
 
     try:
-        await asyncio.wait_for(
-            asyncio.shield(_do_cleanup()), timeout=DEFAULT_CLEANUP_TIMEOUT
-        )
+        await asyncio.wait_for(asyncio.shield(_do_cleanup()), timeout=DEFAULT_CLEANUP_TIMEOUT)
     except BaseException:
         # Swallow all exceptions - cleanup failures are expected
         logger.debug("Expected `BaseException` during CAS proxy cleanup", exc_info=True)
@@ -464,12 +460,15 @@ def apply_settings_proxy_override(options: Any, proxy_url: str) -> bool:
 
     original = options.settings
     updated = build_proxy_flag_settings(
-        original, proxy_url, cwd=session_cwd, setting_sources=setting_sources,
+        original,
+        proxy_url,
+        cwd=session_cwd,
+        setting_sources=setting_sources,
     )
     if updated is None:
         logger.warning(
-            "Could not read options.settings %r; Claude Code settings that define " +
-            "a base URL will bypass the Laminar proxy and produce no LLM spans.",
+            "Could not read options.settings %r; Claude Code settings that define "
+            + "a base URL will bypass the Laminar proxy and produce no LLM spans.",
             original,
         )
         return False
@@ -478,16 +477,14 @@ def apply_settings_proxy_override(options: Any, proxy_url: str) -> bool:
 
     conflicting = [
         key
-        for key, value in read_claude_settings_env(
-            session_cwd, setting_sources
-        ).items()
+        for key, value in read_claude_settings_env(session_cwd, setting_sources).items()
         if key in PROXY_BASE_URL_ENV_KEYS and value not in ("", proxy_url)
     ]
     if conflicting:
         logger.info(
-            "Claude Code settings define %s, which outranks the subprocess " +
-            "environment. Injected --settings so the Laminar proxy at %s still " +
-            "intercepts API traffic; your settings files were not modified.",
+            "Claude Code settings define %s, which outranks the subprocess "
+            + "environment. Injected --settings so the Laminar proxy at %s still "
+            + "intercepts API traffic; your settings files were not modified.",
             ", ".join(sorted(conflicting)),
             proxy_url,
         )

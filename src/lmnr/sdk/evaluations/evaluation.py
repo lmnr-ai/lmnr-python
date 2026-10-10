@@ -45,6 +45,7 @@ from lmnr.sdk.utils import from_env, is_async
 # the eval and its debug session cross-reference under one identifier.
 SESSION_METADATA_KEY = "rollout.session_id"
 
+
 def _with_debugger_session_metadata(
     metadata: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
@@ -88,9 +89,7 @@ class Evaluation:
         http_port: int | None = None,
         grpc_port: int | None = None,
         frontend_port: int | None = None,
-        instruments: (
-            set[Instruments] | list[Instruments] | tuple[Instruments] | None
-        ) = None,
+        instruments: (set[Instruments] | list[Instruments] | tuple[Instruments] | None) = None,
         disabled_instruments: (
             set[Instruments] | list[Instruments] | tuple[Instruments] | None
         ) = None,
@@ -168,9 +167,9 @@ class Evaluation:
         for evaluator_name in evaluators:
             if not evaluator_name_regex.match(evaluator_name):
                 raise ValueError(
-                    f'Invalid evaluator key: "{evaluator_name}". ' +
-                    "Keys must only contain letters, digits, hyphens," +
-                    "underscores, or spaces."
+                    f'Invalid evaluator key: "{evaluator_name}". '
+                    + "Keys must only contain letters, digits, hyphens,"
+                    + "underscores, or spaces."
                 )
 
         base_url = base_url or from_env("LMNR_BASE_URL") or "https://api.lmnr.ai"
@@ -204,9 +203,9 @@ class Evaluation:
         api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
         if not api_key and not L.is_initialized():
             raise ValueError(
-                "Please pass the project API key to `evaluate`" +
-                " or set the LMNR_PROJECT_API_KEY environment variable" +
-                " in your environment or .env file"
+                "Please pass the project API key to `evaluate`"
+                + " or set the LMNR_PROJECT_API_KEY environment variable"
+                + " in your environment or .env file"
             )
         self.project_api_key: str | None = api_key
 
@@ -252,9 +251,7 @@ class Evaluation:
                 )
                 if not source.id:
                     try:
-                        datasets = await self.client.datasets.get_dataset_by_name(
-                            source.name or ""
-                        )
+                        datasets = await self.client.datasets.get_dataset_by_name(source.name or "")
                         if len(datasets) == 0:
                             self._logger.warning(f"Dataset {source.name} not found")
                         else:
@@ -283,9 +280,7 @@ class Evaluation:
             result_datapoints = await self._evaluate_in_batches(evaluation["id"])
             # Wait for all background upload tasks to complete
             if self.upload_tasks:
-                self._logger.debug(
-                    f"Waiting for {len(self.upload_tasks)} upload tasks to complete"
-                )
+                self._logger.debug(f"Waiting for {len(self.upload_tasks)} upload tasks to complete")
                 _gathered_results = await asyncio.gather(*self.upload_tasks)
                 self._logger.debug("All upload tasks completed")
         except Exception as e:
@@ -314,9 +309,7 @@ class Evaluation:
         if source is not None and getattr(source, "client", None):
             source.client.close()
 
-    async def _evaluate_in_batches(
-        self, eval_id: uuid.UUID
-    ) -> list[EvaluationResultDatapoint]:
+    async def _evaluate_in_batches(self, eval_id: uuid.UUID) -> list[EvaluationResultDatapoint]:
 
         semaphore = asyncio.Semaphore(self.concurrency_limit)
         tasks: list[Task[tuple[int, EvaluationResultDatapoint]]] = []
@@ -333,7 +326,9 @@ class Evaluation:
         # Create tasks only after acquiring semaphore
         for idx, item in enumerate(data_iter):
             _success = await semaphore.acquire()
-            datapoint = cast(Datapoint, item if isinstance(self.data, list) else self.data[cast(int, item)])
+            datapoint = cast(
+                Datapoint, item if isinstance(self.data, list) else self.data[cast(int, item)]
+            )
             task = asyncio.create_task(evaluate_task(datapoint, idx))
             tasks.append(task)
 
@@ -362,12 +357,8 @@ class Evaluation:
                 with L.start_as_current_span(
                     "executor", input={"data": datapoint.data}
                 ) as executor_span:
-                    executor_span_id = uuid.UUID(
-                        int=executor_span.get_span_context().span_id
-                    )
-                    trace_id = uuid.UUID(
-                        int=executor_span.get_span_context().trace_id
-                    )
+                    executor_span_id = uuid.UUID(int=executor_span.get_span_context().span_id)
+                    trace_id = uuid.UUID(int=executor_span.get_span_context().trace_id)
 
                     partial_datapoint = PartialEvaluationDatapoint(
                         id=evaluation_id,
@@ -379,12 +370,10 @@ class Evaluation:
                         metadata=datapoint.metadata,
                     )
                     if self._source_dataset is not None and self._source_dataset.id is not None:
-                        partial_datapoint.dataset_link = (
-                            EvaluationDatapointDatasetLink(
-                                dataset_id=self._source_dataset.id,
-                                datapoint_id=datapoint.id or uuid.UUID(int=0),
-                                created_at=datapoint.created_at or datetime.now(timezone.utc),
-                            )
+                        partial_datapoint.dataset_link = EvaluationDatapointDatasetLink(
+                            dataset_id=self._source_dataset.id,
+                            datapoint_id=datapoint.id or uuid.UUID(int=0),
+                            created_at=datapoint.created_at or datetime.now(timezone.utc),
                         )
                     # First, create datapoint with trace_id so that we can show the dp in the UI
                     await self.client.evals.save_datapoints(
@@ -394,9 +383,7 @@ class Evaluation:
                     # Run synchronous executors in a thread pool to avoid blocking
                     if not is_async(self.executor):
                         loop = asyncio.get_event_loop()
-                        output = await loop.run_in_executor(
-                            None, self.executor, datapoint.data
-                        )
+                        output = await loop.run_in_executor(None, self.executor, datapoint.data)
                     else:
                         output = await self.executor(datapoint.data)
 
@@ -412,16 +399,17 @@ class Evaluation:
                         evaluator_name,
                         input={"output": output, "target": target},
                     ) as evaluator_span:
-                        evaluator_span.set_attribute(
-                            SPAN_TYPE, SpanType.EVALUATOR.value
-                        )
+                        evaluator_span.set_attribute(SPAN_TYPE, SpanType.EVALUATOR.value)
                         if is_async(evaluator):
-                            value = await cast(Awaitable[EvaluatorFunctionReturnType], evaluator(output, target))
+                            value = await cast(
+                                Awaitable[EvaluatorFunctionReturnType], evaluator(output, target)
+                            )
                         else:
                             loop = asyncio.get_event_loop()
-                            value = cast(EvaluatorFunctionReturnType, await loop.run_in_executor(
-                                None, evaluator, output, target
-                            ))
+                            value = cast(
+                                EvaluatorFunctionReturnType,
+                                await loop.run_in_executor(None, evaluator, output, target),
+                            )
                         L.set_span_output(value)
 
                     # If evaluator returns a single number, use evaluator name as key
@@ -457,9 +445,7 @@ class Evaluation:
 
         # Create background upload task without awaiting it
         upload_task = asyncio.create_task(
-            self.client.evals.save_datapoints(
-                eval_id, [eval_datapoint], self.group_name
-            )
+            self.client.evals.save_datapoints(eval_id, [eval_datapoint], self.group_name)
         )
         self.upload_tasks.append(upload_task)
 

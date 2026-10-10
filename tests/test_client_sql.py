@@ -17,10 +17,7 @@ class TestAsyncSqlResource:
     @pytest_asyncio.fixture
     async def async_client(self) -> AsyncGenerator[AsyncLaminarClient]:
         """Create an AsyncLaminarClient for testing."""
-        client = AsyncLaminarClient(
-            base_url="http://test-api.com",
-            project_api_key="test-key"
-        )
+        client = AsyncLaminarClient(base_url="http://test-api.com", project_api_key="test-key")
         yield client
         await client.close()
 
@@ -36,14 +33,11 @@ class TestAsyncSqlResource:
             ]
         }
 
-        with patch.object(
-            async_client.sql._client, "post", new_callable=AsyncMock
-        ) as mock_post:
+        with patch.object(async_client.sql._client, "post", new_callable=AsyncMock) as mock_post:
             mock_post.return_value = mock_response
 
             result = await async_client.sql.query(
-                "SELECT * FROM spans WHERE id = {id:String}",
-                {"id": "test-id"}
+                "SELECT * FROM spans WHERE id = {id:String}", {"id": "test-id"}
             )
 
             assert len(result) == 2
@@ -66,9 +60,7 @@ class TestAsyncSqlResource:
         mock_response.status_code = 200
         mock_response.json.return_value = {"data": []}
 
-        with patch.object(
-            async_client.sql._client, "post", new_callable=AsyncMock
-        ) as mock_post:
+        with patch.object(async_client.sql._client, "post", new_callable=AsyncMock) as mock_post:
             mock_post.return_value = mock_response
 
             result = await async_client.sql.query("SELECT * FROM spans")
@@ -84,9 +76,7 @@ class TestAsyncSqlResource:
         mock_response.status_code = 200
         mock_response.json.return_value = {}
 
-        with patch.object(
-            async_client.sql._client, "post", new_callable=AsyncMock
-        ) as mock_post:
+        with patch.object(async_client.sql._client, "post", new_callable=AsyncMock) as mock_post:
             mock_post.return_value = mock_response
 
             result = await async_client.sql.query("SELECT * FROM spans")
@@ -100,9 +90,7 @@ class TestAsyncSqlResource:
         mock_response.status_code = 500
         mock_response.raise_for_status.side_effect = Exception("Server error")
 
-        with patch.object(
-            async_client.sql._client, "post", new_callable=AsyncMock
-        ) as mock_post:
+        with patch.object(async_client.sql._client, "post", new_callable=AsyncMock) as mock_post:
             mock_post.return_value = mock_response
 
             with pytest.raises(Exception, match="Server error"):
@@ -115,10 +103,7 @@ class TestSyncSqlResource:
     @pytest.fixture
     def sync_client(self) -> Generator[LaminarClient]:
         """Create a LaminarClient for testing."""
-        client = LaminarClient(
-            base_url="http://test-api.com",
-            project_api_key="test-key"
-        )
+        client = LaminarClient(base_url="http://test-api.com", project_api_key="test-key")
         yield client
         client.close()
 
@@ -135,10 +120,7 @@ class TestSyncSqlResource:
         with patch.object(sync_client.sql._client, "post") as mock_post:
             mock_post.return_value = mock_response
 
-            result = sync_client.sql.query(
-                "SELECT trace_id, span_id FROM spans",
-                {"limit": 10}
-            )
+            result = sync_client.sql.query("SELECT trace_id, span_id FROM spans", {"limit": 10})
 
             assert len(result) == 1
             assert result[0]["trace_id"] == "abc123"
@@ -182,8 +164,7 @@ class TestSyncSqlResource:
             }
 
             result = sync_client.sql.query(
-                "SELECT * FROM spans WHERE trace_id = {traceId:UUID}",
-                params
+                "SELECT * FROM spans WHERE trace_id = {traceId:UUID}", params
             )
 
             assert result == []

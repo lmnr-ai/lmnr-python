@@ -2,7 +2,6 @@ import json
 import os
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -314,9 +313,7 @@ def test_debug_context_keeps_non_uuid_ids_verbatim():
 
 
 def test_debug_context_empty_ids_become_none():
-    ctx = deserialize_debug_context(
-        {"enabled": True, "session_id": "", "replay_trace_id": ""}
-    )
+    ctx = deserialize_debug_context({"enabled": True, "session_id": "", "replay_trace_id": ""})
     assert ctx.get("session_id") is None
     assert ctx.get("replay_trace_id") is None
 
@@ -326,9 +323,7 @@ def test_debug_context_non_boolean_enabled_never_arms():
     # the string "false", or 1) is a malformed/forged block and must parse to
     # enabled=False, never arming a downstream runtime.
     for enabled in ("false", "true", 1, {"x": 1}):
-        ctx = deserialize_debug_context(
-            {"enabled": enabled, "session_id": "my-session"}
-        )
+        ctx = deserialize_debug_context({"enabled": enabled, "session_id": "my-session"})
         assert ctx.get("enabled") is False
 
 
@@ -372,19 +367,11 @@ def test_build_from_context_armed():
 
 
 def test_build_from_context_none_when_disabled():
-    assert (
-        build_debug_config_from_context(
-            DebugContext(enabled=False, session_id=_SESSION)
-        )
-        is None
-    )
+    assert build_debug_config_from_context(DebugContext(enabled=False, session_id=_SESSION)) is None
 
 
 def test_build_from_context_none_when_no_session():
-    assert (
-        build_debug_config_from_context(DebugContext(enabled=True, session_id=None))
-        is None
-    )
+    assert build_debug_config_from_context(DebugContext(enabled=True, session_id=None)) is None
 
 
 def test_build_from_context_none_when_block_absent():

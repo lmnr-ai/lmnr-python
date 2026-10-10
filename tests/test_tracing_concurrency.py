@@ -84,9 +84,7 @@ async def test_asyncio_parallel_spans_same_parent(span_exporter: InMemorySpanExp
         with Laminar.start_as_current_span("parent_task"):
             Laminar.set_trace_session_id("parent_session")
             # Run child tasks concurrently within the parent context
-            results = await asyncio.gather(
-                child_task("a"), child_task("b"), child_task("c")
-            )
+            results = await asyncio.gather(child_task("a"), child_task("b"), child_task("c"))
             Laminar.set_span_output(results)
             return results
 
@@ -101,10 +99,9 @@ async def test_asyncio_parallel_spans_same_parent(span_exporter: InMemorySpanExp
     child_spans = [s for s in spans if s.name == "child_task"]
 
     assert len(child_spans) == 3
-    assert (
-        (parent_span.attributes or {})["lmnr.association.properties.session_id"]
-        == "parent_session"
-    )
+    assert (parent_span.attributes or {})[
+        "lmnr.association.properties.session_id"
+    ] == "parent_session"
 
     # Check all spans share the same trace ID
     trace_ids = [_ctx(span).trace_id for span in spans]
@@ -131,9 +128,7 @@ async def test_asyncio_deeply_nested_with_parallelism(
     async def branch_task(branch_id: str) -> tuple[str, str]:
         with Laminar.start_as_current_span("branch_task"):
             # Each branch runs some leaf tasks in parallel
-            results = await asyncio.gather(
-                leaf_task(f"{branch_id}_1"), leaf_task(f"{branch_id}_2")
-            )
+            results = await asyncio.gather(leaf_task(f"{branch_id}_1"), leaf_task(f"{branch_id}_2"))
             Laminar.set_span_output(results)
             return results
 
@@ -141,9 +136,7 @@ async def test_asyncio_deeply_nested_with_parallelism(
         with Laminar.start_as_current_span("root_task"):
             Laminar.set_trace_session_id("root_session")
             # Run multiple branches in parallel
-            results = await asyncio.gather(
-                branch_task("branch_a"), branch_task("branch_b")
-            )
+            results = await asyncio.gather(branch_task("branch_a"), branch_task("branch_b"))
             Laminar.set_span_output(results)
             return results
 
@@ -170,9 +163,7 @@ async def test_asyncio_deeply_nested_with_parallelism(
 
     # Each leaf should have a branch as parent
     for leaf_span in leaf_spans:
-        assert _parent(leaf_span).span_id in [
-            _ctx(b).span_id for b in branch_spans
-        ]
+        assert _parent(leaf_span).span_id in [_ctx(b).span_id for b in branch_spans]
 
 
 # =============================================================================
@@ -258,10 +249,9 @@ def test_threading_parallel_spans_same_parent(span_exporter: InMemorySpanExporte
     child_spans = [s for s in spans if s.name == "child_worker"]
 
     assert len(child_spans) == 3
-    assert (
-        (parent_span.attributes or {})["lmnr.association.properties.session_id"]
-        == "parent_session"
-    )
+    assert (parent_span.attributes or {})[
+        "lmnr.association.properties.session_id"
+    ] == "parent_session"
 
     # Check all spans share the same trace ID
     trace_ids = [_ctx(span).trace_id for span in spans]
@@ -290,9 +280,7 @@ def test_threading_deeply_nested_with_parallelism(span_exporter: InMemorySpanExp
             # Each branch creates leaf threads
             threads: list[threading.Thread] = []
             for i in range(2):
-                thread = threading.Thread(
-                    target=leaf_worker, args=(f"{branch_id}_{i}",)
-                )
+                thread = threading.Thread(target=leaf_worker, args=(f"{branch_id}_{i}",))
                 threads.append(thread)
                 thread.start()
 
@@ -343,9 +331,7 @@ def test_threading_deeply_nested_with_parallelism(span_exporter: InMemorySpanExp
 
     # Each leaf should have a branch as parent
     for leaf_span in leaf_spans:
-        assert _parent(leaf_span).span_id in [
-            _ctx(b).span_id for b in branch_spans
-        ]
+        assert _parent(leaf_span).span_id in [_ctx(b).span_id for b in branch_spans]
 
 
 # =============================================================================
@@ -366,9 +352,7 @@ def test_threadpool_parallel_spans_separate_traces(span_exporter: InMemorySpanEx
     # Use ThreadPoolExecutor to run tasks
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = [executor.submit(task_worker, str(i)) for i in range(3)]
-        results = [
-            future.result() for future in concurrent.futures.as_completed(futures)
-        ]
+        results = [future.result() for future in concurrent.futures.as_completed(futures)]
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 3
@@ -401,14 +385,10 @@ def test_threadpool_parallel_spans_with_openai(span_exporter: InMemorySpanExport
         with Laminar.start_as_current_span("task_worker"):
             time.sleep(0.01)
             # Mock the OpenAI response to avoid VCR threading issues
-            with patch.object(
-                openai_client._client, "send", return_value=mock_response
-            ):
+            with patch.object(openai_client._client, "send", return_value=mock_response):
                 _res = openai_client.chat.completions.create(
                     model="gpt-4o-mini",
-                    messages=[
-                        {"role": "user", "content": "what is the capital of France?"}
-                    ],
+                    messages=[{"role": "user", "content": "what is the capital of France?"}],
                 )
             result = f"task_{task_id}"
             Laminar.set_span_output(result)
@@ -417,9 +397,7 @@ def test_threadpool_parallel_spans_with_openai(span_exporter: InMemorySpanExport
     # Use ThreadPoolExecutor to run tasks
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = [executor.submit(task_worker, str(i)) for i in range(3)]
-        results = [
-            future.result() for future in concurrent.futures.as_completed(futures)
-        ]
+        results = [future.result() for future in concurrent.futures.as_completed(futures)]
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 6
@@ -460,13 +438,14 @@ def test_threadpool_parallel_spans_with_langchain(span_exporter: InMemorySpanExp
     def task_worker(task_id: str) -> str:
         # the real API key was used in the vcr cassette
         openai_client = ChatOpenAI(api_key=SecretStr("test-api-key"))
-        with patch.object(openai_client.client, "create", return_value=mock_response), Laminar.start_as_current_span("task_worker"):
+        with (
+            patch.object(openai_client.client, "create", return_value=mock_response),
+            Laminar.start_as_current_span("task_worker"),
+        ):
             time.sleep(0.01)
             _res = openai_client.invoke(
                 model="gpt-4o-mini",
-                input=[
-                    {"role": "user", "content": "what is the capital of France?"}
-                ],
+                input=[{"role": "user", "content": "what is the capital of France?"}],
             )
             result = f"task_{task_id}"
             Laminar.set_span_output(result)
@@ -475,9 +454,7 @@ def test_threadpool_parallel_spans_with_langchain(span_exporter: InMemorySpanExp
     # Use ThreadPoolExecutor to run tasks
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = [executor.submit(task_worker, str(i)) for i in range(3)]
-        results = [
-            future.result() for future in concurrent.futures.as_completed(futures)
-        ]
+        results = [future.result() for future in concurrent.futures.as_completed(futures)]
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 6
@@ -515,10 +492,7 @@ def test_threadpool_parallel_spans_same_parent(span_exporter: InMemorySpanExport
             # Use ThreadPoolExecutor within parent context
             with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
                 futures = [executor.submit(child_worker, str(i)) for i in range(3)]
-                results = [
-                    future.result()
-                    for future in concurrent.futures.as_completed(futures)
-                ]
+                results = [future.result() for future in concurrent.futures.as_completed(futures)]
             Laminar.set_span_output(results)
             return results
 
@@ -533,10 +507,9 @@ def test_threadpool_parallel_spans_same_parent(span_exporter: InMemorySpanExport
     child_spans = [s for s in spans if s.name == "child_worker"]
 
     assert len(child_spans) == 3
-    assert (
-        (parent_span.attributes or {})["lmnr.association.properties.session_id"]
-        == "parent_session"
-    )
+    assert (parent_span.attributes or {})[
+        "lmnr.association.properties.session_id"
+    ] == "parent_session"
 
     # Check all spans share the same trace ID
     trace_ids = [_ctx(span).trace_id for span in spans]
@@ -550,7 +523,7 @@ def test_threadpool_parallel_spans_same_parent(span_exporter: InMemorySpanExport
 def test_threadpool_deeply_nested_with_parallelism(span_exporter: InMemorySpanExporter):
     """Test deeply nested ThreadPoolExecutor spans with some parallelism."""
 
-    def leaf_worker(task_id: str)-> str:
+    def leaf_worker(task_id: str) -> str:
         with Laminar.start_as_current_span("leaf_worker"):
             time.sleep(0.01)
             result = f"leaf_{task_id}"
@@ -561,13 +534,8 @@ def test_threadpool_deeply_nested_with_parallelism(span_exporter: InMemorySpanEx
         with Laminar.start_as_current_span("branch_worker"):
             # Each branch uses ThreadPoolExecutor for leaf tasks
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                futures = [
-                    executor.submit(leaf_worker, f"{branch_id}_{i}") for i in range(2)
-                ]
-                results = [
-                    future.result()
-                    for future in concurrent.futures.as_completed(futures)
-                ]
+                futures = [executor.submit(leaf_worker, f"{branch_id}_{i}") for i in range(2)]
+                results = [future.result() for future in concurrent.futures.as_completed(futures)]
             Laminar.set_span_output(results)
             return results
 
@@ -577,10 +545,7 @@ def test_threadpool_deeply_nested_with_parallelism(span_exporter: InMemorySpanEx
             # Use ThreadPoolExecutor for branch tasks
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 futures = [executor.submit(branch_worker, str(i)) for i in range(2)]
-                results = [
-                    future.result()
-                    for future in concurrent.futures.as_completed(futures)
-                ]
+                results = [future.result() for future in concurrent.futures.as_completed(futures)]
             Laminar.set_span_output(results)
             return results
 
@@ -607,9 +572,7 @@ def test_threadpool_deeply_nested_with_parallelism(span_exporter: InMemorySpanEx
 
     # Each leaf should have a branch as parent
     for leaf_span in leaf_spans:
-        assert _parent(leaf_span).span_id in [
-            _ctx(b).span_id for b in branch_spans
-        ]
+        assert _parent(leaf_span).span_id in [_ctx(b).span_id for b in branch_spans]
 
 
 def test_threadpool_exception_handling(span_exporter: InMemorySpanExporter):
@@ -703,15 +666,11 @@ def test_threadpool_multiple_executors(span_exporter: InMemorySpanExporter):
             # Use two separate executors
             with (
                 concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor_a,
-                concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor_b
+                concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor_b,
             ):
                 # Submit tasks to both executors
-                futures_a = [
-                    executor_a.submit(worker_type_a, str(i)) for i in range(2)
-                ]
-                futures_b = [
-                    executor_b.submit(worker_type_b, str(i)) for i in range(2)
-                ]
+                futures_a = [executor_a.submit(worker_type_a, str(i)) for i in range(2)]
+                futures_b = [executor_b.submit(worker_type_b, str(i)) for i in range(2)]
 
                 # Collect results from both executors
                 all_futures = futures_a + futures_b
@@ -774,13 +733,9 @@ def test_threadpool_context_propagation_with_metadata(
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
                 futures = [
-                    executor.submit(metadata_worker, str(i), metadata_list[i])
-                    for i in range(3)
+                    executor.submit(metadata_worker, str(i), metadata_list[i]) for i in range(3)
                 ]
-                results = [
-                    future.result()
-                    for future in concurrent.futures.as_completed(futures)
-                ]
+                results = [future.result() for future in concurrent.futures.as_completed(futures)]
 
             Laminar.set_span_output(results)
             return results
@@ -825,19 +780,14 @@ def test_threadpool_executor_reuse_across_contexts(span_exporter: InMemorySpanEx
 
     # Create a shared executor
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as shared_executor:
-
         # First context
         def context_one() -> list[str]:
             with Laminar.start_as_current_span("context_one"):
                 Laminar.set_trace_session_id("reuse_session_1")
                 futures = [
-                    shared_executor.submit(reusable_worker, str(i), "context1")
-                    for i in range(2)
+                    shared_executor.submit(reusable_worker, str(i), "context1") for i in range(2)
                 ]
-                results = [
-                    future.result()
-                    for future in concurrent.futures.as_completed(futures)
-                ]
+                results = [future.result() for future in concurrent.futures.as_completed(futures)]
                 Laminar.set_span_output(results)
                 return results
 
@@ -846,13 +796,9 @@ def test_threadpool_executor_reuse_across_contexts(span_exporter: InMemorySpanEx
             with Laminar.start_as_current_span("context_two"):
                 Laminar.set_trace_session_id("reuse_session_2")
                 futures = [
-                    shared_executor.submit(reusable_worker, str(i), "context2")
-                    for i in range(2)
+                    shared_executor.submit(reusable_worker, str(i), "context2") for i in range(2)
                 ]
-                results = [
-                    future.result()
-                    for future in concurrent.futures.as_completed(futures)
-                ]
+                results = [future.result() for future in concurrent.futures.as_completed(futures)]
                 Laminar.set_span_output(results)
                 return results
 
@@ -881,12 +827,8 @@ def test_threadpool_executor_reuse_across_contexts(span_exporter: InMemorySpanEx
     context_one_trace_id = _ctx(context_one_spans[0]).trace_id
     context_two_trace_id = _ctx(context_two_spans[0]).trace_id
 
-    context_one_workers = [
-        s for s in worker_spans if _ctx(s).trace_id == context_one_trace_id
-    ]
-    context_two_workers = [
-        s for s in worker_spans if _ctx(s).trace_id == context_two_trace_id
-    ]
+    context_one_workers = [s for s in worker_spans if _ctx(s).trace_id == context_one_trace_id]
+    context_two_workers = [s for s in worker_spans if _ctx(s).trace_id == context_two_trace_id]
 
     assert len(context_one_workers) == 2
     assert len(context_two_workers) == 2
@@ -917,21 +859,15 @@ def test_threadpool_sequential_vs_parallel_execution(span_exporter: InMemorySpan
             with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
                 # Sequential batches
                 for batch in ["batch_a", "batch_b"]:
-                    futures = [
-                        executor.submit(sequential_worker, str(i), batch)
-                        for i in range(2)
-                    ]
+                    futures = [executor.submit(sequential_worker, str(i), batch) for i in range(2)]
                     # Wait for this batch to complete before starting next
                     batch_results = [future.result() for future in futures]
                     all_results.extend(batch_results)
 
                 # Parallel execution
-                parallel_futures = [
-                    executor.submit(parallel_worker, str(i)) for i in range(3)
-                ]
+                parallel_futures = [executor.submit(parallel_worker, str(i)) for i in range(3)]
                 parallel_results = [
-                    future.result()
-                    for future in concurrent.futures.as_completed(parallel_futures)
+                    future.result() for future in concurrent.futures.as_completed(parallel_futures)
                 ]
                 all_results.extend(parallel_results)
 
@@ -1119,9 +1055,7 @@ def test_start_active_span_threadpool_parallel(span_exporter: InMemorySpanExport
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = [executor.submit(child_worker, str(i)) for i in range(3)]
-        results = [
-            future.result() for future in concurrent.futures.as_completed(futures)
-        ]
+        results = [future.result() for future in concurrent.futures.as_completed(futures)]
 
     span.end()
 
@@ -1197,9 +1131,7 @@ def test_start_active_span_nested_threading(span_exporter: InMemorySpanExporter)
         assert cast(list[str], (branch_span.attributes or {})["lmnr.span.path"])[0] == "root"
 
     for leaf_span in leaf_spans:
-        assert _parent(leaf_span).span_id in [
-            _ctx(b).span_id for b in branch_spans
-        ]
+        assert _parent(leaf_span).span_id in [_ctx(b).span_id for b in branch_spans]
         assert cast(list[str], (leaf_span.attributes or {})["lmnr.span.path"])[0] == "root"
 
 
@@ -1215,9 +1147,7 @@ async def test_start_active_span_nested_asyncio(span_exporter: InMemorySpanExpor
     async def branch_task(branch_id: str) -> tuple[str, str]:
         span = Laminar.start_active_span(f"branch_{branch_id}")
 
-        results = await asyncio.gather(
-            leaf_task(f"{branch_id}_1"), leaf_task(f"{branch_id}_2")
-        )
+        results = await asyncio.gather(leaf_task(f"{branch_id}_1"), leaf_task(f"{branch_id}_2"))
 
         span.end()
         return results
@@ -1248,9 +1178,7 @@ async def test_start_active_span_nested_asyncio(span_exporter: InMemorySpanExpor
         assert cast(list[str], (branch_span.attributes or {})["lmnr.span.path"])[0] == "root"
 
     for leaf_span in leaf_spans:
-        assert _parent(leaf_span).span_id in [
-            _ctx(b).span_id for b in branch_spans
-        ]
+        assert _parent(leaf_span).span_id in [_ctx(b).span_id for b in branch_spans]
         assert cast(list[str], (leaf_span.attributes or {})["lmnr.span.path"])[0] == "root"
 
 
@@ -1269,9 +1197,7 @@ def test_start_active_span_threadpool_context_isolation(
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         futures = [executor.submit(worker, str(i)) for i in range(3)]
-        results = [
-            future.result() for future in concurrent.futures.as_completed(futures)
-        ]
+        results = [future.result() for future in concurrent.futures.as_completed(futures)]
 
     spans = span_exporter.get_finished_spans()
     assert len(spans) == 6  # 3 workers + 3 inner spans

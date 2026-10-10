@@ -94,6 +94,7 @@ SPAN_NAME = "openai.response"
 logger = get_default_logger(__name__)
 T = TypeVar("T")
 
+
 def _replay_enabled() -> bool:
     """True on a debug run with replay configured. Imported lazily to keep the
     debug machinery out of the instrumentation import path on normal runs."""
@@ -163,9 +164,7 @@ class TracedData(pydantic.BaseModel):
     # Any: pydantic would otherwise validate against the ToolParam union, which
     # rejects valid user tools (e.g. FunctionToolParam requires `strict`).
     tools: list[Any | ToolParam] | None = pydantic.Field(default=None)
-    output_blocks: dict[str, ResponseOutputItem] | None = pydantic.Field(
-        default=None
-    )
+    output_blocks: dict[str, ResponseOutputItem] | None = pydantic.Field(default=None)
     usage: ResponseUsage | None = pydantic.Field(default=None)
     output_text: str | None = pydantic.Field(default=None)
     request_model: str | None = pydantic.Field(default=None)
@@ -321,14 +320,10 @@ def set_data_attributes(traced_response: TracedData, span: Span):
         # be present for a Responses-API span to participate in replay.
         input_messages = build_genai_input_messages(traced_response.input)
         if input_messages is not None:
-            set_span_attribute(
-                span, "gen_ai.input.messages", json_dumps(input_messages)
-            )
+            set_span_attribute(span, "gen_ai.input.messages", json_dumps(input_messages))
         output_messages = build_genai_output_messages(traced_response.output_blocks)
         if output_messages:
-            set_span_attribute(
-                span, "gen_ai.output.messages", json_dumps(output_messages)
-            )
+            set_span_attribute(span, "gen_ai.output.messages", json_dumps(output_messages))
 
         prompt_index = 0
         if traced_response.tools:
@@ -347,9 +342,7 @@ def set_data_attributes(traced_response: TracedData, span: Span):
             prompt_index += 1
 
         if isinstance(traced_response.input, str):
-            set_span_attribute(
-                span, f"gen_ai.prompt.{prompt_index}.content", traced_response.input
-            )
+            set_span_attribute(span, f"gen_ai.prompt.{prompt_index}.content", traced_response.input)
             set_span_attribute(span, f"gen_ai.prompt.{prompt_index}.role", "user")
             prompt_index += 1
         else:
@@ -359,15 +352,16 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                     content: Any | None = block_dict.get("content")
                     if is_validator_iterator(content):
                         # we're after the actual call here, so we can consume the iterator
-                        content = [process_content_block(block) for block in cast(list[dict[str, Any]], content or [])]
+                        content = [
+                            process_content_block(block)
+                            for block in cast(list[dict[str, Any]], content or [])
+                        ]
                     try:
                         stringified_content = (
                             content if isinstance(content, str) else json.dumps(content)
                         )
                     except Exception:
-                        stringified_content = (
-                            str(content) if content is not None else ""
-                        )
+                        stringified_content = str(content) if content is not None else ""
                     set_span_attribute(
                         span,
                         f"gen_ai.prompt.{prompt_index}.content",
@@ -405,9 +399,7 @@ def set_data_attributes(traced_response: TracedData, span: Span):
                         )
                     prompt_index += 1
                 elif block_dict.get("type") == "computer_call":
-                    set_span_attribute(
-                        span, f"gen_ai.prompt.{prompt_index}.role", "assistant"
-                    )
+                    set_span_attribute(span, f"gen_ai.prompt.{prompt_index}.role", "assistant")
                     call_content = {}
                     if block_dict.get("id"):
                         call_content["id"] = block_dict.get("id")
@@ -455,9 +447,7 @@ def set_data_attributes(traced_response: TracedData, span: Span):
 
         set_span_attribute(span, "gen_ai.completion.0.role", "assistant")
         if traced_response.output_text:
-            set_span_attribute(
-                span, "gen_ai.completion.0.content", traced_response.output_text
-            )
+            set_span_attribute(span, "gen_ai.completion.0.content", traced_response.output_text)
         tool_call_index = 0
         for block in (traced_response.output_blocks or {}).values():
             block_dict = model_as_dict(block)
@@ -559,7 +549,9 @@ def responses_get_or_create_wrapper(
     # Debugger replay (non-streaming only): probe the server-side cache before
     # the live call. Streaming responses fall through to the live path below.
     if _replay_enabled() and not kwargs.get("stream", False):
-        return _replay_response_sync(to_wrap, start_time, cast(Callable[..., Any], wrapped), args, kwargs)
+        return _replay_response_sync(
+            to_wrap, start_time, cast(Callable[..., Any], wrapped), args, kwargs
+        )
 
     try:
         response = wrapped(*args, **kwargs)
@@ -624,9 +616,7 @@ def _open_replay_span(
         processed_input = process_input(cast(ResponseInputParam, kwargs.get("input")))
         input_messages = build_genai_input_messages(processed_input)
         if input_messages is not None:
-            set_span_attribute(
-                span, "gen_ai.input.messages", json_dumps(input_messages)
-            )
+            set_span_attribute(span, "gen_ai.input.messages", json_dumps(input_messages))
     return span
 
 
@@ -635,9 +625,7 @@ def _record_raw_response(span: Span, response: Any):
     trace is cacheable as a `type="raw"` envelope, mirroring the chat path."""
     try:
         if hasattr(response, "model_dump_json"):
-            set_span_attribute(
-                span, "lmnr.sdk.raw.response", response.model_dump_json()
-            )
+            set_span_attribute(span, "lmnr.sdk.raw.response", response.model_dump_json())
     except Exception:
         logger.debug("Failed to record raw Responses response")
 
@@ -659,10 +647,7 @@ def _finish_live_replay(
 
 
 def _serve_cached_response(
-    start_time: int,
-    span: Span,
-    outcome: CacheOutcome,
-    kwargs: dict[str, Any]
+    start_time: int, span: Span, outcome: CacheOutcome, kwargs: dict[str, Any]
 ) -> Response | None:
     """On a cache HIT, reconstruct + serve an OpenAI `Response`. Returns the
     served response, or None to fall through to the live path."""
@@ -750,7 +735,9 @@ async def _replay_response_async(
 
 
 @dont_throw
-def _process_exception(to_wrap: WrappedFunctionSpec, start_time: int, kwargs: dict[str, Any], e: Exception):
+def _process_exception(
+    to_wrap: WrappedFunctionSpec, start_time: int, kwargs: dict[str, Any], e: Exception
+):
     response_id = kwargs.get("response_id")
     existing_data = {}
     if response_id and response_id in responses:
@@ -809,9 +796,7 @@ def _process_exception(to_wrap: WrappedFunctionSpec, start_time: int, kwargs: di
 
 
 def _build_traced_data(
-    start_time: int,
-    parsed_response: Any,
-    kwargs: dict[str, Any]
+    start_time: int, parsed_response: Any, kwargs: dict[str, Any]
 ) -> TracedData | None:
     """Accumulate a `TracedData` for a parsed response, merging any prior data
     stashed under its id. Returns None if construction fails."""
@@ -853,9 +838,7 @@ def _build_traced_data(
             output_blocks={block.id: block for block in parsed_response.output}
             | existing_data.get("output_blocks", {}),
             usage=existing_data.get("usage", parsed_response.usage),
-            output_text=existing_data.get(
-                "output_text", _get_output_text(parsed_response)
-            ),
+            output_text=existing_data.get("output_text", _get_output_text(parsed_response)),
             request_model=existing_data.get("request_model", kwargs.get("model")),
             response_model=existing_data.get("response_model", parsed_response.model),
             request_reasoning_summary=existing_data.get("request_reasoning_summary")
@@ -878,10 +861,7 @@ def _build_traced_data(
 
 @dont_throw
 def _process_response(
-    to_wrap: WrappedFunctionSpec,
-    start_time: int,
-    response: Any,
-    kwargs: dict[str, Any]
+    to_wrap: WrappedFunctionSpec, start_time: int, response: Any, kwargs: dict[str, Any]
 ) -> Any:
     parsed_response = parse_response(response)
 
@@ -1002,10 +982,11 @@ def _get_output_text(parsed_response: Response) -> str | None:
     else:
         try:
             if output := parsed_response.output:
-               content = output[0]
-               output_text = getattr(content, "text", None)
+                content = output[0]
+                output_text = getattr(content, "text", None)
         except Exception:
             logger.debug("failed to get output text from Response", exc_info=True)
     return output_text
+
 
 # TODO: build streaming responses

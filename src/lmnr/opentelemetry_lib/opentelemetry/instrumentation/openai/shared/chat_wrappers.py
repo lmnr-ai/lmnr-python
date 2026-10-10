@@ -108,7 +108,9 @@ def chat_wrapper(
             rollout_wrapper = get_openai_rollout_wrapper()
             if rollout_wrapper:
                 response = rollout_wrapper.wrap_chat_completion(
-                    cast(Callable[..., Any], wrapped),  # rollout wrapper is typed stricter than this file
+                    cast(
+                        Callable[..., Any], wrapped
+                    ),  # rollout wrapper is typed stricter than this file
                     instance,
                     args,
                     kwargs,
@@ -196,7 +198,9 @@ async def achat_wrapper(
             rollout_wrapper = get_openai_rollout_wrapper()
             if rollout_wrapper:
                 result = rollout_wrapper.wrap_chat_completion(
-                    cast(Callable[..., Any], wrapped),  # rollout wrapper is typed stricter than this file
+                    cast(
+                        Callable[..., Any], wrapped
+                    ),  # rollout wrapper is typed stricter than this file
                     instance,
                     args,
                     kwargs,
@@ -283,13 +287,9 @@ def _handle_response(
     if record_raw_response:
         try:
             if hasattr(response, "model_dump_json"):
-                set_span_attribute(
-                    span, "lmnr.sdk.raw.response", response.model_dump_json()
-                )
+                set_span_attribute(span, "lmnr.sdk.raw.response", response.model_dump_json())
             else:
-                set_span_attribute(
-                    span, "lmnr.sdk.raw.response", json_dumps(response_dict)
-                )
+                set_span_attribute(span, "lmnr.sdk.raw.response", json_dumps(response_dict))
         except Exception:
             logger.debug("Failed to record raw response", exc_info=True)
 
@@ -307,9 +307,7 @@ def _set_prompts(span: Span, messages: list[Any] | None):
         processed_msg = dict(msg)  # pyright: ignore[reportUnknownArgumentType]
 
         if processed_msg.get("tool_calls"):
-            processed_msg["tool_calls"] = [
-                model_as_dict(tc) for tc in processed_msg["tool_calls"]
-            ]
+            processed_msg["tool_calls"] = [model_as_dict(tc) for tc in processed_msg["tool_calls"]]
 
         processed_messages.append(processed_msg)  # pyright: ignore[reportUnknownMemberType]
 
@@ -335,7 +333,7 @@ class ChatStream(ObjectProxy):  # pyright: ignore[reportUntypedBaseClass]
         response: Any,
         record_raw_response: bool = False,
     ):
-        super().__init__(response)    # pyright: ignore[reportUnknownMemberType]
+        super().__init__(response)  # pyright: ignore[reportUnknownMemberType]
 
         self._span: Span = span
         self._record_raw_response = record_raw_response
@@ -381,9 +379,7 @@ class ChatStream(ObjectProxy):  # pyright: ignore[reportUntypedBaseClass]
 
         if cleanup_exception:
             # Log cleanup exception but don't affect context manager behavior
-            logger.debug(
-                "Error during ChatStream cleanup in __exit__: %s", cleanup_exception
-            )
+            logger.debug("Error during ChatStream cleanup in __exit__: %s", cleanup_exception)
 
         return result
 
@@ -442,12 +438,8 @@ class ChatStream(ObjectProxy):  # pyright: ignore[reportUntypedBaseClass]
         self._complete_response["id"] = getattr(item, "id", "")
         self._complete_response["service_tier"] = getattr(item, "service_tier", "")
         self._complete_response["created"] = getattr(item, "created", 0)
-        self._complete_response["system_fingerprint"] = getattr(
-            item, "system_fingerprint", None
-        )
-        self._complete_response["moderation"] = getattr(
-            item, "moderation", None
-        )
+        self._complete_response["system_fingerprint"] = getattr(item, "system_fingerprint", None)
+        self._complete_response["moderation"] = getattr(item, "moderation", None)
 
         _accumulate_stream_items(item, self._complete_response)
 
@@ -498,9 +490,7 @@ class ChatStream(ObjectProxy):  # pyright: ignore[reportUntypedBaseClass]
                 # Still try to close the span even if metrics recording failed
                 try:
                     if self._span and self._span.is_recording():
-                        self._span.set_status(
-                            Status(StatusCode.ERROR, "Cleanup failed")
-                        )
+                        self._span.set_status(Status(StatusCode.ERROR, "Cleanup failed"))
                         self._span.end()
                     self._cleanup_completed = True
                 except Exception:
@@ -618,7 +608,7 @@ def _accumulate_stream_items(
             complete_choice["message"]["role"] = delta.get("role")  # pyright: ignore[reportUnknownMemberType]
         if delta and delta.get("tool_calls"):  # pyright: ignore[reportUnknownMemberType]
             tool_calls = delta.get("tool_calls")  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-            if not isinstance(tool_calls, list) or len(tool_calls) == 0:   # pyright: ignore[reportUnknownArgumentType]
+            if not isinstance(tool_calls, list) or len(tool_calls) == 0:  # pyright: ignore[reportUnknownArgumentType]
                 continue
 
             if not complete_choice["message"].get("tool_calls"):  # pyright: ignore[reportUnknownMemberType]

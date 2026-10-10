@@ -135,8 +135,8 @@ def _parse_parent_span_context(
             laminar_span_context = LaminarSpanContext.deserialize(parent_span_context)
         except Exception:
             logger.warning(
-                f"Could not deserialize parent_span_context: {parent_span_context}. " +
-                "Will use it as is."
+                f"Could not deserialize parent_span_context: {parent_span_context}. "
+                + "Will use it as is."
             )
             laminar_span_context = parent_span_context
     else:
@@ -206,6 +206,7 @@ class Laminar:
     # from-context path has no access to initialize()'s args).
     __base_url_for_debug: str | None = None
     __http_port_for_debug: int | None = None
+
     @classmethod
     def is_debug_run_live(cls) -> bool:
         """True once any LLM call in this run has seen a cache MISS."""
@@ -228,9 +229,7 @@ class Laminar:
         base_http_url: str | None = None,
         http_port: int | None = None,
         grpc_port: int | None = None,
-        instruments: (
-            list[Instruments] | set[Instruments] | tuple[Instruments] | None
-        ) = None,
+        instruments: (list[Instruments] | set[Instruments] | tuple[Instruments] | None) = None,
         disabled_instruments: (
             list[Instruments] | set[Instruments] | tuple[Instruments] | None
         ) = None,
@@ -312,9 +311,7 @@ class Laminar:
             ValueError: If project API key is not set
         """
         if cls.is_initialized():
-            cls.__logger.info(
-                "Laminar is already initialized. Skipping initialization."
-            )
+            cls.__logger.info("Laminar is already initialized. Skipping initialization.")
             return
 
         cls.__project_api_key = project_api_key or from_env("LMNR_PROJECT_API_KEY")
@@ -325,9 +322,9 @@ class Laminar:
             and not get_otel_env_var("HEADERS")
         ):
             raise ValueError(
-                "Please initialize the Laminar object with" +
-                " your project API key or set the LMNR_PROJECT_API_KEY" +
-                " environment variable in your environment or .env file"
+                "Please initialize the Laminar object with"
+                + " your project API key or set the LMNR_PROJECT_API_KEY"
+                + " environment variable in your environment or .env file"
             )
 
         cls._initialize_logger()
@@ -372,7 +369,9 @@ class Laminar:
             try:
                 env_metadata = cast(dict[str, AttributeValue], json.loads(env_metadata_str))
             except Exception:
-               cls.__logger.warning("Failed to parse value of LMNR_TRACE_METADATA env. Make sure it's a valid JSON")
+                cls.__logger.warning(
+                    "Failed to parse value of LMNR_TRACE_METADATA env. Make sure it's a valid JSON"
+                )
         cls.__global_metadata = {**env_metadata, **(metadata or {})}
 
         if not os.getenv("OTEL_ATTRIBUTE_COUNT_LIMIT"):
@@ -388,9 +387,7 @@ class Laminar:
         # LMNR_DEBUG truthy gate used by _init_debug_runtime / the TS SDK.
         from lmnr.sdk.debug.config import is_truthy
 
-        disable_batch_resolved = disable_batch or is_truthy(
-            os.environ.get("LMNR_DEBUG")
-        )
+        disable_batch_resolved = disable_batch or is_truthy(os.environ.get("LMNR_DEBUG"))
 
         _tracer_wrapper = init_tracing(
             base_url=url,
@@ -449,7 +446,8 @@ class Laminar:
             laminar_context = LaminarSpanContext.deserialize(env_context)
         except Exception:
             cls.__logger.warning(
-                "LMNR_SPAN_CONTEXT is set but could not be deserialized", exc_info=True,
+                "LMNR_SPAN_CONTEXT is set but could not be deserialized",
+                exc_info=True,
             )
             return
 
@@ -469,7 +467,8 @@ class Laminar:
             )
         except ValueError:
             cls.__logger.warning(
-                "LMNR_SPAN_CONTEXT is set but invalid span context provided", exc_info=True,
+                "LMNR_SPAN_CONTEXT is set but invalid span context provided",
+                exc_info=True,
             )
             return
 
@@ -503,9 +502,7 @@ class Laminar:
         cls._record_debug_trace_id_from_env(otel_span_context)
 
     @classmethod
-    def _record_debug_trace_id_from_env(
-        cls, otel_span_context: trace.SpanContext
-    ) -> None:
+    def _record_debug_trace_id_from_env(cls, otel_span_context: trace.SpanContext) -> None:
         """Record the trace id inherited from LMNR_SPAN_CONTEXT on the debug runtime.
 
         No-op when debug mode is off. Best-effort: never break initialization.
@@ -595,9 +592,7 @@ class Laminar:
                 port=http_port,
             )
             debugger_url = os.getenv("LMNR_FRONTEND_URL") or get_frontend_url(base_url)
-            runtime = init_debug_runtime(
-                client, async_client, debugger_url=debugger_url
-            )
+            runtime = init_debug_runtime(client, async_client, debugger_url=debugger_url)
             if runtime is None or runtime.client is not client:
                 # `runtime is None`: debug mode is off after all
                 # (build_debug_config returned None). `runtime.client is not
@@ -779,7 +774,8 @@ class Laminar:
                 _project_id = runtime.client.rollout_sessions.register(runtime.session_id)
             except Exception:
                 cls.__logger.debug(
-                    "Failed to register downstream debug session: %s", exc_info=True,
+                    "Failed to register downstream debug session: %s",
+                    exc_info=True,
                 )
 
             cls.__global_metadata = {
@@ -879,9 +875,7 @@ class Laminar:
             span.end()
             return
 
-        current_span.add_event(
-            name, {**(attributes or {}), **extra_attributes}, timestamp
-        )
+        current_span.add_event(name, {**(attributes or {}), **extra_attributes}, timestamp)
 
     @classmethod
     @contextmanager
@@ -1009,18 +1003,12 @@ class Laminar:
             final_user_id = (
                 user_id
                 if user_id is not None
-                else (
-                    parsed["user_id"] if parsed["user_id"] is not None else ctx_user_id
-                )
+                else (parsed["user_id"] if parsed["user_id"] is not None else ctx_user_id)
             )
             final_session_id = (
                 session_id
                 if session_id is not None
-                else (
-                    parsed["session_id"]
-                    if parsed["session_id"] is not None
-                    else ctx_session_id
-                )
+                else (parsed["session_id"] if parsed["session_id"] is not None else ctx_session_id)
             )
 
             ctx = set_association_prop_context(
@@ -1044,8 +1032,8 @@ class Laminar:
                     label_props = {f"{ASSOCIATION_PROPERTIES}.labels": labels}
             except Exception:
                 cls.__logger.warning(
-                    f"`start_as_current_span` Could not set labels: {labels}. " +
-                    "They will be propagated to the next span."
+                    f"`start_as_current_span` Could not set labels: {labels}. "
+                    + "They will be propagated to the next span."
                 )
             tag_props = {}
             if tags:
@@ -1053,8 +1041,8 @@ class Laminar:
                     tag_props = {f"{ASSOCIATION_PROPERTIES}.tags": tags}
                 else:
                     cls.__logger.warning(
-                        f"`start_as_current_span` Could not set tags: {tags}. Tags must be a list of strings. " +
-                        "Tags will be ignored."
+                        f"`start_as_current_span` Could not set tags: {tags}. Tags must be a list of strings. "
+                        + "Tags will be ignored."
                     )
 
             try:
@@ -1227,8 +1215,8 @@ class Laminar:
                     }
             except Exception:
                 cls.__logger.warning(
-                    f"`start_span` Could not set labels: {labels}. They will be " +
-                    "propagated to the next span."
+                    f"`start_span` Could not set labels: {labels}. They will be "
+                    + "propagated to the next span."
                 )
             tag_props = {}
             if tags:
@@ -1267,18 +1255,12 @@ class Laminar:
             final_user_id = (
                 user_id
                 if user_id is not None
-                else (
-                    parsed["user_id"] if parsed["user_id"] is not None else ctx_user_id
-                )
+                else (parsed["user_id"] if parsed["user_id"] is not None else ctx_user_id)
             )
             final_session_id = (
                 session_id
                 if session_id is not None
-                else (
-                    parsed["session_id"]
-                    if parsed["session_id"] is not None
-                    else ctx_session_id
-                )
+                else (parsed["session_id"] if parsed["session_id"] is not None else ctx_session_id)
             )
 
             # Build association_props using merged values
@@ -1335,9 +1317,7 @@ class Laminar:
                 this mechanism if it was previously set manually.
         """
         if not cls.is_initialized():
-            with use_span(
-                span, end_on_exit, record_exception, set_status_on_exception
-            ) as s:
+            with use_span(span, end_on_exit, record_exception, set_status_on_exception) as s:
                 yield s
             return
 
@@ -1369,7 +1349,10 @@ class Laminar:
                 # Record the exception as an event
                 if record_exception:
                     span.record_exception(
-                        exc, attributes=cast(dict[str, AttributeValue], get_event_attributes_from_context())
+                        exc,
+                        attributes=cast(
+                            dict[str, AttributeValue], get_event_attributes_from_context()
+                        ),
                     )
 
                 # Set status in case exception was raised
@@ -1451,9 +1434,7 @@ class Laminar:
             **(ctx_metadata or {}),
             **(parsed["metadata"] or {}),
         }
-        final_user_id = (
-            parsed["user_id"] if parsed["user_id"] is not None else ctx_user_id
-        )
+        final_user_id = parsed["user_id"] if parsed["user_id"] is not None else ctx_user_id
         final_session_id = (
             parsed["session_id"] if parsed["session_id"] is not None else ctx_session_id
         )
@@ -1656,7 +1637,7 @@ class Laminar:
             attributes (dict[Attributes | str, Any]): attributes to set for the span
         """
         span = cls.get_current_span()
-        if span is None or span.get_span_context() == trace.INVALID_SPAN.get_span_context() :
+        if span is None or span.get_span_context() == trace.INVALID_SPAN.get_span_context():
             return
 
         for key, value in attributes.items():
@@ -1668,9 +1649,7 @@ class Laminar:
                 span.set_attribute(key, value)
 
     @classmethod
-    def get_laminar_span_context(
-        cls, span: trace.Span | None = None
-    ) -> LaminarSpanContext | None:
+    def get_laminar_span_context(cls, span: trace.Span | None = None) -> LaminarSpanContext | None:
         """Get the laminar span context for a given span.
         If no span is provided, the current active span will be used.
         """
@@ -1728,7 +1707,9 @@ class Laminar:
         return str(span_context)
 
     @classmethod
-    def deserialize_span_context(cls, span_context: LaminarSpanContextDict | str) -> LaminarSpanContext:
+    def deserialize_span_context(
+        cls, span_context: LaminarSpanContextDict | str
+    ) -> LaminarSpanContext:
         return LaminarSpanContext.deserialize(span_context)
 
     @classmethod
@@ -1778,7 +1759,8 @@ class Laminar:
             )
         except Exception:
             cls.__logger.warning(
-                "Failed to rebind the Laminar/Langfuse bridge", exc_info=True,
+                "Failed to rebind the Laminar/Langfuse bridge",
+                exc_info=True,
             )
             return False
 
@@ -1805,9 +1787,7 @@ class Laminar:
         # logger instead.
         logger = get_default_logger(__name__)
         if not cls.is_initialized():
-            logger.warning(
-                "Laminar is not initialized. Call Laminar.initialize() first."
-            )
+            logger.warning("Laminar is not initialized. Call Laminar.initialize() first.")
             return False
         from lmnr.opentelemetry_lib.tracing.instruments import (
             langfuse_installed,
@@ -1820,8 +1800,8 @@ class Laminar:
         # valid install.
         if not langfuse_installed():
             logger.warning(
-                "`langfuse >= 3.0` is required for the Laminar/Langfuse " +
-                "bridge. Install it with `pip install 'langfuse>=3.0'`."
+                "`langfuse >= 3.0` is required for the Laminar/Langfuse "
+                + "bridge. Install it with `pip install 'langfuse>=3.0'`."
             )
             return False
         from lmnr.opentelemetry_lib.opentelemetry.instrumentation.langfuse import (
@@ -1838,10 +1818,10 @@ class Laminar:
         # would never reach Laminar. Refuse to report success in that case.
         if not langfuse_sdk_importable():
             logger.warning(
-                "`langfuse` is installed but cannot be imported in this " +
-                "interpreter (a known pydantic v1 incompatibility on Python " +
-                "3.14). The Laminar/Langfuse bridge would be inert, so it was " +
-                "not installed."
+                "`langfuse` is installed but cannot be imported in this "
+                + "interpreter (a known pydantic v1 incompatibility on Python "
+                + "3.14). The Laminar/Langfuse bridge would be inert, so it was "
+                + "not installed."
             )
             return False
 
@@ -2034,11 +2014,7 @@ class Laminar:
             uuid.UUID | None: The trace id for the current span, or None if\
             there is no active span.
         """
-        trace_id = (
-            trace.get_current_span(context=get_current_context())
-            .get_span_context()
-            .trace_id
-        )
+        trace_id = trace.get_current_span(context=get_current_context()).get_span_context().trace_id
         if trace_id == INVALID_TRACE_ID:
             return None
         return uuid.UUID(int=trace_id)
@@ -2081,16 +2057,12 @@ class Laminar:
         if user_id is not None:
             association_properties[f"{ASSOCIATION_PROPERTIES}.{USER_ID}"] = user_id
         if session_id is not None:
-            association_properties[f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}"] = (
-                session_id
-            )
+            association_properties[f"{ASSOCIATION_PROPERTIES}.{SESSION_ID}"] = session_id
         if trace_type is not None:
             trace_type_val = (
                 trace_type.value if isinstance(trace_type, TraceType) else trace_type  # pyright: ignore[reportUnnecessaryIsInstance]
             )
-            association_properties[f"{ASSOCIATION_PROPERTIES}.{TRACE_TYPE}"] = (
-                trace_type_val
-            )
+            association_properties[f"{ASSOCIATION_PROPERTIES}.{TRACE_TYPE}"] = trace_type_val
 
         merged_metadata = {**(cls.__global_metadata or {}), **(metadata or {})}
         association_properties.update(

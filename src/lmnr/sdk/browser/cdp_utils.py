@@ -9,8 +9,8 @@ from weakref import WeakKeyDictionary
 import orjson
 from opentelemetry import trace
 
-from lmnr.opentelemetry_lib.tracing.wrapper import get_session_recording_options
 from lmnr.opentelemetry_lib.tracing.context import get_current_context
+from lmnr.opentelemetry_lib.tracing.wrapper import get_session_recording_options
 from lmnr.sdk.browser.background_send_events import (
     get_background_loop,
     track_async_send,
@@ -186,9 +186,7 @@ async def get_isolated_context_id(cdp_session: Any) -> int | None:
         tree = {}
         try:
             tree = await asyncio.wait_for(
-                cdp_session.cdp_client.send.Page.getFrameTree(
-                    session_id=cdp_session.session_id
-                ),
+                cdp_session.cdp_client.send.Page.getFrameTree(session_id=cdp_session.session_id),
                 timeout=CDP_OPERATION_TIMEOUT_SECONDS,
             )
         except asyncio.TimeoutError:
@@ -474,9 +472,7 @@ def register_on_target_created(
     def on_target_created(event: dict[str, dict[str, str]], _cdp_session_id: str | None = None):
         target_info = event["targetInfo"]
         if target_info["type"] == "page":
-            _inject_task = asyncio.create_task(
-                inject_session_recorder(cdp_session=cdp_session)
-            )
+            _inject_task = asyncio.create_task(inject_session_recorder(cdp_session=cdp_session))
 
     try:
         cdp_session.cdp_client.register.Target.targetCreated(on_target_created)
@@ -507,8 +503,7 @@ def register_on_frame_navigated(
         frame_id = frame.get("id")
         if frame_id:
             keys_to_remove = [
-                k for k in frame_to_isolated_context_id
-                if k.startswith(f"{frame_id}_")
+                k for k in frame_to_isolated_context_id if k.startswith(f"{frame_id}_")
             ]
             for k in keys_to_remove:
                 del frame_to_isolated_context_id[k]
@@ -522,9 +517,7 @@ def register_on_frame_navigated(
 
 
 # browser_use.browser.session.CDPSession (browser-use >= 0.6.0)
-async def is_recorder_present(
-    cdp_session: Any, isolated_context_id: int | None = None
-) -> bool:
+async def is_recorder_present(cdp_session: Any, isolated_context_id: int | None = None) -> bool:
     # This function returns True on any error, because it is safer to not record
     # events than to try to inject the recorder into a broken context.
     cdp_client = cdp_session.cdp_client

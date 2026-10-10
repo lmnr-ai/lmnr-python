@@ -86,14 +86,12 @@ def test_langchain_langgraph(span_exporter: InMemorySpanExporter):
     assert len(workflow_edges) == 4
 
     for other_span in other_spans:
-        assert (
-            (other_span.attributes or {}).get("lmnr.association.properties.langgraph.nodes")
-            is None
-        )
-        assert (
-            (other_span.attributes or {}).get("lmnr.association.properties.langgraph.edges")
-            is None
-        )
+        assert (other_span.attributes or {}).get(
+            "lmnr.association.properties.langgraph.nodes"
+        ) is None
+        assert (other_span.attributes or {}).get(
+            "lmnr.association.properties.langgraph.edges"
+        ) is None
 
 
 @pytest.mark.asyncio
@@ -115,8 +113,8 @@ async def test_langchain_langgraph_async(span_exporter: InMemorySpanExporter):
     workflow_span = next(span for span in spans if span.name == "LangGraph.workflow")
     other_spans = [span for span in spans if span.name != "LangGraph.workflow"]
     assert json.loads(
-        cast(str, (workflow_span.attributes or {})["lmnr.association.properties.langgraph.nodes"]
-    )) == [
+        cast(str, (workflow_span.attributes or {})["lmnr.association.properties.langgraph.nodes"])
+    ) == [
         {
             "id": "__start__",
             "name": "__start__",
@@ -154,14 +152,12 @@ async def test_langchain_langgraph_async(span_exporter: InMemorySpanExporter):
     assert len(workflow_edges) == 4
 
     for other_span in other_spans:
-        assert (
-            (other_span.attributes or {}).get("lmnr.association.properties.langgraph.nodes")
-            is None
-        )
-        assert (
-            (other_span.attributes or {}).get("lmnr.association.properties.langgraph.edges")
-            is None
-        )
+        assert (other_span.attributes or {}).get(
+            "lmnr.association.properties.langgraph.nodes"
+        ) is None
+        assert (other_span.attributes or {}).get(
+            "lmnr.association.properties.langgraph.edges"
+        ) is None
 
 
 def test_langchain_langgraph_stream(span_exporter: InMemorySpanExporter):
@@ -222,14 +218,12 @@ def test_langchain_langgraph_stream(span_exporter: InMemorySpanExporter):
     assert len(workflow_edges) == 4
 
     for other_span in other_spans:
-        assert (
-            (other_span.attributes or {}).get("lmnr.association.properties.langgraph.nodes")
-            is None
-        )
-        assert (
-            (other_span.attributes or {}).get("lmnr.association.properties.langgraph.edges")
-            is None
-        )
+        assert (other_span.attributes or {}).get(
+            "lmnr.association.properties.langgraph.nodes"
+        ) is None
+        assert (other_span.attributes or {}).get(
+            "lmnr.association.properties.langgraph.edges"
+        ) is None
 
 
 @pytest.mark.asyncio
@@ -291,11 +285,9 @@ async def test_langchain_langgraph_async_stream(span_exporter: InMemorySpanExpor
     assert len(workflow_edges) == 4
 
     for other_span in other_spans:
-        assert (
-            (other_span.attributes or {}).get("lmnr.association.properties.langgraph.nodes")
-            is None
-        )
-        assert (
-            (other_span.attributes or {}).get("lmnr.association.properties.langgraph.edges")
-            is None
-        )
+        assert (other_span.attributes or {}).get(
+            "lmnr.association.properties.langgraph.nodes"
+        ) is None
+        assert (other_span.attributes or {}).get(
+            "lmnr.association.properties.langgraph.edges"
+        ) is None

@@ -238,38 +238,45 @@ def test_laminar_initialize_url_parsing():
     ]
 
     for test_case in test_cases:
-        with patch.dict(os.environ, test_case["env_vars"], clear=True), patch("lmnr.sdk.laminar.init_tracing") as mock_tracer_init:
-                # Reset state for each test
-                Laminar._Laminar__initialized = False  # pyright:ignore[reportAttributeAccessIssue]
-                Laminar._Laminar__base_http_url = None  # pyright:ignore[reportAttributeAccessIssue]
-                Laminar._Laminar__project_api_key = None  # pyright:ignore[reportAttributeAccessIssue]
+        with (
+            patch.dict(os.environ, test_case["env_vars"], clear=True),
+            patch("lmnr.sdk.laminar.init_tracing") as mock_tracer_init,
+        ):
+            # Reset state for each test
+            Laminar._Laminar__initialized = False  # pyright:ignore[reportAttributeAccessIssue]
+            Laminar._Laminar__base_http_url = None  # pyright:ignore[reportAttributeAccessIssue]
+            Laminar._Laminar__project_api_key = None  # pyright:ignore[reportAttributeAccessIssue]
 
-                # Add required project_api_key
-                # Call initialize
-                Laminar.initialize(**test_case["params"], project_api_key="test-key")
+            # Add required project_api_key
+            # Call initialize
+            Laminar.initialize(**test_case["params"], project_api_key="test-key")
 
-                # Verify init_tracing was called with expected args
-                mock_tracer_init.assert_called_once()
-                call_args = mock_tracer_init.call_args[1]
+            # Verify init_tracing was called with expected args
+            mock_tracer_init.assert_called_once()
+            call_args = mock_tracer_init.call_args[1]
 
-                assert (
-                    call_args["base_url"] == test_case["expected"]["base_url"]
-                ), f"Test '{test_case['name']}': base_url mismatch. Expected: {test_case['expected']['base_url']}, Got: {call_args['base_url']}"
-                assert (
-                    call_args["http_port"] == test_case["expected"]["http_port"]
-                ), f"Test '{test_case['name']}': http_port mismatch. Expected: {test_case['expected']['http_port']}, Got: {call_args['http_port']}"
-                assert (
-                    call_args["port"] == test_case["expected"]["port"]
-                ), f"Test '{test_case['name']}': port mismatch. Expected: {test_case['expected']['port']}, Got: {call_args['port']}"
-                assert (
-                    call_args["project_api_key"] == "test-key"
-                ), f"Test '{test_case['name']}': project_api_key mismatch"
+            assert call_args["base_url"] == test_case["expected"]["base_url"], (
+                f"Test '{test_case['name']}': base_url mismatch. Expected: {test_case['expected']['base_url']}, Got: {call_args['base_url']}"
+            )
+            assert call_args["http_port"] == test_case["expected"]["http_port"], (
+                f"Test '{test_case['name']}': http_port mismatch. Expected: {test_case['expected']['http_port']}, Got: {call_args['http_port']}"
+            )
+            assert call_args["port"] == test_case["expected"]["port"], (
+                f"Test '{test_case['name']}': port mismatch. Expected: {test_case['expected']['port']}, Got: {call_args['port']}"
+            )
+            assert call_args["project_api_key"] == "test-key", (
+                f"Test '{test_case['name']}': project_api_key mismatch"
+            )
 
-                # Verify internal state
-                assert (
-                    Laminar._Laminar__base_http_url  # pyright:ignore[reportAttributeAccessIssue]
-                    == test_case["expected"]["base_http_url"]
-                ), f"Test '{test_case['name']}': __base_http_url mismatch. Expected: {test_case['expected']['base_http_url']}, Got: {Laminar._Laminar__base_http_url}"  # pyright:ignore[reportAttributeAccessIssue]
+            # Verify internal state
+            assert (
+                Laminar._Laminar__base_http_url  # pyright:ignore[reportAttributeAccessIssue]
+                == test_case["expected"]["base_http_url"]
+            ), (
+                f"Test '{test_case['name']}': __base_http_url mismatch. "
+                + f"Expected: {test_case['expected']['base_http_url']}, "
+                + f"Got: {Laminar._Laminar__base_http_url}"  # pyright:ignore[reportAttributeAccessIssue]
+            )
 
 
 def test_evaluation_initialize_url_parsing():
@@ -409,11 +416,10 @@ def test_evaluation_initialize_url_parsing():
     ]
 
     for test_case in test_cases:
-        with (patch.dict(os.environ, test_case["env_vars"], clear=True),
+        with (
+            patch.dict(os.environ, test_case["env_vars"], clear=True),
             patch("lmnr.sdk.laminar.Laminar.initialize") as mock_laminar_init,
-            patch(
-                    "lmnr.sdk.laminar.Laminar.is_initialized", return_value=False
-                )
+            patch("lmnr.sdk.laminar.Laminar.is_initialized", return_value=False),
         ):
             # Reset Laminar state
             Laminar._Laminar__initialized = False  # pyright:ignore[reportAttributeAccessIssue]
@@ -428,28 +434,26 @@ def test_evaluation_initialize_url_parsing():
             )
 
             # Verify the base_http_url was set correctly
-            assert (
-                evaluation.base_http_url
-                == test_case["expected"]["base_http_url"]
-            ), f"Test '{test_case['name']}': base_http_url mismatch. Expected: {test_case['expected']['base_http_url']}, Got: {evaluation.base_http_url}"
+            assert evaluation.base_http_url == test_case["expected"]["base_http_url"], (
+                f"Test '{test_case['name']}': base_http_url mismatch. Expected: {test_case['expected']['base_http_url']}, Got: {evaluation.base_http_url}"
+            )
 
             # Verify Laminar.initialize was called with expected args
             mock_laminar_init.assert_called_once()
             call_args = mock_laminar_init.call_args[1]
 
-            assert (
-                call_args["base_url"] == test_case["expected"]["base_url"]
-            ), f"Test '{test_case['name']}': base_url mismatch. Expected: {test_case['expected']['base_url']}, Got: {call_args['base_url']}"
-            assert (
-                call_args["base_http_url"]
-                == test_case["expected"]["base_http_url"]
-            ), f"Test '{test_case['name']}': base_http_url mismatch. Expected: {test_case['expected']['base_http_url']}, Got: {call_args['base_http_url']}"
-            assert (
-                call_args["http_port"] == test_case["expected"]["http_port"]
-            ), f"Test '{test_case['name']}': http_port mismatch. Expected: {test_case['expected']['http_port']}, Got: {call_args['http_port']}"
-            assert (
-                call_args["grpc_port"] == test_case["expected"]["grpc_port"]
-            ), f"Test '{test_case['name']}': grpc_port mismatch. Expected: {test_case['expected']['grpc_port']}, Got: {call_args['grpc_port']}"
-            assert (
-                call_args["project_api_key"] == "test-key"
-            ), f"Test '{test_case['name']}': project_api_key mismatch"
+            assert call_args["base_url"] == test_case["expected"]["base_url"], (
+                f"Test '{test_case['name']}': base_url mismatch. Expected: {test_case['expected']['base_url']}, Got: {call_args['base_url']}"
+            )
+            assert call_args["base_http_url"] == test_case["expected"]["base_http_url"], (
+                f"Test '{test_case['name']}': base_http_url mismatch. Expected: {test_case['expected']['base_http_url']}, Got: {call_args['base_http_url']}"
+            )
+            assert call_args["http_port"] == test_case["expected"]["http_port"], (
+                f"Test '{test_case['name']}': http_port mismatch. Expected: {test_case['expected']['http_port']}, Got: {call_args['http_port']}"
+            )
+            assert call_args["grpc_port"] == test_case["expected"]["grpc_port"], (
+                f"Test '{test_case['name']}': grpc_port mismatch. Expected: {test_case['expected']['grpc_port']}, Got: {call_args['grpc_port']}"
+            )
+            assert call_args["project_api_key"] == "test-key", (
+                f"Test '{test_case['name']}': project_api_key mismatch"
+            )

@@ -74,13 +74,7 @@ def init_tracing(
     resource_attributes: (
         dict[
             str,
-            str
-            | int
-            | float
-            | bool
-            | Sequence[str]
-            | Sequence[int | float]
-            | Sequence[bool],
+            str | int | float | bool | Sequence[str] | Sequence[int | float] | Sequence[bool],
         ]
         | None
     ) = None,
@@ -157,9 +151,9 @@ def init_tracing(
                 trace.set_tracer_provider(_tracer_provider)
         elif _tracer_provider.resource != resource:
             LOG.warning(
-                "Reusing the tracer provider from a previous Laminar " +
-                "initialization; its resource attributes (including app_name) " +
-                "are fixed at first initialization and will not be updated."
+                "Reusing the tracer provider from a previous Laminar "
+                + "initialization; its resource attributes (including app_name) "
+                + "are fixed at first initialization and will not be updated."
             )
         tracer_provider = _tracer_provider
         tracer_provider.add_span_processor(span_processor)
@@ -219,5 +213,3 @@ def init_tracing(
         _handler = atexit.register(wrapper.exit_handler)
 
         return wrapper
-
-

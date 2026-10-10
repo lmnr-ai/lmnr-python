@@ -67,7 +67,11 @@ def _set_api_attributes(span: Span):
     if is_openai_v1():
         return
 
-    base_url = openai.base_url if hasattr(openai, "base_url") else getattr(openai, "api_base", "https://api.openai.com")
+    base_url = (
+        openai.base_url
+        if hasattr(openai, "base_url")
+        else getattr(openai, "api_base", "https://api.openai.com")
+    )
     if isinstance(base_url, URL):
         base_url = str(base_url)
 
@@ -114,12 +118,8 @@ def set_request_attributes(
     set_span_attribute(span, GEN_AI_REQUEST_MAX_TOKENS, kwargs.get("max_tokens"))
     set_span_attribute(span, GEN_AI_REQUEST_TEMPERATURE, kwargs.get("temperature"))
     set_span_attribute(span, GEN_AI_REQUEST_TOP_P, kwargs.get("top_p"))
-    set_span_attribute(
-        span, GEN_AI_REQUEST_FREQUENCY_PENALTY, kwargs.get("frequency_penalty")
-    )
-    set_span_attribute(
-        span, GEN_AI_REQUEST_PRESENCE_PENALTY, kwargs.get("presence_penalty")
-    )
+    set_span_attribute(span, GEN_AI_REQUEST_FREQUENCY_PENALTY, kwargs.get("frequency_penalty"))
+    set_span_attribute(span, GEN_AI_REQUEST_PRESENCE_PENALTY, kwargs.get("presence_penalty"))
     set_span_attribute(span, "llm.user", kwargs.get("user"))
     set_span_attribute(span, "llm.headers", str(kwargs.get("headers")))
     # The new OpenAI SDK removed the `headers` and create new field called `extra_headers`
@@ -159,8 +159,9 @@ def set_request_attributes(
                 )
                 from openai.types.chat.completion_create_params import ResponseFormat
 
-
-                response_format_param = type_to_response_format_param(cast(ResponseFormat, response_format))
+                response_format_param = type_to_response_format_param(
+                    cast(ResponseFormat, response_format)
+                )
                 if isinstance(response_format_param, Omit):
                     logger.debug("response_format is omitted")
                     return
@@ -187,14 +188,14 @@ def set_request_attributes(
                 else:
                     schema = None
                     try:
-                        schema = json.dumps(
-                            pydantic.TypeAdapter(response_format).json_schema()
-                        )
+                        schema = json.dumps(pydantic.TypeAdapter(response_format).json_schema())
                     except Exception:
                         try:
                             schema = json.dumps(response_format)
                         except Exception:
-                            logger.debug("Failed to stringify openai response format schema", exc_info=True)
+                            logger.debug(
+                                "Failed to stringify openai response format schema", exc_info=True
+                            )
 
                     if schema:
                         set_span_attribute(
@@ -258,7 +259,9 @@ def set_response_attributes(
         prompt_tokens_details.get("cached_tokens", 0),
     )
 
-    if completion_token_details := dict(cast(dict[str, int], usage.get("completion_tokens_details", {}))):
+    if completion_token_details := dict(
+        cast(dict[str, int], usage.get("completion_tokens_details", {}))
+    ):
         reasoning_tokens = completion_token_details.get("reasoning_tokens")
         set_span_attribute(
             span,

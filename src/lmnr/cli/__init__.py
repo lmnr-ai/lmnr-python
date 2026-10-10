@@ -322,9 +322,7 @@ def cli() -> None:
         + "Call `lmnr [subcommand] --help` for more information on each subcommand.",
     )
 
-    subparsers: SubParsersAction = parser.add_subparsers(
-        title="subcommands", dest="subcommand"
-    )
+    subparsers: SubParsersAction = parser.add_subparsers(title="subcommands", dest="subcommand")
 
     # Setup all subcommand parsers
     setup_eval_parser(subparsers)

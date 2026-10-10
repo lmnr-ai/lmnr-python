@@ -5,7 +5,6 @@ from typing import Any, TypeVar
 import pydantic
 from typing_extensions import override
 
-from lmnr.sdk.laminar import Laminar
 from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.base_instrumentor import (
     BaseLaminarInstrumentor,
 )
@@ -14,6 +13,7 @@ from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.types import (
     LaminarInstrumentorConfig,
     WrappedFunctionSpec,
 )
+from lmnr.sdk.laminar import Laminar
 from lmnr.sdk.log import get_default_logger
 from lmnr.sdk.utils import get_input_from_func_args, json_dumps
 
@@ -32,6 +32,7 @@ class BrowserUseSpec(WrappedFunctionSpec, total=False):
     ignore_input: bool
     ignore_output: bool
 
+
 try:
     # we could pull in browser-use as a dev dep, but (1) it's heavy, (2) it's Python 3.11+
     from browser_use import (  # pyright:ignore[reportMissingImports]
@@ -39,9 +40,9 @@ try:
     )
 except ImportError as e:
     raise ImportError(
-        f"Attempted to import {__file__}, but it is designed " +
-        "to patch Browser Use < 0.5.0, which is not installed. Use `pip install browser-use` " +
-        "to install Browser Use or remove this import."
+        f"Attempted to import {__file__}, but it is designed "
+        + "to patch Browser Use < 0.5.0, which is not installed. Use `pip install browser-use` "
+        + "to install Browser Use or remove this import."
     ) from e
 
 _instruments = ("browser-use < 0.5.0",)

@@ -53,6 +53,7 @@ def _decode(payload: temporalio.api.common.v1.Payload | None) -> str | None:
     except Exception:
         return None
 
+
 # Trace headers scoped to the currently-running signal/update handler coroutine.
 # Each handler runs as its own asyncio task (which copies the context), so this
 # stays isolated from the main workflow path and from other concurrent handlers
@@ -83,9 +84,7 @@ class LaminarWorkflowInboundInterceptor(temporalio.worker.WorkflowInboundInterce
     """Forwards trace headers from the workflow-start (and signal/update) call to
     outbound activity / child-workflow scheduling. Creates no spans."""
 
-    def __init__(
-        self, next: temporalio.worker.WorkflowInboundInterceptor
-    ) -> None:
+    def __init__(self, next: temporalio.worker.WorkflowInboundInterceptor) -> None:
         super().__init__(next)
         # Per-workflow-instance: each sandbox builds its own interceptor, so this
         # never crosses between concurrent workflows on the same worker.
@@ -96,16 +95,12 @@ class LaminarWorkflowInboundInterceptor(temporalio.worker.WorkflowInboundInterce
         super().init(_LaminarWorkflowOutboundInterceptor(outbound, self))
 
     @override
-    async def execute_workflow(
-        self, input: temporalio.worker.ExecuteWorkflowInput
-    ) -> Any:
+    async def execute_workflow(self, input: temporalio.worker.ExecuteWorkflowInput) -> Any:
         self._start_headers = dict(input.headers or {})
         return await super().execute_workflow(input)
 
     @override
-    async def handle_signal(
-        self, input: temporalio.worker.HandleSignalInput
-    ) -> None:
+    async def handle_signal(self, input: temporalio.worker.HandleSignalInput) -> None:
         headers = dict(input.headers or {})
         if not _has_trace_headers(headers):
             return await super().handle_signal(input)
@@ -116,9 +111,7 @@ class LaminarWorkflowInboundInterceptor(temporalio.worker.WorkflowInboundInterce
             _handler_headers.reset(token)
 
     @override
-    async def handle_update_handler(
-        self, input: temporalio.worker.HandleUpdateInput
-    ) -> Any:
+    async def handle_update_handler(self, input: temporalio.worker.HandleUpdateInput) -> Any:
         headers = dict(input.headers or {})
         if not _has_trace_headers(headers):
             return await super().handle_update_handler(input)
@@ -136,9 +129,7 @@ class LaminarWorkflowInboundInterceptor(temporalio.worker.WorkflowInboundInterce
         return scoped if scoped is not None else self._start_headers
 
 
-class _LaminarWorkflowOutboundInterceptor(
-    temporalio.worker.WorkflowOutboundInterceptor
-):
+class _LaminarWorkflowOutboundInterceptor(temporalio.worker.WorkflowOutboundInterceptor):
     def __init__(
         self,
         next: temporalio.worker.WorkflowOutboundInterceptor,
@@ -173,8 +164,6 @@ class _LaminarWorkflowOutboundInterceptor(
         return await super().start_child_workflow(input)
 
     @override
-    def continue_as_new(
-        self, input: temporalio.worker.ContinueAsNewInput
-    ) :
+    def continue_as_new(self, input: temporalio.worker.ContinueAsNewInput):
         self._merge(input)
         super().continue_as_new(input)

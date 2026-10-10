@@ -49,6 +49,7 @@ logger = get_default_logger(__name__)
 
 T = TypeVar("T")
 
+
 @dataclass
 class LaminarTemporalInterceptorOptions:
     """Options controlling the Laminar Temporal interceptor.
@@ -70,16 +71,14 @@ class LaminarTemporalInterceptorOptions:
     record_activity_output: bool = True
 
 
-class LaminarTracingInterceptor(
-    temporalio.client.Interceptor, temporalio.worker.Interceptor
-):
+class LaminarTracingInterceptor(temporalio.client.Interceptor, temporalio.worker.Interceptor):
     """Unified Laminar interceptor for Temporal clients and workers."""
 
-    def __init__(
-        self, options: LaminarTemporalInterceptorOptions | None = None
-    ) -> None:
+    def __init__(self, options: LaminarTemporalInterceptorOptions | None = None) -> None:
         super().__init__()
-        self.options: LaminarTemporalInterceptorOptions = options or LaminarTemporalInterceptorOptions()
+        self.options: LaminarTemporalInterceptorOptions = (
+            options or LaminarTemporalInterceptorOptions()
+        )
 
     @override
     def intercept_client(
@@ -132,35 +131,26 @@ class _LaminarClientOutboundInterceptor(temporalio.client.OutboundInterceptor):
         return handle
 
     @override
-    async def signal_workflow(
-        self, input: temporalio.client.SignalWorkflowInput
-    ) -> None:
-        input.headers = build_headers(
-            dict(input.headers or {}), Laminar.get_laminar_span_context()
-        )
+    async def signal_workflow(self, input: temporalio.client.SignalWorkflowInput) -> None:
+        input.headers = build_headers(dict(input.headers or {}), Laminar.get_laminar_span_context())
         return await super().signal_workflow(input)
 
     @override
-    async def query_workflow(
-        self, input: temporalio.client.QueryWorkflowInput
-    ) -> Any:
-        input.headers = build_headers(
-            dict(input.headers or {}), Laminar.get_laminar_span_context()
-        )
+    async def query_workflow(self, input: temporalio.client.QueryWorkflowInput) -> Any:
+        input.headers = build_headers(dict(input.headers or {}), Laminar.get_laminar_span_context())
         return await super().query_workflow(input)
 
     @override
     async def start_workflow_update(
         self, input: temporalio.client.StartWorkflowUpdateInput
     ) -> temporalio.client.WorkflowUpdateHandle[Any]:
-        input.headers = build_headers(
-            dict(input.headers or {}), Laminar.get_laminar_span_context()
-        )
+        input.headers = build_headers(dict(input.headers or {}), Laminar.get_laminar_span_context())
         return await super().start_workflow_update(input)
 
 
 def _wrap_workflow_handle(
-    handle: temporalio.client.WorkflowHandle[Any, Any], span: Span,
+    handle: temporalio.client.WorkflowHandle[Any, Any],
+    span: Span,
 ) -> None:
     """Wrap a workflow handle so the lifecycle span ends on the FIRST terminal
     call — ``result()`` resolving/raising, ``cancel()`` or ``terminate()``.
@@ -227,9 +217,7 @@ def _wrap_workflow_handle(
     handle.terminate = _wrap_terminating("temporal.workflow.terminate", orig_terminate)
 
 
-class _LaminarActivityInboundInterceptor(
-    temporalio.worker.ActivityInboundInterceptor
-):
+class _LaminarActivityInboundInterceptor(temporalio.worker.ActivityInboundInterceptor):
     def __init__(
         self,
         next: temporalio.worker.ActivityInboundInterceptor,
@@ -239,9 +227,7 @@ class _LaminarActivityInboundInterceptor(
         self.root: LaminarTracingInterceptor = root
 
     @override
-    async def execute_activity(
-        self, input: temporalio.worker.ExecuteActivityInput
-    ) -> Any:
+    async def execute_activity(self, input: temporalio.worker.ExecuteActivityInput) -> Any:
         restored = restore_context_from_headers(dict(input.headers or {}))
         if restored is None:
             return await super().execute_activity(input)
@@ -265,9 +251,7 @@ class _LaminarActivityInboundInterceptor(
         )
         with Laminar.use_span(span, end_on_exit=True):
             res = await super().execute_activity(input)
-            if self.root.options.record_activity_output and isinstance(
-                span, LaminarSpan
-            ):
+            if self.root.options.record_activity_output and isinstance(span, LaminarSpan):
                 try:
                     span.set_output(res)
                 except Exception:

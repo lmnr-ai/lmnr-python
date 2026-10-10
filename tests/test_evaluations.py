@@ -16,6 +16,7 @@ from lmnr.sdk.types import Datapoint
 
 T = TypeVar("T")
 
+
 # Fixtures for common mock objects
 @pytest.fixture
 def mock_eval_response() -> dict[str, str]:
@@ -73,11 +74,7 @@ def verify_basic_spans(
 ) -> tuple[ReadableSpan, ReadableSpan, list[ReadableSpan]]:
     """Verify the basic span structure and return categorized spans."""
     evaluation_span = next(
-        (
-            span
-            for span in spans
-            if (span.attributes or {}).get("lmnr.span.type") == "EVALUATION"
-        ),
+        (span for span in spans if (span.attributes or {}).get("lmnr.span.type") == "EVALUATION"),
         None,
     )
     executor_span = next(
@@ -92,9 +89,7 @@ def verify_basic_spans(
     assert executor_span is not None
     assert evaluation_span.name == "evaluation"
     assert executor_span.name == "executor"
-    assert sorted([span.name for span in evaluator_spans]) == sorted(
-        expected_evaluator_names
-    )
+    assert sorted([span.name for span in evaluator_spans]) == sorted(expected_evaluator_names)
 
     return evaluation_span, executor_span, evaluator_spans
 
@@ -123,23 +118,24 @@ async def test_evaluate_with_mocks_async(
     mock_dataset_pull.return_value = mock_dataset_pull_response
 
     # Run the evaluate function
-    _result = await cast(Awaitable[EvaluationRunResult], evaluate(
-        data=[{"data": "test", "target": "test"}],
-        executor=lambda data, _t=None: data,
-        evaluators={
-            "test": lambda output, target: 1 if output == target else 0,
-            "test2": lambda output, target: 1 if output == target else 0,
-        },
-        project_api_key="test",
-    ))
+    _result = await cast(
+        Awaitable[EvaluationRunResult],
+        evaluate(
+            data=[{"data": "test", "target": "test"}],
+            executor=lambda data, _t=None: data,
+            evaluators={
+                "test": lambda output, target: 1 if output == target else 0,
+                "test2": lambda output, target: 1 if output == target else 0,
+            },
+            project_api_key="test",
+        ),
+    )
 
     # Flush the traces
     _flush_success = Laminar.flush()
 
     # Verify the API calls
-    verify_basic_api_calls(
-        mock_init, mock_dataset_push, mock_dataset_pull, mock_datapoints
-    )
+    verify_basic_api_calls(mock_init, mock_dataset_push, mock_dataset_pull, mock_datapoints)
 
     # Get the finished spans and verify
     spans = span_exporter.get_finished_spans()
@@ -170,23 +166,24 @@ def test_evaluate_with_mocks(
     mock_dataset_pull.return_value = mock_dataset_pull_response
 
     # Run the evaluate function
-    _result = cast(EvaluationRunResult, evaluate(
-        data=[{"data": "test", "target": "test"}],
-        executor=lambda data, _t=None: data,
-        evaluators={
-            "test": lambda output, target: 1 if output == target else 0,
-            "test2": lambda output, target: 1 if output == target else 0,
-        },
-        project_api_key="test",
-    ))
+    _result = cast(
+        EvaluationRunResult,
+        evaluate(
+            data=[{"data": "test", "target": "test"}],
+            executor=lambda data, _t=None: data,
+            evaluators={
+                "test": lambda output, target: 1 if output == target else 0,
+                "test2": lambda output, target: 1 if output == target else 0,
+            },
+            project_api_key="test",
+        ),
+    )
 
     # Flush the traces
     _flush_success = Laminar.flush()
 
     # Verify the API calls
-    verify_basic_api_calls(
-        mock_init, mock_dataset_push, mock_dataset_pull, mock_datapoints
-    )
+    verify_basic_api_calls(mock_init, mock_dataset_push, mock_dataset_pull, mock_datapoints)
 
     # Get the finished spans and verify
     spans = span_exporter.get_finished_spans()
@@ -219,23 +216,24 @@ def test_evaluate_after_init(
     Laminar.initialize(project_api_key="test")
 
     # Run the evaluate function
-    _result = cast(EvaluationRunResult, evaluate(
-        data=[{"data": "test", "target": "test"}],
-        executor=lambda data, _t=None: data,
-        evaluators={
-            "test": lambda output, target: 1 if output == target else 0,
-            "test2": lambda output, target: 1 if output == target else 0,
-        },
-        project_api_key="test",
-    ))
+    _result = cast(
+        EvaluationRunResult,
+        evaluate(
+            data=[{"data": "test", "target": "test"}],
+            executor=lambda data, _t=None: data,
+            evaluators={
+                "test": lambda output, target: 1 if output == target else 0,
+                "test2": lambda output, target: 1 if output == target else 0,
+            },
+            project_api_key="test",
+        ),
+    )
 
     # Flush the traces
     _flush_success = Laminar.flush()
 
     # Verify the API calls
-    verify_basic_api_calls(
-        mock_init, mock_dataset_push, mock_dataset_pull, mock_datapoints
-    )
+    verify_basic_api_calls(mock_init, mock_dataset_push, mock_dataset_pull, mock_datapoints)
 
     # Get the finished spans and verify
     spans = span_exporter.get_finished_spans()
@@ -270,23 +268,24 @@ def test_evaluate_with_flush(
         return data
 
     # Run the evaluate function
-    _result = cast(EvaluationRunResult, evaluate(
-        data=[{"data": "test", "target": "test"}],
-        executor=mock_executor,
-        evaluators={
-            "test": lambda output, target: 1 if output == target else 0,
-            "test2": lambda output, target: 1 if output == target else 0,
-        },
-        project_api_key="test",
-    ))
+    _result = cast(
+        EvaluationRunResult,
+        evaluate(
+            data=[{"data": "test", "target": "test"}],
+            executor=mock_executor,
+            evaluators={
+                "test": lambda output, target: 1 if output == target else 0,
+                "test2": lambda output, target: 1 if output == target else 0,
+            },
+            project_api_key="test",
+        ),
+    )
 
     # Flush the traces
     _flush_success = Laminar.flush()
 
     # Verify the API calls
-    verify_basic_api_calls(
-        mock_init, mock_dataset_push, mock_dataset_pull, mock_datapoints
-    )
+    verify_basic_api_calls(mock_init, mock_dataset_push, mock_dataset_pull, mock_datapoints)
 
     # Get the finished spans and verify
     spans = span_exporter.get_finished_spans()
@@ -323,17 +322,20 @@ async def test_evaluate_propagates_evaluation_id_to_all_spans(
         with Laminar.start_as_current_span("inner_user_span"):
             return data
 
-    _result = await cast(Awaitable[EvaluationRunResult], evaluate(
-        data=[
-            {"data": "a", "target": "a"},
-            {"data": "b", "target": "b"},
-        ],
-        executor=executor,
-        evaluators={
-            "exact": lambda output, target: 1 if output == target else 0,
-        },
-        project_api_key="test",
-    ))
+    _result = await cast(
+        Awaitable[EvaluationRunResult],
+        evaluate(
+            data=[
+                {"data": "a", "target": "a"},
+                {"data": "b", "target": "b"},
+            ],
+            executor=executor,
+            evaluators={
+                "exact": lambda output, target: 1 if output == target else 0,
+            },
+            project_api_key="test",
+        ),
+    )
 
     _flush_success = Laminar.flush()
 
@@ -343,12 +345,9 @@ async def test_evaluate_propagates_evaluation_id_to_all_spans(
 
     expected_eval_id = cast(uuid.UUID, mock_eval_response["id"])
     for span in spans:
-        actual = (span.attributes or {}).get(
-            "lmnr.association.properties.metadata.evaluation_id"
-        )
+        actual = (span.attributes or {}).get("lmnr.association.properties.metadata.evaluation_id")
         assert actual == expected_eval_id, (
-            f"span {span.name} missing/incorrect evaluation_id: "
-            f"got {actual!r}, expected {expected_eval_id!r}"
+            f"span {span.name} missing/incorrect evaluation_id: got {actual!r}, expected {expected_eval_id!r}"
         )
 
     trace_ids: set[int] = set()
