@@ -55,6 +55,10 @@ from opentelemetry.util.types import AttributeValue
 from typing_extensions import TypeVar, override
 from wrapt import wrap_function_wrapper
 
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
+    content_union_to_dict,  # pyright: ignore[reportUnknownVariableType]
+)
+from lmnr.opentelemetry_lib.opentelemetry.instrumentation.shared.utils import to_dict
 from lmnr.opentelemetry_lib.tracing.attributes import (
     ASSOCIATION_PROPERTIES,
     SESSION_ID,
@@ -262,11 +266,6 @@ def _enrich_call_llm_span(span: trace.Span, llm_request: Any, llm_response: Any)
         # the new gen_ai.* attributes redacted too rather than leaking
         # message content through a side door.
         return
-
-    from lmnr.opentelemetry_lib.opentelemetry.instrumentation.google_genai.utils import (
-        content_union_to_dict,  # pyright: ignore[reportUnknownVariableType]
-        to_dict,  # pyright: ignore[reportUnknownVariableType]
-    )
 
     config = getattr(llm_request, "config", None)
 
